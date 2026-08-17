@@ -33,8 +33,8 @@
 # `scripts/gg-signatures.sh` picks a directory, regenerates every arm into it, and prints where.
 #
 # WHAT IT NEEDS. Node and the pinned `typescript` from a repo-root `npm ci`, and nothing else — no
-# `componentize-js`, no network. The component beside it is `build.sh`'s business, and both are cut
-# into a cargo `OUT_DIR` — a different one each, by a different caller, on a different schedule.
+# Rust toolchain, no network. The guest beside it is `build.sh`'s business, and both are cut into a
+# cargo `OUT_DIR` — a different one each, by a different caller, on a different schedule.
 #
 # Usage:
 #   GG_SIGNATURES_OUT_DIR=<dir> packages/gg-sandbox/signatures.sh

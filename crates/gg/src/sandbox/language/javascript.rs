@@ -1,41 +1,43 @@
-//! **JavaScript** — [TypeScript](super::typescript)'s arm with the type check taken out, and
-//! nothing else changed.
+//! **JavaScript** — gg's unchecked ECMAScript arm, and the arm
+//! [TypeScript](super::typescript) is measured against.
 //!
-//! It is the second registered [program language](super::ProgramLanguage), and it is deliberately
-//! the *narrowest* second one gg could have: it shares TypeScript's embedded component, TypeScript's
-//! SDK, TypeScript's type-strip and TypeScript's healing dialect. What it does not share is the
-//! `tsc` pass. A program written on this arm is parsed, stripped and evaluated exactly as every gg
-//! program was before gg carried a compiler.
+//! A model's reply is a whole JavaScript module. Nothing reads it, nothing rewrites it and nothing
+//! judges it: the bytes the model sent are the bytes
+//! [the ECMAScript guest](super::ecmascript) declares as `program.js` and evaluates, so a program
+//! writes its own `import` lines, declares whatever top-level names it likes, and reads its own line
+//! numbers back out of any failure without a source map in the way.
 //!
-//! # Why a language whose only content is a subtraction
+//! # What "JavaScript" means on this arm
 //!
-//! Because the subtraction is the measurement. gg's TypeScript arm now
-//! [type-checks the model's program](super::typescript) before running it, which is a real bet:
-//! a check costs ~90 ms and some tokens of annotation per turn, and buys a class of mistake caught
+//! The language, at the level the guest's engine implements it. A reply is parsed by that engine and
+//! by nothing before it, so what the engine accepts is what this arm accepts and a construct it does
+//! not have is a `SyntaxError` in the model's own coordinates. Type annotations are TypeScript's,
+//! not JavaScript's, and this arm has no step that could erase one.
+//!
+//! # Why a language whose content is a subtraction
+//!
+//! Because the subtraction is the measurement. gg's TypeScript arm
+//! [compiles the model's program](super::typescript) before running it, which is a real bet: the
+//! compile costs ~90 ms and some tokens of annotation per turn, and buys a class of mistake caught
 //! before any work happens rather than a turn later. Whether that trade is worth taking is an A/B
-//! question — and an A/B is only a measurement of the check if the two arms differ in the check and
-//! in nothing else.
+//! question, and the two arms are held to differ in the compiler and in nothing else.
 //!
-//! So every other variable is held at zero, by construction rather than by care:
+//! Four things are equal by construction rather than by care. The **guest** is one artifact reached
+//! through one constant; the **catalogue** is the same declarations reflected under a second id, so a
+//! model here reads `readFile(path: string): FileRead` exactly as a model there does; the **healing
+//! dialect** is [TypeScript's](super::typescript::healing), because healing is a lexical reading of a
+//! reply and the two arms are one syntax; and every **program gg synthesizes** is
+//! [TypeScript's](super::typescript), for the same reason.
 //!
-//! * **the same component**, byte for byte — [TypeScript's own bytes](super::typescript::COMPONENT)
-//!   reached through the constant rather than embedded a second time, so the two arms cannot come to
-//!   evaluate programs differently and the binary does not carry 13.4 MB twice;
-//! * **the same signatures, annotations included.** This language's catalogue is the same
-//!   declarations reflected under a second id, so a model here reads `readFile(path: string):
-//!   FileRead` exactly as a model there does. Stripping the types out of what the *prompt* shows
-//!   would have made the arms differ in how much the model was told about the surface — a second
-//!   variable, and a bigger one than the check;
-//! * **the same strip** ([TypeScript's own](super::typescript::prepare)), so a program that
-//!   annotates its own bindings runs here too: the annotations are erased rather than rejected. That
-//!   is what "JavaScript" means on this arm — not a narrower grammar, but a program nothing checked;
-//! * **the same healing dialect**, because healing is a lexical reading of a reply and the two arms
-//!   are one syntax.
+//! # The prompt is one file, and both arms render it
 //!
-//! The prompt is this language's own, as every language's is: it names the language a model is
-//! writing in, and it carries no section claiming the program is checked, because it is not. It
-//! does not announce the *absence* of a check either — that is the arm's variable, not a rule the
-//! model is being taught, and a prompt that dwelt on it would be measuring a sentence.
+//! There is a single responses-as-code template, `crates/gg/templates/system-code.hbs`, and this
+//! language reaches its own segment of it through `{{#if (eq language.id "javascript")}}` exactly as
+//! TypeScript reaches its own. What that one template says about a compiler is gated on
+//! [`checker`](super::ProgramLanguage::checker), and this arm answers it `None` — so the sentence
+//! telling a model its program is read and judged before it runs does not render here at all.
+//! Nothing announces the *absence* of the check either: that is the arm's variable, not a rule the
+//! model is being taught.
 
 use std::sync::OnceLock;
 
@@ -46,9 +48,8 @@ use crate::sandbox::signatures::SignatureCatalogue;
 use super::typescript;
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 /// This language's catalogue: the same SDK declarations TypeScript's is reflected from, emitted a
 /// second time under this language's own id by the guest package's `signatures.sh`.
@@ -60,9 +61,7 @@ use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 ///
 /// Neither file is committed. `crates/gg/build.rs` runs that reflection as a step of building this
 /// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so the pair is emitted
-/// together, from one set of declarations, on the build that embeds them — which is what makes "the
-/// same signatures, annotations included" a property of the arrangement rather than a claim about
-/// two files someone regenerated at the same time.
+/// together, from one set of declarations, on the build that embeds them.
 const SIGNATURES: &str = include_str!(concat!(
     env!("OUT_DIR"),
     "/signatures/javascript.signatures.json"
@@ -71,25 +70,11 @@ const SIGNATURES: &str = include_str!(concat!(
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 
-/// Everything gg says about a JavaScript program, in this language's own two templates.
-///
-/// It is TypeScript's prompt without the section that tells a model its program is compiled, and
-/// with one paragraph the checked arm does not need: that the signatures below are written with
-/// annotations, which the program may use or leave off. Without that sentence a model told it is
-/// writing JavaScript and shown a typed signature has been handed a contradiction to resolve on its
-/// own.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.javascript.hbs"),
-    system_template_name: "system-code.javascript",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.javascript.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.javascript",
-};
-
 /// The one instance of this language.
 pub(super) static JAVASCRIPT: JavaScript = JavaScript;
 
-/// JavaScript: type-stripped and evaluated in the embedded `componentize-js` guest, with **no**
-/// type check on the way.
+/// JavaScript: evaluated as a module in the embedded ECMAScript guest, with **no** compiler on the
+/// way.
 pub(super) struct JavaScript;
 
 impl ProgramLanguage for JavaScript {
@@ -101,28 +86,26 @@ impl ProgramLanguage for JavaScript {
         GgProgramLanguage::JavaScript.display_name()
     }
 
-    /// The `oxc` type-strip, and nothing after it.
+    /// The model's bytes, handed straight to the guest.
     ///
-    /// The one line of difference between this arm and TypeScript's, and the whole of what an A/B
-    /// across the two measures. A type error therefore reaches this model the way it reached every
-    /// gg model before gg carried a compiler: as whatever the program does at run time.
-    ///
-    /// It takes no [context](PrepareContext) because it opens nothing: a strip is a parse, so this
-    /// arm creates no workspace and spawns no process, and the isolation the seam offers costs it
-    /// not one syscall.
+    /// It takes no [context](PrepareContext) because it opens nothing: this arm creates no
+    /// workspace and spawns no process, and the isolation the seam offers costs it not one syscall.
     fn prepare_program(
         &self,
         source: &str,
         _modules: &[CodeModule],
         _context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
-        typescript::prepare::prepare_program(source)
+        Ok(PreparedProgram {
+            source: source.to_string(),
+            component: None,
+        })
     }
 
     /// **None.** Nothing judges a program on this arm, which is what it is for.
     ///
-    /// It is also what makes this the first *registered* language whose programs report no compile
-    /// time at all: [`SandboxOutcome::compile`](crate::sandbox::SandboxOutcome::compile) is `None`
+    /// It is also what makes this the one registered language whose programs report no compile time
+    /// at all: [`SandboxOutcome::compile`](crate::sandbox::SandboxOutcome::compile) is `None`
     /// rather than `Some(0)`, because "there is no compiler on this path" and "compiled, in under a
     /// millisecond" are different claims and the study comparing the two arms is a study about
     /// exactly that difference.
@@ -130,20 +113,23 @@ impl ProgramLanguage for JavaScript {
         None
     }
 
-    /// The same strip a program gets, with the module's own coordinates — and, as with a program,
-    /// nothing checks it.
+    /// The author's bytes, handed straight to the guest, with the names its top level exports read
+    /// off them.
     fn prepare_module(
         &self,
         source: &str,
         _context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        typescript::prepare::prepare_module(source)
+        Ok(PreparedModule {
+            exports: super::ecmascript::exports(source),
+            source: source.to_string(),
+        })
     }
 
-    /// `.js` first, `.ts` accepted — [TypeScript's list](super::typescript), with the preference
-    /// the other way round. The strip is the same one, so a module spelled either way runs here.
+    /// `.js`, and that is the whole list. Nothing on this arm erases a type annotation, so a `.ts`
+    /// file is a file the guest's parser would refuse.
     fn module_file_extensions(&self) -> &'static [&'static str] {
-        &["js", "ts"]
+        &["js"]
     }
 
     /// [camelCase](super::typescript::binding_name) — this SDK's convention, and it is this SDK.
@@ -151,24 +137,35 @@ impl ProgramLanguage for JavaScript {
         typescript::binding_name(name)
     }
 
-    /// TypeScript's embedded component, the same bytes.
-    ///
-    /// The one place a language deliberately serves another's artifact, and the reason is
-    /// that there is only one artifact: the two arms differ in what gg does to a program *before*
-    /// handing it over, never in what evaluates it. A second, byte-identical 13.4 MB `.wasm` in the
-    /// repository would be a second copy of one file with nothing to observe between them — and a
-    /// second chance for the arms to diverge in the one place they must not. The seam's
-    /// "no language serves another's artifacts" gate names this pair explicitly, so the exemption is
-    /// declared rather than assumed.
+    /// **The line a program writes to reach a code module**, which is
+    /// [TypeScript's](super::typescript): one guest resolves both arms' specifiers.
+    fn lib_import(&self, key: &str) -> Option<String> {
+        typescript::lib_import(key)
+    }
+
+    /// What that import makes callable.
+    fn lib_access(&self, key: &str) -> String {
+        typescript::lib_access(key)
+    }
+
+    /// The [ECMAScript guest](super::ecmascript), reached through the same constant TypeScript
+    /// reaches it through: one artifact, embedded once, serving both arms of the pair.
     fn guest_component(&self) -> Option<&'static [u8]> {
-        Some(typescript::COMPONENT)
+        Some(super::ecmascript::embedded())
+    }
+
+    /// This guest arms an interrupt handler off `GG_SANDBOX_DEADLINE_MS`, so a runaway loop is
+    /// stopped by quickjs with `InternalError: interrupted` and the JavaScript frames rather than by
+    /// gg's epoch trap. See [`stops_itself_at_ggs_deadline`](ProgramLanguage::stops_itself_at_ggs_deadline).
+    fn stops_itself_at_ggs_deadline(&self) -> bool {
+        true
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
     /// The check earns its keep here more than anywhere: this catalogue and TypeScript's are
-    /// generated from one source and differ in exactly one field, so a mis-filed pair would be
-    /// invisible to every other reading.
+    /// generated from one source and differ in little, so a mis-filed pair would be invisible to
+    /// every other reading.
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
@@ -189,28 +186,31 @@ impl ProgramLanguage for JavaScript {
         &typescript::healing::TYPESCRIPT_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
-    /// [`gg.views.openFile("src/main.js");`](super::typescript::open_file_statement), with the name
-    /// resolved from **this** language's catalogue.
+    /// [An `import` and one call](super::typescript::open_file_statement), spelled from this
+    /// language's own catalogue.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        typescript::open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
+        typescript::open_file_statement(self, path, window)
     }
 
-    /// [A `const` array and a `for…of` over
-    /// it](super::typescript::open_docs_views_statement), with the name resolved from **this**
-    /// language's catalogue.
+    /// [One `import` and one call per view](super::typescript::open_file_program).
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        typescript::open_file_program(self, views)
+    }
+
+    /// [An `import`, a `const` array of names and a `for…of` over
+    /// it](super::typescript::open_docs_views_statement).
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        typescript::open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+        typescript::open_docs_views_statement(self, names)
+    }
+
+    /// [One `import`, two `const` arrays and two `for…of`
+    /// loops](super::typescript::bootstrap_program).
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        typescript::bootstrap_program(self, modules, docs)
     }
 }
 
 /// **This arm's execution substrate**, in the shape every other registered language carries one.
-///
-/// The equalities above say this arm *must* run whatever TypeScript runs; they do not say it *was*
-/// run. See the module's own documentation for why the difference is worth a component compile.
 #[cfg(test)]
 #[path = "javascript.substrate.test.rs"]
 mod substrate;

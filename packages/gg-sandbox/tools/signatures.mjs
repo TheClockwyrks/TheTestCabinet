@@ -39,7 +39,7 @@
 //     It is catalogued as an ALIAS of that operation — gated identically, counting toward no
 //     capability of its own — and both as an entry of its own and as a line on its type;
 //   * the fully-qualified name is `gg.<module>.<name>`, which is a path a program can really write:
-//     the shim binds `gg` with one object per module this run offers.
+//     the aggregate module `gg` re-exports one namespace per module.
 //
 // # What is enforced here rather than left to review
 //
@@ -51,7 +51,7 @@
 //     tables list is bound by exactly one function — the failure this catches in both directions is a
 //     capability quietly missing from a model's whole surface;
 //   * an operation's key names its function: `files.read_file` is `readFile` and nothing else, which
-//     is what lets the shim bind by derivation instead of by a second table;
+//     is what lets a catalogue entry name its function by derivation instead of by a second table;
 //   * a doc comment's FIRST LINE is the brief and everything after the blank line that follows it is
 //     the detail, so an opening paragraph that wraps onto a second line is refused AT THE DECLARATION
 //     rather than several steps later in a gate over the emitted JSON;
@@ -126,6 +126,15 @@ const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers", "gg");
  */
 const LANGUAGES = ["typescript", "javascript"];
 
+/**
+ * The line a program on either ECMAScript arm writes to reach gg's SDK.
+ *
+ * One line for the whole surface, and the namespace form: it is what makes `gg.files.readFile` — the
+ * name every documentation view is filed under and every quoted call is written with — an expression
+ * the program can write.
+ */
+const SURFACE_IMPORT = 'import * as gg from "gg";';
+
 /** The doc model this catalogue is written in. See the header. */
 const SCHEMA = 1;
 
@@ -134,6 +143,17 @@ const SCHEMA = 1;
  * where from.
  */
 const GENERATED_FROM = "packages/gg-sandbox/src/gg/ (tsc, declaration emit)";
+
+/**
+ * The longest a brief may be, in characters.
+ *
+ * The same cap `crates/gg/src/sandbox/language/register.rs` holds every arm's catalogue to, and it is
+ * enforced here as well because the host's copy is a `#[test]`: a reflection that embedded a
+ * paragraph in the brief field would succeed, and so would a build, and the author would hear about
+ * it from a gate three steps away naming an entry they then have to go looking for. Here is where the
+ * author is standing.
+ */
+const BRIEF_CAP = 120;
 
 /** The JSDoc tag that names the gg operation a declaration binds. */
 const OPERATION_TAG = "ggop";
@@ -260,10 +280,11 @@ function reflow(text) {
 /**
  * Split one doc comment into its brief and its detail, or fail naming the declaration.
  *
- * The rule is the model's: a summary line, then a blank line, then the rest. It is enforced here
- * rather than in a gate over the emitted JSON because here is where the author is standing — a first
- * paragraph that wraps over two lines is a mistake to be told about at the declaration, not three
- * steps later under a name the author has to go looking for.
+ * The rule is the model's: a summary line, then a blank line, then the rest, and that line no longer
+ * than {@link BRIEF_CAP}. Both halves are enforced here rather than in a gate over the emitted JSON
+ * because here is where the author is standing — a first paragraph that wraps over two lines, or a
+ * summary line that runs on for a paragraph's worth of characters, is a mistake to be told about at
+ * the declaration, not three steps later under a name the author has to go looking for.
  */
 function proseOf(text, where) {
   if (!text || text.trim() === "") {
@@ -283,6 +304,12 @@ function proseOf(text, where) {
       `${where}'s brief runs over more than one line. The first line of a doc comment is the brief ` +
         "and everything after the blank line that follows it is the detail, so a first paragraph " +
         `that wraps has no brief in it: ${JSON.stringify(brief)}`,
+    );
+  }
+  if (brief.length > BRIEF_CAP) {
+    throw new Error(
+      `${where} has a ${brief.length}-character brief, and a brief is capped at ` +
+        `${BRIEF_CAP}: ${JSON.stringify(brief)}`,
     );
   }
   const detail = reflow(rest.join("\n"));
@@ -477,8 +504,7 @@ function armDoc(union, index, sourceFile) {
  *
  * The source file is transpiled in memory and imported as a data URL rather than read out of `dist/`,
  * so this script depends only on what `tsconfig.headers.json` emits — which is what lets a build of
- * gg reflect this arm's catalogues without ever building the JavaScript the component is made from,
- * and therefore without `componentize-js` on the machine doing the building.
+ * gg reflect this arm's catalogues without ever building the JavaScript the guest is baked from.
  */
 async function loadCatalogue() {
   const file = path.join(SRC_DIR, "catalogue.ts");
@@ -604,7 +630,7 @@ function methodMembers(statement, sourceFile) {
  *
  * A reference is recorded as the pair `{ spelled, fqn }` — what the signature writes, and the key a
  * documentation view is opened by. On this arm the spelling is the bare name, because that is what a
- * signature really writes and what the shim binds `ToolError` under; the fqn is
+ * signature really writes and what `gg` exports `ToolError` under; the fqn is
  * `gg.<module>.<name>`, which is where the declaration is filed.
  */
 class Resolver {
@@ -785,9 +811,16 @@ async function build(language) {
       path,
       brief: prose.brief,
       detail: prose.detail,
-      // `null`, and honestly: gg binds this SDK into a program's scope, so a documented import would
-      // be a line a model would be wrong to think it had to write.
-      import: null,
+      // The one line a program writes to reach every module below. It is the NAMESPACE import
+      // rather than a named one, because `path` above is the name every documentation view, every
+      // search hit and every call gg quotes is written with — and `import * as gg from "gg";` is
+      // what makes that name an expression the program can write. A named import
+      // (`import { files } from "gg";`) reaches the same module and is equally valid; it is not what
+      // gg teaches, because it would leave every quoted `gg.files.…` one edit away from compiling.
+      //
+      // One line for both arms: they are one language on one guest, and the loader that resolves
+      // this specifier is the same loader.
+      import: SURFACE_IMPORT,
     });
     const byName = new Map();
     for (const statement of sourceFile.statements) {
@@ -876,8 +909,8 @@ async function build(language) {
     if (derived !== entry.name) {
       throw new Error(
         `${where} binds \`${entry.operation}\`, whose key names \`${derived}\` rather than ` +
-          `\`${entry.name}\`. The shim binds an operation by deriving the export from its key, so ` +
-          "the two have to be one transformation apart.",
+          `\`${entry.name}\`. An operation names its export by derivation rather than by a second ` +
+          "table, so the two have to be one transformation apart.",
       );
     }
     const returned = entry.nodes[0].type ? print(entry.nodes[0].type, entry.sourceFile) : NO_RETURN;
@@ -896,9 +929,9 @@ async function build(language) {
       receiver: null,
       name: entry.name,
       fqn: entry.fqn,
-      // The fully-qualified name IS what a program writes: the shim binds `gg` with one object per
-      // module, and binds each module under its bare id as well, so there is no third spelling for a
-      // call site to need.
+      // The fully-qualified name IS what a program writes: `import * as gg from "gg"` puts one
+      // namespace per module under `gg`, and `gg:<module>` reaches the same module alone, so there
+      // is no third spelling for a call site to need.
       call: null,
       brief: prose.brief,
       detail: prose.detail,

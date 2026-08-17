@@ -1,7 +1,7 @@
 # gg's **Rust** program-language library set.
 #
 # Deliberately its own workspace (`[workspace]`, empty) rather than a member of the repository's:
-# it is compiled for `wasm32-unknown-unknown` by `build.sh`, its output is a set of committed
+# it is compiled for `wasm32-wasip1` by `build.sh`, its output is a set of generated
 # `.rlib` files rather than a binary anything links, and a member would be built by every
 # `cargo build --workspace` in the repository for no reason.
 
@@ -17,7 +17,7 @@ publish = false
 
 [lib]
 path = "src/lib.rs"
-# `rlib` and nothing else. The final artifact is the *program*'s `cdylib`, compiled per turn with
+# `rlib` and nothing else. The final artifact is the *program*'s `bin`, compiled per turn with
 # this named on `--extern`; this half is compiled once, at build time, and shipped inside gg's
 # binary. See `build.sh`.
 crate-type = ["rlib"]
@@ -52,13 +52,16 @@ wit-bindgen = { version = "0.60", default-features = false }
 #     an rlib's metadata makes the whole set unloadable on any other architecture (measured: E0463).
 #     That is what rules out `serde`'s `derive`, `thiserror` and `clap`, and it is checked rather
 #     than trusted: `build.sh` fails if the build produced a proc-macro artifact.
-#   * IT MUST COMPILE FOR `wasm32-unknown-unknown`, which has no clock, no filesystem, no sockets and
+#   * IT MUST COMPILE FOR `wasm32-wasip1`, which has no clock, no filesystem, no sockets and
 #     no randomness. That is what rules out `rand` (its `getrandom` has no backend on this target),
 #     `chrono` and `reqwest`. Reaching the world is what `fs` and `system` are for.
 #
 # The `# --- heading ---` lines are MACHINE-READABLE: `tools/signatures.py` groups the catalogue's
 # `libraries` section by them, so what a model is told it may use is reflected out of the file that
-# decides the set. Add a crate under a heading, rebuild, and the prompt says so.
+# decides the set. That section reaches a model on a COMPILE FAILURE and nowhere else — no system
+# prompt carries a package inventory, because the one mistake this set prevents is a `use` of a
+# crate this arm does not carry, and that is a mistake `rustc` detects on the turn that made it.
+# Add a crate under a heading, rebuild, and the next such refusal says so.
 
 # --- Text and parsing ---
 # The crate a Rust author reaches for the moment a `str::contains` is not enough. Its own
@@ -104,7 +107,7 @@ standard-library = [
 
 # One profile, because there is only one thing to build. `opt-level = "s"` because the artifact
 # crosses no wire but is compiled by wasmtime on every turn, and a smaller module compiles faster;
-# `panic = "abort"` because `wasm32-unknown-unknown` has no unwinder at all, so the alternative is
+# `panic = "abort"` because wasm has no unwinder at all, so the alternative is
 # not a choice; `strip = "symbols"` because the name section is a third of the artifact and nothing
 # reads it — a Rust program's failures are located by the PANIC HOOK, out of `Location`, which is
 # static data rather than a symbol name.

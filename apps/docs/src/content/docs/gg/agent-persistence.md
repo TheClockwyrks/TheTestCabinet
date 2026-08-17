@@ -89,6 +89,8 @@ A code-mode profile gets one program per restored file view, spelled as the call
 that would have opened it:
 
 ```ts
+import * as gg from "gg";
+
 gg.views.openFile("src/main.rs", { offset: 40, limit: 120 });
 ```
 

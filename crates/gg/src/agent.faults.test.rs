@@ -27,7 +27,7 @@
 //! prove what the session then says it ended as. None can be provoked honestly — a released build's
 //! guest artifact compiles and instantiates, the wasm host's configuration is a constant, and gg's
 //! generated surface is checked in CI — so each is armed through the
-//! [seam](crate::sandbox::force_next_program_fault) that exists for exactly this, and no test here
+//! [seam](crate::sandbox::force_model_program_fault) that exists for exactly this, and no test here
 //! pays a component compile.
 
 use std::any::Any;
@@ -57,12 +57,15 @@ async fn drive_into(fault: SandboxError) -> (LoopEnd, Vec<String>) {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
 
-    crate::sandbox::force_next_program_fault(fault);
+    crate::sandbox::force_model_program_fault(fault);
 
     let end = drive_root(
         &MockClient::new(
             "mock/primary",
-            vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 3],
+            vec![
+                code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");");
+                3
+            ],
         ),
         dir.path(),
         &registry,
@@ -184,14 +187,17 @@ async fn a_lowering_defect_records_no_error_type_against_the_model() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
 
-    crate::sandbox::force_next_program_fault(SandboxError::Lowering(
+    crate::sandbox::force_model_program_fault(SandboxError::Lowering(
         "the transform over the accepted program failed".to_string(),
     ));
 
     drive_root(
         &MockClient::new(
             "mock/primary",
-            vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 3],
+            vec![
+                code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");");
+                3
+            ],
         ),
         dir.path(),
         &registry,
@@ -255,8 +261,9 @@ fn terminal_status(events: &[GgTelemetryEvent]) -> Option<String> {
 /// `set`'s profile named `profile`, switched to [responses as code](CAPABILITY_RESPONSES_AS_CODE).
 ///
 /// Which is how a **non-root** agent is made to reach the sandbox at all: the forced fault is armed
-/// once for the next program the process runs, so leaving the root on the tool-calling path is what
-/// makes the child's first program the one that meets it.
+/// once for a model's first program, so leaving the root on the tool-calling path — where there is
+/// no [bootstrap](crate::bootstrap) and no program — is what makes the child's own bootstrap the one
+/// the seam lets through and the child's first program the one that meets it.
 fn code_mode(set: &mut GgCapabilitySet, profile: &str) {
     let agent = set
         .agents
@@ -290,11 +297,11 @@ async fn a_spawned_childs_host_fault_ends_the_run() {
         .slot("subagent", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 2],
+                vec![code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"); 2],
             ))
         });
 
-    crate::sandbox::force_next_program_fault(SandboxError::Host(
+    crate::sandbox::force_model_program_fault(SandboxError::Host(
         "the code sandbox task did not complete: task panicked".to_string(),
     ));
 
@@ -369,11 +376,16 @@ async fn the_root_winds_down_at_its_next_boundary_after_a_childs_fault() {
         .slot("subagent", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 2],
+                vec![
+                    code_reply(
+                        "import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"
+                    );
+                    2
+                ],
             ))
         });
 
-    crate::sandbox::force_next_program_fault(SandboxError::Instantiate(
+    crate::sandbox::force_model_program_fault(SandboxError::Instantiate(
         "the component could not be instantiated: missing import `gg:sandbox/host`".to_string(),
     ));
 
@@ -422,11 +434,16 @@ async fn an_issue_agents_host_fault_ends_the_run() {
         .slot(CODER_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 2],
+                vec![
+                    code_reply(
+                        "import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"
+                    );
+                    2
+                ],
             ))
         });
 
-    crate::sandbox::force_next_program_fault(SandboxError::Host(
+    crate::sandbox::force_model_program_fault(SandboxError::Host(
         "the code sandbox task did not complete: task panicked".to_string(),
     ));
 
@@ -488,11 +505,11 @@ async fn a_faulted_run_does_not_re_dispatch_the_issue_it_stopped() {
         .slot(CODER_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 4],
+                vec![code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"); 4],
             ))
         });
 
-    crate::sandbox::force_next_program_fault(SandboxError::Host(
+    crate::sandbox::force_model_program_fault(SandboxError::Host(
         "the code sandbox task did not complete: task panicked".to_string(),
     ));
 
@@ -1447,7 +1464,7 @@ impl ClientFactory for RefusingFactory {
                 // Uncaught on purpose: a program is expected to anticipate a call failing, and the
                 // point of this test is the turn where one does not.
                 code_reply(
-                    "agents.spawnSubagent({ agent: \"subagent\", prompt: \"Do the work.\" });",
+                    "import * as gg from \"gg\";\ngg.delegation.spawnSubagent({ agent: \"subagent\", prompt: \"Do the work.\" });",
                 ),
                 code_reply(FINISHING_PROGRAM),
             ],

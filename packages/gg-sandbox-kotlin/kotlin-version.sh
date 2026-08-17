@@ -9,10 +9,10 @@
 # Rust side, and a test in `kotlin.compile.test.rs` fails if the two ever disagree.
 #
 # WHAT IS NOT HERE: the JDK and TeaVM. This arm compiles Kotlin to JVM bytecode and then
-# translates that bytecode to JavaScript with TeaVM, which is the Java arm's second half —
-# so it installs `packages/gg-sandbox-java/java-version.sh`'s toolchain too, and adds only
-# what is below on top of it. One JDK per machine rather than two, and one place where the
-# TeaVM release is decided for both arms.
+# translates that bytecode to a WebAssembly component with TeaVM, which is the road it shares
+# with the Java arm — so it installs `packages/gg-sandbox-java/java-version.sh`'s toolchain
+# too, and adds only what is below on top of it. One JDK per machine rather than two, and one
+# place where the TeaVM release is decided for both arms.
 #
 # Not a script to run: it only sets variables.
 
@@ -36,6 +36,10 @@ KOTLIN_VERSION="2.4.10"
 # fine — which is exactly the shape of bug that gets found in the wrong week. The version is
 # the one kotlin-stdlib declares.
 #
+# `kotlin-script-runtime` is on the list for the reason every other jar here is — the
+# compiler's own POM declares it — and for no other. A program on this arm is an ordinary
+# `.kt` file with its own `fun main()`, so nothing here loads a scripting plugin.
+#
 # `kotlin-stdlib` is the one a MODEL's program sees. It is on this list because the driver
 # needs it too, and the arm's compile puts exactly that jar — and nothing else from here —
 # on the classpath a model's program is compiled against, so what a program may reach is the
@@ -49,28 +53,4 @@ org.jetbrains.kotlin:kotlin-build-tools-api:2.4.10
 org.jetbrains.kotlin:kotlin-reflect:1.6.10
 org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0
 org.jetbrains:annotations:13.0
-JARS
-
-# The SCRIPTING plugin, which is what lets a Kotlin program be a program at all here: gg
-# compiles a model's reply as a Kotlin script, because Kotlin refuses `object`, `interface`,
-# `enum class`, `typealias` and `private fun` as LOCAL declarations and a wrapper function
-# would therefore refuse five things a Kotlin author writes without thinking. See
-# `crates/gg/src/sandbox/language/kotlin.source.rs`.
-#
-# Two things about this list are not free choices:
-#
-#  - the `-embeddable` variants, because the compiler they plug into is the embeddable one.
-#    The plain jars reference `com.intellij.…` where the embeddable compiler has relocated
-#    those classes to `org.jetbrains.kotlin.com.intellij.…`, and the plugin then fails to
-#    load with a message about a missing class rather than about a mismatched distribution.
-#  - the UNVERSIONED names on the right. The compiler looks for exactly these four file names
-#    under `<kotlin home>/lib`, which is a Kotlin distribution's layout rather than a Maven
-#    repository's — so the install script writes that directory, from this list.
-#
-# `<coordinate> <file name>`, one per line.
-read -r -d '' KOTLIN_SCRIPTING_JARS <<'JARS' || true
-org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable:2.4.10 kotlin-scripting-compiler.jar
-org.jetbrains.kotlin:kotlin-scripting-compiler-impl-embeddable:2.4.10 kotlin-scripting-compiler-impl.jar
-org.jetbrains.kotlin:kotlin-scripting-common:2.4.10 kotlin-scripting-common.jar
-org.jetbrains.kotlin:kotlin-scripting-jvm:2.4.10 kotlin-scripting-jvm.jar
 JARS

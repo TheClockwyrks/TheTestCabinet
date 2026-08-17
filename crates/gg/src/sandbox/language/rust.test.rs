@@ -35,13 +35,17 @@ fn this_arm_names_the_compiler_that_judges_a_program() {
 fn this_arm_commits_no_component_and_compiles_one_instead() {
     assert!(rust().guest_component().is_none());
     assert!(rust().compiles_component());
-    // Every arm but the three of this shape commits one. Swift and C++ are the others, and they are
-    // named here rather than derived so that a fourth arriving is a failing test with a sentence in
-    // it.
+    // Every arm but the five of this shape commits one. Swift, C++, Java and Kotlin are the others,
+    // and they are named here rather than derived so that a sixth arriving is a failing test with a
+    // sentence in it.
     for language in crate::sandbox::all_languages() {
         if matches!(
             language.id(),
-            GgProgramLanguage::Rust | GgProgramLanguage::Swift | GgProgramLanguage::Cpp
+            GgProgramLanguage::Rust
+                | GgProgramLanguage::Swift
+                | GgProgramLanguage::Cpp
+                | GgProgramLanguage::Java
+                | GgProgramLanguage::Kotlin
         ) {
             continue;
         }
@@ -113,6 +117,11 @@ fn the_binding_name_is_a_snake_case_rust_identifier() {
         ("9lives", "_9lives"),
         ("---", "module"),
         ("", "module"),
+        // A keyword is a path segment `rustc` refuses, and `crate`/`self`/`super` are worse than
+        // refused: each parses and resolves somewhere other than the module.
+        ("match", "_match"),
+        ("crate", "_crate"),
+        ("Self", "_self"),
     ];
     for (name, expected) in cases {
         let key = rust().binding_name(name);
@@ -129,20 +138,20 @@ fn the_binding_name_is_a_snake_case_rust_identifier() {
 /// **The synthesized file view is Rust**: an options struct, and a `?` that composes.
 ///
 /// It is written into the agent's own transcript as an example of its own output, so the `?` is
-/// load-bearing rather than decoration — a program's body returns a `Result`, and a call whose
-/// `Result` went unused would be the model's first example of ignoring a failure.
+/// load-bearing rather than decoration — the `fn main` it lives in returns a `Result`, and a call
+/// whose `Result` went unused would be the model's first example of ignoring a failure.
 ///
 /// The window is written out in full rather than with a `..Default::default()` tail, because
-/// `files::ReadOptions` has exactly two fields and this statement sets both — which is exactly where
-/// this arm is meant to look different from [Kotlin's](super::super::kotlin) named arguments and
-/// [Java's](super::super::java) second overload. The struct is module-qualified because the prelude
-/// re-exports the modules and not the types inside them.
+/// `gg::files::ReadOptions` has exactly two fields and this statement sets both — which is exactly
+/// where this arm is meant to look different from [Kotlin's](super::super::kotlin) named arguments
+/// and [Java's](super::super::java) second overload. Every name is written in full, because gg
+/// writes no `use` line above it.
 #[test]
 fn the_synthesized_file_view_is_rust() {
     let whole = rust().open_file_statement("src/main.rs", None);
     assert_eq!(
         whole,
-        "gg::views::open_file(\"src/main.rs\", files::ReadOptions::default())?;"
+        "gg::views::open_file(\"src/main.rs\", gg::files::ReadOptions::default())?;"
     );
 
     let windowed = rust().open_file_statement(
@@ -154,7 +163,7 @@ fn the_synthesized_file_view_is_rust() {
     );
     assert_eq!(
         windowed,
-        "gg::views::open_file(\"src/main.rs\", files::ReadOptions { offset: Some(400), \
+        "gg::views::open_file(\"src/main.rs\", gg::files::ReadOptions { offset: Some(400), \
          limit: Some(200) })?;"
     );
 
@@ -163,50 +172,98 @@ fn the_synthesized_file_view_is_rust() {
     assert!(quoted.contains(r#""a \"b\"\\c.rs""#), "{quoted}");
 }
 
-/// **The generated documentation program is a sequence of statements**, which is what a program is
-/// on this arm — and it opens each view with a `?`.
+/// **The file view gg pushes into a transcript is a whole program**, because a Rust file has nowhere
+/// for a statement to live outside a function body.
+///
+/// A model reads it as an example of its own output, so a statement list would be teaching a shape
+/// `rustc` answers with `error[E0601]: main function not found in crate program`.
 #[test]
-fn the_generated_documentation_program_is_a_statement_sequence() {
+fn the_synthesized_file_view_program_declares_its_own_main() {
+    let program = rust().open_file_program(&[("src/main.rs", None), ("README.md", None)]);
+    assert_eq!(
+        program,
+        "fn main() -> Result<(), gg::Failure> {\n    \
+             gg::views::open_file(\"src/main.rs\", gg::files::ReadOptions::default())?;\n    \
+             gg::views::open_file(\"README.md\", gg::files::ReadOptions::default())?;\n    \
+             Ok(())\n}\n"
+    );
+}
+
+/// **The generated documentation program is a whole program**, which is what a program is on this
+/// arm — and it opens each view with a `?`.
+#[test]
+fn the_generated_documentation_program_declares_its_own_main() {
     let program = rust().open_docs_views_statement(&["read_file", "open_text"]);
     assert_eq!(
         program,
-        "let functions = [\n    \"read_file\",\n    \"open_text\",\n];\n\
-         for name in functions {\n    gg::views::open_docs_view(name)?;\n}\n"
+        "fn main() -> Result<(), gg::Failure> {\n    \
+             let functions = [\n        \"read_file\",\n        \"open_text\",\n    ];\n    \
+             for name in functions {\n        gg::views::open_docs_view(name)?;\n    }\n    \
+             Ok(())\n}\n"
     );
 
     // The empty case carries its element type, because `[]` alone has none to infer.
     let empty = rust().open_docs_views_statement(&[]);
-    assert!(
-        empty.starts_with("let functions: [&str; 0] = [];"),
-        "{empty}"
+    assert!(empty.contains("let functions: [&str; 0] = [];"), "{empty}");
+}
+
+/// **The opening program declares its own `main`**, and it covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran — which means it has to be a program a model could have sent.
+/// What is asserted here is that gg wrote Rust — a `fn main`, arrays, `for`s, an **options struct
+/// filled in with functional-update syntax** — that every call is composed with `?` rather than
+/// unwrapped, that every call is spelled in full so no `use` line is needed above it, and that the
+/// search is the whole-module lookup rather than the default page of one.
+#[test]
+fn the_opening_program_composes_every_call_with_a_question_mark() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        rust().bootstrap_program(&["files", "views"], &["read_file"]),
+        format!(
+            "fn main() -> Result<(), gg::Failure> {{\n    \
+                 let modules = [\n        \"files\",\n        \"views\",\n    ];\n    \
+                 for path in modules {{\n        \
+                     gg::docs::search(\n            \"\",\n            \
+                     gg::docs::SearchOptions {{\n                module: Some(path),\n            \
+                     \x20   limit: Some({limit}),\n                ..Default::default()\n         \
+                     \x20  }},\n        )?;\n    \
+                 }}\n\
+                 \n    \
+                 let functions = [\n        \"read_file\",\n    ];\n    \
+                 for name in functions {{\n        gg::views::open_docs_view(name)?;\n    }}\n    \
+                 Ok(())\n}}\n"
+        )
     );
 }
 
 /// **A code module is declared below the program**, so nothing the model wrote moves.
 ///
-/// Everything about this arm's diagnostics rests on the model's line *n* being line *n + 1* of the
-/// entry file. An item written above the program would move every one of them, so the modules go
-/// under the epilogue — where Rust reads them just as well, because an item is visible to the whole
-/// crate however far down it is declared.
+/// Everything about this arm's diagnostics rests on the model's line *n* being line *n* of the entry
+/// file. An item written above the program would move every one of them, so the modules go below
+/// everything the model wrote — where Rust reads them just as well, because an item is visible to
+/// the whole crate however far down it is declared.
 #[test]
 fn the_modules_in_scope_are_declared_below_the_program_and_move_nothing() {
     let modules = [
         CodeModule {
             name: "csv_tools".to_string(),
-            source: "use ::gg::prelude::*;\npub fn parse(_row: &str) -> usize { 0 }\n".to_string(),
+            source: "use gg::files;\npub fn parse(_row: &str) -> usize { 0 }\n".to_string(),
         },
         CodeModule {
             name: "notes".to_string(),
-            source: "use ::gg::prelude::*;\npub fn title() -> &'static str { \"n\" }\n".to_string(),
+            source: "pub fn title() -> &'static str { \"n\" }\n".to_string(),
         },
     ];
-    let program = "let total = 1;\nviews::open_text(\"n\", &total.to_string())?;\n";
-    let wrapped = source::wrap(program, &modules).expect("an ordinary program is wrapped");
+    let program = "use gg::views;\n\nfn main() -> Result<(), gg::Failure> {\n    \
+                   views::open_text(\"n\", \"1\")?;\n    Ok(())\n}\n";
+    let wrapped = source::wrap(program, &modules);
 
     let lines: Vec<&str> = wrapped.lines().collect();
     for (index, original) in program.lines().enumerate() {
         assert_eq!(
-            lines[index + source::LINE_OFFSET],
+            lines[index],
             original,
             "the model's line {} moved",
             index + 1
@@ -233,10 +290,8 @@ fn the_modules_in_scope_are_declared_below_the_program_and_move_nothing() {
     }
     assert!(wrapped.contains("mod lib {"), "{wrapped}");
 
-    // An agent that has loaded nothing gets exactly the entry file it got before code modules
-    // existed.
-    let bare = source::wrap(program, &[]).expect("an ordinary program is wrapped");
-    assert!(!bare.contains("mod lib"), "{bare}");
+    // An agent that has loaded nothing gets exactly the bytes it sent.
+    assert_eq!(source::wrap(program, &[]), program);
 }
 
 /// **A module's namespace is every public item it declares at its top level**, in source order.
@@ -247,7 +302,7 @@ fn the_modules_in_scope_are_declared_below_the_program_and_move_nothing() {
 #[test]
 fn a_modules_exports_are_its_public_items() {
     let module = "\
-use ::gg::prelude::*;
+use gg::files;
 
 pub struct Row {
     pub name: String,
@@ -285,7 +340,7 @@ pub use std::fmt::Debug;
 /// marker where the module's single export hands it back.
 #[test]
 fn the_isolation_subject_is_a_module_rather_than_a_program() {
-    let module = rust().isolation_module("gg-isolation-7");
+    let module = rust().gate_module("gg-isolation-7");
     assert_eq!(
         module,
         "pub fn marker() -> &'static str {\n    \"gg-isolation-7\"\n}\n"
@@ -320,7 +375,7 @@ fn the_generated_catalogue_is_this_languages() {
     }
 }
 
-/// **This arm declares the libraries a program may reach**, which is what the prompt renders.
+/// **This arm declares the libraries a program may reach**, which is what a compile failure quotes back.
 ///
 /// The five curated crates and the standard library, grouped exactly as
 /// `packages/gg-sandbox-rust/Cargo.toml` heads them — the manifest is the one declaration and both

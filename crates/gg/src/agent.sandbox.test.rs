@@ -364,8 +364,8 @@ async fn a_program_compacts_its_own_context_window() {
     );
 
     let program = format!(
-        "fs.writeFile(\"main.ts\", \"export const KEPT = 1;\");\n\
-         context.compact(\"{SUMMARY}\", [\"main.ts\"]);\n\
+        "import * as gg from \"gg\";\ngg.files.writeFile(\"main.ts\", \"export const KEPT = 1;\");\n\
+         gg.context.compact(\"{SUMMARY}\", [\"main.ts\"]);\n\
          console.log(\"compaction requested\");"
     );
     let (outcome, events) = drive_code_run(&dir, set, move |b| {
@@ -436,8 +436,10 @@ async fn responses_as_code_completion_is_gated_by_an_agent_stop_hook() {
     // Turn 1 finishes without creating the file (the hook blocks, the run continues); turn 2
     // creates the file and finishes (the hook passes, the run ends).
     let script = vec![
-        code_reply("harness.finish(\"attempt one\");"),
-        code_reply("fs.writeFile(\"ready.txt\", \"x\");\nharness.finish(\"attempt two\");"),
+        code_reply("import * as gg from \"gg\";\ngg.session.finish(\"attempt one\");"),
+        code_reply(
+            "import * as gg from \"gg\";\ngg.files.writeFile(\"ready.txt\", \"x\");\ngg.session.finish(\"attempt two\");",
+        ),
     ];
     let (outcome, events) = drive_code_run(&dir, set, move |b| {
         Box::new(MockClient::new(&b.model_id, script.clone()))
@@ -506,7 +508,9 @@ async fn tool_calling_mode_is_unchanged_and_records_its_mode() {
 #[tokio::test]
 async fn a_native_tool_call_on_a_code_turn_is_ignored_loudly() {
     let dir = TempDir::new().unwrap();
-    let mut script = program_script(&["return fs.writeFile(\"from-program.txt\", \"hi\");"]);
+    let mut script = program_script(&[
+        "import * as gg from \"gg\";\ngg.files.writeFile(\"from-program.txt\", \"hi\");",
+    ]);
     script[0].tool_calls = vec![ToolCall {
         id: "call_habit".to_string(),
         name: "write_file".to_string(),
@@ -593,7 +597,7 @@ async fn a_sandbox_failure_is_a_turn_outcome_not_a_crash() {
                 // A module feature the sandbox has no implementation of. Nothing in healing touches
                 // an import, so this reaches the transpiler exactly as the model wrote it and fails
                 // there, which is the shape this test is about.
-                "import {\n  readFileSync,\n} from \"node:fs\";\nreturn 1;",
+                "import {\n  readFileSync,\n} from \"node:fs\";\n1;",
             ],
         )
     })
@@ -639,8 +643,8 @@ async fn a_program_gets_the_offloaded_tail_and_the_paths_to_the_rest() {
     shell.implementation = Some(SHELL_OUTPUT_OFFLOAD.to_string());
     shell.params = json!({ "maxLines": 3 });
 
-    let program = "const out = system.shell(\"for i in $(seq 1 60); do echo line-$i; done\").output;\n\
-                   fs.writeFile(\"seen.txt\", out);";
+    let program = "import * as gg from \"gg\";\nconst out = gg.shell.shell(\"for i in $(seq 1 60); do echo line-$i; done\").output;\n\
+                   gg.files.writeFile(\"seen.txt\", out);";
     let (outcome, events) =
         drive_code_run(&dir, set, move |b| one_program(&b.model_id, program)).await;
 
@@ -677,10 +681,10 @@ async fn composed_calls_stream_call_then_result_telemetry_in_order() {
     let (outcome, events) = drive_code_run(&dir, code_set("mock/primary", json!({})), |b| {
         one_program(
             &b.model_id,
-            "const text = fs.readTextFile(\"seed.txt\");\n\
-             fs.writeFile(\"copy.txt\", text.toUpperCase());\n\
-             const entries = fs.listDir(\".\");\n\
-             return entries.length;",
+            "import * as gg from \"gg\";\nconst text = gg.files.readTextFile(\"seed.txt\");\n\
+             gg.files.writeFile(\"copy.txt\", text.toUpperCase());\n\
+             const entries = gg.files.listDir(\".\");\n\
+             console.log(String(entries.length));",
         )
     })
     .await;
@@ -723,8 +727,8 @@ async fn code_execution_tool_calls_equals_the_telemetry_pair_count() {
     let (outcome, events) = drive_code_run(&dir, code_set("mock/primary", json!({})), |b| {
         one_program(
             &b.model_id,
-            "for (let i = 0; i < 5; i += 1) {\n  fs.writeFile(`out-${i}.txt`, String(i));\n}\n\
-             return fs.listDir(\".\").length;",
+            "import * as gg from \"gg\";\nfor (let i = 0; i < 5; i += 1) {\n  gg.files.writeFile(`out-${i}.txt`, String(i));\n}\n\
+             console.log(String(gg.files.listDir(\".\").length));",
         )
     })
     .await;
@@ -768,8 +772,8 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     let (outcome, _events) = drive_code_run(&dir, set, |b| {
         one_program(
             &b.model_id,
-            "fs.writeFile(\"a.txt\", \"1\");\nfs.writeFile(\"b.txt\", \"2\");\n\
-             fs.writeFile(\"c.txt\", \"3\");\nreturn 3;",
+            "import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"1\");\ngg.files.writeFile(\"b.txt\", \"2\");\n\
+             gg.files.writeFile(\"c.txt\", \"3\");\n3;",
         )
     })
     .await;
@@ -986,15 +990,15 @@ async fn every_image_view_a_program_opens_carries_its_picture() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![code_reply(
-            "const refused = [];
+            "import * as gg from \"gg\";\nconst refused = [];
              for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\", \"e.png\"]) {
              \x20 try {
-             \x20   view.openFile(p);
+             \x20   gg.views.openFile(p);
              \x20 } catch (error) {
-             \x20   refused.push(p + \": \" + (error as ToolError).code);
+             \x20   refused.push(p + \": \" + (error as gg.core.ToolError).code);
              \x20 }
              }
-             fs.writeFile(\"refused.txt\", refused.join(\"\\n\") || \"none\");",
+             gg.files.writeFile(\"refused.txt\", refused.join(\"\\n\") || \"none\");",
         )],
     )
     .await;
@@ -1030,10 +1034,10 @@ async fn re_opening_an_image_view_leaves_one_picture_resident() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![code_reply(
-            "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\"]) {
-             \x20 view.openFile(p);
+            "import * as gg from \"gg\";\nfor (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\"]) {
+             \x20 gg.views.openFile(p);
              }
-             view.openFile(\"a.png\");",
+             gg.views.openFile(\"a.png\");",
         )],
     )
     .await;
@@ -1120,9 +1124,9 @@ impl ModelClient for ImageWatchingClient {
             .unwrap()
             .push(messages.iter().any(|m| !m.images.is_empty()));
         let text = if self.turn.fetch_add(1, Ordering::SeqCst) == 0 {
-            "const read = fs.readFile(\"ref.png\");\nfs.writeFile(\"kind.txt\", read.kind);"
+            "import * as gg from \"gg\";\nconst read = gg.files.readFile(\"ref.png\");\ngg.files.writeFile(\"kind.txt\", read.kind);"
         } else {
-            "harness.finish(\"I have seen the mockup.\");"
+            "import * as gg from \"gg\";\ngg.session.finish(\"I have seen the mockup.\");"
         };
         Ok(code_reply(text))
     }
@@ -1158,15 +1162,15 @@ async fn a_program_reclaim_really_acts_on_the_live_window() {
             &b.model_id,
             &[
                 // Turn 1: read a large file, so the thread carries a large turn.
-                "return fs.readTextFile(\"big.txt\").length;",
+                "import * as gg from \"gg\";\ngg.files.readTextFile(\"big.txt\").length;",
                 // Turn 2: both reclaims, reporting what each one says it freed. Returning the
                 // reports at all proves the loop rewrote the outcomes: an un-rewritten outcome has
                 // no structured result and would have thrown.
-                "const evicted = context.evictFileView();\n\
-                 const archived = context.archiveThread([{ from: 1, to: 1 }]);\n\
+                "import * as gg from \"gg\";\nconst evicted = gg.context.evictFileView();\n\
+                 const archived = gg.context.archiveThread([{ from: 1, to: 1 }]);\n\
                  console.log(evicted.detail);\n\
-                 return { evicted: evicted.items, archived: archived.items, \
-                 freed: archived.reclaimedTokens };",
+                 console.log(JSON.stringify({ evicted: evicted.items, archived: archived.items, \
+                 freed: archived.reclaimedTokens }));",
             ],
         )
     })
@@ -1236,7 +1240,8 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
     .unwrap();
     std::fs::write(
         skill.join("on-use.ts"),
-        "view.openText(\"csv-tools\", \"loaded \" + lib.csvTools.parse(\"a,b\").length);\n",
+        "import * as gg from \"gg\";\nimport * as csvTools from \"lib:csvTools\";\n\
+         gg.views.openText(\"csv-tools\", \"loaded \" + csvTools.parse(\"a,b\").length);\n",
     )
     .unwrap();
 
@@ -1244,9 +1249,10 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
         &dir,
         code_set("mock/primary", json!({})),
         program_script(&[
-            "skills.readSkill(\"csv-tools\");",
+            "import * as gg from \"gg\";\ngg.skills.readSkill(\"csv-tools\");",
             // The next turn: the module is bound, and the on-use script's view has arrived.
-            "view.openText(\"parsed\", JSON.stringify(lib.csvTools.parse(\"x,y,z\")));",
+            "import * as gg from \"gg\";\nimport * as csvTools from \"lib:csvTools\";\n\
+             gg.views.openText(\"parsed\", JSON.stringify(csvTools.parse(\"x,y,z\")));",
         ]),
     )
     .await;
@@ -1264,8 +1270,8 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
     // The reply to the read told the model where its code went — the binding path it must not guess.
     let after_read = text(&requests[1]);
     assert!(
-        after_read.contains("lib.csvTools"),
-        "the read names the binding key: {after_read}"
+        after_read.contains("lib:csvTools"),
+        "the read names the specifier the program imports it by: {after_read}"
     );
     assert!(
         after_read.contains("parse"),
@@ -1314,7 +1320,7 @@ async fn a_skill_spelled_in_no_language_this_agent_writes_is_refused() {
     let (outcome, events, requests) = drive_recorded_code_run(
         &dir,
         code_set("mock/primary", json!({})),
-        program_script(&["skills.readSkill(\"csv-tools\");"]),
+        program_script(&["import * as gg from \"gg\";\ngg.skills.readSkill(\"csv-tools\");"]),
     )
     .await;
 
@@ -1359,9 +1365,13 @@ async fn a_program_read_skill_pins_the_skill_and_emits_skills_state() {
         &dir,
         code_set("mock/primary", json!({})),
         program_script(&[
-            &format!("return skills.readSkill(\"{DEFAULT_MOCK_SKILL}\").length;"),
+            &format!(
+                "import * as gg from \"gg\";\ngg.skills.readSkill(\"{DEFAULT_MOCK_SKILL}\").length;"
+            ),
             // A second read of the same skill must not pin a second copy.
-            &format!("return skills.readSkill(\"{DEFAULT_MOCK_SKILL}\").length;"),
+            &format!(
+                "import * as gg from \"gg\";\ngg.skills.readSkill(\"{DEFAULT_MOCK_SKILL}\").length;"
+            ),
         ]),
     )
     .await;
@@ -1458,9 +1468,11 @@ async fn a_program_that_finishes_ends_the_session_as_completed() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![
-            code_reply("harness.finish(\"wrote the scaffold\");"),
+            code_reply("import * as gg from \"gg\";\ngg.session.finish(\"wrote the scaffold\");"),
             // Never reached: the loop must not ask for another turn after a completion.
-            code_reply("fs.writeFile(\"after-the-end.txt\", \"nope\");"),
+            code_reply(
+                "import * as gg from \"gg\";\ngg.files.writeFile(\"after-the-end.txt\", \"nope\");",
+            ),
         ],
     )
     .await;
@@ -1492,8 +1504,8 @@ async fn a_program_that_finishes_ends_the_session_as_completed() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![
-            code_reply("harness.finish(\"done despite myself\");\nthrow new Error(\"boom\");"),
-            code_reply("harness.finish(\"and this time it really is done\");"),
+            code_reply("import * as gg from \"gg\";\ngg.session.finish(\"done despite myself\");\nthrow new Error(\"boom\");"),
+            code_reply("import * as gg from \"gg\";\ngg.session.finish(\"and this time it really is done\");"),
         ],
     )
     .await;
@@ -1623,8 +1635,8 @@ async fn a_session_that_never_finishes_is_exhausted_not_completed() {
         &dir,
         set,
         vec![
-            code_reply("fs.writeFile(\"one.txt\", \"1\");\nreturn 1;"),
-            code_reply("fs.writeFile(\"two.txt\", \"2\");\nreturn 2;"),
+            code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"one.txt\", \"1\");\n1;"),
+            code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"two.txt\", \"2\");\n2;"),
             code_reply(FINISHING_PROGRAM),
         ],
     )
@@ -1673,8 +1685,8 @@ async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
                 &b.model_id,
                 vec![
                     code_reply(
-                        "const child = agents.spawnSubagent({ agent: \"subagent\", prompt: \
-                         \"Do the work.\" });\nreturn agents.waitForSubagents([child.id]);",
+                        "import * as gg from \"gg\";\nconst child = gg.delegation.spawnSubagent({ agent: \"subagent\", prompt: \
+                         \"Do the work.\" });\ngg.delegation.waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -1746,7 +1758,7 @@ async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does
         &dir,
         set,
         vec![
-            code_reply("let x = 0;\nwhile (true) {\n  x += 1;\n}\nreturn x;"),
+            code_reply("let x = 0;\nwhile (true) {\n  x += 1;\n}\nx;"),
             code_reply(FINISHING_PROGRAM),
         ],
     )
@@ -1772,8 +1784,8 @@ async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does
         set,
         vec![
             code_reply(
-                "let caught = false;\ntry {\n  fs.readTextFile(\"absent.txt\");\n} catch (e) {\n  \
-                 caught = true;\n}\nfs.writeFile(\"handled.txt\", String(caught));\nreturn caught;",
+                "import * as gg from \"gg\";\nlet caught = false;\ntry {\n  gg.files.readTextFile(\"absent.txt\");\n} catch (e) {\n  \
+                 caught = true;\n}\ngg.files.writeFile(\"handled.txt\", String(caught));\ncaught;",
             ),
             code_reply(FINISHING_PROGRAM),
         ],
@@ -1829,9 +1841,9 @@ async fn a_code_mode_reviewer_declares_its_verdict() {
             let programs = if n == 0 {
                 vec![
                     code_reply(&format!(
-                        "const epic = project.createEpic({{ prefix: \"{REVIEW_EPIC_PREFIX}\", \
+                        "import * as gg from \"gg\";\nconst epic = gg.board.createEpic({{ prefix: \"{REVIEW_EPIC_PREFIX}\", \
                          title: \"Build\", description: \"the build\" }});\n\
-                         project.createIssue({{ title: \"Add the widget\", \
+                         gg.board.createIssue({{ title: \"Add the widget\", \
                          inScope: \"Implement the widget.\", outOfScope: \"Unrelated changes.\", \
                          completionCriteria: \"The widget is fully implemented.\", \
                          epicId: epic.id, agent: \"{ROOT_AGENT}\", reviewers: [\"reviewer\"] }});"
@@ -1840,7 +1852,7 @@ async fn a_code_mode_reviewer_declares_its_verdict() {
                 ]
             } else {
                 vec![
-                    code_reply("fs.writeFile(\"widget.txt\", \"the widget\\n\");"),
+                    code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"widget.txt\", \"the widget\\n\");"),
                     code_reply(FINISHING_PROGRAM),
                 ]
             };
@@ -1849,7 +1861,7 @@ async fn a_code_mode_reviewer_declares_its_verdict() {
         .slot("reviewer", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("review.approve();")],
+                vec![code_reply("import * as gg from \"gg\";\ngg.session.approve();")],
             ))
         });
 
@@ -1911,7 +1923,7 @@ async fn a_code_mode_issue_agents_worktree_is_merged() {
         let programs = if n == 0 {
             vec![
                 code_reply(&format!(
-                    "project.createIssue({{ title: \"Write the file\", \
+                    "import * as gg from \"gg\";\ngg.board.createIssue({{ title: \"Write the file\", \
                      inScope: \"Write isolated.txt.\", outOfScope: \"Nothing else.\", \
                      completionCriteria: \"isolated.txt exists.\", agent: \"{ROOT_AGENT}\" }});"
                 )),
@@ -1919,8 +1931,8 @@ async fn a_code_mode_issue_agents_worktree_is_merged() {
             ]
         } else {
             vec![code_reply(
-                "fs.writeFile(\"isolated.txt\", \"from the worktree\\n\");\n\
-                 harness.finish(\"wrote the file in my worktree\");",
+                "import * as gg from \"gg\";\ngg.files.writeFile(\"isolated.txt\", \"from the worktree\\n\");\n\
+                 gg.session.finish(\"wrote the file in my worktree\");",
             )]
         };
         Box::new(MockClient::new(&b.model_id, programs))
@@ -1947,138 +1959,15 @@ async fn a_code_mode_issue_agents_worktree_is_merged() {
 }
 
 // ---------------------------------------------------------------------------
-// Statements the reply wrote that could not run
+// A program that keeps going after it has declared the session done
 // ---------------------------------------------------------------------------
-
-/// **A program whose reply carried a second draft after its top-level `return` is told so.**
-///
-/// The exact round-2 shape, from the model that sent it: two drafts pasted one after the other, the
-/// first ending in a `return`. It compiles, it runs, and the whole second half — including the
-/// `writeFile` of the deliverable and the `finish` that would have ended the run — never executes.
-/// The turn is a clean success by every other measure, which is precisely why the silence was
-/// unrecoverable: the model was told "your program ran to completion" and had no way to learn
-/// otherwise.
-///
-/// Both audiences are asserted, because they need it for different reasons: the model, so it can
-/// send one program next turn, and the operator's stream, so a run whose program is not the whole
-/// reply is visible while it is happening.
-#[tokio::test]
-async fn statements_after_a_top_level_return_are_disclosed_to_the_model_and_the_stream() {
-    let dir = TempDir::new().unwrap();
-    std::fs::create_dir_all(dir.path().join("src")).unwrap();
-    std::fs::write(dir.path().join("src/a.ts"), "export const a = 1;\n").unwrap();
-    let (outcome, events, requests) = drive_recorded_code_run(
-        &dir,
-        code_set("mock/primary", json!({})),
-        vec![
-            code_reply(
-                "const src = fs.listDir(\"src\");\n\
-                 return { count: src.length };\n\n\
-                 fs.writeFile(\"MANIFEST.md\", \"- a.ts (1 lines)\\n\");\n\
-                 harness.finish(\"wrote the manifest\");",
-            ),
-            code_reply(FINISHING_PROGRAM),
-        ],
-    )
-    .await;
-    assert_eq!(outcome, SessionOutcome::Ran);
-
-    // The first half ran: the reply was a program, and nothing about the disclosure refuses it.
-    let executions: Vec<bool> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::CodeExecution { ok, .. } => Some(*ok),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(executions.first(), Some(&true), "the program itself ran");
-    // ...and the second half did not, which is the whole point.
-    assert!(
-        !dir.path().join("MANIFEST.md").exists(),
-        "the dead half wrote the deliverable, so it must not exist"
-    );
-
-    let feedback = requests[1]
-        .iter()
-        .filter_map(|message| message.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        feedback.contains(
-            "2 statements after your top-level `return` did not run — the first is line 4"
-        ),
-        "the model was not told what did not run:\n{feedback}"
-    );
-    assert!(
-        feedback.contains("fs.writeFile(\"MANIFEST.md\""),
-        "the model was not shown WHICH statement, so it cannot recognise the half that was lost:\n\
-         {feedback}"
-    );
-    assert!(
-        feedback.contains("Send exactly one program per reply."),
-        "the model was not told what to do differently:\n{feedback}"
-    );
-    // It is a `Notice` — a fact about the session — not an error. Nothing failed: the program the
-    // model sent compiled and ran, and gg is telling it that half of what it wrote was never part
-    // of that program.
-    assert!(
-        requests[1].iter().any(|message| {
-            message.content.as_deref().is_some_and(|body| {
-                body.starts_with("Notice\n----\n") && body.contains("did not run")
-            })
-        }),
-        "the disclosure is a notice:\n{feedback}"
-    );
-
-    assert!(
-        warn_messages(&events).iter().any(|message| {
-            message.contains("wrote 2 statements after its top-level `return` that could not run")
-        }),
-        "the operator's stream never mentioned it: {:?}",
-        warn_messages(&events)
-    );
-}
-
-/// **A program with no dead tail says nothing about one** — the disclosure must not become noise on
-/// the turns that got it right.
-#[tokio::test]
-async fn a_program_with_nothing_after_its_return_is_not_told_about_unreachable_statements() {
-    let dir = TempDir::new().unwrap();
-    let (_, events, requests) = drive_recorded_code_run(
-        &dir,
-        code_set("mock/primary", json!({})),
-        vec![
-            code_reply("const a = 1;\nreturn a + 1;"),
-            code_reply(FINISHING_PROGRAM),
-        ],
-    )
-    .await;
-    let feedback = requests[1]
-        .iter()
-        .filter_map(|message| message.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        !feedback.contains("did not run"),
-        "a clean program was told about statements that do not exist:\n{feedback}"
-    );
-    assert!(
-        !warn_messages(&events)
-            .iter()
-            .any(|message| message.contains("did not run")),
-        "{:?}",
-        warn_messages(&events)
-    );
-}
 
 /// **A program that calls `finish` and then keeps going does the rest of the work**, and nothing is
 /// reported about it.
 ///
 /// This is the shape that would lose a run its deliverable if `finish` unwound the program: the
 /// `writeFile` below it would never run, and the run would end "completed" over a workspace with no
-/// artifact in it. The statement
-/// runs, the file exists, and there is nothing to warn about — which is why the warning is asserted
-/// **absent** here rather than reworded.
+/// artifact in it. The statement runs and the file exists.
 #[tokio::test]
 async fn a_program_that_finishes_and_keeps_going_still_does_the_work() {
     let dir = TempDir::new().unwrap();
@@ -2086,7 +1975,7 @@ async fn a_program_that_finishes_and_keeps_going_still_does_the_work() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![code_reply(
-            "harness.finish(\"all done\");\nfs.writeFile(\"MANIFEST.md\", \"- a.ts (1 lines)\\n\");",
+            "import * as gg from \"gg\";\ngg.session.finish(\"all done\");\ngg.files.writeFile(\"MANIFEST.md\", \"- a.ts (1 lines)\\n\");",
         )],
     )
     .await;
@@ -2097,13 +1986,6 @@ async fn a_program_that_finishes_and_keeps_going_still_does_the_work() {
             .expect("the deliverable was written"),
         "- a.ts (1 lines)\n",
         "the statement after `finish` is ordinary work and runs"
-    );
-    assert!(
-        !warn_messages(&events)
-            .iter()
-            .any(|message| message.contains("could not run")),
-        "nothing was unreachable, so nothing may be reported as such: {:?}",
-        warn_messages(&events)
     );
 }
 
@@ -2208,9 +2090,9 @@ async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
         code_set("mock/primary", json!({})),
         vec![
             code_reply(
-                "view.openFile(\"a.ts\");\n\
-                 view.openFile(\"b.ts\");\n\
-                 view.openText(\"progress\", \"read both files\");\n\
+                "import * as gg from \"gg\";\ngg.views.openFile(\"a.ts\");\n\
+                 gg.views.openFile(\"b.ts\");\n\
+                 gg.views.openText(\"progress\", \"read both files\");\n\
                  throw new Error(\"the program failed after opening its views\");",
             ),
             code_reply(FINISHING_PROGRAM),
@@ -2276,9 +2158,10 @@ async fn a_program_fetches_its_predecessor_patches_it_and_gg_runs_the_patched_on
     // Turn 1 writes the wrong contents. Turn 2 never re-emits the program: it fetches turn 1's
     // source, replaces the one wrong word, and hands it back — which is the whole point of the
     // capability, and the reason the second reply is two lines rather than one program.
-    let first = "fs.writeFile(\"level.txt\", \"cosnt LEVELS = 3;\");";
-    let second = "const source = programs.get(1);\n\
-         programs.rerun(source.replace(\"cosnt\", \"const\"));";
+    let first =
+        "import * as gg from \"gg\";\ngg.files.writeFile(\"level.txt\", \"cosnt LEVELS = 3;\");";
+    let second = "import * as gg from \"gg\";\nconst source = gg.programs.get(1);\n\
+         gg.programs.rerun(source.replace(\"cosnt\", \"const\"));";
     let (outcome, events) =
         drive_code_run(&dir, library_set("mock/primary", json!({})), move |b| {
             scripted_programs(&b.model_id, &[first, second])
@@ -2317,12 +2200,13 @@ async fn a_program_fetches_its_predecessor_patches_it_and_gg_runs_the_patched_on
 #[tokio::test]
 async fn the_library_keeps_the_program_that_ran_not_the_one_that_handed_it_over() {
     let dir = TempDir::new().unwrap();
-    let first = "fs.writeFile(\"a.txt\", \"one\");";
+    let first = "import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"one\");";
     // Turn 2 hands over a program that is itself worth fetching later.
-    let second = "programs.rerun('fs.writeFile(\"b.txt\", \"two\");');";
+    let second = "import * as gg from \"gg\";\n\
+         gg.programs.rerun('import * as gg from \"gg\";\\ngg.files.writeFile(\"b.txt\", \"two\");');";
     // Turn 3 reads back what turn 2 *ran*, and shows it to the operator so the test can read it.
-    let third = "console.log(programs.get(2));\n\
-         console.log(JSON.stringify(programs.history().map((p) => p.turn)));";
+    let third = "import * as gg from \"gg\";\nconsole.log(gg.programs.get(2));\n\
+         console.log(JSON.stringify(gg.programs.history().map((p) => p.turn)));";
     let (outcome, events) =
         drive_code_run(&dir, library_set("mock/primary", json!({})), move |b| {
             scripted_programs(&b.model_id, &[first, second, third])
@@ -2333,7 +2217,7 @@ async fn the_library_keeps_the_program_that_ran_not_the_one_that_handed_it_over(
     let logs = code_logs(&events);
     let (third_logs, _) = &logs[2];
     assert_eq!(
-        third_logs[0], "fs.writeFile(\"b.txt\", \"two\");",
+        third_logs[0], "import * as gg from \"gg\";\ngg.files.writeFile(\"b.txt\", \"two\");",
         "the turn kept the program that did the work, not the `rerun` that asked for it"
     );
     assert_eq!(
@@ -2355,7 +2239,7 @@ async fn a_hand_over_is_cancelled_when_the_program_then_throws() {
         library_set("mock/primary", json!({})),
         vec![
             code_reply(
-                "programs.rerun('fs.writeFile(\"never.txt\", \"x\");');\n\
+                "import * as gg from \"gg\";\ngg.programs.rerun('gg.files.writeFile(\"never.txt\", \"x\");');\n\
                  throw new Error(\"the program failed after handing over\");",
             ),
             code_reply(FINISHING_PROGRAM),

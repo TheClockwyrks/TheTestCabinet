@@ -57,13 +57,14 @@ fn a_prepare_error_never_touches_the_engine() {
     assert!(log.calls().is_empty());
 }
 
-/// A module-syntax refusal is the same shape of failure, carrying the guidance the model acts on.
+/// A specifier this sandbox has no module for is the same shape of failure, carrying the compiler's
+/// own guidance.
 #[test]
 fn an_unsupported_feature_is_a_prepare_error_with_guidance() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         typescript(),
-        "import fs from 'node:fs';\nreturn 1;",
+        "import fs from 'node:fs';\nconsole.log(fs);\n",
         ProgramScope {
             capabilities: &[],
             operations: &[],
@@ -75,9 +76,11 @@ fn an_unsupported_feature_is_a_prepare_error_with_guidance() {
         FakeToolApi::new(&log),
     );
 
-    let error = outcome.result.expect_err("an import cannot run");
+    let error = outcome
+        .result
+        .expect_err("a module this sandbox has not got cannot run");
     assert!(matches!(error, SandboxError::Prepare(_)), "{error:?}");
-    assert!(error.to_string().contains("`import`"), "{error}");
+    assert!(error.to_string().contains("'node:fs'"), "{error}");
     // Exact only under process isolation; see [`process_isolated`].
     if process_isolated() {
         assert_eq!(crate::sandbox::engine::compiles(), 0);
@@ -294,7 +297,7 @@ fn typescript_reports_what_checking_a_program_cost() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         typescript(),
-        "view.openText(\"x\", 42);\n",
+        "import * as gg from \"gg\";\ngg.views.openText(\"x\", 42);\n",
         ProgramScope {
             capabilities: &[],
             operations: &[],
@@ -310,7 +313,7 @@ fn typescript_reports_what_checking_a_program_cost() {
         panic!("a number is not a string: {:?}", outcome.result);
     };
     assert!(
-        diagnostics.starts_with("program.ts(1,20): error TS2345:"),
+        diagnostics.starts_with("program.ts(2,24): error TS2345:"),
         "the model is handed tsc's own diagnostic at its own coordinates: {diagnostics}"
     );
     assert!(
@@ -404,8 +407,12 @@ fn every_sandbox_error() -> Vec<SandboxError> {
         SandboxError::Instantiate("missing import".into()),
         SandboxError::Timeout {
             limit: Duration::from_secs(42),
+            said: String::new(),
         },
-        SandboxError::OutOfMemory { limit: 42 },
+        SandboxError::OutOfMemory {
+            limit: 42,
+            said: String::new(),
+        },
         SandboxError::Trap("unreachable".into()),
     ]
 }
@@ -516,10 +523,6 @@ fn every_prepare_failure_is_recorded_as_its_own_type() {
         (
             PrepareError::Syntax("unexpected token".into()),
             TurnErrorType::TranspileSyntax,
-        ),
-        (
-            PrepareError::Semantic("`x` declared twice".into()),
-            TurnErrorType::TranspileSemantic,
         ),
         (
             PrepareError::Compile("`x` is not assignable to `Word`".into()),
@@ -653,8 +656,13 @@ fn only_the_engine_and_host_failures_are_ggs_own_fault() {
 }
 
 /// Every error renders into a sentence a model (or an operator reading a log) can act on. The two
-/// resource failures name their ceiling, and the memory one names the guest's floor as well —
-/// otherwise a cap set below ~10 MiB looks like a mysterious instantiation failure.
+/// resource failures name their ceiling, and both put **what the guest said** first. The exit's own
+/// sentence is asserted where it is composed, in the classifier's tests.
+///
+/// The memory sentence is asserted for what it does **not** say as hard as for what it does. It used
+/// to name the sandbox's JavaScript engine and its ~10 MiB floor, which is true of one arm out of
+/// eleven: on Rust, Swift, C# and C++ a model was told its program had outgrown a heap belonging to
+/// an engine that is not in its guest at all. What replaced it is true of every arm.
 #[test]
 fn every_sandbox_error_renders_something_actionable() {
     assert_eq!(
@@ -675,14 +683,58 @@ fn every_sandbox_error_renders_something_actionable() {
     );
     assert_eq!(
         SandboxError::Timeout {
-            limit: Duration::from_secs(30)
+            limit: Duration::from_secs(30),
+            said: String::new(),
         }
         .to_string(),
         "the program ran longer than its 30s execution timeout and was stopped"
     );
-    let memory = SandboxError::OutOfMemory { limit: 4_194_304 }.to_string();
+    let memory = SandboxError::OutOfMemory {
+        limit: 4_194_304,
+        said: String::new(),
+    }
+    .to_string();
     assert!(memory.contains("4194304-byte memory cap"), "{memory}");
-    assert!(memory.contains("10 MiB"), "{memory}");
+    assert!(
+        !memory.contains("JavaScript") && !memory.contains("10 MiB"),
+        "the memory sentence names one arm's engine and one arm's floor to eleven arms: {memory}"
+    );
+    assert!(
+        memory.contains("language runtime"),
+        "the memory sentence must still say why a program well under the cap can reach it: {memory}"
+    );
+    // **What the guest said comes first**, on every failure it can have spoken before. A model reads
+    // the first line, and on an arm with no exception mechanism that line is the only account of the
+    // failure that exists.
+    for (error, sentence) in [
+        (
+            SandboxError::Timeout {
+                limit: Duration::from_secs(30),
+                said: "Fatal error: Range requires lowerBound <= upperBound".into(),
+            },
+            "ran longer than its 30s execution timeout",
+        ),
+        (
+            SandboxError::OutOfMemory {
+                limit: 4_194_304,
+                said: "Fatal error: failed to allocate 33554440 bytes of memory".into(),
+            },
+            "exceeded its 4194304-byte memory cap",
+        ),
+    ] {
+        let rendered = error.to_string();
+        let (first, rest) = rendered.split_once("\n\n").unwrap_or_else(|| {
+            panic!("the guest's words and gg's account must be separate: {rendered}")
+        });
+        assert!(
+            first.starts_with("Fatal error") || first.starts_with("Traceback"),
+            "the guest's own account must lead: {rendered}"
+        );
+        assert!(
+            rest.contains(sentence),
+            "gg's account must follow: {rendered}"
+        );
+    }
     assert_eq!(
         SandboxError::Trap("wasm trap: unreachable".into()).to_string(),
         "the sandbox trapped: wasm trap: unreachable"

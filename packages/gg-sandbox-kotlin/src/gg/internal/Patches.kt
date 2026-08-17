@@ -2,30 +2,41 @@ package gg.internal
 
 import gg.core.Patch
 import gg.delegation.Brief
-import org.teavm.jso.JSObject
 
 /**
- * Write a three-way patch onto the record the guest's own function takes.
+ * A three-way patch, as the `text-edit` variant gg's own WIT declares.
  *
  * It lives beside the bridge rather than beside [Patch] because it is the one thing about that type
- * that knows there is a wire: `Replace` sets the field and `Clear` sets it to `null`, which is how the
- * guest's own lowering distinguishes "empty this" from "leave it alone".
+ * that knows there is a wire. All three states are cases of one variant rather than a field that may
+ * be absent, present or null: never naming the field is `keep`, [Patch.Replace] is `set` and
+ * [Patch.Clear] is `clear`.
  */
-internal fun Patch<String>.lower(record: JSObject, field: String) {
+internal fun Patch<String>?.lowered(): Value =
     when (this) {
-        is Patch.Replace -> ggSet(record, field, ggText(value))
-        Patch.Clear -> ggClear(record, field)
+        null -> ggVariant("keep", null)
+        is Patch.Replace -> ggVariant("set", ggText(value))
+        Patch.Clear -> ggVariant("clear", null)
     }
-}
 
 /**
- * Which field of the spawn request a brief fills, and what it fills it with.
+ * An issue's epic, as the `epic-edit` variant: the same three states, with `ungroup` where a
+ * description has `clear`.
+ */
+internal fun Patch<String>?.loweredEpic(): Value =
+    when (this) {
+        null -> ggVariant("keep", null)
+        is Patch.Replace -> ggVariant("set", ggText(value))
+        Patch.Clear -> ggVariant("ungroup", null)
+    }
+
+/**
+ * Which case of the spawn request's `task` variant a brief is, and what it carries.
  *
  * An extension beside the bridge rather than a member of [Brief], because a Kotlin interface has no
  * `internal` members — and a public one would put gg's own wire spelling on a type a model reads.
  */
-internal fun Brief.lowered(): Pair<String, String> =
+internal fun Brief.lowered(): Value =
     when (this) {
-        is Brief.Prompt -> "prompt" to instructions
-        is Brief.Issue -> "issueId" to issueId
+        is Brief.Prompt -> ggVariant("prompt", ggText(instructions))
+        is Brief.Issue -> ggVariant("issue", ggText(issueId))
     }

@@ -2,53 +2,60 @@
 title: "JavaScript"
 ---
 
-An agent on the JavaScript arm answers a turn by writing one JavaScript program.
-gg parses the reply, erases any type annotations in it, and hands the stripped
-source to the embedded ECMAScript guest, which evaluates it. Nothing reads the
-program between the strip and the guest.
+An agent on the JavaScript arm answers a turn by writing one JavaScript module.
+The reply's own bytes are what the
+[ECMAScript guest](/gg/languages/ecmascript-guest/) declares as `program.js` and
+evaluates. Nothing reads the program between the reply and the guest.
 
 ## Preparation
 
-Preparation is a single in-process `oxc` pass over the reply, the same parse and
-type-strip the [TypeScript arm](/gg/languages/typescript/) runs. It opens no
-workspace and starts no process, so a JavaScript turn spends nothing on the host
-beyond that pass.
+There is none beyond handing the bytes over. This arm opens no workspace, starts
+no process and parses nothing on the host, so a JavaScript turn spends nothing at
+all before its program runs.
 
-The pass parses the reply as TypeScript source, refuses the shapes the sandbox
-cannot run, erases the annotations, and prints the result. The printed source is
-what crosses to the guest, as a string. The guest evaluates it as the body of a
-function whose parameters are the names in scope, so a program's top-level
-declarations are the function's locals.
+What the arm accepts is what the guest's engine accepts, because that engine is
+the first thing to read a program. A construct the engine does not have is its
+own `SyntaxError`, at the line the model wrote it on, and nothing runs. The
+engine anchors a syntax error at the start of the statement carrying it.
 
-Code modules on this arm are `.js` or `.ts` files. A module is prepared by the
-same strip, under its own coordinates.
+Code modules on this arm are `.js` files, handed over the same way. What a module
+offers is what its top level exports.
 
-## Shared with the TypeScript arm
+## The import a program writes
 
-The two arms differ in whether gg type-checks a program before handing it over.
-Everything else is required to be identical, and the seam's own gate holds the
-arms to it:
+`import * as gg from "gg";` reaches the whole surface, and every call is then
+written out in full: `gg.files.readFile(path)`. That is the name a documentation
+view is filed under, the name a search hit carries, and the name the system
+prompt quotes. Every module's catalogue entry states that line.
 
-- the evaluator is TypeScript's component bytes, reached through that arm's
-  constant. This arm embeds no guest artifact of its own, and the two arms must
-  serve the same bytes rather than two copies of one file;
+Two other specifiers resolve, and a program may write either. `import { files }
+from "gg";` reaches one family; `import * as csvTools from "lib:csvTools";`
+reaches a [code module](/gg/modules/) the agent loaded. The full set is on
+[the ECMAScript guest](/gg/languages/ecmascript-guest/).
+
+## The pair with the TypeScript arm
+
+The pair exists to measure what compiling a program before running it is worth,
+so everything but the compiler is held equal by the seam's own gate:
+
+- both arms evaluate a module in one guest artifact, reached through one
+  constant;
 - the signature catalogue carries the same declarations, entry for entry,
   including the type annotations;
-- the preparation is TypeScript's, with the check absent;
-- the healing dialect and the camelCase binding convention are the ECMAScript
-  ones.
+- the healing dialect, the camelCase binding convention, the import line and
+  every program gg synthesizes are shared.
 
 What this arm owns is its id, its display name, its own catalogue file, and its
-own two prompt templates.
+own segment of the shared prompt templates.
+
+The type annotations in the catalogue's signatures are documentation of what a
+call takes and hands back. Writing one in a program is TypeScript, which is the
+[other arm](/gg/languages/typescript/).
 
 ## Toolchain and build outputs
 
 There is no toolchain on the turn path. No compiler runs, and the run image
 installs nothing for this arm.
-
-The guest artifact it serves, `typescript.component.wasm`, is built by
-`crates/gg-sandbox-artifacts/typescript` with `componentize-js` over
-`packages/gg-sandbox` and embedded in the gg binary.
 
 Its signature catalogue is `javascript.signatures.json`, emitted into the
 build's `OUT_DIR` by `packages/gg-sandbox/signatures.sh` and embedded from
@@ -59,21 +66,17 @@ declares this language.
 
 ## The SDK
 
-The SDK is the guest package's hand-written TypeScript SDK. It is bound
-statically: every module and every function is in scope in every program, and a
-call the agent was not granted fails as a host refusal rather than as a missing
-name. The
-shared rules for that surface are on
+The SDK is the guest package's hand-written TypeScript SDK, which the guest bakes
+in as the modules its loader resolves. It is bound statically: every module and
+every function resolves in every program that imports it, and a call the agent
+was not granted fails as a host refusal rather than as a missing name. The shared
+rules for that surface are on
 [the agent surface page](/gg/languages/agent-surface/).
 
-The spellings are ordinary JavaScript. A module is a property of `gg`
-(`gg.files`, `gg.views`), a function is camelCase, optional arguments are a
-trailing options object, a call returns its value directly, and a failure is a
-thrown `ToolError` carrying `tool`, `code` and `message`. Type names are
-documentation only. `ToolError` is the one gg name bound as a value, so
-`error instanceof ToolError` is the shape that reads a failure.
-
-A program may write type annotations of its own. They are erased before it runs.
+The spellings are ordinary JavaScript. A module is a property of the imported
+`gg` namespace (`gg.files`, `gg.views`), a function is camelCase, optional
+arguments are a trailing options object, a call returns its value directly, and a
+failure is a thrown `ToolError` carrying `tool`, `code` and `message`.
 
 ## Checker
 
@@ -82,54 +85,43 @@ time at all: the outcome's compile field is absent rather than zero.
 
 ## Failures
 
-Preparation refuses a reply in three bands, all of them model-facing:
+Everything is a run-time failure, because nothing on the host reads a program.
 
-- Syntax: the parser's diagnostics, at the model's own line and column with the
-  offending source line quoted.
-- Semantic: ECMAScript's early errors, such as a duplicate binding, located the
-  same way.
-- Unsupported: module syntax (`import`, `export`, a dynamic `import()`),
-  top-level `await`, and bracket nesting past the parser's cap. Each is a
-  sentence naming what to change rather than a located diagnostic: the top-level
-  `await` message tells the model the sandbox is synchronous and to remove the
-  `await`.
+A program fails by capture: nothing catches its throw to describe it, the engine
+writes its own rendering to standard error, and gg puts that in front of the trap
+that follows. What the model reads is the engine's account of its own failure,
+with every frame located in `program.js`, which is the model's own file. There is
+no map between the two and no arithmetic anywhere, because the bytes that ran are
+the bytes the model sent.
 
-A refusal is what the model reads, and the model writes another program. The
-shared taxonomy these bands belong to is on
-[the compilation page](/gg/languages/compilation/).
+Which construct the engine carries a position for, and when a rejected promise
+counts as a failure, are the guest's own rules and are on
+[the ECMAScript guest](/gg/languages/ecmascript-guest/) page.
 
-Everything else surfaces at run time. The SDK validates the argument shapes the
-wire cannot express, such as an options object that arrived as a bare number, an
-`offset` outside the `u32` range, or a list argument that is not an array, and
-raises a `ToolError` naming what it wanted. Any other mistyped argument reaches
-the generated bindings and raises their `TypeError`. Either is reported at the
-model's own coordinates. An uncaught throw ends the turn there, so the
-statements after it do not run.
+The SDK validates the argument shapes the wire cannot express, such as an options
+object that arrived as a bare number, an `offset` outside the `u32` range, or a
+list argument that is not an array, and raises a `ToolError` naming what it
+wanted. Any other mistyped argument reaches the generated bindings and raises
+their `TypeError`. An uncaught throw ends the turn there, so the statements after
+it do not run.
 
-## Prompt dialect
+## Prompt segment
 
-The arm's two templates are `system-code.javascript.hbs` and
-`code-nothing-shown.javascript.hbs`. They must state:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`javascript`, and `code-nothing-shown.hbs` through a clause naming
+`console.log`. The segment states:
 
-- the whole response is processed as a JavaScript program, with no prose or
-  Markdown around it;
-- views are the only way a program's data reaches the model. Nothing
-  `console.log` writes is readable, and a returned value is discarded;
-- every function is synchronous, so a program uses no `await` and treats no
-  return value as a promise;
-- signatures are written with type annotations, which a program may use or leave
-  off, and any it uses are erased before it runs;
-- the standard library is ES2022;
-- type names are documentation and do not exist while a program runs;
-  `ToolError` is the one gg name bound as a value, and `tool` and `code` are its
-  fields;
-- gg's surface needs no import: every module is reachable through `gg`, and the
-  path the documentation is keyed by is the path a program writes;
-- a few short names, `gg`, `ToolError` and `lib` among them, are the evaluated
-  function's parameters, so redeclaring one is a `SyntaxError` that ends the
-  turn before the program runs;
-- every function is bound whatever the run enabled, so a call the agent was not
-  granted runs and fails as a refusal.
+- the reply is evaluated verbatim as a whole JavaScript module, and top-level
+  statements run in the order they were written;
+- a failed call throws a `gg.core.ToolError`, which an `instanceof` check narrows
+  to before reading its `tool` and `code`;
+- optional arguments are the fields of a trailing options object,
+  `import * as gg from "gg";` is the line that reaches every module, and the type
+  names a signature carries are documentation.
 
-The templates describe a program that is evaluated as written. Neither carries a
-section about a compile step.
+The arm names no [checker](/gg/languages/compilation/), so nothing in the
+prompt describes a compile step.
+
+Source gg synthesizes for this arm is the TypeScript arm's, written in the same
+idiom and opening with that same import line, since a model reads it as an
+example of its own output.

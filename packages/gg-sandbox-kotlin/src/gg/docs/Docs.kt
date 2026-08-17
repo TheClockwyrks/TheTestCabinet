@@ -1,5 +1,5 @@
 /**
- * Search this surface for a function, and take a documentation view back out of the window.
+ * Search this surface for a module, function or type, and take a documentation view back out of the window.
  *
  * This is where a session starts. Nothing names the functions of this surface up front, so [search]
  * is what turns "what do I have" into a list of one-line briefs and the fully-qualified names
@@ -16,13 +16,8 @@ package gg.docs
 
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.docsObject
-import gg.internal.ggArgs
-import gg.internal.ggAsInteger
 import gg.internal.ggCall
 import gg.internal.ggNumber
-import gg.internal.ggRecord
-import gg.internal.ggSet
 import gg.internal.ggText
 
 /**
@@ -50,7 +45,7 @@ import gg.internal.ggText
  * @param type One type's own name — `"FileRead"`, not the key it is documented under — narrowing
  *   to that type and to the functions whose signatures mention it. Like [module] a lookup, so a name
  *   nothing declares matches nothing rather than failing.
- * @param kind Narrow to functions or to types. Left out, both are searched.
+ * @param kind Narrow to modules, to functions or to types. Left out, all three are searched.
  * @param offset How many hits to skip, for reading past the first page. Left out, the page starts at
  *   the first hit.
  * @param limit How many hits to return: 20 by default, 100 at most, and zero is refused. Compare it
@@ -67,31 +62,18 @@ public fun search(
     kind: DocKind? = null,
     offset: Int? = null,
     limit: Int? = null,
-): DocSearch {
-    val args =
-        if (module == null && type == null && kind == null && offset == null && limit == null) {
-            ggArgs(ggText(query))
-        } else {
-            val options = ggRecord()
-            if (module != null) {
-                ggSet(options, "module", ggText(module))
-            }
-            if (type != null) {
-                ggSet(options, "type", ggText(type))
-            }
-            if (kind != null) {
-                ggSet(options, "kind", ggText(kind.wireName))
-            }
-            if (offset != null) {
-                ggSet(options, "offset", ggNumber(offset))
-            }
-            if (limit != null) {
-                ggSet(options, "limit", ggNumber(limit))
-            }
-            ggArgs(ggText(query), options)
-        }
-    return Read.docSearch(ggCall("search", docsObject(), "gg.docs", "search", args))
-}
+): DocSearch =
+    Read.docSearch(
+        ggCall(
+            "docs.search",
+            ggText(query),
+            ggText(module),
+            ggText(type),
+            ggText(kind?.wireName),
+            ggNumber(offset),
+            ggNumber(limit),
+        ),
+    )
 
 /**
  * Take one documentation view back out of the context window, by the key it was opened under.
@@ -108,8 +90,7 @@ public fun search(
  *   views. Opening one only ever appends to the end of the prompt, while closing one rewrites its
  *   middle, which is why opening is always available and closing is bought.
  */
-public fun close(key: String): Int =
-    ggAsInteger(ggCall("close", docsObject(), "gg.docs", "close", ggArgs(ggText(key))))
+public fun close(key: String): Int = ggCall("docs.close", ggText(key)).integer()
 
 /**
  * Take every documentation view out of the context window at once.
@@ -124,18 +105,20 @@ public fun close(key: String): Int =
  * @throws ToolError `UNAVAILABLE` for an agent this run did not give the closing of documentation
  *   views.
  */
-public fun closeAll(): Int =
-    ggAsInteger(ggCall("close_all", docsObject(), "gg.docs", "closeAll", ggArgs()))
+public fun closeAll(): Int = ggCall("docs.close_all").integer()
 
 /**
- * Which of the two things a documentation entry describes.
+ * Which of the three things a documentation entry describes.
  *
- * The taxonomy is closed at two because a surface is functions and the types their signatures name: a
- * module is a heading, and a parameter is documented on the function that takes it.
+ * A surface is the modules a program imports, the functions inside them, and the types their
+ * signatures name. A parameter is not one of them: it is documented on the function that takes it.
  *
  * @property wireName gg's own word for this kind, which is what the filter is sent as.
  */
 public enum class DocKind(public val wireName: String) {
+    /** A module a program imports, and whose functions live inside it. */
+    MODULE("module"),
+
     /** A function a program calls. */
     FUNCTION("function"),
 
@@ -148,11 +131,12 @@ public enum class DocKind(public val wireName: String) {
  *
  * @property key The fully-qualified name it is documented under, and what `gg.views.openDocsView`
  *   takes to read the whole of it.
- * @property kind Whether this entry is a function or a type.
+ * @property kind Whether this entry is a module, a function or a type.
  * @property module The module it lives in, and never one this agent holds nothing in.
  *
- *   A function has exactly one; a type has every module whose functions mention it, joined by
- *   commas, which makes it a description rather than something to hand back as [search]'s `module`.
+ *   A module and a function have exactly one; a type has every module whose functions mention it,
+ *   joined by commas, which makes it a description rather than something to hand back as [search]'s
+ *   `module`.
  * @property name The name a program calls it by, or the type's own name.
  * @property summary Its brief, and only its brief. Everything else written about it is what a
  *   documentation view holds.

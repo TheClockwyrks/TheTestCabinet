@@ -3,11 +3,13 @@
 # Reflect this package's signature catalogue out of its SDK, and write
 # `$GG_SIGNATURES_OUT_DIR/python.signatures.json`.
 #
-# It is the whole of what a model is *told* about the Python surface — every module, signature,
-# argument, type and type member the prompt renders and `views.open_docs_view` answers with, plus the
-# set of libraries a program may import — and every word of it is reflected out of the code it
-# describes: a docstring for the SDK, and `src/library.py`'s own module-scope imports for the library
-# set. Nothing about this arm is authored in a table, a template or a prompt.
+# It is the whole of what a model can *learn* about the Python surface — every module, signature,
+# argument, type and type member a documentation search and `views.open_docs_view` answer with, plus
+# the set of libraries a program may import, which gg quotes back on a compile failure. The system
+# prompt takes only the module paths and their one-line briefs from it and names no function at all.
+# Every word of it is reflected out of the code it describes: a docstring for the SDK, and
+# `src/library.py`'s own module-scope imports for the library set. Nothing about this arm is authored
+# in a table, a template or a prompt.
 #
 # WHERE IT WRITES, AND WHY THERE IS NO DEFAULT. The catalogue is a BUILD ARTIFACT. `crates/gg/build.rs`
 # runs `scripts/gg-signatures.sh` and embeds what lands in the build's own `OUT_DIR`, so the file a

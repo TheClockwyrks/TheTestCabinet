@@ -1,32 +1,34 @@
-//! **What gg does to a model's Java before javac sees it** — the wrapper, the import hoist and the
-//! export scan, all of them lexical and all of them line-preserving.
+//! **What gg puts around a model's Java before javac sees it: nothing.**
 //!
-//! # Why any of this is needed
+//! A program on this arm is a whole Java compilation unit — the `import` lines the model wrote and
+//! the `public static void main(String[])` it declared, in a class it declared. gg writes no
+//! prologue, no epilogue, no entry point and no import into that file, so `javac` reads the bytes
+//! the model sent and every diagnostic, every stack frame and every location is already in the
+//! model's own coordinates. There is nothing here to subtract.
 //!
-//! Java has no loose statements and no top-level functions. A compilation unit is imports and then
-//! type declarations, and the only place a statement may appear is inside a member. So a reply that
-//! is a *sequence of statements* — which is what a program is on every other arm, and what a
-//! cross-language study needs it to stay — has to be put somewhere, and where it is put is
-//! [`wrap_program`]: the body of a `static` method of a class gg declares.
+//! # The one convention, and what enforces it
 //!
-//! That has one consequence a model has to live with, and it is a property of Java rather than of
-//! gg. A helper type declared inside a method body is a **local** class, record, interface or enum —
-//! legal since Java 16, and able to hold `static` members since Java 16 too — but a local
-//! declaration may not carry an access modifier, so `public class Helper {}` inside a program is
-//! `modifier public not allowed here` and `class Helper {}` is fine. It is a located compile error
-//! the model can act on, which is the band it belongs in; the alternative (hoisting a declaration
-//! out of the body into the class) would move its lines and make every diagnostic after it point
-//! somewhere the model did not write.
+//! The file is [`PROGRAM_FILE`](super::compile::PROGRAM_FILE) and the class gg's generated entry class calls is
+//! [`PROGRAM_CLASS`]. Java has no way to ask "whatever class this file declares": a compilation unit
+//! is named by its own public type and a caller names the type it calls. So a program declares
+//! `Program` with a `main`, exactly as a Rust program declares `fn main` — and the two ways of
+//! getting it wrong are both **javac's own located diagnostics** rather than gg's opinion:
 //!
-//! # Line preservation is the whole design constraint
+//! * a `public class Something` in `Program.java` is `class Something is public, should be declared
+//!   in a file named Something.java`, at the model's own line;
+//! * a class named anything else, or one with no `main`, leaves gg's entry class unable to resolve
+//!   `Program.main`, which [`compile`](super::compile) turns into a refusal that quotes the
+//!   convention back — a shape refusal shown to the model rather than reported as a toolchain
+//!   failure.
 //!
-//! A diagnostic is only worth handing back if it names the line the model wrote. So everything here
-//! either adds lines **before** the body — a fixed shift every diagnostic is moved back by — or
-//! rewrites within a line. Nothing inserts or removes a line inside the body:
+//! # What is left in this file
 //!
-//! * an `import` the model wrote is copied into the header and **blanked where it stood**, so the
-//!   lines after it do not move;
-//! * `@JSExport` is inserted *inline* before a module's exported method, never on a line of its own.
+//! The names a compile is written under, and the **code module** wrapper. A code module is
+//! [outside the authorship rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/): its
+//! author writes a class *body*, because a namespace of functions is what `lib.<key>` binds and a
+//! Java function is a method of a class. [`wrap_module`] is what puts that body in a class, and it
+//! adds **no line at all** — the class header shares the author's own first line, so the module's
+//! line *n* is line *n* of the file and no diagnostic is moved by anything.
 //!
 //! # Why a lexer rather than a regular expression
 //!
@@ -46,122 +48,98 @@
 
 use super::super::{PrepareError, PrepareFailure};
 
-/// The class a program's statements become the body of a method of.
+/// The class a program declares, and the one gg's entry class calls `main` on.
 pub(super) const PROGRAM_CLASS: &str = "Program";
 
-/// The method a program's statements become the body of.
-pub(super) const PROGRAM_METHOD: &str = "ggBody";
+/// The class a program reaches its code modules through — `Lib.csvTools.parse(…)`.
+pub(super) const LIB_CLASS: &str = "Lib";
 
-/// The class a code module's members become.
-pub(super) const MODULE_CLASS: &str = "Module";
+/// The class a code module is **checked** under at the read that binds it, before any program has
+/// named a key for it.
+pub(super) const MODULE_CHECK_CLASS: &str = "Module";
 
-/// The name the module's namespace is exported to JavaScript under, and the value evaluating a
-/// prepared module hands back.
-pub(super) const MODULE_GLOBAL: &str = "GgModule";
-
-/// The class gg generates to hold the entry point and the catch chain.
-pub(super) const ENTRY_CLASS: &str = "GgEntry";
-
-/// The imports every program and every module gets without asking.
+/// The class one code module's body becomes in a program's own compile, given its binding key.
 ///
-/// Generous on purpose, and the same list for both. Java resolves an unimported type only when it is
-/// written out in full, so a model that has to say `java.util.stream.Collectors` in every program is
-/// a model spending its reply on ceremony no Java author would type — every one of these is in the
-/// first import block of ordinary Java. Anything outside them is still reachable, fully qualified or
-/// through an `import` the model writes itself, which [`hoist`] lifts into this same header.
-const DEFAULT_IMPORTS: [&str; 8] = [
-    "java.util.*",
-    "java.util.function.*",
-    "java.util.stream.*",
-    "java.math.*",
-    "java.time.*",
-    "java.time.format.*",
-    "java.text.*",
-    "java.util.regex.*",
-];
+/// Prefixed rather than named after the key alone, because it is a top-level class in the same
+/// (unnamed) package as the model's own program and a bare `csvTools` would be a name the model
+/// could collide with. What a program writes is `Lib.<key>`, which is [`LIB_CLASS`]'s nested class
+/// of that name — see [`lib_class`].
+pub(super) fn module_class(key: &str) -> String {
+    format!("{MODULE_PREFIX}{key}")
+}
 
-/// How gg's own **modules** reach a program: one on-demand import per capability module, plus the
-/// package holding the exception and the types the rest of them name.
-///
-/// This is what makes `Files.readFile("main.java")` an ordinary call on an ordinary class, which is
-/// [the seam's first rule](https://docs.testcabinet.ai/gg/languages/agent-surface/) — a namespaced binding
-/// rather than a dispatcher — spelled the way Java spells reaching a library: an `import`, resolved
-/// by javac against a jar on the classpath. A model writes no import line of its own for any of it.
-///
-/// **Imports rather than a static import of everything**, which is what this arm's surface used to
-/// be. `import static gg.Gg.*` put twelve *values* into scope, so `fs` was a name that had to be
-/// known before anything could be reached and shadowing one was a program that silently called
-/// something else. A module is a class here, so what arrives is one *type* per module — `Files`,
-/// `Views`, `Docs` — each of which a search can hand back and none of which a local variable can
-/// quietly replace.
-///
-/// Type-import-on-demand rather than one single-type import per module, because the second would be
-/// a line per class that means the same thing and would still have to grow by hand when a module is
-/// added. The one thing it costs is that a program declaring its own `Files` makes that name
-/// ambiguous — which is javac's own rule for on-demand imports, is a located compile error rather
-/// than a silent substitution, and is the reason a single-type import would be worse rather than
-/// better: that one would shadow the model's own class instead.
-const SURFACE_IMPORTS: [&str; 13] = [
-    "gg.*",
-    "gg.files.*",
-    "gg.shell.*",
-    "gg.board.*",
-    "gg.tasks.*",
-    "gg.memories.*",
-    "gg.docs.*",
-    "gg.views.*",
-    "gg.context.*",
-    "gg.delegation.*",
-    "gg.skills.*",
-    "gg.programs.*",
-    "gg.session.*",
-];
+/// What every code module's generated class name begins with, and what
+/// [`module_key_of`] reads one back off.
+const MODULE_PREFIX: &str = "GgModule_";
 
-/// A model's source, wrapped into a compilation unit javac will read.
+/// The file one code module's wrapped body is compiled from.
+pub(super) fn module_file(key: &str) -> String {
+    format!("{}.java", module_class(key))
+}
+
+/// The binding key whose module a diagnostic's file names, when it names one.
+///
+/// The inverse of [`module_file`], and it is what lets [`verdict`](super::compile::verdict) tell a
+/// diagnostic about a *module* from one about a file nobody named. Without it a module that failed
+/// only in a program's compile was reported to the operator as toolchain drift, and the model whose
+/// turn it took was told nothing at all.
+pub(super) fn module_key_of(file: &str) -> Option<&str> {
+    file.strip_prefix(MODULE_PREFIX)?.strip_suffix(".java")
+}
+
+/// The class gg generates so that every module in scope is reached at `Lib.<key>`.
+///
+/// One nested class per module, each **extending** that module's own class, because Java has no way
+/// to alias a type: a `static` method and a nested type are both inherited members, so
+/// `Lib.csvTools.parse(…)` and `Lib.csvTools.Row` resolve to the module's own declarations, checked
+/// by javac at the call site. That is the same shape [Rust](super::super::rust)'s `lib::<key>::…`
+/// has, and the reason neither arm reaches a module by string: a code module is compiled *into* the
+/// program here, so there is an `import`-free path for the compiler to check the two against.
+///
+/// Empty for an agent that has loaded nothing, in which case no file is written at all.
+pub(super) fn lib_class(keys: &[&str]) -> String {
+    let nested: String = keys
+        .iter()
+        .map(|key| {
+            format!(
+                "    public static final class {key} extends {} {{\n    }}\n",
+                module_class(key)
+            )
+        })
+        .collect();
+    format!(
+        "public final class {LIB_CLASS} {{\n    private {LIB_CLASS}() {{\n    }}\n\n{nested}}}\n"
+    )
+}
+
+/// A code module's body, wrapped into a compilation unit javac will read, and the names its
+/// namespace offers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Wrapped {
     /// The whole `.java` file.
     pub source: String,
-    /// How many lines gg put in front of the model's first line. Every diagnostic located in this
-    /// file is moved back by it, so the coordinate names the line of the reply the model wrote.
-    pub shift: usize,
-    /// The names a module's namespace offers, in source order. Empty for a program.
+    /// The names the module's namespace offers, in source order.
     pub exports: Vec<String>,
 }
 
-/// Wrap a model's **program** — a sequence of statements — into a compilation unit.
-///
-/// The statements become the body of `Program.ggBody`, which `throws Throwable` so that a program
-/// calling something that declares a checked exception does not have to write a `try` around it. A
-/// Java author would put a `throws` on `main`; gg puts it here, and the
-/// [entry class](super::compile) is what turns whatever comes out into something the guest reports.
-pub(super) fn wrap_program(source: &str) -> Result<Wrapped, PrepareFailure> {
-    let (body, imports) = hoist(source)?;
-    let mut header = header_lines(&imports);
-    header.push(format!("public final class {PROGRAM_CLASS} {{"));
-    header.push(format!(
-        "    static void {PROGRAM_METHOD}() throws Throwable {{"
-    ));
-    Ok(Wrapped {
-        source: format!("{}\n{}    }}\n}}\n", header.join("\n"), terminated(&body)),
-        // The header's lines, plus the newline that ends the last of them and starts the model's
-        // first — which is what makes this the number to subtract from a 1-based line.
-        shift: header.len(),
-        exports: Vec::new(),
-    })
-}
-
 /// Wrap a code [skill](crate::skills)'s or [memory](crate::memories)'s **module** — a class body —
-/// into a compilation unit, and say what its namespace will offer.
+/// into a compilation unit under `class`, and say what its namespace will offer.
 ///
-/// A module is a class body rather than a statement sequence because a namespace of functions is
-/// what `lib.<key>` binds, and a Java function is a method of a class. Its `public static` methods
-/// become the namespace and everything else is the module's own business, which is the visibility
-/// rule a Java author already writes. Each exported method has `@JSExport` inserted **inline**, so
-/// TeaVM emits it onto the namespace object without a line moving.
-pub(super) fn wrap_module(source: &str) -> Result<Wrapped, PrepareFailure> {
+/// Its `public static` methods become the namespace and everything else is the module's own
+/// business, which is the visibility rule a Java author already writes.
+///
+/// **Nothing gg writes here takes a line.** The imports the author wrote are lifted to the front of
+/// the file and blanked where they stood, and the class header goes on the front of the author's own
+/// first line, so the file has exactly as many lines as the module did and every one of them is
+/// where its author put it. There is no offset for any diagnostic to be moved back by, which is what
+/// [rule D11](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks of a location.
+///
+/// The class is **not** `final`: [`lib_class`] declares one nested class per module extending it,
+/// which is how a program reaches it at `Lib.<key>`.
+pub(super) fn wrap_module(source: &str, class: &str) -> Result<Wrapped, PrepareFailure> {
     let (body, imports) = hoist(source)?;
-    let (body, exports) = mark_exports(&body);
+    refuse_wrapper_name(&body, class)?;
+    let exports = exports(&body);
     if exports.is_empty() {
         return Err(PrepareFailure::Program(PrepareError::Unsupported(
             "this module offers nothing: gg binds a code module's `public static` methods at \
@@ -170,20 +148,65 @@ pub(super) fn wrap_module(source: &str) -> Result<Wrapped, PrepareFailure> {
                 .to_string(),
         )));
     }
-    let mut header = header_lines(&imports);
-    header.push("import org.teavm.jso.JSClass;".to_string());
-    header.push("import org.teavm.jso.JSExport;".to_string());
-    header.push(format!("@JSClass(name = \"{MODULE_GLOBAL}\")"));
-    header.push(format!("public final class {MODULE_CLASS} {{"));
+    let mut header = String::new();
+    for line in &imports {
+        header.push_str(line);
+        header.push(' ');
+    }
+    header.push_str(&format!("public class {class} {{ "));
     Ok(Wrapped {
-        source: format!("{}\n{}}}\n", header.join("\n"), terminated(&body)),
-        shift: header.len(),
+        source: format!("{header}{}}}\n", terminated(&body)),
         exports,
     })
 }
 
+/// Refuse a module body that writes the name of the class gg wraps it in, at the author's own line.
+///
+/// # Why this is a refusal and not a curiosity
+///
+/// A module body is compiled **twice under two different class names**: under
+/// [`MODULE_CHECK_CLASS`] at the read that binds it, before any key exists, and under
+/// [`module_class`] in every program that uses it. Every declaration Java has means the same thing
+/// under both names except one — a *constructor*, which is a method with no return type whose name
+/// is the class's. So `Module() { }` is a constructor at the read and
+/// `invalid method declaration; return type required` in a program, and it was the read that said
+/// yes. Measured: the module then took down every program the agent wrote from then on, which is
+/// exactly the state [`compile_module`](super::compile::compile_module) exists to prevent.
+///
+/// The check is the class's simple name **anywhere in code**, not the constructor shape alone,
+/// because an expression naming the class (`Module.helper()`) diverges the same way and for the
+/// same reason. A module's author cannot know the name gg gives the class, so a body that writes it
+/// is a body that meant something else.
+fn refuse_wrapper_name(body: &str, class: &str) -> Result<(), PrepareFailure> {
+    let code = Lexer::new(body).code_mask();
+    let bytes = body.as_bytes();
+    let mut start = 0usize;
+    for (number, line) in body.split_inclusive('\n').enumerate() {
+        for (offset, _) in line.match_indices(class) {
+            let at = start + offset;
+            let before = at.checked_sub(1).map(|byte| bytes[byte]);
+            let after = bytes.get(at + class.len()).copied();
+            // A whole identifier, and not the last segment of a qualified name: `a.b.Module` names
+            // somebody else's type under either wrapper and diverges from nothing.
+            let bounded = !before.is_some_and(|byte| is_identifier_byte(byte) || byte == b'.')
+                && !after.is_some_and(is_identifier_byte);
+            if bounded && code.get(at).copied().unwrap_or(false) {
+                return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
+                    "line {}: gg names the class a code module's body is compiled into, and it is \
+                     named `{class}` only while this read checks it. Take `{class}` out — a \
+                     module's own declarations reach each other by name, and a constructor is \
+                     never called.",
+                    number + 1,
+                ))));
+            }
+        }
+        start += line.len();
+    }
+    Ok(())
+}
+
 /// A body that ends in exactly one newline, so the brace that closes it is on its own line and the
-/// body has as many lines as the reply did — no more.
+/// body has as many lines as the module did — no more.
 fn terminated(body: &str) -> String {
     match body.ends_with('\n') {
         true => body.to_string(),
@@ -191,30 +214,23 @@ fn terminated(body: &str) -> String {
     }
 }
 
-/// The import block every wrapped unit opens with: gg's own, then the model's own.
-fn header_lines(hoisted: &[String]) -> Vec<String> {
-    let mut header: Vec<String> = DEFAULT_IMPORTS
-        .iter()
-        .chain(SURFACE_IMPORTS.iter())
-        .map(|name| format!("import {name};"))
-        .collect();
-    header.extend(hoisted.iter().cloned());
-    header
-}
-
 // ---------------------------------------------------------------------------------------------
 // The import hoist
 // ---------------------------------------------------------------------------------------------
 
-/// Lift every `import` the source declares into the header, leaving a blank line where each stood.
+/// Lift every `import` a **code module** declares to the front of the file, leaving a blank line
+/// where each stood.
 ///
-/// A model writing Java writes imports — it is the first thing a Java file has — and inside a method
-/// body an `import` is a syntax error on every turn. So they are moved rather than refused. Blanking
-/// rather than deleting is what keeps every later line where the model put it.
+/// A module's author writes a class body, and inside a class body an `import` is a syntax error. So
+/// they are moved rather than refused, which is part of the wrapper D5 admits. Blanking rather than
+/// deleting is what keeps every later line where the author put it, and the header shares the
+/// author's first line so that nothing moves at all.
 ///
-/// A `package` declaration is refused instead of moved: a program is one anonymous compilation unit,
-/// there is nowhere for a package to be, and silently dropping one would leave a model wondering why
-/// its own type names did not resolve.
+/// A `package` declaration is refused instead of moved: a module is one anonymous compilation unit
+/// and there is nowhere for a package to be.
+///
+/// It is **not** applied to a program. A program is a whole compilation unit and writes its imports
+/// where Java puts them.
 fn hoist(source: &str) -> Result<(String, Vec<String>), PrepareFailure> {
     let code = Lexer::new(source).code_mask();
     let mut body = String::with_capacity(source.len());
@@ -233,9 +249,9 @@ fn hoist(source: &str) -> Result<(String, Vec<String>), PrepareFailure> {
         }
         if let Some(rest) = keyword(trimmed, "package") {
             return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
-                "line {}: a gg program is one compilation unit with no package, so `package {}` \
-                 has nowhere to go. Remove it; every name you declare is already visible to the \
-                 rest of your program.",
+                "line {}: a gg code module is one compilation unit with no package, so \
+                 `package {}` has nowhere to go. Remove it; every name you declare is already \
+                 visible to the rest of the module.",
                 number + 1,
                 rest.trim_end_matches(';').trim(),
             ))));
@@ -244,7 +260,7 @@ fn hoist(source: &str) -> Result<(String, Vec<String>), PrepareFailure> {
             Some(_) => {
                 imports.push(trimmed.to_string());
                 // The line's own terminator is kept, so the body has exactly as many lines as the
-                // reply did.
+                // module did.
                 body.push_str(match line.ends_with('\n') {
                     true => "\n",
                     false => "",
@@ -267,37 +283,27 @@ fn keyword<'a>(line: &'a str, word: &str) -> Option<&'a str> {
 // The export scan
 // ---------------------------------------------------------------------------------------------
 
-/// Insert `@JSExport` before every `public static` method of a module's class body, and report their
-/// names in source order.
+/// The names a module's class body offers: every `public static` method of it, in source order.
 ///
-/// Inline insertion, because the annotation must not cost a line. What counts as a method is a
-/// declaration at the class body's own level whose modifier run holds both `public` and `static` and
-/// which reaches an identifier immediately followed by `(` before it reaches `=`, `;` or a body — so
-/// a `public static final int LIMIT = 3;` is a field and is left alone, and a constructor (whose name
-/// is the class's) is not a member a namespace can offer.
-fn mark_exports(body: &str) -> (String, Vec<String>) {
-    let declarations = Lexer::new(body).declarations();
-    let mut out = String::with_capacity(body.len() + declarations.len() * 11);
-    let mut exports = Vec::new();
-    let mut copied = 0usize;
-    for declaration in declarations {
-        let Some(name) = declaration.exported_method() else {
-            continue;
-        };
-        out.push_str(&body[copied..declaration.start]);
-        out.push_str("@JSExport ");
-        copied = declaration.start;
-        exports.push(name);
-    }
-    out.push_str(&body[copied..]);
-    (out, exports)
+/// What counts as a method is a declaration at the class body's own level whose modifier run holds
+/// both `public` and `static` and which reaches an identifier immediately followed by `(` before it
+/// reaches `=`, `;` or a body — so a `public static final int LIMIT = 3;` is a field and is not one,
+/// and a constructor (whose name is the class's) is not a member a namespace can offer.
+///
+/// A **reading** rather than a rewriting: nothing is inserted, because the module is compiled into
+/// the program that uses it and a program reaches an export by naming it. What this produces is the
+/// list the module's author is *told* the namespace holds.
+fn exports(body: &str) -> Vec<String> {
+    Lexer::new(body)
+        .declarations()
+        .iter()
+        .filter_map(Declaration::exported_method)
+        .collect()
 }
 
 /// One member declaration found at the top level of a class body.
 #[derive(Debug, PartialEq, Eq)]
 struct Declaration {
-    /// The byte offset of its first token.
-    start: usize,
     /// Its tokens, up to and including the one that decided what it is.
     tokens: Vec<String>,
     /// Whether an identifier was immediately followed by `(` — which is what makes it a method
@@ -310,9 +316,10 @@ impl Declaration {
     fn exported_method(&self) -> Option<String> {
         let name = self.call.as_ref()?;
         let modifiers = |word: &str| self.tokens.iter().any(|token| token == word);
-        // A constructor has the class's name and no return type, and there is nothing for a
-        // namespace to bind it to.
-        (modifiers("public") && modifiers("static") && name != MODULE_CLASS).then(|| name.clone())
+        // A constructor has the class's name and no return type. gg names the class rather than the
+        // author, so a constructor is told from a method by the absence of a return type: a method
+        // declaration's modifier run always carries at least one token before the name.
+        (modifiers("public") && modifiers("static")).then(|| name.clone())
     }
 }
 
@@ -324,8 +331,8 @@ impl Declaration {
 ///
 /// It answers two questions and no others: which bytes are code (so a line that opens with `import`
 /// inside a text block is not an import), and where each member declaration of a class body begins
-/// (so an annotation can be inserted in front of one). It is not a parser and does not try to be —
-/// javac is downstream of it and is what actually reads the program.
+/// (so its name can be read off). It is not a parser and does not try to be — javac is downstream of
+/// it and is what actually reads the module.
 struct Lexer<'a> {
     /// The source.
     source: &'a str,
@@ -396,10 +403,9 @@ impl<'a> Lexer<'a> {
                     at += 1;
                 }
                 b'@' if depth == 0 => {
-                    // An annotation is part of the declaration it decorates, so gg's own has to go
-                    // in front of it rather than between it and the method it applies to.
+                    // An annotation is part of the declaration it decorates, so the declaration
+                    // starts where the annotation does.
                     current.get_or_insert(Declaration {
-                        start: at,
                         tokens: Vec::new(),
                         call: None,
                     });
@@ -414,7 +420,6 @@ impl<'a> Lexer<'a> {
                     let end = self.identifier_end(at);
                     let word = &self.source[at..end];
                     let declaration = current.get_or_insert(Declaration {
-                        start: at,
                         tokens: Vec::new(),
                         call: None,
                     });
@@ -525,7 +530,7 @@ impl<'a> Lexer<'a> {
     /// Where a quoted run that opened at `from` ends, past its closing `terminator`.
     ///
     /// Honours `\` escapes, so `"a\""` is one string. An unterminated one runs to the end of the
-    /// source, which is a program javac will refuse anyway — and refusing it *here* would replace
+    /// source, which is a module javac will refuse anyway — and refusing it *here* would replace
     /// javac's located diagnostic with gg's opinion.
     fn quoted_end(&self, from: usize, terminator: &[u8]) -> usize {
         let mut at = from;

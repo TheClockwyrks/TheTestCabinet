@@ -1895,6 +1895,28 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
             tone: gg.ok ? "ok" : "fail",
           });
           return;
+        // The reply as the model sent it, on the turns where healing rewrote it into
+        // something else. The program that ran is the assistant message above this row and
+        // is what every location gg reports counts lines of, so this row is the only place
+        // the two texts can be read against each other — which is what tells a defect in
+        // healing apart from a mistake by the model. No model is ever shown it.
+        //
+        // It does not `return`: a healed turn may also have printed, and the output row
+        // below is that turn's other half.
+        case "code_execution":
+          if (gg.healing?.original !== undefined) {
+            feed.push({
+              ...base,
+              label: "healed",
+              detail: gg.healing.original,
+              args: `sent as ${gg.healing.original.split("\n").length} line${
+                gg.healing.original.split("\n").length === 1 ? "" : "s"
+              }; ran after ${gg.healing.strategies?.join(", ") ?? "healing"}`,
+              tone: "system",
+              collapsible: true,
+            });
+          }
+          break;
       }
     }
     // Everything else is a row of its own — or none — decided by the event alone.

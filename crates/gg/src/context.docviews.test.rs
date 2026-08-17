@@ -467,7 +467,8 @@ fn search_keys(ctx: &ContextModel) -> Vec<String> {
         .collect()
 }
 
-/// **A search-results view is its own band, under one constant selector, and it SUPERSEDES.**
+/// **A search-results view is its own band, and a model's own searches all key to one selector, so
+/// they SUPERSEDE.**
 ///
 /// This is the deliberate opposite of the rule above it, and the two only make sense read together.
 /// A documentation view names a **constant** — one key, one rendering, forever — so re-opening it is
@@ -475,13 +476,19 @@ fn search_keys(ctx: &ContextModel) -> Vec<String> {
 /// the results I am working from*. Re-stating an intent replaces it, which is what `openText` does
 /// and what this does, so an agent that searches five times holds one page rather than five.
 ///
-/// Keying it by one constant selector rather than by the query is what makes the supersession
-/// happen at all; a per-query key would be the pile-up this exists to avoid.
+/// The model's own searches passing one constant selector rather than the query is what makes the
+/// supersession happen at all; a per-query key would be the pile-up this exists to avoid.
 #[test]
 fn a_search_view_is_its_own_band_and_replaces_itself() {
     let mut ctx = code_model();
-    ctx.open_search_view("3 matches for `file`".to_string());
-    ctx.open_search_view("1 match for `memory`".to_string());
+    ctx.open_search_view(
+        SEARCH_RESULTS_VIEW.to_string(),
+        "3 matches for `file`".to_string(),
+    );
+    ctx.open_search_view(
+        SEARCH_RESULTS_VIEW.to_string(),
+        "1 match for `memory`".to_string(),
+    );
 
     assert_eq!(
         search_keys(&ctx),
@@ -525,8 +532,14 @@ fn searching_and_closing_a_search_leave_the_documentation_band_alone() {
     ctx.open_docview("writeFile".to_string(), "writeFile(path)".to_string());
     let before = rendered(&ctx);
 
-    ctx.open_search_view("3 matches for `file`".to_string());
-    ctx.open_search_view("1 match for `memory`".to_string());
+    ctx.open_search_view(
+        SEARCH_RESULTS_VIEW.to_string(),
+        "3 matches for `file`".to_string(),
+    );
+    ctx.open_search_view(
+        SEARCH_RESULTS_VIEW.to_string(),
+        "1 match for `memory`".to_string(),
+    );
     assert_eq!(
         rendered(&ctx)[..before.len()],
         before[..],
@@ -551,7 +564,10 @@ fn searching_and_closing_a_search_leave_the_documentation_band_alone() {
 fn closing_every_docview_leaves_the_search_results() {
     let mut ctx = code_model();
     ctx.open_docview("readFile".to_string(), "readFile(path)".to_string());
-    ctx.open_search_view("3 matches for `file`".to_string());
+    ctx.open_search_view(
+        SEARCH_RESULTS_VIEW.to_string(),
+        "3 matches for `file`".to_string(),
+    );
 
     let closed = ctx.close_docviews(None);
     assert_eq!(closed.reclaimed.items, 1);
@@ -562,13 +578,106 @@ fn closing_every_docview_leaves_the_search_results() {
     );
 }
 
+/// **Two searches under two selectors are two views, each superseded only by its own.**
+///
+/// This is the property the [bootstrap](crate::bootstrap) rests on. It lists every module the agent
+/// was granted, one search per module, and every one of those listings has to survive the next —
+/// they are the agent's whole surface, not successive attempts at one question. The selector is the
+/// only thing that decides it: the same call, passed the same constant twice, replaces itself (the
+/// case above), and passed two module paths keeps both.
+#[test]
+fn searches_under_two_selectors_are_two_views_and_supersede_only_themselves() {
+    let mut ctx = code_model();
+    ctx.open_search_view(
+        "gg::files".to_string(),
+        "12 entries in `gg::files`".to_string(),
+    );
+    ctx.open_search_view(
+        "gg::views".to_string(),
+        "6 entries in `gg::views`".to_string(),
+    );
+    assert_eq!(
+        search_keys(&ctx),
+        vec!["gg::files".to_string(), "gg::views".to_string()],
+        "a listing of one module does not replace the listing of another"
+    );
+
+    ctx.open_search_view(
+        "gg::files".to_string(),
+        "12 entries in `gg::files` (again)".to_string(),
+    );
+    assert_eq!(
+        search_keys(&ctx),
+        vec!["gg::files".to_string(), "gg::views".to_string()],
+        "re-listing one module replaces that module's view and nothing else, in the position it \
+         already held"
+    );
+    let bodies: Vec<&str> = ctx
+        .items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::SearchResults)
+        .filter_map(|item| item.message().content.as_deref())
+        .collect();
+    assert_eq!(
+        bodies,
+        vec![
+            "Documentation: gg::files\n----\n12 entries in `gg::files` (again)",
+            "Documentation: gg::views\n----\n6 entries in `gg::views`"
+        ],
+        "the re-listed module's body is the new one and the other module's is untouched"
+    );
+}
+
+/// **A module listing is headed by its own module and closed by its own path**, which is what makes
+/// a window holding a dozen of them readable and each of them individually closable.
+///
+/// Both halves already worked for the one constant selector and neither has a special case for it,
+/// so this is the assertion that they key off the selector rather than off the constant.
+#[test]
+fn a_module_listing_is_headed_by_its_module_and_closed_by_its_path() {
+    let mut ctx = code_model();
+    ctx.open_search_view(
+        "gg::files".to_string(),
+        "12 entries in `gg::files`".to_string(),
+    );
+    ctx.open_search_view(
+        "gg::views".to_string(),
+        "6 entries in `gg::views`".to_string(),
+    );
+
+    let item = ctx
+        .items()
+        .iter()
+        .find(|item| item.label() == Some("gg::files"))
+        .expect("the listing is in the search band");
+    assert!(
+        item.message()
+            .content
+            .as_deref()
+            .expect("a body")
+            .starts_with("Documentation: gg::files\n----\n"),
+        "it is qualified by the module it lists, not by the constant"
+    );
+
+    let closed = ctx.close_search_views(Some("gg::files"));
+    assert_eq!(closed.items, 1);
+    assert_eq!(
+        search_keys(&ctx),
+        vec!["gg::views".to_string()],
+        "a close by module path reaches that listing and leaves the rest"
+    );
+}
+
 /// **A search-results view is reported as an open view, so a model can see what it costs and close
 /// it** — and it is reported under its own kind, which is what makes the cost of *finding*
 /// documentation readable apart from the cost of the documentation itself.
 #[test]
 fn a_search_view_is_reported_as_an_open_view_of_its_own_kind() {
     let mut ctx = code_model();
-    ctx.open_search_view("3 matches for `file`".to_string());
+    ctx.open_search_view(
+        SEARCH_RESULTS_VIEW.to_string(),
+        "3 matches for `file`".to_string(),
+    );
 
     let open = ctx.open_views();
     let view = open
@@ -592,7 +701,10 @@ fn a_search_view_is_ordinary_ephemeral_material_at_an_archive_boundary() {
     let mut ctx = code_model();
     ctx.begin_turn(1);
     ctx.open_docview("readFile".to_string(), "readFile(path)".to_string());
-    ctx.open_search_view("3 matches for `file`".to_string());
+    ctx.open_search_view(
+        SEARCH_RESULTS_VIEW.to_string(),
+        "3 matches for `file`".to_string(),
+    );
 
     ctx.begin_turn(2);
     ctx.archive_thread(&[TurnRange { from: 1, to: 1 }]);

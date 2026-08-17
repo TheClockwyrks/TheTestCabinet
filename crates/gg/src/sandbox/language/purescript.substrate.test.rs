@@ -7,70 +7,51 @@
 //! All of it. A program starts as PureScript, goes through
 //! [`compile_program`](super::compile::compile_program) — the production prepare step, spawning the
 //! production compiler in a [`PrepareContext`](crate::sandbox::PrepareContext) the sandbox mints —
-//! and the JavaScript that comes back is compiled with
-//! [`compile_bytes`](super::super::super::engine::compile_bytes), linked with
-//! [`linker`](super::super::super::linker) (the production linker: the whole membrane plus the whole
-//! ambient WASI surface), put in a [`bounded_store`](super::super::super::bounded_store) with the
-//! production ceilings, instantiated through the `bindgen!`-generated
-//! [`Sandbox`](super::super::super::membrane::Sandbox) and driven through its `run` export.
+//! and the JavaScript that comes back is driven through
+//! [`run_prepared_program`](crate::sandbox::run_prepared_program) — the production entry point for a
+//! program whose preparation already happened, with the production linker, the production ceilings,
+//! the real membrane and the real source-map reading.
 //!
 //! # How a call gets from PureScript to gg
 //!
 //! Through the SDK, and through nothing else. `packages/gg-sandbox-purescript/src/Gg/**` is compiled
 //! into the same library tree a program is compiled against, so `import Gg.Files as Gg.Files` is an
-//! ordinary import resolved by `purs`; its one foreign module names the namespaces the guest binds,
-//! which are free
-//! identifiers in the bundle and are resolved at call time against the scope the guest built. That is
-//! what [`every_tool_crosses_the_membrane_from_its_purescript_spelling`] drives: real PureScript,
-//! really compiled, whose calls arrive at gg's dispatch carrying the same JSON every other arm's do.
+//! ordinary import resolved by `purs`; its one foreign module writes `import * as gg from "gg"`,
+//! which `esbuild` leaves external and the guest's loader resolves to the instance a TypeScript
+//! program shares. That is what [`every_tool_crosses_the_membrane_from_its_purescript_spelling`]
+//! drives: real PureScript, really compiled, whose calls arrive at gg's dispatch carrying the same
+//! JSON every other arm's do.
 //!
 //! # Why these tests are consolidated
 //!
 //! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile a 20 MB component — around 1.2 s in the dev test profile — and unpack a 1.2 MB library
-//! tree. So each function drives *many* programs against many stores rather than being one behaviour
-//! per function, exactly as `sandbox.test.rs` does. Add a program to an existing function rather than
-//! adding a function.
+//! compile the guest and unpack a 1.4 MB library tree. So each function drives *many* programs
+//! against many stores rather than being one behaviour per function, exactly as `sandbox.test.rs`
+//! does. Add a program to an existing function rather than adding a function.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
 use std::time::Instant;
 
 use serde_json::{Value, json};
-use wasmtime::component::Component;
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
-use super::super::typescript;
-use super::compile::{compile_module, compile_program};
+use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
+
+use super::compile::{self, compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
     CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
     granted_operations,
 };
-use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
-use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
+use crate::sandbox::membrane::RunEnding;
+use crate::sandbox::outcome::SandboxOutcome;
 use crate::sandbox::{
-    CodeModule, PrepareContext, ProgramScope, SandboxLimits, bounded_store, capability_operations,
-    engine, linker, reclaim,
+    CodeModule, PrepareContext, PreparedProgram, ProgramScope, SandboxLimits,
+    capability_operations, run_prepared_program,
 };
 use crate::tools::ToolOutcome;
-
-/// The guest this arm is evaluated by, compiled once per test process.
-///
-/// It is [TypeScript](super::super::typescript)'s component, byte for byte, and that is the whole of
-/// this arm's guest decision: a compiled PureScript program is self-contained JavaScript, so there is
-/// nothing for a component of its own to carry. See [the arm's own documentation](super) for the
-/// comparison with Ruby, which needed one.
-///
-/// A plain `OnceLock` rather than the production per-language cache, because that cache belongs to a
-/// running sandbox and these tests drive the pieces underneath one.
-fn component() -> &'static Component {
-    static COMPILED: OnceLock<Component> = OnceLock::new();
-    COMPILED.get_or_init(|| {
-        engine::compile_bytes(typescript::COMPONENT).expect("the shared ECMAScript guest compiles")
-    })
-}
 
 /// This arm, resolved through the registry it is now in.
 fn purescript() -> &'static dyn crate::sandbox::ProgramLanguage {
@@ -79,7 +60,12 @@ fn purescript() -> &'static dyn crate::sandbox::ProgramLanguage {
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 fn prepare(source: &str) -> String {
-    match compile_program(source, &PrepareContext::new()) {
+    prepare_with(source, &[])
+}
+
+/// The same, for a turn carrying code modules — which the entry module gg generates imports.
+fn prepare_with(source: &str, modules: &[CodeModule]) -> String {
+    match compile_program(source, modules, &PrepareContext::new()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
     }
@@ -88,35 +74,9 @@ fn prepare(source: &str) -> String {
 /// Evaluate already-compiled JavaScript through the real membrane, granting `operations`,
 /// `modules` bound at `lib.<name>`, and the ending group `ending`'s role produces.
 ///
-/// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
-/// belongs to a *registered* language rather than to an artifact: the per-language component cache.
-///
-/// The [membrane state](MembraneState) is built with **this** language, which is what a refusal
-/// naming a call resolves its spelling from.
-///
-/// # Why the component is resolved before the store is built
-///
-/// Because the store's clock starts when the store is built, and it is a **wall** clock.
-/// [`bounded_store`] arms an epoch deadline against [`SandboxLimits::timeout`] — 30 s by default —
-/// and the callback behind it reads `guest_elapsed`, which is time since a `program_started` stamped
-/// inside [`MembraneState::new`] less whatever was charged back for time parked in bridged tool
-/// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
-/// back: it is charged in full to a program that has not started.
-///
-/// [`component`] is exactly that work. It is a `Component::new` of the 14 MB shared ECMAScript
-/// guest, paid once per **process** — which under `cargo nextest` means once per `#[test]` — and
-/// measured on this repository's dev container at 1.35 s alone but at a median of 10.6 s and a worst
-/// of 34.0 s across the processes that paid it during one `cargo nextest run --workspace`. Past
-/// thirty of those seconds the guest's first instruction traps, and this arm reports
-/// `Timeout { limit: 30s }` for a program that ran for microseconds. That is not hypothetical here:
-/// `a_located_failure_names_the_bundle_rather_than_the_model_s_purescript` and
-/// `a_code_module_is_a_purescript_module_bound_at_lib` were both observed failing that way on a full
-/// workspace run, with the JVM arms failing identically in the same window.
-///
-/// Production never had it — [`run_program`](crate::sandbox::run_program) resolves its component and
-/// builds its linker and only then builds the store — so a run's 30 s is 30 s of the program. This
-/// is that order, and it is also what makes the note above true: the per-language component cache
-/// really is the only thing left out.
+/// [`run_prepared_program`](crate::sandbox::run_prepared_program) — the production entry point for a
+/// program whose preparation already happened — so the component cache, the linker, the ceilings,
+/// the membrane and the source-map reading are all the ones a turn gets.
 fn evaluate(
     program: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -125,42 +85,24 @@ fn evaluate(
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    let limits = SandboxLimits::default();
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
-    // Both of these before the store exists, for the reason this function's documentation gives.
-    let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let operations = granted_operations(operations, library);
-    let scope = ProgramScope {
-        capabilities: &all_capabilities(),
-        operations: &operations,
-        modules,
-        ending,
-    };
-    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
-    let mut store = bounded_store(
-        MembraneState::new(api, purescript(), scope, limits, None),
-        limits,
-    );
-    let bound = match Sandbox::instantiate(&mut store, component, &linker) {
-        Ok(bound) => bound,
-        Err(error) => panic!(
-            "the shared ECMAScript guest instantiates against the real membrane: {}",
-            engine::classify(&store, limits, &error, SandboxError::Instantiate)
-        ),
-    };
-    let returned = bound
-        .call_run(
-            &mut store,
-            program,
+    let (outcome, _api) = run_prepared_program(
+        purescript(),
+        PreparedProgram {
+            source: program.to_string(),
+            component: None,
+        },
+        ProgramScope {
+            capabilities: &all_capabilities(),
+            operations: &operations,
             modules,
-            &granted,
-            ending.into(),
-            library,
-        )
-        .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+            ending,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::with(&log, responder),
+    );
     (outcome, log)
 }
 
@@ -192,7 +134,7 @@ fn run_as(
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     evaluate(
-        &prepare(source),
+        &prepare_with(source, modules),
         operations,
         modules,
         ending,
@@ -238,14 +180,18 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
     }
 }
 
-/// The failure a program did not handle, insisting that the sandbox itself did not fail.
-fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
+/// **What the model reads when a program died**: the engine's own rendering of the failure, which
+/// the guest wrote to standard error and `with_guest_stderr` put in front of gg's own words.
+///
+/// Nothing catches a throw on this arm — capture rather than interception — so an unhandled failure
+/// is a trap that carries the language's words rather than a `ProgramError` gg composed.
+fn trapped(outcome: &SandboxOutcome) -> String {
     match &outcome.result {
-        Ok(result) => result
-            .error
-            .as_ref()
-            .unwrap_or_else(|| panic!("the program did not fail; it logged {:?}", outcome.logs)),
-        Err(error) => panic!("expected a program fault, but the sandbox failed: {error}"),
+        Err(error) => error.to_string(),
+        Ok(result) => panic!(
+            "the program did not fail; it logged {:?} and reported {:?}",
+            outcome.logs, result.error
+        ),
     }
 }
 
@@ -390,13 +336,11 @@ main = do
   _ <- throw "the spec file was not where I expected"
   Console.log "after"
 "#);
-    let error = program_error(&outcome);
+    let reported = trapped(&outcome);
     assert!(
-        error
-            .message
-            .contains("the spec file was not where I expected"),
-        "the model reads what it threw: {}",
-        error.message
+        reported.contains("Error: the spec file was not where I expected")
+            && reported.contains("program.purs:"),
+        "the model reads what it threw, in its own file: {reported}"
     );
     // What ran before the failure is still reported: the program is not discarded for having ended
     // badly.
@@ -412,11 +356,9 @@ main = do
          main :: Effect Unit\n\
          main = unsafeCrashWith \"no branch matched\"\n");
     assert!(
-        program_error(&outcome)
-            .message
-            .contains("no branch matched"),
-        "{:?}",
-        program_error(&outcome)
+        trapped(&outcome).contains("no branch matched"),
+        "{}",
+        trapped(&outcome)
     );
 
     // And an error CAUGHT in PureScript's own idiom does not reach gg at all: the program handles it
@@ -441,28 +383,59 @@ main = do
 }
 
 #[test]
-fn a_located_failure_names_the_bundle_rather_than_the_model_s_purescript() {
-    // The one thing this arm does NOT yet get right, asserted rather than described, so that the day
-    // it is fixed the assertion changes rather than a paragraph.
-    //
-    // The guest reports the innermost frame of the function it evaluated, in that function's own
-    // coordinates — which for this arm is the BUNDLE, not the model's PureScript. The mapping is not
-    // lost: `purs` and `esbuild` both emit source maps and the host that produced the bundle is the
-    // one that holds them. What is missing is somewhere to put the answer — `program-error` carries
-    // one `location`, and the frame the guest picks is the innermost, which once the SDK is linked
-    // into the bundle is inside the SDK. The fix is a frame list on the wire, shared with the Java
-    // arm.
-    let outcome = run("module Main where\n\
+fn a_located_failure_names_the_model_s_own_purescript() {
+    // The headline of this arm's conversion. What the engine reports is a frame in the BUNDLE — one
+    // flattened file made of the model's program, this arm's SDK and every library either reached —
+    // and every one of those frames is read back through the map `purs` and `esbuild` composed, so a
+    // frame in the model's own PureScript names the model's own file and line, and a frame in a
+    // library names that library's own module.
+    let outcome = run("module Solve where\n\
+         \n\
          import Prelude\n\
+         \n\
          import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
          import Effect.Exception (throw)\n\
          \n\
+         boom :: String -> Effect Unit\n\
+         boom label = void (throw (\"bang: \" <> label))\n\
+         \n\
          main :: Effect Unit\n\
-         main = void (throw \"located somewhere\")\n");
-    let error = program_error(&outcome);
+         main = do\n\
+         \x20 Console.log \"starting\"\n\
+         \x20 boom \"here\"\n");
+    let reported = trapped(&outcome);
+    // The call site, exactly: line 15 is `  boom "here"` and column 3 is `boom`. The frame above it
+    // is line 10, the throwing definition — at the innermost token the map has on that line rather
+    // than at the `throw`, which is what a compiler's map resolves a compound expression to.
     assert!(
-        error.location.is_some(),
-        "there IS a location; it is simply the wrong file's"
+        reported.contains("at __do (program.purs:15:3)"),
+        "the call site is the model's own file at the column it wrote the call in: {reported}"
+    );
+    assert!(
+        reported.contains("at boom (program.purs:10:"),
+        "and the frame above it is the line the throw is on: {reported}"
+    );
+    assert!(
+        reported.contains("/src/Effect/Exception.purs:"),
+        "and a frame in a library names that library's own module: {reported}"
+    );
+    // The two names a frame the model cannot open would carry, and the reason this assertion is
+    // written against these two rather than against the bundle's own file name: the bundle is
+    // `bundle.js` on the HOST, and the guest declares it under `ecmascript::PROGRAM`, so
+    // `bundle.js` is a string no frame can ever contain and asserting its absence would assert
+    // nothing. `program.js` is a position in the flattened bundle the composed map resolved
+    // nothing for; `entry.js` is the module gg generates to point the bundler at `main`.
+    for invented in [super::super::ecmascript::PROGRAM, compile::ENTRY_FILE] {
+        assert!(
+            !reported.contains(invented),
+            "nothing the model reads names `{invented}`, which is a file it did not write: \
+             {reported}"
+        );
+    }
+    assert!(
+        reported.contains("… and 1 more frame,"),
+        "and the one frame that was struck is counted rather than silently dropped: {reported}"
     );
 }
 
@@ -519,12 +492,15 @@ fn a_code_module_is_a_purescript_module_bound_at_lib() {
         ["hello, gg", "42", "nothing under that name"]
     );
 
-    // And the namespace really is the guest's own object, which is what the SDK's one foreign
-    // function reaches: the same three answers, read from JavaScript rather than from PureScript.
+    // And what the guest declares at `lib:helpers` really is the module's own ES namespace, which
+    // is what the entry module gg generates imports and hands to the SDK: the same three answers,
+    // read from JavaScript rather than from PureScript.
     let outcome = evaluate_js(
-        r#"console.log(lib.helpers.greet("gg"));
-console.log(String(lib.helpers.add(40)(2)));
-console.log(Object.keys(lib.helpers).sort().join(","));"#,
+        r#"import * as helpers from "lib:helpers";
+
+console.log(helpers.greet("gg"));
+console.log(String(helpers.add(40)(2)));
+console.log(Object.keys(helpers).sort().join(","));"#,
         &[],
         &modules,
         canned_outcome,
@@ -609,17 +585,14 @@ fn evaluating_a_compiled_program_costs_a_turn_almost_nothing() {
     );
 }
 
+/// **A compiled PureScript program needs nothing of this guest that plain JavaScript does not.**
+///
+/// The property behind the arm's whole guest decision: `purs` compiles a program's own code and the
+/// library code it used into the bundle, and `esbuild` tree-shakes the rest away, so what arrives is
+/// self-contained JavaScript with no runtime to boot. Both halves below run on the SAME compiled
+/// `Component`, which is what says it rather than two artifacts that happen to behave alike.
 #[test]
-fn the_arm_shares_the_ecmascript_guest_rather_than_carrying_its_own() {
-    // Declared rather than inferred. This arm's guest IS TypeScript's artifact, and the reason is
-    // that a compiled PureScript program is self-contained JavaScript: there is no runtime for a
-    // component of its own to carry, so a second 20 MB artifact would differ from this one in
-    // nothing at all.
-    //
-    // What says so is that both halves below run on the SAME compiled `Component` — the one
-    // [`component`] built out of `typescript::COMPONENT` — rather than on two that happen to behave
-    // alike. When this arm is registered, the seam's "no language is served another's artifacts"
-    // gate is where the sharing gets named; this is what says it is already true.
+fn a_compiled_program_needs_nothing_of_the_guest_plain_javascript_does_not() {
     let program = prepare(
         "module Main where\n\
          import Prelude\n\
@@ -971,27 +944,11 @@ fn every_tool_crosses_the_membrane_from_its_purescript_spelling() {
 /// back, in one program for the reason the crossing table above is one program.
 #[test]
 fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
-    let limits = SandboxLimits::default();
     let log = CallLog::default();
     // A library with something in it, which is what `Gg.Programs.sourceOf` needs a summary of; the
     // plain double answers an empty history, and an alias driven over an empty array proves nothing.
     let api = FakeToolApi::new(&log).with_program(2, "module Main where\nmain = pure unit");
-    // Both of these before the store exists, for the reason [`evaluate`] gives.
-    let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let operations = all_operations();
-    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
-    let scope = ProgramScope {
-        capabilities: &all_capabilities(),
-        operations: &operations,
-        modules: &[],
-        ending: RunEnding::None,
-    };
-    let mut store = bounded_store(
-        MembraneState::new(api, purescript(), scope, limits, None),
-        limits,
-    );
-    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     let program = prepare(
         &program_of(&[
             "issue <- Gg.Board.createIssue { title: \"Parse the manifest\", \
@@ -1020,17 +977,22 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
              import Effect.Class.Console as Console\n",
         ),
     );
-    bound
-        .call_run(
-            &mut store,
-            &program,
-            &[],
-            &granted,
-            RunEnding::None.into(),
-            true,
-        )
-        .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = run_prepared_program(
+        purescript(),
+        PreparedProgram {
+            source: program,
+            component: None,
+        },
+        ProgramScope {
+            capabilities: &all_capabilities(),
+            operations: &operations,
+            modules: &[],
+            ending: RunEnding::None,
+        },
+        SandboxLimits::default(),
+        None,
+        api,
+    );
     assert_eq!(
         logs(&outcome),
         [
@@ -1210,26 +1172,12 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     // honestly say about a real index; what is proven is the crossing, the optional-argument record
     // (whose `module` and `type` labels are reserved words this arm writes as labels anyway), the
     // constructor the kind filter lowers from, and the view the host opens on the way back.
-    let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = FakeToolApi::new(&log);
-    let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
     // Searching is bound to every program; closing is bought, so this store grants the capability
     // that buys it and the calls that capability offers.
     let capabilities = vec![CAPABILITY_DOCVIEW_CLOSE.to_string()];
     let operations = capability_operations([CAPABILITY_DOCVIEW_CLOSE]);
-    let scope = ProgramScope {
-        capabilities: &capabilities,
-        operations: &operations,
-        modules: &[],
-        ending: RunEnding::None,
-    };
-    let mut store = bounded_store(
-        MembraneState::new(api, purescript(), scope, limits, None),
-        limits,
-    );
-    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     let searching = prepare(
         &program_of(&[
             "page <- Gg.Docs.search \"read\" \
@@ -1245,17 +1193,22 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
             "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
         ),
     );
-    bound
-        .call_run(
-            &mut store,
-            &searching,
-            &[],
-            &[],
-            RunEnding::None.into(),
-            false,
-        )
-        .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = run_prepared_program(
+        purescript(),
+        PreparedProgram {
+            source: searching,
+            component: None,
+        },
+        ProgramScope {
+            capabilities: &capabilities,
+            operations: &operations,
+            modules: &[],
+            ending: RunEnding::None,
+        },
+        SandboxLimits::default(),
+        None,
+        api,
+    );
     assert_eq!(logs(&outcome), ["0 0 []", "0 0"]);
     let searched: Vec<&str> = outcome
         .views_opened
@@ -1303,15 +1256,14 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
         &[],
         canned_outcome,
     );
-    let error = program_error(&outcome);
-    // `UnknownName` is what gg makes of an `unavailable` code, whichever side raised it: the two are
-    // one fact and one recovery — this run does not offer that call — and the classification is read
-    // from the code rather than from what the guest made of the throw.
-    assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
+    let reported = trapped(&outcome);
     assert!(
-        error.message.contains("Gg.Files.readFile"),
-        "the refusal names the call the model wrote: {}",
-        error.message
+        reported.contains("`Gg.Files.readFile` is not available"),
+        "the refusal names the call the model wrote: {reported}"
+    );
+    assert!(
+        reported.contains("code: \"unavailable\""),
+        "under the code the host refuses an out-of-set call with: {reported}"
     );
     assert!(log.names().is_empty(), "and nothing reached gg's dispatch");
 
@@ -1468,5 +1420,131 @@ fn every_type_and_function_the_catalogue_declares_is_a_name_a_program_can_write(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "{:?}",
         outcome.result
+    );
+}
+
+/// **Gate [G8](super::super::g8) for PureScript** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::PureScript,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"module Main where
+
+-- G8 (a): a gg call the host answers `not-found`, uncaught.
+
+import Prelude
+
+import Effect (Effect)
+import Effect.Class.Console as Console
+import Gg.Files as Gg.Files
+
+main :: Effect Unit
+main = do
+  text <- Gg.Files.readTextFile
+    "missing.md"
+    {}
+  Console.log text
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::At("program.purs:14:5"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"module Main where
+
+-- G8 (b): a partial function that was not total after all.
+
+import Prelude
+
+import Data.Maybe (Maybe(..), fromJust)
+import Effect (Effect)
+import Effect.Class.Console as Console
+import Partial.Unsafe (unsafePartial)
+
+main :: Effect Unit
+main = do
+  let
+    missing = unsafePartial (fromJust (Nothing :: Maybe Int))
+  Console.log (show missing)
+"#,
+                names: &["Failed pattern match"],
+                located: Located::At("program.purs:15:5"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"module Main where
+
+-- G8 (c): ending by returning a failure value.
+
+import Prelude
+
+import Data.Either (Either(..))
+import Effect (Effect)
+import Effect.Class.Console as Console
+
+main :: Effect (Either String Int)
+main = do
+  Console.log "starting the third step"
+  pure (Left "the third step did not finish")
+"#,
+                names: &["the third step did not finish"],
+                located: Located::Nowhere,
+                answered: Answered::AtRuntime,
+                recorded: None,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"module Main where
+
+-- G8 (d): unbounded recursion, deliberately not a tail call.
+
+import Prelude
+
+import Effect (Effect)
+import Effect.Class.Console as Console
+
+deeper :: Int -> Int
+deeper n = 1 + deeper (n + 1)
+
+main :: Effect Unit
+main = Console.log (show (deeper 0))
+"#,
+                names: &["Maximum call stack size exceeded"],
+                located: Located::At("program.purs:11:24"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"module Main where
+
+-- G8 (e): stopping the program outright.
+
+import Prelude
+
+import Effect (Effect)
+import Effect.Class.Console as Console
+import Partial.Unsafe (unsafeCrashWith)
+
+main :: Effect Unit
+main = do
+  Console.log "before the crash"
+  unsafeCrashWith
+    "the third step did not finish"
+"#,
+                names: &["the third step did not finish"],
+                located: Located::At("program.purs:15:5"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+        ],
     );
 }

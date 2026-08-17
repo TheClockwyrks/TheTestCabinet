@@ -325,6 +325,17 @@ wasmtime-wasi = { version = "45", default-features = false, features = ["p2"] }
 # component feature the runtime's validator does not know, and the failure would be a
 # validation error on a program nobody wrote wrong.
 wit-component = "0.248"
+# The WIT parser `wit-component` is built on, at the same pin for the same reason: gg stamps the
+# `component-type` section of the JVM arms' modules from its own Rust (`sandbox/language/jvm.rs`),
+# which needs a `Resolve` and a `WorldId` — types that must come from the very crate the encoder
+# reads them with.
+wit-parser = "0.248"
+# The source-map reader gg resolves a guest frame through
+# (`crates/gg/src/sandbox/locate.rs`). The invariants allow a location to be reached through a
+# source map and by no other means, so the arms whose compilers emit JavaScript hand the guest a
+# source carrying its own map and gg reads the map with the library the ecosystem reads them with
+# rather than with a VLQ decoder of its own.
+sourcemap = "9"
 
 # Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.
 tauri = { version = "2", features = [] }
@@ -385,6 +396,10 @@ percent-encoding = "2"
 argon2 = "0.5"
 rand = "0.8"
 
+# The operating system's entropy, at the version `wasmtime-wasi` already pulls in, so gg's own
+# reads and WASI's `random_get` come from one generator.
+getrandom = "0.3"
+
 # Streaming HTTP bodies. The backend relays a run's live harness events to the
 # console as the run proceeds; `futures-util` adapts an mpsc receiver into the
 # `Stream` axum's `Body::from_stream` consumes, and `bytes` frames each NDJSON
@@ -436,11 +451,8 @@ tracing-opentelemetry = "0.33"
 # workspace's minimal-host stance. Only `crates/gg` pulls it in.
 tiktoken-rs = "0.7"
 
-# In-process TypeScript type-stripping for the gg sandbox's TypeScript program
-# language (`crates/gg/src/sandbox/language/typescript.prepare.rs`): a TypeScript
-# program's guest runs JavaScript, and the strip measures in microseconds — so no
-# Node, no `tsc`, and no `componentize-js` is ever on a turn's critical path.
-# Pinned to the 0.141 line the host is written against: oxc's parser/transformer
-# API moves between minor releases, and a silent bump would change how a model's
-# syntax error is reported.
-oxc = { version = "0.141", features = ["semantic", "transformer", "codegen"] }
+# The TypeScript/JSX front end `crates/code-analysis` parses a produced source tree with.
+# Pinned to the 0.141 line that crate is written against: oxc's parser and AST move between
+# minor releases, and a silent bump would change what the analyzer reports.
+oxc = { version = "0.141" }
+

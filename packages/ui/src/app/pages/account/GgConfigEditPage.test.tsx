@@ -8,6 +8,7 @@ import {
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE } from "@test-cabinet/run-record/gg-system-prompt";
 import {
   BackendProvider,
   type BackendContextValue,
@@ -488,6 +489,58 @@ describe("GgConfigEditPage", () => {
     );
     await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
     // The default template is seeded into the editor but not stored as an override.
+    expect(
+      createGgConfig.mock.calls[0]![0].capabilitySet.agents[0]
+        .systemPromptTemplate,
+    ).toBeUndefined();
+  });
+
+  // gg renders one responses-as-code system prompt for every program language: it names
+  // no function, so a call's spelling is not in it, and what a model cannot discover
+  // about its own language is a segment gg gates while rendering. The program language is
+  // therefore an axis of the study and not a prompt selector — picking one must not
+  // change what the editor seeds, and editing that seed is editing the one code default.
+  it("seeds the one responses-as-code default whatever program language the agent writes", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "code-prompt" },
+    });
+    openFirstAgent();
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Agent type" })).getByRole(
+        "radio",
+        { name: "RaC" },
+      ),
+    );
+
+    openTab("APIs");
+    const language = within(
+      screen.getByRole("group", { name: "Responses as code" }),
+    ).getByLabelText(/Program language/) as HTMLSelectElement;
+    fireEvent.change(language, { target: { value: "rust" } });
+    expect(
+      (
+        within(
+          screen.getByRole("group", { name: "Responses as code" }),
+        ).getByLabelText(/Program language/) as HTMLSelectElement
+      ).value,
+    ).toBe("rust");
+
+    openTab("Agent");
+    const promptToggle = screen.getByRole("button", { name: /System Prompt/ });
+    fireEvent.click(promptToggle);
+    const promptGroup = promptToggle.parentElement!;
+    expect(
+      (within(promptGroup).getByRole("textbox") as HTMLTextAreaElement).value,
+    ).toBe(DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE);
+    // Seeded, not stored — the agent that touched nothing still saves no override.
+    expect(within(promptGroup).getByText("default")).toBeInTheDocument();
+
+    saveAgent();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
     expect(
       createGgConfig.mock.calls[0]![0].capabilitySet.agents[0]
         .systemPromptTemplate,

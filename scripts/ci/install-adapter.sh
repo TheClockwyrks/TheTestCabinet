@@ -3,24 +3,25 @@
 #
 # WHAT IT IS. 52 KB of wasm, published as an asset of every wasmtime release, that turns the preview1
 # core module a toolchain emits into something `wit_component` can encode as a preview 2 component.
-# The C++ and Swift arms both need one, because neither wasi-sdk's `wasm32-wasip1` nor the Swift SDK
-# for WebAssembly emits a component directly, and gg does the encoding itself rather than trusting a
-# `wasm-component-ld` whose `wasm-encoder` it does not version.
+# The C++, Swift and Rust arms all need one, because none of wasi-sdk's `wasm32-wasip1`, the Swift
+# SDK for WebAssembly or `rustc`'s `wasm32-wasip1` emits a component directly, and gg does the
+# encoding itself rather than trusting a `wasm-component-ld` whose `wasm-encoder` it does not
+# version.
 #
 # WHY IT IS INSTALLED RATHER THAN FETCHED BY THE BUILD. It was the worst-behaved download in this
-# repository: two `build.sh` scripts, each `curl`ing the same file, unconditionally, with NO cache
-# marker of any kind — so re-running either arm's build re-fetched it every time. That was tolerable
-# while those builds were a developer's deliberate command. It is not, now that they run inside an
+# repository: several `build.sh` scripts, each `curl`ing the same file, unconditionally, with NO
+# cache marker of any kind — so re-running an arm's build re-fetched it every time. That was
+# tolerable while those builds were a developer's deliberate command. It is not, now that they run inside an
 # ordinary `cargo build`.
 #
-# TWO PINS, ONE DOWNLOAD, AND THAT IS DELIBERATE. `packages/gg-sandbox-cpp/cpp-version.sh` and
-# `packages/gg-sandbox-swift/swift-version.sh` each declare `GG_WASMTIME_ADAPTER_VERSION` and each
-# argues that the duplication is the point: the adapter and the wasmtime gg links are two halves of
-# one ABI, and the whole value of a per-arm pin is that bumping one arm's toolchain cannot silently
-# move another arm's. So this script reads BOTH and refuses to install anything if they disagree,
-# rather than picking one — which is what lets the two arms share a cached file without either of
-# them learning about the other. The bytes are identical today (confirmed by digest); the day they
-# are not, this is what says so.
+# THREE PINS, ONE DOWNLOAD, AND THAT IS DELIBERATE. `packages/gg-sandbox-cpp/cpp-version.sh`,
+# `packages/gg-sandbox-swift/swift-version.sh` and `packages/gg-sandbox-rust/rust-version.sh` each
+# declare `GG_WASMTIME_ADAPTER_VERSION` and each argues that the duplication is the point: the
+# adapter and the wasmtime gg links are two halves of one ABI, and the whole value of a per-arm pin
+# is that bumping one arm's toolchain cannot silently move another arm's. So this script reads ALL
+# THREE and refuses to install anything if they disagree, rather than picking one — which is what
+# lets the arms share a cached file without any of them learning about the others. The bytes are
+# identical today (confirmed by digest); the day they are not, this is what says so.
 #
 # Idempotent: a matching version already cached is left alone. The resolution the arms actually use
 # lives in `scripts/gg-downloads.sh`, which this only warms.
@@ -44,16 +45,22 @@ SWIFT_VERSION="$(
 	source "$REPO_ROOT/packages/gg-sandbox-swift/swift-version.sh"
 	echo "$GG_WASMTIME_ADAPTER_VERSION"
 )"
+RUST_VERSION="$(
+	# shellcheck source=packages/gg-sandbox-rust/rust-version.sh
+	source "$REPO_ROOT/packages/gg-sandbox-rust/rust-version.sh"
+	echo "$GG_WASMTIME_ADAPTER_VERSION"
+)"
 ADAPTER_URL="$(
 	# shellcheck source=packages/gg-sandbox-cpp/cpp-version.sh
 	source "$REPO_ROOT/packages/gg-sandbox-cpp/cpp-version.sh"
 	gg_wasmtime_adapter_url
 )"
 
-if [ "$CPP_VERSION" != "$SWIFT_VERSION" ]; then
-	echo "error: the cpp arm pins the wasmtime adapter at $CPP_VERSION and the swift arm at $SWIFT_VERSION." >&2
-	echo "       Both pins are deliberate — see either version file — but one cached copy cannot" >&2
-	echo "       serve two releases. Install the two separately, or reconcile the pins." >&2
+if [ "$CPP_VERSION" != "$SWIFT_VERSION" ] || [ "$CPP_VERSION" != "$RUST_VERSION" ]; then
+	echo "error: the cpp arm pins the wasmtime adapter at $CPP_VERSION, the swift arm at" >&2
+	echo "       $SWIFT_VERSION and the rust arm at $RUST_VERSION." >&2
+	echo "       Every pin is deliberate — see any version file — but one cached copy cannot" >&2
+	echo "       serve two releases. Install them separately, or reconcile the pins." >&2
 	exit 1
 fi
 

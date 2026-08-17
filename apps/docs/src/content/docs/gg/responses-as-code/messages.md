@@ -8,7 +8,7 @@ the vocabulary is exactly three messages.
 
 | Heading | When | Body |
 | --- | --- | --- |
-| `Compiler error` | the program did not compile, so none of it ran | the language's diagnostic, verbatim |
+| `Compiler error` | the program did not compile, so none of it ran | the language's diagnostic, verbatim, and the library set it was measured against |
 | `Runtime error` | it compiled and then threw, or a sandbox limit stopped it | the error |
 | `Notice` | a fact about the session rather than about the program | the fact |
 
@@ -30,30 +30,36 @@ program which throws does not end the session, that whatever it did before the
 throw stands, that a returned value is discarded, that logging is not a channel
 to the model.
 
-gg may remove from an error. A stack trace whose frames are gg's own internals
-is cut down to the model's frame. gg never adds to an error.
+gg may remove from an error, and removal is the only edit it may make. What the
+model reads is a subsequence of what the compiler or the runtime emitted, so a
+stack trace is cut down to the model's own frames and a diagnostic list is cut
+to its first few entries.
 
 The one carve-out is that the layer raising a fault may compose into it the fact
 that fault implies, because at that point the fact is part of the diagnostic. A
 `ReferenceError` is answered in the guest, at the call site, with the names of
 gg's modules, plus `lib` when the agent has loaded code. A documentation lookup
 that resolves nothing is answered by the host with at most three of the nearest
-names this agent binds, indented under the message. Each is a fact the fault
-implies, never advice about what to do with it.
+names this agent binds, indented under the message. A compile failure on an arm
+whose catalogue declares a library set is answered with that set, since it is
+what the compiler resolved against. Each is a fact the fault implies, never
+advice about what to do with it.
 
 ### Runtime errors
 
-The body is `{name}: {message}` as the guest composed it, followed by one stack
-frame:
+The body is what the language emitted: the error as its runtime composed it, the
+location that runtime reported, and whatever the program wrote to standard
+error.
 
 ```text
 `edit_file` failed (conflict): `oldString` matched 3 times in src/main.rs
     at line 12, column 5
 ```
 
-That frame is the model's own. The guest finds it by matching the marker that
-only frames inside the constructed function carry, so frames belonging to the
-shim and to the SDK are excluded by construction rather than by a denylist.
+The location is the model's own, because the program that ran is the program the
+model wrote and the next prompt carries that same text. Frames belonging to the
+SDK and to gg's own plumbing are dropped from a trace, which is a deletion like
+any other trim.
 
 ### Toolchain failures
 
@@ -69,12 +75,15 @@ goes to the operator's stream at `error` level.
 A notice is charged to the [System band](/gg/context-visibility/), where gg's
 own messages live.
 
-- Statements after a top-level `return` that could not run. The notice names the
-  count, quotes the first dead statement, and states the rule that made them
-  dead.
 - A `gg.programs.rerun` hand-over gg did not run. Three wordings, one per
   reason: the program failed afterwards, the program also ended the session, or
   the turn had already run as many programs as it may.
+- A [skill](/gg/skills/) or [memory](/gg/memories/) whose code failed to load, by
+  name and with what the failure said. Its `lib` binding is empty, and a name
+  that is not bound reads exactly like one the run never granted, so a model that
+  was not told would fix the wrong thing. The source is gg's or the workspace's
+  and the model has never been shown it, which is why this is a notice rather
+  than an error and why the source is not quoted.
 - The compiler-could-not-finish notice.
 - An ending an [agent-stop hook](/gg/hooks/) rejected, and the results of a
   deferred `wait_for_issue`.
@@ -84,12 +93,12 @@ own messages live.
 
 A program that ran and did what it meant to gets nothing back. The views it
 opened are the turn's result, and the system prompt states that a program which
-compiles and runs is not told so.
+ran is not told so.
 
 The exception is mechanical. A window that would otherwise end on the
 assistant's own message makes the next request ask the provider to continue that
-message rather than to answer it, so gg pushes a `Notice` rendered from the
-agent's own language template:
+message rather than to answer it, so gg pushes a `Notice` rendered under the
+agent's own language:
 
 ```text
 Your program ran and put nothing in your context.
@@ -127,8 +136,6 @@ console's activity feed:
 - every refused view call, and how many further view records a cap suppressed;
 - every view opened or replaced, with its kind, selector and token estimate, and
   every view closed, by selector;
-- that the program returned a value, which was discarded;
-- work the program deferred past its own end;
 - that a later ending call replaced an earlier one, how many times, and the
   summary the session ended on;
 - that an ending was revoked because the program then failed;

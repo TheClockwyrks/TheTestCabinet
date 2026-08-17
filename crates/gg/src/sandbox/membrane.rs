@@ -82,6 +82,7 @@ use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, W
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
 use super::language::{ProgramLanguage, spell};
 use super::limits::{MemoryLimiter, SandboxLimits};
+use super::locate::Locations;
 use super::operations::{
     Binding, Grants, OperationId, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
     operation,
@@ -95,10 +96,12 @@ mod context;
 mod delegation;
 mod docs;
 mod knowledge;
+pub(crate) mod math;
 mod programs;
 mod recording;
 mod session;
 mod views;
+pub(crate) mod wire;
 mod workspace;
 
 use recording::{GuardedApi, Recording};
@@ -294,6 +297,15 @@ pub(crate) struct MembraneState<A: ToolApi> {
     wasi_table: ResourceTable,
     /// Everything the guest wrote to **stderr**, bounded — see [`GuestStderr`].
     stderr: GuestStderr,
+    /// How a frame in what the guest wrote is read back into the text the model wrote, for an arm
+    /// whose compiler emits source — see [`ProgramLanguage::locations`].
+    locations: Option<Locations>,
+    /// The encoded answer [the JVM wire](wire)'s `call` produced and its `take` has not yet handed
+    /// over. Empty for every other guest on this membrane, which never imports that interface.
+    ///
+    /// It is held here for one call's width and no longer: see the `wire` interface's own note for
+    /// why a JVM guest cannot be handed an answer in the same call that produced it.
+    wire_held: Vec<u8>,
 }
 
 /// A bounded, in-memory copy of everything the guest wrote to **standard error**.
@@ -324,45 +336,137 @@ pub(crate) struct MembraneState<A: ToolApi> {
 /// # Why it never fails a write
 ///
 /// `MemoryOutputPipe`, the obvious answer, **traps** when a write would exceed its capacity, which
-/// would turn a chatty guest into a failed turn. This keeps the last [`STDERR_CAP`] bytes and drops
-/// what came before, which is the right end to keep: the message that precedes a trap is the last
-/// thing written.
-#[derive(Clone, Default)]
-pub(crate) struct GuestStderr(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-
-/// How much of a guest's stderr the host keeps — the tail.
+/// would turn a chatty guest into a failed turn. This keeps [both ends](Kept) of what was written
+/// and drops the middle.
 ///
-/// A runtime's dying message is a line or two. This is large enough that a stack trace or a
-/// compiler-style diagnostic survives whole, and small enough that a program looping on a write to
-/// fd 2 cannot grow the host's memory.
-const STDERR_CAP: usize = 8 * 1024;
+/// # Why both ends
+///
+/// Because the runtimes disagree about which end carries the fault, and a program that writes a
+/// great deal before dying loses whichever end is thrown away. Measured on this checkout, through
+/// gate G8:
+///
+/// * Mono writes `System.StackOverflowException` **first** and then a thousand identical frames,
+///   52 KB of them. Keeping the last 8 KiB kept a hundred and sixty copies of one frame and evicted
+///   the only sentence naming the fault.
+/// * A Rust panic and a Swift `fatalError` are the **last** thing on the channel, after whatever
+///   the program itself wrote to fd 2 — which on the C#, C++, Swift and Rust arms is the program's
+///   own text, since those four leave standard error to the program. Keeping the first 8 KiB would
+///   evict the panic.
+///
+/// So the head and the tail are budgeted separately and what falls between them is deleted. Nothing
+/// under [`STDERR_HEAD`] + [`STDERR_TAIL`] is touched at all, which is every guest report that gate
+/// measures apart from that one.
+#[derive(Clone, Default)]
+pub(crate) struct GuestStderr(std::sync::Arc<std::sync::Mutex<Kept>>);
+
+/// How much of the **start** of a guest's stderr the host keeps.
+const STDERR_HEAD: usize = 4 * 1024;
+
+/// How much of the **end** of a guest's stderr the host keeps.
+///
+/// Equal to [`STDERR_HEAD`], because neither end is the more likely to carry the fault: which one
+/// does is a property of the runtime that wrote it, and gg reads eleven of them. Together they are
+/// large enough that a stack trace or a compiler-style diagnostic survives whole, and small enough
+/// that a program looping on a write to fd 2 cannot grow the host's memory.
+const STDERR_TAIL: usize = 4 * 1024;
+
+/// What the host is holding of one guest's standard error.
+///
+/// [`head`](Self::head) fills once and never moves again; everything after it lands in
+/// [`tail`](Self::tail), which rolls. [`dropped`](Self::dropped) is what rolled off, and it is what
+/// makes this a bound rather than a truncation.
+#[derive(Default)]
+struct Kept {
+    /// The first [`STDERR_HEAD`] bytes written, whatever came after them.
+    head: Vec<u8>,
+    /// The last [`STDERR_TAIL`] bytes written, of everything past the head.
+    tail: Vec<u8>,
+    /// How many bytes were written between the two and deleted.
+    dropped: usize,
+}
 
 impl GuestStderr {
-    /// Append `bytes`, keeping only the last [`STDERR_CAP`] of everything written so far.
+    /// Append `bytes`, filling the head first and rolling the tail after it.
     fn append(&self, bytes: &[u8]) {
-        let mut buffer = self
+        let mut kept = self
             .0
             .lock()
             .expect("the guest stderr buffer is never poisoned");
-        buffer.extend_from_slice(bytes);
-        if buffer.len() > STDERR_CAP {
-            let excess = buffer.len() - STDERR_CAP;
-            buffer.drain(..excess);
+        let mut bytes = bytes;
+        if kept.head.len() < STDERR_HEAD {
+            let take = (STDERR_HEAD - kept.head.len()).min(bytes.len());
+            kept.head.extend_from_slice(&bytes[..take]);
+            bytes = &bytes[take..];
+        }
+        kept.tail.extend_from_slice(bytes);
+        if kept.tail.len() > STDERR_TAIL {
+            let excess = kept.tail.len() - STDERR_TAIL;
+            kept.tail.drain(..excess);
+            kept.dropped += excess;
         }
     }
 
     /// What the guest wrote, as text, or the empty string when it wrote nothing.
     ///
+    /// A guest that wrote no more than [`STDERR_HEAD`] + [`STDERR_TAIL`] bytes reads back exactly
+    /// what it wrote, with no line of gg's in it. A guest that wrote more reads back its own head,
+    /// [one line counting the deletion](dropped_bytes), and its own tail.
+    ///
+    /// The count is in **bytes**, which is the unit the eviction above worked in, and it is what
+    /// tells a model it is reading a bounded report rather than a whole one. It is the count the
+    /// same requirement puts on
+    /// [every other trim](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#trimming),
+    /// spelt in the unit this one actually counted.
+    ///
+    /// Both cuts are moved out to a line boundary and the bytes that move with them are added to
+    /// the count, because a frame cut in half reads as a frame the runtime wrote that way. A half
+    /// of the channel holding no newline at all is kept as it stands: a runtime that wrote four
+    /// kilobytes without ending a line has said one thing, and cutting all of it away to reach a
+    /// boundary would delete the report to tidy it.
+    ///
     /// Lossy, because these are a runtime's own bytes and not something gg chose the encoding of —
     /// and a message a model could have read, dropped because one byte was not UTF-8, would be the
     /// worst possible trade here.
-    pub(crate) fn tail(&self) -> String {
-        let buffer = self
+    pub(crate) fn kept(&self) -> String {
+        let kept = self
             .0
             .lock()
             .expect("the guest stderr buffer is never poisoned");
-        String::from_utf8_lossy(&buffer).trim().to_string()
+        if kept.dropped == 0 {
+            let mut whole = kept.head.clone();
+            whole.extend_from_slice(&kept.tail);
+            return String::from_utf8_lossy(&whole).trim().to_string();
+        }
+        // The head keeps everything up to and including its last newline; the tail starts after its
+        // first one. Either half without a newline is kept whole, and contributes nothing here.
+        let head = match kept.head.iter().rposition(|byte| *byte == b'\n') {
+            Some(end) => &kept.head[..=end],
+            None => &kept.head[..],
+        };
+        let tail = match kept.tail.iter().position(|byte| *byte == b'\n') {
+            Some(start) => &kept.tail[start + 1..],
+            None => &kept.tail[..],
+        };
+        let dropped =
+            kept.dropped + (kept.head.len() - head.len()) + (kept.tail.len() - tail.len());
+        let mut text = String::from_utf8_lossy(head).into_owned();
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&dropped_bytes(dropped));
+        text.push('\n');
+        text.push_str(&String::from_utf8_lossy(tail));
+        text.trim().to_string()
     }
+}
+
+/// The line a model reads in place of what it was not shown.
+///
+/// Worded after the Python guest's own trim, which counts the characters
+/// it deleted off the end of a rendered traceback, because this is the same statement about the same
+/// kind of channel and a second phrasing for it would read as a second kind of bound.
+fn dropped_bytes(dropped: usize) -> String {
+    format!("… {dropped} bytes dropped")
 }
 
 impl wasmtime_wasi::cli::IsTerminal for GuestStderr {
@@ -396,11 +500,11 @@ impl wasmtime_wasi::p2::OutputStream for GuestStderr {
     }
 
     /// Always writable, and never in a quantity that could refuse a write. What bounds this channel
-    /// is [`STDERR_CAP`], which *drops* the oldest bytes rather than denying the newest — a guest
-    /// told its stderr was full is a guest whose runtime may block, retry or trap on gg's
-    /// bookkeeping.
+    /// is [`STDERR_HEAD`] and [`STDERR_TAIL`], which *drop* what fell between them rather than
+    /// denying the newest — a guest told its stderr was full is a guest whose runtime may block,
+    /// retry or trap on gg's bookkeeping.
     fn check_write(&mut self) -> wasmtime_wasi::p2::StreamResult<usize> {
-        Ok(STDERR_CAP)
+        Ok(STDERR_HEAD + STDERR_TAIL)
     }
 }
 
@@ -465,6 +569,24 @@ impl<A: ToolApi> WasiView for MembraneState<A> {
     }
 }
 
+/// The variable [`wasi_context`] names this run's execution budget in.
+///
+/// Read today by the ECMAScript guest alone (`packages/gg-sandbox/guest`); a guest that does not
+/// read it simply has gg's epoch deadline as its only ceiling, which is what every arm had before it.
+pub(crate) const GUEST_DEADLINE: &str = "GG_SANDBOX_DEADLINE_MS";
+
+/// The budget a guest that can stop itself is given: gg's execution ceiling, less one epoch tick.
+///
+/// Never zero and never longer than gg's own — `saturating_sub` on a ceiling shorter than a tick
+/// leaves nothing, and a budget of nothing would interrupt a program before its first statement, so
+/// the floor is half the ceiling.
+pub(crate) fn guest_deadline(limits: SandboxLimits) -> Duration {
+    limits
+        .timeout
+        .saturating_sub(super::engine::EPOCH_TICK)
+        .max(limits.timeout / 2)
+}
+
 /// The WASI context every program gets: the process's environment, a real clock and RNG, the
 /// network, and the filesystem preopened at `/`.
 ///
@@ -484,10 +606,43 @@ impl<A: ToolApi> WasiView for MembraneState<A> {
 /// which is why [`preopen_root`] is a named function rather than a line here: an ignored failure
 /// that is also an *unobserved* one would leave a whole capability quietly missing, so a test calls
 /// it and asserts it worked.
-fn wasi_context(stderr: GuestStderr) -> WasiCtx {
+fn wasi_context(
+    language: &'static dyn ProgramLanguage,
+    stderr: GuestStderr,
+    limits: SandboxLimits,
+) -> WasiCtx {
     let mut builder = WasiCtxBuilder::new();
+    builder.inherit_env();
+    // **This run's execution budget, in milliseconds**, for the arms whose engine can stop a runaway
+    // loop ITSELF, and for no others.
+    //
+    // gg's own ceiling is the epoch deadline and stays so; what this buys is which of the two speaks
+    // first. An epoch trap names nothing a model can act on — the store simply dies — where the
+    // ECMAScript guest's engine answers with `InternalError: interrupted` and the JavaScript frames
+    // that were executing. That guest subtracts its own parked-in-a-host-call time before deciding,
+    // exactly as [`guest_elapsed`](MembraneState::guest_elapsed) does here, so a program sitting in
+    // a twenty-minute `shell` build is not mistaken for one that is looping.
+    //
+    // Written only where it is read, because the same fact decides how a failure at the ceiling is
+    // classified: [`spent_its_budget`](super::engine) recognises gg's ceiling from the elapsed time
+    // for an arm whose guest stops itself, and that recognition would be a guess on an arm gg stops.
+    //
+    // An environment variable rather than a WIT parameter because the world is shared with ten
+    // sibling guests and adding a parameter reshapes every one of them.
+    //
+    // ONE EPOCH TICK SHORT of gg's own ceiling, and the subtraction is what makes the whole thing
+    // work rather than a rounding nicety. gg's deadline is armed in whole ticks against a
+    // free-running counter, so it can be delivered up to a tick EARLY; a guest asked to stop at
+    // the same instant therefore loses the race and the model reads an epoch trap after all —
+    // measured, on a 250 ms ceiling. A tick is gg's own resolution, so giving it away costs a
+    // 30 s budget 0.3% of itself and buys every runaway loop a sentence naming the function.
+    if language.stops_itself_at_ggs_deadline() {
+        builder.env(
+            GUEST_DEADLINE,
+            guest_deadline(limits).as_millis().to_string(),
+        );
+    }
     builder
-        .inherit_env()
         .inherit_network()
         .allow_ip_name_lookup(true)
         // Kept rather than inherited: this process's stderr is an operator's log, and a guest
@@ -608,19 +763,61 @@ impl<A: ToolApi> MembraneState<A> {
             program_error: None,
             rerun: None,
             revoked_rerun: false,
-            wasi: wasi_context(stderr.clone()),
+            wasi: wasi_context(language, stderr.clone(), limits),
             wasi_table: ResourceTable::new(),
             stderr,
+            locations: None,
+            wire_held: Vec::new(),
         }
     }
 
-    /// What the guest wrote to **stderr**, or the empty string when it wrote nothing.
+    /// Read every frame the guest reports through `locations` before gg shows it to anyone.
+    ///
+    /// Set once, by [`evaluate`](super::evaluate), out of the arm's own answer for the texts this
+    /// program is made of. It is a builder rather than a sixth constructor parameter because it is
+    /// a property of the *prepared* program, which the state's other four arguments know nothing
+    /// about.
+    pub(crate) fn locating(mut self, locations: Option<Locations>) -> Self {
+        self.locations = locations;
+        self
+    }
+
+    /// The language this program is written in, for the one question
+    /// [`classify`](super::engine::classify) has to ask an arm before it renders a failure: whether
+    /// this artifact's DWARF names places the model's program has. See
+    /// [`ProgramLanguage::wasm_frames_are_located`].
+    pub(crate) fn language(&self) -> &'static dyn ProgramLanguage {
+        self.language
+    }
+
+    /// What the guest wrote to **stderr**, bounded at both ends, or the empty string when it wrote
+    /// nothing.
     ///
     /// Read by [`classify`](super::engine::classify) when a program failed, because on a guest
     /// without an exception mechanism this is the only account of the failure that exists. See
     /// [`GuestStderr`].
-    pub(crate) fn stderr_tail(&self) -> String {
-        self.stderr.tail()
+    /// Frames are read back through this program's own [locations](Self::locating) on the way out,
+    /// so what gg reports is what the model wrote rather than what its compiler emitted.
+    pub(crate) fn stderr_kept(&self) -> String {
+        let said = self.stderr.kept();
+        match &self.locations {
+            Some(locations) => locations.rewrite(&said),
+            None => said,
+        }
+    }
+
+    /// Put `text` on the guest's stderr, exactly as a language runtime writing to fd 2 does.
+    ///
+    /// The seam [`classify`](super::engine::classify)'s own tests drive: what they are asserting is
+    /// that a guest which spoke on its way down is heard on **every** classification path, and the
+    /// alternative way to arm that is to compile an arm's toolchain and provoke a real runtime
+    /// failure — which is a per-arm substrate test costing seconds, not a property of the classifier.
+    ///
+    /// `#[cfg(test)]` because production writes here only through the WASI stream: a host-side
+    /// caller that could invent a guest's diagnostics is exactly what this channel must not have.
+    #[cfg(test)]
+    pub(crate) fn note_stderr(&self, text: &str) {
+        self.stderr.append(text.as_bytes());
     }
 
     /// The memory limiter, for [`Store::limiter`](wasmtime::Store::limiter) to consult before each
@@ -662,10 +859,9 @@ impl<A: ToolApi> MembraneState<A> {
     ///
     /// Read by [`keep_reported_error`](super::keep_reported_error) after a trap, and only there. A
     /// guest that catches its own throw reports the failure and then returns normally, so for every
-    /// arm with an exception mechanism this is never consulted; a guest without one — a Rust program
-    /// on `wasm32-unknown-unknown`, whose panic hook makes this call and whose panic then aborts —
-    /// reaches the host with the failure recorded and the store trapped, and the recorded failure is
-    /// the better of the two things gg could tell the model.
+    /// arm with an exception mechanism this is never consulted; a guest that reports a failure and
+    /// is then killed by its own runtime reaches the host with the failure recorded and the store
+    /// trapped, and the recorded failure is the better of the two things gg could tell the model.
     pub(crate) fn reported_error(&self) -> bool {
         self.program_error.is_some()
     }
@@ -1181,3 +1377,7 @@ impl<A: ToolApi> types::Host for MembraneState<A> {}
 #[cfg(test)]
 #[path = "membrane.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "membrane.stderr.test.rs"]
+mod stderr_tests;

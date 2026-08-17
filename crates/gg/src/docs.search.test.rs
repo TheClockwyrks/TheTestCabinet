@@ -689,3 +689,230 @@ fn every_language_answers_only_with_what_its_agent_binds() {
         }
     }
 }
+
+/// **Every argument an arm declares is in the index**: its name with the signature, its own line
+/// with the detail.
+///
+/// Asserted over the index rather than through a query because it is a statement about what the
+/// evidence *is* — a search can only be as good as what was filed — and over every arm because the
+/// thing it defends is cross-arm. Ten arms write an argument's name into the signature string
+/// themselves; the eleventh declares a curried type that names nothing, and before the names were
+/// read off `parameters` a model on that arm could not find a call by an argument it had been told
+/// the name of.
+#[test]
+fn every_arguments_name_and_description_is_indexed() {
+    for language in crate::sandbox::all_languages() {
+        let index = index(language);
+        for function in crate::sandbox::catalogue_functions(language) {
+            // An entry gg has no operation for is not indexed at all, and could never be returned.
+            let Some(entry) = index
+                .entries
+                .iter()
+                .find(|entry| entry.kind == DocKind::Function && entry.key == function.fqn)
+            else {
+                continue;
+            };
+            for shape in function.signatures {
+                for parameter in &shape.parameters {
+                    assert!(
+                        entry.signature.contains(&parameter.name.to_lowercase()),
+                        "{}: `{}`'s argument `{}` is in no signature evidence",
+                        language.display_name(),
+                        function.fqn,
+                        parameter.name,
+                    );
+                    assert!(
+                        entry.detail_folded.contains(&parameter.doc.to_lowercase()),
+                        "{}: what `{}`'s argument `{}` says is in no detail evidence",
+                        language.display_name(),
+                        function.fqn,
+                        parameter.name,
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// **An argument's name finds the call it belongs to, on every arm.**
+///
+/// The query is the arm's own spelling of the argument, taken from the same catalogue the search
+/// reads, because eleven arms name one argument several ways — `old_string`, `oldString`, and
+/// Swift's label `replacing` — and a test carrying its own copy of that would be testing the copy.
+#[test]
+fn an_argument_name_finds_its_call_on_every_arm() {
+    for language in crate::sandbox::all_languages() {
+        let docs = on(language.id());
+        let edit = crate::sandbox::catalogue_functions(language)
+            .into_iter()
+            .find(|function| function.operation == "files.edit_file")
+            .expect("every arm binds files.edit_file");
+        // The argument that is not the path: every arm takes three, and the second is the one whose
+        // name is distinctive enough that the answer is about it rather than about paths.
+        let named = edit.signatures[0].parameters[1].name.as_str();
+        let found = docs
+            .search(DocQuery {
+                query: named,
+                limit: Some(MAX_SEARCH_LIMIT),
+                ..DocQuery::default()
+            })
+            .expect("a usable query");
+        assert!(
+            found.hits.iter().any(|hit| hit.key == edit.fqn),
+            "{}: `{}` names `{}`'s second argument and finds {:?}",
+            language.display_name(),
+            named,
+            edit.fqn,
+            keys(&found),
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Modules
+// ---------------------------------------------------------------------------------------------
+
+/// **A module is a searchable kind, and the hit opens.**
+///
+/// The module is the entry a model needs before any other: nothing gg offers is in scope until the
+/// program has imported the module a symbol lives in, so a surface whose modules are unsearchable
+/// hands a model names it has no route to reach. Before this the prompt named module paths that
+/// search could not return and `open-doc-view` could not open.
+#[test]
+fn a_module_is_searchable_and_its_hit_opens() {
+    let docs = full();
+    let found = docs
+        .search(DocQuery {
+            query: "",
+            module: Some("files"),
+            kind: Some("module"),
+            limit: Some(MAX_SEARCH_LIMIT),
+            ..DocQuery::default()
+        })
+        .expect("a filter is something to look for");
+
+    let hit = found.hits.first().expect("the files module is a hit");
+    assert_eq!(hit.kind, DocKind::Module);
+    assert!(!hit.summary.is_empty(), "a module carries its brief");
+    assert!(
+        !hit.summary.contains('\n'),
+        "a brief is one line: {:?}",
+        hit.summary
+    );
+    let view = docs
+        .read_any(&hit.key)
+        .expect("a module search returned opens as a module view");
+    assert!(
+        view.len() > hit.summary.len(),
+        "the view carries more than the hit did"
+    );
+}
+
+/// **A module's view says how to reach it and what is in it.**
+///
+/// The whole reason a module is a view rather than a line in a listing: the import is the line a
+/// program has to write, and the entries under it are what importing it buys. Both are read off the
+/// arm's own catalogue, so no arm's spelling is written down here.
+#[test]
+fn a_module_view_carries_its_import_line_and_its_bound_functions() {
+    for language in crate::sandbox::all_languages() {
+        let docs = on(language.id());
+        for module in crate::sandbox::catalogue_modules(crate::sandbox::language(language.id())) {
+            let Some(view) = docs.read_module(module.path) else {
+                continue;
+            };
+            assert!(
+                view.contains("Defined in"),
+                "{}: `{}` does not say where it is defined:\n{view}",
+                language.display_name(),
+                module.path
+            );
+            if let Some(import) = module.import {
+                assert!(
+                    view.contains(import),
+                    "{}: `{}` does not quote the line a program writes:\n{view}",
+                    language.display_name(),
+                    module.path
+                );
+            }
+            let published =
+                crate::sandbox::catalogue_functions(crate::sandbox::language(language.id()))
+                    .into_iter()
+                    .filter(|function| {
+                        crate::sandbox::operation_of(function)
+                            .is_some_and(|operation| operation.id.namespace == module.id)
+                    })
+                    .count();
+            assert!(published > 0, "a readable module publishes something");
+            assert!(
+                view.lines().count() > 1,
+                "{}: `{}` lists none of what it offers:\n{view}",
+                language.display_name(),
+                module.path
+            );
+        }
+    }
+}
+
+/// **A module every function of which this run withheld is not returned and does not open.**
+///
+/// The same rule a type keeps, for the same reason: a module is not a call, so it is gated by
+/// reachability rather than on its own account — and a module list a model can read that describes
+/// a surface it cannot use is a turn spent writing calls that refuse.
+#[test]
+fn a_module_with_nothing_bound_is_neither_returned_nor_openable() {
+    let docs = runtime(&[CAPABILITY_READ_FILE]);
+    let found = docs
+        .search(DocQuery {
+            query: "",
+            kind: Some("module"),
+            limit: Some(MAX_SEARCH_LIMIT),
+            ..DocQuery::default()
+        })
+        .expect("a filter is something to look for");
+    assert!(
+        !found.hits.is_empty(),
+        "the module the one granted call lives in is still there"
+    );
+    for hit in &found.hits {
+        assert!(
+            docs.read_any(&hit.key).is_some(),
+            "`{}` came back from a search and does not open",
+            hit.key
+        );
+    }
+
+    let shell =
+        crate::sandbox::catalogue_modules(crate::sandbox::language(GgProgramLanguage::TypeScript))
+            .into_iter()
+            .find(|module| module.id == "shell")
+            .expect("the shell module is declared");
+    assert!(
+        !keys(&found).contains(&shell.path),
+        "a module holding nothing this agent may call is not offered: {:?}",
+        keys(&found)
+    );
+    assert!(
+        docs.read_module(shell.path).is_none(),
+        "and it does not open either"
+    );
+}
+
+/// An unrecognised `kind` names all three rather than the two it used to.
+#[test]
+fn an_unknown_kind_names_every_kind_there_is() {
+    let refusal = full()
+        .search(DocQuery {
+            query: "read",
+            kind: Some("namespace"),
+            ..DocQuery::default()
+        })
+        .expect_err("a kind gg has no word for is refused");
+    for named in ["module", "function", "type"] {
+        assert!(
+            refusal.message.contains(named),
+            "the refusal offers `{named}` back: {}",
+            refusal.message
+        );
+    }
+}

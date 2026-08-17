@@ -2,9 +2,9 @@
 //!
 //! # Why this gate exists, and why it exists *here*
 //!
-//! Two things gg renders contain Swift a model is invited to copy: this arm's responses-as-code
-//! system prompt (with the "your program showed you nothing" notice beside it) and its
-//! signature catalogue, whose prose is reflected out of the SDK's own documentation comments and
+//! Two things gg renders contain Swift a model is invited to copy: the responses-as-code system
+//! prompt as it renders for this arm (with the "your program showed you nothing" notice beside it)
+//! and this arm's signature catalogue, whose prose is reflected out of the SDK's own documentation comments and
 //! rendered into documentation views. Everything about those two that can be checked without a
 //! compiler already is — [`prompts::spellings`](crate::prompts) resolves every call *name* they
 //! quote against the catalogue, and every argument name beside one against that signature — and
@@ -49,7 +49,7 @@ use super::compile::compile_program;
 use crate::prompts::{
     AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
     ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
-    render_code_nothing_shown_for, render_system_for,
+    render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
     PrepareContext, ProgramLanguage, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
@@ -61,8 +61,8 @@ fn swift() -> &'static dyn ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Swift)
 }
 
-/// A context with every section this arm's prompt can render turned on, so no example is missed for
-/// living in a branch a narrower run does not take.
+/// A context with every section the prompt can render for this arm turned on, so no example is
+/// missed for living in a branch a narrower run does not take.
 ///
 /// Both ending roles are on at once, which no real run is: the template asks after each
 /// independently, and rendering both is how one pass covers all three ending spellings.
@@ -73,7 +73,7 @@ fn everything_on() -> SystemContext {
     };
     SystemContext {
         responses_as_code: true,
-        language: Some(GgProgramLanguage::Swift),
+        language: Some(crate::prompts::language_view(GgProgramLanguage::Swift)),
         program_library: true,
         modules: vec![ModuleView {
             path: "gg.files".to_string(),
@@ -101,6 +101,8 @@ fn everything_on() -> SystemContext {
         skills: vec![SkillView {
             name: "physics".to_string(),
             description: "How to tune the simulation.".to_string(),
+            carries_code: true,
+            carries_on_use_script: true,
         }],
         memories: Some(MemoriesView {
             scratchpad: false,
@@ -149,7 +151,7 @@ fn everything_on() -> SystemContext {
 /// same library set a model's own reply gets.
 #[test]
 fn every_swift_example_a_model_is_shown_compiles() {
-    let prompt = render_system_for(swift(), &everything_on());
+    let prompt = render_system(&everything_on(), None).expect("the code system prompt renders");
     let notice = render_code_nothing_shown_for(swift());
     let catalogue: serde_json::Value =
         serde_json::from_str(super::SIGNATURES).expect("the generated catalogue is JSON");
@@ -194,7 +196,12 @@ fn every_swift_example_a_model_is_shown_compiles() {
     // Each snippet is the body of its own `throws` function, which is what admits the `try` every
     // call on this surface needs — and what keeps one snippet's bindings out of the next one's
     // scope. Nothing calls them: this gate compiles examples rather than running them.
-    let mut program = String::new();
+    //
+    // The one line above them is [the import](super::SURFACE_IMPORT) an example is written to be
+    // read under, and it is written here rather than in each snippet for the reason a model writes
+    // it once: it is a property of the file, not of the call. An example that named a module the
+    // catalogue does not carry still fails, because this line brings that one module and no other.
+    let mut program = format!("{}\n\n", super::SURFACE_IMPORT);
     for (index, (label, snippet)) in snippets.iter().enumerate() {
         program.push_str(&format!(
             "// {label}\nfunc __ggExample{index}() throws {{\n{}\n}}\n",

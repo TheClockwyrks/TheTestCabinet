@@ -161,6 +161,29 @@ fn a_documentation_program_with_no_names_is_still_a_program() {
     );
 }
 
+/// **The opening program is top-level statements**, and it covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote C# — collection
+/// expressions, `foreach`, **optional arguments passed by name** — and that the search is the
+/// whole-module lookup rather than the default page of one.
+#[test]
+fn the_opening_program_is_top_level_statements() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        csharp().bootstrap_program(&["files", "views"], &["ReadFile"]),
+        format!(
+            "string[] modules =\n[\n    \"files\",\n    \"views\",\n];\n\
+             foreach (var path in modules)\n{{\n    \
+                 Gg.Docs.Search(\"\", module: path, limit: {limit});\n}}\n\
+             \n\
+             string[] functions =\n[\n    \"ReadFile\",\n];\n\
+             foreach (var name in functions)\n{{\n    Gg.Views.OpenDocsView(name);\n}}\n"
+        )
+    );
+}
+
 /// **The isolation gate's module subject is a class body**, not this arm's documentation program.
 ///
 /// The seam's default subject is that program, and here it is not a module at all: top-level
@@ -168,7 +191,7 @@ fn a_documentation_program_with_no_names_is_still_a_program() {
 /// over C#'s grammar rather than over anything about isolation.
 #[test]
 fn the_isolation_subject_for_a_module_is_a_public_member() {
-    let module = csharp().isolation_module("gg-isolation-000-marker");
+    let module = csharp().gate_module("gg-isolation-000-marker");
     assert_eq!(
         module,
         "public static string Marker() => \"gg-isolation-000-marker\";\n"
@@ -206,4 +229,28 @@ fn the_isolation_reading_takes_the_transport_encoding_back_off() {
 fn an_artifact_that_is_not_base64_survives_the_reading_unchanged() {
     let bytes = b"not base64 at all !!".to_vec();
     assert_eq!(csharp().isolation_readable(bytes.clone()), bytes);
+}
+
+/// **Every module of this arm's catalogue states the one line gg writes down beside it.**
+///
+/// Two copies of `using Gg;` exist and they have to be the same string: the one
+/// `packages/gg-sandbox-csharp/tools/Catalogue.cs` reflects into every module's
+/// [import](crate::sandbox::ModuleDoc::import), which is what a documentation view quotes to a
+/// model, and [`SURFACE_IMPORT`](super::SURFACE_IMPORT), which is what gg's own gates and refusals
+/// write. A model told one line and handed another is a compile error on the turn it copied.
+///
+/// Every module rather than one, because the field is per module and an arm that stated a line for
+/// half its surface would be telling models the other half is in scope already.
+#[test]
+fn every_module_states_the_one_import_line_this_arm_writes() {
+    let modules = crate::sandbox::catalogue_modules(csharp());
+    assert!(!modules.is_empty(), "this arm declares modules");
+    for module in modules {
+        assert_eq!(
+            module.import,
+            Some(super::SURFACE_IMPORT),
+            "`{}` states an import line gg does not write",
+            module.path
+        );
+    }
 }

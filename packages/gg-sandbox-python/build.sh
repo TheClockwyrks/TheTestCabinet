@@ -25,8 +25,8 @@
 #                                          direction)
 #   * packages/gg-sandbox-python/src/**   (the shim, the SDK, or the curated library set — and if
 #                                          what changed is `library.py`'s imports, that is also a
-#                                          change to what the system prompt tells a model it may
-#                                          import, which `signatures.sh` reflects off the same tree
+#                                          change to the set gg quotes back to a model on a compile
+#                                          failure, which `signatures.sh` reflects off the same tree
 #                                          on the same build)
 #   * packages/gg-sandbox-python/requirements.txt  (the pinned third-party wheels)
 #   * packages/gg-sandbox-python/build.sh (this file — the pinned COMPONENTIZE_VERSION below, and
@@ -159,7 +159,7 @@ uvx --quiet --offline --from "componentize-py==$COMPONENTIZE_VERSION" componenti
 # EVERY FILE THAT MANIFEST NAMED IS NOW IN THIS ARM'S RERUN SET, in `gg-artifact-build`'s table, and
 # `requirements.txt` is there for the reason it was recorded here: step 1 vendors exactly what it
 # pins and step 3 bakes the import closure of what the shim reached, so a wheel bumped without a
-# rebuild is a library the prompt names at one version and the guest carries at another. `build.sh`
+# rebuild is a library the catalogue names at one version and the guest carries at another. `build.sh`
 # is there because the recipe is an input — the flags above decide what the artifact is.
 #
 # The `--ignore`d paths went with it and needed no replacement: `src/**/__pycache__` was excluded

@@ -2,9 +2,8 @@ package gg.skills;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
-import gg.internal.Read;
-import gg.internal.Wire;
-import java.util.List;
+import gg.internal.Coding;
+import gg.internal.Value;
 
 /**
  * Read the authored skills this run offers.
@@ -33,7 +32,6 @@ public final class Skills {
      * @ggop skills.read_skill
      */
     public static String readSkill(String name) {
-        return Wire.asString(Wire.call("read_skill", Wire.skills(), "skills", "readSkill",
-                Wire.args(Wire.text(name))));
+        return Coding.call("skills.read_skill", Value.of(name)).text();
     }
 }

@@ -18,14 +18,14 @@
 use serde_json::{Value, json};
 
 use super::substrate::{
-    evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, program_error,
+    evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, trap,
 };
 use crate::ending::{Ending, EndingRole};
 use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
 
 use crate::sandbox::fake::{CallLog, all_operations, all_operations_without, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
-use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
+use crate::sandbox::outcome::SandboxOutcome;
 use crate::tools::{ToolFailure, ToolOutcome};
 
 /// The catalogue this arm's build reflects, read as a **document** rather than through
@@ -54,6 +54,36 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
     entry[field]
         .as_str()
         .unwrap_or_else(|| panic!("an entry carries a `{field}`: {entry}"))
+}
+
+/// **A whole Rust program**, written the way a model writes one: the line the catalogue states for
+/// each module it reaches, then the `fn main` this arm asks for, then `body`.
+///
+/// A helper rather than a literal in every test because the one thing every test in this file shares
+/// is that **gg writes nothing around a program** — so the imports have to come from somewhere the
+/// test can be read to have written them, and this is that place. Each module is reached by exactly
+/// the line the catalogue publishes for it, `use gg::<module>;`, gathered into the one brace-list a
+/// Rust author would write; `gg::log` and every other name a body spells in full needs no line at
+/// all, because `--extern gg=…` puts the crate in the extern prelude.
+///
+/// `Result<(), gg::Failure>` because every body here composes a call with `?`.
+fn whole(imports: &[&str], body: &str) -> String {
+    let uses = match imports {
+        [] => String::new(),
+        [one] => format!("use gg::{one};\n\n"),
+        many => format!("use gg::{{{}}};\n\n", many.join(", ")),
+    };
+    format!("{uses}fn main() -> Result<(), gg::Failure> {{\n{body}    Ok(())\n}}\n")
+}
+
+/// The module a call written `files::read_file(…)` reaches, which is the word in front of its first
+/// `::` — so the import line a test writes is derived from the call it drives rather than restated
+/// beside it.
+fn module_of(statement: &str) -> &str {
+    statement
+        .split_once("::")
+        .map(|(module, _)| module)
+        .unwrap_or(statement)
 }
 
 /// Compile and run one Rust program with `enabled`'s tools offered and no ending group.
@@ -346,11 +376,17 @@ fn every_tool_crosses_the_membrane_from_its_rust_spelling() {
     // would be two and a half seconds of `rustc` for a table that reads the same. It is also the
     // stronger check — the calls must arrive in the order the program made them, so a call that
     // reached gg's dispatch under a NEIGHBOUR's name fails here as well.
-    let program = crossings
+    let mut imports: Vec<&str> = crossings
         .iter()
-        .map(|crossing| format!("{}\n", crossing.statement))
+        .map(|crossing| module_of(crossing.statement))
+        .collect();
+    imports.sort_unstable();
+    imports.dedup();
+    let body = crossings
+        .iter()
+        .map(|crossing| format!("    {}\n", crossing.statement))
         .collect::<String>();
-    let (outcome, log) = run_with(&program, &all_operations(), canned_outcome);
+    let (outcome, log) = run_with(&whole(&imports, &body), &all_operations(), canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the program did not run cleanly: {:?}",
@@ -390,43 +426,43 @@ fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too()
     // above — and they are where a program puts something in front of the model and finds out what
     // it may call at all, which makes them the ones a silent bridging mistake would cost the most.
     let (outcome, log) = evaluate(
-        &prepare(
-            r####"
-let window = files::ReadOptions { offset: Some(1), limit: Some(2) };
-let text = files::read_text_file("notes.md", window)?;
-let read = views::open_file("notes.md", window)?;
-views::open_text("summary", &text)?;
-views::open_docs_view("read_file")?;
-let closed = views::close("summary")?;
-let missing = views::close("never opened")?;
-let open = views::current();
-gg::log(format!("{} {:?}", open[0].selector, open[0].kind));
-gg::log(format!("{closed} {missing}"));
-gg::log(match read {
-    files::FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
-    files::FileRead::Image(picture) => picture.label,
-});
-let found = docs::search(
-    "open",
-    docs::SearchOptions {
-        module: Some("views"),
-        kind: Some(docs::DocKind::Function),
-        limit: Some(5),
-        ..Default::default()
-    },
-)?;
-gg::log(format!("{} {} {}", found.total, found.offset, found.hits.len()));
-match docs::close("gg::views::open_text") {
-    Ok(count) => gg::log(format!("closed {count}")),
-    Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
-}
-match docs::close_all() {
-    Ok(count) => gg::log(format!("closed {count}")),
-    Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
-}
-session::finish("read the file and showed the result")?;
+        &prepare(&whole(
+            &["docs", "files", "session", "views"],
+            r####"    let window = files::ReadOptions { offset: Some(1), limit: Some(2) };
+    let text = files::read_text_file("notes.md", window)?;
+    let read = views::open_file("notes.md", window)?;
+    views::open_text("summary", &text)?;
+    views::open_docs_view("read_file")?;
+    let closed = views::close("summary")?;
+    let missing = views::close("never opened")?;
+    let open = views::current();
+    gg::log(format!("{} {:?}", open[0].selector, open[0].kind));
+    gg::log(format!("{closed} {missing}"));
+    gg::log(match read {
+        files::FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
+        files::FileRead::Image(picture) => picture.label,
+    });
+    let found = docs::search(
+        "open",
+        docs::SearchOptions {
+            module: Some("views"),
+            kind: Some(docs::DocKind::Function),
+            limit: Some(5),
+            ..Default::default()
+        },
+    )?;
+    gg::log(format!("{} {} {}", found.total, found.offset, found.hits.len()));
+    match docs::close("gg::views::open_text") {
+        Ok(count) => gg::log(format!("closed {count}")),
+        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
+    }
+    match docs::close_all() {
+        Ok(count) => gg::log(format!("closed {count}")),
+        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
+    }
+    session::finish("read the file and showed the result")?;
 "####,
-        ),
+        )),
         &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
         RunEnding::Role(EndingRole::Standard),
@@ -476,11 +512,11 @@ session::finish("read the file and showed the result")?;
     // window, so nothing is open and `0` is the honest number — a success, exactly as it is in
     // production for a key that is not open.
     let (granted, _log) = evaluate_closing_docviews(
-        &prepare(
-            r####"
-gg::log(format!("{} {}", docs::close("gg::views::open_text")?, docs::close_all()?));
+        &prepare(&whole(
+            &["docs"],
+            r####"    gg::log(format!("{} {}", docs::close("gg::views::open_text")?, docs::close_all()?));
 "####,
-        ),
+        )),
         canned_outcome,
     );
     assert_eq!(logs(&granted), ["0 0"]);
@@ -501,18 +537,18 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_rust_too() {
     // gets the other ending group. Between this, the two functions above and the alias case below,
     // every function this arm's catalogue describes has been driven through the real membrane.
     let (outcome, _log) = evaluate(
-        &prepare(
-            r####"
-let history = programs::history()?;
-gg::log(history.len().to_string());
-match programs::get(Some(2)) {
-    Ok(source) => gg::log(source),
-    Err(failure) => gg::log(format!("{:?}", failure.code)),
-}
-programs::rerun("gg::log(\"again\");")?;
-session::request_changes(&["widen the test", "name the file"])?;
+        &prepare(&whole(
+            &["programs", "session"],
+            r####"    let history = programs::history()?;
+    gg::log(history.len().to_string());
+    match programs::get(Some(2)) {
+        Ok(source) => gg::log(source),
+        Err(failure) => gg::log(format!("{:?}", failure.code)),
+    }
+    programs::rerun("gg::log(\"again\");")?;
+    session::request_changes(&["widen the test", "name the file"])?;
 "####,
-        ),
+        )),
         &[],
         &[],
         RunEnding::Role(EndingRole::Review),
@@ -535,7 +571,7 @@ session::request_changes(&["widen the test", "name the file"])?;
     // The other verdict, which is the same role's other ending, and the one call in the surface that
     // takes nothing at all.
     let (outcome, _log) = evaluate(
-        &prepare("session::approve()?;"),
+        &prepare(&whole(&["session"], "    session::approve()?;\n")),
         &[],
         &[],
         RunEnding::Role(EndingRole::Review),
@@ -576,24 +612,24 @@ fn an_inherent_method_reaches_the_operation_it_is_an_alias_of() {
     // log beside the crossing that made its receiver. `views::close` is the exception — a view is
     // not a tool — and it is checked by what it answers instead.
     let (outcome, log) = evaluate(
-        &prepare(
-            r####"
-let issue = board::create_issue("Parse the manifest", "the parser", "the writer", "tests pass",
-                                "Builder", board::IssueOptions::default())?;
-gg::log(format!("{} {}", issue.id, issue.wait()?));
+        &prepare(&whole(
+            &["board", "delegation", "memories", "views"],
+            r####"    let issue = board::create_issue("Parse the manifest", "the parser", "the writer", "tests pass",
+                                    "Builder", board::IssueOptions::default())?;
+    gg::log(format!("{} {}", issue.id, issue.wait()?));
 
-let hits = memories::search_memories(&["build"])?;
-gg::log(format!("{} {}", hits[0].name, hits[0].read()?));
+    let hits = memories::search_memories(&["build"])?;
+    gg::log(format!("{} {}", hits[0].name, hits[0].read()?));
 
-let child = delegation::spawn_subagent("Builder", delegation::Brief::Prompt("take the writer"))?;
-child.send("prefer the simpler parser")?;
-gg::log(child.id.clone());
+    let child = delegation::spawn_subagent("Builder", delegation::Brief::Prompt("take the writer"))?;
+    child.send("prefer the simpler parser")?;
+    gg::log(child.id.clone());
 
-views::open_text("summary", "eight files, two failing")?;
-let open = views::current();
-gg::log(format!("{} {}", open[0].close()?, views::current().len()));
+    views::open_text("summary", "eight files, two failing")?;
+    let open = views::current();
+    gg::log(format!("{} {}", open[0].close()?, views::current().len()));
 "####,
-        ),
+        )),
         &all_operations(),
         &[],
         RunEnding::Role(EndingRole::Standard),
@@ -639,12 +675,12 @@ gg::log(format!("{} {}", open[0].close()?, views::current().len()));
     // The fifth hangs off the program library, which is bought by a capability rather than by a
     // tool, and answers out of a history a fresh double has none of — so it needs one seeded.
     let (outcome, _log) = evaluate_with_program(
-        &prepare(
-            r####"
-let history = programs::history()?;
-gg::log(format!("{} {}", history[0].turn, history[0].source()?));
+        &prepare(&whole(
+            &["programs"],
+            r####"    let history = programs::history()?;
+    gg::log(format!("{} {}", history[0].turn, history[0].source()?));
 "####,
-        ),
+        )),
         3,
         "gg::log(\"the program that ran\");",
         canned_outcome,
@@ -659,13 +695,15 @@ fn a_failure_is_a_result_whether_it_is_matched_on_or_let_out() {
     // hands back, so `?` and `match` and `unwrap_or_else` all work on it without an SDK-specific
     // combinator.
     let (outcome, _log) = run_with(
-        r####"
-match files::read_text_file("gone.rs", files::ReadOptions::default()) {
-    Ok(text) => gg::log(text),
-    Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
-}
-gg::log("carried on");
+        &whole(
+            &["files"],
+            r####"    match files::read_text_file("gone.rs", files::ReadOptions::default()) {
+        Ok(text) => gg::log(text),
+        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
+    }
+    gg::log("carried on");
 "####,
+        ),
         &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.rs".to_string())
@@ -678,24 +716,26 @@ gg::log("carried on");
     // classifies a turn's error from and the one a `Failure` that flattened its error to a string at
     // the `?` would have lost.
     let (outcome, _log) = run_with(
-        r####"
-gg::log("before");
-files::read_text_file("gone.rs", files::ReadOptions::default())?;
-gg::log("after");
+        &whole(
+            &["files"],
+            r####"    gg::log("before");
+    files::read_text_file("gone.rs", files::ReadOptions::default())?;
+    gg::log("after");
 "####,
+        ),
         &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.rs".to_string())
         },
     );
-    let error = program_error(&outcome);
-    assert_eq!(error.kind, ProgramErrorKind::ToolFailure, "{error:?}");
+    let reported = trap(&outcome);
     assert!(
-        error
-            .message
-            .contains("`read_text_file` failed (not-found)"),
-        "the model reads gg's own sentence rather than a Rust type name: {}",
-        error.message
+        reported.contains("`read_text_file` failed (not-found)"),
+        "the model reads gg's own sentence rather than a Rust type name: {reported}"
+    );
+    assert!(
+        reported.contains("no such file: gone.rs"),
+        "the failure's own detail is what `Failure` walks the chain for: {reported}"
     );
     assert_eq!(outcome.logs, ["before"], "what ran before it still stands");
 }
@@ -707,12 +747,14 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // That is exactly the case `error-code.unavailable` exists for, and the recovery is the same one
     // a name that was never in scope gets.
     let (outcome, log) = run_with(
-        r####"
-match shell::run("cargo build", None) {
-    Ok(_) => gg::log("ran"),
-    Err(failure) => gg::log(format!("{:?}", failure.code)),
-}
+        &whole(
+            &["shell"],
+            r####"    match shell::run("cargo build", None) {
+        Ok(_) => gg::log("ran"),
+        Err(failure) => gg::log(format!("{:?}", failure.code)),
+    }
 "####,
+        ),
         &[],
         canned_outcome,
     );
@@ -777,32 +819,34 @@ fn a_program_reaches_every_library_this_arm_says_it_may() {
     );
 
     let (outcome, _log) = run_with(
-        r####"
-use itertools::Itertools;
-let words = ["beta", "alpha", "beta"];
-let unique = words.iter().unique().sorted().join(",");
+        r####"use itertools::Itertools;
 
-let pattern = regex::Regex::new(r"(\w+)-(\d+)").expect("a literal pattern compiles");
-let matched = pattern
-    .captures("issue AUTH-14 is open")
-    .map(|found| found[1].to_string() + "/" + &found[2])
-    .unwrap_or_default();
+fn main() {
+    let words = ["beta", "alpha", "beta"];
+    let unique = words.iter().unique().sorted().join(",");
 
-let parsed: serde_json::Value =
-    serde_json::from_str(r#"{"ok":true,"count":3}"#).expect("literal JSON parses");
-let count = parsed["count"].as_u64().unwrap_or_default();
+    let pattern = regex::Regex::new(r"(\w+)-(\d+)").expect("a literal pattern compiles");
+    let matched = pattern
+        .captures("issue AUTH-14 is open")
+        .map(|found| found[1].to_string() + "/" + &found[2])
+        .unwrap_or_default();
 
-let encoded = {
-    use base64::Engine;
-    base64::engine::general_purpose::STANDARD.encode("gg")
-};
+    let parsed: serde_json::Value =
+        serde_json::from_str(r#"{"ok":true,"count":3}"#).expect("literal JSON parses");
+    let count = parsed["count"].as_u64().unwrap_or_default();
 
-let mut order = indexmap::IndexMap::new();
-order.insert("second", 2);
-order.insert("first", 1);
-let kept = order.keys().copied().collect::<Vec<_>>().join(",");
+    let encoded = {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode("gg")
+    };
 
-gg::log(format!("{unique} {matched} {count} {encoded} {kept}"));
+    let mut order = indexmap::IndexMap::new();
+    order.insert("second", 2);
+    order.insert("first", 1);
+    let kept = order.keys().copied().collect::<Vec<_>>().join(",");
+
+    gg::log(format!("{unique} {matched} {count} {encoded} {kept}"));
+}
 "####,
         &[],
         canned_outcome,
@@ -814,6 +858,65 @@ gg::log(format!("{unique} {matched} {count} {encoded} {kept}"));
     );
 }
 
+/// **Nothing this arm offers resolves without a line the program wrote, or the path written in
+/// full.**
+///
+/// The claim the conversion rests on, put through `rustc` rather than argued from the source.
+/// `--extern gg=…` is packaging: it puts the crate name `gg` in the **extern prelude** and no name
+/// of gg's in a program's own scope. So there are exactly two ways to reach a call, and a third
+/// that does not compile.
+///
+/// Driven through the production prepare step, because what is being asserted is what the compiler
+/// a turn really runs does with these four files.
+#[test]
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    let refused = |source: &str| -> String {
+        let failure =
+            super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
+                .expect_err("a name nothing brought into scope is refused");
+        failure.to_string()
+    };
+
+    // A module reached by its short name with no line above it: `rustc`'s own unresolved-path
+    // diagnostic, at the model's own line.
+    let diagnostic = refused(
+        "fn main() -> Result<(), gg::Failure> {\n    \
+             let _ = files::read_text_file(\"a.md\", files::ReadOptions::default())?;\n    \
+             Ok(())\n}\n",
+    );
+    assert!(
+        diagnostic.contains("E0433") && diagnostic.contains("line 2"),
+        "{diagnostic}"
+    );
+
+    // And a `core` type by its bare name, which is the one place the deleted prelude used to make
+    // an exception: the catalogue now spells it `core::ToolError`, and that is what compiles.
+    let diagnostic = refused(
+        "fn main() -> Result<(), gg::Failure> {\n    \
+             let _: Option<ToolErrorCode> = None;\n    Ok(())\n}\n",
+    );
+    assert!(diagnostic.contains("line 2"), "{diagnostic}");
+
+    // The two that do compile, and the second is the line the catalogue states. Both are driven
+    // end to end rather than only compiled, so what is asserted is that the call crossed.
+    for source in [
+        "fn main() -> Result<(), gg::Failure> {\n    \
+             let text = gg::files::read_text_file(\"a.md\", gg::files::ReadOptions::default())?;\n    \
+             gg::log(text);\n    Ok(())\n}\n",
+        "use gg::files;\n\nfn main() -> Result<(), gg::Failure> {\n    \
+             let text = files::read_text_file(\"a.md\", files::ReadOptions::default())?;\n    \
+             gg::log(text);\n    Ok(())\n}\n",
+    ] {
+        let (outcome, log) = run_with(source, &all_operations(), canned_outcome);
+        assert!(
+            logs(&outcome)[0].starts_with("contents of a.md"),
+            "{source}\n{:?}",
+            outcome.logs
+        );
+        assert_eq!(log.names(), ["read_file"], "{source}");
+    }
+}
+
 #[test]
 fn the_component_binds_exactly_the_tools_gg_offers() {
     // The one drift no source-level test can catch, asked of the artifact rather than of a source
@@ -821,7 +924,7 @@ fn the_component_binds_exactly_the_tools_gg_offers() {
     // moments ago — so what it catches instead is the SDK's own binding table falling out of step
     // with the functions beside it, which is the second, independent statement of the same fact that
     // makes asking the artifact worth anything.
-    let component = prepare("");
+    let component = prepare("fn main() {}\n");
     let mut bound = crate::sandbox::component_bound_tools(
         crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Rust),
         Some(component),
@@ -974,8 +1077,10 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 
     // The idiom this arm exists to produce, asserted where a model reads it: required arguments
     // positional, an options struct for the optional ones, an `Option<T>` where there is exactly
-    // one, `Result<_, ToolError>` on the way out, an inclusive range where the wire has a record,
-    // and every SDK type written under the module that declares it.
+    // one, `Result<_, core::ToolError>` on the way out, an inclusive range where the wire has a
+    // record, and every SDK type written under the module that declares it — including the two in
+    // `core`, because gg puts no name of its own in a program's scope and `core::ToolError` is what
+    // `use gg::core;` leaves resolvable.
     let signature = |operation: &str| {
         let entry = functions
             .iter()
@@ -992,22 +1097,22 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     assert_eq!(
         signature("files.read_file"),
         "read_file(path: &str, options: files::ReadOptions) \
-         -> Result<files::FileRead, ToolError>"
+         -> Result<files::FileRead, core::ToolError>"
     );
     assert_eq!(
         signature("shell.shell"),
-        "run(command: &str, timeout_secs: Option<f64>) -> Result<shell::ShellOutput, ToolError>"
+        "run(command: &str, timeout_secs: Option<f64>) -> Result<shell::ShellOutput, core::ToolError>"
     );
     assert_eq!(
         signature("context.archive_thread"),
         "archive_thread(ranges: &[RangeInclusive<u32>]) \
-         -> Result<context::ReclaimReport, ToolError>"
+         -> Result<context::ReclaimReport, core::ToolError>"
     );
     assert_eq!(
         signature("board.create_issue"),
         "create_issue(title: &str, in_scope: &str, out_of_scope: &str, \
          completion_criteria: &str, agent: &str, options: board::IssueOptions<'_>) \
-         -> Result<board::IssueCreated, ToolError>"
+         -> Result<board::IssueCreated, core::ToolError>"
     );
 
     // Every word of it is written on a declaration: a brief on everything, an argument documented

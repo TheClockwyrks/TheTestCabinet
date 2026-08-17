@@ -8,11 +8,13 @@
 //! model reads their spellings out of the [bootstrap](crate::bootstrap) turn its session opens with,
 //! not out of the prompt.
 //!
-//! **There is no directory.** Nothing enumerates a module's functions, and that is a decision rather
-//! than an omission: a call that hands back a whole module defeats the point of making a model
-//! search for what it needs, since the cheapest way to find anything would be to dump the directory
-//! and read it. [`search`](DocsRuntime::search) is the only route in, and it is global — one query
-//! reaches every module at once, so nothing is discovered by already knowing where to look.
+//! **There is no directory call.** Nothing enumerates a module's functions under a name of its own,
+//! and that is a decision rather than an omission: [`search`](DocsRuntime::search) is the only route
+//! in, and it is global — one query reaches every module at once, so nothing is discovered by
+//! already knowing where to look. A whole-module listing is therefore a *shape* of that one call
+//! rather than a second one — an [empty query with a module filter](DocQuery), which is an exact
+//! lookup rather than a ranking — and it is the shape the [bootstrap](crate::bootstrap) uses to hand
+//! an agent every module it was granted before its first real turn.
 //!
 //! **Looking something up is deliberately not a capability.** Like [`finish`](crate::sandbox), it is
 //! a carve-out: no toolset offers it, no capability withholds it, and it is bound into every program's
@@ -51,10 +53,11 @@
 //! # A function and a type are two views, not one block
 //!
 //! [`read`](DocsRuntime::read) renders one **function**: every shape it may be called in with a line
-//! per argument, and the description. It does **not** carry the declarations of the types the
-//! signature mentions. Those are [views of their own](DocsRuntime::read_type), addressed by the
-//! type's name, and one open of a function [places](crate::context::ContextModel::open_docview) them
-//! beside it according to the agent's [`DocViewTypes`] mode.
+//! per argument, [where it is defined and how a program reaches it](DocsRuntime::defined_in), and the
+//! description. It does **not** carry the declarations of the types the signature mentions. Those are
+//! [views of their own](DocsRuntime::read_type), addressed by the type's name, and one open of a
+//! function [places](crate::context::ContextModel::open_docview) them beside it according to the
+//! agent's [`DocViewTypes`] mode.
 //!
 //! Folding them in was the older shape, and it made two things impossible. The declarations were
 //! repeated in full in every function view that mentioned the type, so an agent reading five
@@ -82,7 +85,7 @@ use crate::ending::EndingRole;
 use crate::sandbox::{
     CatalogueFunction, FunctionSummary, Grants, MemberFunction, OperationId, Parameter,
     ParameterKind, ProgramLanguage, TypeDeclaration, TypeReference, catalogue_functions, language,
-    operation_by_id, operation_of, type_declaration,
+    module_of, operation_by_id, operation_of, type_declaration,
 };
 
 #[path = "docs.suggest.rs"]
@@ -331,7 +334,46 @@ impl DocsRuntime {
     /// than replay a stored copy.
     pub fn read(&self, name: &str) -> Option<String> {
         let function = self.function(name)?;
-        Some(assemble(&function))
+        Some(self.assemble(&function))
+    }
+
+    /// One **module's** documentation by the path a program writes it under: what the module is for,
+    /// the line that brings it into scope, and a line per function in it this agent binds. `None` for
+    /// a path this language's catalogue does not declare, and `None` for a module **no function this
+    /// agent binds** belongs to.
+    ///
+    /// A module is the first thing a model needs and the last thing it could work out for itself.
+    /// Nothing gg offers is in scope until the program has imported the module a symbol lives in, so
+    /// a model that has found a module and cannot read it has found the name of a door.
+    ///
+    /// Gated by reachability rather than on its own account, exactly as a type is: a module is not a
+    /// call, and an agent that may call something in it must be able to read where that something
+    /// lives. A module whose every function this run withheld is `None`, so the module list a model
+    /// can reach never describes a surface it cannot use.
+    pub fn read_module(&self, path: &str) -> Option<String> {
+        let module = module_of(self.language.catalogue(), path)?;
+        let functions: Vec<CatalogueFunction> = catalogue_functions(self.language)
+            .into_iter()
+            .filter(|function| {
+                operation_of(function).is_some_and(|operation| operation.id.namespace == module.id)
+                    && self.bound(function)
+            })
+            .collect();
+        if functions.is_empty() {
+            return None;
+        }
+        let mut text = format!(
+            "{}\n\n{}\n\n{}",
+            module.path,
+            // The same sentence a function's and a type's view carry, from the same place, so the
+            // one line a model copies to reach anything reads identically wherever it meets it.
+            self.defined_in(module.id),
+            module.prose.rendered()
+        );
+        for function in &functions {
+            text.push_str(&format!("\n  {} — {}", function.fqn, function.prose.brief));
+        }
+        Some(text)
     }
 
     /// One **type's** documentation by the name a signature writes it under: its declaration, the
@@ -365,12 +407,16 @@ impl DocsRuntime {
             .then(|| self.declare(declaration))
     }
 
-    /// One type declaration, with a line per member and then a line per **member function** this
-    /// agent binds — the whole body of a **type** docview.
+    /// One type declaration, [where it is defined](Self::defined_in), a line per member and then a
+    /// line per **member function** this agent binds — the whole body of a **type** docview.
     ///
     /// The declaration alone says what fields a record has and nothing about what any of them
     /// *means*, and `shown: boolean` on a `FileRead` is not a thing a model can infer. A union arm
     /// carries no type of its own — the arm is the value — so it is rendered as the bare literal.
+    ///
+    /// The definition line sits under the declaration rather than over it, so a view still opens
+    /// with the shape the model came for; it is the [same line](Self::defined_in) a function view
+    /// carries, because a type is named at a call site under the same module the call is.
     ///
     /// Both the type's own lines and each member's are read through
     /// [`Prose`](crate::sandbox::Prose), which is where the authored brief and the detail under it
@@ -393,8 +439,9 @@ impl DocsRuntime {
     /// of sight — the disclosure [`read_type`](Self::read_type)'s own gate is written to prevent.
     fn declare(&self, declaration: &'static TypeDeclaration) -> String {
         let mut text = format!(
-            "{}\n{}",
+            "{}\n\n{}\n\n{}",
             declaration.declaration,
+            self.defined_in(&declaration.module),
             declaration.prose().rendered()
         );
         for member in &declaration.members {
@@ -457,7 +504,9 @@ impl DocsRuntime {
     /// are keyed by their module-qualified name and the two namespaces cannot meet, so the
     /// judgement is only ever reached through the *fallback* bare names each half also answers to.
     pub fn read_any(&self, key: &str) -> Option<String> {
-        self.read(key).or_else(|| self.read_type(key))
+        self.read(key)
+            .or_else(|| self.read_type(key))
+            .or_else(|| self.read_module(key))
     }
 
     /// **The single key** whatever `name` addresses is filed under, or `None` when this agent binds
@@ -487,9 +536,17 @@ impl DocsRuntime {
         if let Some(function) = self.function(name) {
             return Some(function.fqn.to_string());
         }
-        let declaration = type_declaration(self.language, name)?;
-        self.type_is_reachable(declaration.key())
-            .then(|| declaration.key().to_string())
+        if let Some(declaration) = type_declaration(self.language, name)
+            && self.type_is_reachable(declaration.key())
+        {
+            return Some(declaration.key().to_string());
+        }
+        // A module answers to gg's id and to this arm's path, the same leniency a function and a
+        // type get; the path is the canonical one, because it is the string search files the hit
+        // under and the string a program writes.
+        let module = module_of(self.language.catalogue(), name)?;
+        self.read_module(module.path)
+            .map(|_| module.path.to_string())
     }
 
     /// The SDK types to open beside the function called `name`, under `mode` — the whole of the
@@ -674,35 +731,78 @@ impl DocsRuntime {
     pub fn bound(&self, function: &CatalogueFunction) -> bool {
         operation_of(function).is_some_and(|operation| self.grants.permits(operation))
     }
-}
 
-/// Assemble one function's documentation: how it may be called, what each argument is for, and its
-/// description.
-///
-/// The types the signature mentions are **not** here; they are views of their own — see the module's
-/// *A function and a type are two views, not one block*.
-///
-/// A function is rendered with **every** signature the language offers it in, because for some
-/// languages that is how an optional argument is spelled: an overload pair reads as two ways to call
-/// one function, and showing only the first would tell a model half of what it may write. Under a
-/// language that spells options with a default there is exactly one, and the rendering is the single
-/// line it always was.
-///
-/// There is exactly one rendering, and every function on the surface goes through it. Nothing is
-/// documented from outside the catalogue any more — `list` was the last thing that was, and it is
-/// gone — so no lookup can come out looking like a different kind of thing than its neighbour.
-fn assemble(function: &CatalogueFunction) -> String {
-    let mut text = String::new();
-    for entry in function.signatures {
-        text.push_str(&entry.signature);
+    /// Assemble one function's documentation: how it may be called, what each argument is for,
+    /// [where it is defined](Self::defined_in), and its description.
+    ///
+    /// The types the signature mentions are **not** here; they are views of their own — see the
+    /// module's *A function and a type are two views, not one block*.
+    ///
+    /// A function is rendered with **every** signature the language offers it in, because for some
+    /// languages that is how an optional argument is spelled: an overload pair reads as two ways to
+    /// call one function, and showing only the first would tell a model half of what it may write.
+    /// Under a language that spells options with a default there is exactly one, and the rendering is
+    /// the single line it always was.
+    ///
+    /// The definition line follows the signatures rather than leading them: a view opens with the
+    /// shape the model came for, and says where to get it from underneath.
+    ///
+    /// There is exactly one rendering, and every function on the surface goes through it. Nothing is
+    /// documented from outside the catalogue any more — `list` was the last thing that was, and it is
+    /// gone — so no lookup can come out looking like a different kind of thing than its neighbour.
+    ///
+    /// It hangs off the runtime rather than standing beside it because the definition line is
+    /// answered out of *this agent's* language's catalogue, and a rendering that reached for a
+    /// module list of its own would be a second answer to the question the runtime already holds.
+    fn assemble(&self, function: &CatalogueFunction) -> String {
+        let mut text = String::new();
+        for entry in function.signatures {
+            text.push_str(&entry.signature);
+            text.push('\n');
+            for parameter in &entry.parameters {
+                describe(&mut text, parameter, 1);
+            }
+        }
         text.push('\n');
-        for parameter in &entry.parameters {
-            describe(&mut text, parameter, 1);
+        text.push_str(&self.defined_in(function.module));
+        text.push_str("\n\n");
+        text.push_str(&function.prose.rendered());
+        text
+    }
+
+    /// **Where a symbol is defined, and how a program reaches it** — the one line every documentation
+    /// view carries under the shape it opens with.
+    ///
+    /// A view is the only place a model is told which module a symbol belongs to: the prompt names
+    /// the modules and no function, and a search hit is a key and a brief. A signature it can read
+    /// and cannot qualify is a call it cannot write.
+    ///
+    /// The module is named by this arm's own [path](crate::sandbox::ModuleView::path) rather than by
+    /// gg's id, because the path is what a program writes. `module` is the id, since that is what a
+    /// [function](CatalogueFunction) and a type each carry, and [`module_of`] is the join.
+    ///
+    /// # Both states of the import line are rendered
+    ///
+    /// A [line](crate::sandbox::ModuleView::import) is quoted exactly as the model must write it,
+    /// and an arm whose SDK is in scope before a program compiles says so. A view that rendered only
+    /// the first state would leave every model on every other arm hunting for a line its compiler
+    /// would refuse.
+    ///
+    /// A module the catalogue does not declare is named by gg's id and nothing is claimed about
+    /// reaching it, which is the honest answer to drift the name rule (`signatures.fqn.rs`) reports
+    /// by name.
+    fn defined_in(&self, module: &str) -> String {
+        let Some(declared) = module_of(self.language.catalogue(), module) else {
+            return format!("Defined in `{module}`.");
+        };
+        match declared.import {
+            Some(line) => format!(
+                "Defined in `{}`, brought into scope with `{line}`.",
+                declared.path
+            ),
+            None => format!("Defined in `{}`, in scope already.", declared.path),
         }
     }
-    text.push('\n');
-    text.push_str(&function.prose.rendered());
-    text
 }
 
 /// Whether any shape of `function` **names** `type_name` in what it writes down: the rendered
@@ -832,3 +932,10 @@ mod mode_tests;
 #[cfg(test)]
 #[path = "docs.discoverability.test.rs"]
 mod discoverability_tests;
+
+/// The gate over what every view says about **where** its symbol is defined, kept in a file of its
+/// own because it is a property of the whole surface — eleven arms, every key each of them binds —
+/// rather than a case about this runtime's behaviour.
+#[cfg(test)]
+#[path = "docs.modules.test.rs"]
+mod module_tests;

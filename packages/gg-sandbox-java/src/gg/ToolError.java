@@ -18,14 +18,19 @@ package gg;
  * }
  * }</pre>
  *
- * <p>An unexpected one is best left to escape: gg reports which call failed, with the stack, and the
- * turn is recoverable.
+ * <p>An unexpected one is best left to escape: the program dies the way its runtime kills it, and
+ * what the model reads is the runtime's own dying words — this exception's message, then the stack,
+ * in the program's own file and lines. That is why {@link #getMessage()} is
+ * <b>{@code `tool` failed (code): what went wrong}</b> rather than gg's sentence alone: an uncaught
+ * failure has no second channel to carry the call's name and its class on, and every arm of a study
+ * reports one in that same shape. {@link #detail()} is the sentence without them.
  */
 public final class ToolError extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
     private final String tool;
     private final ToolErrorCode code;
+    private final String detail;
 
     /**
      * Build one, which is what this SDK's bridge does when a call comes back a failure.
@@ -35,9 +40,22 @@ public final class ToolError extends RuntimeException {
      * @param message what went wrong, in gg's words
      */
     public ToolError(String tool, ToolErrorCode code, String message) {
-        super(message);
+        super("`" + tool + "` failed (" + code.wireName() + "): " + message);
         this.tool = tool;
         this.code = code;
+        this.detail = message;
+    }
+
+    /**
+     * What went wrong, in gg's own words alone.
+     *
+     * <p>Without the call's name and its class, which {@link #getMessage()} carries in front of
+     * them so that an uncaught failure names all three.
+     *
+     * @return gg's own sentence about the failure
+     */
+    public String detail() {
+        return detail;
     }
 
     /**

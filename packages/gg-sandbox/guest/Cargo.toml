@@ -1,0 +1,50 @@
+[package]
+name = "gg-sandbox-ecmascript"
+description = "The ECMAScript guest gg evaluates a program in: quickjs-ng inside a wit-bindgen component declaring gg's own sandbox world."
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The binding generator. A PROC MACRO here, unlike the Rust arm's SDK — that arm ships `.rlib`s and
+# an rlib whose metadata names a proc macro cannot be loaded on another architecture, which is the
+# whole reason it generates ahead of time. This crate ships a `.wasm`: the macro runs on the build
+# machine and leaves nothing behind in the artifact.
+wit-bindgen = "0.60"
+
+# quickjs-ng. Chosen over the incumbent engine for one property the incumbent does not have at any
+# setting: it can evaluate a module. See `src/lib.rs`.
+#
+# `default-features = false` drops `macro` (a second proc macro this guest has no use for) and
+# `classes`; what is kept is `std` (this is a WASI guest with a real allocator and a real stderr),
+# `loader` (the `Resolver`/`Loader` pair the whole module design rests on) and `array-buffer` (which
+# `TextEncoder`/`TextDecoder` are built on).
+rquickjs = { version = "0.12.2", default-features = false, features = [
+	"std",
+	"loader",
+	"array-buffer",
+] }
+
+[build-dependencies]
+# The membrane glue is GENERATED from `crates/gg/wit/gg-sandbox.wit`, not written. Fifteen
+# interfaces of records, variants, enums, options and lists is not a surface a person keeps in step
+# with a 1,400-line WIT by hand — and it does not have to be, because the WIT says everything the
+# lowering needs. `build.rs` is the whole argument.
+wit-parser = "0.248"
+
+[profile.release]
+# Size, not speed: this component is compiled by wasmtime once per gg process, and the compile is on
+# a turn's critical path. `opt-level = "s"` with LTO measured 896 KB against the incumbent's 13.4 MB.
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true
+
+# Its own workspace, deliberately. The repository's Cargo workspace builds for the host; this crate
+# builds for `wasm32-wasip1` against its own pinned lockfile, exactly as `packages/gg-sandbox-rust`
+# does, and joining the workspace would put quickjs's C compile into every `cargo check`.
+[workspace]

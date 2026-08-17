@@ -60,15 +60,17 @@ fn the_manifest_names_exactly_what_the_tarball_carries() {
     );
 }
 
-/// **The target is the one whose imports the language chooses rather than the target.**
+/// **The target is the one a failure can be read out of.**
 ///
-/// `wasm32-wasip2` would also produce a component, and would import `wasi:cli` and `wasi:io` whether
-/// or not a program touched either — because the target's own start-up does. gg links the whole WASI
-/// surface, so it would work; what it would mean is that the **target** decided a Rust program begins
-/// by initialising a WASI environment, on an arm whose whole point is to compare languages.
+/// `wasm32-wasip1` is what gives a program a standard error at all: on `wasm32-unknown-unknown`,
+/// which this arm used to target, std's stdio falls through to `unsupported.rs`, where a write
+/// discards its bytes and reports success — so a `main` returning `Err` produced a clean turn with
+/// the message gone, and an `exit` produced a bare trap. Not `wasm32-wasip2`, which emits a
+/// component through a `wasm-component-ld` bundling a `wasm-encoder` gg does not version; the p1
+/// module is encoded in gg's own process with the pinned reactor adapter instead.
 #[test]
-fn a_program_is_compiled_to_the_target_the_arm_chose() {
-    assert_eq!(target(), "wasm32-unknown-unknown");
+fn a_program_is_compiled_to_the_target_a_failure_can_be_read_out_of() {
+    assert_eq!(target(), "wasm32-wasip1");
 }
 
 /// **A compiler that said nothing is a toolchain failure, not the model's.**
@@ -114,12 +116,12 @@ fn a_failure_with_no_diagnostic_is_not_blamed_on_the_model() {
 
 /// **A diagnostic outside the model's own file is still shown, and still not given a line.**
 ///
-/// A `rustc` error whose only span is inside gg's wrapper or inside the library set is gg's artifact
-/// rather than the model's program. Withholding it would leave the model with "your program did not
-/// compile" and nothing else; inventing a line for it would point at whichever of the model's lines
-/// shares the number.
+/// A `rustc` error whose only span is inside the library set, or inside a code module linked beside
+/// the program, is somebody else's file. Withholding it would leave the model with "your program
+/// did not compile" and nothing else; inventing a line for it would point at whichever of the
+/// model's lines shares the number.
 #[test]
-fn a_diagnostic_in_ggs_own_wrapper_is_reported_without_a_location() {
+fn a_diagnostic_outside_the_models_own_file_is_reported_without_a_location() {
     let failure = classify(
         &CompilerReport {
             ok: false,
@@ -201,8 +203,8 @@ fn a_non_json_line_beside_the_diagnostics_is_ignored() {
         rendered.contains("error[E0308]: mismatched types"),
         "{rendered}"
     );
-    // Line 6 of the file is line 5 of the model's program.
-    assert!(rendered.contains("--> line 5, column 18"), "{rendered}");
+    // Line 6 of the file is line 6 of the model's program: gg subtracts nothing.
+    assert!(rendered.contains("--> line 6, column 18"), "{rendered}");
     assert!(
         rendered.contains("expected `u32`, found `&str`"),
         "{rendered}"
@@ -210,8 +212,8 @@ fn a_non_json_line_beside_the_diagnostics_is_ignored() {
     assert!(rendered.contains("help: consider parsing it"), "{rendered}");
 }
 
-/// One `rustc` JSON diagnostic naming `nope<index>` at line `index + 1` of the entry file, with the
-/// `help` child every real one of these carries.
+/// One `rustc` JSON diagnostic naming `nope<index>` at line `index + 1` of the model's own file,
+/// with the `help` child every real one of these carries.
 ///
 /// A distinct message *and* a distinct line, so the [bound](crate::sandbox::language::diagnostics)
 /// has nothing to de-duplicate and what a test counts is the cap rather than the fold.
@@ -223,7 +225,7 @@ fn unresolved(index: usize) -> String {
         "spans": [{
             "file_name": PROGRAM_FILE,
             "is_primary": true,
-            "line_start": LINE_OFFSET + 1 + index,
+            "line_start": index + 1,
             "column_start": 5,
             "label": "not found in this scope",
         }],

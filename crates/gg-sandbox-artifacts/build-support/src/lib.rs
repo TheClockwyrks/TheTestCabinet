@@ -367,15 +367,31 @@ fn build(root: &Path, row: &Row, artifacts: &Path) {
 /// packages would say so, while the JVM, PureScript and TypeScript-checker halves never read it.
 fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
     let paths: Vec<&str> = match id {
-        // TypeScript and JavaScript: one guest, one component, four checker files. The declaration
-        // emit is decided by the repo-root tsconfig the package's own configs extend, so that file
-        // is an input here even though nothing in the package names it — measured, when changing
-        // `target` alone changed the JavaScript in eight emitted files, `shim.js` among them.
+        // The ECMAScript guest three arms evaluate in, and the four checker files one arm is judged
+        // by. The declaration emit is decided by the repo-root tsconfig the package's own configs
+        // extend, so that file is an input here even though nothing in the package names it —
+        // measured, when changing `target` alone changed the JavaScript in eight emitted files.
         // `package.json` pins the `typescript` the checker is cut from.
+        //
+        // The `guest/` entries are the guest itself — quickjs-ng inside a
+        // `wit-bindgen` component — and they are named a file at a time rather than as a directory
+        // for the reason [`rust_sdk_sources`] gives: `guest.sh` puts cargo's target directory at
+        // `guest/.build/target`, and a directory in a rerun set is walked by cargo, so naming
+        // `guest` would make every build invalidate the next. `packages/gg-sandbox-cpp/cpp-version.sh`
+        // is here because that arm's wasi-sdk is the C compiler quickjs is built with — see
+        // `packages/gg-sandbox/ecmascript-version.sh` for why it is that tree and not a second one.
         "typescript" => vec![
             "packages/gg-sandbox/src",
             "packages/gg-sandbox/tools",
             "packages/gg-sandbox/build.sh",
+            "packages/gg-sandbox/guest.sh",
+            "packages/gg-sandbox/ecmascript-version.sh",
+            "packages/gg-sandbox/guest/src",
+            "packages/gg-sandbox/guest/build.rs",
+            "packages/gg-sandbox/guest/Cargo.toml",
+            "packages/gg-sandbox/guest/Cargo.lock",
+            "packages/gg-sandbox/guest/.cargo/config.toml",
+            "packages/gg-sandbox-cpp/cpp-version.sh",
             "packages/gg-sandbox/package.json",
             "packages/gg-sandbox/tsconfig.json",
             "packages/gg-sandbox/tsconfig.headers.json",
@@ -412,15 +428,30 @@ fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
         // Java and Kotlin: an SDK, compiled to a jar, against a pinned JDK and TeaVM. Neither reads
         // the WIT — these two arms cross the membrane through the JVM arms' shared backend, which is
         // gg's own hand-written source under `crates/gg/src/sandbox/checkers/`.
+        //
+        // BOTH NAME `packages/gg-sandbox-jvm`, and that is the point of it: the canonical ABI and
+        // the wire encoding are compiled into BOTH jars from one tree, so an edit to either has to
+        // re-cut both. `vendor/` beside it is the one vendored TeaVM runtime class the two arms also
+        // share. It is not gg's text but it is gg's artifact: a change to it changes what an uncaught
+        // exception says, and that must re-cut a jar like any other source.
         "java" => vec![
             "packages/gg-sandbox-java/src",
+            "packages/gg-sandbox-jvm/src",
+            "packages/gg-sandbox-jvm/vendor",
             "packages/gg-sandbox-java/build.sh",
             "packages/gg-sandbox-java/java-version.sh",
         ],
+        // Kotlin names the JAVA arm's pin too, and it is not a copy-paste slip: this arm's
+        // `build.sh` puts the TeaVM jars on the classpath its SDK is compiled against, and which
+        // TeaVM those are is decided in `java-version.sh` rather than here. Without this line a
+        // TeaVM bump re-cut the Java jar and left the Kotlin one at the previous vintage.
         "kotlin" => vec![
             "packages/gg-sandbox-kotlin/src",
+            "packages/gg-sandbox-jvm/src",
+            "packages/gg-sandbox-jvm/vendor",
             "packages/gg-sandbox-kotlin/build.sh",
             "packages/gg-sandbox-kotlin/kotlin-version.sh",
+            "packages/gg-sandbox-java/java-version.sh",
         ],
         // Rust: `Cargo.toml` is both the manifest and the curated set a model may name, `Cargo.lock`
         // is the exact versions compiled in, and `rust-toolchain.toml` is the compiler the rlibs are

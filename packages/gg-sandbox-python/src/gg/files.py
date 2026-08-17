@@ -15,7 +15,7 @@ from enum import Enum
 from wit_world.imports import files as wire
 from wit_world.imports import helpers as helpers_wire
 
-from ._registry import operation
+from ._registry import missing, operation
 from .core import _call, _uint
 
 __all__ = [
@@ -150,11 +150,11 @@ def read_file(path: str, *, offset: int | None = None, limit: int | None = None)
     narrows them:
 
     ```python
-    match files.read_file("logo.png"):
-        case TextFile(contents=text):
-            views.open_text("logo", text)
-        case ImageFile(label=label):
-            views.open_text("logo", label)
+    match gg.files.read_file("logo.png"):
+        case gg.files.TextFile(contents=text):
+            gg.views.open_text("logo", text)
+        case gg.files.ImageFile(label=label):
+            gg.views.open_text("logo", label)
     ```
 
     A relative path resolves against the workspace; an absolute one is read as given, so anything
@@ -270,3 +270,7 @@ def list_dir(path: str | None = None) -> list[DirEntry]:
             that is given but empty — the default is what lists the workspace root.
     """
     return [_as_dir_entry(entry) for entry in _call(wire.list_dir, path)]
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

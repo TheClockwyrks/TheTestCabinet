@@ -35,6 +35,7 @@ import Data.Nullable (Nullable, toMaybe)
 import Data.Show.Generic (genericShow)
 import Effect (Effect)
 import Effect.Exception (Error, throwException, try)
+import Gg.Internal.Wire as Gg.Internal.Wire
 
 -- | A gg call that failed, thrown by every function in this SDK.
 -- |
@@ -107,10 +108,6 @@ instance Show ToolErrorCode where
 foreign import toolErrorImpl
   :: Error -> Nullable { tool :: String, code :: String, message :: String }
 
--- | One export of one code module, or `null` when this session has no such module or that module has
--- | no such export.
-foreign import libImpl :: forall a. String -> String -> Nullable a
-
 -- | Run a gg call and hand back its failure instead of throwing it.
 -- |
 -- | Anything that is not a gg failure is re-thrown: `attempt` narrows, it does not swallow.
@@ -164,4 +161,4 @@ toolErrorCode = case _ of
 -- |   Nothing -> Gg.Views.openText "slug" "the helpers module has no slugify"
 -- | ```
 lib :: forall a. String -> String -> Maybe a
-lib key name = toMaybe (libImpl key name)
+lib = Gg.Internal.Wire.lib

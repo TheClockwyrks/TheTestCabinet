@@ -35,16 +35,61 @@ fi
 
 # The target a model's program is compiled to.
 #
-# `wasm32-unknown-unknown` and deliberately not `wasm32-wasip2`, even though the artifact is a
-# component and components are what wasip2 emits. The choice is about IMPORTS: a wasip2 module
-# imports `wasi:cli`, `wasi:io` and the rest whether or not the program touches them, because the
-# target's own start-up does, and those imports would then have to be satisfied for every program.
-# gg does link the whole WASI surface (see `sandbox::linker`), so that would work — but it would
-# also mean the target, rather than the language, decided that a Rust program starts by
-# initialising a WASI environment. `wasm32-unknown-unknown` imports nothing at all beyond what the
-# program's own bindings declare, which is the honest shape for an arm whose artifact is the
-# program.
-GG_RUST_TARGET="wasm32-unknown-unknown"
+# `wasm32-wasip1`, and the WASI surface is the POINT rather than a side effect this target drags in.
+# It used to be `wasm32-unknown-unknown`, argued for here on the grounds that it imports nothing
+# beyond what the program's own bindings declare. That argument was answered by measurement, and the
+# measurement is the rest of this comment: a program
+# compiled to `wasm32-unknown-unknown` HAS NO STANDARD ERROR. It is not that gg does not wire one —
+# `membrane.rs` wires the guest's stderr and every other arm speaks to it — it is that std itself
+# has nothing to speak with. `library/std/src/sys/stdio/mod.rs` matches no arm of its `cfg_select!`
+# for that target and falls through to `unsupported.rs`, where `write` DISCARDS the bytes and
+# reports success and `panic_output()` is a hard-coded `None`.
+#
+# What that cost was two of the five ways a program can fail. A `main` returning `Err` produced a
+# clean turn with the message simply gone, and a `std::process::exit(1)` produced a bare trap with
+# no status and no words. The only way to report either was for gg to INTERCEPT it — a panic hook,
+# a catch chain — which the invariants forbid: what a model reads must be what its language emitted.
+#
+# On `wasm32-wasip1` the requirement is satisfied with nothing intercepted at all. A panic writes
+#
+#     thread 'main' (1) panicked at program.rs:6:5:
+#
+# to a real fd 2, in the model's own file and its own uncorrected coordinates, and gg keeps it; a
+# `main` returning `Err` writes `Error: …` through std's own `Termination`; and an explicit exit
+# arrives as `I32Exit`, so gg can name the status the program chose. The imports the target adds are
+# satisfied by `sandbox::linker`, which links the whole WASI surface for the C++ and Swift arms
+# already.
+#
+# NOT `wasm32-wasip2`, which emits a component directly: that would link through a
+# `wasm-component-ld` bundling a different `wasm-encoder` from the `wit-component` gg links, so the
+# component a run instantiates would be produced by a toolchain gg does not version. The p1 core
+# module is encoded in gg's own process instead, with the adapter below — which is exactly what the
+# C++ and Swift arms do.
+GG_RUST_TARGET="wasm32-wasip1"
+
+# The `wasi_snapshot_preview1` REACTOR adapter that turns the preview1 core module `rustc` emits
+# into a preview 2 component.
+#
+# Pinned to the wasmtime release gg links, because the adapter and the runtime are two halves of one
+# ABI. `build.sh` resolves it through `scripts/gg-downloads.sh` — an override, the toolchain image, a
+# version-stamped per-user cache the installers warm, and only then a download — and copies it into
+# this arm's artifact directory as `rust.adapter.wasm`, 52 KB, which gg `include_bytes!`s.
+#
+# THE REACTOR ADAPTER, although a binary crate is what a command component is made of. gg's world is
+# `crates/gg/wit/gg-sandbox.wit`, whose export is `run` — this crate's `program::Program` answers it
+# and calls the model's `main` itself — so the component has an entry point of gg's own and needs
+# none of `wasi:cli/run`. That is what keeps this arm on the same host invocation path as the other
+# ten, and it means the module's own `_start` is simply unused.
+#
+# The alternative would be a plain `wasi:cli/run` command component, which needs a COMMAND adapter
+# pinned beside this one — and whose failure mode is silent: the reactor adapter encodes a module
+# relying on `wasi:cli/run` without error and quietly yields a component with no entry point at all.
+# One pin, already carried twice in this repository, is the cheaper and louder arrangement.
+#
+# It is this arm's OWN copy of a file the C++ and Swift arms also carry, and that duplication is
+# deliberate on the same terms theirs is: each arm pins its adapter from its own version file, so
+# bumping one arm's toolchain cannot silently move another arm's ABI.
+GG_WASMTIME_ADAPTER_VERSION="45.0.3"
 
 # The `wit-bindgen` release the guest bindings are generated with.
 #
@@ -82,4 +127,10 @@ if [ -z "$GG_WIT_BINDGEN_VERSION" ]; then
 	exit 1
 fi
 
-export GG_RUST_VERSION GG_RUST_TARGET GG_WIT_BINDGEN_VERSION
+export GG_RUST_VERSION GG_RUST_TARGET GG_WIT_BINDGEN_VERSION GG_WASMTIME_ADAPTER_VERSION
+
+# Where the pinned reactor adapter is published. The same release asset the C++ and Swift arms
+# resolve, named from this file's own pin.
+gg_wasmtime_adapter_url() {
+	echo "https://github.com/bytecodealliance/wasmtime/releases/download/v${GG_WASMTIME_ADAPTER_VERSION}/wasi_snapshot_preview1.reactor.wasm"
+}

@@ -2,13 +2,14 @@
 //! [`ProgramLanguage`](super::ProgramLanguage) asks that are pure functions over text.
 //!
 //! What is *not* here is anything that compiles or runs a program: that costs a JVM with the Kotlin
-//! compiler and TeaVM loaded and a 13.4 MB component, and lives next door in
+//! compiler and TeaVM loaded and a component of its own, and lives next door in
 //! [`kotlin.substrate.test.rs`](super::substrate), [`kotlin.surface.test.rs`](super::surface) and
 //! [`kotlin.compile.test.rs`](super::compile::tests). The split is the reason these cases run in
 //! microseconds.
 //!
 //! Several of them are written as a **comparison against [Java](super::super::java)**, which is not
-//! decoration: the two arms share a compiler road, a guest and a classlib, so what a study of the
+//! decoration: the two arms share a compiler road, a canonical ABI and a classlib, so what a study
+//! of the
 //! pair measures is the *language* only to the extent that the two surfaces really differ. Each
 //! assertion below that names Java is one of the places they are meant to.
 
@@ -37,11 +38,12 @@ fn this_arm_names_the_compiler_that_judges_a_program() {
     assert!(kotlin().prepare_compiles());
 }
 
-/// **`.kt`, and nothing else — not `.kts`, even though a *program* here is a script.**
+/// **`.kt`, and nothing else — not `.kts`.**
 ///
-/// The two shapes are genuinely different on this arm: a program is compiled as a script, and a code
-/// module is compiled as an ordinary file, because what `gg.core.lib.<key>` binds is a namespace
-/// of public top-level functions and a script's declarations are members of an instance. Offering `skill.kts`
+/// The two shapes are genuinely different on this arm: a program declares a `fun main()`, and a code
+/// module is compiled as an ordinary file, because what `lib.<key>` binds is a namespace
+/// of public top-level functions, where a script's declarations are members of an instance that
+/// would have to be constructed first. Offering `skill.kts`
 /// would name a shape this arm does not compile.
 #[test]
 fn a_code_skills_module_is_spelled_kt_and_not_kts() {
@@ -49,14 +51,13 @@ fn a_code_skills_module_is_spelled_kt_and_not_kts() {
     assert_eq!(kotlin().module_file_extension(), "kt");
 }
 
-/// **The `gg.core.lib.<key>` binding is camelCase**, and is a valid Kotlin identifier whatever the
-/// author called their skill.
+/// **The `lib.<key>` binding is camelCase**, and is a valid Kotlin identifier whatever the author
+/// called their skill.
 ///
-/// This arm reaches a module by *string* — `gg.core.lib.text("csvTools", "parse", …)` — because a
-/// code module is compiled separately and there is no `import` for the compiler to check a program against. The
-/// key is still a name the model has to type out from memory in every program that uses it, so it is
-/// held to what a Kotlin author would have written — ASCII, even though this language would accept a
-/// Unicode or a backquoted name.
+/// It has to be one: gg compiles a code module into `package lib.<key>`, so a key a Kotlin author
+/// could not have written is a package that does not parse. It is also the name a model types out
+/// from memory in every program that uses it, so it is held to ASCII even though this language would
+/// accept a Unicode or a backquoted name.
 #[test]
 fn the_binding_name_is_a_camel_case_kotlin_identifier() {
     assert_eq!(kotlin().binding_name("csv-tools"), "csvTools");
@@ -65,7 +66,22 @@ fn the_binding_name_is_a_camel_case_kotlin_identifier() {
     assert_eq!(kotlin().binding_name("--"), "module");
     assert_eq!(kotlin().binding_name(""), "module");
 
-    for name in ["csv-tools", "CSV-tools", "9lives", "--", "Helpers.v2"] {
+    assert_eq!(kotlin().binding_name("object"), "_object");
+    assert_eq!(kotlin().binding_name("fun"), "_fun");
+    assert_eq!(kotlin().binding_name("in"), "_in");
+    assert_eq!(kotlin().binding_name("is"), "_is");
+
+    for name in [
+        "csv-tools",
+        "CSV-tools",
+        "9lives",
+        "--",
+        "Helpers.v2",
+        "object",
+        "fun",
+        "in",
+        "is",
+    ] {
         let key = kotlin().binding_name(name);
         assert!(
             key.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_'),
@@ -117,23 +133,26 @@ fn the_synthesized_file_view_is_kotlin_and_not_javas() {
     );
 }
 
-/// **The generated documentation program is a Kotlin script**, which is what a program is on this
-/// arm.
+/// **The generated documentation program is a whole Kotlin program**, which is what a program is on
+/// this arm.
 ///
 /// It is the on-use script of every built-in family skill, so gg generates it and hands it straight
 /// to the prepare step. That it *compiles* is asserted by the seam's own gate, which prepares every
-/// language's generated program with the real toolchain; what is asserted here is that gg wrote
-/// Kotlin — a `listOf`, a `for … in`, and no terminators — rather than another arm's syntax.
+/// language's generated program with the real toolchain, and that it RUNS is asserted by the
+/// substrate tests; what is asserted here is that gg wrote Kotlin — a `fun main()`, a `listOf`, a
+/// `for … in`, and no terminators — rather than another arm's syntax.
 #[test]
-fn the_generated_documentation_program_is_a_kotlin_script() {
+fn the_generated_documentation_program_is_a_whole_kotlin_program() {
     assert_eq!(
         kotlin().open_docs_views_statement(&["readFile", "writeFile"]),
-        "val functions = listOf(\n    \
-             \"readFile\",\n    \
-             \"writeFile\"\n\
-         )\n\
-         for (name in functions) {\n    \
-             gg.views.openDocsView(name)\n\
+        "fun main() {\n    \
+             val functions = listOf(\n        \
+                 \"readFile\",\n        \
+                 \"writeFile\"\n    \
+             )\n    \
+             for (name in functions) {\n        \
+                 gg.views.openDocsView(name)\n    \
+             }\n\
          }\n"
     );
 
@@ -141,10 +160,42 @@ fn the_generated_documentation_program_is_a_kotlin_script() {
     // element type out loud, because there is no declared type beside it to infer one from.
     assert_eq!(
         kotlin().open_docs_views_statement(&[]),
-        "val functions = listOf<String>()\n\
-         for (name in functions) {\n    \
-             gg.views.openDocsView(name)\n\
+        "fun main() {\n    \
+             val functions = listOf<String>()\n    \
+             for (name in functions) {\n        \
+                 gg.views.openDocsView(name)\n    \
+             }\n\
          }\n"
+    );
+}
+
+/// **The opening program is a whole Kotlin program**, and it covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran — which is why it has to be a program by this arm's own rules
+/// rather than a statement list. What is asserted here is that gg wrote Kotlin — a `fun main()`,
+/// `listOf`, `for … in`, no terminators, every gg name written in full — that the filters are
+/// **default arguments passed by name**, and that the search is the whole-module lookup rather than
+/// the default page of one.
+#[test]
+fn the_opening_program_is_a_whole_kotlin_program() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        kotlin().bootstrap_program(&["files", "views"], &["readFile"]),
+        format!(
+            "fun main() {{\n    \
+                 val modules = listOf(\n        \"files\",\n        \"views\"\n    )\n    \
+                 for (path in modules) {{\n        \
+                     gg.docs.search(\"\", module = path, limit = {limit})\n    \
+                 }}\n\
+                 \n    \
+                 val functions = listOf(\n        \"readFile\"\n    )\n    \
+                 for (name in functions) {{\n        \
+                     gg.views.openDocsView(name)\n    \
+                 }}\n\
+             }}\n"
+        )
     );
 }
 
@@ -203,7 +254,7 @@ fn the_generated_catalogue_is_this_languages() {
     );
 }
 
-/// **Kotlin's libraries are declared in its catalogue**, which is what the prompt renders.
+/// **Kotlin's libraries are declared in its catalogue**, which is what a compile failure quotes back.
 ///
 /// The set is a fact about what TeaVM can translate rather than about anything gg installs, so the
 /// sentence a model reads is reflected from `packages/gg-sandbox-kotlin/libraries.txt` — the file the

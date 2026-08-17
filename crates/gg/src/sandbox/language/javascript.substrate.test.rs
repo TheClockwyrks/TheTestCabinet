@@ -1,38 +1,36 @@
 //! **The JavaScript arm's execution substrate** — a real JavaScript program, really prepared by
-//! this arm's own step and really evaluated by the embedded guest, talking to gg's real host.
+//! this arm's own step and really evaluated by the [ECMAScript guest](super::super::ecmascript),
+//! talking to gg's real host.
 //!
 //! # Why this file exists at all, given what the arm is
 //!
 //! [The arm](super::javascript) is [TypeScript](super::typescript)'s with the type check taken out,
-//! and it holds every other variable at zero *by construction*: the same embedded component
-//! reached through TypeScript's own constant, the same strip, the same catalogue, the same healing
-//! dialect. A sibling gate asserts each of those equalities directly
-//! ([`the_javascript_arm_differs_from_typescript_only_in_the_check`](super::tests)), and
-//! `sandbox.test.rs` drives whole programs through that very component.
+//! and it holds every other variable at zero *by construction*: the same guest reached through the
+//! same constant, the same catalogue, the same healing dialect, the same synthesized programs. A
+//! sibling gate asserts each of those equalities directly
+//! ([`the_javascript_arm_differs_from_typescript_only_in_the_check`](super::tests)).
 //!
-//! Between them those two say the arm *must* run. They do not say it *was* run — and every other
-//! registered language answers that question with a test of its own that starts at a model's text
-//! and ends at a value the host handed back. An arm whose execution is only ever inferred is an arm
-//! whose first real program is a model's, in a study whose numbers nobody can separate from a
-//! plumbing fault. So the inference is replaced with an observation, in the shape the other ten
-//! arms already use.
+//! That says the arm *must* run. It does not say it *was* run — and every other registered language
+//! answers that question with a test of its own that starts at a model's text and ends at a value
+//! the host handed back. An arm whose execution is only ever inferred is an arm whose first real
+//! program is a model's, in a study whose numbers nobody can separate from a plumbing fault.
 //!
 //! # What "real" means here
 //!
 //! All of it. A program starts as ordinary JavaScript, goes through
-//! [`prepare_program`](ProgramLanguage::prepare_program) — this arm's production step, the `oxc`
-//! strip with nothing after it — and the prepared source is handed to the **prebuilt**
-//! `guests/typescript.component.wasm`, linked with the production
-//! [linker](crate::sandbox::linker), instantiated with the production ceilings and driven through
-//! the real membrane, exactly as [`run_program`](crate::sandbox::run_program) does on a turn.
+//! [`prepare_program`](ProgramLanguage::prepare_program) — which hands the guest the reply's own
+//! bytes — and is driven through [`run_program`](crate::sandbox::run_program), the function a turn
+//! calls, with the production linker, the production ceilings and the real membrane.
 //!
 //! One test rather than a file of them, and one process's component compile is why: `cargo nextest`
-//! runs a process per test and the first thing any test here does is compile the ~13.4 MB artifact.
-//! `sandbox.test.rs` states the same rule for the same reason — add a program to the function that
-//! is here rather than a second function beside it.
+//! runs a process per test and the first thing any test here does is compile the guest. Add a
+//! program to the function that is here rather than a second function beside it.
 
 use serde_json::json;
 use test_cabinet_core::gg::GgProgramLanguage;
+
+use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use crate::context::ViewKind;
 use crate::ending::EndingRole;
@@ -80,7 +78,7 @@ fn run_with(
 
 /// The lines a successful program logged, with the program's own failure surfaced rather than
 /// swallowed.
-fn logs(outcome: &crate::sandbox::SandboxOutcome) -> &[String] {
+fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -94,31 +92,40 @@ fn logs(outcome: &crate::sandbox::SandboxOutcome) -> &[String] {
     }
 }
 
-/// **A real JavaScript program runs through the real membrane** — prepared by this arm, evaluated by
-/// the embedded guest, calling gg's real host and reading back what it answered.
+/// **A real JavaScript program runs through the real membrane** — its own bytes evaluated as a
+/// module, calling gg's real host and reading back what it answered.
 ///
-/// Three programs, because three different things are being observed and a component compile is
-/// paid once per process:
+/// Five programs, because five different things are being observed and a component compile is paid
+/// once per process:
 ///
-/// 1. that a program with no gg call in it evaluates at all, and that evaluating it took time — a
-///    zero reading would mean it never ran;
+/// 1. that a program with no gg call in it evaluates at all, that its own bytes are what ran, and
+///    that evaluating it took time — a zero reading would mean it never ran;
 /// 2. that typed calls reach the host in the order the program made them and their **results** are
 ///    values the program can read, which is the whole of what this capability is;
 /// 3. that a program whose types are wrong **runs anyway**, which is this arm's entire reason for
 ///    existing. A sibling gate asserts that the checked arm rejects the same program at prepare
-///    time; what it cannot assert is what happens next here, because on this arm there is a next.
-///
-/// Two more were added with the surface they observe: the documented `gg.<module>.<call>` spelling
-/// (4), and the **convenience helpers** a returned value carries (5). The helpers are the one part
-/// of this SDK that is not a module export, so they are the one part no catalogue, no type check
-/// and no drift gate can prove: they exist only if the *baked component* attached them to the value
-/// the host handed back.
+///    time; what it cannot assert is what happens next here, because on this arm there is a next;
+/// 4. the documented `gg.<module>.<call>` spelling, reached through the import the documentation
+///    states, across every bound module;
+/// 5. the **convenience helpers** a returned value carries. They are the one part of this SDK that
+///    is not a module export, so they are the one part no catalogue and no drift gate can prove:
+///    they exist only if the baked guest attached them to the value the host handed back.
 #[test]
 fn a_real_javascript_program_runs_through_the_real_membrane() {
-    // 1. The floor.
-    let (outcome, log) = run("console.log(40 + 2);");
+    // 1. The floor. Note what is absent: no import, no annotation, no ceremony — a program that
+    //    calls nothing of gg's needs no line of gg's.
+    let program = "console.log(40 + 2);\n";
+    let (outcome, log) = run(program);
     assert_eq!(logs(&outcome), ["42"]);
     assert!(log.calls().is_empty(), "no tool was called");
+    assert_eq!(
+        javascript()
+            .prepare_program(program, &[], &crate::sandbox::PrepareContext::new())
+            .expect("nothing reads a program on this arm")
+            .source,
+        program,
+        "the bytes the guest evaluated are the bytes the reply carried"
+    );
     assert!(
         outcome.elapsed > std::time::Duration::ZERO,
         "evaluating a program takes time; a zero reading means it never ran"
@@ -131,12 +138,14 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
 
     // 2. The headline: list, filter, read each, write once, report. Every value here came back
     // across the membrane as a typed result the program read fields off, not as a document it
-    // parsed.
+    // parsed — and every gg name in it came from the import on the first line.
     let (outcome, log) = run(concat!(
-        "const files = fs.listDir(\"src\").filter((e) => e.kind === \"file\");\n",
-        "const texts = files.map((e) => fs.readTextFile(`src/${e.name}`));\n",
-        "const written = fs.writeFile(\"out/summary.txt\", texts.join(\"\\n\"));\n",
-        "console.log(JSON.stringify({ files: files.map((f) => f.name), written }));",
+        "import { files } from \"gg\";\n",
+        "\n",
+        "const entries = files.listDir(\"src\").filter((e) => e.kind === \"file\");\n",
+        "const texts = entries.map((e) => files.readTextFile(`src/${e.name}`));\n",
+        "const written = files.writeFile(\"out/summary.txt\", texts.join(\"\\n\"));\n",
+        "console.log(JSON.stringify({ files: entries.map((f) => f.name), written }));\n",
     ));
     let lines = logs(&outcome);
     assert_eq!(lines.len(), 1, "expected one logged line: {lines:?}");
@@ -168,38 +177,31 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
          names the read each of them was serviced by"
     );
 
-    // 3. The arm's variable, observed rather than inferred. `view.openText` takes two strings; this
+    // 3. The arm's variable, observed rather than inferred. `openText` takes two strings; this
     // program passes two numbers. On the checked arm that reply never reaches a guest — `tsc`
     // refuses it and the model is handed a diagnostic before anything runs. Here nothing reads the
     // program before the engine does, so the mistake becomes a *run-time* answer — and what
     // produces it is the hand-written half of the SDK, which is the layer the seam says exists to
     // validate the argument shapes the wire cannot. A turn later rather than a turn earlier is
     // exactly the cost this arm is registered to price.
-    let (outcome, log) = run("view.openText(1, 2);\nconsole.log(\"reached\");");
-    assert!(
-        outcome.result.is_ok(),
-        "the sandbox ran the program rather than refusing it: {:?}",
-        outcome.result
-    );
-    let result = outcome
+    let (outcome, log) = run(concat!(
+        "import { views } from \"gg\";\n",
+        "\n",
+        "views.openText(1, 2);\n",
+        "console.log(\"reached\");\n",
+    ));
+    let error = outcome
         .result
         .as_ref()
-        .expect("the sandbox ran the program rather than refusing it before it started");
-    let error = result.error.as_ref().expect(
-        "a call written with the wrong argument types fails somewhere; here it is at run time",
+        .expect_err("an uncaught throw kills the guest, which the host reads as a trap");
+    let message = error.to_string();
+    assert!(
+        message.contains("TypeError: expected a string, got a number"),
+        "the SDK's own argument validation is what catches it, and it says what it wanted: {message}"
     );
     assert!(
-        error.message.contains("`openText` failed")
-            && error
-                .message
-                .contains("expected a string, received [number]"),
-        "the SDK's own argument validation is what catches it, and it says what it wanted: {}",
-        error.message
-    );
-    assert_eq!(
-        error.location.as_deref(),
-        Some("line 1, column 6"),
-        "and it is reported at the model's own coordinates, not the guest's"
+        message.contains("at openText (sdk:gg/views.js") && message.contains("(program.js:3:7)"),
+        "and the engine's frames name the SDK call and the model's own line: {message}"
     );
     assert!(
         log.names().is_empty(),
@@ -213,17 +215,13 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         outcome.logs
     );
 
-    // 4. THE DOCUMENTED SPELLING, which is the one nothing above uses. `fs` and `view` are legacy
-    // grouping names that appear in no catalogue and that no model is ever shown; they are bound for
-    // the sibling arms whose compiled bundles resolve them as free identifiers. What a model reads is
-    // `gg.<module>.<function>`, and until this ran, the surface every test executed was the one no
-    // model is shown and the surface every model is shown was the one nothing executed — so a
-    // regression in the shim's module wiring would have left this suite green and every real program
-    // dead with a `ReferenceError`.
-    //
-    // One call per bound module, the module directory every module carries, and the one gg name
-    // bound bare.
+    // 4. THE DOCUMENTED SPELLING. `import * as gg from "gg";` is the line every documentation view
+    // states, and `gg.files.readTextFile` is the name every search hit carries and the prompt
+    // quotes. One call per bound module, plus the `ToolError` the aggregate re-exports bare.
     let (outcome, log) = run(concat!(
+        "import * as gg from \"gg\";\n",
+        "import { ToolError } from \"gg\";\n",
+        "\n",
         "gg.views.openText(\"scratch\", gg.files.readTextFile(\"notes.md\"));\n",
         "gg.shell.shell(\"ls\");\n",
         "gg.board.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });\n",
@@ -233,9 +231,9 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "gg.delegation.sendMessage(\"agent-1\", \"more\");\n",
         "gg.skills.readSkill(\"testing\");\n",
         "try {\n",
-        "  gg.files.readTextFile(42);\n",
+        "  gg.files.readTextFile(\"a.ts\", { offset: -1 });\n",
         "} catch (error) {\n",
-        "  console.log(String(error instanceof ToolError));\n",
+        "  console.log(`${error instanceof ToolError} ${error.code}`);\n",
         "}\n",
         // The call the whole discovery loop begins at, written the way the prompt describes it: a
         // query, a module filter and a page, and a value the program reads fields off. The double
@@ -282,12 +280,12 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         ],
         "the documented spellings of `openText` and `search` each opened the view they name"
     );
-    // The bare `ToolError` a `catch` narrows on — the one thing the prompt teaches that is not a
-    // tool call.
+    // The `ToolError` a `catch` narrows on, which the aggregate module exports beside the
+    // namespaces so that one class serves the SDK and the program alike.
     let lines = logs(&outcome);
     assert_eq!(
-        lines[0], "true",
-        "`ToolError` is bound bare, so `instanceof` narrows a caught failure"
+        lines[0], "true invalid-argument",
+        "an imported `ToolError` narrows a failure the SDK threw, and its `code` reads off it"
     );
     // The search's page came back as a value the program read fields off, envelope and all: a total
     // it can compare its page against, the offset echoed back so paging needs nothing tracked, and
@@ -322,6 +320,8 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
     // four helpers, each hanging off a value a different call produced, each reaching gg's dispatch
     // under the operation it is an alias of.
     let (outcome, log) = run(concat!(
+        "import * as gg from \"gg\";\n",
+        "\n",
         "const issue = gg.board.createIssue({\n",
         "  title: \"T\", inScope: \"a\", outOfScope: \"b\", completionCriteria: \"c\", agent: \"worker\",\n",
         "});\n",
@@ -380,45 +380,68 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
     );
 }
 
-/// **A name gg does not have is an unknown name, and the guest answers the question it provokes.**
+/// **Nothing this arm offers resolves without a line the program wrote.**
 ///
-/// This lives on *this* arm rather than on TypeScript's, and the reason is the whole of what the
-/// static surface changed. On the checked arm the SDK's every module and function is declared to
-/// `tsc`, so an identifier neither the surface nor the globals covers is a located **compile error**
-/// before anything runs — there is no `ReferenceError` left to observe there. Here nothing reads a
-/// program before the engine does, so the guest's own branch is reachable, and what it composes into
-/// the error is the answer to *what do I have?*: gg's modules, qualified exactly as the
-/// documentation qualifies them.
+/// The invariant every converted arm carries a test of, and the one this arm could not have had
+/// while its guest bound gg's surface into a program's scope. The same call is written twice: once
+/// with no import, where the engine's own `ReferenceError` names the identifier and nothing crosses
+/// the membrane; and once with the import the documentation states, where it answers.
 ///
-/// A **withheld capability** is deliberately not this case any more, on any arm. Every function is
-/// bound whatever the run enables, so reaching for one this agent was not granted is a refusal from
-/// the host — see `sandbox.faults.test.rs` and each arm's surface test.
+/// A **withheld capability** is deliberately not this case. Every function is bound whatever the run
+/// enables, so reaching for one this agent was not granted is a refusal from the host.
 #[test]
-fn a_name_gg_does_not_have_is_an_unknown_name_that_names_the_modules_it_does() {
-    let (outcome, log) = run("whatever.listDir(\"src\");");
-    let result = outcome
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    let (outcome, log) = run("const found = gg.docs.search(\"view\");\n");
+    let error = outcome
         .result
         .as_ref()
-        .expect("nothing reads the program before the engine on this arm");
-    let error = result
-        .error
+        .expect_err("an unbound identifier kills the guest");
+    let message = error.to_string();
+    assert!(
+        message.contains("ReferenceError") && message.contains("gg is not defined"),
+        "the engine's own sentence is what the model reads: {message}"
+    );
+    assert!(
+        message.contains("program.js:1:1"),
+        "in the model's own file: {message}"
+    );
+    assert!(log.calls().is_empty(), "and nothing ran");
+
+    let (outcome, log) = run("import * as gg from \"gg\";\n\ngg.docs.search(\"view\");\n");
+    assert!(
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "the same call, reached through the line the documentation states: {:?}",
+        outcome.result
+    );
+    assert!(
+        log.calls().is_empty(),
+        "searching is not a gg tool: {:?}",
+        log.names()
+    );
+    assert_eq!(
+        outcome.views_opened.len(),
+        1,
+        "it placed its page in the window"
+    );
+}
+
+/// **A specifier the loader does not resolve is a refusal that says what to write instead.**
+///
+/// The other half of the import rule: a program that reaches past gg's documented surface — into the
+/// SDK's own files, or into the raw membrane — is told the two specifiers that are the surface. It is
+/// the engine's resolution that answers, so the sentence arrives with the failed import's own
+/// coordinates.
+#[test]
+fn a_specifier_outside_the_documented_surface_names_the_ones_inside_it() {
+    let (outcome, log) = run("import { readFile } from \"test-cabinet:gg/files\";\n");
+    let message = outcome
+        .result
         .as_ref()
-        .expect("an identifier nothing bound is a run-time failure here");
-    assert_eq!(error.kind, crate::sandbox::ProgramErrorKind::UnknownName);
+        .expect_err("an unresolvable import kills the guest")
+        .to_string();
     assert!(
-        error.message.contains("whatever is not defined"),
-        "the engine's own sentence is kept: {}",
-        error.message
-    );
-    assert!(
-        error.message.contains("gg.files") && error.message.contains("gg.session"),
-        "and gg's modules are named beside it: {}",
-        error.message
-    );
-    assert!(
-        !error.message.contains("ToolError"),
-        "`ToolError` is catchable, not callable, and listing it invites a call: {}",
-        error.message
+        message.contains("gg's own plumbing") && message.contains("import \"gg\""),
+        "the refusal names what to write instead: {message}"
     );
     assert!(log.calls().is_empty(), "and nothing ran");
 }
@@ -426,7 +449,7 @@ fn a_name_gg_does_not_have_is_an_unknown_name_that_names_the_modules_it_does() {
 /// **A capability this run withheld is bound, called, and refused by the host** — the inversion,
 /// observed on this arm rather than inferred from TypeScript's.
 ///
-/// The two arms share one component, so what is asserted here is not a second implementation; it is
+/// The two arms share one guest, so what is asserted here is not a second implementation; it is
 /// that the *unchecked* arm reaches the same refusal, which is the arm where a model can actually
 /// write the call without a compiler stopping it first. Three things are checked, and each is one of
 /// the three reasons the inversion happened: the name is **there** (a property access, not a
@@ -436,6 +459,9 @@ fn a_name_gg_does_not_have_is_an_unknown_name_that_names_the_modules_it_does() {
 fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
     let (outcome, log) = run_with(
         concat!(
+            "import * as gg from \"gg\";\n",
+            "import { ToolError } from \"gg\";\n",
+            "\n",
             "console.log(String(typeof gg.files.listDir));\n",
             "try {\n",
             "  gg.files.listDir(\"src\");\n",
@@ -476,6 +502,9 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
     // view is bought — so this program's first call answers and its second is refused.
     let (outcome, log) = run_with(
         concat!(
+            "import * as gg from \"gg\";\n",
+            "import { ToolError } from \"gg\";\n",
+            "\n",
             "console.log(String(gg.docs.search(\"view\").total));\n",
             "try {\n",
             "  gg.docs.closeAll();\n",
@@ -503,5 +532,98 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
         log.calls().is_empty(),
         "neither call is a gg tool: {:?}",
         log.names()
+    );
+}
+
+/// **Gate [G8](super::super::g8) for JavaScript** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+///
+/// Every location below is `program.js`, which is the model's own file: nothing prepared these
+/// programs, so the coordinates the engine reports are already the coordinates the model wrote in
+/// and there is no map between them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::JavaScript,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+
+import { files } from "gg";
+
+const text = files.readTextFile(
+  "missing.md",
+);
+console.log(text);
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::At("program.js:6:3"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): reaching into something that is not there.
+
+const values = [1, 2, 3];
+console.log(
+  values[7].toString(),
+);
+"#,
+                names: &["TypeError", "toString"],
+                located: Located::At("program.js:5:3"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): an async failure nothing observes.
+
+async function step() {
+  throw new Error("the third step did not finish");
+}
+
+step();
+"#,
+                names: &["the third step did not finish"],
+                located: Located::At("program.js:4:13"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion.
+
+function deeper(n) {
+  return deeper(n + 1);
+}
+
+deeper(0);
+"#,
+                names: &["Maximum call stack size exceeded"],
+                located: Located::At("program.js:4:21"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+console.log("before the exit");
+process.exit(
+  3,
+);
+console.log("after the exit");
+"#,
+                names: &["process is not defined"],
+                located: Located::At("program.js:4:1"),
+                // The guest is not Node and binds no `process`, so a program cannot stop it. What
+                // the model reads is the engine's own `ReferenceError` at the line it reached for
+                // one, and the statements after it do not run.
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+        ],
     );
 }

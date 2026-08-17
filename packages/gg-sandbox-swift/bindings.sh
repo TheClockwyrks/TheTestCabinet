@@ -4,7 +4,7 @@
 #
 # WHY C, for a Swift arm. `wit-bindgen` has no Swift generator. Swift imports C natively, so
 # the canonical ABI is generated once as C, compiled to a wasm object, and reached from Swift
-# through a bridging header (`Sources/gg-shell.h`). The alternative was hand-writing the
+# through a clang module over `Sources/gg-shell.h`. The alternative was hand-writing the
 # lowering in Swift, which is a second implementation of a specification `wit-bindgen` already
 # implements — and one that would drift from `crates/gg/wit` on its own schedule.
 #

@@ -16,15 +16,10 @@ package gg.views
 import gg.core.ToolError
 import gg.files.FileRead
 import gg.internal.Read
-import gg.internal.ggArgs
-import gg.internal.ggAsInteger
 import gg.internal.ggCall
 import gg.internal.ggNumber
-import gg.internal.ggRecord
 import gg.internal.ggRun
-import gg.internal.ggSet
 import gg.internal.ggText
-import gg.internal.viewObject
 
 
 /**
@@ -45,22 +40,10 @@ import gg.internal.viewObject
  * @throws ToolError `NOT_FOUND` for a missing path, and `INVALID_ARGUMENT` for an offset past the
  *   end of the file. The read is what fails, and nothing is opened when it does.
  */
-public fun openFile(path: String, offset: Int? = null, limit: Int? = null): FileRead {
-    val args =
-        if (offset == null && limit == null) {
-            ggArgs(ggText(path))
-        } else {
-            val options = ggRecord()
-            if (offset != null) {
-                ggSet(options, "offset", ggNumber(offset))
-            }
-            if (limit != null) {
-                ggSet(options, "limit", ggNumber(limit))
-            }
-            ggArgs(ggText(path), options)
-        }
-    return Read.fileRead(ggCall("open_file", viewObject(), "gg.views", "openFile", args))
-}
+public fun openFile(path: String, offset: Int? = null, limit: Int? = null): FileRead =
+    Read.fileRead(
+        ggCall("views.open_file", ggText(path), ggNumber(offset), ggNumber(limit)),
+    )
 
 /**
  * Show a value the program computed, filed under `label`.
@@ -78,24 +61,24 @@ public fun openFile(path: String, offset: Int? = null, limit: Int? = null): File
  *   a body or label over gg's caps; nothing is ever silently truncated.
  */
 public fun openText(label: String, body: String) {
-    ggRun("open_text", viewObject(), "gg.views", "openText", ggArgs(ggText(label), ggText(body)))
+    ggRun("views.open_text", ggText(label), ggText(body))
 }
 
 /**
- * Show the full documentation for one function: its signature, its description, and the types it
- * names.
+ * Show the full documentation for one module, function or type: everything a search's brief left out.
  *
- * The name is the fully-qualified one this documentation is keyed by, such as `gg.files.readFile`.
- * What comes back is a view rather than a return value, so it arrives in the next prompt under a
- * `Documentation` heading and is not available in the turn it was asked for. Opening the same name
- * again replaces the view rather than adding a second copy.
+ * The name is the fully-qualified one this documentation is keyed by, such as `gg.files.readFile`, or
+ * for a module its own path, `gg.files`. What comes back is a view rather than a return value, so it
+ * arrives in the next prompt under a `Documentation` heading and is not available in the turn it was
+ * asked for. Opening a name that is already open does nothing at all — not a move, not a re-emit — so
+ * this band only ever grows.
  *
  * @ggop views.open_docs_view
- * @param name The function to document, by its fully-qualified name.
+ * @param name What to document, by the fully-qualified name it is keyed under.
  * @throws ToolError `NOT_FOUND` for an unknown or unbound name.
  */
 public fun openDocsView(name: String) {
-    ggRun("open_docs_view", viewObject(), "gg.views", "openDocsView", ggArgs(ggText(name)))
+    ggRun("views.open_docs_view", ggText(name))
 }
 
 /**
@@ -118,7 +101,7 @@ public fun openDocsView(name: String) {
  * @throws ToolError `INVALID_ARGUMENT` for an empty selector.
  */
 public fun close(selector: String): Int =
-    ggAsInteger(ggCall("close", viewObject(), "gg.views", "close", ggArgs(ggText(selector))))
+    ggCall("views.close", ggText(selector)).integer()
 
 /**
  * List what is open in the context window right now.
@@ -132,8 +115,7 @@ public fun close(selector: String): Int =
  * @ggop views.current
  * @return every view open in the context window
  */
-public fun current(): List<OpenView> =
-    Read.openViews(ggCall("current", viewObject(), "gg.views", "current", ggArgs()))
+public fun current(): List<OpenView> = Read.openViews(ggCall("views.current"))
 
 /**
  * One view open in the context window.
@@ -182,7 +164,7 @@ public enum class ViewKind {
     /** A value that was shown; its selector is the label it was given. */
     TEXT,
 
-    /** A function's documentation; its selector is the function's name. */
+    /** An entry's documentation; its selector is the key it was opened under. */
     DOCS,
 }
 

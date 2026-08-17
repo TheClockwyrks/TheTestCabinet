@@ -21,9 +21,9 @@
 #
 # WHY THE SHELL, THE SDK AND THE BINDINGS ARE PREBUILT OBJECTS. None of the three is a function of
 # the model's program, and compiling 3,269 lines of generated C plus the SDK's own bodies on every
-# turn is time that buys nothing — which on an arm whose floor is ~85 ms would have several times
-# multiplied it. The SDK's HEADERS go into the archive as source, because they are what the prelude
-# precompiles and what a program is declared against; its BODIES go in as one object. The shell's
+# turn is time that buys nothing — which on an arm whose floor is ~90 ms would have several times
+# multiplied it. The SDK's HEADERS go into the archive as source, under the `include/` root a
+# program's own `#include <gg/files.hpp>` resolves against; its BODIES go in as one object. The shell's
 # source is staged beside its object all the same — that predates the archive being generated, when
 # a test compared the archive's copy against this checkout's to catch one nobody had re-cut, and it
 # is kept because `cpp.compile.rs` compiles the shell's source alongside the model's program on the
@@ -33,7 +33,7 @@
 # source and the PCH is built **once per machine**, by the first compile, into a content-keyed
 # shared toolchain directory. A PCH may only be read by the clang that wrote it and it records the
 # absolute paths of every header it precompiled — so one built in this checkout could not be read by
-# the wasi-sdk in a run image, and putting 26 MB of it in the archive would be shipping something no
+# the wasi-sdk in a run image, and putting 28 MB of it in the archive would be shipping something no
 # other machine can use. See `cpp.compile.rs`.
 #
 # THIS SET IS BYTE-REPRODUCIBLE, unlike the Swift arm's: clang stamps no per-invocation nonce into
@@ -146,9 +146,17 @@ echo "==> compiling gg's shell for $GG_CPP_TARGET"
 	-I"$BINDINGS" -I"$HERE/Sources" -c -o "$STAGE/shell.o" "$HERE/Sources/shell.cpp"
 
 cp "$BINDINGS/sandbox.h" "$STAGE/sandbox.h"
-mkdir -p "$STAGE/sdk/gg"
-cp "$HERE"/Sources/sdk/*.hpp "$STAGE/sdk/"
-cp "$HERE"/Sources/sdk/gg/*.hpp "$STAGE/sdk/gg/"
+# THE MODEL-FACING INCLUDE ROOT. `cpp.compile.rs` puts exactly this directory on the per-turn
+# `clang++ -I`, so what a program can reach with an `#include <…>` is what is copied here and
+# nothing else: the umbrella `<gg.hpp>`, the thirteen module headers a catalogue entry states as
+# its own import line, and `runtime.hpp`, which the umbrella includes by name.
+#
+# `wire.hpp` and `sandbox.h` are deliberately NOT here. They are the C the SDK is written against,
+# no model-facing header includes either, and an include root is a claim about what a program may
+# write.
+mkdir -p "$STAGE/include/gg"
+cp "$HERE"/Sources/sdk/gg.hpp "$HERE"/Sources/sdk/runtime.hpp "$STAGE/include/"
+cp "$HERE"/Sources/sdk/gg/*.hpp "$STAGE/include/gg/"
 cp "$BINDINGS/sandbox_component_type.o" "$STAGE/sandbox_component_type.o"
 cp "$HERE/Sources/prelude.hpp" "$STAGE/prelude.hpp"
 cp "$HERE/Sources/shell.cpp" "$STAGE/shell.cpp"
@@ -159,7 +167,7 @@ echo "==> checking the prelude precompiles"
 # fresh machine. It is thrown away — the real one is built per machine, by the compiler that will
 # read it.
 "$CLANGXX" --target="$GG_CPP_TARGET" -std="$GG_CPP_STD" "${EH_FLAGS[@]}" "${HARDENING_FLAGS[@]}" \
-	-I"$STAGE" -x c++-header -O0 -g1 -o "$HERE/.build/prelude.check.pch" "$STAGE/prelude.hpp"
+	-x c++-header -O0 -g1 -o "$HERE/.build/prelude.check.pch" "$STAGE/prelude.hpp"
 rm -f "$HERE/.build/prelude.check.pch"
 
 echo "==> cpp.guest.tar.gz"

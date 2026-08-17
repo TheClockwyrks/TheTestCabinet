@@ -5,7 +5,7 @@
 # packages/gg-sandbox-kotlin/kotlin-version.sh, so every machine agrees.
 #
 # THIS ARM RIDES THE JAVA ARM'S TOOLCHAIN. A Kotlin program is compiled to JVM bytecode and
-# then translated to JavaScript by TeaVM, so it needs the JDK and the TeaVM jars
+# then translated to a WebAssembly component by TeaVM, so it needs the JDK and the TeaVM jars
 # scripts/ci/install-java.sh installs — and it needs the SAME ones, because the bytecode the
 # Kotlin compiler writes and the bytecode TeaVM reads are one artifact. So this script runs
 # that one first rather than installing a second JDK beside it. Both are idempotent.
@@ -67,17 +67,6 @@ while read -r COORDINATE; do
 	ARTIFACT="${COORDINATE#*:}"
 	fetch "$COORDINATE" "$LIB_DIR/${ARTIFACT%%:*}-${COORDINATE##*:}.jar"
 done <<<"$KOTLIN_JARS"
-
-# The scripting plugin, under the file names the compiler looks for. NOT in `libs`: that
-# directory is the driver's classpath, and these four are loaded by the compiler itself out
-# of a "Kotlin home" whose layout is a distribution's rather than a repository's.
-HOME_DIR="$INSTALL_DIR/kotlin-home/lib"
-rm -rf "$INSTALL_DIR/kotlin-home"
-mkdir -p "$HOME_DIR"
-while read -r COORDINATE FILE; do
-	[ -n "$COORDINATE" ] || continue
-	fetch "$COORDINATE" "$HOME_DIR/$FILE"
-done <<<"$KOTLIN_SCRIPTING_JARS"
 
 echo "$KOTLIN_VERSION" >"$STAMP"
 echo "$(find "$INSTALL_DIR" -name '*.jar' | wc -l) jars"

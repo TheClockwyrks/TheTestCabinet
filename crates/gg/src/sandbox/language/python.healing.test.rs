@@ -25,12 +25,12 @@ use super::*;
 /// stay because the invariant this corpus re-earns is that a reply nothing repairs comes out exactly
 /// as it went in.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```python\nrows = files.list_dir(\"src\")\nviews.open_text(\"rows\", repr(rows))\n```\n\nThat should list the directory.",
-    "import asyncio\n\nasync def main():\n    rows = await files.list_dir(\"src\")\n    views.open_text(\"rows\", repr(rows))\n\nasyncio.run(main())",
+    "Here is the program.\n\n```python\nimport gg\n\nrows = gg.files.list_dir(\"src\")\ngg.views.open_text(\"rows\", repr(rows))\n```\n\nThat should list the directory.",
+    "import asyncio\n\nimport gg\n\nasync def main():\n    rows = await gg.files.list_dir(\"src\")\n    gg.views.open_text(\"rows\", repr(rows))\n\nasyncio.run(main())",
     "import json\nimport re\n\npayload = json.dumps({\"ok\": True})\nfs.write_file(\"out.json\", payload)",
     "\"\"\"Usage:\n\nimport asyncio\ntotal = 1\n\"\"\"\ntotal = 2\n",
-    "name = \"world\"\nviews.open_text(\"greeting\", f\"hello {name!r}, {len(name)} letters\")",
-    "total = 1\nviews.open_text(\"total\", str(total))\n\ntotal = 1\nviews.open_text(\"total\", str(total))",
+    "import gg\n\nname = \"world\"\ngg.views.open_text(\"greeting\", f\"hello {name!r}, {len(name)} letters\")",
+    "import gg\n\ntotal = 1\ngg.views.open_text(\"total\", str(total))\n\ntotal = 1\ngg.views.open_text(\"total\", str(total))",
     "# I have already written MANIFEST.md.\n# Nothing left to do.",
     "I have finished the task. Everything works.",
 ];
@@ -60,7 +60,8 @@ fn python() -> &'static dyn Dialect {
 /// it is the one strategy gg does not arm by default.
 #[test]
 fn a_doubled_response_is_still_halved() {
-    let program = "rows = files.list_dir(\"src\")\nviews.open_text(\"rows\", repr(rows))";
+    let program =
+        "import gg\n\nrows = gg.files.list_dir(\"src\")\ngg.views.open_text(\"rows\", repr(rows))";
     let mut config = HealingConfig::default();
     config.set(HealingStrategy::DropDoubledResponse, true);
     let result = heal(
@@ -199,15 +200,15 @@ fn a_capitalised_keyword_is_prose() {
 #[test]
 fn each_code_clause_reads_its_own_shape() {
     for line in [
-        "import json",                    // a statement keyword
-        "@dataclass",                     // a decorator
-        ") -> None",                      // a closer
-        "rows = files.list_dir(\"src\")", // an assignment
-        "total: int = 0",                 // an annotated assignment
-        "self.count += 1",                // an augmented assignment
-        "views.open_text(\"a\", \"b\")",  // a call
-        "entries = [",                    // left open
-        "    \"one\",",                   // left open
+        "import json",                       // a statement keyword
+        "@dataclass",                        // a decorator
+        ") -> None",                         // a closer
+        "rows = gg.files.list_dir(\"src\")", // an assignment
+        "total: int = 0",                    // an annotated assignment
+        "self.count += 1",                   // an augmented assignment
+        "gg.views.open_text(\"a\", \"b\")",  // a call
+        "entries = [",                       // left open
+        "    \"one\",",                      // left open
     ] {
         assert!(
             python().looks_like_code(line),
@@ -221,13 +222,15 @@ fn each_code_clause_reads_its_own_shape() {
 fn prose_around_a_bare_program_is_deleted() {
     let result = healed(
         "I will list the source directory and show myself the result.\n\
-         rows = files.list_dir(\"src\")\n\
-         views.open_text(\"rows\", repr(rows))\n\
+         import gg\n\
+         \n\
+         rows = gg.files.list_dir(\"src\")\n\
+         gg.views.open_text(\"rows\", repr(rows))\n\
          That should be everything.",
     );
     assert_eq!(
         result.program,
-        "rows = files.list_dir(\"src\")\nviews.open_text(\"rows\", repr(rows))"
+        "import gg\n\nrows = gg.files.list_dir(\"src\")\ngg.views.open_text(\"rows\", repr(rows))"
     );
     assert_eq!(result.strategies(), vec![HealingStrategy::StripProse]);
 }

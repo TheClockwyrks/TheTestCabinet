@@ -18,9 +18,9 @@
 //!
 //! # What a Swift program is, here: the file itself
 //!
-//! **A model's reply is compiled verbatim, as `main.swift`.** No wrapper, no prologue, no import
-//! line, and therefore **no line offset at all** — a diagnostic at line 7 is line 7 of what the
-//! model wrote, and so is a located trap.
+//! **A model's reply is compiled verbatim, as `main.swift`.** No wrapper and no prologue, its own
+//! `import gg` included, and therefore **no line offset at all** — a diagnostic at line 7 is line 7
+//! of what the model wrote, and so is a located trap.
 //!
 //! That is not a nicety; it is the only shape in which a model can write ordinary Swift. Swift
 //! forbids `extension`, `protocol` and `import` inside a function body, so the wrapper every other
@@ -29,11 +29,13 @@
 //! top-level file admits all of them together with bare statements, which no other Swift context
 //! does.
 //!
-//! What makes it work is that gg's shell is a second file of the **same module**
-//! (`packages/gg-sandbox-swift/Sources/shell.swift`). Swift lowers a top-level file's statements
-//! into the target's C entry point — `__main_argc_argv` on wasm — and the shell, being in the same
-//! module, can name that symbol and call it from the `run` export. The model's file is never
-//! edited, quoted or re-indented.
+//! What makes it work is that Swift lowers a top-level file's statements into the target's C entry
+//! point — `__main_argc_argv` on wasm — which gg's shell
+//! (`packages/gg-sandbox-swift/Sources/shell.swift`) calls from the `run` export. The shell is a
+//! module of its own, compiled ahead of time into `shell.o` and only linked here, because a Swift
+//! access level is module-wide: compiled beside the reply, gg's two exports would be names in the
+//! model's own file that no line of the model's put there. The model's file is never edited, quoted
+//! or re-indented.
 //!
 //! ## What it costs, and it is the error surface
 //!
@@ -68,10 +70,11 @@
 //! into the gg toolchain image (`containers/gg-toolchains/Dockerfile`) and is found under
 //! [`swift_home`].
 //!
-//! What gg carries is **182 KB** of guest and **3.4 MB** of libraries. The guest is the C bindings
+//! What gg carries is **185 KB** of guest and **3.4 MB** of libraries. The guest is the C bindings
 //! generated from `crates/gg/wit` (compiled to a wasm object once, at build time, because 3,000
 //! lines of generated C that never changes between programs is ~90 ms a turn that buys nothing), the
-//! component-type object that names the world, the bridging header, the shell's Swift source, and
+//! component-type object that names the world, the shell's header and the clang module map that
+//! names it, the shell's Swift source, and
 //! **this arm's SDK as a prebuilt module** — `gg.swiftmodule` and `gg.o`, compiled ahead of time for
 //! the same two reasons the library set is: ~2,000 lines type-checked per turn buys nothing, and a
 //! separate module is what lets a program shadow a name gg bound rather than collide with it. The
@@ -118,8 +121,9 @@
 //! Everything gg carries is unpacked into a [shared toolchain directory](shared_toolchain_dir) —
 //! two of them, one per embedded archive, each content-keyed on the pinned compiler and a digest
 //! of its own bytes, placed by rename and sealed read-only. `swiftc` only ever **reads** them: the
-//! header is named on `-import-objc-header`, the shell and the objects are inputs, the modules are
-//! found by `-I`, the library archive is a link input, and nothing is generated beside any of them.
+//! module map is named on `-Xcc -fmodule-map-file`, the shell and the objects are inputs, the
+//! modules are found by `-I`, the library archive is a link input, and nothing is generated beside
+//! any of them.
 //!
 //! Everything a compile writes goes into this preparation's own workspace, and most of it without
 //! this arm having asked. Swift's driver writes its intermediates under `TMPDIR` and its **clang
@@ -128,11 +132,6 @@
 //! into the private tree. That is the half of the isolation contract this arm would not have
 //! thought to guard: a module cache shared between two preparations of two different programs is
 //! precisely the shape of the measured `purs` bug.
-//!
-//! The one place it *is* deliberate is the **precompiled bridging header**, which the driver would
-//! otherwise put in a `TemporaryDirectory.XXXXXX` of its own naming — inside the private tree, so
-//! isolated, but with six random characters in the path and that path written into the artifact.
-//! `-pch-output-dir` names it instead.
 //!
 //! Two arguments point outside the tree, and both are the escape hatch [`compile`](super::compile)
 //! documents. [`LD_LIBRARY_PATH`](self::invoke_swiftc) selects which `libxml2` and `libncurses` the
@@ -157,8 +156,9 @@ use crate::sandbox::{
 
 use super::source::{LIB_FILE, MODULE_FILE_PREFIX};
 
-/// Everything a compile needs on disk that is not the model's own file: the bridging header, the
-/// generated WIT header, the compiled bindings object, the component-type object, and gg's shell.
+/// Everything a compile needs on disk that is not the model's own file: the shell's header and the
+/// clang module map that names it, the generated WIT header, the compiled bindings object, the
+/// component-type object, and gg's shell.
 ///
 /// Embedded for the reason the guest components are: gg is copied as a single file into an
 /// ephemeral run container and must carry everything it needs with it. Built by
@@ -233,8 +233,12 @@ pub(super) const PROGRAM_FILE: &str = "main.swift";
 /// What `swiftc` is told to write, in this preparation's own output directory.
 const ARTIFACT_FILE: &str = "program.wasm";
 
-/// Where the precompiled bridging header is persisted, in this preparation's own output directory.
-const PCH_DIR: &str = "pch";
+/// The clang module map that declares [`GgShell`](self), which gg's shell imports and the model's
+/// own file does not.
+///
+/// Named on `-Xcc -fmodule-map-file` rather than discovered from a header search path, so the one
+/// file of the program's module that reaches gg's wire is the one that wrote `import GgShell`.
+const MODULE_MAP_FILE: &str = "module.modulemap";
 
 /// What a preparation's own tree is called in anything the compiler records — a diagnostic's path,
 /// a debug-information file entry, a located trap's frame.
@@ -264,13 +268,12 @@ const PREPARATION_PREFIX: &str = "/gg";
 ///
 /// It costs ~5.6 KB of a ~7.1 MB artifact, which is nothing, and one real complication: debug
 /// information records the **compilation environment** — the hashes and paths of the clang module
-/// cache and of the precompiled bridging header, computed over an invocation naming this
-/// preparation's own working directory, `HOME` and `TMPDIR` — so two preparations of one program
-/// produce different debug sections. That is a consequence of the
-/// [isolation contract](super::compile) rather than a breach of it, and every way round it was
-/// measured and rejected (`-file-prefix-map` rewrites the paths but not the hashes;
-/// `-gline-tables-only` still carries them; `-Xcc -Xclang -fdisable-module-hash` still leaves the
-/// PCH name; a shared warm module cache still hashes the working directory). It costs the seam's
+/// cache, computed over an invocation naming this preparation's own working directory, `HOME` and
+/// `TMPDIR` — so two preparations of one program produce different debug sections. That is a
+/// consequence of the [isolation contract](super::compile) rather than a breach of it, and every
+/// way round it was measured and rejected (`-file-prefix-map` rewrites the paths but not the
+/// hashes; `-gline-tables-only` still carries them; a shared warm module cache still hashes the
+/// working directory). It costs the seam's
 /// isolation gate (`language/isolation.rs`) nothing, because that gate searches an
 /// artifact for its own program's marker rather than comparing two artifacts — the marker lives in
 /// the data section and the debug sections are beside the point. It did cost that gate a great deal
@@ -354,7 +357,7 @@ pub(super) fn library_modules() -> impl Iterator<Item = &'static str> {
 
 /// Unpack both embedded archives now, so the first compile does not.
 ///
-/// The whole of this language's warm-up: 182 KB and 3.4 MB decompressed, once per machine. The
+/// The whole of this language's warm-up: 185 KB and 3.4 MB decompressed, once per machine. The
 /// results are dropped, because a failure here is the failure the first compile will make, and
 /// there it is classified, counted and reported.
 pub(super) fn warm() {
@@ -368,13 +371,6 @@ pub(super) fn warm() {
 
 /// Compile a **program** — a model's reply — into the component that evaluates it.
 ///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero: the measurement counts top-level statements written after one that *ends* the program,
-/// which in the ECMAScript arms is a top-level `return`. Swift's top-level code has no such
-/// statement — a `return` at the top level of `main.swift` returns from the entry point, and
-/// everything after it is ordinary dead code the compiler already warns about — so the shape this
-/// field records does not exist on this arm.
-///
 /// [`source`](PreparedProgram::source) is empty for the same reason the Rust arm's is: there is
 /// nothing left for a guest to evaluate, because the guest *is* what this returned.
 pub(super) fn compile_program(
@@ -384,7 +380,6 @@ pub(super) fn compile_program(
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: String::new(),
-        unreachable: None,
         component: Some(compile(source, modules, context)?),
     })
 }
@@ -562,19 +557,26 @@ fn invoke_swiftc(
         // A component is one self-contained module; there is nothing inside it to dynamically link
         // against, and the SDK's own toolset says so too.
         .arg("-static-stdlib")
-        // Whole-module, which is what puts the model's file, every code module in scope and gg's
-        // shell in one module — the arrangement that lets the shell name the program's entry point,
-        // and the one that lets a code module's declarations be reached without an import.
+        // Whole-module, which is what puts the model's file and every code module in scope in one
+        // module — the arrangement that lets a code module's declarations be reached without an
+        // import. gg's shell is NOT in it: an access level is module-wide, so a shell compiled here
+        // would put gg's own two exports into the model's file with no line the model wrote.
         .arg("-wmo")
         // The generated WIT surface, reached from Swift as C — what gg's shell calls, and what
-        // declares the model program's own entry point so the shell can call *it*.
-        .arg("-import-objc-header")
-        .arg(guest.file("gg-shell.h"))
-        // Where `gg.swiftmodule` and the library set's modules are found. This is what makes a
-        // reply need no import line at all: the shell writes `@_exported import gg`, a re-export
-        // is module-scoped where a plain import is file-scoped, and the model's `main.swift` — a
-        // second file of the same module — therefore opens with gg's whole surface already in
-        // scope. A program's own `import Collections` resolves here too.
+        // declares the model program's own entry point so the shell can call *it*. A clang
+        // **module map** rather than `-import-objc-header`, and the difference is which files see
+        // it: a bridging header is module-scoped and put gg's wire, `malloc` and the entry-point
+        // symbol into the model's own `main.swift` with no line the model wrote, where an `import
+        // GgShell` reaches them in the shell's own module alone.
+        .arg("-Xcc")
+        .arg(format!(
+            "-fmodule-map-file={}",
+            guest.file(MODULE_MAP_FILE).display()
+        ))
+        // Where `gg.swiftmodule` and the library set's modules are found — packaging, which tells
+        // the compiler the library exists and puts no name in scope. A reply reaches gg's surface
+        // by writing `import gg`, which resolves here; a reply that writes no import reaches
+        // nothing gg carries. A program's own `import Collections` resolves here too.
         .arg("-I")
         .arg(guest.tree())
         .arg("-I")
@@ -585,20 +587,14 @@ fn invoke_swiftc(
         .arg("-I")
         .arg("-Xcc")
         .arg(libraries.join("include"))
-        // Where the precompiled bridging header goes. Named because the default is a directory
-        // called `TemporaryDirectory.XXXXXX` with six random characters in it, and that path is
-        // recorded in the artifact's debug information. In this preparation's own output tree, so
-        // it is private and removed with it.
-        .arg("-pch-output-dir")
-        .arg(workspace.output().join(PCH_DIR))
         // Every path this preparation's own tree contributes to the artifact, rewritten to a fixed
         // one. A model that traps is shown the frame, and `/gg/work/main.swift:7:13` is a thing it
         // can read, where `/tmp/gg-prepare/8421-3/work/main.swift:7:13` names a directory that was
         // deleted before the message reached it. It does *not* make the artifact a function of the
-        // program: the paths are rewritten and the module-cache and bridging-header hashes computed
-        // over them are not, so this arm claims no byte-stability — unlike the C++ arm, whose
-        // identical-looking flag does buy it. Nothing depends on the difference; the seam's
-        // isolation gate searches for markers rather than comparing artifacts.
+        // program: the paths are rewritten and the module-cache hashes computed over them are not,
+        // so this arm claims no byte-stability — unlike the C++ arm, whose identical-looking flag
+        // does buy it. Nothing depends on the difference; the seam's isolation gate searches for
+        // markers rather than comparing artifacts.
         .arg("-file-prefix-map")
         .arg(format!("{}={PREPARATION_PREFIX}", workspace.root().display()));
 
@@ -643,9 +639,13 @@ fn invoke_swiftc(
     if let Some(library) = build.library {
         command.arg(library);
     }
-    command.arg(guest.file("shell.swift"));
     if build.artifact.is_some() {
         command
+            // gg's shell, compiled ahead of time as a module of its own and only linked here. It
+            // is what the world's two exports resolve to, and it reaches the model's top-level
+            // code through `__main_argc_argv`, which is what Swift lowers a top-level file into on
+            // this target and which the linker resolves like any other C symbol.
+            .arg(guest.file("shell.o"))
             .arg(guest.file("gg.o"))
             .arg(guest.file("sandbox.o"))
             .arg(guest.file("sandbox_component_type.o"))
@@ -928,8 +928,8 @@ pub(super) fn guest() -> Result<&'static Guest, String> {
 /// through [`place_tree`], which fills a staging directory, seals it read-only and renames it in.
 ///
 /// Sharing it needs no further argument than that, because `swiftc` only ever **reads** it: the
-/// header is named on `-import-objc-header`, the shell and the two objects are inputs, and every
-/// artifact goes to this preparation's own output directory.
+/// module map is named on `-Xcc -fmodule-map-file`, the shell and the two objects are inputs, and
+/// every artifact goes to this preparation's own output directory.
 fn materialise() -> Result<Guest, String> {
     let root = shared_toolchain_dir(&format!(
         "swift-{}-{:016x}",

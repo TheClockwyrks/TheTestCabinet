@@ -14,8 +14,12 @@
 # carry fails that test rather than reaching a model.
 #
 # THE `# --- heading ---` LINES ARE MACHINE-READABLE. `tools/Signatures.cs` reads this file and emits
-# the catalogue's `libraries` section out of it, group by group, which is what the system prompt
-# shows. A namespace under no heading is an error rather than an ungrouped entry.
+# the catalogue's `libraries` section out of it, group by group, and that section is what gg quotes
+# back to a model on a COMPILE FAILURE. No system prompt carries a package inventory any more: the
+# one mistake this set prevents — a `using` of something neither artifact above carries — is a
+# mistake `csc` DETECTS, so the set arrives beside the diagnostic that made it relevant rather than
+# on every turn of every run. A namespace under no heading is an error rather than an ungrouped
+# entry.
 #
 # WHAT IS NOT HERE, AND WHY THERE IS NO CURATED THIRD-PARTY SET. Nothing off nuget. The argument is
 # the one the C++ arm makes about its own standard library, and it is stronger here: what a C#
@@ -26,8 +30,8 @@
 # into the committed component and re-verified against the interpreter on every pin move, and a
 # vendored tree added without that is worse than saying so.
 #
-# The six namespaces in `src/Gg/GlobalUsings.cs` are already in scope and need no `using` line. The
-# rest do.
+# EVERY NAMESPACE HERE NEEDS A `using` LINE THE PROGRAM WROTE. Nothing is in a program's scope
+# before its first line, gg's own surface included.
 
 # --- The everyday ---
 System
@@ -84,7 +88,6 @@ System.Net.Sockets
 # --- Threading types ---
 # Present because they compile and because a `lock` is ordinary C#, NOT because concurrency is a
 # shape to reach for: every call on gg's surface is synchronous, there is no event loop for an
-# `await` to yield to, and work a program defers is work that reports success and never runs. They
-# are deliberately out of the default scope for that reason — see `src/Gg/GlobalUsings.cs`.
+# `await` to yield to, and work a program defers is work that reports success and never runs.
 System.Threading
 System.Threading.Tasks

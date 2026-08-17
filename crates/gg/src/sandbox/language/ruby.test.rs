@@ -29,28 +29,6 @@ fn this_arm_names_the_compiler_that_judges_a_program() {
     assert!(ruby().prepare_compiles());
 }
 
-/// **The prompt states the Ruby level the compiler this build cut really reports.**
-///
-/// The one fact in this arm's prompt that is a *version* and therefore rots: a model told it is
-/// writing Ruby 3.2 writes `case … in` and does not write `it` as a block parameter, and an Opal
-/// bump that moved the level would leave that sentence quietly wrong. The number is prose — no
-/// catalogue reflects it — so this is what holds it to `ruby.compiler.json`, which this arm's
-/// artifact crate writes beside the compiler it describes.
-#[test]
-fn the_prompt_states_the_ruby_level_the_compiler_reports() {
-    let level = compile::ruby_version();
-    let major_minor = level
-        .rsplit_once('.')
-        .map_or(level, |(head, _patch)| head)
-        .to_string();
-    let template = ruby().prompt().system_template;
-    assert!(
-        template.contains(&format!("Ruby {major_minor}")),
-        "the Ruby prompt does not say it is Ruby {major_minor}, which is what the committed \
-         compiler reports (`{level}`)"
-    );
-}
-
 /// **`.rb`, and nothing else.**
 ///
 /// One extension, like [Python](super::python)'s: the ECMAScript guest could evaluate this arm's
@@ -100,6 +78,30 @@ fn the_synthesized_file_view_is_ruby() {
     );
 }
 
+/// **Every module of this arm's catalogue states the one line a program writes to reach it.**
+///
+/// Two things have to agree: the line `packages/gg-sandbox-ruby/tools/signatures.rb` composes into
+/// every module's [import](crate::sandbox::ModuleDoc::import), which is what a documentation view
+/// quotes to a model, and [`SURFACE_IMPORT`](super::SURFACE_IMPORT), which is what gg's own
+/// synthesized programs write. A model told one line and handed another spends its first turn on a
+/// `NameError`.
+///
+/// Every module rather than one, because the field is per module and an arm that stated a line for
+/// half its surface would be telling models the other half is in scope already.
+#[test]
+fn every_module_states_the_one_import_line_this_arm_writes() {
+    let modules = crate::sandbox::catalogue_modules(ruby());
+    assert!(!modules.is_empty(), "this arm declares modules");
+    for module in modules {
+        assert_eq!(
+            module.import,
+            Some(super::SURFACE_IMPORT),
+            "`{}` states an import line gg does not write",
+            module.path
+        );
+    }
+}
+
 /// **The generated documentation program is Ruby** — an array and an `each` with a block, which is
 /// how a Ruby programmer walks a list and deliberately not the `for` the language also has.
 ///
@@ -110,8 +112,35 @@ fn the_synthesized_file_view_is_ruby() {
 fn the_generated_documentation_program_is_ruby() {
     assert_eq!(
         ruby().open_docs_views_statement(&["read_file", "write_file"]),
-        "functions = [\n  \"read_file\",\n  \"write_file\",\n]\n\
-         functions.each { |name| GG::Views.open_docs_view(name) }\n"
+        format!(
+            "{}\n\nfunctions = [\n  \"read_file\",\n  \"write_file\",\n]\n\
+             functions.each {{ |name| GG::Views.open_docs_view(name) }}\n",
+            super::SURFACE_IMPORT
+        )
+    );
+}
+
+/// **The opening program is Ruby**, and it covers every module and every documentation key gg
+/// handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote Ruby — arrays, `each`
+/// with a block, keyword arguments — rather than another arm's syntax; that the search is the
+/// whole-module lookup rather than the default page of one; and that the module filter is written
+/// `in_module:`, which is the name this SDK gives it because `module` is a keyword.
+#[test]
+fn the_opening_program_is_ruby() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        ruby().bootstrap_program(&["files", "views"], &["read_file"]),
+        format!(
+            "{}\n\nmodules = [\n  \"files\",\n  \"views\",\n]\n\
+             modules.each {{ |path| GG::Docs.search(\"\", in_module: path, limit: {limit}) }}\n\
+             \n\
+             functions = [\n  \"read_file\",\n]\n\
+             functions.each {{ |name| GG::Views.open_docs_view(name) }}\n",
+            super::SURFACE_IMPORT
+        )
     );
 }
 
@@ -218,13 +247,13 @@ fn a_block_is_a_second_signature_rather_than_a_second_function() {
     );
 }
 
-/// **Ruby's libraries are declared in its catalogue**, which is what the prompt renders.
+/// **Ruby's libraries are declared in its catalogue**, which is what a compile failure quotes back.
 ///
 /// The set is a bake-time fact about the prebuilt component — `require "json"` works because the
-/// build compiled `json` out of the pinned Opal's own sources — so the sentence a model reads is
-/// reflected from the file that decides the set rather than written in a template. That the prompt
-/// carries every group is a [prompt gate](crate::prompts); what is asserted here is that this arm
-/// declares one at all, which is the half a prompt gate skips for a language that declares none.
+/// build compiled `json` out of the pinned Opal's own sources — so what a model reads on a compile
+/// failure is reflected from the file that decides the set rather than authored. That every group
+/// reaches the model is asserted where the failure is built; what is asserted here is that this arm
+/// declares one at all.
 #[test]
 fn this_arm_declares_the_libraries_a_program_may_require() {
     let libraries = &ruby().catalogue().libraries;

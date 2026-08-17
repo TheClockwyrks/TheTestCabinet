@@ -1,24 +1,46 @@
 //! **What the two JVM arms share**: the JDK and TeaVM they both compile through, and the half of
 //! gg's compiler driver that does not depend on which language a program was written in.
 //!
-//! [Java](super::java) and [Kotlin](super::kotlin) reach the same guest by the same road — a program
-//! is compiled to **bytecode**, TeaVM translates the bytecode to JavaScript, and the ECMAScript
-//! guest evaluates it. What differs is the *front* of that road: which compiler reads the model's
-//! source, and what its diagnostics look like. This module is the rest of it.
+//! [Java](super::java) and [Kotlin](super::kotlin) reach gg by the same road — a program is compiled
+//! to **bytecode** and TeaVM translates the bytecode. What differs is the *front* of that road:
+//! which compiler reads the model's source, and what its diagnostics look like. This module is the
+//! rest of it.
 //!
 //! It is not a language and it is not registered anywhere: no
 //! [`ProgramLanguage`](super::ProgramLanguage) is implemented here and
 //! [the lookup](super::language()) never answers with it. It is the road two registered arms drive
 //! down.
 //!
+//! # One target, and both arms are on it
+//!
+//! TeaVM's `WEBASSEMBLY_WASI` backend compiles a program into a **component of its own**, which
+//! [`component`] encodes and which reaches gg through the one door `test-cabinet:gg/wire` declares.
+//! Both arms take that road, so neither has a baked guest and neither can have one: TeaVM does not
+//! produce a Java runtime that later runs a program, it produces the program.
+//!
+//! The **guest** half of that crossing — `gg/internal/{Abi,Value,Frames}.java`, and the one vendored
+//! TeaVM runtime class that makes an uncaught exception print what was thrown — is in
+//! `packages/gg-sandbox-jvm` and is language-neutral. Each arm's `build.sh` compiles those two trees
+//! into its own SDK jar, rather than either arm carrying a translation of them: a second copy would
+//! be a second canonical-ABI implementation to keep in step with one WIT, which is the thing this
+//! whole arrangement exists to avoid. What is *not* shared is the one function above them that
+//! raises the arm's own `ToolError`, because that class is model-facing and has a catalogue entry of
+//! its own on each side.
+//!
+//! [`entry_class`] is the last piece of that sharing and the sharpest: the two arms' generated entry
+//! classes differ by **one line**, the call to the model's own entry point.
+//!
 //! # Why the sharing is real rather than a pair of copies
 //!
-//! Two of TeaVM's settings are not optional, and one of them fails **silently** when it is missing:
-//! without `setStrict(true)` TeaVM omits the null checks that make a `NullPointerException` an
-//! exception at all, so `catch (NullPointerException)` never fires and a program that failed is
-//! recorded as one that succeeded. A second copy of the code that sets it would be a standing chance
-//! for one arm to lose it and for nobody to notice — which is the argument that has
-//! [JavaScript](super::javascript) serve TypeScript's prebuilt component rather than a
+//! Three of TeaVM's settings are not optional, and each fails **silently** when it is missing.
+//! Without `setStrict(true)` TeaVM omits the null checks that make a `NullPointerException` an
+//! exception at all, so a program that failed is recorded as one that succeeded. Without
+//! `setClassesToPreserve` the entry class is dead-stripped and the encode produces a component with
+//! no exports. Without an equal minimum and maximum heap a program gets the *minimum* and not the
+//! difference, so a generous maximum reads as an allowance a program never has. A second copy of the
+//! code that sets them would be a standing chance for one arm to lose any one and for nobody to
+//! notice — which is the argument that has [JavaScript](super::javascript) reach the
+//! [ECMAScript guest](super::ecmascript) through TypeScript's own constant rather than embed a
 //! byte-identical copy of it, one level down.
 //!
 //! The JDK's single-file source-code launcher compiles **one** file, so sharing here cannot mean
@@ -37,9 +59,13 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use super::compile;
+use super::compile::{DaemonCommand, shared_toolchain_dir};
 
-use super::compile::shared_toolchain_dir;
+/// Encoding the core module TeaVM's `WEBASSEMBLY_WASI` backend writes as the component gg's engine
+/// instantiates.
+#[path = "jvm.component.rs"]
+pub(crate) mod component;
 
 /// The half of the driver both arms run.
 const BACKEND: &str = include_str!("../checkers/jvm.backend.java");
@@ -59,6 +85,68 @@ pub(super) const IMAGE_ROOT: &str = "/opt/gg/toolchains/java";
 /// jars — so there is no `PATH` lookup that could find it, and a test suite that needed an
 /// environment variable set by hand would be a test suite that is red on a fresh clone.
 pub(super) const HOME_ROOT: &str = ".local/share/gg-java";
+
+/// **The VM's own logging, off the pipe the protocol is spoken on.**
+///
+/// A JVM's default unified-logging configuration is `all=warning:stdout:uptime,level,tags` — which
+/// `java -Xlog:help` states from the other side, documenting `-Xlog:disable` as "turn off all
+/// logging, **including warnings and errors**". So a warning the VM raises about the machine it is
+/// on — a thread it could not start, a class-data archive it could not map — is written to *stdout*,
+/// which is the one pipe gg's compiler driver answers requests on, and it is written by the VM
+/// itself before any Java code runs. Both driver front ends re-point `System.out` at stderr for this
+/// exact hazard (`java.compiler.java:80`), and it does not help: `System.setOut` moves the Java
+/// stream, not the file descriptor the VM logs to.
+///
+/// One such line ahead of the greeting is read as the greeting, and gg refuses a JVM that is working
+/// perfectly. Measured, that is the shape of it:
+///
+/// ```text
+/// $ java -XX:SharedArchiveFile=/tmp/bogus.jsa GgCompiler.java …   # stdout
+/// [0.001s][error][cds] Not a valid shared archive file (/tmp/bogus.jsa)
+/// {"protocol":2,"java":"25.0.3","release":"21"}
+/// ```
+///
+/// and `serde` reads `[0.001s]…` as a JSON *array* whose first element is a float:
+/// `invalid type: floating point `0.001`, expected u32 at line 1 column 6`. It was found as a
+/// full-suite-only flake in the Java arm's substrate tests, which is what a resource warning looks
+/// like: sixteen preparations compiling at once is when a VM has something to warn about.
+///
+/// Disabling and re-enabling to stderr rather than disabling outright, because the lines are worth
+/// having — [`CompilerDaemon::stderr_tail`](super::compile::CompilerDaemon::stderr_tail) puts the
+/// daemon's stderr on the end of every failure gg reports about it, so a VM that says why it is
+/// unhappy is quoted rather than silenced. Two flags in this order and not one: configuring a second
+/// output does not retire the default one, so without `disable` the lines would go to both.
+pub(super) const LOG_TO_STDERR: [&str; 2] = [
+    "-Xlog:disable",
+    "-Xlog:all=warning:stderr:uptime,level,tags",
+];
+
+/// **A JVM started the way both arms start one**, up to the classpath and the driver.
+///
+/// Everything here is a property of *being a gg compiler daemon* rather than of either language, so
+/// it is decided once: the machine's own options out of the way, the VM's own logging off the reply
+/// pipe, a serial collector, and one heap number. What is left for a caller is the two things that
+/// really do differ — which jars are on the classpath and which driver is run.
+///
+/// `heap` is the ceiling and the floor both, spelled as a JVM wants it (`768m`, `1g`): a JVM that
+/// lives for a bounded number of builds and is then replaced has no use for a growing heap, and a
+/// serial collector leaves the cores to the fifteen other preparations that may be compiling beside
+/// it.
+pub(super) fn daemon(java: &Path, heap: &str) -> Result<DaemonCommand, String> {
+    let mut command = compile::daemon(java)?;
+    command
+        // A developer's shell may carry either of these, and a JVM that picks one up prints a line
+        // to stderr and may compile differently from the one in the run image — which is a
+        // difference between two arms of a study that came from a dotfile. Emptied rather than unset
+        // because that is what the launcher checks.
+        .env("JAVA_TOOL_OPTIONS", "")
+        .env("_JAVA_OPTIONS", "")
+        .args(LOG_TO_STDERR)
+        .arg("-XX:+UseSerialGC")
+        .arg("-Xms64m")
+        .arg(format!("-Xmx{heap}"));
+    Ok(command)
+}
 
 /// One arm's compiler driver, assembled: its own front end with the shared backend appended and the
 /// class closed.
@@ -191,226 +279,65 @@ pub(super) fn placed_dir(arm: &str, version: &str, contents: &[&[u8]]) -> Result
 }
 
 // ---------------------------------------------------------------------------------------------
-// The bundle TeaVM wrote, and the model's own lines
+// The generated entry class
 // ---------------------------------------------------------------------------------------------
 
-/// The JavaScript gg puts in front of every compiled program, whichever arm compiled it.
-///
-/// Three things, and each of them is load-bearing:
-///
-/// * `$ggMessage` — where the generated entry class's catch chain leaves the Java name and
-///   message of what failed. Empty means nothing Java threw, which is how a failure raised by a
-///   *binding* is rethrown untouched rather than re-described.
-/// * `$ggFailure` — where the same chain leaves the three fields of a **gg** failure the program did
-///   not catch. The SDK catches a refusal in JavaScript and raises a Java `ToolError` so that
-///   `catch (ToolError failure)` works at all; without this, one that *escaped* would reach the
-///   guest as a Java exception and be recorded as a program that threw something rather than as a
-///   tool that failed. The guest reads `tool`, `code` and `message` off whatever is thrown, so what
-///   goes back over is that record — the same shape the membrane itself raises.
-/// * `$ggLines` — TeaVM's source map, folded by [`model_lines`] into the change points of "whose
-///   code is this generated line?", with `0` for somebody else's. Looked up nearest-preceding,
-///   because a source map is sparse and a stack frame lands where the failure happened rather than
-///   where a segment starts.
-/// * `$ggBase` — how far the stack's line numbers are from the bundle's. Part of it is known
-///   (this prelude's own length); part is the engine's `Function` wrapper, which is calibrated at run
-///   time exactly as the guest's own shim calibrates it, so an engine update costs nothing.
-pub(super) const PRELUDE: &str = r#"var $ggMessage = "";
-var $ggFailure = null;
-var $ggLines = __GG_LINES__;
-var $ggBase = __GG_BASE__;
-(function () {
-  try { new Function("throw new Error('calibrate')")(); } catch (thrown) {
-    var frames = String(thrown && thrown.stack).split("\n");
-    for (var index = 0; index < frames.length; index++) {
-      var found = /:(\d+):(\d+)/.exec(frames[index]);
-      if (found) { $ggBase += Number(found[1]) - 1; break; }
-    }
-  }
-})();
-function $ggModelLine(line) {
-  var low = 0, high = $ggLines.length - 1, found = -1;
-  while (low <= high) {
-    var middle = (low + high) >> 1;
-    if ($ggLines[middle][0] <= line) { found = middle; low = middle + 1; } else { high = middle - 1; }
-  }
-  return found < 0 ? 0 : $ggLines[found][1];
-}
-function $ggLocate(stack) {
-  if (typeof stack !== "string") return "";
-  var seen = [], located = [], frames = stack.split("\n"), pattern = /:(\d+):(\d+)/g;
-  for (var index = 0; index < frames.length; index++) {
-    var found = null, last = null;
-    pattern.lastIndex = 0;
-    while ((found = pattern.exec(frames[index])) !== null) last = found;
-    if (!last) continue;
-    var line = $ggModelLine(Number(last[1]) - $ggBase);
-    if (line === 0 || seen.indexOf(line) >= 0) continue;
-    seen.push(line);
-    located.push("\n    at __GG_LABEL__:" + line);
-  }
-  return located.join("");
-}
-"#;
+/// The class gg generates to hold the component's two exports, on either arm.
+pub(super) const ENTRY_CLASS: &str = "GgEntry";
 
-/// The prelude, with the model's line table in it and its own length accounted for.
-fn prelude(lines: &[(usize, usize)], label: &str) -> String {
-    let table: Vec<String> = lines
-        .iter()
-        .map(|(generated, model)| format!("[{generated},{model}]"))
-        .collect();
-    let filled = PRELUDE
-        .replace("__GG_LINES__", &format!("[{}]", table.join(",")))
-        .replace("__GG_LABEL__", label);
-    // Counted after the table is in, and the table is one line, so this is a constant — but derived
-    // rather than written down, because a prelude that grew by a line and a constant that did not
-    // would report every location one line out.
-    let length = filled.lines().count();
-    filled.replace("__GG_BASE__", &length.to_string())
-}
-
-/// The prelude, TeaVM's output and the call that starts it, in that order.
-fn assemble(prelude: &str, compiled: &str, tail: &str) -> String {
-    // TeaVM opens its output with `"use strict";`, which is a directive rather than a statement and
-    // is inert anywhere but the top of a body. That is fine and deliberate: the guest evaluates the
-    // whole of this as one function body, and a prelude in front of the directive is what makes the
-    // table reachable from inside TeaVM's own generated code.
-    format!("{prelude}{compiled}\n{tail}")
-}
-
-// ---------------------------------------------------------------------------------------------
-// The source map
-// ---------------------------------------------------------------------------------------------
-
-/// A source map, as much of one as this needs.
-#[derive(Debug, Deserialize)]
-struct SourceMap {
-    /// The files the generated code came from.
-    sources: Vec<String>,
-    /// The mappings, in the format's own base-64 VLQ.
-    mappings: String,
-}
-
-/// Fold TeaVM's source map down to the **change points** of "which of the model's lines is this
-/// generated line?", with `0` for a generated line that belongs to somebody else's code.
+/// **The two lines the host reaches a compiled program through**, and nothing else.
 ///
-/// Not simply the model's own mappings, and the difference is what makes a located error land. A
-/// source map is **sparse**: TeaVM emits one segment per Java statement, at the first generated line
-/// of that statement's code, and a stack frame lands wherever the failure happened — which is
-/// routinely a later line of the same statement, with no segment of its own. Looking up an exact
-/// generated line therefore finds nothing most of the time. The correct reading, and the one every
-/// source-map consumer uses, is the segment at or **before** the position.
+/// It is the world's `run` — eight canonically-lowered parameters a compiled arm reads none of — and
+/// `call`, which is the model's own entry point and **the one line the two arms differ by**
+/// (`Program.main(new String[0]);` against `ProgramKt.main();`). There is **no `try` and no
+/// `catch`**: what replaced the twelve-clause chain both arms used to hold is the runtime itself. A
+/// program that throws dies the way TeaVM kills it and its own dying words reach the model on
+/// standard error, which is what
+/// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks for and what a
+/// catch chain made impossible.
 ///
-/// That in turn is why the classlib's mappings are kept as `0` rather than dropped: a frame deep
-/// inside `java.util` would otherwise fall back to whichever of the model's lines happened to come
-/// before it and be reported as the model's own. Recording those runs as "not yours" is what makes
-/// the nearest-preceding lookup safe.
+/// It declares **no `main` of its own**, on purpose: TeaVM is given the *model's* class as its main
+/// class, so nothing in the dependency graph reaches this one and `setClassesToPreserve` in
+/// `checkers/jvm.backend.java` is the only thing keeping it. Without that list
+/// the class is dead-stripped silently, at exit code 0, and the component gg encodes has no exports
+/// at all.
 ///
-/// Run-length compressed, so what ships is the handful of places the answer changes rather than one
-/// entry per generated line: an ordinary program's table is tens of pairs against a 44 KB map.
+/// `run` declares `throws Throwable` because an author writes `throws Exception` on a `main` every
+/// day, and an export that did not would refuse a shape the language has.
 ///
-/// The model's line is already moved back over the wrapper, so nothing downstream has to know the
-/// shift. A map gg cannot read is not a failure — it costs a located message and nothing else, and
-/// refusing a program that compiled because its debug information was odd would be the wrong trade.
-fn model_lines(map: &str, file: &str, shift: usize) -> Vec<(usize, usize)> {
-    let Ok(map) = serde_json::from_str::<SourceMap>(map) else {
-        return Vec::new();
-    };
-    let mut lines: Vec<(usize, usize)> = Vec::new();
-    let mut source = 0i64;
-    let mut original = 0i64;
-    let mut previous = 0usize;
-    for (generated, segments) in map.mappings.split(';').enumerate() {
-        let mut first: Option<usize> = None;
-        for segment in segments.split(',').filter(|segment| !segment.is_empty()) {
-            let Some(fields) = vlq(segment) else { continue };
-            if fields.len() < 4 {
-                continue;
-            }
-            source += fields[1];
-            original += fields[2];
-            if first.is_some() {
-                continue;
-            }
-            // The first segment of a generated line is what that whole line is attributed to: a
-            // frame carries a column too, but a table keyed by line is what a stack can be read
-            // against without a second lookup.
-            let named = usize::try_from(source)
-                .ok()
-                .and_then(|index| map.sources.get(index))
-                .is_some_and(|name| Path::new(name).file_name().is_some_and(|it| it == file));
-            first = Some(match (named, usize::try_from(original)) {
-                // 0 is "not the model's code", which is a line number no source has.
-                (true, Ok(line)) => (line + 1).saturating_sub(shift).max(1),
-                _ => 0,
-            });
-        }
-        let Some(model) = first else { continue };
-        if model != previous || lines.is_empty() {
-            lines.push((generated + 1, model));
-            previous = model;
-        }
-    }
-    lines
-}
-
-/// Decode one base-64 VLQ segment into its fields.
+/// Written in **Java** on both arms, which is worth saying on the one whose program is Kotlin: a
+/// Kotlin entry class would have to be compiled by the compiler it exists to wrap, in a second pass,
+/// for a class that appears in no diagnostic a model reads. javac compiles this against the classes
+/// the model's own compiler produced, which is one pass either way.
 ///
-/// `None` for a segment carrying a character the alphabet does not have, which is a map gg will not
-/// use rather than a program it will refuse.
-fn vlq(segment: &str) -> Option<Vec<i64>> {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut fields = Vec::new();
-    let mut value: i64 = 0;
-    let mut shift: u32 = 0;
-    for character in segment.bytes() {
-        let digit = ALPHABET.iter().position(|it| *it == character)? as i64;
-        let more = digit & 32 != 0;
-        value += (digit & 31) << shift;
-        shift += 5;
-        if more {
-            continue;
-        }
-        let negative = value & 1 != 0;
-        value >>= 1;
-        fields.push(match negative {
-            true => -value,
-            false => value,
-        });
-        value = 0;
-        shift = 0;
-    }
-    Some(fields)
-}
-
-/// What TeaVM wrote for one build, read out of `output` and assembled into what the guest evaluates.
-///
-/// The arm supplies the two things that are its own — the label a located failure is reported under
-/// (`program.java`, `program.kts`) and the tail that starts the program — and this supplies
-/// everything TeaVM's output is read with, because a source map is a source map whichever compiler
-/// wrote the bytecode.
-///
-/// A map gg cannot read is **not** a failure: it costs a located message and nothing else, and
-/// refusing a program that compiled because its debug information was odd would be the wrong trade.
-pub(super) fn assembled(
-    output: &Path,
-    target: &str,
-    source_file: &str,
-    shift: usize,
-    label: &str,
-    tail: &str,
-) -> Result<String, String> {
-    let bundle = output.join(target);
-    let compiled = std::fs::read_to_string(&bundle).map_err(|error| {
-        format!(
-            "TeaVM reported success but wrote no JavaScript to {}: {error}",
-            bundle.display(),
-        )
-    })?;
-    let lines = std::fs::read_to_string(bundle.with_extension("js.map"))
-        .ok()
-        .map(|map| model_lines(&map, source_file, shift))
-        .unwrap_or_default();
-    Ok(assemble(&prelude(&lines, label), &compiled, tail))
+/// It carries **nothing else at all**. An earlier version held a list of sixteen exception classes
+/// and a loop over them, so that TeaVM's dependency analysis would emit their name strings and an
+/// uncaught failure could say what it was. That list could not hold a class a *model* declared, and
+/// a class that fell off it printed a blank header with no test able to see it; what answers the
+/// same question now is `gg.internal.ThrowableNames`, a TeaVM plugin in each arm's SDK jar that
+/// derives the set from the program actually being compiled.
+pub(super) fn entry_class(call: &str) -> String {
+    format!(
+        "import gg.internal.Abi;\n\
+         import org.teavm.interop.Export;\n\
+         \n\
+         public final class {ENTRY_CLASS} {{\n\
+         \x20   private {ENTRY_CLASS}() {{\n\
+         \x20   }}\n\
+         \n\
+         \x20   @Export(name = \"run\")\n\
+         \x20   public static void run(int program, int programLength, int modules, \
+         int modulesLength,\n\
+         \x20           int tools, int toolsLength, int ending, int library) throws Throwable {{\n\
+         \x20       {call}\n\
+         \x20   }}\n\
+         \n\
+         \x20   @Export(name = \"bound-tools\")\n\
+         \x20   public static int boundTools() {{\n\
+         \x20       return Abi.emptyList();\n\
+         \x20   }}\n\
+         }}\n",
+    )
 }
 
 #[cfg(test)]

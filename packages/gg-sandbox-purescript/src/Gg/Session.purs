@@ -36,7 +36,7 @@ import Gg.Internal.Wire as Wire
 -- |
 -- | - `summary` — What was done, in a sentence or two.
 finish :: String -> Effect Unit
-finish summary = Wire.call_ "finish" "harness" "Gg.Session.finish" [ Wire.wire summary ]
+finish summary = Wire.call_ "finish" "session" "Gg.Session.finish" [ Wire.wire summary ]
 
 -- | Accept the work under review: it meets every completion criterion and stays in scope.
 -- |
@@ -51,7 +51,7 @@ finish summary = Wire.call_ "finish" "harness" "Gg.Session.finish" [ Wire.wire s
 -- |
 -- | (none — approval carries nothing but itself)
 approve :: Effect Unit
-approve = Wire.call_ "approve" "review" "Gg.Session.approve" []
+approve = Wire.call_ "approve" "session" "Gg.Session.approve" []
 
 -- | Reject the work under review, listing every change that must be made before it can be accepted.
 -- |
@@ -72,4 +72,4 @@ approve = Wire.call_ "approve" "review" "Gg.Session.approve" []
 -- | `InvalidArgument` when the list is empty.
 requestChanges :: Array String -> Effect Unit
 requestChanges items =
-  Wire.call_ "request_changes" "review" "Gg.Session.requestChanges" [ Wire.wire items ]
+  Wire.call_ "request_changes" "session" "Gg.Session.requestChanges" [ Wire.wire items ]

@@ -3,9 +3,9 @@
 //! # The strategy, in one sentence
 //!
 //! A Rust program is **compiled on the host, per turn, into a component of its own**: one `rustc`
-//! against a prebuilt library set that ships inside gg's binary, then an in-process
-//! [`wit_component`] encode, and what crosses the membrane is not source at all but the artifact
-//! gg's engine instantiates.
+//! over the model's own bytes, against a prebuilt library set that ships inside gg's binary, then an
+//! in-process [`wit_component`] encode with the pinned preview1 reactor adapter — and what crosses
+//! the membrane is not source at all but the artifact gg's engine instantiates.
 //!
 //! # Why this arm has no guest component, and what that costs
 //!
@@ -20,30 +20,40 @@
 //! What it costs is one wasmtime `Component::new` per turn instead of one per process. That is a
 //! real cost, it is reported (as
 //! [`SandboxOutcome::compile_wait`](crate::sandbox::SandboxOutcome::compile_wait)) rather than
-//! hidden, and it is small for the reason the artifacts are small: `wasm-ld` dead-strips a
-//! `cdylib`'s unreached code, so a program links only the part of the library set it actually
-//! reached. Measured in this repository's dev container, aarch64, on an ordinary program:
+//! hidden, and it is small for the reason the artifacts are small: `wasm-ld` dead-strips unreached
+//! code, so a program links only the part of the library set it actually reached. Measured in this
+//! repository's dev container, aarch64, best of five per program:
 //!
 //! | | |
 //! | --- | --- |
-//! | `rustc` — the whole compile, including the link — and the [`wit_component`] encode | **~60 ms** |
-//! | wasmtime `Component::new` at `OptLevel::None` | **~9 ms** |
-//! | Artifact | **~25 KB** |
+//! | `rustc` — the whole compile, including the link — and the [`wit_component`] encode | **~45–60 ms** |
+//! | wasmtime `Component::new` at `OptLevel::None` | **~15 ms** |
+//! | Artifact, program reaching nothing of the SDK's | **~64 KB** |
+//! | Artifact, program calling a gg tool | **~79–82 KB** |
+//!
+//! The two artifact rows are one step rather than a slope, and what it is worth knowing about it is
+//! *where* the step is. `fn main() {}` is 63,949 bytes and a program that only logs is 64,581: the
+//! standard library and the panic machinery are the floor, and a call that cannot fail costs
+//! nothing on top of it. The **first fallible** SDK call is what adds ~14 KB — the error type, and
+//! the wire a result decodes through — and every call after it is nearly free: one
+//! `views::open_text` is 78,626 bytes and a `files::read_text_file` followed by a `gg::log` is
+//! 81,667. So the figure a model's own program actually costs is the second row, and the first is
+//! the floor beneath it rather than a typical turn.
 //!
 //! The feasibility study priced this arm at 0.15–0.5 s of CPU per compile against a **1.57–4.22 MB**
 //! artifact costing 296–317 ms to instantiate. Those figures came from a build topology in which
 //! every program relinked the whole binding surface; in the prebuilt-rlib topology this arm actually
 //! uses, neither survives. The study's own conclusion — that `-C strip=symbols` is mandatory for
 //! size — is kept anyway, and costs nothing: the name section is what it deletes, and a Rust
-//! program's failures are located by the [panic hook](super::source), out of `Location`, which is
+//! program's failures are located by `std`'s own panic message, printed out of `Location`, which is
 //! static data rather than a symbol name.
 //!
 //! # Why the compiler is not carried, and the library set is
 //!
 //! The same split every compiled arm here has, for the same two reasons.
 //!
-//! `rustc` and its `wasm32-unknown-unknown` standard library are **~376 MB** — 109 MB of
-//! `librustc_driver`, ~150 MB of LLVM, 93 MB of wasm standard library and `rust-lld` — so it cannot
+//! `rustc` and its `wasm32-wasip1` standard library are **~380 MB** — 109 MB of
+//! `librustc_driver`, ~150 MB of LLVM, 98 MB of wasm standard library and `rust-lld` — so it cannot
 //! ride inside a single static `tcab` binary. It goes into the gg toolchain image
 //! (`containers/gg-toolchains/Dockerfile`) and is found on `PATH` at run time. It is by a wide
 //! margin the heaviest toolchain in that image, and that is stated rather than buried.
@@ -86,7 +96,7 @@
 //! [`Workspace::output`](super::compile::Workspace::output).
 //!
 //! There is no compiler daemon and no pool. `rustc` is a one-shot process whose cost is the compile
-//! rather than the start-up, and a 70 ms compile has nothing warm to be.
+//! rather than the start-up, and a 45 ms compile has nothing warm to be.
 
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -99,7 +109,7 @@ use crate::sandbox::{
     PreparedProgram, Workspace, place_tree, shared_toolchain_dir,
 };
 
-use super::source::{CRATE_NAME, LINE_OFFSET, PROGRAM_FILE};
+use super::source::{CRATE_NAME, PROGRAM_FILE, SDK_CRATE};
 
 /// The library set a program is compiled against: every `.rlib` `rustc` links, gzipped, built by
 /// `packages/gg-sandbox-rust/build.sh`.
@@ -108,6 +118,21 @@ use super::source::{CRATE_NAME, LINE_OFFSET, PROGRAM_FILE};
 /// run container and must carry everything it needs with it.
 const LIBRARIES_TAR_GZ: &[u8] =
     include_bytes!(concat!(env!("GG_ARTIFACTS_RUST"), "/rust.libraries.tar.gz"));
+
+/// The `wasi_snapshot_preview1` **reactor** adapter, which turns the preview1 core module `rustc`
+/// emits into the preview 2 component gg's engine instantiates.
+///
+/// In memory rather than in the tarball above, because this is the one input the *encoder* needs and
+/// not the compiler: it never touches a filesystem.
+///
+/// It is this arm's own copy of a file the [C++](super::super::cpp) and [Swift](super::super::swift)
+/// arms also carry, and the duplication is deliberate rather than an oversight: each arm pins its
+/// adapter from its own version file, and the point of a pin is that bumping one arm's toolchain
+/// cannot silently move another arm's ABI.
+const ADAPTER: &[u8] = include_bytes!(concat!(env!("GG_ARTIFACTS_RUST"), "/rust.adapter.wasm"));
+
+/// The import namespace the adapter satisfies, which is the preview1 snapshot's own module name.
+const ADAPTER_NAME: &str = "wasi_snapshot_preview1";
 
 /// What that set was built by, and what is in it.
 const MANIFEST_JSON: &str =
@@ -126,8 +151,8 @@ const TOOLCHAIN_BIN: &str = "/opt/gg/toolchains/rust/bin";
 /// How long one `rustc` may take before it is killed and reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).
 ///
-/// A compile here is ~70 ms, and the worst honest case — a program that instantiates a great deal of
-/// generic code — is seconds. A minute is unmistakably a hang.
+/// A compile here is tens of milliseconds, and the worst honest case — a program that instantiates
+/// a great deal of generic code — is seconds. A minute is unmistakably a hang.
 const COMPILE_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// What `rustc` is told to write, in this preparation's own output directory.
@@ -146,6 +171,10 @@ struct Manifest {
     /// operator reading a binding-shaped diagnostic; nothing routes on it.
     #[allow(dead_code)]
     wit_bindgen: String,
+    /// The wasmtime release the embedded [preview1 adapter](ADAPTER) was published with. Recorded
+    /// for the same reason and read by nothing: the bytes themselves are what the encode uses.
+    #[allow(dead_code)]
+    adapter: String,
     /// Every crate in the set.
     crates: Vec<Library>,
 }
@@ -203,15 +232,8 @@ pub(super) fn warm() {
 
 /// Compile a **program** — a model's reply — into the component that evaluates it.
 ///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero: the measurement counts top-level statements written after one that *ends* the program,
-/// which in the ECMAScript arms is a top-level `return`. A `return` in a Rust program returns from
-/// the body gg wrapped it in, and everything after it is ordinary dead code the compiler already
-/// reports on — so the shape this field records does not exist on this arm, exactly as it does not
-/// on Python's, Ruby's or PureScript's.
-///
-/// [`source`](PreparedProgram::source) is empty for the same reason: there is nothing left for a
-/// guest to evaluate, because the guest *is* what this returned.
+/// [`source`](PreparedProgram::source) is empty: there is nothing left for a guest to evaluate,
+/// because the guest *is* what this returned.
 pub(super) fn compile_program(
     source: &str,
     modules: &[CodeModule],
@@ -219,7 +241,6 @@ pub(super) fn compile_program(
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: String::new(),
-        unreachable: None,
         component: Some(compile(source, modules, context)?),
     })
 }
@@ -239,7 +260,7 @@ fn compile(
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    let wrapped = super::source::wrap(program, modules)?;
+    let wrapped = super::source::wrap(program, modules);
     workspace
         .write(PROGRAM_FILE, &wrapped)
         .map_err(PrepareFailure::Toolchain)?;
@@ -290,9 +311,8 @@ pub(super) fn compile_module(
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    let wrapped = super::source::wrap_module(source);
     workspace
-        .write(MODULE_FILE, &wrapped)
+        .write(MODULE_FILE, source)
         .map_err(PrepareFailure::Toolchain)?;
 
     let report =
@@ -301,7 +321,7 @@ pub(super) fn compile_module(
 
     Ok(PreparedModule {
         exports: super::source::exports(source),
-        source: wrapped,
+        source: source.to_string(),
     })
 }
 
@@ -309,7 +329,20 @@ pub(super) fn compile_module(
 // The compiler
 // ---------------------------------------------------------------------------------------------
 
-/// Spawn `rustc` over the entry file this preparation just wrote, and link the component.
+/// Spawn `rustc` over the model's own file, and link the module the encode turns into a component.
+///
+/// # `bin`, and it is the whole trick
+///
+/// A **binary** crate is what makes the model's `fn main` reachable at all. `rustc` compiling one
+/// emits the unmangled C entry symbol wasi-libc's convention names (`__main_void`) beside the
+/// model's `main` and asks `rust-lld` to export it — which is the symbol
+/// `packages/gg-sandbox-rust/src/program.rs` declares and calls. A `cdylib` emits neither: there the
+/// model's `main` is dead code, and the Rust-mangled symbol carries a `-C metadata` hash no `extern`
+/// declaration can name (measured: `rust-lld: undefined symbol: main`).
+///
+/// It is also what turns "a program with no entry point" into a first-class located diagnostic —
+/// `error[E0601]: main function not found in crate program` — instead of something gg has to detect
+/// and word for itself.
 fn invoke_rustc(
     artifact: &Path,
     libraries: &Libraries,
@@ -318,30 +351,82 @@ fn invoke_rustc(
     let (rustc, mut command) = rustc(libraries, context)?;
     command
         .arg("--crate-type")
-        .arg("cdylib")
+        .arg("bin")
         .arg("--crate-name")
         .arg(CRATE_NAME)
         // A component is instantiated by the engine on every turn, so a smaller module is a cheaper
         // turn — and `s` is measurably *faster to produce* than `0` here, because the code `wasm-ld`
         // then has to link is smaller.
         .arg("-Copt-level=s")
-        // Not a size optimisation so much as the removal of a section nothing reads: a Rust
-        // program's failures are located by its panic hook, out of `Location`, which survives this.
-        .arg("-Cstrip=symbols")
-        .arg("-o")
-        .arg(artifact)
-        .arg(PROGRAM_FILE);
+        // Not a size optimisation so much as the removal of a section nothing reads: what locates a
+        // Rust program's failures is `std`'s own panic message, printed to standard error out of
+        // `Location`, which is static data rather than a symbol name and survives this.
+        .arg("-Cstrip=symbols");
+    for argument in link_the_shell(libraries) {
+        command.arg(argument);
+    }
+    command.arg("-o").arg(artifact).arg(PROGRAM_FILE);
     run(rustc, command)
+}
+
+/// **Link gg's shell into a program that never names `gg`**, and export what the world is answered
+/// on.
+///
+/// The problem this solves, measured on this arm's real toolchain. `--extern gg=…` makes the crate
+/// *available*; `rustc` loads it only if the program's own text refers to it, and passes
+/// `--export run --export bound-tools …` to `rust-lld` only for a crate it loaded. So a program that
+/// names nothing of gg's — `fn main() { let v = vec![1, 2, 3]; let _ = v[7]; }`, which is a whole
+/// Rust program and a perfectly ordinary reply — links a module with **no `run` export at all**. The
+/// encode below then succeeds, silently, and produces a component gg cannot call: the failure would
+/// arrive as gg's own artifact being broken, and end the session over a program the model wrote
+/// correctly.
+///
+/// So the archive is named to the linker directly and the four exports are asked for by name. What
+/// each argument is for:
+///
+/// * `--undefined=run` makes `run` a root, which is what pulls the archive member defining it;
+/// * the two `.rlib` paths are that member's archive and the `wit-bindgen` runtime it calls into —
+///   both are already on `rustc`'s own link line for a program that *does* name `gg`, and naming an
+///   archive twice is not an error, because archive members are taken on demand;
+/// * the four `--export=` names are the world's own two exports (`run`, `bound-tools`, out of
+///   `crates/gg/wit/gg-sandbox.wit`) and the two the canonical ABI fixes (`cabi_post_<name>` for a
+///   returning export, and `cabi_realloc`).
+///
+/// The one export deliberately **not** asked for is `wit-bindgen`'s version-stamped
+/// `cabi_realloc_wit_bindgen_0_60_0`, which is an implementation detail of the generator rather than
+/// anything the component model names; a program that never reaches the SDK never needs it, and the
+/// encode was measured to succeed without it.
+///
+/// It is guarded by a test rather than trusted: `rust.substrate.test.rs` drives a whole program that
+/// names nothing of gg's through `run_program` end to end, so a toolchain or generator that moved
+/// any of these names fails in CI rather than in a run container.
+fn link_the_shell(libraries: &Libraries) -> Vec<String> {
+    let mut arguments = vec!["-Clink-arg=--undefined=run".to_string()];
+    for name in [SDK_CRATE, "wit_bindgen"] {
+        arguments.push(format!(
+            "-Clink-arg={}",
+            libraries.tree.join(format!("lib{name}.rlib")).display()
+        ));
+    }
+    for export in [
+        "run",
+        "bound-tools",
+        "cabi_post_bound-tools",
+        "cabi_realloc",
+    ] {
+        arguments.push(format!("-Clink-arg=--export={export}"));
+    }
+    arguments
 }
 
 /// Spawn `rustc` over the code module this preparation just wrote, asking for **metadata only**.
 ///
 /// Every diagnostic a module's author can be answerable for is produced before code generation, and
-/// the output of this invocation is thrown away, so a `cdylib` here would be paying LLVM and
+/// the output of this invocation is thrown away, so a `bin` here would be paying LLVM and
 /// `wasm-ld` for an artifact nothing loads. The one thing it must still do is *link nothing*, which
-/// is why the crate type is `lib` rather than the program's: a module has no `export!` and no
-/// component-type section, so asking for a `cdylib` would fail on the absence of what the program's
-/// own wrapper supplies.
+/// is why the crate type is `lib` rather than the program's: a code module is a file of items and
+/// declares no `main`, so asking for the program's crate type would refuse every module ever
+/// written with `E0601`.
 fn invoke_module_check(
     workspace: &Workspace,
     libraries: &Libraries,
@@ -377,15 +462,17 @@ fn rustc<'a>(
         .arg("2024")
         .arg("--target")
         .arg(target())
-        // `wasm32-unknown-unknown` has no unwinder, so this is the only setting the target supports
-        // and naming it is how a mismatch with the library set becomes impossible rather than
-        // implicit.
+        // wasm has no unwinder on any of its targets, so this is the only setting they support and
+        // naming it is how a mismatch with the library set becomes impossible rather than implicit.
+        // A panic therefore aborts — after `std` has written its own located message to standard
+        // error, which is the target's whole reason for being `wasm32-wasip1`.
         .arg("-Cpanic=abort")
         // Warnings are style, and a model's program is not being reviewed. An unused variable that
         // failed a turn would be gg imposing a lint policy on an experiment about capability.
         .arg("-Awarnings")
         // Structured diagnostics, so a location is a field rather than something to scrape out of
-        // prose — and so the one-line offset gg's wrapper costs can be subtracted from it.
+        // prose. Nothing is done to the coordinates it carries: `rustc` reads the model's own file,
+        // so its line and column ARE the model's.
         .arg("--error-format=json")
         .arg("-L")
         .arg(format!("dependency={}", libraries.tree.display()));
@@ -488,7 +575,8 @@ struct Span {
     /// Whether this is the span the diagnostic is *about*, as opposed to a secondary one it refers
     /// to.
     is_primary: bool,
-    /// 1-based line, in the **entry file's** coordinates.
+    /// 1-based line — which on this arm is the **author's own**, because the file `rustc` read is
+    /// the file the author wrote.
     line_start: usize,
     /// 1-based column.
     column_start: usize,
@@ -505,9 +593,8 @@ impl Diagnostic {
     /// This diagnostic, rendered in the coordinates of `file` — the model's own program, or the
     /// module whose author is being told about it.
     ///
-    /// `rustc`'s own `rendered` field is deliberately not used. It carries a source excerpt with the
-    /// **entry file's** line numbers printed into it, which would have to be rewritten line by line
-    /// to be true — and a rendering gg assembles from the structured fields cannot disagree with the
+    /// `rustc`'s own `rendered` field is deliberately not used: it carries a source excerpt, and a
+    /// rendering gg assembles from the structured fields is the one that cannot disagree with the
     /// location gg reports.
     fn render(&self, file: &str, lines: usize) -> String {
         let mut rendered = match &self.code {
@@ -517,8 +604,7 @@ impl Diagnostic {
         if let Some(span) = self.primary(file, lines) {
             rendered.push_str(&format!(
                 "\n  --> line {}, column {}",
-                span.line_start.saturating_sub(LINE_OFFSET),
-                span.column_start
+                span.line_start, span.column_start
             ));
             if let Some(label) = &span.label {
                 rendered.push_str(&format!("\n  {label}"));
@@ -538,17 +624,13 @@ impl Diagnostic {
     /// modules — in **somebody else's module**, has none: reporting its line as if it were the
     /// model's would point at whichever of the model's lines shares the number.
     ///
-    /// So is one in gg's own wrapper, which is why `lines` is here. The wrapper's *prologue* is
-    /// subtracted by [`LINE_OFFSET`], but its epilogue and the
-    /// [module declarations](super::source) below it are in the same file and further down — so a
-    /// diagnostic gg's own generated text earned would otherwise be reported at a line past the end
-    /// of the program the model wrote. Above the author's last line it is located; past it, it is
-    /// reported without one.
+    /// So is one in the [module declarations](super::source) gg writes below the program, which is
+    /// why `lines` is here: they are in the same file and past the model's last line, so a
+    /// diagnostic they earned would otherwise be reported at a line the model's program does not
+    /// have. Within the author's own text it is located; past it, it is reported without a location.
     fn primary(&self, file: &str, lines: usize) -> Option<&Span> {
         self.spans.iter().find(|span| {
-            span.is_primary
-                && span.file_name == file
-                && (LINE_OFFSET + 1..=LINE_OFFSET + lines).contains(&span.line_start)
+            span.is_primary && span.file_name == file && (1..=lines).contains(&span.line_start)
         })
     }
 }
@@ -611,8 +693,7 @@ fn classify(report: &CompilerReport, file: &str, lines: usize) -> Result<(), Pre
         )));
     }
 
-    // A diagnostic in gg's wrapper or inside the library set is gg's artifact rather than the
-    // model's program — but it is still reported, because withholding it would leave the model with
+    // A diagnostic inside the library set is gg's artifact rather than the model's program — but it is still reported, because withholding it would leave the model with
     // "your program did not compile" and nothing else. What is *not* done is inventing a line for
     // it: `render` reports a location only for a span in the model's own file.
     //
@@ -644,6 +725,13 @@ fn classify(report: &CompilerReport, file: &str, lines: usize) -> Result<(), Pre
 /// again. `-C strip=symbols` deletes the name section and leaves them, which was measured rather
 /// than assumed.
 ///
+/// [`ADAPTER`] is what makes the target's own imports satisfiable. `wasm32-wasip1` is a preview1
+/// target, so the module `rustc` links imports `wasi_snapshot_preview1`; the adapter implements that
+/// namespace in terms of the preview 2 interfaces gg's linker provides, which is what gives a Rust
+/// program a real standard error to fail into. It is the **reactor** adapter, and the module's own
+/// `_start` is left unused: this component's entry point is the world's `run`, which
+/// `packages/gg-sandbox-rust/src/program.rs` answers and which calls the model's `main` itself.
+///
 /// Validated on the way out. An invalid component would otherwise fail at
 /// [`Component::new`](wasmtime::component::Component) as a
 /// [`SandboxError::Compile`](crate::sandbox::SandboxError) — the variant that means gg's *own*
@@ -653,6 +741,7 @@ fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
     wit_component::ComponentEncoder::default()
         .validate(true)
         .module(module)
+        .and_then(|encoder| encoder.adapter(ADAPTER_NAME, ADAPTER))
         .and_then(|mut encoder| encoder.encode())
         .map_err(|error| {
             format!(

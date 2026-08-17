@@ -573,6 +573,18 @@ const EVENTS: HarnessEvent[] = [
   }),
   // A turn that printed nothing renders no row at all.
   gg({ type: "code_execution", ok: true, toolCalls: 1 }),
+  // A turn healing rewrote. The program that ran is the assistant message; this event
+  // carries the reply as the model sent it, which is the only place the two can be read
+  // against each other.
+  gg({
+    type: "code_execution",
+    ok: true,
+    toolCalls: 1,
+    healing: {
+      strategies: ["strip-fences"],
+      original: "```ts\nviews.openText('n', '1');\n```",
+    },
+  }),
 ];
 
 // A worker whose live subscription replays a fixed event set synchronously, then
@@ -885,6 +897,14 @@ describe("GgRunMonitorPage", () => {
     // A turn that printed nothing adds no row: the program itself is already visible as
     // the assistant message that carried it.
     expect(screen.getAllByText("OUTPUT")).toHaveLength(1);
+    // A turn healing rewrote shows the reply as the model sent it, fence and all. The
+    // model reads the program that ran and never this; an operator reads both, which is
+    // what tells a defect in healing apart from a mistake by the model.
+    expect(screen.getAllByText("HEALED")).toHaveLength(1);
+    expect(
+      screen.getByText("sent as 3 lines; ran after strip-fences"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/views\.openText/).length).toBeGreaterThan(0);
   });
 
   it("renders an agent's activity through the shared feed, in the layout the user picked", () => {

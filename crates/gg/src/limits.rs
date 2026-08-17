@@ -319,8 +319,6 @@ pub enum TurnErrorType {
     ModelParse,
     /// The program is not valid source in its language.
     TranspileSyntax,
-    /// The program parses but breaks an early error the language enforces.
-    TranspileSemantic,
     /// The language's compiler read the whole program and rejected it — a type error, a borrow
     /// error, a name that does not resolve.
     TranspileCompile,
@@ -338,7 +336,8 @@ pub enum TurnErrorType {
     SandboxTimeout,
     /// The guest's linear memory grew past its cap.
     SandboxOutOfMemory,
-    /// The guest trapped for some other reason.
+    /// The guest trapped for some other reason, which on an arm whose program dies the way its
+    /// runtime kills it is where an ordinary uncaught program failure lands.
     SandboxTrap,
     /// A tool-calling turn ended with no call under an explicit-call completion signal.
     MissingCompletionNoCall,
@@ -360,10 +359,9 @@ impl TurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse => TurnErrorKind::ModelApi,
-            Self::TranspileSyntax
-            | Self::TranspileSemantic
-            | Self::TranspileCompile
-            | Self::TranspileUnsupported => TurnErrorKind::Transpile,
+            Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
+                TurnErrorKind::Transpile
+            }
             Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
                 TurnErrorKind::ProgramFault
             }
@@ -387,7 +385,6 @@ impl TurnErrorType {
             Self::ModelVisionUnsupported => GgTurnErrorType::ModelVisionUnsupported,
             Self::ModelParse => GgTurnErrorType::ModelParse,
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
-            Self::TranspileSemantic => GgTurnErrorType::TranspileSemantic,
             Self::TranspileCompile => GgTurnErrorType::TranspileCompile,
             Self::TranspileUnsupported => GgTurnErrorType::TranspileUnsupported,
             Self::ProgramToolError => GgTurnErrorType::ProgramToolError,

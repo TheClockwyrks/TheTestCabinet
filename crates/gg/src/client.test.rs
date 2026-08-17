@@ -433,7 +433,7 @@ fn the_anchor_stops_at_a_synthesized_assistant_turn() {
     let mut messages = vec![
         Message::system("sys"),
         Message::user("build it"),
-        // The bootstrap's synthesized program, and the documentation view it opened.
+        // The bootstrap's synthesized program, and the documentation views it opened.
         Message::assistant(Some("gg.views.openDocsView(...)".to_string()), vec![]),
         Message::user("Documentation: gg.views.openDocsView"),
     ];

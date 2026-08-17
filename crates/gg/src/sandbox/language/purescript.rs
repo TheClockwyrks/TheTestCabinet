@@ -11,8 +11,6 @@
 //!   module header for the names its namespace offers;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the nesting-and-primes lexer;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in PureScript's syntax;
 //! * `packages/gg-sandbox-purescript/src/Gg/**` — the hand-written SDK, compiled **into** the library
 //!   tree below, so the surface a model is shown and the surface its program is compiled against are
 //!   one artifact;
@@ -28,51 +26,25 @@
 //!
 //! # The strategy, in one sentence
 //!
-//! **A PureScript program is compiled to JavaScript on the host by `purs`, flattened into one script
-//! by `esbuild`, and evaluated by the same ECMAScript guest the [TypeScript](super::typescript) and
-//! [JavaScript](super::javascript) arms use.**
+//! **A PureScript program is compiled to JavaScript on the host by `purs`, flattened into one ES
+//! module by `esbuild`, and evaluated as a module by the [ECMAScript guest](super::ecmascript).**
 //!
 //! Nothing about it is per-run: the tree a program is compiled against is a build-time artifact, the
 //! compiler is a binary in the gg toolchain image, and what crosses the membrane is JavaScript.
 //!
-//! # Why this arm has no component of its own
-//!
-//! It shares TypeScript's, which is the ECMAScript guest — the same sharing
-//! [JavaScript](super::javascript) has, declared in the seam's own exemption table rather than
-//! inferred from a passing test.
-//!
-//! The alternative was measured for [Ruby](super::ruby) and came out the other way there, so it is
-//! worth saying exactly why it comes out this way here. Ruby needs a component of its own because
-//! Opal has a 743 KB **runtime** every compiled program depends on: prepended to each program it
-//! costs 45.6–51.0 ms per turn, a code module could not see it at all, and baking it into the shared
-//! component would have put `globalThis.Opal` in front of the TypeScript and JavaScript arms too.
-//! PureScript has no runtime. `purs` compiles a program's own code, and the library code it uses,
-//! into ordinary JavaScript; `esbuild` tree-shakes the graph down to what the program actually
-//! reached; and what arrives at the guest is a self-contained script that defines nothing globally.
-//! A component of this arm's own would differ from the shared one in **nothing**, and a second 20 MB
-//! artifact that differs in nothing is a second artifact to keep in step with the WIT rather than an
-//! isolation boundary. Measured: **2.7 ms** per turn inside the guest for a representative program,
-//! against 2.1 ms for the equivalent plain JavaScript on the same artifact.
-//!
-//! # What that costs, stated rather than hidden
-//!
-//! One thing: a guest backtrace is in the **bundle's** coordinates, not the model's PureScript,
-//! because owning `run` is what would let a guest map one to the other and this arm does not own
-//! `run`. The map is not lost — `purs` and `esbuild` both emit source maps and the host that produced
-//! the bundle holds them — but `feedback.program-error` carries a single `location` and the frame the
-//! guest picks is the innermost, which once the SDK is linked into the bundle is inside the SDK. The
-//! fix is a frame **list** on the wire, shared with a future Java arm, and it rebuilds every baked
-//! guest component; it is not made cheaper or dearer by the component decision above.
-//!
 //! # What a PureScript program is, here
 //!
-//! A **module**. PureScript has no loose statements, so a program is a module with a `main` of type
-//! `Effect Unit` that reaches gg's surface by importing the capability modules it uses, and the
-//! compile
-//! [renames its header](compile) to a fixed name so the bundler can find the entry point. A reply
-//! with no header at all is given one, which costs exactly one line and is the number every
-//! diagnostic is moved back by; a program that defines no `main` is refused with a sentence saying
-//! so.
+//! A **module**. PureScript has no loose statements, so a program is a module with its own header,
+//! its own `main :: Effect Unit`, and an `import` line for each of gg's capability modules it uses.
+//! Every one of those is the model's: `purs` reads the reply and nothing else, `purs` files the
+//! emitted JavaScript under the header the model wrote, and gg's entry module imports `main` from
+//! there. A reply with no header is `ErrorParsingModule` at line 1 and a program that defines no
+//! `main` is refused with a sentence saying so, both before anything runs.
+//!
+//! The bytes that **execute** are `purs`'s emission rather than the model's, which is the position
+//! every compiled arm is in. What makes it legitimate is the pair the invariants require: the bytes
+//! gg compiles are the model's, and a run-time location is recovered through the compilers' own
+//! source maps — see [`locations`](crate::sandbox::ProgramLanguage::locations).
 //!
 //! The library set a program may import is a **build-time fact about the embedded tree** rather than
 //! a policy: `packages/gg-sandbox-purescript/spago.yaml` declares it, the build compiles exactly that
@@ -115,13 +87,12 @@
 //! * **The brief a child agent is spawned with is a constructor** — `Prompt` or `Issue` — so "both"
 //!   and "neither" are programs that do not compile rather than calls the host refuses.
 //!
-//! The bridge underneath it is `Gg.Internal.Wire`, one foreign module naming the namespaces the
-//! shared ECMAScript guest binds. Those are free identifiers in the bundle, resolved at call time
-//! against the scope the guest built, which is why a capability this run withheld is a `ToolError`
-//! carrying `unavailable` rather than a `ReferenceError` — the SDK exposes the whole surface, as
-//! every arm's does, and the refusal is the host's. The guest's own spellings are the lowering and
-//! not the surface: they are written once, beside the function that uses them, and a model never
-//! sees one.
+//! The bridge underneath it is `Gg.Internal.Wire`, one foreign module whose JavaScript half writes
+//! `import * as gg from "gg"` — the same line a TypeScript program writes, reaching the same SDK
+//! instance in the same guest, so both arms produce byte-identical arguments for one capability. A
+//! capability this run withheld is refused by the host as a `ToolError` carrying `unavailable`, as
+//! it is on every arm. gg's own spellings for the families are the lowering and not the surface:
+//! they are written once, beside the function that uses them, and a model never sees one.
 //!
 //! # What this arm has that no other does
 //!
@@ -141,9 +112,11 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::locate::Locations;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "purescript.compile.rs"]
 pub(super) mod compile;
@@ -169,25 +142,12 @@ const SIGNATURES: &str = include_str!(concat!(
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 
-/// Everything gg *says* about a PureScript program that is written in PureScript's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.purescript.hbs"),
-    system_template_name: "system-code.purescript",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.purescript.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.purescript",
-};
-
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static PURESCRIPT: PureScript = PureScript;
 
-/// PureScript: compiled to JavaScript on the host by `purs`, bundled by `esbuild`, and evaluated by
-/// the ECMAScript guest.
+/// PureScript: compiled to JavaScript on the host by `purs`, bundled by `esbuild`, and evaluated as
+/// a module by the shared ECMAScript guest.
 pub(super) struct PureScript;
 
 impl ProgramLanguage for PureScript {
@@ -199,16 +159,28 @@ impl ProgramLanguage for PureScript {
         GgProgramLanguage::PureScript.display_name()
     }
 
+    /// A module is compiled separately from the program that uses it, so there is no import for
+    /// `purs` to check the two against and a program names both halves as strings.
+    /// [`Gg.Core.lib`](https://docs.testcabinet.ai/gg/languages/purescript/) hands back a `Maybe` of
+    /// whatever type the program says it is.
+    ///
+    /// There is therefore no [`lib_import`](ProgramLanguage::lib_import) either: the modules a turn
+    /// carries are imported by [the entry module gg generates](compile), which is the one thing on
+    /// this arm a program cannot write for itself.
+    fn lib_access(&self, key: &str) -> String {
+        format!("Gg.Core.lib \"{key}\" \"<name>\"")
+    }
+
     /// The `purs` compile and the `esbuild` bundle, in this preparation's own hard-linked tree — see
     /// [`compile`] for what it costs, what it shares, and how it tells a program `purs` refused from
     /// a `purs` that could not run.
     fn prepare_program(
         &self,
         source: &str,
-        _modules: &[CodeModule],
+        modules: &[CodeModule],
         context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
-        compile::compile_program(source, context)
+        compile::compile_program(source, modules, context)
     }
 
     /// `purs`, which is what a PureScript programmer calls it and what its own binary is called — not
@@ -221,7 +193,7 @@ impl ProgramLanguage for PureScript {
         Some("purs")
     }
 
-    /// Unpack the embedded library tree — 1.3 MB into 1,119 files, once per machine — so the first
+    /// Unpack the embedded library tree — 1.4 MB into 1,430 files, once per machine — so the first
     /// code turn is not charged for it.
     ///
     /// Idempotent and best effort: the result is cached for the process, and a failure here is
@@ -252,7 +224,7 @@ impl ProgramLanguage for PureScript {
     /// `.purs`, and nothing else.
     ///
     /// One extension, like [Python](super::python)'s and [Ruby](super::ruby)'s: nothing else in the
-    /// registry can evaluate a PureScript module — the ECMAScript guest could evaluate the *compiled*
+    /// registry can evaluate a PureScript module — this arm's guest could evaluate the *compiled*
     /// output, but a skills directory holds sources rather than artifacts — so a skill whose code is
     /// spelled `skill.rb` is a skill this arm's agents are not offered.
     fn module_file_extensions(&self) -> &'static [&'static str] {
@@ -265,13 +237,46 @@ impl ProgramLanguage for PureScript {
         binding_name(name)
     }
 
-    /// The ECMAScript guest, which is [TypeScript](super::typescript)'s.
-    ///
-    /// Declared sharing rather than an accident: see this module's documentation for the measurement
-    /// that settled it, and `SHARED_ARTIFACTS` in the seam's own tests for the pair being written
-    /// down.
+    /// The [ECMAScript guest](super::ecmascript), which the [TypeScript](super::typescript) and
+    /// [JavaScript](super::javascript) arms are also registered against: one artifact, embedded
+    /// once, evaluating every module gg compiles to JavaScript.
     fn guest_component(&self) -> Option<&'static [u8]> {
-        Some(super::typescript::COMPONENT)
+        Some(super::ecmascript::embedded())
+    }
+
+    /// This guest arms an interrupt handler off `GG_SANDBOX_DEADLINE_MS`, so a runaway loop is
+    /// stopped by quickjs with `InternalError: interrupted` and the JavaScript frames rather than by
+    /// gg's epoch trap. See [`stops_itself_at_ggs_deadline`](ProgramLanguage::stops_itself_at_ggs_deadline).
+    fn stops_itself_at_ggs_deadline(&self) -> bool {
+        true
+    }
+
+    /// The **composition** of `purs`'s source map and `esbuild`'s, which `esbuild` performs itself
+    /// and inlines into the bundle it writes.
+    ///
+    /// A frame the engine reports as a position in the bundle therefore reads back as
+    /// `program.purs:11:27` — the model's own file at the line it wrote — and a frame in a library
+    /// or in this arm's SDK reads as that PureScript module's own path in the shipped tree. The name
+    /// each frame takes is the one the map itself records for the token, rather than a single name
+    /// gg picks, because a bundle is made of many sources and only the map knows which one a frame
+    /// came from.
+    ///
+    /// Two sources in that map are neither the model's nor a library's, and their frames are struck
+    /// rather than reported: [the entry module](compile::ENTRY_FILE) gg generates for the bundler,
+    /// and any position in the bundle the composed map resolves nothing for.
+    fn locations(&self, program: &str, modules: &[CodeModule]) -> Option<Locations> {
+        Locations::read(
+            std::iter::once((super::ecmascript::PROGRAM.to_string(), None, program)).chain(
+                modules.iter().map(|module| {
+                    (
+                        format!("{}{}", super::ecmascript::MODULE_SCHEME, module.name),
+                        None,
+                        module.source.as_str(),
+                    )
+                }),
+            ),
+        )
+        .map(|locations| locations.hiding([compile::ENTRY_FILE.to_string()]))
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.
@@ -297,10 +302,6 @@ impl ProgramLanguage for PureScript {
         &healing::PURESCRIPT_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`void (Gg.Views.openFile "src/Main.purs" {})`](self::open_file_statement) — the call, its
     /// options record, and the `void` that discards what it hands back.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -311,6 +312,17 @@ impl ProgramLanguage for PureScript {
     /// names](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [A module whose `main` folds a `for_` over each of two arrays](self::bootstrap_program), with
+    /// both calls resolved from this language's own catalogue and both modules imported by name.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 }
 
@@ -327,7 +339,7 @@ impl ProgramLanguage for PureScript {
 /// that would not parse; a name that is nothing but separators becomes `module`, and a leading digit
 /// is prefixed, because the result has to be a valid identifier whatever the author wrote.
 ///
-/// The one thing this does that [TypeScript's](super::typescript::binding_name) does not is
+/// The one thing this does that [the ECMAScript arms'](super::typescript::binding_name) does not is
 /// **lower-case the leading run**, and it is a rule rather than a preference: `lib.<key>` is a record
 /// field access, and PureScript will not parse an upper-case label unquoted (`s.Foo` is
 /// `Unexpected token 'Foo'`). A skill called `CSV-tools` therefore binds at `lib.csvTools` rather
@@ -452,6 +464,74 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
     )
 }
 
+/// The opening turn: a module whose `main` folds a `for_` over the module paths, listing each in
+/// full, and then a `for_` over the names it opens documentation views of.
+///
+/// A whole module, because that is what a PureScript program is — and the two arrays are top-level
+/// declarations carrying their own type signatures, for the reason
+/// [`open_docs_views_statement`]'s one is: a `let` of an empty
+/// array inside the `do` block would be an ambiguous type rather than a program.
+///
+/// Each module the program calls into is imported under its own full name, which is the name the
+/// documentation is keyed by and the expression a program writes. The filters are the fields of a
+/// **record** argument, which is this language's idiom for optional ones.
+///
+/// A failed call is thrown rather than returned, and nothing here catches it: that is this arm's
+/// failure model, and a bootstrap that handled its own failure would be a worked example of
+/// swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |names: &[&str]| -> String {
+        let mut entries = String::new();
+        for (index, name) in names.iter().enumerate() {
+            let separator = if index == 0 { '[' } else { ',' };
+            let name = serde_json::Value::String((*name).to_string());
+            entries.push_str(&format!("  {separator} {name}\n"));
+        }
+        if entries.is_empty() {
+            entries.push_str("  [\n");
+        }
+        entries
+    };
+    let paths = listed(modules);
+    let functions = listed(docs);
+    // Two calls, and on this arm each needs its own import line — unless the SDK ever files both
+    // under one module, in which case importing it twice would be the compile error rather than the
+    // program.
+    let docs_module = module_of(search);
+    let views_module = module_of(open_docs_view);
+    let mut imports = format!("import {docs_module} as {docs_module}\n");
+    if views_module != docs_module {
+        imports.push_str(&format!("import {views_module} as {views_module}\n"));
+    }
+    format!(
+        "module Main where\n\
+         \n\
+         import Prelude\n\
+         \n\
+         import Data.Foldable (for_)\n\
+         import Effect (Effect)\n\
+         {imports}\
+         \n\
+         modules :: Array String\n\
+         modules =\n\
+         {paths}  ]\n\
+         \n\
+         functions :: Array String\n\
+         functions =\n\
+         {functions}  ]\n\
+         \n\
+         main :: Effect Unit\n\
+         main = do\n\
+         \x20 for_ modules \\path -> {search} \"\" {{ module: path, limit: {MAX_SEARCH_LIMIT} }}\n\
+         \x20 for_ functions {open_docs_view}\n"
+    )
+}
+
 /// The module a fully-qualified call is documented under, taken off the front of the call itself.
 ///
 /// The one place gg has to write this arm's **import** line, and it is derived from the call rather
@@ -473,7 +553,7 @@ mod tests;
 /// compiler, linker, membrane and store.
 ///
 /// A separate test file from [`tests`], because these are a different kind of test: each one compiles
-/// a 20 MB component, unpacks a 1.2 MB library tree and spawns a real `purs`, which is seconds rather
+/// the guest, unpacks a 1.4 MB library tree and spawns a real `purs`, which is seconds rather
 /// than microseconds, where everything next door is a pure function over text.
 #[cfg(test)]
 #[path = "purescript.substrate.test.rs"]

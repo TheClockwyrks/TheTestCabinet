@@ -6,14 +6,17 @@ namespace Gg;
 
 public static partial class Docs
 {
-    /// <summary>Which of the two things a documentation entry describes.</summary>
+    /// <summary>Which of the three things a documentation entry describes.</summary>
     /// <remarks>
-    /// The taxonomy is closed at two because a surface is functions and the types their signatures
-    /// name, and nothing else is documented separately: a module is a heading, and a parameter is
-    /// documented on the function that takes it.
+    /// The taxonomy is closed at three because a surface is the modules a program imports, the
+    /// functions inside them and the types their signatures name, and nothing else is documented
+    /// separately: a parameter is documented on the function that takes it.
     /// </remarks>
     public enum DocKind
     {
+        /// <summary>One module a program imports, whose functions live inside it.</summary>
+        Module,
+
         /// <summary>One callable function.</summary>
         Function,
 
@@ -25,11 +28,12 @@ public static partial class Docs
     /// <param name="Key">
     /// The fully-qualified name <see cref="Views.OpenDocsView"/> takes to read the whole entry.
     /// </param>
-    /// <param name="Kind">Whether it is a function or a type.</param>
+    /// <param name="Kind">Whether it is a module, a function or a type.</param>
     /// <param name="Module">
-    /// The module it lives in; for a type, every module mentioning it, comma-separated — so not one to hand back as a filter.
+    /// The module it lives in: itself for a module, and every module mentioning a type, so not a
+    /// filter to hand back.
     /// </param>
-    /// <param name="Name">The name a program calls it by, or the type's own name.</param>
+    /// <param name="Name">The name a program calls it by, the type's own name, or the module's path.</param>
     /// <param name="Summary">Its one-line brief, and only that.</param>
     public sealed record DocHit(
         string Key,

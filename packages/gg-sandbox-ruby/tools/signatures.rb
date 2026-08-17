@@ -4,11 +4,13 @@
 # $GG_SIGNATURES_OUT_DIR/ruby.signatures.json
 #   packages/gg-sandbox-ruby/src/library.rb           -->  its `libraries` section
 #
-# gg renders the responses-as-code system prompt and every documentation view from that file, so it
-# is the whole of what a model is *told* about this arm's surface — and every word of it is
-# reflected out of the declaration it describes rather than written anywhere else. A description
-# kept in a table, a template or a `const` in gg's Rust is a description that drifts from its
-# subject with nothing to catch it.
+# gg answers every documentation search and every documentation view out of that file, so it is the
+# whole of what a model can *learn* about this arm's surface — the responses-as-code system prompt
+# takes only the module paths and their one-line briefs from it and names no function at all, and
+# the `libraries` section is quoted back on a compile failure rather than rendered anywhere. Every
+# word of it is reflected out of the declaration it describes rather than written anywhere else. A
+# description kept in a table, a template or a `const` in gg's Rust is a description that drifts
+# from its subject with nothing to catch it.
 #
 # # It reads YARD, which is what a Ruby author already writes
 #
@@ -90,7 +92,6 @@ require "gg/core"
 require "gg/check"
 require "gg/surface"
 require "gg/wire"
-require "gg/lib"
 GG::Surface::MODULES.each { |name| require "gg/#{name.downcase}" }
 require "gg/scope"
 
@@ -290,6 +291,12 @@ Module_ = Struct.new(:id, :constant, :path)
 MODULES = GG::Surface::MODULES.map do |name|
   Module_.new(name.downcase, GG.const_get(name), "GG::#{name}")
 end
+
+# The line a program writes to bring every module above into scope.
+#
+# It has to match `crates/gg/src/sandbox/language/ruby.rs`'s `SURFACE_IMPORT` character for
+# character, and `every_module_states_the_one_import_line_this_arm_writes` holds it to that.
+SURFACE_IMPORT = 'require "gg"'
 
 # Every type a capability module declares, in the order the module declares them.
 #
@@ -623,9 +630,12 @@ modules = MODULES.map do |mod|
     "path" => mod.path,
     "brief" => brief,
     "detail" => detail,
-    # `null`, and truthfully: the component carries this SDK in its pre-initialised heap, so `GG` is
-    # already a top-level constant and there is no `require` line a program would be right to write.
-    "import" => nil
+    # The one line a program writes to reach any of them. It is COMPOSED rather than reflected
+    # because YARD reports what a file declares and never how another file reaches it: the SDK is one
+    # requirable unit — `Opal.modules["gg"]`, registered by the guest build and loaded by nobody — so
+    # every module below is behind the same `require`, and this is the one thing the invariants let
+    # an arm write for itself.
+    "import" => SURFACE_IMPORT
   }
 end
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from wit_world.imports import shell as wire
 
-from ._registry import operation
+from ._registry import missing, operation
 from .core import _call, _positive
 
 __all__ = ["ShellOutput", "shell"]
@@ -68,3 +68,7 @@ def shell(command: str, *, timeout_secs: float | None = None) -> ShellOutput:
     return ShellOutput(
         exit_code=result.exit_code, output=result.output, truncated=result.truncated
     )
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

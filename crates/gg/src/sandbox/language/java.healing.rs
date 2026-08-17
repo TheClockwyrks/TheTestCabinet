@@ -82,9 +82,8 @@ const PROGRAM_TAGS: &[&str] = &["java", "jav"];
 /// [`looks_like_code`] a false positive costs a fence that could have been unwrapped — one turn,
 /// one located diagnostic. In [`is_prose_line`] it is what stops a statement from ever being deleted
 /// as prose. So the primitive type names are here (they open the most common declaration a program
-/// writes), the access modifiers are here (a model writes them on a helper type even though a local
-/// declaration may not carry one, and the resulting compile error is the model's to read rather than
-/// gg's to hide), and the local type declarations are here.
+/// writes), the access modifiers are here (a program opens with `public final class Program`), and
+/// the type declarations are here.
 const STATEMENT_KEYWORDS: [&str; 45] = [
     "if",
     "else",

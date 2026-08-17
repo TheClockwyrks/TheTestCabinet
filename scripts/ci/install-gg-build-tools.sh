@@ -13,9 +13,7 @@
 # build then finds it there and stays offline. Every one of the resolvers below is idempotent and
 # says nothing on a warm machine.
 #
-#   componentize-js   bakes the TypeScript and Ruby guest components. Two arms pin it separately, on
-#                     purpose (each guest's engine is that arm's study parameter), so both pins are
-#                     read and both are warmed — the same version twice is one install.
+#   componentize-js   bakes the Ruby guest component, whose engine is that arm's study parameter.
 #   opal-compiler     the Opal runtime and self-hosted compiler the whole Ruby arm is made of.
 #   the opal gem      Opal's STANDARD LIBRARY sources, which npm does not ship. Cached outside the
 #                     package, because `.build/` is what a `git clean` takes.
@@ -30,6 +28,9 @@
 #   the Rust arm's    `packages/gg-sandbox-rust/Cargo.lock` is a SEPARATE lockfile from the
 #   cargo closure    workspace's, so nothing else in this repository warms it, and that arm's build
 #                     runs `cargo build --locked --offline` against it.
+#   the ECMAScript    `packages/gg-sandbox/guest/Cargo.lock`, a THIRD lockfile, for the same reason:
+#   guest's closure   quickjs and `rquickjs` are compiled for `wasm32-wasip1` out of a package that
+#                     is deliberately not in the workspace.
 #
 # THE LAST TWO ARRIVED LATE AND THE REASON IS WORTH THE LINE, because it is the trap this script is
 # for. Both were already cached — and both cached INSIDE the repository, in
@@ -70,27 +71,21 @@ if ! command -v npm >/dev/null 2>&1; then
 	exit 1
 fi
 
-# --- componentize-js, from both arms that pin it ---------------------------------------------
+# --- componentize-js, from the one arm that pins it -------------------------------------------
 #
-# The TypeScript arm spells its pin in `build.sh` and the Ruby arm in `opal-version.sh`; they are
-# the same release today and deliberately free to diverge. Read out of the files rather than
-# restated here, so a bump on either side is warmed without a second edit.
-log "componentize-js (bakes the typescript and ruby guest components)"
-TS_COMPONENTIZE="$(sed -n 's/^COMPONENTIZE_VERSION="\(.*\)"$/\1/p' \
-	"$REPO_ROOT/packages/gg-sandbox/build.sh")"
+# Read out of `opal-version.sh` rather than restated here, so a bump is warmed without a second edit.
+log "componentize-js (bakes the ruby guest component)"
 RUBY_COMPONENTIZE="$(
 	# shellcheck source=packages/gg-sandbox-ruby/opal-version.sh
 	source "$REPO_ROOT/packages/gg-sandbox-ruby/opal-version.sh"
 	echo "$COMPONENTIZE_VERSION"
 )"
-if [ -z "$TS_COMPONENTIZE" ] || [ -z "$RUBY_COMPONENTIZE" ]; then
-	echo "error: could not read a componentize-js pin out of the typescript or ruby arm." >&2
+if [ -z "$RUBY_COMPONENTIZE" ]; then
+	echo "error: could not read a componentize-js pin out of the ruby arm." >&2
 	exit 1
 fi
-for version in "$TS_COMPONENTIZE" "$RUBY_COMPONENTIZE"; do
-	gg_npm_tool @bytecodealliance/componentize-js "$version" >/dev/null
-done
-echo "componentize-js $TS_COMPONENTIZE (typescript), $RUBY_COMPONENTIZE (ruby)"
+gg_npm_tool @bytecodealliance/componentize-js "$RUBY_COMPONENTIZE" >/dev/null
+echo "componentize-js $RUBY_COMPONENTIZE (ruby)"
 
 # --- the Ruby arm: the compiler package and the gem its standard library comes from ------------
 log "opal (gg's ruby arm is compiled by it and bakes its runtime)"
@@ -204,10 +199,15 @@ echo "componentize-py $PY_COMPONENTIZE and the pinned wheels are in uv's cache"
 log "the rust arm's curated crate set (a separate Cargo.lock from the workspace's)"
 if command -v cargo >/dev/null 2>&1; then
 	cargo fetch --locked --manifest-path "$REPO_ROOT/packages/gg-sandbox-rust/Cargo.toml"
+	# The ECMAScript guest, which is a THIRD lockfile for the same reason: quickjs and `rquickjs`
+	# are compiled for `wasm32-wasip1` out of a package that is deliberately not in the workspace,
+	# and `packages/gg-sandbox/guest.sh` builds it `--locked --offline` inside an ordinary
+	# `cargo build`.
+	cargo fetch --locked --manifest-path "$REPO_ROOT/packages/gg-sandbox/guest/Cargo.toml"
 else
-	echo "warning: no \`cargo\` on PATH, so the rust arm's crate set was not fetched." >&2
-	echo "         That arm's build.sh runs \`cargo build --locked --offline\` and will fail" >&2
-	echo "         until this is run on a machine that has one." >&2
+	echo "warning: no \`cargo\` on PATH, so the rust arm's crate set and the ECMAScript guest's" >&2
+	echo "         were not fetched. Both build \`--locked --offline\` and will fail until this" >&2
+	echo "         is run on a machine that has one." >&2
 fi
 
 log "gg's package-manager-delivered build tools are warm"

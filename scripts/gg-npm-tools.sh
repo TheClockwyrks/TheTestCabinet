@@ -5,8 +5,8 @@
 #
 #   gg_npm_tool <package> <version>   # prints a directory holding `node_modules/<package>`
 #
-# WHAT THIS IS FOR. Four of gg's arms build their artifacts with a tool that is published on npm and
-# nowhere else: `@bytecodealliance/componentize-js` bakes the TypeScript and Ruby guest components,
+# WHAT THIS IS FOR. Three of gg's arms build their artifacts with a tool that is published on npm and
+# nowhere else: `@bytecodealliance/componentize-js` bakes the Ruby guest component,
 # `opal-compiler` carries the Opal runtime and self-hosted compiler the Ruby arm is made of, and
 # `spago` resolves the PureScript package set. Each `build.sh` used to reach for its own with `npx
 # --yes` or `npm install --prefix .build`, which meant a REGISTRY CALL from inside what is now an

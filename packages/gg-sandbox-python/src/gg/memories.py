@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 from wit_world.imports import memories as wire
 
-from ._registry import alias, operation
+from ._registry import alias, missing, operation
 from .core import _call, _strings
 
 __all__ = [
@@ -320,3 +320,7 @@ def delete_memory(name: str) -> MemoryUsage:
         ToolError: `not-found` when no memory has that name.
     """
     return _usage(_call(wire.delete_memory, name))
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

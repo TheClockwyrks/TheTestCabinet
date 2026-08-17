@@ -50,7 +50,6 @@ import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
 
-import org.teavm.backend.javascript.JSModuleType;
 import org.teavm.diagnostics.DefaultProblemTextConsumer;
 import org.teavm.diagnostics.Problem;
 import org.teavm.diagnostics.ProblemSeverity;
@@ -65,7 +64,7 @@ import org.teavm.vm.TeaVMOptimizationLevel;
 
 public final class GgCompiler {
     /** The protocol version gg checks at the handshake. Bump it when a field changes meaning. */
-    static final int PROTOCOL = 1;
+    static final int PROTOCOL = 2;
 
     /** The bytecode level the model's program is compiled to. */
     static final String RELEASE = "21";
@@ -101,6 +100,13 @@ public final class GgCompiler {
      *
      * <p>Every path is absolute and inside one preparation's own tree. Nothing is remembered
      * between requests, which is what makes a build a function of its request alone.
+     *
+     * <p>AN EMPTY {@code targetFile} MEANS {@code javac} AND NOTHING ELSE. gg checks a code module
+     * that way: a module is compiled into the program that uses it, so there is no artifact for
+     * TeaVM to write here and no entry point for it to root a dependency graph at — what the check
+     * buys is javac's located diagnostic at the read that binds the module, rather than one against
+     * somebody else's program on every turn after it. Empty is the one value the field cannot
+     * otherwise take, since a file has a name.
      */
     static String build(String request, List<String> classpath) {
         String[] fields = request.split("\t", -1);
@@ -133,13 +139,14 @@ public final class GgCompiler {
             return Json.failure("internal", "javac fell over: " + Diagnostics.render(failure));
         }
         long afterJavac = System.nanoTime();
-        if (!compiled) {
-            return Json.response(false, "javac", entries,
+        if (!compiled || targetFile.isEmpty()) {
+            return Json.response(compiled, compiled ? null : "javac", entries,
                     Json.millis("javac", afterJavac - started) + Json.millis("teavm", 0));
         }
 
         try {
-            teavm(classes, output, classpath, mainClass, targetFile, entries);
+            teavm(classes, output, classpath, mainClass, targetFile,
+                    sources.get(0).getName(), entries);
         } catch (Throwable failure) {
             return Json.failure("internal", "TeaVM fell over: " + Diagnostics.render(failure));
         }

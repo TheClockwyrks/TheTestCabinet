@@ -109,6 +109,17 @@ public final class GgSignatures implements Doclet {
     /** The block tag naming the gg module a class is. */
     private static final String MODULE_TAG = "ggmodule";
 
+    /**
+     * The longest a brief may be, in characters.
+     *
+     * <p>The same cap {@code crates/gg/src/sandbox/language/register.rs} holds every arm's catalogue
+     * to, and it is enforced here as well because the host's copy is a {@code #[test]}: a reflection
+     * that embedded a paragraph in the brief field would succeed, and so would a build, and the
+     * author would hear about it from a gate three steps away naming an entry they then have to go
+     * looking for. Here is where the author is standing.
+     */
+    private static final int BRIEF_CAP = 120;
+
     /** Where the JSON goes. */
     private Path output;
 
@@ -368,9 +379,21 @@ public final class GgSignatures implements Doclet {
             entry.put("path", Json.of(module.path()));
             entry.put("brief", Json.of(prose.brief()));
             entry.put("detail", prose.detail() == null ? Json.NULL : Json.of(prose.detail()));
-            // Nothing is imported. gg writes this arm's import header itself — one star import per
-            // module — so a documented import line would be a line a program would be wrong to write.
-            entry.put("import", Json.NULL);
+            // THE LINE A PROGRAM WRITES, which on this arm is a single-type import of the class
+            // the module IS. gg writes no import into a program, so this is the only place a model
+            // is told how to reach `Files.readFile` rather than `gg.files.Files.readFile` — and it
+            // is composed from the module's own path rather than restated, which is the one thing
+            // this reflector is allowed to compose (javadoc reports no import line for anything).
+            //
+            // The `core` module has no class of its own: what lives in package `gg` is the
+            // exception and the types every other module's signatures name. Its path is therefore a
+            // PACKAGE, and the line that reaches everything in it is an on-demand import. Nothing
+            // on this arm is in a program's scope without a line it wrote, so `null` — which every
+            // reader renders as "in scope already" — would be a claim about this arm that is false
+            // of the one name the prompt tells every model to write.
+            entry.put("import", Json.of(module.type().isEmpty()
+                    ? "import " + module.path() + ".*;"
+                    : "import " + module.path() + ";"));
             out.add(entry);
         }
         return Json.array(out);
@@ -825,6 +848,8 @@ public final class GgSignatures implements Doclet {
      * text rather than after the wrapping is collapsed: a paragraph written without a {@code <p>}
      * would otherwise arrive as a perfectly well-formed brief six lines long, and the author would
      * hear about it from a gate three steps away instead of from the declaration in front of them.
+     * It is required to be no longer than {@link #BRIEF_CAP} for the second half of the same reason:
+     * one line is a shape, and a line long enough to be a paragraph is one anyway.
      */
     private Prose prose(Element element, String what) {
         return documented(element, what).prose();
@@ -881,6 +906,10 @@ public final class GgSignatures implements Doclet {
                     + "brief and everything after a `<p>` is the detail: " + raw.replace('\n', '⏎'));
         }
         String brief = new Markdown().render(body.subList(0, split));
+        if (brief.length() > BRIEF_CAP) {
+            complain(what + " has a " + brief.length() + "-character brief, and a brief is capped "
+                    + "at " + BRIEF_CAP + ": " + brief);
+        }
 
         String detail = null;
         if (split < body.size()) {
@@ -1178,11 +1207,11 @@ public final class GgSignatures implements Doclet {
     /**
      * A doc comment rendered as Markdown.
      *
-     * <p>The catalogue is read by a prompt template and by the console, both of which render
-     * Markdown, and every other arm's reflector emits it — so the one thing Java's documentation
-     * tooling does that theirs does not, which is speak HTML, is undone here. It walks the
-     * <b>tree</b> rather than the raw comment, so {@code {@code x}} is a node rather than a substring
-     * and a {@code <} inside one is not mistaken for a tag.
+     * <p>The catalogue is read by documentation search, by every documentation view and by the
+     * console, all of which render Markdown, and every other arm's reflector emits it — so the one
+     * thing Java's documentation tooling does that theirs does not, which is speak HTML, is undone
+     * here. It walks the <b>tree</b> rather than the raw comment, so {@code {@code x}} is a node
+     * rather than a substring and a {@code <} inside one is not mistaken for a tag.
      */
     private final class Markdown {
         private final StringBuilder out = new StringBuilder();

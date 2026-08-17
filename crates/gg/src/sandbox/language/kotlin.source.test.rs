@@ -1,6 +1,6 @@
 //! What gg does to a model's Kotlin before the compiler sees it, asserted without starting one: the
-//! import hoist, the export scan, and the three lexical answers Kotlin needs that Java's reading of
-//! the same question does not have.
+//! code-module wrapper, the export scan, and the three lexical answers Kotlin needs that Java's
+//! reading of the same question does not have.
 
 use super::*;
 
@@ -13,62 +13,19 @@ fn scanned(source: &str) -> Vec<(String, bool)> {
         .collect()
 }
 
+/// **gg writes nothing at all into a program**, which is the whole of this arm's authorship claim
+/// and the one thing this file exists to state as text.
 #[test]
-fn a_program_with_nothing_to_hoist_is_the_model_s_own_bytes() {
-    // The property the script shape buys, and the one no other compiled arm has: there is nothing to
-    // wrap a Kotlin script in, so with no import to lift the compiler reads exactly what the model
-    // wrote and every diagnostic coordinate is the model's with no arithmetic at all.
-    let source = "val rows = listOf(1, 2)\nprintln(rows.sum())\n";
-    let wrapped = wrap_program(source).expect("wrapped");
-    assert_eq!(wrapped.source, source);
-    assert_eq!(wrapped.shift, 0);
-    assert!(wrapped.exports.is_empty());
+fn there_is_nothing_here_that_touches_a_program() {
+    // There is no `wrap_program` on this arm any more, and the compiler enforces that far better
+    // than a test could. What is left to state is the one convention: the facade class gg's second
+    // compilation unit NAMES, which is the shape ruling D2 blessed.
+    assert_eq!(PROGRAM_CLASS, "ProgramKt");
+    assert_eq!(crate::sandbox::language::jvm::ENTRY_CLASS, "GgEntry");
 }
 
 #[test]
-fn an_import_is_hoisted_and_blanked_where_it_stood() {
-    let wrapped = wrap_program(
-        "import kotlin.math.sqrt\nimport java.time.LocalDate;\n\nprintln(sqrt(4.0))\n",
-    )
-    .expect("wrapped");
-    assert_eq!(wrapped.shift, 2);
-    // The header carries both, the trailing `;` a model may have typed is dropped rather than
-    // refused, and the body keeps a line for each so nothing below them moves.
-    assert_eq!(
-        wrapped.source,
-        "import kotlin.math.sqrt\nimport java.time.LocalDate\n\n\n\nprintln(sqrt(4.0))\n",
-    );
-    assert_eq!(
-        wrapped.source.lines().count() - wrapped.shift,
-        4,
-        "the body has exactly as many lines as the reply did",
-    );
-}
-
-#[test]
-fn only_a_real_import_is_hoisted() {
-    // `importantThing()` is not an import, a commented-out one is not an import, and a line inside a
-    // raw string that happens to start with the word is emphatically not an import — deleting one
-    // would take a line out of the model's own data.
-    let source = "val importantThing = 1\n// import kotlin.math.sqrt\nval text = \"\"\"\nimport kotlin.math.sqrt\n\"\"\"\nprintln(text)\n";
-    let wrapped = wrap_program(source).expect("wrapped");
-    assert_eq!(wrapped.source, source, "nothing was hoisted");
-    assert_eq!(wrapped.shift, 0);
-}
-
-#[test]
-fn a_package_declaration_is_refused_by_name_rather_than_dropped() {
-    let failure = wrap_program("package example.thing\n\nprintln(1)\n").expect_err("refused");
-    let rendered = failure.to_string();
-    assert!(rendered.contains("line 1"), "{rendered}");
-    assert!(rendered.contains("package example.thing"), "{rendered}");
-    // Silently dropping it would leave a model wondering why its own names did not resolve, which is
-    // the misattribution this codebase spends the most effort not making.
-    assert!(rendered.contains("Remove it"), "{rendered}");
-}
-
-#[test]
-fn a_module_offers_its_public_top_level_functions_and_nothing_else() {
+fn a_module_goes_in_a_package_of_its_own_on_the_author_s_own_first_line() {
     let wrapped = wrap_module(
         "fun greet(who: String) = \"hello $who\"\n\
          private fun hidden() = 1\n\
@@ -76,45 +33,84 @@ fn a_module_offers_its_public_top_level_functions_and_nothing_else() {
          val limit = 3\n\
          class Helper { fun method() = 4 }\n\
          fun add(a: Int, b: Int) = a + b\n",
+        &module_package("csvTools"),
     )
     .expect("wrapped");
     assert_eq!(wrapped.exports, ["greet", "add"]);
-    // Inline insertion, so no line moves: the annotation goes in front of the `fun` keyword on the
-    // line the author wrote it on.
-    assert!(wrapped.source.contains("@JSExport fun greet"));
-    assert!(wrapped.source.contains("@JSExport fun add"));
-    assert!(!wrapped.source.contains("@JSExport private"));
-    // A method of a class the author declared is that class's business rather than the namespace's,
-    // and the scan only ever looks at the file's own level.
-    assert!(!wrapped.source.contains("@JSExport fun method"));
+    // The package declaration shares the author's own line 1, terminated by the semicolon Kotlin
+    // allows, so a module whose first line is an `import` still parses and NO LINE MOVES.
+    assert!(
+        wrapped
+            .source
+            .starts_with("package lib.csvTools; fun greet(who: String)"),
+        "{}",
+        wrapped.source.lines().next().unwrap_or_default(),
+    );
     assert_eq!(
-        wrapped.source.lines().count() - wrapped.shift,
+        wrapped.source.lines().count(),
         6,
-        "the module's own lines are where the author put them",
+        "the module's own lines are exactly where the author put them",
     );
-    // The header renames the facade class off the export name. They must differ: TeaVM declares both
-    // in the bundle's scope, and when they are the same word the inner declaration shadows the outer
-    // one and the namespace gg hands back is `undefined` — measured.
+}
+
+#[test]
+fn a_module_whose_first_line_is_an_import_still_parses() {
+    // The semicolon is what buys this: `package lib.module import kotlin.math.abs` on one line is
+    // not something Kotlin's grammar reads, and `package lib.module; import kotlin.math.abs` is.
+    // The real compiler is what proves it — `kotlin.compile.test.rs` compiles this very shape — and
+    // what is asserted here is that gg wrote the terminator at all.
+    let wrapped = wrap_module(
+        "import kotlin.math.abs\nfun distance(a: Int): Int = abs(a)\n",
+        MODULE_CHECK_PACKAGE,
+    )
+    .expect("wrapped");
     assert!(
         wrapped
             .source
-            .contains(&format!("@file:JvmName(\"{MODULE_CLASS}\")"))
+            .starts_with("package lib.module; import kotlin.math.abs\n"),
+        "{}",
+        wrapped.source.lines().next().unwrap_or_default(),
     );
-    assert!(
-        wrapped
-            .source
-            .contains(&format!("@file:JSClass(name = \"{MODULE_GLOBAL}\")"))
-    );
-    assert_ne!(MODULE_CLASS, MODULE_GLOBAL);
+    assert_eq!(wrapped.exports, ["distance"]);
+    assert_eq!(wrapped.source.lines().count(), 2);
+}
+
+#[test]
+fn a_package_declaration_in_a_module_is_refused_by_name() {
+    let failure = wrap_module(
+        "package example.thing\nfun one() = 1\n",
+        MODULE_CHECK_PACKAGE,
+    )
+    .expect_err("gg names the package a module goes in, and two would not parse");
+    let rendered = failure.to_string();
+    assert!(rendered.contains("line 1"), "{rendered}");
+    assert!(rendered.contains("package example.thing"), "{rendered}");
+    // Silently dropping it would leave an author wondering why their own names did not resolve,
+    // which is the misattribution this codebase spends the most effort not making.
+    assert!(rendered.contains("Remove it"), "{rendered}");
 }
 
 #[test]
 fn a_module_that_offers_nothing_is_refused_with_a_sentence() {
-    let failure = wrap_module("private fun helper() = 1\nval limit = 2\n").expect_err("refused");
+    let failure = wrap_module(
+        "private fun helper() = 1\nval limit = 2\n",
+        MODULE_CHECK_PACKAGE,
+    )
+    .expect_err("refused");
     assert!(failure.to_string().contains("offers nothing"));
     // An empty namespace bound with no error is the quiet kind of wrong, and the author is told what
     // a module has to offer rather than left to guess.
     assert!(failure.to_string().contains("public top-level functions"));
+}
+
+#[test]
+fn a_module_s_package_is_the_path_a_program_writes() {
+    // `lib.<key>.<name>` is what a program writes, so the package a module is compiled into and the
+    // access the seam publishes have to be the same string. One derives the other.
+    assert_eq!(module_package("csvTools"), "lib.csvTools");
+    assert_eq!(module_file("csvTools"), "GgModule_csvTools.kt");
+    // Two modules are two files, because one compile reads them all at once.
+    assert_ne!(module_file("a"), module_file("b"));
 }
 
 #[test]
@@ -167,7 +163,7 @@ fn the_lexer_answers_the_three_questions_kotlin_asks_that_java_does_not() {
 
     // 1. A STRING TEMPLATE with a quote in it. `"total: ${rows["n"]}"` is ONE string, and a scan that
     //    stopped at the quote before `n` would read the rest of the line as code — which on a module
-    //    is a brace-depth error and on any file is a hoisted "import" that was never one.
+    //    is a brace-depth error and on any file is a `package` line that was never one.
     assert_eq!(
         code("val x = \"total: ${rows[\"n\"]}\"\nfun a() = 1\n"),
         "val x = \nfun a() = 1\n"
@@ -182,7 +178,7 @@ fn the_lexer_answers_the_three_questions_kotlin_asks_that_java_does_not() {
     //    reading it Java's way leaves ` c */` behind as code.
     assert_eq!(code("/* a /* b */ c */fun a() = 1\n"), "fun a() = 1\n");
 
-    // 3. A BACKQUOTED IDENTIFIER, which may hold a brace or the word `import` and mean neither.
+    // 3. A BACKQUOTED IDENTIFIER, which may hold a brace or the word `package` and mean neither.
     assert_eq!(
         code("val `a {name}` = 1\nfun a() = 2\n"),
         "val  = 1\nfun a() = 2\n"
@@ -201,6 +197,11 @@ fn the_lexer_answers_the_three_questions_kotlin_asks_that_java_does_not() {
         code("val a = \"\"\"\nnot code\n\"\"\"\nval b = 1\n"),
         "val a = \nval b = 1\n"
     );
+
+    // A line that opens with `package` inside a raw string is not a package declaration, and
+    // refusing a module for one would be gg reading the author's own data as code.
+    let inside = "fun one() = 1\nval text = \"\"\"\npackage example\n\"\"\"\n";
+    assert!(wrap_module(inside, MODULE_CHECK_PACKAGE).is_ok());
 }
 
 #[test]
@@ -208,8 +209,8 @@ fn every_scan_is_a_byte_comparison_rather_than_a_slice() {
     // A model writing a message in any language but English produces this on its first turn, and a
     // scan that sliced the source at a byte index would take the whole turn down with a slice index
     // error rather than reaching the compiler.
-    let source = "val message = \"café — déjà vu\"\nprintln(message)\n";
-    assert_eq!(wrap_program(source).expect("wrapped").source, source);
+    let source = "fun one(): String = \"café — déjà vu\"\n";
+    assert!(wrap_module(source, MODULE_CHECK_PACKAGE).is_ok());
     // And a name written in any script is reported under its own name: a module offering `café`
     // that gg called `caf` would be a namespace missing the member it just bound.
     assert_eq!(
@@ -221,12 +222,12 @@ fn every_scan_is_a_byte_comparison_rather_than_a_slice() {
     // reply can contain; each must end the scan rather than panic. What follows is the compiler's
     // problem, and it has a diagnostic for it.
     for source in [
-        "val a = \"unterminated\n",
+        "fun one() = \"unterminated\n",
         "/* unterminated\nfun a() = 1\n",
-        "val a = \"${unterminated\n",
-        "val a = `unterminated\n",
+        "fun one() = \"${unterminated\n",
+        "fun one() = `unterminated\n",
     ] {
-        let _ = wrap_program(source).expect("an unterminated anything is the compiler's to refuse");
+        let _ = wrap_module(source, MODULE_CHECK_PACKAGE);
         let _ = scanned(source);
     }
 }

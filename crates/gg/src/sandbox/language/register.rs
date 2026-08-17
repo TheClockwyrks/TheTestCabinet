@@ -70,6 +70,13 @@ use crate::sandbox::signatures::{Parameter, Prose, SignatureCatalogue};
 /// pasted into the brief field**, which is what happens when the person editing the prose does not
 /// know the field is a brief. It is a cap on shape rather than an opinion about how many words a
 /// language needs.
+///
+/// **Each of the eleven reflectors enforces this same number itself**, and that is not a duplicate
+/// of this rule so much as where it is supposed to fire. This gate is a `#[test]`: a reflection that
+/// wrote a paragraph into a brief field succeeds, the build that embeds it succeeds, and the author
+/// hears about it — if anyone runs the suite — under an entry name they then have to go looking for.
+/// An arm's own reflector refuses it at the declaration the author is editing. The number lives here
+/// because a register is gg's own statement about every arm, and a reflector is one arm's.
 const BRIEF_CAP: usize = 120;
 
 /// The longest a detailed description may be, in characters — generous, and a sanity bound rather

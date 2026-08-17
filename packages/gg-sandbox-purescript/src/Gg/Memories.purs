@@ -113,7 +113,7 @@ writeMemory
   => { name :: String, description :: String, body :: String | given }
   -> Effect MemoryUsage
 writeMemory written =
-  memoryUsage <$> Wire.call "write_memory" "memory" "Gg.Memories.writeMemory" [ Wire.lower {} written ]
+  memoryUsage <$> Wire.call "write_memory" "memories" "Gg.Memories.writeMemory" [ Wire.lower {} written ]
 
 -- | Replace an existing memory's description and body, keyed on its name.
 -- |
@@ -148,7 +148,7 @@ updateMemory
   => { name :: String, description :: String, body :: String | given }
   -> Effect MemoryUsage
 updateMemory written =
-  memoryUsage <$> Wire.call "update_memory" "memory" "Gg.Memories.updateMemory" [ Wire.lower {} written ]
+  memoryUsage <$> Wire.call "update_memory" "memories" "Gg.Memories.updateMemory" [ Wire.lower {} written ]
 
 -- | Record a new memory whose contents stay out of the context window until they are read.
 -- |
@@ -186,7 +186,7 @@ createMemory
   => { name :: String, description :: String, body :: String | given }
   -> Effect MemoryUsage
 createMemory written =
-  memoryUsage <$> Wire.call "create_memory" "memory" "Gg.Memories.createMemory" [ Wire.lower {} written ]
+  memoryUsage <$> Wire.call "create_memory" "memories" "Gg.Memories.createMemory" [ Wire.lower {} written ]
 
 -- | Read one memory's full contents by slug — the only call that brings them into the context window.
 -- |
@@ -209,7 +209,7 @@ createMemory written =
 -- |
 -- | `NotFound` when no memory has that slug.
 readMemory :: String -> Effect String
-readMemory name = Wire.call "read_memory" "memory" "Gg.Memories.readMemory" [ Wire.wire name ]
+readMemory name = Wire.call "read_memory" "memories" "Gg.Memories.readMemory" [ Wire.wire name ]
 
 -- | Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
 -- |
@@ -237,7 +237,7 @@ readMemory name = Wire.call "read_memory" "memory" "Gg.Memories.readMemory" [ Wi
 -- | leave the memory empty — deleting it is the call for that.
 editMemory :: { name :: String, search :: String, replace :: String } -> Effect MemoryUsage
 editMemory edit =
-  memoryUsage <$> Wire.call "edit_memory" "memory" "Gg.Memories.editMemory" [ Wire.wire edit ]
+  memoryUsage <$> Wire.call "edit_memory" "memories" "Gg.Memories.editMemory" [ Wire.wire edit ]
 
 -- | Find the memories mentioning any of the given keywords, best first.
 -- |
@@ -264,7 +264,7 @@ editMemory edit =
 -- | `InvalidArgument` when every keyword is empty.
 searchMemories :: Array String -> Effect (Array MemoryHit)
 searchMemories keywords =
-  Wire.call "search_memories" "memory" "Gg.Memories.searchMemories" [ Wire.wire keywords ]
+  Wire.call "search_memories" "memories" "Gg.Memories.searchMemories" [ Wire.wire keywords ]
 
 -- | Read the full contents of a memory a search matched.
 -- |
@@ -309,7 +309,7 @@ readHit hit = readMemory hit.name
 -- | `NotFound` when no memory has that name.
 deleteMemory :: String -> Effect MemoryUsage
 deleteMemory name =
-  memoryUsage <$> Wire.call "delete_memory" "memory" "Gg.Memories.deleteMemory" [ Wire.wire name ]
+  memoryUsage <$> Wire.call "delete_memory" "memories" "Gg.Memories.deleteMemory" [ Wire.wire name ]
 
 
 -- | The memory budget, whose every maximum may be switched off.

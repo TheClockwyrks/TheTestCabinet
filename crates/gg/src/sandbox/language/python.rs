@@ -4,13 +4,14 @@
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
 //! * [`prepare_program`](Python::prepare_program) — nothing at all, deliberately: the source crosses
-//!   the membrane as the model wrote it and CPython is the first thing to read it;
+//!   the membrane as the model wrote it and CPython is the first thing to read it. What the guest
+//!   evaluates it in is a namespace with nothing in it, so the SDK is reached through the
+//!   [import](SURFACE_IMPORT) the program writes and the agent's own code modules through
+//!   [theirs](LIB_IMPORT);
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own top
 //!   level to say what its namespace offers;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the mask;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in Python's syntax;
 //! * [`COMPONENT`] — the `componentize-py` guest, CPython 3.14 linked
 //!   against `crates/gg/wit/gg-sandbox.wit`, built by `packages/gg-sandbox-python/build.sh`;
 //! * the **signature catalogue** — reflected out of that guest's hand-written SDK with `griffe`,
@@ -38,11 +39,6 @@
 //!   way; the [turn error](crate::limits::TurnErrorType) it is recorded under is the run-time band
 //!   rather than the `transpile` one, and that is the honest recording for an arm where nothing
 //!   read the program before it ran.
-//! * **No [`UnreachableTail`](super::UnreachableTail).** That measurement counts top-level
-//!   statements written after a statement that *ends the program*, which in the ECMAScript arms is a
-//!   top-level `return` — the program is evaluated as a function body there. Python has no top-level
-//!   `return` and no statement that ends a module early, so the shape does not exist here rather
-//!   than going unmeasured.
 //!
 //! Adding a Python parser to the host was considered and rejected. It would buy the `transpile`
 //! band and a marginally earlier diagnostic, and it would cost the one thing that cannot be
@@ -71,9 +67,11 @@
 //! are deliberately out.
 //!
 //! That set is model-facing text about this arm, so it obeys the rule the catalogue exists for: the
-//! reflector reads those imports and emits them as the catalogue's `libraries` section, and
-//! [`PROMPT`] renders that section. Nothing here describes the set in prose — the sentence that once
-//! did claimed a whole standard library that was never baked.
+//! reflector reads those imports and emits them as the catalogue's
+//! [`libraries`](crate::sandbox::signatures::SignatureCatalogue) section, which is structured data
+//! gg hands a model at the moment an import of something else fails rather than a list standing in
+//! front of every program. Nothing here describes the set in prose — the sentence that once did
+//! claimed a whole standard library that was never baked.
 
 use std::sync::OnceLock;
 
@@ -83,9 +81,29 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+
+/// The one line a program writes to reach gg's surface, and the line every module of this arm's
+/// catalogue states.
+///
+/// `gg` is an ordinary Python package baked into the guest, so this is an ordinary import and the
+/// name it binds is the package itself. Everything gg quotes back at a model is written from that
+/// package root — `gg.files.read_file` in a search hit, in a documentation view, in a refusal and in
+/// the programs gg synthesizes — so one line makes every string a model reads a string it can type.
+///
+/// [`LIB_IMPORT`] is the other line, and it is the agent's own code rather than gg's surface.
+pub(super) const SURFACE_IMPORT: &str = "import gg";
+
+/// The line a program writes to reach the code [skills](crate::skills) and
+/// [memories](crate::memories) this session has read.
+///
+/// `lib` is a package the guest assembles per turn out of the modules gg handed it, so it is reached
+/// the way any other package is. The line is quoted in the read that binds the module
+/// ([`Loaded::note`](crate::knowledge::Loaded::note)), which is the moment it matters.
+pub(super) const LIB_IMPORT: &str = "import lib";
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "python.modules.rs"]
 mod modules;
@@ -131,20 +149,6 @@ const SIGNATURES: &str = include_str!(concat!(
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 
-/// Everything gg *says* about a Python program that is written in Python's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders, so `gg.files.read_file` and `fs.readFile` each reach their own model without either
-/// being written down twice.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.python.hbs"),
-    system_template_name: "system-code.python",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.python.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.python",
-};
-
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static PYTHON: Python = Python;
@@ -182,9 +186,6 @@ impl ProgramLanguage for Python {
     ) -> Result<PreparedProgram, PrepareFailure> {
         Ok(PreparedProgram {
             source: source.to_string(),
-            // A Python module has no statement that ends it early — there is no top-level `return`
-            // to write anything after — so the shape this field records does not exist on this arm.
-            unreachable: None,
             component: None,
         })
     }
@@ -257,10 +258,6 @@ impl ProgramLanguage for Python {
         &healing::PYTHON_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`gg.views.open_file("src/main.py")`](self::open_file_statement), with the window as keyword
     /// arguments and no terminator — this language's idiom for all three of the things a
     /// synthesized statement gets to differ in.
@@ -268,10 +265,39 @@ impl ProgramLanguage for Python {
         open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
 
+    /// The statements, under the [import](SURFACE_IMPORT) that makes the call in them resolve.
+    ///
+    /// The default statement list would be a program with an unbound `gg` in it, which is the one
+    /// thing a synthesized turn must not teach: gg pushes this into the agent's own transcript as an
+    /// example of its own output.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        let statements: Vec<String> = views
+            .iter()
+            .map(|(path, window)| self.open_file_statement(path, *window))
+            .collect();
+        format!("{SURFACE_IMPORT}\n\n{}", statements.join("\n"))
+    }
+
     /// [A list of names and a `for` over
     /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [`lib.<key>.<name>`](super::ProgramLanguage::lib_access), under [`LIB_IMPORT`].
+    fn lib_import(&self, _key: &str) -> Option<String> {
+        Some(LIB_IMPORT.to_string())
+    }
+
+    /// [Two lists and two `for` loops](self::bootstrap_program), with both calls resolved from this
+    /// language's own catalogue and the module filter written as a keyword argument.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 }
 
@@ -344,7 +370,8 @@ pub(super) fn open_file_statement(
     }
 }
 
-/// A list of names and a `for` over it, each iteration opening one documentation view.
+/// A list of names and a `for` over it, each iteration opening one documentation view, under the
+/// [import](SURFACE_IMPORT) the call in it needs.
 ///
 /// A loop rather than one statement per name because the list is as long as the family — eleven
 /// calls written out would be a program a model reads as a style to copy. The names are rendered
@@ -355,7 +382,44 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         .iter()
         .map(|name| format!("    {},\n", serde_json::Value::String((*name).to_string())))
         .collect();
-    format!("functions = [\n{entries}]\nfor name in functions:\n    {open_docs_view}(name)\n")
+    format!(
+        "{SURFACE_IMPORT}\n\nfunctions = [\n{entries}]\nfor name in functions:\n    \
+         {open_docs_view}(name)\n"
+    )
+}
+
+/// The opening turn: one list of module paths listed in full, then one list of names opened as
+/// documentation views, each with a `for` over it.
+///
+/// Two lists and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. The filter
+/// and the limit are **keyword arguments**, which is this language's idiom for optional ones and
+/// what the module's own signatures are declared with.
+///
+/// A failed call raises and is left to, which is this arm's failure model: a bootstrap that caught
+/// its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |names: &[&str]| -> String {
+        names
+            .iter()
+            .map(|name| format!("    {},\n", serde_json::Value::String((*name).to_string())))
+            .collect()
+    };
+    let paths = listed(modules);
+    let functions = listed(docs);
+    format!(
+        "{SURFACE_IMPORT}\n\
+         \n\
+         modules = [\n{paths}]\nfor path in modules:\n    \
+         {search}(\"\", module=path, limit={MAX_SEARCH_LIMIT})\n\
+         \n\
+         functions = [\n{functions}]\nfor name in functions:\n    {open_docs_view}(name)\n"
+    )
 }
 
 #[cfg(test)]

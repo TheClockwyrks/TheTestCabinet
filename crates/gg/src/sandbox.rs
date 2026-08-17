@@ -23,17 +23,17 @@
 //!
 //! ## The latency property
 //!
-//! The interpreter component embeds a JavaScript engine, is ~13.4 MB, and takes ~660 ms to compile
-//! on a many-core machine (~4.8 s on one core). That compile happens **once per process and
-//! language**: the [`Engine`](wasmtime::Engine) and each compiled
+//! An interpreted arm's component embeds a whole language runtime and takes hundreds of
+//! milliseconds to seconds to compile. That compile happens **once per process and language**: the
+//! [`Engine`](wasmtime::Engine) and each compiled
 //! [`Component`](wasmtime::component::Component) live behind a `OnceLock`, and every program pays
 //! only instantiate (24–124 µs) and invoke (0.7–3 ms). [`precompile`] moves even that one compile
 //! off the first turn's critical path.
 //!
-//! What a turn *does* pay is its own language's prepare step. TypeScript's is two passes: the `oxc`
-//! type-strip, in-process at ~0.2 ms, and a `tsc` type check that spawns `node` against the
-//! embedded checker at ~90 ms. That is a real per-turn cost on the hot path, which is why it is
-//! measured rather than assumed — see [`SandboxOutcome::compile`].
+//! What a turn *does* pay is its own language's prepare step. TypeScript's is one `tsc` over the
+//! model's own file, spawning `node` against the embedded compiler at ~90 ms. That is a real
+//! per-turn cost on the hot path, which is why it is measured rather than assumed — see
+//! [`SandboxOutcome::compile`].
 //!
 //! ## What a program costs, and what bounds it
 //!
@@ -52,13 +52,14 @@
 //! [view](crate::context::ViewKind) — `view.openText` for a value it computed, `view.openFile` for a
 //! file. `console.log` still works and is still captured, but it writes to the **operator**: the
 //! turn's [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event carries
-//! every line, which puts them on the run's stream, in the run record and on the console. A top-level `return` ends the
-//! program the way it ends any function body, and a value handed to it is **discarded** — the model
-//! is told so, once, rather than left to infer the rule from an absence. That is a deliberate
-//! subtraction. A returned value bought nothing an opened view does not, and it cost a whole family
-//! of rules the model had to learn and gg had to enforce: what happens to a cycle, to a function, to
-//! a structure nested past what the host's parser accepts, to a `Promise`. One rule — open a view of
-//! what you want to see — replaces all of them.
+//! every line, which puts them on the run's stream, in the run record and on the console. A value a
+//! program hands back reaches nobody: on an arm whose program is a module the language itself has
+//! nowhere to hand one, and on an arm whose entry point carries a status the status is a *failure*
+//! the model reads rather than a value. That is a deliberate subtraction. A returned value bought nothing
+//! an opened view does not, and it cost a whole family of rules the model had to learn and gg had to
+//! enforce: what happens to a cycle, to a function, to a structure nested past what the host's
+//! parser accepts, to a `Promise`. One rule — open a view of what you want to see — replaces all of
+//! them.
 //!
 //! ## What a run yields
 //!
@@ -98,6 +99,7 @@ mod engine;
 mod invoker;
 mod language;
 mod limits;
+mod locate;
 mod membrane;
 mod operations;
 mod outcome;
@@ -106,7 +108,7 @@ pub(crate) mod signatures;
 pub use invoker::ToolApi;
 pub use language::{
     FileWindow, PARAM_LANGUAGE, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    UnreachableTail, all_languages, language, resolve_program_language, spell,
+    all_languages, language, library_set, resolve_program_language, spell,
 };
 
 // gg's own name for each model-facing call, for the code outside this module that has to *quote*
@@ -146,7 +148,7 @@ pub use operations::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    PromptDialect, Workspace, daemon, place, place_tree, shared_toolchain_dir,
+    Workspace, daemon, place, place_tree, shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
@@ -255,6 +257,12 @@ pub use signatures::{
     CATALOGUE_SCHEMA, EntryKind, LibraryGroup, MemberFunction, MemberKind, ModuleDoc, ModuleView,
     Prose, SignatureEntry, TypeMember, TypeReference, catalogue_modules,
 };
+
+// The single-module lookup, for the [documentation carve-out](crate::docs): a view of one symbol
+// says which module the symbol is defined in and how a program reaches it, and the module a
+// catalogue entry carries is gg's id rather than a spelling a model can type. `pub(crate)` because
+// it hands back a catalogue projection to a reader inside the crate, which is every reader there is.
+pub(crate) use signatures::module_of;
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source
 /// whose evaluation — in whatever that guest evaluates — produces its exports.
@@ -443,7 +451,6 @@ fn evaluate<A: ToolApi>(
     let library = capabilities
         .iter()
         .any(|id| id == test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY);
-    let unreachable = prepared.unreachable;
     // Either the language's embedded component, or — for an arm whose prepare step compiled the
     // program itself into one — this program's own. The wait is reported the same way for both.
     let (component, compile_wait) = match engine::program_component(language, prepared.component) {
@@ -455,8 +462,12 @@ fn evaluate<A: ToolApi>(
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error, compile), api),
     };
+    // How a frame the guest reports is read back into the text the model wrote. `None` on every arm
+    // that hands the guest the model's own bytes; on an arm whose compiler emits source, the
+    // compiler's own map, read out of the source it is inlined in.
+    let locations = language.locations(&prepared.source, modules);
     let mut store = bounded_store(
-        MembraneState::new(api, language, scope, limits, deadline),
+        MembraneState::new(api, language, scope, limits, deadline).locating(locations),
         limits,
     );
 
@@ -467,7 +478,7 @@ fn evaluate<A: ToolApi>(
             // embedded artifact importing something this membrane does not provide — i.e. the
             // component and the WIT have drifted apart.
             let error = engine::classify(&store, limits, &error, SandboxError::Instantiate);
-            return reclaim(store, Err(error), unreachable, compile, compile_wait);
+            return reclaim(store, Err(error), compile, compile_wait);
         }
     };
 
@@ -489,7 +500,7 @@ fn evaluate<A: ToolApi>(
         store.data_mut().revoke_completion();
     }
     let returned = keep_reported_error(returned, &store);
-    reclaim(store, returned, unreachable, compile, compile_wait)
+    reclaim(store, returned, compile, compile_wait)
 }
 
 /// Keep a **failure the program already reported** rather than replacing it with the trap that
@@ -497,11 +508,10 @@ fn evaluate<A: ToolApi>(
 ///
 /// A guest with an exception mechanism catches its own throw, calls `feedback.report-error` with a
 /// message and a location, and returns normally — so the trap and the error never coexist and this
-/// changes nothing for it. A guest without one cannot: `wasm32-unknown-unknown` has no unwinder, so
-/// a Rust program's panic runs its hook and then **aborts**, which traps the store. The hook's host
-/// call completes first and gg has the message, the class and the model's own line and column
-/// already recorded; taking the trap as the verdict would throw all of that away and tell the model
-/// "your program trapped" over a panic gg can describe exactly.
+/// changes nothing for it. A guest that reports a failure and is then killed by its own runtime
+/// reaches the host with both: the host call completes first and gg has the message, the class and
+/// the location already recorded, and taking the trap as the verdict would throw all of that away
+/// and tell the model "your program trapped" over a failure gg can describe exactly.
 ///
 /// Only an ordinary [`Trap`](SandboxError::Trap) is displaced. A
 /// [timeout](SandboxError::Timeout) and an [out-of-memory](SandboxError::OutOfMemory) are ceilings
@@ -545,14 +555,14 @@ fn keep_reported_error<A: ToolApi>(
 /// every configuration, so withholding the guest's own filesystem would deny nothing.
 ///
 /// A component is only affected by the imports it *declares*, and the two namespaces do not
-/// overlap, so what a guest does not ask for costs it nothing. The TypeScript guest asks for part of
-/// this surface and not the rest: it imports `wasi:clocks`, `wasi:random` and `wasi:io` — which is
-/// how a program's `Date.now()` and `crypto.randomUUID()` read the host's own clock and entropy —
-/// and imports neither `wasi:filesystem` nor `wasi:sockets`, because its component is baked without
-/// them. Those two are therefore *unused* by it rather than withheld from it, a distinction that
-/// stopped being hypothetical with the embedded `componentize-py` guest, which imports the whole
-/// surface — twenty WASI interfaces to TypeScript's seven — and would not instantiate against a
-/// linker built to that guest's appetite. The exact lists are asserted by
+/// overlap, so what a guest does not ask for costs it nothing. The JavaScript arm's guest asks for
+/// part of this surface and not the rest: it imports `wasi:clocks`, `wasi:random` and `wasi:io` —
+/// which is how a program's `Date.now()` and `crypto.randomUUID()` read the host's own clock and
+/// entropy — and imports neither `wasi:filesystem` nor `wasi:sockets`, because its component is baked
+/// without them. Those two are therefore *unused* by it rather than withheld from it, a distinction
+/// that stopped being hypothetical with the embedded `componentize-py` guest, which imports the whole
+/// surface — twenty WASI interfaces to that guest's seven — and would not instantiate against a
+/// linker built to its appetite. The exact lists are asserted by
 /// `the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with` and by
 /// `the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface`.
 ///
@@ -563,6 +573,15 @@ fn keep_reported_error<A: ToolApi>(
 fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
     let mut linker = Linker::new(engine::shared_engine());
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
+        .map_err(|error| SandboxError::Engine(error.to_string()))?;
+    // The one door the JVM arms come through, beside the fifteen typed interfaces rather than
+    // instead of them. Defined for every guest because a component is affected only by the imports
+    // it declares, and the ten that reach gg the typed way never ask for this one.
+    membrane::wire::add_to_linker(&mut linker)
+        .map_err(|error| SandboxError::Engine(error.to_string()))?;
+    // The second interface those two arms alone declare, and the reason is the compiler rather than
+    // gg: TeaVM's WebAssembly backend leaves `java.lang.Math`'s transcendental methods to a host.
+    membrane::math::add_to_linker(&mut linker)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
@@ -760,7 +779,6 @@ pub(crate) fn component_bound_tools(
 fn reclaim<A: ToolApi>(
     store: Store<MembraneState<A>>,
     returned: Result<(), SandboxError>,
-    unreachable: Option<UnreachableTail>,
     compile: Option<Duration>,
     compile_wait: Option<Duration>,
 ) -> (SandboxOutcome, A) {
@@ -816,7 +834,6 @@ fn reclaim<A: ToolApi>(
         rerun,
         revoked_rerun,
         elapsed,
-        unreachable,
         compile,
         compile_wait,
         result: returned.map(|()| ProgramResult {
@@ -850,26 +867,63 @@ fn reclaim<A: ToolApi>(
 /// which is what it stands in for: a component that will not compile is a property of the process
 /// rather than of a turn, and the loop ends the session on the first occurrence anyway. And
 /// `cargo nextest` runs one process per test, so arming it in one test can never reach another.
-#[cfg(test)]
-static FORCED_FAULT: std::sync::Mutex<Option<SandboxError>> = std::sync::Mutex::new(None);
-
-/// Make the next [`run_program`] in this process report `error` instead of running the program.
+/// # Which program it lands on
 ///
-/// See [`FORCED_FAULT`] for why the seam exists and what bounds it.
+/// The armed value carries how many programs to let run **first**, because a code-mode session's
+/// first program is not the model's: the [bootstrap](crate::bootstrap) runs one before the loop
+/// starts. A test about gg's own machinery breaking under the bootstrap arms it for the next
+/// program; a test about the same break under a model's turn arms it with
+/// [`force_model_program_fault`].
+#[cfg(test)]
+static FORCED_FAULT: std::sync::Mutex<Option<(usize, SandboxError)>> = std::sync::Mutex::new(None);
+
+/// How many programs a code-mode session runs before the model's first one: the
+/// [bootstrap](crate::bootstrap)'s opening program, and nothing else.
+#[cfg(test)]
+const BOOTSTRAP_PROGRAMS: usize = 1;
+
+/// Make the next program run in this process report `error` instead of running.
+///
+/// See [`FORCED_FAULT`] for why the seam exists and what bounds it. In a code-mode session the next
+/// program is the [bootstrap](crate::bootstrap)'s; [`force_model_program_fault`] is the one that
+/// reaches a model's turn.
 #[cfg(test)]
 pub(crate) fn force_next_program_fault(error: SandboxError) {
-    *FORCED_FAULT
-        .lock()
-        .expect("the fault seam holds no lock across a panic") = Some(error);
+    arm_fault(0, error);
 }
 
-/// Take the armed fault, if a test armed one. Taking rather than reading is what makes it one-shot.
+/// Make the **model's** first program report `error`, letting a code-mode session's opening turn
+/// run first.
+///
+/// This is what a test of the turn taxonomy wants: the fault it arms is a stand-in for gg's own
+/// machinery breaking, and it is asking what the *loop* does with one.
+#[cfg(test)]
+pub(crate) fn force_model_program_fault(error: SandboxError) {
+    arm_fault(BOOTSTRAP_PROGRAMS, error);
+}
+
+#[cfg(test)]
+fn arm_fault(let_run: usize, error: SandboxError) {
+    *FORCED_FAULT
+        .lock()
+        .expect("the fault seam holds no lock across a panic") = Some((let_run, error));
+}
+
+/// Take the armed fault if this is the program it was armed for, counting down otherwise. Taking
+/// rather than reading is what makes it one-shot.
 #[cfg(test)]
 fn forced_fault() -> Option<SandboxError> {
-    FORCED_FAULT
+    let mut armed = FORCED_FAULT
         .lock()
-        .expect("the fault seam holds no lock across a panic")
-        .take()
+        .expect("the fault seam holds no lock across a panic");
+    match armed.as_mut() {
+        Some((0, _)) => armed.take().map(|(_, error)| error),
+        Some((remaining, _)) => {
+            *remaining -= 1;
+            None
+        }
+        None => None,
+    }
 }
 
 #[cfg(test)]

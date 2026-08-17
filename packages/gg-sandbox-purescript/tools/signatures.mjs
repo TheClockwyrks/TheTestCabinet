@@ -4,11 +4,12 @@
  *   packages/gg-sandbox-purescript/src/Gg/**  --this script-->  $GG_SIGNATURES_OUT_DIR/purescript.signatures.json
  *   packages/gg-sandbox-purescript/spago.yaml                -->  its `libraries` section
  *
- * gg renders the responses-as-code system prompt and every documentation view from that file, so it
- * is the whole of what a model is *told* about this arm's surface — and every word of it is
- * reflected out of the declaration it describes rather than written anywhere else. A description
- * kept in a table, a template or a `const` in gg's Rust is a description that drifts from its
- * subject with nothing to catch it.
+ * gg answers every documentation search and every documentation view out of that file, so it is the
+ * whole of what a model can *learn* about this arm's surface — the responses-as-code system prompt
+ * takes only the module paths and their one-line briefs from it and names no function at all. Every
+ * word of it is reflected out of the declaration it describes rather than written anywhere else. A
+ * description kept in a table, a template or a `const` in gg's Rust is a description that drifts
+ * from its subject with nothing to catch it.
  *
  * # It reads `purs`, which is what a PureScript author already writes
  *
@@ -109,6 +110,22 @@ const GENERATED_FROM =
 
 /** The types every failure names, closed over on every entry because every call here throws one. */
 const ALWAYS_REFERENCED = ["Gg.Core.ToolError", "Gg.Core.ToolErrorCode"];
+
+/**
+ * The longest a brief may be, in characters.
+ *
+ * The same cap `crates/gg/src/sandbox/language/register.rs` holds every arm's catalogue to, and it is
+ * enforced here as well because the host's copy is a `#[test]`: a reflection that embedded a
+ * paragraph in the brief field would succeed, and so would a build, and the author would hear about
+ * it from a gate three steps away naming an entry they then have to go looking for. Here is where the
+ * author is standing.
+ *
+ * It carries more weight on this arm than on most, because {@link unwrap} runs first: a `-- |`
+ * comment whose opening paragraph is three sentences over four wrapped lines arrives at
+ * {@link split} as ONE line, so no shape check could tell it from a brief and this length is the only
+ * thing that can.
+ */
+const BRIEF_CAP = 120;
 
 /** Where `signatures.sh` put the `--codegen docs` output, and the tree it compiled against. */
 const [DOCS_DIR, TREE_DIR] = process.argv.slice(2);
@@ -624,14 +641,25 @@ function unwrap(lines) {
  * Doxygen's implicit structure, which is the whole of the convention this SDK is written to. The
  * brief is authored rather than derived — there is no "first sentence of" anywhere in this file —
  * and the split is on the blank line the author put there, so a doc comment whose opening paragraph
- * is really three sentences of narrative fails the register gate as the paragraph it is rather than
- * being silently cut at a full stop.
+ * is really three sentences of narrative is never silently cut at a full stop.
+ *
+ * It fails on {@link BRIEF_CAP} instead. The text reaching here has already been through
+ * {@link unwrap}, so such a paragraph is one long line by now and no shape check could tell it from a
+ * brief; its length can, and that is what this throws on — naming the declaration it was written on,
+ * which is what the author is looking at.
  */
 function split(text, what) {
   if (!text) throw new Error(`${what} has no documentation`);
   const [brief, ...rest] = text.split("\n\n");
   const detail = rest.join("\n\n").trim();
-  return { brief: brief.trim(), detail: detail === "" ? null : detail };
+  const summary = brief.trim();
+  if (summary.length > BRIEF_CAP) {
+    throw new Error(
+      `${what} has a ${summary.length}-character brief, and a brief is capped at ` +
+        `${BRIEF_CAP}: ${JSON.stringify(summary)}`,
+    );
+  }
+  return { brief: summary, detail: detail === "" ? null : detail };
 }
 
 /**

@@ -16,7 +16,7 @@ from enum import Enum
 from wit_world.imports import tasks as wire
 from wit_world.imports import types as wire_types
 
-from ._registry import operation
+from ._registry import missing, operation
 from .core import UNCHANGED, Unchanged, _call, _strings
 
 __all__ = [
@@ -193,3 +193,7 @@ def remove_task(id: str) -> TaskUsage:
         ToolError: `not-found` for an unknown id.
     """
     return _usage(_call(wire.remove_task, id))
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

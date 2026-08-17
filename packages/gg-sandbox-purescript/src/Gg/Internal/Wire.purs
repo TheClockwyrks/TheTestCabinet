@@ -7,20 +7,15 @@
 -- |
 -- | # What the far side of the bridge is
 -- |
--- | Not the WIT membrane. A compiled PureScript program is evaluated by the **shared ECMAScript
--- | guest**, which builds a program's scope out of the run's enabled tools and evaluates the program
--- | as the body of a function whose parameters are the API objects (`fs`, `system`, `view`, …). So
--- | the objects this module reaches are exactly the ones a TypeScript program reaches, and every
+-- | Not the WIT membrane. `Gg/Internal/Wire.js` writes `import * as gg from "gg"`, which is the same
+-- | line a TypeScript program writes and reaches the same SDK instance in the same guest. So every
 -- | call lands in the same lowering — the same argument validation, the same `u64` conversions, the
 -- | same `ToolError`. That is not a compromise: it is what makes two arms of a study produce byte
 -- | identical arguments for the same capability, which is the property the whole comparison rests
 -- | on.
 -- |
--- | It also means a **withheld** capability is not a name in the enclosing scope, exactly as it is
--- | not for a TypeScript program. `Gg/Internal/Wire.js` answers that with a `ToolError` carrying
--- | `unavailable` — the code the host itself refuses an out-of-set call with — rather than letting
--- | a `ReferenceError` out, so a program that reached for a capability this run withheld reads the
--- | same sentence in every arm.
+-- | A capability this run withheld is refused by the **host**, as a `ToolError` carrying
+-- | `unavailable`, exactly as it is for every other arm.
 -- |
 -- | # Why a dispatcher is fine *here*
 -- |
@@ -34,7 +29,8 @@ module Gg.Internal.Wire
   ( Wire
   , call
   , call_
-  , bound
+  , registerLib
+  , lib
   , wire
   , taken
   , lower
@@ -68,11 +64,11 @@ foreign import data Wire :: Type
 -- | under `read_file`. Where nothing a run can withhold has a tool name at all — an ending call,
 -- | which a role decides, or a program-library call, which a capability buys — the call's own key
 -- | stands in, since naming a tool that could not have been the reason would be worse than naming
--- | none. `namespace` is the guest's own name for the object holding the function, which is the
--- | TypeScript SDK's; and `written` is the fully-qualified name a PureScript program writes. The guest's own
--- | name for the function is `written`'s last segment, which is the same word on both sides — so the
--- | one string carries the dispatch and the sentence a refusal is reported in, and a refusal names
--- | the call the model wrote rather than the one the bridge made.
+-- | none. `namespace` is gg's own name for the family holding the function; and `written` is the
+-- | fully-qualified name a PureScript program writes. The family's own name for the function is
+-- | `written`'s last segment, which is the same word on both sides — so the one string carries the
+-- | dispatch and the sentence a refusal is reported in, and a refusal names the call the model wrote
+-- | rather than the one the bridge made.
 foreign import callImpl :: String -> String -> String -> Array Wire -> Effect Wire
 
 -- | Lower a record by converting the fields a converter is given for, and passing every other
@@ -91,8 +87,14 @@ foreign import lowerImpl :: Wire -> Wire -> Wire
 -- | Read one property off a JavaScript value, without knowing anything about it.
 foreign import fieldImpl :: String -> Wire -> Wire
 
--- | Whether this run bound the guest namespace `name` at all.
-foreign import boundImpl :: String -> Effect Boolean
+-- | Take the code modules this turn was given, by the key each is bound at.
+-- |
+-- | Called by the entry module gg generates, before it calls the program's `main`.
+foreign import registerLib :: Wire -> Effect Unit
+
+-- | One export of one code module, or `null` when this session has no such module or that module
+-- | has no such export.
+foreign import libImpl :: forall a. String -> String -> Nullable a
 
 -- | Send a PureScript value across as it stands.
 wire :: forall a. a -> Wire
@@ -110,13 +112,9 @@ call tool namespace written args = taken <$> callImpl tool namespace written arg
 call_ :: String -> String -> String -> Array Wire -> Effect Unit
 call_ tool namespace written args = void (callImpl tool namespace written args)
 
--- | Whether the guest bound the namespace `name` for this run.
--- |
--- | The one question asked of the scope rather than of a call in it, and it exists for the directory:
--- | a module whose functions span two guest namespaces — `harness` and `review` — must ask the one
--- | this run actually has, where calling the other would raise `Unavailable` instead of answering.
-bound :: String -> Effect Boolean
-bound = boundImpl
+-- | One export of a code module, as the type the caller says it is.
+lib :: forall a. String -> String -> Maybe a
+lib key name = toMaybe (libImpl key name)
 
 -- | A record of optional arguments, with the fields named in `converters` converted on the way out.
 lower :: forall converters given. Record converters -> Record given -> Wire

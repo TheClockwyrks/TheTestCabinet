@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace Gg;
 
-/// <summary>Put a file, a computed value or a function's documentation into the context window.</summary>
+/// <summary>Put a file, a computed value or an entry's documentation into the context window.</summary>
 /// <remarks>
 /// <para>
 /// A program's own output goes nowhere the model can read it. A view is how a program puts something
@@ -10,7 +10,7 @@ namespace Gg;
 /// has been read.
 /// </para>
 /// <para>
-/// There are three kinds and the list is closed: a file, a computed string, and one function's
+/// There are three kinds and the list is closed: a file, a computed string, and one entry's
 /// documentation. A picture is not a fourth kind — it is a file view of an image file, and the view
 /// carries the picture.
 /// </para>
@@ -89,23 +89,23 @@ public static partial class Views
     public static void OpenText(string label, string body) =>
         Internal.Wire.Check(Internal.Native.OpenTextView(label, body));
 
-    /// <summary>Show the full documentation for one function in the context window.</summary>
+    /// <summary>Show the full documentation for one module, function or type in the context window.</summary>
     /// <remarks>
-    /// Its signature, its description, what each argument takes, and the declarations of any types
-    /// it refers to that the session has not already been shown. It is a view rather than a return
-    /// value: the documentation arrives in the next prompt, under a <c>Documentation</c> heading,
-    /// and <see cref="Docs.Close"/> is what takes it away again — not <see cref="Close"/>, which
-    /// does not reach documentation.
+    /// Its declaration, its description, a line per argument where it takes any, and the
+    /// declarations of any types it refers to that the session has not already been shown. It is a
+    /// view rather than a return value: the documentation arrives in the next prompt, under a
+    /// <c>Documentation</c> heading, and <see cref="Docs.Close"/> is what takes it away again — not
+    /// <see cref="Close"/>, which does not reach documentation.
     /// </remarks>
     /// <param name="name">
-    /// The fully-qualified name the function's documentation is keyed by —
-    /// <c>"Gg.Files.ReadFile"</c>. The name a program calls it by (<c>"ReadFile"</c>) also resolves
-    /// and is a fallback rather than the form to reach for: two modules are free to declare a
-    /// <c>Close</c>, and only the qualified name says which one is meant. Searching the
+    /// The fully-qualified name the documentation is keyed by — <c>"Gg.Files.ReadFile"</c>, or a
+    /// module's own path, <c>"Gg.Files"</c>. The name a program calls it by (<c>"ReadFile"</c>) also
+    /// resolves and is a fallback rather than the form to reach for: two modules are free to declare
+    /// a <c>Close</c>, and only the qualified name says which one is meant. Searching the
     /// documentation is what says which names exist.
     /// </param>
     /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for a name no function on this surface has.
+    /// <see cref="ToolErrorCode.NotFound"/> for a name nothing on this surface has.
     /// </exception>
     /// <ggop>views.open_docs_view</ggop>
     public static void OpenDocsView(string name) => Internal.Wire.Check(Internal.Native.OpenDocsView(name));

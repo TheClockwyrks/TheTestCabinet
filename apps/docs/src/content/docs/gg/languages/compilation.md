@@ -4,8 +4,9 @@ title: "Compilation and diagnostics"
 
 A program language turns a model's reply into something its guest can evaluate,
 and that step is allowed to spend real time. This page states what it costs, how
-the cost is recorded, the two ways it fails, the isolation every language
-honours while it runs, and how much of a compiler's output reaches the model.
+the cost is recorded, the two ways it fails, what it may do to the bytes it was
+handed, the isolation every language honours while it runs, and how much of a
+compiler's output reaches the model.
 
 ## Checkers
 
@@ -28,8 +29,8 @@ never disagree.
 | C++ | `clang++` |
 | C# | `csc` |
 
-An arm that names a checker also names it in its own system prompt, so a model
-told its program is checked is told by what. What the prompt states is that the
+An arm that names a checker has it interpolated into the system prompt, so a
+model told its program is checked is told by what. What the prompt states is that the
 program is compiled, rather than that its types are checked: `tsc` checks types
 and `opal` checks grammar, and both are checkers. The same answer decides
 whether the sandbox times the preparation.
@@ -109,11 +110,10 @@ split exists to prevent. The model would read that its program did not compile
 over a program nothing read, and spend its next turn rewriting something that
 was never wrong.
 
-A rejected program arrives as one of four bands, each with its own error type:
-`transpile_syntax`, `transpile_semantic`, `transpile_compile` and
-`transpile_unsupported`. It is recoverable, and the next turn's program may
-compile. It is an error turn and counts against the run's
-[error ceilings](/gg/execution-limits/). It is not the prebuilt interpreter
+A rejected program arrives as one of three bands, each with its own error type:
+`transpile_syntax`, `transpile_compile` and `transpile_unsupported`. It is
+recoverable, and the next turn's program may compile. It is an error turn and
+counts against the run's [error ceilings](/gg/execution-limits/). It is not the prebuilt interpreter
 component failing to compile, which is an artifact defect that ends the session.
 
 A compiler that could not finish is gg's, so the model reads nothing, no ceiling
@@ -130,6 +130,32 @@ The same split holds on the other thing gg compiles. A code skill or code memory
 goes through the same prepare step: a rejection hands the author's diagnostic
 back on the read, and a compiler that could not finish ends the run with the
 crash detail on the operator's stream.
+
+## Authorship
+
+The bytes a language compiles are the bytes it was handed. A preparation writes
+no prologue, no epilogue, no entry point and no import around a model's reply,
+and it reaches a line number through a source map or reports none. Making the
+SDK available to a compiler is packaging and is allowed, while a name a program
+can write with no line the model wrote is not. The
+[invariants](/gg/responses-as-code/invariants/) state the rule, and this section
+states how it is held.
+
+The authorship gate drives every registered language's program step and module
+step with a whole program of that language's own, and reports what the
+preparation did to the bytes: kept them, wrapped them in something larger, or
+rewrote them. It reads what the preparation wrote into its own workspace and the
+source it handed the guest, and takes the least faithful relation either of them
+has to what it was given. What a preparation does other than keep its bytes is
+recorded in a table the gate holds it to, so an arm that starts keeping them
+fails until its row is deleted, and an arm that stops fails because nothing
+records it. Every arm keeps the bytes of a model's reply, and every row the
+table still carries is a module half, which the invariants put outside the rule.
+
+A byte comparison leaves three shapes to each arm's own preparation step: an SDK
+reaching a program through a compiler flag, a second compilation unit that names
+the model's, and a transform that fires only on a construct gg's own generated
+program does not contain.
 
 ## Per-agent compiler isolation
 
@@ -202,6 +228,11 @@ loop nor any sibling agent. The hazard this guards is shared mutable state.
 
 ## Diagnostic bounds
 
+A bound shortens a diagnostic by deleting from it, so what a model reads is a
+subsequence of what the compiler wrote and each bound closes by counting what it
+dropped. Rewording a compiler's own account of a program is the one edit no
+bound makes.
+
 Nothing downstream of an arm shortens a diagnostic. `PrepareError::Compile`
 carries the arm's string, `CodeFeedback::compiler` is built straight from it,
 and the next request to the model carries it verbatim, as does every request
@@ -209,6 +240,22 @@ after while the turn stays in the transcript. The size of a compiler's opinion
 is therefore decided in exactly one place, the arm that renders it, and the
 shared bound in `sandbox/language/diagnostics.rs` is what the arms decide it
 with.
+
+A compile failure carries one thing beside the diagnostic. Where the arm's
+catalogue declares a library set, `diagnostics::library_set` renders it group by
+group from that catalogue and the message ends with it, after a blank line: it
+is what the compiler measured the program against, and it is the reason no
+[prompt](/gg/prompts/) carries a package inventory. An arm whose catalogue
+declares no set is answered with the diagnostic alone.
+
+That set is the one thing this module renders rather than bounds. Everything
+else it touches is a list of mistakes, which grows with the program — one
+misremembered name at fifty call sites is fifty diagnostics — and the bound is
+what stops a model paying for all fifty. A library set does not grow with the
+program: it is a fixed fact about the arm, the same size on a program with one
+mistake and on a program with a hundred. Cutting it would also be the one cut
+here that lies, because a dropped library name reads as a library the arm does
+not have.
 
 Two helpers cover the two shapes an arm holds its diagnostics in.
 
@@ -230,8 +277,8 @@ notes apiece and exempts any diagnostic naming a file somebody authored, at any
 depth.
 
 Three arms need no bound. Ruby's Opal driver reports a single thrown
-`SyntaxError`, Python runs no checker on the prepare path, and JavaScript
-delegates its whole prepare step to TypeScript's parse path.
+`SyntaxError`, and neither Python nor JavaScript reads a program on the host at
+all: each hands the reply to its guest, which is the first thing to parse it.
 
 Two rules govern what the bound may touch. Both failures gg reports to the
 operator alone, and they are bounded differently because their content is

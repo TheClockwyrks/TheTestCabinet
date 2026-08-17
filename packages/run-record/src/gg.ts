@@ -1924,7 +1924,6 @@ export type GgTurnErrorType =
   | "model_vision_unsupported"
   | "model_parse"
   | "transpile_syntax"
-  | "transpile_semantic"
   | "transpile_compile"
   | "transpile_unsupported"
   | "program_tool_error"
@@ -2035,8 +2034,8 @@ export type GgProgramLanguage =
  * code-shaped turn.
  *
  * Healing is textual and conservative: it only ever **deletes**, so a healed program is always a
- * subsequence of the response the model sent, and every repair is disclosed to the model in its
- * turn feedback — this record is a fact the model was told, never something done behind it.
+ * subsequence of the response the model sent. The model is told nothing about a repair; this
+ * record and the run's operator stream are where every repair is disclosed.
  *
  * A response that needed nothing carries the default and is omitted from the wire entirely, so
  * the presence of this object *is* "something was unusual about this response".
@@ -2056,6 +2055,17 @@ export type GgResponseHealing = {
    * distinguishable from a clean one, which is otherwise byte-identical on the wire.
    */
   didNotConverge?: boolean;
+  /**
+   * The reply **as the model sent it**, carried whenever healing rewrote it into something else.
+   *
+   * The program that ran is what the model's own history carries and what every reported line
+   * number counts lines of, so this is the only surviving copy of the text healing started from
+   * — and reading the two against each other is what tells a defect in healing apart from a
+   * mistake by the model. It is for the run's operator; no model is ever shown it.
+   *
+   * Absent for a clean response, where the reply and the program are the same string.
+   */
+  original?: string;
 };
 
 /**
@@ -4749,7 +4759,6 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   model_vision_unsupported: "model cannot see images",
   model_parse: "unparseable model response",
   transpile_syntax: "syntax error",
-  transpile_semantic: "semantic error",
   transpile_compile: "compiler rejected the program",
   transpile_unsupported: "unsupported program feature",
   program_tool_error: "uncaught call failure",
@@ -4776,7 +4785,6 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   model_vision_unsupported: "model_api",
   model_parse: "model_api",
   transpile_syntax: "transpile",
-  transpile_semantic: "transpile",
   transpile_compile: "transpile",
   transpile_unsupported: "transpile",
   program_tool_error: "program_fault",
@@ -4802,7 +4810,6 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "model_vision_unsupported",
   "model_parse",
   "transpile_syntax",
-  "transpile_semantic",
   "transpile_compile",
   "transpile_unsupported",
   "program_tool_error",

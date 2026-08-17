@@ -435,13 +435,13 @@ impl Preparation for LanguagePreparation {
     ///
     /// The **module** half asks the language rather than reusing that program, because a language is
     /// entitled to have a module shape that is not its program shape — and one does. See
-    /// [`isolation_module`](ProgramLanguage::isolation_module), whose default is this same program
+    /// [`gate_module`](ProgramLanguage::gate_module), whose default is this same program
     /// for every language whose module is ordinary source of the language.
     fn source(&self, marker: &str) -> String {
         let name = format!("gg-isolation-{marker}");
         match self.half {
             Half::Program => self.language.open_docs_views_statement(&[&name]),
-            Half::Module => self.language.isolation_module(&name),
+            Half::Module => self.language.gate_module(&name),
         }
     }
 

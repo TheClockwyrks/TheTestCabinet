@@ -2,9 +2,9 @@
 //!
 //! # Why this gate exists, and why it exists *here*
 //!
-//! Two things gg renders contain C++ a model is invited to copy: this arm's responses-as-code system
-//! prompt (with the "your program showed you nothing" notice beside it) and its generated signature
-//! catalogue, whose prose is reflected out of the SDK's own documentation comments and rendered into
+//! Two things gg renders contain C++ a model is invited to copy: the responses-as-code system prompt
+//! as it renders for this arm (with the "your program showed you nothing" notice beside it) and this
+//! arm's generated signature catalogue, whose prose is reflected out of the SDK's own documentation comments and rendered into
 //! documentation views. Everything about those two that can be checked without a compiler already is
 //! — [`prompts::spellings`](crate::prompts) resolves every call *name* they quote against the
 //! catalogue, and every argument name beside one against that signature — and none of it can tell
@@ -53,7 +53,7 @@ use super::compile::compile_program;
 use crate::prompts::{
     AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
     ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
-    render_code_nothing_shown_for, render_system_for,
+    render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
     PrepareContext, ProgramLanguage, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
@@ -65,8 +65,8 @@ fn cpp() -> &'static dyn ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Cpp)
 }
 
-/// A context with every section this arm's prompt can render turned on, so no example is missed for
-/// living in a branch a narrower run does not take.
+/// A context with every section the prompt can render for this arm turned on, so no example is
+/// missed for living in a branch a narrower run does not take.
 ///
 /// Both ending roles are on at once, which no real run is: the template asks after each
 /// independently, and rendering both is how one pass covers all three ending spellings.
@@ -77,7 +77,7 @@ fn everything_on() -> SystemContext {
     };
     SystemContext {
         responses_as_code: true,
-        language: Some(GgProgramLanguage::Cpp),
+        language: Some(crate::prompts::language_view(GgProgramLanguage::Cpp)),
         program_library: true,
         modules: vec![ModuleView {
             path: "gg::files".to_string(),
@@ -105,6 +105,8 @@ fn everything_on() -> SystemContext {
         skills: vec![SkillView {
             name: "physics".to_string(),
             description: "How to tune the simulation.".to_string(),
+            carries_code: true,
+            carries_on_use_script: true,
         }],
         memories: Some(MemoriesView {
             scratchpad: false,
@@ -153,7 +155,7 @@ fn everything_on() -> SystemContext {
 /// and the same flags a model's own reply gets.
 #[test]
 fn every_cpp_example_a_model_is_shown_compiles() {
-    let prompt = render_system_for(cpp(), &everything_on());
+    let prompt = render_system(&everything_on(), None).expect("the code system prompt renders");
     let notice = render_code_nothing_shown_for(cpp());
     let catalogue: serde_json::Value =
         serde_json::from_str(super::SIGNATURES).expect("the generated catalogue is JSON");
@@ -194,7 +196,10 @@ fn every_cpp_example_a_model_is_shown_compiles() {
         snippets.len()
     );
 
-    let mut program = String::new();
+    // gg's whole surface, under one line of this gate's own — because that is the line a model's
+    // own program carries and an example is a fragment of one. Nothing else is added: the standard
+    // library arrives from the precompiled prelude exactly as it does on the turn path.
+    let mut program = format!("{}\n\n", super::source::SURFACE_INCLUDE);
     for (index, (label, snippet)) in snippets.iter().enumerate() {
         let body = snippet.trim_end();
         // A whole program goes in as it stands; a statement fragment is enclosed in a function

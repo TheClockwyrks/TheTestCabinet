@@ -20,9 +20,11 @@
 //! # Why these are built and not committed
 //!
 //! A catalogue is the whole of what a model is *told* about an arm: every module, signature,
-//! argument, type and type member the responses-as-code system prompt renders and a documentation
-//! view answers with. Every word of it is reflected out of the SDK's own declarations by that
-//! language's own documentation tool — `tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end,
+//! argument, type and type member a documentation search ranks and a documentation view answers
+//! with, and the module lines the responses-as-code system prompt renders. The prompt names no
+//! function at all, so this is not one source of that description among several — for everything
+//! below a module it is the only one. Every word of it is reflected out of the SDK's own
+//! declarations by that language's own documentation tool — `tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end,
 //! rustdoc, `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn.
 //!
 //! They were once committed, so that building gg would not require eleven toolchains. That trade is
@@ -338,8 +340,11 @@ fn rerun_paths(root: &Path) -> Vec<PathBuf> {
         "packages/gg-sandbox-purescript/tools",
         "packages/gg-sandbox-purescript/signatures.sh",
         "packages/gg-sandbox-purescript/spago.yaml",
-        // Java: javadoc with gg's own doclet, compiled fresh from `tools/` on every run.
+        // Java: javadoc with gg's own doclet, compiled fresh from `tools/` on every run. The
+        // crossing both JVM arms compile is on javadoc's source path so that `gg.internal.Value`
+        // resolves, and excluded from what it emits, so an edit there is an input to this.
         "packages/gg-sandbox-java/src",
+        "packages/gg-sandbox-jvm/src",
         "packages/gg-sandbox-java/tools",
         "packages/gg-sandbox-java/signatures.sh",
         "packages/gg-sandbox-java/libraries.txt",

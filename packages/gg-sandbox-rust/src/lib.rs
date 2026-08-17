@@ -8,14 +8,19 @@
 //! into the wasm component that turn is evaluated by.
 //!
 //! ```ignore
-//! let entries = files::list_dir(Some("src"))?;
-//! let sources: Vec<_> = entries
-//!     .iter()
-//!     .filter(|entry| entry.kind == files::EntryKind::File)
-//!     .collect();
-//! let built = shell::run("cargo build", None)?;
-//! views::open_text("build", &built.output)?;
-//! session::finish(&format!("looked at {} sources", sources.len()))?;
+//! use gg::{files, session, shell, views};
+//!
+//! fn main() -> Result<(), gg::Failure> {
+//!     let entries = files::list_dir(Some("src"))?;
+//!     let sources: Vec<_> = entries
+//!         .iter()
+//!         .filter(|entry| entry.kind == files::EntryKind::File)
+//!         .collect();
+//!     let built = shell::run("cargo build", None)?;
+//!     views::open_text("build", &built.output)?;
+//!     session::finish(&format!("looked at {} sources", sources.len()))?;
+//!     Ok(())
+//! }
 //! ```
 //!
 //! # The surface is twelve capability modules
@@ -32,10 +37,11 @@
 //! key gg invented, and what makes the surface collision-safe by construction: two modules may both
 //! declare a `Usage` and neither has to be renamed.
 //!
-//! gg writes `use gg::prelude::*;` in front of every program, so every module name and the three
-//! `core` types are already in scope. It is a **glob**, which Rust lets an explicit `use` shadow — so
-//! a program's own `use std::fs;` wins over anything glob-imported, and nothing a program imports can
-//! collide with what gg imported for it.
+//! **gg writes nothing in front of a program.** `rustc --extern gg=…` puts the crate name `gg` in
+//! the extern prelude — which is packaging, the same fact as a jar on a classpath — and everything
+//! under it is reached either in full (`gg::files::read_file(…)`) or under a line the program wrote
+//! (`use gg::files;`, then `files::read_file(…)`). There is no glob, no prelude module and no name
+//! a program did not ask for.
 //!
 //! The functions a run does **not** offer are still names this crate exports: a program that calls one
 //! gets a [`ToolError`] carrying [`Unavailable`](ToolErrorCode::Unavailable) rather than a compile
@@ -49,39 +55,33 @@
 //!   when it returns.
 //! * **A value a program computes is discarded unless it is shown.**
 //!   [`views::open_text`] is how a program shows itself something. [`log`] goes to
-//!   the run's operator, not to the model — and `println!` goes nowhere at all, because
-//!   `wasm32-unknown-unknown` has no standard output.
+//!   the run's operator, not to the model. A `println!` succeeds and its bytes are kept by nothing;
+//!   what `eprintln!` writes is kept and is shown with a failure.
 //! * **A failure is an [`Err`], not a panic.** Every call returns `Result<_, ToolError>`; `?`
-//!   composes them, and [`Failure`] is what the program's own body returns. A panic *is* reported —
-//!   see [`program::begin`] — but it is a bug rather than an interface.
+//!   composes them, and [`Failure`] is what a `main` returning a `Result` carries. A panic is
+//!   reported too — see below — but it is a bug rather than an interface.
 //!
 //! # The shape of a program
 //!
-//! A program is a **sequence of statements**, as on every gg arm but PureScript. gg wraps the
-//! model's text in a function body whose return type is `Result<(), `[`Failure`]`>` — which is what
-//! makes `?` the operator a Rust author would reach for against a `Result`-returning SDK, rather
-//! than the `E0277` a `()`-returning wrapper would have made of it.
+//! A **whole Rust program**: the `use` lines it wants and a `fn main`, which is the entry point
+//! `rustc` compiles a binary crate around and the one gg's shell calls. Nothing is written above it
+//! or below it, so the file `rustc` reads and the file the model sent are the same bytes.
 //!
-//! Everything Rust allows in a function body is therefore allowed in a program: `use`, `struct`,
-//! `enum`, `impl`, `trait`, `fn`, `const`, `static`, `mod`, and `#[derive(…)]` on any of them. The
-//! one thing that is not is a program that defines `fn main` and expects gg to call it — there is no
-//! `main` on this arm, and gg refuses that program by name rather than running the half of it that
-//! is not inside the function nobody called.
+//! `fn main() -> Result<(), gg::Failure>` is the shape to write against a `Result`-returning SDK,
+//! because it is what makes `?` compose. A plain `fn main()` is a Rust program too, and there `?` is
+//! an `E0277` — which is Rust's own answer rather than gg's.
 //!
 //! # How a failure gets out
 //!
-//! Two ways, and they are different failures.
+//! By the runtime killing the program, and gg reading what the runtime said. Nothing is intercepted:
+//! there is no panic hook, no catch chain and no reporting call in this crate.
 //!
-//! * **The program returned `Err`.** Ordinary control flow: the shell reports it over
-//!   `feedback.report-error` and the turn ends with a model-facing error carrying the failed call's
-//!   own [`code`](ToolError::code).
-//! * **The program panicked.** `wasm32-unknown-unknown` has no unwinder — `panic = "unwind"` is not
-//!   available on it — so a panic aborts, and an abort traps the whole store. A trap carries no
-//!   message and no location, so what a model would be told is "your program trapped" and nothing
-//!   else. [`program::begin`] therefore installs a panic hook that completes a
-//!   `feedback.report-error` host call **before** the abort, carrying the panic's message and the
-//!   line and column of the model's own text. That call is not best-effort: it is a synchronous host
-//!   call that finishes, and gg keeps what it recorded even though the store then traps.
+//! The target is `wasm32-wasip1`, so the guest has a real standard error and gg wires it
+//! (`crates/gg/src/sandbox/membrane.rs`). A panic writes `thread 'main' … panicked at program.rs:6:5:`
+//! and the message — the model's own file and its own uncorrected coordinates, because there is no
+//! wrapper to offset — and then aborts. A `main` returning `Err` has `std`'s own `Termination` write
+//! `Error: …` before the shell propagates the status. [`std::process::exit`] is `proc_exit` here, so
+//! a program that stops itself is reported as the exit it made, carrying the status it chose.
 
 /// The generated WIT bindings — every host function the sandbox offers, as `wit-bindgen` binds it.
 ///
@@ -155,38 +155,17 @@ pub mod views;
 pub use crate::core::{ToolError, ToolErrorCode};
 pub use crate::program::Failure;
 
-/// **gg's surface, in one glob** — every capability module, and the types that belong to no module.
-///
-/// gg writes `use gg::prelude::*;` into the entry file it compiles a program in, so a program starts
-/// with all of it already in scope and needs no import line of its own. A glob is what makes that
-/// safe rather than presumptuous: Rust lets an explicit `use` shadow a glob-imported name, so a
-/// program that writes `use std::fs;` gets the standard library's and not this crate's.
-///
-/// It re-exports the **modules**, never the types inside them, and that is deliberate: a call written
-/// `files::read_file` says which module documents it where a bare `read_file` would say nothing, and
-/// a type written `tasks::TextEdit` leaves `board` free to declare a `TextEdit` of its own. The two
-/// [`core`] types are the exception — they belong to every module, and a `match` on an error code
-/// that had to name one would be a `match` nobody writes.
-pub mod prelude {
-    pub use crate::{
-        board, context, delegation, docs, files, log, memories, programs, session, shell, skills,
-        tasks, views,
-    };
-
-    pub use crate::core::{ToolError, ToolErrorCode};
-    pub use crate::program::Failure;
-}
-
 /// Write one line to the run's **operator** log.
 ///
 /// It is this arm's `console.log`: the channel a program uses to say something to whoever is
 /// watching the run, capped by the host and never shown back to the model. Showing something to the
 /// model is [`views::open_text`], which is a view — attributable, closable, and in the next prompt.
 ///
-/// It exists because `println!` does not work here and cannot be made to: this arm's target is
-/// `wasm32-unknown-unknown`, whose standard output is a sink that accepts every byte and keeps none.
-/// A program that logged with `println!` would look like it was logging and be doing nothing, which
-/// is the one failure shape this whole codebase spends the most effort not producing.
+/// It exists because standard output reaches nobody: gg attaches a standard **error** to the guest
+/// and deliberately no standard output (`crates/gg/src/sandbox/membrane.rs`), so a `println!`
+/// succeeds and its bytes are kept by nothing. What `eprintln!` writes is kept, and is shown to the
+/// model with a failure; this is the channel that reaches the operator whether or not the program
+/// fails.
 ///
 /// It is deliberately **not** in the signature catalogue, on the same terms every other arm's
 /// `console.log` is not: the catalogue describes the capability modules, and this belongs to none of

@@ -66,7 +66,7 @@ struct memory_hit {
   /// <ggop-alias>memories.read_memory</ggop-alias>
   ///
   /// \returns the memory's full contents.
-  /// \throws core::tool_error `not_found` when the memory has since been deleted.
+  /// \throws gg::core::tool_error `not_found` when the memory has since been deleted.
   std::string read() const;
 };
 
@@ -98,7 +98,7 @@ struct memory_options {
 /// \param body The memory's contents.
 /// \param options The code halves, which may be left out.
 /// \returns how much of the memory budget is now used.
-/// \throws core::tool_error `conflict` on a duplicate name, and `limit_exceeded` when the body
+/// \throws gg::core::tool_error `conflict` on a duplicate name, and `limit_exceeded` when the body
 ///   would breach the run's caps.
 memories::memory_usage write_memory(std::string_view name, std::string_view description,
                                     std::string_view body, memories::memory_options options = {});
@@ -115,7 +115,7 @@ memories::memory_usage write_memory(std::string_view name, std::string_view desc
 /// \param body The contents to replace the old ones with.
 /// \param options The code halves. Leaving one out clears the one the memory had.
 /// \returns how much of the memory budget is now used.
-/// \throws core::tool_error `not_found` when no memory has that name.
+/// \throws gg::core::tool_error `not_found` when no memory has that name.
 memories::memory_usage update_memory(std::string_view name, std::string_view description,
                                      std::string_view body,
                                      memories::memory_options options = {});
@@ -134,7 +134,7 @@ memories::memory_usage update_memory(std::string_view name, std::string_view des
 ///   read.
 /// \param options The code halves, which load on that first read.
 /// \returns how much of the memory budget is now used.
-/// \throws core::tool_error `conflict` on a duplicate slug, and `limit_exceeded` when the contents
+/// \throws gg::core::tool_error `conflict` on a duplicate slug, and `limit_exceeded` when the contents
 ///   or the index entry would breach a limit.
 memories::memory_usage create_memory(std::string_view name, std::string_view description,
                                      std::string_view body,
@@ -149,7 +149,7 @@ memories::memory_usage create_memory(std::string_view name, std::string_view des
 ///
 /// \param name The memory's slug.
 /// \returns the memory's full contents.
-/// \throws core::tool_error `not_found` when no memory has that slug.
+/// \throws gg::core::tool_error `not_found` when no memory has that slug.
 std::string read_memory(std::string_view name);
 
 /// Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
@@ -162,7 +162,7 @@ std::string read_memory(std::string_view name);
 /// \param search The exact text to find in its contents. It must appear exactly once.
 /// \param replace The text to put in its place.
 /// \returns how much of the memory budget is now used.
-/// \throws core::tool_error `not_found` when the text does not appear, `conflict` when it appears
+/// \throws gg::core::tool_error `not_found` when the text does not appear, `conflict` when it appears
 ///   more than once, `limit_exceeded` when the result would be too long, and `invalid_argument`
 ///   when the edit would leave the memory empty.
 memories::memory_usage edit_memory(std::string_view name, std::string_view search,
@@ -179,7 +179,7 @@ memories::memory_usage edit_memory(std::string_view name, std::string_view searc
 ///
 /// \param keywords The words to look for. Several specific words rank better than one sentence.
 /// \returns the memories that matched, best first.
-/// \throws core::tool_error `invalid_argument` when every keyword is empty.
+/// \throws gg::core::tool_error `invalid_argument` when every keyword is empty.
 std::vector<memories::memory_hit> search_memories(std::vector<std::string> keywords);
 
 /// Evict a memory by slug, freeing room in the budget.
@@ -188,7 +188,7 @@ std::vector<memories::memory_hit> search_memories(std::vector<std::string> keywo
 ///
 /// \param name The memory's slug.
 /// \returns how much of the memory budget is left in use.
-/// \throws core::tool_error `not_found` when no memory has that name.
+/// \throws gg::core::tool_error `not_found` when no memory has that name.
 memories::memory_usage delete_memory(std::string_view name);
 
 }  // namespace memories

@@ -120,8 +120,14 @@ pub(crate) const TERRA_DUPLICATE_PROGRAM: &str =
 /// Round 2's other fence-free shape: **two different drafts**, the first ending in a top-level
 /// `return`. It compiles and runs — and everything after that `return`, including the `writeFile`
 /// of the deliverable and the `finish` that would have ended the run, is dead code. Healing must
-/// leave it alone (there is nothing here it could delete without changing what runs); the
-/// [type-strip](crate::sandbox) is what reports the dead half.
+/// leave it alone: there is nothing here it could delete without changing what runs, and the
+/// halves are two different drafts rather than the byte-exact copy
+/// [`DropDoubledResponse`](HealingStrategy::DropDoubledResponse) matches.
+///
+/// Nothing else reports the dead half either, for as long as the ECMAScript arms evaluate a program
+/// as a function body: the `return` is legal, the turn is recorded as a success, and the model is
+/// told its program ran. The wrapper is what makes the tail dead, and deleting the wrapper is what
+/// turns this reply into an early error the language itself refuses.
 pub(crate) const TERRA_TWO_DRAFTS: &str = include_str!("testdata/round2-terra-two-drafts.txt");
 
 /// The same two-draft shape from the other model, and the one whose discarded half held the whole
@@ -1027,20 +1033,20 @@ fn a_disabled_capabilitys_unreadable_healing_param_is_refused() {
 // The assistant-message mode
 // ---------------------------------------------------------------------------------------------
 
-/// A capability that says nothing about assistant messages records the reply as sent — the default,
-/// and the behaviour every run had before the mode existed.
+/// A capability that says nothing about assistant messages records the healed program that ran —
+/// the default, because that is the text every location gg reports counts lines of.
 #[test]
-fn absent_assistant_messages_is_no_post_processing() {
+fn absent_assistant_messages_is_response_healing() {
     for params in [json!({}), json!({ "assistantMessages": null })] {
         assert_eq!(
             assistant_messages_of(&set_with(params.clone())),
-            AssistantMessageMode::None,
+            AssistantMessageMode::ResponseHealing,
             "{params}"
         );
     }
     assert_eq!(
         assistant_messages_of(&GgAgentConfig::root()),
-        AssistantMessageMode::None
+        AssistantMessageMode::ResponseHealing
     );
 }
 
@@ -1075,7 +1081,11 @@ fn an_unknown_assistant_messages_value_is_refused() {
         let (mode, defects) = assistant_messages_refusal(&set_with(
             json!({ "assistantMessages": unreadable.clone() }),
         ));
-        assert_eq!(mode, AssistantMessageMode::None, "the resolver stays total");
+        assert_eq!(
+            mode,
+            AssistantMessageMode::ResponseHealing,
+            "the resolver stays total"
+        );
         assert_eq!(defects.len(), 1, "{unreadable} -> {defects:?}");
         assert_eq!(
             defects[0].locus,

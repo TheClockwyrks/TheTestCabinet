@@ -3,10 +3,11 @@
 // WHY ROSLYN. Everything a model reads about this surface is written on the declaration it
 // describes — a function's brief in its `<summary>`, its detail in its `<remarks>`, an argument's in
 // that argument's `<param>`, a record component's in the `<param>` on the record, an enum constant's
-// in the `<summary>` above it, a module's on the `static class` that is the module — and Roslyn is
-// what reads all of it. It is also the compiler this arm already runs on every turn, so the
-// catalogue is reflected by the same reading of the same sources that the model's program is
-// compiled against.
+// in the `<summary>` above it, a module's on the `static class` that is the module, and the one
+// module that is not a class on the `internal` class `src/Gg/Core/Errors.cs` ends with — and Roslyn
+// is what reads all of it, and there is no prose in this file at all. It is also the compiler this
+// arm already runs on every turn, so the catalogue is reflected by the same reading of the same
+// sources that the model's program is compiled against.
 //
 // WHY ROSLYN AND NOT A TEXT SCAN. A catalogue records **resolved type references**, and a
 // resolution is something only a type system has. `Files.FileRead` written in one file and
@@ -215,12 +216,14 @@ internal static class Signatures
     // Modules
     // ------------------------------------------------------------------------------------------
 
-    /// The module class each row of the table names, checked against what the SDK actually declares
-    /// in both directions.
+    /// The declaration each row of the table is documented on, checked against what the SDK actually
+    /// declares in both directions.
     ///
     /// A class that carries a `<ggmodule>` no row names, and a row naming a class that does not
     /// exist, are both failures here: the table decides the order and the path, and the class decides
     /// which row it is, so the two disagreeing means one of them is describing a module nobody has.
+    ///
+    /// Every row resolves to something, including the one with no module class — see below.
     private static Dictionary<string, INamedTypeSymbol> ResolveModules()
     {
         var resolved = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
@@ -238,6 +241,34 @@ internal static class Signatures
                         + $"`{module.Id}`");
             }
             resolved[module.Id] = symbol;
+        }
+        // The module with no class of its own — `core`, the types and the exception declared directly
+        // in `namespace Gg` — still has its two model-facing lines written on a declaration, because
+        // every word a model reads about this surface is. They are written on the `internal` class
+        // `src/Gg/Core/Errors.cs` ends with, which is empty, is reachable from nothing a model is
+        // shown, and has nothing on it to call; that file says at length why it is a class at all.
+        //
+        // It is found by its tag, and told apart from the module's own TYPES by NOT BEING PUBLIC:
+        // `ToolException` and `ToolErrorCode` carry `<ggmodule>core</ggmodule>` too, saying which
+        // module they belong to, and what distinguishes the declaration carrying the module's own
+        // documentation is exactly that it is not part of the surface.
+        foreach (var module in Catalogue.Modules.Where(module => module.Class.Length == 0))
+        {
+            var written = gg
+                .GetTypeMembers()
+                .Where(type =>
+                    type.DeclaredAccessibility != Accessibility.Public
+                    && TagOf(type, "ggmodule") == module.Id)
+                .ToArray();
+            if (written.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    $"the module `{module.Id}` has no class of its own, so its own documentation is "
+                        + "written on a non-public class carrying "
+                        + $"`<ggmodule>{module.Id}</ggmodule>` — and `namespace Gg` declares "
+                        + $"{written.Length} of those");
+            }
+            resolved[module.Id] = written[0];
         }
         // The other direction: every `<ggmodule>` written anywhere in `namespace Gg` names a row of
         // the table. On a top-level TYPE that is how the `core` module is spelled, and on anything
@@ -264,30 +295,14 @@ internal static class Signatures
             writer.WriteStartObject();
             writer.WriteString("id", module.Id);
             writer.WriteString("path", module.Path);
-            if (modules.TryGetValue(module.Id, out var symbol))
-            {
-                WriteProse(writer, symbol, $"the module `{module.Id}`");
-            }
-            else
-            {
-                // `core` has no class to hang a doc comment on, so its own two lines are the one
-                // piece of model-facing prose this arm cannot write on a declaration. They are here
-                // rather than on an empty marker class, because a class that existed only to be
-                // documented would be a class a program could try to call.
-                writer.WriteString(
-                    "brief",
-                    "The types and the failure vocabulary every other module's signatures name.");
-                writer.WriteString(
-                    "detail",
-                    "They are declared directly in `namespace Gg`, which the SDK brings into every "
-                        + "program's scope, so `ToolException` and `ToolErrorCode` are written "
-                        + "without a module prefix.");
-            }
-            // Nothing is imported: the SDK declares a `global using Gg;` of its own, in the same
-            // compilation as the program, so every module is in scope before the first line. A
-            // program that wants the shorter call site writes `using static Gg.Files;` for itself,
-            // which is its choice rather than a line gg requires.
-            writer.WriteNull("import");
+            // Every module's, `core` included: nothing a model reads about this arm is written
+            // anywhere but on a declaration of the SDK. See `ResolveModules` for where the
+            // class-less module's declaration is.
+            WriteProse(writer, modules[module.Id], $"the module `{module.Id}`");
+            // How a program reaches this module. The SDK is compiled beside the program, which tells
+            // `csc` the library exists and puts nothing in scope, so a call is either written out in
+            // full or written short under this line. See `Catalogue.Import`.
+            writer.WriteString("import", module.Import);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
@@ -535,7 +550,7 @@ internal static class Signatures
         }
         writer.WriteString(
             "doc",
-            Brief(
+            OneLine(
                 Require(ParameterDocumentation(method, parameter.Name), Where(method, parameter)),
                 Where(method, parameter)));
         // No fields: every structured argument on this arm is typed BY NAME, and its members carry
@@ -697,7 +712,7 @@ internal static class Signatures
         foreach (var (fqn, type) in types)
         {
             // Both halves, recorded separately because they differ: a signature writes the name a
-            // program types (`Files.FileRead`, which resolves under the SDK's own `global using`),
+            // program types (`Files.FileRead`, which resolves under the program's own `using Gg;`),
             // and a documentation view is opened by the resolved one (`Gg.Files.FileRead`).
             writer.WriteStartObject();
             writer.WriteString("spelled", TypeName(type));
@@ -939,9 +954,9 @@ internal static class Signatures
     /// The name a documentation view of `type` is opened by: its module's path and its own name.
     private static string Fqn(INamedTypeSymbol type) => $"{ModuleOf(type).Path}.{type.Name}";
 
-    /// The name a signature writes, which is the name a program types: qualified by the containing
-    /// class where there is one, and bare for the `core` module's types, which the SDK's own
-    /// `global using` puts in scope.
+    /// The name a signature writes, which is the name a program types under its own `using Gg;`:
+    /// qualified by the containing class where there is one, and bare for the `core` module's
+    /// types.
     private static readonly SymbolDisplayFormat TypeFormat = new(
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
@@ -1150,18 +1165,51 @@ internal static class Signatures
         return new Documented(Brief(Require(Summary(target), what), what), Remarks(target), tags);
     }
 
-    /// A brief, held to the one structural property the whole model rests on: it is **one line**.
+    /// The longest a brief may be, in characters.
+    ///
+    /// The same cap `crates/gg/src/sandbox/language/register.rs` holds every arm's catalogue to, and
+    /// it is enforced here as well because the host's copy is a `#[test]`: a reflection that embedded
+    /// a paragraph in the brief field would succeed, and so would a build, and the author would hear
+    /// about it from a gate three steps away naming an entry they then have to go looking for. Here
+    /// is where the author is standing.
+    private const int BriefCap = 120;
+
+    /// One line of authored prose, held to the one structural property every such line has: it is
+    /// **one line**.
     ///
     /// The rule is enforced here as well as gg-side because the failure it catches is a paragraph
-    /// written into the brief field, and this is where the person who wrote it will see it — with the
-    /// declaration named, before a catalogue exists to be checked.
-    private static string Brief(string written, string what)
+    /// written into a field that renders as a line, and this is where the person who wrote it will
+    /// see it — with the declaration named, before a catalogue exists to be checked.
+    private static string OneLine(string written, string what)
     {
         if (written.Contains('\n'))
         {
             throw new InvalidOperationException(
                 $"{what}'s brief is more than one line — a `<summary>` is the brief and a "
                     + $"`<remarks>` is the detail: {written}");
+        }
+        return written;
+    }
+
+    /// An **entry's** brief: one line, and no longer than [`BriefCap`].
+    ///
+    /// The length is the half a shape check cannot make. A `<summary>` is written on one source line
+    /// as readily as on six, and Roslyn hands back what is between the tags either way, so a
+    /// three-sentence summary arrives here already looking like a brief and only its size says
+    /// otherwise.
+    ///
+    /// A **parameter's** documentation goes through [`OneLine`] instead and is deliberately
+    /// uncapped, which is the same split `crates/gg/src/sandbox/language/register.rs` makes: what an
+    /// argument has to say about a path, a selector or a timeout is short by nature, and a cap there
+    /// would be a second opinion about the same thing.
+    private static string Brief(string written, string what)
+    {
+        OneLine(written, what);
+        if (written.Length > BriefCap)
+        {
+            throw new InvalidOperationException(
+                $"{what} has a {written.Length}-character brief, and a brief is capped at "
+                    + $"{BriefCap}: {written}");
         }
         return written;
     }

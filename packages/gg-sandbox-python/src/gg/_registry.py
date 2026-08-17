@@ -1,4 +1,6 @@
-"""The decorator that writes a function's gg **operation** on the declaration itself.
+"""The private machinery every capability module shares: the decorator that writes a function's gg
+**operation** on the declaration itself, the registry it fills, the answer to the component's
+`bound-tools` export, and the sentence a module gives back for a name it does not declare.
 
 An operation is gg's own stable identity for a model-facing call — `files.read_file`,
 `views.open_text`, `session.finish` — and it is the join key every one of the eleven language arms
@@ -14,36 +16,44 @@ the C# arm's `<ggop>` documentation tag, and it is read twice from the one place
 
 * statically, by `tools/signatures.py`, out of the source's own decorator list — griffe never
   imports this package, so the reflector reads the written text rather than a run-time attribute;
-* dynamically, by `gg.scope`, out of `REGISTRY`, to decide which functions a run's program is given.
+* dynamically, by `bound_tools` below, out of `REGISTRY`, to answer which gg tools this artifact
+  really binds.
 
 Two readings of one written fact is the whole point. Nothing can drift, because there is nothing for
 the two to drift apart *from*.
 
-Nothing here is model-facing. The module is private by Python's own convention — a leading
-underscore — and the reflector skips it for exactly that reason.
+The module is private by Python's own convention — a leading underscore — and the reflector skips it
+for exactly that reason. One thing here does reach a model: the sentence `missing` composes when a
+program reaches for a name a gg module does not declare.
 """
 
 from __future__ import annotations
 
-from typing import Callable, TypeVar
+import sys
+from typing import Callable, Sequence, TypeVar
+
+# At module scope rather than inside `bound_tools`, because `componentize-py` bakes the import
+# closure it EXECUTES: an import that only runs when the function is called is a module the artifact
+# does not carry, and the export would fail on the one call gg makes to it.
+from .catalogue import GG_TOOLS, TOOL_BOUND
 
 F = TypeVar("F", bound=Callable[..., object])
 
 ATTRIBUTE = "__gg_operation__"
 """The attribute the decorator leaves on a function, naming the operation it binds.
 
-Read by `gg.scope` when it builds a program's surface, and by nothing else. It is a plain attribute
-rather than a wrapper so that the decorated object *is* the function: its `__name__`, its signature
-and its docstring are untouched, which matters because a program can inspect the functions it was
-given and because the reflector reads the same declaration.
+Read by `bound_tools` below, and by nothing else. It is a plain attribute rather than a wrapper so
+that the decorated object *is* the function: its `__name__`, its signature and its docstring are
+untouched, which matters because a program can inspect the functions it was given and because the
+reflector reads the same declaration.
 """
 
 REGISTRY: dict[str, Callable[..., object]] = {}
 """Every operation this SDK implements, by its gg operation id.
 
-Populated as the capability modules are imported, which `gg.scope` does unconditionally. It is what
-turns "which functions does this run offer?" into a lookup on gg's own vocabulary rather than on
-this language's spellings.
+Populated as the capability modules are imported, which `gg/__init__.py` does unconditionally. It is
+what turns "which functions does this SDK implement?" into a lookup on gg's own vocabulary rather
+than on this language's spellings.
 """
 
 
@@ -72,7 +82,7 @@ Deliberately a *different* attribute from `ATTRIBUTE`, and deliberately absent f
 alias is not a binding: `gg.board.wait_for_issue` is the one function that binds
 `board.wait_for_issue`, and `IssueCreated.wait` is a shorter way to write a call to it. Registering
 the method too would put a second claim on one operation — which the decorator above refuses
-outright — and would make `gg.scope` bind a bound method as though it were a module-level function.
+outright — and would make `bound_tools` report a bound method as though it were a tool.
 
 It is read the way `ATTRIBUTE` is read statically — `tools/signatures.py` takes the id off the
 written decorator rather than off the object, since griffe never imports this package — and it is
@@ -99,3 +109,51 @@ def alias(id: str) -> Callable[[F], F]:
         return function
 
     return mark
+
+
+def bound_tools() -> list[str]:
+    """The gg tool names this component can bind.
+
+    gg calls the component's export in a unit test and asserts set-equality with its own
+    `ALL_TOOL_NAMES`. It is the one drift gate that inspects the artifact gg embedded rather than a
+    source file, so it catches the failure no compiler can: a tool added, renamed or removed in gg,
+    with a stale `.wasm` still checked in.
+    """
+    # A gg tool is DISPATCHED by the operation that shares its key — `files.write_file` dispatches
+    # `write_file`. The other two rows of `TOOL_BOUND` are a helper and a view that a tool merely
+    # *buys*, and reporting either as a tool would put a name in this answer that gg's own vocabulary
+    # does not hold.
+    dispatched = {
+        tool
+        for operation, tool in TOOL_BOUND.items()
+        if operation in REGISTRY and operation.split(".", 1)[1] == tool
+    }
+    return [tool for tool in GG_TOOLS if tool in dispatched]
+
+
+def missing(module: str, declared: Sequence[str]) -> Callable[[str], object]:
+    """A module-level `__getattr__` that answers a name this module does not declare.
+
+    Python's own answer is `module 'gg.files' has no attribute 'read_fil'`, which tells a model that
+    it was wrong and nothing about what would have been right. This one names the module, the name
+    that was reached for and everything the module declares, which is the difference between a turn
+    spent searching and a turn spent working.
+
+    It is also what lets `shim.py` classify the mistake as the unknown name it is: the raised
+    `AttributeError` carries the module it happened on, and a module inside this package is how a
+    misspelled gg call is told apart from an ordinary attribute error anywhere else.
+
+    Args:
+        module: The module's own `__name__`.
+        declared: The module's own `__all__`.
+    """
+
+    def __getattr__(name: str) -> object:
+        raise AttributeError(
+            f"`{module}.{name}` is not one of the names gg declares there; "
+            f"it declares {', '.join(sorted(declared))}",
+            name=name,
+            obj=sys.modules[module],
+        )
+
+    return __getattr__

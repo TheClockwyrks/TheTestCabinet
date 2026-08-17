@@ -2,8 +2,9 @@
 #
 # Build this arm's three artifacts, into `$GG_ARTIFACTS_OUT_DIR`:
 #
-#   ruby.component.wasm   the ECMAScript engine with Opal's runtime, gg's Ruby SDK and the libraries
-#                         a program may require, all pre-initialised into it
+#   ruby.component.wasm   the ECMAScript engine with Opal's runtime pre-initialised into it, and
+#                         gg's Ruby SDK, the agent's own code and the libraries a program may
+#                         require registered in its require registry
 #   ruby.opal.cjs         the host-side Opal compiler, as one CommonJS bundle with gg's driver
 #   ruby.compiler.json    which Opal that is, and which Ruby it emulates
 #
@@ -145,9 +146,7 @@ cp "$PACKAGE/src/shim.js" "$BUILD_DIR/shim.js"
 cp "$OPAL_DIR/node_modules/opal-runtime/src/opal.js" "$BUILD_DIR/opal.js"
 
 # 6. Bake the component against the ONE copy of the WIT, which lives in the Rust crate that embeds
-#    the result. The `--disable` flags are the ECMAScript guest's, unchanged and deliberately so:
-#    a capability enabled here and not there would be a difference between two arms of a study that
-#    nobody chose.
+#    the result. What the `--disable` flags buy:
 #
 #      stdio        gg's telemetry IS this process's stdout (newline-delimited JSON); a guest write
 #                   would corrupt the stream, so `console.*` is rebound to a host call instead — and

@@ -1,18 +1,16 @@
-//! **Kotlin** — the arm whose program is a **script**, compiled by a warm JVM to bytecode and then
-//! to JavaScript by TeaVM before the guest ever sees it.
+//! **Kotlin** — the arm whose program is an ordinary Kotlin file with its own `fun main()`,
+//! compiled by a warm JVM to bytecode and then to a WebAssembly component of its own before the turn
+//! ever runs it.
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`] — the host-side build, what it costs, what it shares, and the two failures it
-//!   tells apart;
-//! * [`source`] — what gg does to a model's Kotlin before the compiler sees it, which for a program
-//!   is almost nothing;
+//! * [`compile`] — the host-side build, what it costs, what it shares, and the four ways it can end;
+//! * [`source`] — what gg does to a model's Kotlin before the compiler sees it (**nothing**), the one
+//!   convention that costs, and the code-module wrapper that is all that is left of a wrapper here;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates and the template-aware lexer — the two
 //!   predicates both answering differently from [Java's](super::java::healing), on the arm that
 //!   shares a compiler with it;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in Kotlin's syntax;
 //! * `packages/gg-sandbox-kotlin/src/` — the SDK, and every word of prose a model reads about it;
 //! * the **signature catalogue** — reflected out of that SDK's own KDoc by the compiler's own front
 //!   end, and generated into this build's `OUT_DIR` rather than committed anywhere (see
@@ -24,48 +22,59 @@
 //!
 //! # What it rides, and what is its own
 //!
-//! It rides [the JVM road](super::jvm) the [Java](super::java) arm built: the same JDK, the same
-//! TeaVM jars, the same two mandatory TeaVM settings, the same reading of TeaVM's source map, and
-//! the same shared ECMAScript guest — which the seam's "no language is served another's artifacts"
-//! rule names as a declared share rather than inferring from a passing test. That is the whole
-//! reason this arm is cheap: everything from **bytecode onwards** already existed.
+//! It rides [the JVM road](super::jvm) it shares with [Java](super::java): the same JDK, the same
+//! TeaVM jars, the same three mandatory TeaVM settings, the same canonical ABI and wire encoding
+//! (`packages/gg-sandbox-jvm`), the same generated entry class, and the same component encode. That
+//! is the whole reason this arm is cheap: everything from **bytecode onwards** already existed.
 //!
 //! What is its own is everything in front of the bytecode:
 //!
 //! | | |
 //! | --- | --- |
 //! | The compiler | `K2JVMCompiler`, embedded in the daemon rather than spawned, because it is ~1.7–9 s cold and 0.14–0.4 s warm and `kotlinc` has no daemon to ask |
-//! | What a program **is** | a Kotlin **script**, not a wrapped function body — the one decision on this arm that had to be measured rather than copied |
 //! | What a diagnostic in a *library* file means | the model's problem, not gg's, which is the opposite of the Java arm's answer and follows from Kotlin reaching the classlib through a standard library of its own |
-//! | What a program may reach | the Kotlin standard library, by construction: the driver runs with a 60 MB compiler on its classpath and a program is compiled against two jars of it |
+//! | What a program may reach | the Kotlin standard library, by construction: the driver runs with a 60 MB compiler on its classpath and a program is compiled against one jar of it |
 //!
-//! # Why a program is a script
+//! # Why this arm has no guest component
 //!
-//! Because the obvious shape does not work in this language, and that was found by building it. A
-//! reply wrapped in the body of a function gg declares — [Java's](super::java::source) shape — puts
-//! every declaration the model wrote in a *local* position, and Kotlin refuses five things there
-//! that a Kotlin author writes without thinking: `object`, `interface` (and therefore `sealed
-//! interface`), `enum class`, `typealias` and `private fun`. [`source`] has the measured table. In
-//! a script they are all legal, statements and declarations sit side by side in whatever order the
-//! model wrote them, and a reply with no `import` in it is compiled **byte for byte** — which no
-//! other arm can say.
+//! Because there is nothing for one to hold, which is [Java's](super::java) answer and for the same
+//! reason: TeaVM does not produce a Kotlin interpreter that later runs a program, it produces **the
+//! program**, carrying only the classlib and standard-library methods that program's own call graph
+//! reached. There is no stable "Kotlin runtime" two programs could share.
 //!
-//! # What this arm has that no other does
+//! So this is a **compiled** arm on the seam's own terms: [`guest_component`](Kotlin::guest_component)
+//! answers `None`, the compiled bytes ride on the prepared program, and the engine instantiates a
+//! fresh component every turn.
 //!
-//! Its **program and its module are compiled in different shapes and against different classpaths** —
-//! a script against the standard library, a module as an ordinary file against that plus the one
-//! annotation gg writes into it. [Java](super::java) is the only other arm whose two preparation
-//! shapes differ at all, and it is why the seam's
-//! isolation gate (`language/isolation.rs`) lets a language answer with a module of its own shape.
+//! # What a Kotlin program is, here
 //!
-//! And its **SDK is declared in the root package**, which is what no other arm's could be. Kotlin
-//! forbids importing from the root package into a named one and resolves a name in the *same* package
-//! with no import at all — and a model's program, having no `package` line, is itself in the root
-//! one. So `fs.readFile("main.kt")` resolves with nothing written above it, and the substrate's
-//! headline property survives the SDK: a reply with no `import` in it is still compiled byte for
-//! byte, with a shift of zero. The bridge stays out of a program's reach all the same, and by a
-//! stronger fence than a package would give it — every declaration in it is `internal`, which is
-//! module visibility, and a program is its own module.
+//! **A whole Kotlin file**: the `import` lines the model wrote and a `fun main()` it declared. gg
+//! writes no prologue, no epilogue, no entry point and no import into that file, so the compiler
+//! reads the bytes the model sent and every diagnostic and every stack frame is already in the
+//! model's own coordinates. [`source`] carries the one convention that costs — the `main` with no
+//! parameters — and what enforces it, which is javac's own diagnostic about gg's own entry class.
+//!
+//! **The script is retired.** A program used to be a Kotlin `.kts`, because the shape it was compared
+//! against wrapped a reply in the body of a function gg declared and Kotlin refuses `object`,
+//! `interface`, `enum class`, `typealias` and `private fun` as *local* declarations. Under whole
+//! programs there is no wrapper and therefore no local position: all five are ordinary top-level
+//! declarations, and the scripting plugin, its four unversioned jars and the `kotlin-home` they were
+//! loaded through are gone with the problem they solved.
+//!
+//! # What a program may reach, and how
+//!
+//! Its SDK reaches a program the way Kotlin reaches any library: a jar on the classpath, which is
+//! packaging, plus a line **the program writes** — either a name written in full
+//! (`gg.files.readFile(…)`) or the `import gg.files.*` every module's catalogue entry states. A
+//! program that writes neither resolves nothing of gg's.
+//!
+//! And its **SDK is top-level functions rather than objects**, which is what this language spells a
+//! free function as. The Kotlin half of `gg.internal` is `internal` — module visibility, and a
+//! program is its own module — and the crossing under it is the Java `gg.internal` package both JVM
+//! arms compile, whose classes are public because Java has no module visibility to give them. What
+//! keeps that package out of a program's way is the same thing that keeps it out of every other
+//! arm's: nothing describes it. See [`Abi`'s class
+//! note](https://docs.testcabinet.ai/gg/languages/java/).
 
 use std::sync::OnceLock;
 
@@ -75,9 +84,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "kotlin.compile.rs"]
 pub(super) mod compile;
@@ -104,25 +114,12 @@ const SIGNATURES: &str = include_str!(concat!(
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 
-/// Everything gg *says* about a Kotlin program that is written in Kotlin's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.kotlin.hbs"),
-    system_template_name: "system-code.kotlin",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.kotlin.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.kotlin",
-};
-
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static KOTLIN: Kotlin = Kotlin;
 
-/// Kotlin: compiled as a script to bytecode by the Kotlin compiler and then to JavaScript by TeaVM,
-/// inside a warm JVM, and evaluated by the ECMAScript guest.
+/// Kotlin: compiled to bytecode by the Kotlin compiler and then to a WebAssembly component by
+/// TeaVM's `WEBASSEMBLY_WASI` backend, inside a warm JVM, and run as a component of its own.
 pub(super) struct Kotlin;
 
 impl ProgramLanguage for Kotlin {
@@ -134,16 +131,32 @@ impl ProgramLanguage for Kotlin {
         GgProgramLanguage::Kotlin.display_name()
     }
 
-    /// The import hoist, the Kotlin compile and the TeaVM translation, in this preparation's own
+    /// `lib.<key>.<name>` — a path the Kotlin compiler checks, because a code module on this arm is
+    /// **compiled into the program that uses it** rather than loaded beside it.
+    ///
+    /// That is the shape [Rust](super::rust)'s `lib::<key>::<name>` has and the reason neither arm
+    /// reaches a module by string. The key is a **package** gg compiles the module's own file into,
+    /// so a program writes the call in full or imports the name; see
+    /// [`module_package`](source::module_package) for why a package is what Kotlin has instead of a
+    /// generated accessor.
+    fn lib_access(&self, key: &str) -> String {
+        format!("{}.<name>", source::module_package(key))
+    }
+
+    /// The Kotlin compile, the TeaVM translation and the component encode, in this preparation's own
     /// workspace and in a JVM lent to it alone — see [`compile`] for what it costs, what it shares,
     /// and how it tells a program a compiler refused from a compiler that could not run.
+    ///
+    /// The modules are **inputs to the compile**, as they are on every compiled arm: a Kotlin code
+    /// module is Kotlin, Kotlin is compiled, and a compiled module is only reachable from the
+    /// artifact it was built into.
     fn prepare_program(
         &self,
         source: &str,
-        _modules: &[CodeModule],
+        modules: &[CodeModule],
         context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
-        compile::compile_program(source, context)
+        compile::compile_program(source, modules, context)
     }
 
     /// `kotlinc`, which is what a Kotlin programmer calls the compiler — even though gg drives it
@@ -171,29 +184,33 @@ impl ProgramLanguage for Kotlin {
         compile::warm();
     }
 
-    /// The same two compilers a program gets, pointed at an ordinary Kotlin **file** rather than a
-    /// script — and the names the resulting namespace offers.
+    /// The Kotlin compiler alone, pointed at the author's own file in a package of gg's naming —
+    /// and the names the resulting namespace offers.
     ///
-    /// The names are read from the model's own source by [`source`]'s export scan rather than out
-    /// of the compiled bundle, because they are what the skill's author is *told* the namespace
-    /// holds.
+    /// What comes back is the author's own source rather than an artifact, because there is nothing
+    /// a module can be compiled *into* that a later program could load: the program's own compile is
+    /// where it is built. Running the compiler here anyway is what buys the author a located
+    /// diagnostic at the read rather than one against somebody else's program every turn after it.
+    ///
+    /// The names are read from the author's own source by [`source`]'s export scan rather than out
+    /// of a compiled artifact, because they are what the skill's author is *told* the namespace
+    /// holds; the arm's own tests assert that the scan and the compiler agree on the answer, which
+    /// is what keeps one reading from being a second chance to differ.
     fn prepare_module(
         &self,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        let (source, exports) = compile::compile_module(source, context)?;
-        Ok(PreparedModule { source, exports })
+        compile::compile_module(source, context)
     }
 
     /// `.kt`, and nothing else.
     ///
     /// One extension, like [Java](super::java)'s and [Ruby](super::ruby)'s: nothing else in the
-    /// registry can compile a Kotlin module. `.kts` is deliberately **not** a second spelling even
-    /// though a *program* on this arm is a script — a code module is compiled as an ordinary file,
-    /// because what `lib.<key>` binds is a namespace of functions and a script's declarations are
-    /// members of an instance that would have to be constructed first. Offering `skill.kts` would
-    /// name a shape this arm does not compile.
+    /// registry can compile a Kotlin module. `.kts` is deliberately **not** a second spelling — a
+    /// script's declarations are members of an instance that would have to be constructed first,
+    /// where what `lib.<key>` binds is a namespace of functions, and nothing on this arm compiles a
+    /// script any more at all.
     fn module_file_extensions(&self) -> &'static [&'static str] {
         &["kt"]
     }
@@ -203,14 +220,22 @@ impl ProgramLanguage for Kotlin {
     fn binding_name(&self, name: &str) -> String {
         binding_name(name)
     }
-
-    /// The ECMAScript guest, which is [TypeScript](super::typescript)'s.
+    /// **No.** TeaVM's DWARF is misattributed, and gg must not report it as this program's location.
     ///
-    /// A declared share rather than an accident, and the same one [Java](super::java) makes for the
-    /// reason that arm's documentation gives: TeaVM has no runtime object two programs could share,
-    /// so a component of this arm's own would carry nothing.
+    /// Measured on the wasm route, on the artifact this arm's own driver writes: a program whose
+    /// frames really are `Program.java:16`, `:14` and `:9` symbolicates as `gg/internal/Abi.java:87`,
+    /// `:83` and `:82` — gg's own SDK internals, named as the site of the model's bug. The *function*
+    /// names in the same backtrace are right, and they are kept; the file and line are what go. A
+    /// failure's real location on this arm arrives on the guest's own standard error, in the model's
+    /// own coordinates, which is where ruling D8a says to read it.
+    fn wasm_frames_are_located(&self) -> bool {
+        false
+    }
+
+    /// **None.** A Kotlin program is its own component — see this module's documentation for why
+    /// TeaVM leaves nothing for a shared guest to hold.
     fn guest_component(&self) -> Option<&'static [u8]> {
-        Some(super::typescript::COMPONENT)
+        None
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.
@@ -236,33 +261,78 @@ impl ProgramLanguage for Kotlin {
         &healing::KOTLIN_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`view.openFile("src/Main.kt")`](self::open_file_statement), with the window as two
     /// **named** arguments and no terminator.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
 
-    /// [A `listOf(…)` of names and a `for` over it](self::open_docs_views_statement), each iteration
-    /// opening one documentation view.
+    /// Those statements, in the `main` of a program this arm's compiler will accept — because
+    /// Kotlin has nowhere for a statement to live outside a function, so a statement list is not a
+    /// program.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        let open_file = spell(self, VIEWS_OPEN_FILE);
+        let calls: String = views
+            .iter()
+            .map(|(path, window)| {
+                format!("    {}\n", open_file_statement(&open_file, path, *window))
+            })
+            .collect();
+        main_program(&calls)
+    }
+
+    /// [A whole program: a `listOf(…)` of names and a `for` over
+    /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// One public top-level function returning `name` — because this is the second arm whose module
-    /// shape is not its program shape.
+    /// [Two `listOf(…)`s and two `for` loops](self::bootstrap_program) in a `fun main()`, with both
+    /// calls resolved from this language's own catalogue and the filters passed as named default
+    /// arguments.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
+    }
+
+    /// **The marker as written, and the marker as TeaVM stores it** — which is UTF-16.
     ///
-    /// A program here is a script and a module is an ordinary file whose **public top-level
+    /// Measured on the artifact this arm's own driver writes rather than assumed, exactly as on
+    /// [Java's](super::java): a program whose only literal is `gg-isolation-000-marker` carries
+    /// `g\0g\0-\0…` in the module's data section and the ASCII bytes nowhere at all, because TeaVM
+    /// keeps a `String` constant in Java's own UTF-16 whichever compiler wrote the bytecode.
+    ///
+    /// The ASCII form is kept beside it rather than replaced, because it costs nothing and it is
+    /// what a *module*'s artifact carries: a code module on this arm is handed back as the author's
+    /// own source.
+    ///
+    /// Both forms are derived from the marker character by character, so a form belonging to one
+    /// input can never be found in another input's artifact.
+    #[cfg(test)]
+    fn isolation_marker_forms(&self, marker: &str) -> Vec<String> {
+        let wide: String = marker
+            .encode_utf16()
+            .flat_map(|unit| unit.to_le_bytes())
+            .map(char::from)
+            .collect();
+        vec![marker.to_string(), wide]
+    }
+
+    /// One public top-level function returning `name` — because this is the arm whose module shape
+    /// is not its program shape.
+    ///
+    /// A program here declares a `fun main()` and a module is a file whose **public top-level
     /// functions** are its namespace, so the seam's default subject (this language's generated
     /// documentation program) is a module that declares no function at all and is refused by name.
     /// The `name` rides in as a returned **string literal**, where neither the Kotlin compiler's
     /// constant folding nor TeaVM's reachability pruning can drop it: it is the value the module's
     /// one export hands back.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         format!(
             "fun marker(): String = {}\n",
             serde_json::Value::String(name.to_string())
@@ -274,23 +344,25 @@ impl ProgramLanguage for Kotlin {
 // The syntax this arm writes
 // ---------------------------------------------------------------------------------------------
 
-/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
+/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`,
+/// `object` → `_object`.
 ///
 /// camelCase because that is what Kotlin spells a name in and what this SDK spells every other bound
-/// function in, so a program reaching `lib.text("csvTools", "parse", …)` reads like the rest of its
-/// own scope. Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next
-/// word rather than surviving; a name that is nothing but separators becomes `module`, and a leading
-/// digit is prefixed.
+/// function in, so a program reaching `lib.csvTools.parse(…)` reads like the rest of its own scope.
+/// Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next word
+/// rather than surviving; a name that is nothing but separators becomes `module`.
 ///
-/// The result is held to being a valid Kotlin **identifier** even though this arm reaches a module by
-/// *string* — `lib.text(key, name, …)` rather than a property access, because a code module is
-/// compiled separately and there is no `import` for the compiler to check a program against. The key
-/// is quoted back to the model in the reply that binds it and typed out in every program that uses
-/// it, so a key a Kotlin author could not have written is a key a model will get wrong.
+/// # The result must be a Kotlin identifier, and that is load-bearing
 ///
-/// Deliberately ASCII-only, though Kotlin identifiers may be Unicode and may even be backquoted, for
-/// the same reason: a name a model has to reproduce exactly is one that should have no characters it
-/// could get wrong.
+/// The key is a **package segment**: gg compiles the module's own file into
+/// [`lib.<key>`](source::module_package), and `lib.<key>.<name>` is what a program writes or
+/// imports. A key that is not an identifier is therefore a syntax error against the *model's* own
+/// file, on every turn, for a name it was handed and cannot change — so a leading digit is prefixed
+/// and a **hard keyword** is too. Both are prefixed rather than suffixed because `_object` reads as
+/// a name a tool chose and `object_` reads as one an author typed.
+///
+/// Deliberately ASCII-only, though Kotlin identifiers may be Unicode and may even be backquoted: a
+/// name a model has to reproduce exactly is one that should have no characters it could get wrong.
 pub(super) fn binding_name(name: &str) -> String {
     let mut out = String::new();
     let mut capitalize = false;
@@ -309,11 +381,48 @@ pub(super) fn binding_name(name: &str) -> String {
     if out.is_empty() {
         return "module".to_string();
     }
-    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) || RESERVED.contains(&out.as_str()) {
         out.insert(0, '_');
     }
     out
 }
+
+/// Kotlin's **hard keywords**: the words the parser refuses wherever an identifier may stand.
+///
+/// The soft and modifier keywords (`by`, `data`, `sealed`, `value`, `where`, `open`, and the rest)
+/// are deliberately absent: each is a legal identifier, and reserving one would rename a key for no
+/// reason. `field` and `it` are absent for the same reason — they are identifiers everywhere except
+/// inside an accessor and a lambda, and a package segment is neither.
+const RESERVED: [&str; 28] = [
+    "as",
+    "break",
+    "class",
+    "continue",
+    "do",
+    "else",
+    "false",
+    "for",
+    "fun",
+    "if",
+    "in",
+    "interface",
+    "is",
+    "null",
+    "object",
+    "package",
+    "return",
+    "super",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "when",
+    "while",
+];
 
 /// `view.openFile("src/Main.kt")`, or `view.openFile("src/Main.kt", offset = 400, limit = 200)` for
 /// a window — with `view.openFile` already spelled by the language that asked.
@@ -347,29 +456,95 @@ pub(super) fn open_file_statement(
     }
 }
 
-/// A `listOf(…)` of names and a `for` over it, each iteration opening one documentation view.
+/// The program every source gg synthesizes for this arm is written as: `body` inside a `fun main()`.
+///
+/// It is a **whole program by this arm's own rules**, because gg writes nothing around a model's
+/// reply any more and the opening turn is executed rather than only read. A statement list here
+/// would be a text in the model's own transcript that its next reply would be refused for.
+///
+/// `fun main()` with no parameters, which is the one convention this arm asks of a model and which
+/// [`source`] explains: it is the form that compiles to the `main()` gg's entry class calls.
+///
+/// Nothing gg writes here needs an `import`: `listOf` is in `kotlin.collections`, which every Kotlin
+/// file imports by default, and everything of gg's is written in full out of the catalogue.
+fn main_program(body: &str) -> String {
+    format!("fun main() {{\n{body}}}\n")
+}
+
+/// A whole program: a `listOf(…)` of names and a `for` over it, each iteration opening one
+/// documentation view.
 ///
 /// A list and a loop rather than one statement per name because the list is as long as the family —
 /// eleven calls written out would be a program a model reads as a style to copy.
 ///
-/// `listOf` needs no import — it is in `kotlin.collections`, which every Kotlin file imports by
-/// default — and the empty case is `listOf<String>()`, whose element type has to be written out
-/// because there is no declared type beside it to infer from.
+/// The empty case is `listOf<String>()`, whose element type has to be written out because there is
+/// no declared type beside it to infer from.
 pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+    main_program(&views_loop(open_docs_view, names))
+}
+
+/// A `listOf(…)` of names and the `for` that opens one documentation view per name, indented for a
+/// function body.
+fn views_loop(open_docs_view: &str, names: &[&str]) -> String {
+    format!(
+        "{}\
+         \x20   for (name in functions) {{\n        \
+             {open_docs_view}(name)\n\
+         \x20   }}\n",
+        listed("functions", names),
+    )
+}
+
+/// One `val <binding> = listOf(…)` declaration, indented for a function body.
+///
+/// The empty case is `listOf<String>()`, whose element type has to be written out because there is
+/// no declared type beside it to infer from.
+fn listed(binding: &str, names: &[&str]) -> String {
     let entries: Vec<String> = names
         .iter()
-        .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+        .map(|name| format!("        {}", serde_json::Value::String((*name).to_string())))
         .collect();
-    let listed = match entries.is_empty() {
-        true => "val functions = listOf<String>()\n".to_string(),
-        false => format!("val functions = listOf(\n{}\n)\n", entries.join(",\n")),
-    };
-    format!(
-        "{listed}\
-         for (name in functions) {{\n    \
-             {open_docs_view}(name)\n\
-         }}\n"
-    )
+    match entries.is_empty() {
+        true => format!("    val {binding} = listOf<String>()\n"),
+        false => format!(
+            "    val {binding} = listOf(\n{}\n    )\n",
+            entries.join(",\n")
+        ),
+    }
+}
+
+/// The opening turn: one `listOf(…)` of module paths listed in full, then one of the names opened as
+/// documentation views, each with a `for` over it — inside a `fun main()`, because this program is
+/// **executed** as the session's first turn.
+///
+/// Two lists and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. The empty
+/// case is spelled `listOf<String>()` for the reason [`open_docs_views_statement`]'s is: there is no
+/// declared type beside it to infer an element type from.
+///
+/// The filters are **default arguments passed by name**, which is this language's idiom for optional
+/// ones, and every gg name is written in full, which is one of the two lines this arm offers instead
+/// of an import.
+///
+/// A failed call throws and nothing here catches it, which is this arm's failure model: a bootstrap
+/// that caught its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let body = format!(
+        "{}\
+         \x20   for (path in modules) {{\n        \
+             {search}(\"\", module = path, limit = {MAX_SEARCH_LIMIT})\n\
+         \x20   }}\n\
+         \n\
+         {}",
+        listed("modules", modules),
+        views_loop(open_docs_view, docs),
+    );
+    main_program(&body)
 }
 
 #[cfg(test)]
@@ -380,9 +555,8 @@ mod tests;
 /// membrane and store.
 ///
 /// A separate test file from [`tests`], because these are a different kind of test: each one
-/// compiles the 13.4 MB shared ECMAScript guest and starts a JVM that loads the Kotlin compiler and
-/// TeaVM, which is seconds rather than microseconds, where everything next door is a pure function
-/// over text.
+/// compiles a ~400 KB component and starts a JVM that loads the Kotlin compiler and TeaVM, which is
+/// seconds rather than microseconds, where everything next door is a pure function over text.
 #[cfg(test)]
 #[path = "kotlin.substrate.test.rs"]
 mod substrate;

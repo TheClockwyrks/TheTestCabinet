@@ -13,9 +13,14 @@ It repairs only shapes it can prove are safe to delete, and it counts every
 repair on the run, so "how often did this model still send a fence?" is a figure
 a study can group by.
 
-Healing tells the model nothing. A repaired reply is simply the reply that runs.
-The repairs are reported to the operator on the run's stream and recorded in the
-run's telemetry.
+Healing tells the model nothing. A repaired reply is simply the reply that runs,
+and it is the reply the model's own history carries, so a model reads a past
+turn of its own as a program that compiled.
+
+The reply as the model sent it is kept beside the healed one and shown to the
+run's operator, along with every repair that was applied. Reading the two
+against each other is what tells a defect in healing apart from a mistake by the
+model, which is the question a repair that deletes code raises.
 
 ## Where healing sits
 
@@ -42,9 +47,10 @@ language's dialect. It performs no I/O, reads no clock, and imports nothing from
 the sandbox, so turning a strategy off changes only what one function returns.
 
 The assistant message gg records for the turn is governed by the
-`assistantMessages` param rather than by healing. Its default records the reply
-the model sent, so the transcript answers "did this model still emit a fence?"
-alongside the counters.
+`assistantMessages` param rather than by healing. Its default records the healed
+program, which is the one that ran. The other setting records the reply as the
+model sent it, which puts a reply that could not compile into the model's own
+history and is an arm of a study rather than the ordinary path.
 
 ## Canonicalisation
 
@@ -361,9 +367,16 @@ unusual about this response":
 ```jsonc
 "healing": {
   "strategies": ["strip-fences", "strip-prose"],    // in application order, repeats kept
-  "didNotConverge": false                           // omitted when false
+  "didNotConverge": false,                          // omitted when false
+  "original": "```ts\nreturn 1;\n```"               // omitted for a clean reply
 }
 ```
+
+`original` is the reply as the model sent it, and it is carried exactly where the
+program that ran is no longer that text. Everything else downstream treats the
+healed program as the model's source, so this is the only surviving copy of what
+healing started from, and the run's console renders it under the turn it belongs
+to. It is written for the operator and reaches no model.
 
 Per run, on the session summary's `healing` rollup, folded from that same event
 so numerator and denominator come from one mechanism:

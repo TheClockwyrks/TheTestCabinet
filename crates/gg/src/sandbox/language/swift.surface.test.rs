@@ -334,10 +334,13 @@ fn every_tool_crosses_the_membrane_from_its_swift_spelling() {
     // between them, so thirty-five of them would be a minute of toolchain for a table that reads the
     // same. It is also the stronger check — the calls must arrive in the order the program made
     // them, so a call that reached gg's dispatch under a NEIGHBOUR's name fails here as well.
-    let program = crossings
-        .iter()
-        .map(|crossing| format!("{}\n", crossing.statement))
-        .collect::<String>();
+    let program: String = std::iter::once(format!("{}\n\n", super::SURFACE_IMPORT))
+        .chain(
+            crossings
+                .iter()
+                .map(|crossing| format!("{}\n", crossing.statement)),
+        )
+        .collect();
     let (outcome, log) = run_with(&program, &all_operations(), canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
@@ -380,6 +383,8 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_swift_too()
     let (outcome, log) = evaluate(
         &prepare(
             r####"
+import gg
+
 let text = try files.readTextFile("notes.md", offset: 1, limit: 2)
 let read = try views.openFile("notes.md", offset: 1, limit: 2)
 try views.openText("summary", body: text)
@@ -458,6 +463,8 @@ try session.finish("read the file and showed myself the result")
     let (granted, _log) = evaluate_closing_docviews(
         &prepare(
             r####"
+import gg
+
 gg.log("\(try docs.close("gg.views.openText")) \(try docs.closeAll())")
 "####,
         ),
@@ -483,6 +490,8 @@ gg.log("\(try docs.close("gg.views.openText")) \(try docs.closeAll())")
     // measurement behind the sentence the prompt and the SDK's own header make.
     let (outcome, log) = run_with(
         r####"
+import gg
+
 let files = ["a", "b"]
 gg.log("\(files.count)")
 gg.log(try gg.files.readTextFile("notes.md"))
@@ -502,6 +511,8 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_swift_too() {
     let (outcome, _log) = evaluate(
         &prepare(
             r####"
+import gg
+
 let history = try programs.history()
 gg.log("\(history.count)")
 do {
@@ -534,7 +545,7 @@ try session.requestChanges(["widen the test", "name the file"])
     // The other verdict, which is the same role's other ending, and the one call in the surface that
     // takes nothing at all.
     let (outcome, _log) = evaluate(
-        &prepare("try session.approve()\n"),
+        &prepare("import gg\n\ntry session.approve()\n"),
         &[],
         RunEnding::Role(EndingRole::Review),
         false,
@@ -561,6 +572,8 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     // an SDK-specific combinator.
     let (outcome, _log) = run_with(
         r####"
+import gg
+
 do {
     gg.log(try files.readTextFile("gone.swift"))
 } catch let failure as core.ToolError where failure.code == .notFound {
@@ -585,6 +598,8 @@ gg.log("carried on")
     // the class and the message all come through.
     let (outcome, _log) = run_with(
         r####"
+import gg
+
 gg.log("before")
 _ = try files.readTextFile("gone.swift")
 gg.log("after")
@@ -635,6 +650,8 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // a name that was never in scope gets.
     let (outcome, log) = run_with(
         r####"
+import gg
+
 do {
     _ = try shell.run("swift build")
     gg.log("ran")
@@ -736,6 +753,8 @@ fn swift_reaches_every_library() {
     // it, and one real use of the two the whole vendored set exists for.
     let (outcome, _log) = run_with(
         r####"
+import gg
+
 import Collections
 import DequeModule
 import OrderedCollections
@@ -1053,4 +1072,143 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
             );
         }
     }
+}
+
+/// **Nothing this arm offers resolves in a program that wrote no line for it** — asked of `swiftc`
+/// rather than read off the sources.
+///
+/// This is the [import invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) for
+/// this arm, and the one a reading of the sources cannot settle: gg's shell is compiled in the
+/// **same Swift module** as the model's file, so what a shell wrote used to decide what the reply
+/// could name. A `-I` tells the compiler a module exists and puts no name in scope; an
+/// `@_exported import` in the shell put the whole surface in scope in every file of the module.
+/// The difference is invisible in the model's own file and decided by `swiftc`, so it is asked of
+/// `swiftc`.
+///
+/// Five programs, differing only in what stands above the call:
+///
+/// * nothing — refused, *cannot find 'files' in scope*, which is what "no name is in scope" looks
+///   like;
+/// * nothing, reaching for the fully qualified name — refused too, because `gg` is itself the
+///   module's name and there is no path around the import;
+/// * [`SURFACE_IMPORT`](super::SURFACE_IMPORT) — accepted, which is what makes the line every
+///   module of this arm's catalogue states a line worth quoting;
+/// * gg's own wire, which the shell reaches through a clang module of its own — refused, so the
+///   header gg compiles beside every program reaches gg's file and no other;
+/// * the entry-point symbol the shell calls — refused, for the same reason.
+///
+/// It compiles and never runs, so it instantiates no component: what a compiler refuses never
+/// reaches a guest.
+#[test]
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    let compile = |source: &str| {
+        compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
+    };
+    let refusal = |source: &str, wanted: &str| {
+        let failure =
+            compile(source).expect_err("a gg name with no line above it does not compile");
+        match failure {
+            crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
+                diagnostic,
+            )) => assert!(
+                diagnostic.starts_with("main.swift:1:") && diagnostic.contains(wanted),
+                "a program naming gg's surface with no import line was refused for another \
+                 reason: {diagnostic}"
+            ),
+            other => panic!(
+                "a name that is not in scope is the model's compile error, not {other:?}. gg's \
+                 surface is reaching a program that never asked for it."
+            ),
+        }
+    };
+
+    refusal(
+        "try views.openText(\"t\", body: \"b\")\n",
+        "cannot find 'views' in scope",
+    );
+    refusal(
+        "try gg.views.openText(\"t\", body: \"b\")\n",
+        "cannot find 'gg' in scope",
+    );
+    compile(&format!(
+        "{}\n\ntry views.openText(\"t\", body: \"b\")\n",
+        super::SURFACE_IMPORT
+    ))
+    .expect("the line this arm's catalogue states brings the surface into scope");
+
+    // gg's own wire and gg's own entry-point symbol travelled with a bridging header until this
+    // arm converted, so both were in scope in a reply that wrote nothing. They are a clang module
+    // the shell imports now, and the shell's import is file-scoped.
+    refusal(
+        "var lowered = sandbox_string_t()\n",
+        "cannot find 'sandbox_string_t' in scope",
+    );
+    refusal(
+        "let entry = __main_argc_argv\n",
+        "cannot find '__main_argc_argv' in scope",
+    );
+
+    // And gg's own two exports, which the shell declares in the SAME module as `main.swift` —
+    // where an `import` is file-scoped, an access level is not, so `public` or `internal` on
+    // either of these would put a name the model was never told about into the model's own file.
+    // `@_cdecl` emits the C symbol at any access level, so `fileprivate` costs the world nothing.
+    refusal(
+        "let bound = ggBoundTools\n",
+        "cannot find 'ggBoundTools' in scope",
+    );
+    refusal("let run = ggRun\n", "cannot find 'ggRun' in scope");
+}
+
+/// **The bytes `swiftc` reads are the bytes the model sent**, compared byte for byte in the
+/// preparation's own workspace.
+///
+/// The [authorship gate](super::super::authorship) asserts this across every arm from the outside.
+/// This asks it of the one file that matters here and names it: `main.swift`, the file every
+/// diagnostic and every located trap on this arm is reported in. A program carrying its own
+/// `import`, a comment, an odd indent and no trailing newline, so that anything that normalised,
+/// re-indented or terminated the text would show.
+#[test]
+fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
+    let source = "import gg\n\n// a comment gg has no business touching\n   \
+                  gg.log(\"kept\")";
+    let context = crate::sandbox::PrepareContext::new();
+    compile::compile_program(source, &[], &context).expect("the subject compiles");
+    let workspace = context
+        .opened_workspace()
+        .expect("this arm's preparation opens a workspace to run a compiler in");
+    // `work/` is the directory a preparation writes its compiler's inputs into
+    // (`language/compile.rs`'s `Workspace`), and `main.swift` is the one file in it that carries
+    // the model's own text.
+    let written = std::fs::read_to_string(workspace.join("work").join(compile::PROGRAM_FILE))
+        .expect("the file the compiler was given is readable");
+    assert_eq!(
+        written, source,
+        "gg wrote something other than the model's own text into the file swiftc read"
+    );
+}
+
+/// **The file-view program gg synthesizes is a program this arm compiles.**
+///
+/// gg pushes it into an agent's transcript as an assistant turn — every file a test case provided,
+/// or one restored view — and a model reads its own transcript as the example of what a well-formed
+/// reply looks like. Nothing on the turn path compiles it, so a text that could not have been sent
+/// would teach the wrong shape and never fail anything, which is what this is for. On this arm the
+/// thing it could get wrong is the import line, and the discarded result of a call that returns one.
+#[test]
+fn the_file_view_program_gg_synthesizes_is_a_program_that_compiles() {
+    let arm = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Swift);
+    let window = crate::sandbox::FileWindow {
+        offset: 400,
+        limit: 200,
+    };
+    let program =
+        arm.open_file_program(&[("src/main.swift", None), ("docs/spec.md", Some(window))]);
+    compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::new()).unwrap_or_else(
+        |failure| {
+            panic!(
+                "gg pushes a Swift program that does not compile into the transcript: \
+                 {failure}\n\n{program}"
+            )
+        },
+    );
 }

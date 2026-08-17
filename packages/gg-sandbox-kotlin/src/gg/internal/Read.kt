@@ -26,222 +26,194 @@ import gg.tasks.TaskUsage
 import gg.views.OpenView
 import gg.views.ViewKind
 import gg.views.ViewRegion
-import org.teavm.jso.JSObject
-import org.teavm.jso.core.JSArray
 
 /**
- * **Reading the wire** — every JavaScript value the guest hands back, as the Kotlin value this SDK's
- * signatures promise.
+ * **Reading the wire** — every [Value] gg answers with, as the Kotlin value this SDK's signatures
+ * promise.
  *
  * Nothing here is model-facing, and nothing here is clever: each function is the one place that knows
- * a field's name on the wire, so a rename is one edit rather than a search. Three shapes are worth
- * naming, because each is a decision Kotlin makes differently from the arm this file's Java sibling
- * serves — a field the wire may leave out becomes a **nullable** rather than an `Optional`, a
- * discriminated union becomes an arm of a **sealed interface**, and a fixed choice becomes an **enum
- * entry** rather than the string it arrived as.
+ * a field's name on the wire, so a rename is one edit rather than a search. A field name is the
+ * **WIT** name verbatim, hyphens and all, because that is what
+ * `crates/gg/src/sandbox/membrane/wire.*.rs` writes and gg owns both ends of it.
  *
- * These are ordinary functions rather than `external` ones, so unlike [ggCall]'s neighbours they may
- * live on an `object`.
+ * Three shapes are worth naming, because each is a decision Kotlin makes differently from the arm
+ * this file's [Java sibling](https://docs.testcabinet.ai/gg/languages/java/) serves — a field the wire
+ * may leave out becomes a **nullable** rather than an `Optional`, a discriminated union becomes an arm
+ * of a **sealed interface**, and a fixed choice becomes an **enum entry** rather than the case name it
+ * arrived as.
  */
 internal object Read {
-    // -------------------------------------------------------------------------------------------
-    // The building blocks
-    // -------------------------------------------------------------------------------------------
-
-    /** A whole number the wire may have left out. */
-    fun optionalInt(owner: JSObject, name: String): Int? {
-        val value = ggGet(owner, name)
-        return if (ggAbsent(value)) null else ggAsInteger(value!!)
-    }
-
-    /** Text the wire may have left out. */
-    fun optionalText(owner: JSObject, name: String): String? {
-        val value = ggGet(owner, name)
-        return if (ggAbsent(value)) null else ggAsString(value!!)
-    }
-
-    /** Every element of an array property, mapped. */
-    private fun <T> each(array: JSArray<JSObject>, read: (JSObject) -> T): List<T> {
-        val out = ArrayList<T>(array.length)
-        for (index in 0 until array.length) {
-            out.add(read(array[index]))
-        }
-        return out
-    }
-
-    /** An array of text, as a read-only list. */
-    fun texts(owner: JSObject, name: String): List<String> =
-        each(ggArray(owner, name)) { ggAsString(it) }
-
     // -------------------------------------------------------------------------------------------
     // The results
     // -------------------------------------------------------------------------------------------
 
     /** What a command reported. */
-    fun shellOutput(value: JSObject): ShellOutput =
+    fun shellOutput(value: Value): ShellOutput =
         ShellOutput(
-            exitCode = optionalInt(value, "exitCode"),
-            output = ggString(value, "output"),
-            truncated = ggBool(value, "truncated"),
+            exitCode = ggOptionalInt(value.get("exit-code")),
+            output = value.get("output").text(),
+            truncated = value.get("truncated").flag(),
         )
 
-    /** A read, narrowed to the arm the guest tagged it with. */
-    fun fileRead(value: JSObject): FileRead =
-        if (ggString(value, "kind") == "image") {
+    /** A read, narrowed to the arm gg tagged it with. */
+    fun fileRead(value: Value): FileRead {
+        val read = value.get("value")
+        return if (value.get("case").text() == "image") {
             ImageFile(
-                mediaType = ggString(value, "mediaType"),
-                label = ggString(value, "label"),
-                bytes = ggInteger(value, "bytes"),
-                shown = ggBool(value, "shown"),
-                notShownReason = optionalText(value, "notShownReason"),
+                mediaType = read.get("media-type").text(),
+                label = read.get("label").text(),
+                bytes = read.get("bytes").integer(),
+                shown = read.get("shown").flag(),
+                notShownReason = ggOptionalText(read.get("not-shown-reason")),
             )
         } else {
             TextFile(
-                contents = ggString(value, "contents"),
-                firstLine = ggInteger(value, "firstLine"),
-                lastLine = ggInteger(value, "lastLine"),
-                totalLines = ggInteger(value, "totalLines"),
-                byteTruncated = ggBool(value, "byteTruncated"),
+                contents = read.get("contents").text(),
+                firstLine = read.get("first-line").integer(),
+                lastLine = read.get("last-line").integer(),
+                totalLines = read.get("total-lines").integer(),
+                byteTruncated = read.get("byte-truncated").flag(),
             )
         }
+    }
 
-    /** Every directory entry in an array. */
-    fun dirEntries(value: JSObject): List<DirEntry> =
-        each(ggAsArray(value)) {
-            DirEntry(name = ggString(it, "name"), kind = entryKind(ggString(it, "kind")))
+    /** Every directory entry in a list. */
+    fun dirEntries(value: Value): List<DirEntry> =
+        ggEach(value) {
+            DirEntry(name = it.get("name").text(), kind = entryKind(it.get("kind").text()))
         }
 
     /** The memory budget. */
-    fun memoryUsage(value: JSObject): MemoryUsage =
+    fun memoryUsage(value: Value): MemoryUsage =
         MemoryUsage(
-            count = ggInteger(value, "count"),
-            maxCount = optionalInt(value, "maxCount"),
-            totalChars = ggInteger(value, "totalChars"),
-            maxTotalChars = optionalInt(value, "maxTotalChars"),
-            indexChars = optionalInt(value, "indexChars"),
-            maxIndexChars = optionalInt(value, "maxIndexChars"),
+            count = value.get("count").integer(),
+            maxCount = ggOptionalInt(value.get("max-count")),
+            totalChars = value.get("total-chars").integer(),
+            maxTotalChars = ggOptionalInt(value.get("max-total-chars")),
+            indexChars = ggOptionalInt(value.get("index-chars")),
+            maxIndexChars = ggOptionalInt(value.get("max-index-chars")),
         )
 
     /** Every memory a search matched. */
-    fun memoryHits(value: JSObject): List<MemoryHit> =
-        each(ggAsArray(value)) {
+    fun memoryHits(value: Value): List<MemoryHit> =
+        ggEach(value) {
             MemoryHit(
-                name = ggString(it, "name"),
-                description = ggString(it, "description"),
-                matched = ggInteger(it, "matched"),
-                occurrences = ggInteger(it, "occurrences"),
-                excerpt = ggString(it, "excerpt"),
+                name = it.get("name").text(),
+                description = it.get("description").text(),
+                matched = it.get("matched").integer(),
+                occurrences = it.get("occurrences").integer(),
+                excerpt = it.get("excerpt").text(),
             )
         }
 
     /** One page of a documentation search. */
-    fun docSearch(value: JSObject): DocSearch =
+    fun docSearch(value: Value): DocSearch =
         DocSearch(
-            total = ggInteger(value, "total"),
-            offset = ggInteger(value, "offset"),
+            total = value.get("total").integer(),
+            offset = value.get("offset").integer(),
             hits =
-                each(ggArray(value, "hits")) {
+                ggEach(value.get("hits")) {
                     DocHit(
-                        key = ggString(it, "key"),
-                        kind = docKind(ggString(it, "kind")),
-                        module = ggString(it, "module"),
-                        name = ggString(it, "name"),
-                        summary = ggString(it, "summary"),
+                        key = it.get("key").text(),
+                        kind = docKind(it.get("kind").text()),
+                        module = it.get("module").text(),
+                        name = it.get("name").text(),
+                        summary = it.get("summary").text(),
                     )
                 },
         )
 
     /** The task budget. */
-    fun taskUsage(value: JSObject): TaskUsage =
-        TaskUsage(count = ggInteger(value, "count"), maxTasks = ggInteger(value, "maxTasks"))
+    fun taskUsage(value: Value): TaskUsage =
+        TaskUsage(count = value.get("count").integer(), maxTasks = value.get("max-tasks").integer())
 
     /** The board budget. */
-    fun boardUsage(value: JSObject): BoardUsage =
+    fun boardUsage(value: Value): BoardUsage =
         BoardUsage(
-            epics = ggInteger(value, "epics"),
-            maxEpics = ggInteger(value, "maxEpics"),
-            issues = ggInteger(value, "issues"),
-            maxIssues = ggInteger(value, "maxIssues"),
+            epics = value.get("epics").integer(),
+            maxEpics = value.get("max-epics").integer(),
+            issues = value.get("issues").integer(),
+            maxIssues = value.get("max-issues").integer(),
         )
 
     /** An epic that was just created. */
-    fun epicCreated(value: JSObject): EpicCreated =
-        EpicCreated(id = ggString(value, "id"), board = boardUsage(ggGet(value, "board")!!))
+    fun epicCreated(value: Value): EpicCreated =
+        EpicCreated(id = value.get("id").text(), board = boardUsage(value.get("board")))
 
     /** An issue that was just created. */
-    fun issueCreated(value: JSObject): IssueCreated =
-        IssueCreated(id = ggString(value, "id"), board = boardUsage(ggGet(value, "board")!!))
+    fun issueCreated(value: Value): IssueCreated =
+        IssueCreated(id = value.get("id").text(), board = boardUsage(value.get("board")))
 
     /** What a reclaim freed. */
-    fun reclaimReport(value: JSObject): ReclaimReport =
+    fun reclaimReport(value: Value): ReclaimReport =
         ReclaimReport(
-            items = ggInteger(value, "items"),
-            reclaimedTokens = ggInteger(value, "reclaimedTokens"),
-            paths = texts(value, "paths"),
-            detail = ggString(value, "detail"),
+            items = value.get("items").integer(),
+            reclaimedTokens = value.get("reclaimed-tokens").integer(),
+            paths = ggTextList(value.get("paths")),
+            detail = value.get("detail").text(),
         )
 
     /** What an archive search found. */
-    fun archiveSearch(value: JSObject): ArchiveSearch =
+    fun archiveSearch(value: Value): ArchiveSearch =
         ArchiveSearch(
-            archiveEmpty = ggBool(value, "archiveEmpty"),
+            archiveEmpty = value.get("archive-empty").flag(),
             hits =
-                each(ggArray(value, "hits")) {
+                ggEach(value.get("hits")) {
                     ArchiveHit(
-                        seq = ggInteger(it, "seq"),
-                        role = messageRole(ggString(it, "role")),
-                        text = ggString(it, "text"),
+                        seq = it.get("seq").integer(),
+                        role = messageRole(it.get("role").text()),
+                        text = it.get("text").text(),
                     )
                 },
         )
 
     /** Every view open in the window. */
-    fun openViews(value: JSObject): List<OpenView> =
-        each(ggAsArray(value)) {
-            val region = ggGet(it, "region")
+    fun openViews(value: Value): List<OpenView> =
+        ggEach(value) {
+            val region = it.get("region")
             OpenView(
-                kind = viewKind(ggString(it, "kind")),
-                selector = ggString(it, "selector"),
-                tokens = ggInteger(it, "tokens"),
+                kind = viewKind(it.get("kind").text()),
+                selector = it.get("selector").text(),
+                tokens = it.get("tokens").integer(),
                 region =
-                    if (ggAbsent(region)) {
+                    if (region.absent()) {
                         null
                     } else {
                         ViewRegion(
-                            offset = ggInteger(region!!, "offset"),
-                            limit = ggInteger(region, "limit"),
+                            offset = region.get("offset").integer(),
+                            limit = region.get("limit").integer(),
                         )
                     },
             )
         }
 
     /** A child agent's handle. */
-    fun subagentHandle(value: JSObject): SubagentHandle =
+    fun subagentHandle(value: Value): SubagentHandle =
         SubagentHandle(
-            id = ggString(value, "id"),
-            slot = ggString(value, "slot"),
-            modelId = ggString(value, "modelId"),
+            id = value.get("id").text(),
+            slot = value.get("slot").text(),
+            modelId = value.get("model-id").text(),
         )
 
     /** Every child agent's result. */
-    fun subagentResults(value: JSObject): List<SubagentResult> =
-        each(ggAsArray(value)) {
+    fun subagentResults(value: Value): List<SubagentResult> =
+        ggEach(value) {
             SubagentResult(
-                id = ggString(it, "id"),
-                status = optionalText(it, "status")?.let(::agentEnding),
-                summary = ggString(it, "summary"),
+                id = it.get("id").text(),
+                status = ggOptionalText(it.get("status"))?.let(::agentEnding),
+                summary = it.get("summary").text(),
             )
         }
 
     /** Every program this session has run. */
-    fun programSummaries(value: JSObject): List<ProgramSummary> =
-        each(ggAsArray(value)) {
+    fun programSummaries(value: Value): List<ProgramSummary> =
+        ggEach(value) {
             ProgramSummary(
-                turn = ggInteger(it, "turn"),
-                lines = ggInteger(it, "lines"),
-                chars = ggInteger(it, "chars"),
-                ok = ggBool(it, "ok"),
-                error = optionalText(it, "error"),
+                turn = it.get("turn").integer(),
+                lines = it.get("lines").integer(),
+                chars = it.get("chars").integer(),
+                ok = it.get("ok").flag(),
+                error = ggOptionalText(it.get("error")),
             )
         }
 
@@ -249,7 +221,7 @@ internal object Read {
     // The fixed choices
     // -------------------------------------------------------------------------------------------
 
-    /** What a directory entry is, from the word the wire used. */
+    /** What a directory entry is, from the case name the wire used. */
     private fun entryKind(wire: String): EntryKind =
         when (wire) {
             "file" -> EntryKind.FILE
@@ -257,7 +229,7 @@ internal object Read {
             else -> EntryKind.OTHER
         }
 
-    /** Who said an archived message, from the word the wire used. */
+    /** Who said an archived message, from the case name the wire used. */
     private fun messageRole(wire: String): MessageRole =
         when (wire) {
             "system" -> MessageRole.SYSTEM
@@ -266,11 +238,15 @@ internal object Read {
             else -> MessageRole.USER
         }
 
-    /** Which kind a documentation entry is, from the word the wire used. */
+    /** Which kind a documentation entry is, from the case name the wire used. */
     private fun docKind(wire: String): DocKind =
-        if (wire == "type") DocKind.TYPE else DocKind.FUNCTION
+        when (wire) {
+            "module" -> DocKind.MODULE
+            "type" -> DocKind.TYPE
+            else -> DocKind.FUNCTION
+        }
 
-    /** Which kind a view is, from the word the wire used. */
+    /** Which kind a view is, from the case name the wire used. */
     private fun viewKind(wire: String): ViewKind =
         when (wire) {
             "file" -> ViewKind.FILE
@@ -278,14 +254,14 @@ internal object Read {
             else -> ViewKind.TEXT
         }
 
-    /** How a child agent ended, from the word the wire used. */
+    /** How a child agent ended, from the case name the wire used. */
     private fun agentEnding(wire: String): AgentEnding =
         when (wire) {
             "completed" -> AgentEnding.COMPLETED
             "exhausted" -> AgentEnding.EXHAUSTED
-            "timed_out" -> AgentEnding.TIMED_OUT
-            "auth_error" -> AgentEnding.AUTH_ERROR
-            "limit_exceeded" -> AgentEnding.LIMIT_EXCEEDED
+            "timed-out" -> AgentEnding.TIMED_OUT
+            "auth-error" -> AgentEnding.AUTH_ERROR
+            "limit-exceeded" -> AgentEnding.LIMIT_EXCEEDED
             else -> AgentEnding.MODEL_ERROR
         }
 }

@@ -2,13 +2,14 @@
 # Install every toolchain that BUILDING `test-cabinet-gg` requires, on any machine, in one call.
 #
 # THE POLICY THIS SCRIPT EXISTS TO MAKE TRUE. gg drives a model in one of eleven program languages,
-# and what a model is *told* about each one — every module, signature, argument, type and type
-# member the responses-as-code prompt renders — is a **signature catalogue** reflected out of that
-# arm's own SDK by that arm's own documentation tool: `tsc`, griffe, YARD, `purs`, javadoc, the
-# Kotlin front end, rustdoc, `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn. Those
-# catalogues used to be committed, precisely so that building gg would not require eleven
-# toolchains. They are not committed any more: `crates/gg/build.rs` reflects them on the build that
-# compiles the host embedding them, so a prompt cannot describe a surface the guest does not export.
+# and what a model can *learn* about each one — every module, signature, argument, type and type
+# member a responses-as-code documentation search and documentation view answer with — is a
+# **signature catalogue** reflected out of that arm's own SDK by that arm's own documentation tool:
+# `tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end, rustdoc, `swiftc -emit-symbol-graph`,
+# `clang++ -ast-dump=json`, Roslyn. Those catalogues used to be committed, precisely so that building
+# gg would not require eleven toolchains. They are not committed any more: `crates/gg/build.rs`
+# reflects them on the build that compiles the host embedding them, so what a model is answered with
+# cannot describe a surface the guest does not export.
 #
 # That trade is now made the other way round on purpose. This repository is developed in a
 # devcontainer so that every developer has ONE environment rather than eleven personal ones, and a

@@ -10,11 +10,10 @@ is opened by and a path a program can write.
 function, so a program finds a name by searching this module and reads it in full by opening a
 documentation view of what it found.
 
-A program does not normally import anything from here. `gg.scope` binds the modules this run offers,
-and every type they speak in, directly into the program's own namespace, so `files.read_file("a.py")`
-and `except ToolError` both work in a file with no import line at all. The package is importable all
-the same, because a Python programmer who wants to be explicit should be able to write
-`from gg.files import read_file` and have it mean the same thing.
+`import gg` is the line a program writes to reach any of it, and after it every name below is
+written the way the documentation spells it: `gg.files.read_file("a.py")`, `except
+gg.core.ToolError`. Python's other spellings mean the same thing, so `from gg import files` and
+`from gg.files import read_file` reach the same objects.
 
 What this package is, and what it is not
 ----------------------------------------
@@ -29,13 +28,15 @@ raised `ToolError`, and `None` where another language would say `undefined`.
 
 It is **not the capability model**. Every function is here whatever a run enables; gg refuses the
 ones the run withheld, at the host, with `ToolErrorCode.UNAVAILABLE`. What the run decides is which
-of them are bound into a program's scope, and therefore which a model is ever shown.
+of them a model is shown by a documentation search.
 
 Its documentation is **the** documentation. Every docstring on a catalogued function, argument, type
 and type member in this package is reflected by `tools/signatures.py` into the
 `python.signatures.json` that `crates/gg/build.rs` writes into its own `OUT_DIR`, which is what gg
-renders the system prompt and every documentation view from. There is nowhere else for a description of this surface to live, which
-is what stops one from drifting.
+answers a documentation search and every documentation view from; the system prompt renders no
+signature at all, and takes only the module paths and the one-line brief each module introduces
+itself by. There is nowhere else for a description of this surface to live, which is what stops one
+from drifting.
 
 A docstring's **first line is its brief** and everything after the blank line is its detail, which is
 PEP 257's own shape and the shape every arm's catalogue carries. The reflector refuses a first
@@ -60,6 +61,7 @@ from . import (
     tasks,
     views,
 )
+from ._registry import missing
 from .core import UNCHANGED, ToolError, ToolErrorCode, Unchanged
 
 __all__ = [
@@ -81,3 +83,7 @@ __all__ = [
     "tasks",
     "views",
 ]
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this package answers for a name it does not declare — see `gg._registry.missing`."""

@@ -4,25 +4,25 @@
 //! `board::IssueCreated` to `board`. These two belong to none of them because they belong to all of
 //! them: every function in this SDK returns `Result<_, ToolError>`.
 //!
-//! They are the one part of the surface a program writes unqualified. `gg::prelude` re-exports them
-//! by name, because a `match` on an error code that had to spell out a module would be a `match`
-//! nobody writes.
+//! They are re-exported at the crate root as well as declared here, so a program reaches them as
+//! `gg::ToolError` or under a `use gg::ToolErrorCode;` of its own, whichever reads better beside the
+//! call it is matching on.
 
 use crate::bindings::test_cabinet::gg::types as wire;
 
 /// A gg call that failed.
 ///
 /// Every function in this SDK returns one of these in its `Err` arm, which is what a Rust author
-/// expects of a fallible library call and what makes `?` compose: a program's body returns
-/// `Result<(), Failure>` and this implements [`std::error::Error`], so an unhandled failure ends the
-/// program with gg told which call failed and where.
+/// expects of a fallible library call and what makes `?` compose: a `fn main` returning
+/// `Result<(), gg::Failure>` and this implementing [`std::error::Error`] is all it takes for an
+/// unhandled failure to end the program with the failed call named in what the model reads.
 ///
 /// A failure a program expects is an ordinary `match` on [`code`](Self::code):
 ///
 /// ```ignore
 /// match files::read_text_file("notes.md", files::ReadOptions::default()) {
 ///     Ok(notes) => views::open_text("notes", &notes)?,
-///     Err(failure) if failure.code == ToolErrorCode::NotFound => {
+///     Err(failure) if failure.code == core::ToolErrorCode::NotFound => {
 ///         files::write_file("notes.md", "")?;
 ///     }
 ///     Err(failure) => return Err(failure.into()),
@@ -141,21 +141,6 @@ impl ToolErrorCode {
             wire::ErrorCode::LimitExceeded => Self::LimitExceeded,
             wire::ErrorCode::IoError => Self::IoError,
             wire::ErrorCode::Other => Self::Other,
-        }
-    }
-
-    /// The wire code this arm names, for the host's own classification of a program that ended on a
-    /// failed call.
-    pub(crate) fn to_wire(self) -> wire::ErrorCode {
-        match self {
-            Self::InvalidArgument => wire::ErrorCode::InvalidArgument,
-            Self::NotFound => wire::ErrorCode::NotFound,
-            Self::Conflict => wire::ErrorCode::Conflict,
-            Self::Refused => wire::ErrorCode::Refused,
-            Self::Unavailable => wire::ErrorCode::Unavailable,
-            Self::LimitExceeded => wire::ErrorCode::LimitExceeded,
-            Self::IoError => wire::ErrorCode::IoError,
-            Self::Other => wire::ErrorCode::Other,
         }
     }
 }

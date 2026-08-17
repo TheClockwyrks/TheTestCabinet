@@ -2,11 +2,10 @@ package gg.shell;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
-import java.util.List;
+import gg.internal.Value;
 import java.util.OptionalInt;
-import org.teavm.jso.JSObject;
 
 /**
  * Run shell commands in the workspace.
@@ -40,8 +39,7 @@ public final class Shell {
      * @ggop shell.shell
      */
     public static ShellOutput shell(String command) {
-        return Read.shellOutput(Wire.call("shell", Wire.system(), "system", "shell",
-                Wire.args(Wire.text(command))));
+        return Read.shellOutput(Coding.call("shell.shell", Value.of(command), Value.none()));
     }
 
     /**
@@ -57,10 +55,8 @@ public final class Shell {
      * @ggop shell.shell
      */
     public static ShellOutput shell(String command, int timeoutSecs) {
-        JSObject options = Wire.object();
-        Wire.set(options, "timeoutSecs", Wire.number(timeoutSecs));
-        return Read.shellOutput(Wire.call("shell", Wire.system(), "system", "shell",
-                Wire.args(Wire.text(command), options)));
+        return Read.shellOutput(Coding.call("shell.shell", Value.of(command),
+                Value.of((double) timeoutSecs)));
     }
 
     // -------------------------------------------------------------------------------------------

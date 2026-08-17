@@ -36,10 +36,12 @@ type SearchOptions =
   , limit :: Int
   )
 
--- | Which of the two kinds of thing a documentation entry describes.
+-- | Which of the three kinds of thing a documentation entry describes.
 data DocKind
+  -- | A module a program imports, and inside which its functions live.
+  = ModuleEntry
   -- | A function a program calls.
-  = FunctionEntry
+  | FunctionEntry
   -- | A type a function takes or hands back.
   | TypeEntry
 
@@ -53,13 +55,14 @@ instance Show DocKind where
 -- | # Fields
 -- |
 -- | - `key` — The fully-qualified name `Gg.Views.openDocsView` takes to read the whole entry.
--- | - `kind` — Whether it is a function or a type.
+-- | - `kind` — Whether it is a module, a function or a type.
 -- | - `module` — The module it lives in.
 -- |
--- |   A function has exactly one. A type shows every module in which a function the agent can call
--- |   mentions it — never one nothing is held in, and comma-separated when there are several, which
--- |   makes it a description rather than something to pass back as `options.module`.
--- | - `name` — The name a program calls it by, or the type's own name.
+-- |   A module and a function have exactly one; a module's is itself. A type shows every module in
+-- |   which a function the agent can call mentions it — never one nothing is held in, and
+-- |   comma-separated when there are several, which makes it a description rather than something to
+-- |   pass back as `options.module`.
+-- | - `name` — The name a program calls it by, the type's own name, or the module's own path.
 -- | - `summary` — Its one-line brief, and only that. The rest is what a documentation view holds.
 type DocHit =
   { key :: String
@@ -83,7 +86,7 @@ type DocSearch =
   , hits :: Array DocHit
   }
 
--- | Search every function and type the agent can call, by keyword and by filter.
+-- | Search every module the agent can import, every function inside one, and every type they mention.
 -- |
 -- | This is how a name is found. Matching is a case-insensitive substring over names, signatures,
 -- | briefs and detailed descriptions, so `docs` finds `openDocsView`. Ranking is by the kind of evidence
@@ -111,7 +114,7 @@ type DocSearch =
 -- |   lookup, so a name no module has matches nothing rather than failing.
 -- | - `options.type` — One type's name, narrowing to that type and to the functions that take or
 -- |   return it. Like `options.module`, a name nothing declares matches nothing rather than failing.
--- | - `options.kind` — Whether to return functions or types. The default returns both.
+-- | - `options.kind` — Whether to return modules, functions or types. The default returns all three.
 -- | - `options.offset` — How many hits to skip, for reading past the first page. The default starts
 -- |   at the best hit.
 -- | - `options.limit` — The most hits to return. The default is gg's own page size and there is a
@@ -204,15 +207,17 @@ docHit value =
   , summary: Wire.text "summary" value
   }
 
--- | Which kind of entry this is. The wire's set is closed at two and gg owns it, so the fallback
+-- | Which kind of entry this is. The wire's set is closed at three and gg owns it, so the fallback
 -- | exists only because the conversion has to be total.
 docKind :: String -> DocKind
 docKind = case _ of
+  "module" -> ModuleEntry
   "type" -> TypeEntry
   _ -> FunctionEntry
 
 -- | A kind as the filter word the guest takes.
 docKindWire :: DocKind -> String
 docKindWire = case _ of
+  ModuleEntry -> "module"
   FunctionEntry -> "function"
   TypeEntry -> "type"

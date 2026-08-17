@@ -136,7 +136,7 @@ fn the_generated_documentation_program_is_a_translation_unit() {
     let program = cpp().open_docs_views_statement(&["read_file", "open_text"]);
     assert_eq!(
         program,
-        "int main() {\n  \
+        "#include <gg/views.hpp>\n\nint main() {\n  \
          const std::array functions{\n      \
          \"read_file\",\n      \"open_text\",\n  };\n  \
          for (const auto &name : functions) {\n    \
@@ -155,6 +155,35 @@ fn the_generated_documentation_program_is_a_translation_unit() {
     assert!(source::defines_main(&empty), "{empty}");
 }
 
+/// **The opening program is a whole translation unit**, and it covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran — and on this arm that program has to define `main`, because
+/// there is nowhere else for a statement to live. What is asserted here is that gg wrote C++ —
+/// `std::array`s, range `for`s, a **designated initialiser** for the filters — and that the search
+/// is the whole-module lookup rather than the default page of one.
+#[test]
+fn the_opening_program_is_a_translation_unit() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    let program = cpp().bootstrap_program(&["files", "views"], &["read_file"]);
+    assert_eq!(
+        program,
+        format!(
+            "#include <gg/docs.hpp>\n#include <gg/views.hpp>\n\nint main() {{\n  \
+                 const std::array modules{{\n      \"files\",\n      \"views\",\n  }};\n  \
+                 for (const auto &path : modules) {{\n    \
+                     gg::docs::search(\"\", {{.module = path, .limit = {limit}}});\n  }}\n\
+             \n  \
+                 const std::array functions{{\n      \"read_file\",\n  }};\n  \
+                 for (const auto &name : functions) {{\n    \
+                     gg::views::open_docs_view(name);\n  }}\n  \
+                 return 0;\n}}\n"
+        )
+    );
+    assert!(source::defines_main(&program), "{program}");
+}
+
 /// **A code module is a namespace opened around the author's own file, and `#line` is why nothing
 /// moves.**
 ///
@@ -162,13 +191,20 @@ fn the_generated_documentation_program_is_a_translation_unit() {
 /// declaration is moved and none is re-synthesized. What makes the line numbers survive is the one
 /// thing only this language has — a line-control directive — so gg *says* what the author's first
 /// line is instead of subtracting from every diagnostic afterwards.
+///
+/// The namespace is exported from a **named module**, which is what keeps gg's surface out of the
+/// program that binds it: the `#include` is in the module's global fragment, and a global fragment
+/// reaches nobody who imports the module.
 #[test]
 fn a_code_module_is_a_namespace_opened_in_place() {
     let module = "std::vector<std::string> split(std::string_view text, char sep = ',') {\n  \
                   return {};\n}\n";
     let wrapped = source::namespaced(module, "csv_tools").expect("an ordinary module is wrapped");
     assert!(
-        wrapped.starts_with("namespace lib::csv_tools {\n#line 1 \"module_csv_tools.hpp\"\n"),
+        wrapped.starts_with(
+            "module;\n#include <gg.hpp>\nexport module lib.csv_tools;\nexport namespace \
+             lib::csv_tools {\n#line 1 \"module_csv_tools.cppm\"\n"
+        ),
         "{wrapped}"
     );
     assert!(
@@ -191,6 +227,21 @@ fn a_code_module_is_a_namespace_opened_in_place() {
         glued.contains("int one() { return 1; }\n}"),
         "the closing brace was glued to the author's last line:\n{glued}"
     );
+
+    // `module` and `import` are legal namespaces and illegal module-name components, and both are
+    // reachable keys — `binding_name` answers `module` for a slug that is nothing but separators —
+    // so each is escaped where the module name is written and left alone where the namespace is.
+    for (key, escaped) in [("module", "lib.Module"), ("import", "lib.Import")] {
+        let reserved = source::namespaced("int one() { return 1; }\n", key).expect("wrapped");
+        assert!(
+            reserved.contains(&format!("export module {escaped};")),
+            "{reserved}"
+        );
+        assert!(
+            reserved.contains(&format!("export namespace lib::{key} {{")),
+            "{reserved}"
+        );
+    }
 }
 
 /// **A `#include` in a module is refused by name, at the author's own line.**
@@ -198,7 +249,8 @@ fn a_code_module_is_a_namespace_opened_in_place() {
 /// The one refusal this half has, and it is a refusal rather than a rewrite because hoisting the
 /// line out would be gg editing somebody's file — the thing this arm has never done. The message
 /// says to delete it and write nothing in its place, which is surprising enough to have to be said
-/// outright: the prelude already declares the standard library and gg's whole surface.
+/// outright: the prelude already declares the standard library, and gg writes the one include that
+/// declares its own surface above the namespace itself.
 ///
 /// Only the module half is asserted here. The asymmetry with a **program** is real and is the
 /// language's rather than gg's — a program's `#include` is left exactly as written, because a
@@ -295,7 +347,7 @@ int nested_is_still_a_name() { return 1; }
 /// the module's single export hands it back.
 #[test]
 fn the_isolation_subject_is_a_module_rather_than_a_program() {
-    let module = cpp().isolation_module("gg-isolation-7");
+    let module = cpp().gate_module("gg-isolation-7");
     assert_eq!(
         module,
         "std::string marker() {\n  return \"gg-isolation-7\";\n}\n"
@@ -336,7 +388,7 @@ fn the_generated_catalogue_is_this_languages() {
     }
 }
 
-/// **This arm declares the libraries a program may reach**, which is what the prompt renders.
+/// **This arm declares the libraries a program may reach**, which is what a compile failure quotes back.
 ///
 /// The C++ standard library, grouped exactly as `packages/gg-sandbox-cpp/Sources/prelude.hpp` heads
 /// it — the prelude is the one declaration and both the compile and the catalogue are reflected from
@@ -357,8 +409,8 @@ fn this_arm_declares_the_libraries_a_program_may_reach() {
             "`{header}` is in the prelude and the catalogue does not name it: {named:?}"
         );
     }
-    // The three absences the prompt tells a model about, so a header a model is told it does not
-    // have cannot quietly appear.
+    // The absences this arm decided on, so a header the catalogue does not offer cannot quietly
+    // appear in the set a compile failure quotes back.
     for absent in [
         "<thread>",
         "<future>",

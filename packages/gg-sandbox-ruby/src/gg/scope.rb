@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 module GG
-  # The surface a program is handed: the capability modules, carrying every function this SDK
-  # declares.
+  # The surface a program is handed once it has written `require "gg"`: the capability modules,
+  # carrying every function this SDK declares.
   #
   # **Nothing here varies with the run, and nothing here is a gate.** Every declaration
-  # `GG::Surface` recorded is bound onto its module at load time — inside the heap
-  # `componentize-js` snapshots — and stays there for every program of every run. A call this agent
-  # was not granted is an ordinary Ruby call that reaches the host, and what comes back is a
-  # `GG::Core::ToolError` naming the capability that is missing and why: a value a `rescue` clause
-  # can catch and act on, where a `NoMethodError` from Opal was only ever a dead end.
+  # `GG::Surface` recorded is bound onto its module when this file runs, which is when a program or
+  # a code module requires `gg` and never before. A call this agent was not granted is an ordinary
+  # Ruby call that reaches the host, and what comes back is a `GG::Core::ToolError` naming the
+  # capability that is missing and why: a value a `rescue` clause can catch and act on, where a
+  # `NoMethodError` from Opal was only ever a dead end.
   #
   # The gate is the **host's**, from gg's own operations table, and it is the same one that decides
   # what a `docs.search` will show this agent. There is one reading of "may this agent call X" and
@@ -18,7 +18,7 @@ module GG
   # **The types are not built at all**, for the same reason they never were: a type is not a
   # capability. `GG::Core::ToolError` is what a `rescue` clause catches and
   # `GG::Tasks::TaskStatus::DONE` is what a status argument is, and both are declared by this SDK
-  # once, into the pre-initialised heap, where they stay.
+  # once, when it is required.
   #
   # ## Why the implementations are still lifted off and put back
   #
@@ -34,13 +34,11 @@ module GG
     # The capability modules, resolved from the names `GG::Surface` orders them by.
     MODULES = Surface::MODULES.map { |name| GG.const_get(name) }.freeze
 
-    # Each declaration's implementation and calling shape, lifted off its module at load time.
+    # Each declaration's implementation and calling shape, lifted off its module when this file
+    # runs.
     #
-    # `componentize-js` runs this file's top level under `wizer` and snapshots the heap, so what is
-    # built here is *in the artifact* and costs a turn nothing. Reflecting a method's parameters per
-    # turn instead is not free and was measured: over the thirty-five bound functions, twice each,
-    # it cost about 3 ms of the roughly 9 ms a whole turn takes — a third of it, on the arm whose
-    # entire point is what a language costs.
+    # It is the largest part of what `require "gg"` costs a turn, because reflecting a method's
+    # parameters is not free: over the thirty-five bound functions, twice each, about 3 ms.
     IMPLEMENTATIONS = {}
 
     # The module paths a program may reach, in presentation order — read by `shim.js` for the
@@ -225,19 +223,6 @@ module GG
         Scope.check_keywords(fn, accepted, kwargs)
         callable.call(*args, **kwargs, &block)
       end
-    end
-
-    # Bind the code modules `GG::Lib` collected at `lib.<key>`, or remove `lib` when there are none.
-    #
-    # @return [Boolean] whether a `lib` name was installed
-    def self.install_lib
-      Object.send(:remove_method, :lib) if Object.method_defined?(:lib)
-      modules = Lib.registry
-      return false if modules.empty?
-
-      namespaces = Lib::Namespaces.new(modules)
-      Object.send(:define_method, :lib) { namespaces }
-      true
     end
 
     lift

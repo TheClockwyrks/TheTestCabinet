@@ -5,39 +5,46 @@ title: "Rust"
 ## Preparation
 
 An agent whose responses-as-code capability names `rust` answers each turn with
-a Rust program. The reply is wrapped in a one-line prologue and an epilogue,
-written to `program.rs` in the preparation's own workspace, and compiled by one
-`rustc` invocation to a `wasm32-unknown-unknown` core module. gg then encodes
-that module into a WebAssembly component in process, validating it on the way
-out. The component is what the turn evaluates.
+a whole Rust program. The reply is written to `program.rs` in the preparation's
+own workspace exactly as the model sent it and compiled by one `rustc`
+invocation into a `wasm32-wasip1` core module. gg then encodes that module into
+a WebAssembly component in process, with the pinned `wasi_snapshot_preview1`
+reactor adapter, validating it on the way out. The component is what the turn
+evaluates.
 
 This arm has no guest component: `guest_component()` answers `None`, the
 compiled bytes ride on the prepared program, and the engine instantiates a fresh
-component every turn. The prepared program carries no source, and no
-`unreachable` count, since a `return` here returns from the wrapper.
+component every turn. The prepared program carries no source.
 
 ## Program shape
 
-A program is a sequence of statements, placed inside the body of
-`fn __gg_program() -> Result<(), gg::Failure>`. Everything Rust admits in a
-function body is admitted where the model wrote it, including `use`, `struct`,
-`impl`, `fn`, `mod`, `const` and inner attributes. The prologue around it is
-exactly one line, and a test asserts that. It writes
-`use ::gg::prelude::*;`, declares the guest type the world is exported on, calls
-`gg::program::begin` with the program's file name and the line offset, invokes
-the model's body, and expands the `export!` macro that makes the crate a
-component. The import is a glob so a program's own `use std::fs;` shadows gg's
-module rather than colliding with it.
+A program is a whole Rust program: the `use` lines the model wrote and the
+`fn main` it declared. gg writes no prologue, no epilogue, no entry point and no
+import, so the file `rustc` reads and the file the model sent are the same
+bytes, and every diagnostic and every panic is already in the model's own
+coordinates.
 
-The epilogue opens with a `;` on its own line so a trailing expression on the
-model's last line is a statement, then returns `Ok(())`. Diagnostics are moved
-back by the prologue's one line, and no column moves at all.
+`fn main() -> Result<(), gg::Failure>` is the shape against a `Result`-returning
+SDK, because it is what makes `?` compose. A program with no entry point is
+`error[E0601]: main function not found in crate program`, which is `rustc`'s own
+located diagnostic.
 
-A program that defines `fn main` is refused as `PrepareError::Unsupported`, at
-the line, with a sentence saying to move the work to the top level. Nothing
-calls a `main` here, so such a program would report a clean turn having done
-nothing. The scan is shallow, matching a line whose own text begins the
-definition.
+The crate type is `bin`, and that is what makes the model's `main` reachable.
+`rustc` compiling a binary crate emits the unmangled C entry symbol wasi-libc
+names `__main_void` beside the model's `main` and asks `rust-lld` to export it;
+gg's SDK declares that symbol, calls it from the world's `run` export, and
+propagates a non-zero status as an exit, so the turn fails. A library crate type
+emits neither, since
+there the model's `main` is dead code and the Rust-mangled symbol carries a
+`-C metadata` hash no `extern` declaration can name.
+
+`--extern gg=…` makes the SDK available and puts no name in a program's scope.
+A program reaches a name in full, `gg::files::read_file(…)`, or under the
+`use` line the catalogue states for that module. Since `rustc` links an
+`--extern` crate only when the program's own text refers to it, and exports the
+world's `run` only for a crate it linked, gg names the SDK archive to the linker
+directly and asks for the world's two exports and the canonical ABI's two by
+name, so a program which reaches nothing gg offers still runs.
 
 ## Toolchain and build artifacts
 
@@ -46,19 +53,21 @@ definition.
 shim resolves the release the library set was built by. One invocation may take
 60 seconds before it is killed and reported as a toolchain failure.
 
-Both invocations pass `--edition 2024`, `--target wasm32-unknown-unknown`,
+Both invocations pass `--edition 2024`, `--target wasm32-wasip1`,
 `-Cpanic=abort`, `-Awarnings` and `--error-format=json`, and name the library
-set on `-L dependency=` and `--extern`. A program compiles as a `cdylib` named
+set on `-L dependency=` and `--extern`. A program compiles as a `bin` named
 `program`, with `-Copt-level=s` and `-Cstrip=symbols`. A code module compiles as
 a `lib` with `--emit=metadata`, since everything its author is answerable for is
-reported before code generation.
+reported before code generation and a file of items declares no `main`.
 
-`crates/gg-sandbox-artifacts/rust` generates two artifacts into the build's own
-output directory, reached as `GG_ARTIFACTS_RUST`. `rust.libraries.tar.gz` holds
-every `.rlib` a program is compiled against, this arm's SDK among them. It is
-embedded in the gg binary and unpacked once per machine into a shared read-only
-directory, which is this arm's whole warm-up. `rust.toolchain.json` records the
-compiler version, the target triple, and which crates are named on `--extern`.
+`crates/gg-sandbox-artifacts/rust` generates three artifacts into the build's
+own output directory, reached as `GG_ARTIFACTS_RUST`. `rust.libraries.tar.gz`
+holds every `.rlib` a program is compiled against, this arm's SDK among them. It
+is embedded in the gg binary and unpacked once per machine into a shared
+read-only directory, which is this arm's whole warm-up. `rust.adapter.wasm` is
+the pinned reactor adapter the encode needs, held in memory rather than on disk.
+`rust.toolchain.json` records the compiler version, the target triple, the
+adapter release, and which crates are named on `--extern`.
 
 The set must be built by the compiler the checkout pins, since an `.rlib` is a
 compiler-version-private format, and `build.sh` fails by name when the shell's
@@ -72,18 +81,24 @@ spelled, obeying the rules on
 [the agent surface page](/gg/languages/agent-surface/). It is twelve capability
 modules (`files`, `shell`, `board`, `tasks`, `memories`, `views`, `docs`,
 `context`, `delegation`, `skills`, `programs`, `session`) plus `core`, which
-declares no function and holds the types the other modules' signatures name. The
-prelude re-exports the modules, `ToolError`, `ToolErrorCode`, `Failure` and
-`log`, never the types inside a module. Every function carries gg's own key for
-the operation it binds, except `shell.shell`, spelled `shell::run`.
+declares no function and holds the types the other modules' signatures name. It
+declares no prelude and gg imports nothing on a program's behalf. Every function
+carries gg's own key for the operation it binds, except `shell.shell`, spelled
+`shell::run`.
+
+The SDK also carries this arm's shell, in `program.rs`: the type gg's world is
+exported on, the `export!` that makes every program a component, and the
+declaration of the entry symbol it calls the model's `main` through. No model
+reads any of it, and no source gg compiles contains it.
 
 - A call is a path, `files::read_file(path, files::ReadOptions::default())?`,
   and this arm's `member_separator` is `::`. Each module owns the types it
   produces, so `files::FileRead` is a path and two modules may declare a type of
   the same name.
-- Every call returns `Result<_, ToolError>`, `ToolError` implements
+- Every call returns `Result<_, gg::core::ToolError>`, `ToolError` implements
   `std::error::Error`, and its `code` is an enum, so `?` composes a gg call with
-  the standard library's own fallible operations.
+  the standard library's own fallible operations inside a `main` returning
+  `Result<(), gg::Failure>`.
 - One optional argument is an `Option<T>` in that position; two or more are an
   options struct with a `Default`, filled in with functional update. A fixed
   choice is an `enum`, a three-way patch field is an `enum` with a `Default` arm
@@ -93,8 +108,8 @@ the operation it binds, except `shell.shell`, spelled `shell::run`.
   `delegation::send_message` and `programs::get` are also inherent methods on
   the value carrying their one argument, catalogued as aliases that count toward
   no coverage.
-- `gg::log` is what the run's operator reads. The target has no standard output,
-  so a `print!` is discarded and `views::open_text` is what reaches the model.
+- `gg::log` is what the run's operator reads. gg attaches no standard output to
+  the guest, so `views::open_text` is what reaches the model.
 
 ### Library set
 
@@ -106,7 +121,7 @@ library list derive from that one declaration, so what a model is told it may
 and the SDK are named on `--extern`; the closure under them is present for
 linking and is not a name a program may write.
 
-A crate may enter the set only if it compiles for `wasm32-unknown-unknown` and
+A crate may enter the set only if it compiles for `wasm32-wasip1` and
 neither is nor depends on a proc macro, since a proc macro is a host `.so` and
 an `.rlib` whose metadata names one cannot be loaded on another architecture.
 `build.sh` fails on either.
@@ -121,6 +136,11 @@ the generated `src/bindings.rs`, cut by `bindings.sh`, which both
 `signatures.sh` and `build.sh` call. Rust has no per-parameter doc slot, so a
 signature taking *N* arguments documents *N* under a `# Arguments` heading, in
 order, under their own names.
+
+Each module states `use gg::<module>;` as the line a program writes to reach it
+by its own name, composed by the reflector because rustdoc describes what a
+crate declares rather than how another file reaches it. A documentation view
+quotes that line.
 
 - rustdoc runs under `RUSTC_BOOTSTRAP=1`, because its JSON output is unstable
   and this arm is documented by the same stable compiler that builds the library
@@ -140,51 +160,69 @@ resolves rather than a lookup on a value: a key or a name that does not exist is
 a diagnostic on the turn that wrote it. Binding keys are lowered to ASCII
 snake_case identifiers, since the key is a path segment.
 
-A module's preparation compiles it alone, only to check it, and reads the public
-items at its top level from the author's own source as the names its namespace
-offers. It hands back source, because a module is an input to the program
-compile that links it. Each module in scope is written beside the entry file and
-declared below the program, where it moves no line of it.
+A module's preparation compiles the author's own bytes alone, only to check
+them, and reads the public items at its top level from that source as the names
+its namespace offers. A module's author writes the same `use gg::<module>;`
+lines a program does. It hands back source, because a module is an input to the
+program compile that links it. Each module in scope is written beside the entry
+file and declared below the program's last line, which moves no line of it. A
+reply that ends mid-line is closed with a newline first, so a declaration never
+lands inside a line the model wrote.
 
 ## Failures
 
 Every diagnostic `rustc` produces is `PrepareError::Compile`, since `rustc` has
 no parse-only phase and does not mark a diagnostic as a parse failure. A model
 is shown at most eight, each rendered with its children. A diagnostic is located
-only when its primary span falls inside the model's own lines, after the
-one-line offset is subtracted. One earned by gg's wrapper, its epilogue or the
-library set is still shown, without a location. An invocation that emitted no
-error-level diagnostic, could not be started, or exceeded the timeout is a
-toolchain failure rather than the model's fault, reported as
-[the compilation page](/gg/languages/compilation/) describes.
+only when its primary span falls inside the model's own lines, and its line and
+column are reported exactly as `rustc` gave them. One earned by the library set
+or by the module declarations below the program is still shown, without a
+location. An invocation that emitted no error-level diagnostic, could not be
+started, or exceeded the timeout is a toolchain failure rather than the model's
+fault, reported as [the compilation page](/gg/languages/compilation/) describes.
 
-At run time the target has no unwinder, so a panic aborts and traps the store,
-and a trap alone carries no message or location. `gg::program::begin` installs a
-panic hook that completes `feedback.report-error` with the panic's message and
-the model's own line and column, out of `std::panic::Location`. The host prefers
-what the program reported over the trap that followed it, while a ceiling gg
-imposed, such as a timeout, still wins. `-Cstrip=symbols` leaves `Location`
-intact, since it is static data.
+At run time a failure reaches the model by capture. Nothing in this arm's SDK
+intercepts one: the program dies the way its runtime kills it, and the model
+reads what the runtime wrote to the standard error `wasm32-wasip1` gives it and
+gg's membrane keeps.
 
-## Prompt dialect
+A panic writes `std`'s own message, `thread 'main' (1) panicked at
+program.rs:6:5:`, in the model's own file at the model's own line and column,
+and then aborts, which traps the store; gg shows the trap with that stderr in
+front of it. A `main` returning `Err` has `std`'s `Termination` write
+`Error: …` before the shell propagates the status, so the turn fails rather
+than reporting a program that did nothing. `std::process::exit` is `proc_exit`,
+which reaches gg as an `I32Exit` carrying success or failure rather than the
+status the program passed. `-Cstrip=symbols` leaves `Location` intact, since it
+is static data.
 
-The templates are `system-code.rust.hbs` and `code-nothing-shown.rust.hbs`.
-Neither writes a function name: every call they quote is resolved from this
-arm's catalogue as the template renders. The system template states that the
-whole response is compiled as a Rust program and a program `rustc` refuses is
-not executed, and it also states:
+## Prompt segment
 
-- views are the only way to read a value, `println!` goes nowhere because the
-  target has no standard output, every function is synchronous with nothing to
-  `.await`, and `std::thread::spawn` panics;
-- the response is the body of a function with no `main`, `use gg::prelude::*;`
-  is already written above the first line as a glob, and the call, argument and
-  error idioms above are how a program is written;
-- the library set is the whole of what is linked, so reaching outside it is a
-  compile error on the turn that wrote it;
-- the module paths are the only names it gives, a function is found by searching
-  the documentation, and the SDK declares every function whatever the run
-  enabled, so a call the agent was not granted compiles and fails when it runs.
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`rust`, and `code-nothing-shown.hbs` through a clause naming `println!`. The
+segment states:
+
+- the reply is compiled verbatim, as a whole Rust program that must define
+  `main`, and the `use` lines are the program's to write;
+- every call returns `Result<_, gg::core::ToolError>` and `main` returns a
+  `Result`, so `?` propagates a failure and a `match` on the `code` branches on
+  one, and a failure of the program's own is built with `gg::program::message`;
+- a call with one optional argument takes an `Option<T>`, a call with two or
+  more takes an options struct with a `Default`, and a module is reached by its
+  path in full or under its own `use` line.
+
+`gg::Failure` and `gg::program::message` are the two names any segment writes
+that no catalogue carries. Neither binds a capability, so the reflection over the
+SDK's capability modules does not report them and a documentation search does not
+find them. They are in the segment because a program has no other way to declare
+the return type its `main` composes `?` against, or to build a failure of its
+own.
+
+The arm names `rustc` as its [checker](/gg/languages/compilation/), so the
+shared body states that a program is compiled before it runs, that one `rustc`
+refuses is not executed, and that a call the run withheld compiles and fails
+when it runs. The library set is carried by a compile failure rather than by the
+prompt.
 
 ## Healing dialect
 

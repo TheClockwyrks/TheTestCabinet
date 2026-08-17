@@ -4,8 +4,9 @@
 //!
 //! # What "real" means here
 //!
-//! All of it, and on this arm more of it than on any other. A program starts as Rust statements,
-//! goes through [`compile_program`](super::compile::compile_program) — the production prepare step,
+//! All of it, and on this arm more of it than on any other. A program starts as a whole Rust
+//! program — its own `use` lines and its own `fn main` — goes through
+//! [`compile_program`](super::compile::compile_program) — the production prepare step,
 //! spawning a real `rustc` through the seam's own isolated invocation, in a
 //! [`PrepareContext`](crate::sandbox::PrepareContext) — and what comes back is not source but a
 //! **component**, which is then compiled with
@@ -23,10 +24,10 @@
 //! # What is here and what is not
 //!
 //! This file is the substrate: that a whole Rust program compiles, encodes, instantiates and runs;
-//! that what it says reaches the host through the real membrane; that a **panic** — which on
-//! `wasm32-unknown-unknown` has no unwinder and therefore traps the store — still reaches the model
-//! with its message and its own line; that a returned `Err` is reported as itself; the two bands
-//! `rustc` produces between them; and the one program shape gg refuses.
+//! that the shell reaches the model's own `fn main` through the entry symbol `rustc` emits for a
+//! binary crate; that a **panic** reaches the model carrying `std`'s own words and the model's own
+//! file, line and column; that a `main` returning `Err` is reported as itself; that a program which
+//! names nothing of gg's still runs; and the two bands `rustc` produces between them.
 //!
 //! Isolation is **not** here. This arm's own hand-pointed copy of the gate was deleted at
 //! registration in favour of the seam's, which drives this arm's program and module steps sixteen
@@ -49,6 +50,9 @@ use std::time::Instant;
 
 use serde_json::Value;
 use test_cabinet_core::gg::GgProgramLanguage;
+
+use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use super::compile::compile_program;
 use crate::ending::{Ending, EndingRole};
@@ -85,13 +89,12 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
 /// belongs to a *registered* language rather than to an artifact: the resolution of the language
 /// itself. Everything else is the production path, including
-/// [`keep_reported_error`](crate::sandbox::keep_reported_error) — which this arm is the reason for,
-/// so a copy of the loop that skipped it would prove nothing about the failure this arm actually
-/// produces.
+/// [`keep_reported_error`](crate::sandbox::keep_reported_error), so a copy of the loop that left a
+/// step out would prove nothing about the failure this arm actually produces.
 ///
 /// The [membrane state](MembraneState) is built with **this** language, which is what decides how a
-/// refused call's name is spelled back at the model — `view::open_text` rather than
-/// `view.open_text`, since an API object here is a module.
+/// refused call's name is spelled back at the model — `views::open_text` rather than
+/// `views.open_text`, since an API object here is a module.
 pub(super) fn evaluate(
     component: &[u8],
     operations: &[crate::sandbox::operations::OperationId],
@@ -197,7 +200,7 @@ fn evaluate_granting(
         store.data_mut().revoke_completion();
     }
     let returned = keep_reported_error(returned, &store);
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     (outcome, log)
 }
 
@@ -229,15 +232,36 @@ pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     }
 }
 
-/// The failure a program did not handle, insisting that the sandbox itself did not fail.
-pub(super) fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
+/// **What a failed program's runtime said**, insisting that it failed at all.
+///
+/// A runtime failure on this arm arrives as a [`Trap`](SandboxError::Trap) carrying the guest's own
+/// standard error, and not as a structured [`ProgramError`]: nothing in this arm's SDK intercepts a
+/// failure to report one, so what the host has is what the runtime wrote before it died. That is the
+/// [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) shape — capture rather than
+/// interception — and it is why these tests read a string rather than a struct.
+pub(super) fn trap(outcome: &SandboxOutcome) -> &str {
     match &outcome.result {
-        Ok(result) => result
-            .error
-            .as_ref()
-            .unwrap_or_else(|| panic!("the program did not fail; it logged {:?}", outcome.logs)),
-        Err(error) => panic!("expected a program fault, but the sandbox failed: {error}"),
+        Ok(result) => panic!(
+            "the program did not fail; it logged {:?} and reported {:?}",
+            outcome.logs, result.error
+        ),
+        Err(SandboxError::Trap(reported)) => reported,
+        Err(error) => panic!("expected the program's own runtime to fail it: {error}"),
     }
+}
+
+/// The location gg attached to a failed program, read off the outcome rather than out of the text.
+///
+/// Always `None` on this arm, and asserted rather than assumed: the only location a Rust program has
+/// is the one inside its runtime's own sentence, and a second one gg composed would be a coordinate
+/// in a file the model did not write.
+pub(super) fn program_error_location(outcome: &SandboxOutcome) -> Option<&str> {
+    outcome
+        .result
+        .as_ref()
+        .ok()
+        .and_then(|result| result.error.as_ref())
+        .and_then(|error: &ProgramError| error.location.as_deref())
 }
 
 /// One `feedback.log` line, written against the raw bindings rather than through `gg::log`.
@@ -245,7 +269,7 @@ pub(super) fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
 /// Deliberately under the SDK: what these tests exercise is the substrate, and a program here that
 /// went through the SDK would be asserting two things at once. The surface's own tests use
 /// `gg::log`.
-const LOG: &str = "::gg::bindings::test_cabinet::gg::feedback::log";
+const LOG: &str = "gg::bindings::test_cabinet::gg::feedback::log";
 
 #[test]
 fn a_real_rust_program_runs_through_the_real_membrane() {
@@ -270,29 +294,32 @@ impl fmt::Display for Entry {{
     }}
 }}
 
-let text = "the quick brown fox the lazy dog the end";
-let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
-for word in text.split_whitespace() {{
-    *counts.entry(word).or_insert(0) += 1;
+fn main() -> Result<(), gg::Failure> {{
+    let text = "the quick brown fox the lazy dog the end";
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for word in text.split_whitespace() {{
+        *counts.entry(word).or_insert(0) += 1;
+    }}
+
+    let mut entries: Vec<Entry> = counts
+        .iter()
+        .map(|(word, count)| Entry {{ word: (*word).to_string(), count: *count }})
+        .collect();
+    entries.sort_by(|left, right| right.count.cmp(&left.count).then(left.word.cmp(&right.word)));
+
+    let top = entries.first().cloned().ok_or_else(|| gg::program::message("no words"))?;
+    {LOG}(&format!("top {{top}}"));
+
+    let parsed: i64 = "  -17 ".trim().parse()?;
+    let described = match parsed {{
+        n if n < 0 => format!("negative {{}}", n.abs()),
+        0 => "zero".to_string(),
+        other => format!("positive {{other}}"),
+    }};
+    {LOG}(&described);
+    {LOG}(&format!("distinct {{}}", entries.len()));
+    Ok(())
 }}
-
-let mut entries: Vec<Entry> = counts
-    .iter()
-    .map(|(word, count)| Entry {{ word: (*word).to_string(), count: *count }})
-    .collect();
-entries.sort_by(|left, right| right.count.cmp(&left.count).then(left.word.cmp(&right.word)));
-
-let top = entries.first().cloned().ok_or_else(|| ::gg::program::message("no words"))?;
-{LOG}(&format!("top {{top}}"));
-
-let parsed: i64 = "  -17 ".trim().parse()?;
-let described = match parsed {{
-    n if n < 0 => format!("negative {{}}", n.abs()),
-    0 => "zero".to_string(),
-    other => format!("positive {{other}}"),
-}};
-{LOG}(&described);
-{LOG}(&format!("distinct {{}}", entries.len()));
 "#
     ));
 
@@ -309,13 +336,16 @@ fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
     // opened, and the session ended — the three things that make this a sandbox rather than a
     // wasm runtime.
     let component = prepare(&format!(
-        r#"let text = ::gg::bindings::test_cabinet::gg::helpers::read_text_file("notes.md", None, None)
-    .map_err(|error| ::gg::program::message(format!("read failed: {{}}", error.message)))?;
-{LOG}(&format!("read {{}} bytes", text.len()));
-::gg::bindings::test_cabinet::gg::views::open_text_view("summary", &text.to_uppercase())
-    .map_err(|error| ::gg::program::message(error.message))?;
-::gg::bindings::test_cabinet::gg::session::finish("counted the notes")
-    .map_err(|error| ::gg::program::message(error.message))?;
+        r#"fn main() -> Result<(), gg::Failure> {{
+    let text = gg::bindings::test_cabinet::gg::helpers::read_text_file("notes.md", None, None)
+        .map_err(|error| gg::program::message(format!("read failed: {{}}", error.message)))?;
+    {LOG}(&format!("read {{}} bytes", text.len()));
+    gg::bindings::test_cabinet::gg::views::open_text_view("summary", &text.to_uppercase())
+        .map_err(|error| gg::program::message(error.message))?;
+    gg::bindings::test_cabinet::gg::session::finish("counted the notes")
+        .map_err(|error| gg::program::message(error.message))?;
+    Ok(())
+}}
 "#
     ));
     let (outcome, log) = evaluate(
@@ -361,80 +391,185 @@ fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
     );
 }
 
+/// **A panic reaches the model in `std`'s own words, at the model's own file, line and column.**
+///
+/// Nothing is intercepted to make that true. There is no panic hook in this arm's SDK: the program
+/// panics, `std` writes its own message to standard error — which `wasm32-wasip1` gives it and gg's
+/// membrane keeps — and the abort that follows traps the store. What the model reads is the trap
+/// **with the guest's stderr in front of it**, so the sentence is the language's and the coordinates
+/// are the model's, uncorrected, because there is no wrapper to correct for.
+///
+/// On the target this arm used to have there was nothing to capture at all: `wasm32-unknown-unknown`
+/// matches no arm of std's stdio `cfg_select!` and falls through to `unsupported.rs`, where a write
+/// discards its bytes and reports success.
 #[test]
-fn a_panic_reaches_the_model_with_its_own_line_rather_than_trapping() {
-    // The arm's hardest problem, and the reason it has a panic hook at all.
-    // `wasm32-unknown-unknown` has no unwinder — `panic = "unwind"` is not available on it — so a
-    // panic aborts and the abort traps the whole store. Left alone, everything a model would need is
-    // destroyed: no message, no class, no line. The hook runs on a live guest before the abort and
-    // completes a real `feedback.report-error` host call, and `keep_reported_error` is what stops
-    // the trap that follows from overwriting it.
+fn a_panic_reaches_the_model_in_stds_own_words_at_the_models_own_line() {
     let outcome = run(&format!(
-        r#"let values = vec![1, 2, 3];
-{LOG}("about to reach past the end");
-let missing = values[7];
-{LOG}(&format!("unreachable {{missing}}"));
+        r#"fn main() {{
+    let values = vec![1, 2, 3];
+    {LOG}("about to reach past the end");
+    let missing = values[7];
+    {LOG}(&format!("unreachable {{missing}}"));
+}}
 "#
     ));
 
-    let error = program_error(&outcome);
+    let reported = trap(&outcome);
     assert!(
-        error.message.contains("panicked"),
-        "a panic reached the model as {:?}",
-        error.message
+        reported.contains("index out of bounds: the len is 3 but the index is 7"),
+        "the panic's own message was lost: {reported}"
     );
+    // `values[7]` is at line 4, column 25 of the file the model sent — and of the file `rustc`
+    // compiled, because they are the same file. `#[track_caller]` on slice indexing is what puts
+    // the location in the program rather than inside `core`.
     assert!(
-        error.message.contains("index out of bounds"),
-        "the panic's own message was lost: {:?}",
-        error.message
-    );
-    // Line 3 of the model's program, not line 4 of the file gg compiled. `#[track_caller]` on slice
-    // indexing is what puts the location in the program rather than inside `core`.
-    assert_eq!(
-        error.location.as_deref(),
-        Some("line 3, column 21"),
-        "the panic was not located in the model's own coordinates"
+        reported.contains("panicked at program.rs:4:25:"),
+        "the panic was not located in the model's own coordinates: {reported}"
     );
     // What the program said before it failed survives, which is most of what makes a failed turn
     // recoverable.
     assert_eq!(outcome.logs, ["about to reach past the end"]);
 
-    // The other half of the same mechanism: an `unwrap` on `None`, which is the panic a model
-    // actually writes most often.
-    let outcome = run("let missing: Option<u32> = None;\nlet _ = missing.unwrap();\n");
-    let error = program_error(&outcome);
+    // The panic a model actually writes most often, on the model's own FIRST line — the one place
+    // any offset arithmetic would show, since there is no line above it to be confused with.
+    let outcome = run("fn main() { let missing: Option<u32> = None; missing.unwrap(); }\n");
+    let reported = trap(&outcome);
     assert!(
-        error
-            .message
-            .contains("called `Option::unwrap()` on a `None` value"),
-        "an unwrap panic reached the model as {:?}",
-        error.message
+        reported.contains("called `Option::unwrap()` on a `None` value"),
+        "an unwrap panic reached the model as {reported}"
     );
-    assert_eq!(error.location.as_deref(), Some("line 2, column 17"));
+    assert!(
+        reported.contains("panicked at program.rs:1:54:"),
+        "the model's first line is line 1 of the model's program: {reported}"
+    );
+
+    // gg attaches no location of its own, on this shape or any other. The location a model reads is
+    // inside the runtime's own sentence, which is the only place this arm has one.
+    assert_eq!(program_error_location(&outcome), None);
+
+    // A program that writes a hundred kilobytes to fd 2 and then panics. This arm leaves standard
+    // error to the program, so `std`'s dying sentence is the LAST thing on a channel the program
+    // filled — the opposite of C#, where the runtime names the fault on the first line and repeats
+    // one frame for fifty kilobytes. It is the pair of cases the guest stderr bound is shaped by:
+    // both ends survive, and the deletion between them is counted.
+    let outcome = run(r#"fn main() {
+    eprintln!("the first line the program wrote");
+    for line in 0..2000u32 {
+        eprintln!("filler line {line} of a program that said a great deal");
+    }
+    panic!("and then it gave up");
+}
+"#);
+    let reported = trap(&outcome);
+    assert!(
+        reported.starts_with("the first line the program wrote"),
+        "the head of what the program wrote was evicted: {reported}"
+    );
+    assert!(
+        reported.contains("panicked at program.rs:6:5:")
+            && reported.contains("and then it gave up"),
+        "the panic at the far end of a long report was evicted: {reported}"
+    );
+    assert!(
+        reported.contains(" bytes dropped"),
+        "a bounded report did not count what it dropped: {reported}"
+    );
+    assert!(
+        !reported.contains("filler line 1000 "),
+        "a report this size reached the model whole: {reported}"
+    );
 }
 
+/// **The bytes `rustc` reads are the bytes the model sent**, read back off the disk the compiler
+/// read them from.
+///
+/// The pure-function half of this is next door in [`source`](super::source); this is the half that
+/// cannot be satisfied by a preparation that agrees with itself. It compiles through the production
+/// step, then opens `program.rs` in that preparation's own workspace and compares it to the reply,
+/// byte for byte — so a prologue, an epilogue, an import or a re-indent added anywhere between the
+/// seam and `rustc` fails here.
+#[test]
+fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
+    for source in [
+        "fn main() {}\n",
+        "use gg::views;\n\nfn main() -> Result<(), gg::Failure> {\n    \
+             views::open_text(\"n\", \"body\")?;\n    Ok(())\n}\n",
+        "// a comment first\n\n#[derive(Debug)]\nstruct Ledger {\n    total: u32,\n}\n\n\
+             fn main() {\n    let _ = Ledger { total: 0 };\n}\n",
+        // No trailing newline, which is the shape a model's reply most often really has.
+        "fn main() { let x = 1; let _ = x; }",
+    ] {
+        let context = PrepareContext::new();
+        compile_program(source, &[], &context).expect("this Rust compiles");
+        let workspace = context
+            .workspace()
+            .expect("the preparation has a workspace");
+        let written = std::fs::read_to_string(workspace.work().join("program.rs"))
+            .expect("the compiler was handed a program.rs");
+        assert_eq!(
+            written, source,
+            "the file the compiler read is not the reply gg was handed"
+        );
+    }
+}
+
+/// **A program that names nothing of `gg`'s still runs.**
+///
+/// `--extern gg=…` makes the crate *available*; `rustc` loads it only if the program's text refers
+/// to it, and asks `rust-lld` to export the world's `run` only for a crate it loaded. So without
+/// [`link_the_shell`](super::compile) this program would link a module with no entry point at all,
+/// the encode would succeed anyway, and the failure would arrive as gg's own artifact being broken —
+/// ending the session over a program the model wrote correctly.
+///
+/// This is the guard the whole of that argument rests on, and it is driven end to end rather than
+/// read off the module's export section: what it asserts is that the shell reached the model's
+/// `main`.
+#[test]
+fn a_program_that_names_nothing_of_ggs_still_reaches_its_own_main() {
+    let outcome = run("fn main() {\n    let values = vec![1, 2, 3];\n    let _ = values[7];\n}\n");
+    let reported = trap(&outcome);
+    assert!(
+        reported.contains("index out of bounds") && reported.contains("program.rs:3:19"),
+        "the model's `main` did not run: {reported}"
+    );
+
+    // And one that neither names gg nor fails is a clean turn.
+    let outcome = run("fn main() {\n    let _ = (1..10).sum::<u32>();\n}\n");
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+}
+
+/// **A `main` that returns `Err` says what it ended on**, and the turn fails.
+///
+/// The ordinary failure path, and the one `?` produces. `fn main() -> Result<(), gg::Failure>` is
+/// the shape this arm's prompt asks for, and `std`'s own `Termination` writes `Error: …` to standard
+/// error before returning a non-zero status — which the shell then propagates as an exit, so the
+/// turn is a failure rather than a program the model is told worked.
 #[test]
 fn a_program_that_returns_an_error_is_reported_as_itself() {
-    // The ordinary failure path, and the one `?` produces. The body gg wraps a program in returns
-    // `Result<(), gg::Failure>`, so `?` against any `std::error::Error` composes — which is the
-    // whole reason the wrapper is not a `()`-returning function.
     let outcome = run(&format!(
-        r#"{LOG}("parsing");
-let count: u32 = "not a number".parse()?;
-{LOG}(&format!("unreachable {{count}}"));
+        r#"fn main() -> Result<(), gg::Failure> {{
+    {LOG}("parsing");
+    let count: u32 = "not a number".parse()?;
+    {LOG}(&format!("unreachable {{count}}"));
+    Ok(())
+}}
 "#
     ));
-    let error = program_error(&outcome);
+    let reported = trap(&outcome);
     assert!(
-        error.message.contains("invalid digit"),
-        "the `?`-propagated error reached the model as {:?}",
-        error.message
+        reported.contains("invalid digit"),
+        "the `?`-propagated error reached the model as {reported}"
     );
     assert_eq!(outcome.logs, ["parsing"]);
 
     // A program that stops on a sentence of its own.
-    let outcome = run(r#"return Err(::gg::program::message("nothing to do here"));"#);
-    assert_eq!(program_error(&outcome).message, "nothing to do here");
+    let outcome = run("fn main() -> Result<(), gg::Failure> {\n    \
+             Err(gg::program::message(\"nothing to do here\"))\n}\n");
+    assert!(
+        trap(&outcome).contains("nothing to do here"),
+        "{:?}",
+        outcome.result
+    );
 }
 
 #[test]
@@ -444,7 +579,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     // interesting band a study can collect, because it is a program the model wrote whole and got
     // wrong about the surface it was writing against.
     let failure = compile_program(
-        "let total: u32 = \"seventeen\";\n",
+        "fn main() {\n    let total: u32 = \"seventeen\";\n}\n",
         &[],
         &PrepareContext::new(),
     )
@@ -458,8 +593,8 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
         "rustc's own diagnostic was lost: {rendered}"
     );
     assert!(
-        rendered.contains("--> line 1, column 18"),
-        "the diagnostic was not moved back into the model's coordinates: {rendered}"
+        rendered.contains("--> line 2, column 22"),
+        "the diagnostic is not in the model's own coordinates: {rendered}"
     );
     // `rustc`'s suggestions live in a diagnostic's children, and they are the half of its output a
     // model gains the most from.
@@ -470,8 +605,12 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
 
     // A name that does not resolve — the other band a model produces constantly, and the one a model
     // reaching for something the SDK does not have lands in.
-    let failure = compile_program("no_such_function(1);\n", &[], &PrepareContext::new())
-        .expect_err("an unresolved name is refused");
+    let failure = compile_program(
+        "fn main() {\n    no_such_function(1);\n}\n",
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("an unresolved name is refused");
     assert!(
         failure.to_string().contains("E0425"),
         "an unresolved name reached the model as {failure}"
@@ -480,20 +619,38 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     // A syntax error. It arrives in the same band, and that is a fact about Rust rather than a
     // shortcut: `rustc` has no parse-only phase a program passes before meaning is considered, and
     // it does not mark a diagnostic as a parse failure.
-    let failure = compile_program("let x = ;\n", &[], &PrepareContext::new())
-        .expect_err("a syntax error is refused");
+    let failure = compile_program(
+        "fn main() {\n    let x = ;\n}\n",
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("a syntax error is refused");
     let PrepareFailure::Program(crate::sandbox::PrepareError::Compile(rendered)) = &failure else {
         panic!("a syntax error was not reported as a compile error: {failure}");
     };
     assert!(
-        rendered.contains("line 1"),
+        rendered.contains("line 2"),
         "a syntax error was not located: {rendered}"
+    );
+
+    // And a program with NO entry point, which is the diagnostic that replaced gg's own refusal of
+    // one. `rustc` names the crate the compile is written under and locates nothing, because there
+    // is no line in the model's program the absence is at.
+    let failure = compile_program(
+        "fn helper() -> u32 {\n    1\n}\n",
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("a program with no entry point is refused");
+    assert!(
+        failure.to_string().contains("E0601"),
+        "a program with no `fn main` reached the model as {failure}"
     );
 
     // A compiler that is not there at all is the OTHER band, and the model is not blamed for it:
     // there is no diagnostic, so there is nothing for it to fix.
     let failure = temporarily_pointing_rustc_at("gg-no-such-compiler", || {
-        compile_program("let x = 1;\n", &[], &PrepareContext::new())
+        compile_program("fn main() {}\n", &[], &PrepareContext::new())
             .expect_err("a missing compiler is refused")
     });
     let PrepareFailure::Toolchain(reported) = &failure else {
@@ -506,35 +663,6 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
 }
 
 #[test]
-fn a_program_that_defines_main_is_refused_by_name() {
-    // gg does not call `main`, and a program that put its work there would have run nothing at all
-    // while reporting a clean turn. Round 1 established that a silent discard is the one failure a
-    // model cannot recover from, so it is refused with a sentence saying what to write instead.
-    let failure = compile_program(
-        "fn main() {\n    println!(\"hello\");\n}\n",
-        &[],
-        &PrepareContext::new(),
-    )
-    .expect_err("a program that defines main is refused");
-    let PrepareFailure::Program(crate::sandbox::PrepareError::Unsupported(reason)) = &failure
-    else {
-        panic!("a `fn main` was not refused as unsupported: {failure}");
-    };
-    assert!(
-        reason.contains("line 1") && reason.contains("sequence of statements"),
-        "{reason}"
-    );
-
-    // A function that merely starts with those letters is not one.
-    compile_program(
-        "fn maintain(value: u32) -> u32 { value + 1 }\nlet _ = maintain(1);\n",
-        &[],
-        &PrepareContext::new(),
-    )
-    .expect("`fn maintain` is not `fn main`");
-}
-
-#[test]
 fn what_a_program_costs_and_what_it_weighs() {
     // Not a benchmark and not a threshold anyone should tune: a band wide enough that only a change
     // in KIND fails it. The figures the arm's documentation quotes were measured here, and the
@@ -543,7 +671,7 @@ fn what_a_program_costs_and_what_it_weighs() {
     // produces — which is what the study measured before the prebuilt library set existed.
     super::compile::warm();
     let started = Instant::now();
-    let component = prepare(&format!("{LOG}(\"weighed\");\n"));
+    let component = prepare(&format!("fn main() {{\n    {LOG}(\"weighed\");\n}}\n"));
     let compiled = started.elapsed();
 
     assert!(
@@ -602,7 +730,10 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
     }];
     let prepared = crate::sandbox::prepare_program(
         crate::sandbox::language(GgProgramLanguage::Rust),
-        &format!("{LOG}(&::std::format!(\"{{}} {{}}\", lib::csv_tools::shout(\"ok\"), lib::csv_tools::MARK));\n"),
+        &format!(
+            "fn main() {{\n    {LOG}(&format!(\"{{}} {{}}\", lib::csv_tools::shout(\"ok\"), \
+             lib::csv_tools::MARK));\n}}\n"
+        ),
         &modules,
     )
     .expect("a program compiles against the modules in its scope");
@@ -618,6 +749,32 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["OK 7"]);
+
+    // A reply that ends mid-line — no trailing newline, and a `//` comment as its last line — is the
+    // same program to `rustc`, because the declarations gg writes below it are separated from it. It
+    // is here rather than only in `source`'s unit tests because what makes it matter is the compile:
+    // without the separator the comment swallows the first declaration and the model is told
+    // `error[E0432]: unresolved import `super::__gg_module_csv_tools``, over a program it wrote
+    // correctly and about a symbol it has never seen.
+    let prepared = crate::sandbox::prepare_program(
+        crate::sandbox::language(GgProgramLanguage::Rust),
+        &format!(
+            "fn main() {{\n    {LOG}(lib::csv_tools::shout(\"ok\").as_str());\n}}\n// that is all"
+        ),
+        &modules,
+    )
+    .expect("a program that ends on a comment with no trailing newline compiles");
+    let (outcome, _log) = evaluate(
+        &prepared
+            .component
+            .expect("a compiled arm hands back a component"),
+        &[],
+        &modules,
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["OK"]);
 
     // And a module the compiler refuses is the module author's failure, reported at the read rather
     // than two turns later against somebody else's program.
@@ -652,4 +809,105 @@ fn temporarily_pointing_rustc_at<T>(rustc: &str, body: impl FnOnce() -> T) -> T 
         None => unsafe { std::env::remove_var(super::compile::RUSTC_ENV) },
     }
     outcome
+}
+
+/// **Gate [G8](super::super::g8) for Rust** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+///
+/// Every one of them is answered by **capture**: the program dies the way its runtime kills it, and
+/// what the model reads is what `std` wrote to the standard error `wasm32-wasip1` gives it. Nothing
+/// in this arm's SDK catches anything.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Rust,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+use gg::files;
+
+fn main() -> Result<(), gg::Failure> {
+    let text = files::read_text_file(
+        "missing.md",
+        files::ReadOptions::default(),
+    )?;
+    let _ = text;
+    Ok(())
+}
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::Nowhere,
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): an index past the end of a vector.
+
+fn main() {
+    let values = vec![1, 2, 3];
+    let missing = values[7];
+    let _ = missing;
+}
+"#,
+                names: &[
+                    "panicked",
+                    "index out of bounds: the len is 3 but the index is 7",
+                ],
+                located: Located::At("program.rs:5:25"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): ending by returning a failure value.
+
+fn main() -> Result<(), gg::Failure> {
+    let count: u32 = "not a number"
+        .parse()?;
+    let _ = count;
+    Ok(())
+}
+"#,
+                names: &["invalid digit found in string"],
+                located: Located::Nowhere,
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion, kept off the optimiser's tail-call path.
+
+fn deeper(n: u64) -> u64 {
+    let deep = 1 + deeper(std::hint::black_box(n + 1));
+    std::hint::black_box(deep)
+}
+
+fn main() {
+    let _ = deeper(0);
+}
+"#,
+                names: &["call stack exhausted"],
+                located: Located::Nowhere,
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+fn main() {
+    std::process::exit(
+        3,
+    );
+}
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+        ],
+    );
 }

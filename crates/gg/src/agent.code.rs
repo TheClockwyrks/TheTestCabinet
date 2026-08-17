@@ -66,8 +66,7 @@ use crate::sandbox::{
     MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationId, PreparedProgram, ProgramError,
     ProgramLanguage, ProgramScope, RunEnding, SHELL_SHELL, SKILLS_READ_SKILL, SandboxViewOpened,
     TASKS_ADD_TASK, TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY,
-    TASKS_UPDATE_TASK, ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal,
-    run_prepared_program, spell,
+    TASKS_UPDATE_TASK, ToolApi, ViewOpenOutcome, ViewRefusal, run_prepared_program, spell,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -314,23 +313,6 @@ pub(super) async fn run_code_turn(
     report_to_operator(&outcome, emitter);
     report_chain_to_operator(code.language, &chain, &outcome, emitter);
 
-    // Statements the model wrote that could not run are said out loud on the operator's stream as
-    // well as in the model's own feedback, for the same reason a repaired reply is: a program gg
-    // ran that is not the whole program the model sent has to be visible without waiting for a
-    // rollup.
-    if let Some(tail) = &outcome.unreachable {
-        emitter.emit(log(
-            "warn",
-            format!(
-                "the program wrote {} after its top-level `return` that could not run; the first \
-                 is line {}: {}",
-                plural(tail.statements, "statement"),
-                tail.line,
-                tail.excerpt
-            ),
-        ));
-    }
-
     // The composed calls the turn actually **dispatched** — the roster plus whatever the roster cap
     // (or a panicked sandbox) stopped describing, never the roster's length. It is a count of calls
     // that reached a tool implementation, not of tool calls: a program makes none of those, and
@@ -424,22 +406,40 @@ pub(super) async fn run_code_turn(
     // The process facts this turn produced, independent of whether it also failed. They are
     // separate messages from any error, and they come first: an error carries the error alone, so
     // a fact welded onto it would be exactly the extra text that band exists not to have.
-    let notices: Vec<CodeFeedback> = outcome
-        .unreachable
-        .as_ref()
-        .map(|tail| CodeFeedback::notice(unreachable_notice(tail)))
-        .into_iter()
+    let notices: Vec<CodeFeedback> = handover_notice(code.language, &chain, &outcome)
         // A program the model handed over that gg did not run. It is exactly the class of fact a
         // notice exists for: nothing the program can observe reveals it — no call failed, nothing
         // threw — and a model that believes its replacement ran would spend its next turn reasoning
         // about work that never happened.
-        .chain(handover_notice(code.language, &chain, &outcome).map(CodeFeedback::notice))
+        .map(CodeFeedback::notice)
+        .into_iter()
+        // A skill's or memory's code that failed to load. Its `lib` binding is empty, and a name
+        // that is not bound is indistinguishable from one the run never granted, so a model reading
+        // the silence would fix the wrong thing.
+        .chain(module_error_notice(&outcome.module_errors).map(CodeFeedback::notice))
         .collect();
 
-    let decision = match &outcome.result {
-        Err(error) => sandbox_failure_decision(error, &notices, emitter),
+    let decision = turn_decision(code.language, &outcome, &notices, emitter);
+    (decision, state)
+}
+
+/// What one program's [outcome](SandboxOutcome) makes of its turn: the disposition, the class it is
+/// recorded under, and the feedback the model reads.
+///
+/// A function rather than the `match` it used to be inline, because it is the only thing that
+/// decides **what a model is told about a failure**, and gate G8 — `sandbox::language::g8`, which
+/// is `#[cfg(test)]` and so unreachable from a doc link — holds all eleven arms to it. A gate that mirrored this routing instead of calling it would be
+/// asserting against a copy, which is how a gate goes green while the thing it guards regresses.
+fn turn_decision(
+    language: GgProgramLanguage,
+    outcome: &SandboxOutcome,
+    notices: &[CodeFeedback],
+    emitter: &Emitter,
+) -> CodeTurnOutcome {
+    match &outcome.result {
+        Err(error) => sandbox_failure_decision(language, error, notices, emitter),
         Ok(result) => {
-            let report = program_report(&outcome, result);
+            let report = program_report(outcome, result);
             // The class the guest already typed the throw with, rather than the bare fact that
             // there was one: an uncaught *call failure* says the model is fighting the API, an
             // unknown name says it is writing against a surface this run withheld, and a plain
@@ -450,15 +450,82 @@ pub(super) async fn run_code_turn(
                 .map(|error| error.kind.turn_error_type());
             CodeTurnOutcome::Continue {
                 feedback: match result.error.as_ref() {
-                    Some(error) => with_error(&notices, program_error_feedback(error)),
-                    None => notices.clone(),
+                    Some(error) => with_error(notices, program_error_feedback(error)),
+                    None => notices.to_vec(),
                 },
                 error,
                 report,
             }
         }
-    };
-    (decision, state)
+    }
+}
+
+/// **What the model reads back about a program**, rendered by the production path that renders it.
+///
+/// The one entry gate G8 drives: an arm hands over the outcome of a
+/// real run — including one whose program its own compiler refused, which arrives here as an `Err`
+/// like any other — and gets back the body that would be pushed into the model's window, the band
+/// it would arrive under, and the class the turn would be recorded as. Nothing here re-implements
+/// the rendering; it calls [`turn_decision`] with no notices and a sink nobody reads, because a
+/// notice is a fact about the *session* and G8 asks only what the model is told about the
+/// **fault**.
+#[cfg(test)]
+pub(crate) fn model_facing(language: GgProgramLanguage, outcome: &SandboxOutcome) -> ModelFacing {
+    let emitter = Emitter::with_sink(None, Box::new(crate::telemetry::CapturingSink::new()));
+    ModelFacing::of(turn_decision(language, outcome, &[], &emitter))
+}
+
+/// What a turn would put in front of the model, flattened out of [`CodeTurnOutcome`].
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) struct ModelFacing {
+    /// The band the message arrives under, or `None` when nothing is fed back at all — a fatal
+    /// fault, or a program that ran to its end.
+    pub(crate) source: Option<GgContextSource>,
+    /// The message body, empty when there is none. This is the string a model reads.
+    pub(crate) body: String,
+    /// The class the turn is recorded as, `None` for a turn that carried out its work.
+    pub(crate) error: Option<TurnErrorType>,
+    /// Whether gg ended the run rather than feeding anything back — which is a failure the model
+    /// is never told about, and therefore never one an arm may answer a program fault with.
+    pub(crate) fatal: bool,
+}
+
+#[cfg(test)]
+impl ModelFacing {
+    /// Read a decision the way the loop would deliver it.
+    fn of(decision: CodeTurnOutcome) -> Self {
+        match decision {
+            CodeTurnOutcome::Continue {
+                feedback, error, ..
+            } => match feedback.into_iter().next_back() {
+                Some(message) => Self {
+                    source: Some(message.source),
+                    body: message.body,
+                    error,
+                    fatal: false,
+                },
+                None => Self {
+                    source: None,
+                    body: String::new(),
+                    error,
+                    fatal: false,
+                },
+            },
+            CodeTurnOutcome::Fatal { .. } => Self {
+                source: None,
+                body: String::new(),
+                error: None,
+                fatal: true,
+            },
+            CodeTurnOutcome::Finished { .. } => Self {
+                source: None,
+                body: String::new(),
+                error: None,
+                fatal: false,
+            },
+        }
+    }
 }
 
 /// The [turn error type](TurnErrorType) a sandbox failure the **model** owns is recorded as.
@@ -489,7 +556,8 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 /// * the committed **artifact**, gg's own **plumbing**, gg's own **preparation** of a source it had
 ///   already accepted, or the language's **compiler** failing to finish: fatal, fed back to nobody,
 ///   charged to nothing;
-/// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`;
+/// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`, with the
+///   arm's [library set](crate::sandbox::library_set) after it where its catalogue declares one;
 /// * a sandbox **ceiling**: the ceiling's own words under `Runtime error`.
 ///
 /// Lifted out of [`run_code_turn`] rather than left inline because the split between the compiler
@@ -498,6 +566,7 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 /// nothing read it, produces no failure anywhere, and sends the model rewriting a program that was
 /// never wrong. A function is a thing a test can hold.
 fn sandbox_failure_decision(
+    language: GgProgramLanguage,
     error: &SandboxError,
     notices: &[CodeFeedback],
     emitter: &Emitter,
@@ -553,8 +622,16 @@ fn sandbox_failure_decision(
         // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
         // heading already says, so the inner error is what goes out.
+        //
+        // The one thing that goes out beside it is the arm's library set, which is what the
+        // compiler measured the program against and is the reason no prompt carries a package
+        // inventory. It is part of the diagnostic rather than advice about it: a program refused
+        // for naming a package this arm does not carry is answered here or nowhere.
         error @ SandboxError::Prepare(prepare) => CodeTurnOutcome::Continue {
-            feedback: vec![CodeFeedback::compiler(prepare.to_string())],
+            feedback: vec![CodeFeedback::compiler(compiler_error_body(
+                language,
+                &prepare.to_string(),
+            ))],
             // Which of the four prepare failures it was, from the error itself rather than from a
             // blanket "did not compile": a syntax error is a typo, a semantic error is almost
             // always two programs in one reply, a compile error is a whole coherent program written
@@ -581,6 +658,25 @@ fn sandbox_failure_decision(
                 report: "its last program was stopped by a sandbox limit".to_string(),
             }
         }
+    }
+}
+
+/// The body of a `Compiler error` message: the arm's diagnostic, and the
+/// [library set](crate::sandbox::library_set) its catalogue declares.
+///
+/// The set is delivered here rather than in the system prompt because the mistake it prevents — a
+/// program written against a package this arm does not carry — is one the compiler **detects**, and
+/// a detectable fact is delivered when it is detected. A model that never writes an import never
+/// reads the set; the one that did reads it beside the diagnostic that made it relevant.
+///
+/// It goes after the diagnostic, separated by a blank line, so the compiler's own first line is
+/// still the first line of the message. An arm whose catalogue declares no set — the two whose
+/// programs get their runtime's own standard library and nothing else — is answered with the
+/// diagnostic alone, with no trailing blank line to say a section was omitted.
+fn compiler_error_body(language: GgProgramLanguage, diagnostic: &str) -> String {
+    match sandbox::library_set(sandbox::language(language).catalogue()) {
+        Some(libraries) => format!("{diagnostic}\n\n{libraries}"),
+        None => diagnostic.to_string(),
     }
 }
 
@@ -699,6 +795,11 @@ fn healing_record(healed: &Healed) -> GgResponseHealing {
     GgResponseHealing {
         strategies: healed.strategies().into_iter().map(wire_strategy).collect(),
         did_not_converge: healed.did_not_converge,
+        // Only where the two texts differ. The program is what the model's history carries and what
+        // every location gg reports counts lines of, so on a rewritten reply this is the sole
+        // surviving copy of what healing started from; on a clean one it would be the same string
+        // twice.
+        original: healed.rewritten().then(|| healed.original.clone()),
     }
 }
 
@@ -835,25 +936,30 @@ fn with_error(notices: &[CodeFeedback], error: CodeFeedback) -> Vec<CodeFeedback
     all
 }
 
-/// The [`Notice`](GgContextSource::System) for [statements that could not run](UnreachableTail).
+/// The [`Notice`](GgContextSource::System) for code modules that failed, or `None` when every one
+/// this turn brought into use loaded and ran.
 ///
-/// A notice rather than an error, and one gg keeps saying even though it says almost nothing else
-/// about a program that ran: the model wrote a reply it believes executed in full, and half of it
-/// silently did not. Nothing the program can observe reveals that — no call failed, nothing threw —
-/// so this is the only channel it has. It names the count, quotes the first dead statement so the
-/// model can recognise which half was lost, and states the rule that made them dead.
+/// A notice for the same reason the hand-over one is: nothing the program can observe reveals it. A skill or memory whose code threw while it was being loaded leaves its
+/// `lib` binding empty, and a model calling into that binding reads a name that does not exist
+/// rather than a broken one — so without this the model spends its next turn on a call it has no
+/// way to know was never available.
 ///
-/// Rendered in Rust rather than in a template for the reason every count-bearing line here is: a
-/// template that has to pluralise is a template that will one day say "1 statements".
-fn unreachable_notice(tail: &UnreachableTail) -> String {
-    format!(
-        "{} after your top-level `return` did not run — the first is line {}: {}. A top-level \
-         `return` ends the program, so nothing written after it executes. Send exactly one program \
-         per reply.",
-        plural(tail.statements, "statement"),
-        tail.line,
-        tail.excerpt,
-    )
+/// It is a notice rather than an error because the fault is not the model's: the source is gg's or
+/// the workspace's, and the model has never been shown it. It names which skill or memory failed
+/// and what the failure said, and never the source, on the same rule.
+fn module_error_notice(errors: &[(String, String)]) -> Option<String> {
+    if errors.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = errors
+        .iter()
+        .map(|(name, message)| format!("{name}: {message}"))
+        .collect();
+    Some(format!(
+        "{} did not load, so nothing it declares is bound:\n{}",
+        plural(errors.len(), "code module"),
+        lines.join("\n"),
+    ))
 }
 
 /// Whether the turn's program ran to its end, and the error it ended with when it did not — what the
@@ -1342,9 +1448,8 @@ async fn run_code_program(
                 rerun: None,
                 revoked_rerun: false,
                 elapsed: Duration::ZERO,
-                // All three are observations the sandbox makes on its way through, and the task that
-                // would have made them died — so none is known, and none is invented.
-                unreachable: None,
+                // Both are observations the sandbox makes on its way through, and the task that
+                // would have made them died — so neither is known, and neither is invented.
                 compile: None,
                 compile_wait: None,
                 result: Err(SandboxError::Host(format!(
@@ -1448,7 +1553,6 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         rerun: _,
         revoked_rerun: earlier_revoked_rerun,
         elapsed: earlier_elapsed,
-        unreachable: earlier_unreachable,
         compile: earlier_compile,
         compile_wait: earlier_compile_wait,
         // The earlier program ran to its end — that is the only way the chain continued — so its
@@ -1493,7 +1597,6 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         // execution timeout is per program, so a chained turn that is slow must be visibly slow
         // rather than reporting only its last link.
         elapsed: earlier_elapsed.saturating_add(later.elapsed),
-        unreachable: later.unreachable.or(earlier_unreachable),
         // **Summed**, unlike `compile_wait` below and for the opposite reason: the shared component
         // is compiled at most once, but every link of a chain is a program of its own and a
         // compiling language compiles each one. Reporting only a link's worth would make a turn
@@ -2466,6 +2569,10 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 /// A hit's brief is shown whole and nothing else is: choosing is what this list is for, and reading
 /// is what a documentation view is for.
 ///
+/// The [bootstrap](crate::bootstrap)'s opening program renders its module listings through this same
+/// function, so the first listing a model reads and the ones its own searches produce are one
+/// format rather than two.
+///
 /// # Why each line leads with the key rather than the name
 ///
 /// The identifier on a hit's line is the one the model is about to type into an
@@ -2474,15 +2581,21 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 /// [`name`](crate::docs::DocHit::name). A bare name is not an identity on an arm — several
 /// modules offer a `close`, and [`DocsRuntime::function`](crate::docs::DocsRuntime) resolves a bare
 /// one to whichever the catalogue happens to list first — so a list rendered by name would hand the
-/// model an ambiguous string and silently answer with the wrong entry's page. Every arm's system
-/// prompt already promises the opposite, telling a model to open a view *by the fully-qualified name
-/// the brief carries*; this is the line that carries it.
+/// model an ambiguous string and silently answer with the wrong entry's page. The system prompt
+/// already promises the opposite, telling a model to open a view *by the fully-qualified name the
+/// brief carries*; this is the line that carries it.
 ///
 /// The module is not repeated beside it for the same reason: the key already
 /// begins with the module, and a **type**'s [`module`](crate::docs::DocHit::module) is the joined
 /// list of every module whose functions mention it, which as a parenthesised suffix is a
 /// twelve-item blob rather than a fact worth reading.
-fn render_search_results(query: &DocSearchQuery, page: &DocSearch) -> String {
+///
+/// A [documentation view](crate::docs::DocsRuntime) states the module outright, and says how a
+/// program reaches it, and the two renderings differ because the moments do. A hit is read while
+/// choosing between hits, where the qualified key is the whole of what a choice needs. A view is
+/// read at the moment the call is about to be written, where the module's own path and the line
+/// that brings it into scope are what the writing needs — and neither is recoverable from a key.
+pub(crate) fn render_search_results(query: &DocSearchQuery, page: &DocSearch) -> String {
     let mut asked: Vec<String> = Vec::new();
     if !query.query.trim().is_empty() {
         asked.push(format!("`{}`", query.query.trim()));
@@ -3153,9 +3266,10 @@ impl ToolApi for LoopToolApi {
             offset: query.offset,
             limit: query.limit,
         })?;
-        let opened = self
-            .context
-            .open_search_view(render_search_results(&query, &page));
+        let opened = self.context.open_search_view(
+            SEARCH_RESULTS_VIEW.to_string(),
+            render_search_results(&query, &page),
+        );
         Ok(DocSearchResult {
             page,
             opened: SandboxViewOpened {

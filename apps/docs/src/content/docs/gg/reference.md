@@ -173,7 +173,7 @@ An entry's own heading is the fully-qualified name a documentation lookup takes
   tool decides anything on this surface;
 - where the arm hangs a convenience off the value it operates on, the receiver
   and the operation it is a second way to reach;
-- the `import` line, on the arm that needs one.
+- the `import` line the arm states for the symbol's own module.
 
 Then the documentation view itself, verbatim: for a function, every shape it may
 be called in with a line per argument, then its description; for a type, its

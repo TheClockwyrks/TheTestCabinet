@@ -23,8 +23,9 @@
 channel = "1.97.1"
 components = ["rustfmt", "clippy"]
 # `targets` is deliberately NOT listed here, even though gg's Rust arm compiles a model's
-# program to `wasm32-unknown-unknown` and its tests drive a real `rustc` doing so. A target
-# named in this file is fetched by rustup on the FIRST cargo invocation of every checkout —
+# program to the wasm target `packages/gg-sandbox-rust/rust-version.sh` names, and its tests
+# drive a real `rustc` doing so. A target named in this file is fetched by rustup on the
+# FIRST cargo invocation of every checkout —
 # including inside `containers/tools` and the other `rust:<version>-bookworm` builder
 # images, none of which cross-compile anything — so it would turn several image builds into
 # network-dependent ones to serve one crate's tests. It is installed explicitly instead, by

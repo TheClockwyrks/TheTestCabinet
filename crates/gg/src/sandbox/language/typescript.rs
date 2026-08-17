@@ -1,70 +1,49 @@
-//! **TypeScript** — gg's first registered [program language](super::ProgramLanguage), and the one
-//! every other language's implementation is measured against.
+//! **TypeScript** — gg's default program language and a checked arm.
 //!
-//! Everything that used to be "what the sandbox does" and is really "what TypeScript does" lives
-//! here or in one of this module's siblings:
+//! A model's reply is a whole TypeScript module. `tsc` reads it, against the SDK's own declarations,
+//! and either rejects it — in which case nothing runs and the model reads the compiler's diagnostics
+//! at the coordinates of the text it sent — or emits the JavaScript the
+//! [ECMAScript guest](super::ecmascript) evaluates, with the source map that reads a frame in that
+//! JavaScript back to the line the model wrote.
 //!
-//! * [`prepare`] — the `oxc` type-strip, the early-error check, the refusals for module syntax and
-//!   top-level `await`, and the stack sizing an unguarded recursive-descent parser forces on
-//!   untrusted input;
-//! * [`check`] — the `tsc` pass that reads the whole program against the SDK's own declarations and
-//!   rejects it if the types do not hold;
-//! * [`modules`](self::prepare::modules) — turning a file with `export`s into a function body that returns
-//!   its namespace, which is what a code [skill](crate::skills) or [memory](crate::memories) is
-//!   bound from;
+//! * [`compile`] — the `tsc` invocation that does both halves, the declaration surface it compiles
+//!   against, and the shared toolchain directory it materialises into;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the mask;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in this language's syntax;
-//! * [`COMPONENT`] — the `componentize-js` guest, built by `gg-artifact-typescript`;
-//! * the **signature catalogue** — every signature the prompt renders and a documentation view
-//!   answers with, reflected out of that guest's SDK by `packages/gg-sandbox/signatures.sh` and
-//!   generated into this build's `OUT_DIR` rather than committed anywhere (see `crates/gg/build.rs`);
-//! * `typescript.tsc.js`, `.lib.d.ts`, `.globals.d.ts` and `.checker.json` — the `tsc` the check
+//! * the **signature catalogue** — every signature a documentation search ranks and a documentation
+//!   view answers with, which is every signature a model ever reads, since the prompt renders none;
+//!   reflected out of the guest's SDK by `packages/gg-sandbox/signatures.sh` and generated into this
+//!   build's `OUT_DIR` rather than committed anywhere (see `crates/gg/build.rs`);
+//! * `typescript.tsc.js`, `.lib.d.ts`, `.globals.d.ts` and `.checker.json` — the `tsc` the compile
 //!   runs, its standard library, the globals no SDK declaration covers, and what says which
 //!   release, all four cut into this build's artifacts by `crates/gg-sandbox-artifacts/typescript`
 //!   rather than committed anywhere.
 //!
-//! Most of that is **not TypeScript's alone**. gg's [JavaScript](super::javascript) arm is this
-//! language with [`check`] removed and nothing else changed, so it serves this module's component,
-//! its type-strip and its healing dialect, and its catalogue is these same declarations reflected
-//! under a second id. The check is the only thing between them, which is the whole point of the
-//! pair: an A/B across them measures what checking a program before it runs is worth.
+//! # The program is the model's, and its imports are the model's
 //!
-//! # Why the guest is a componentized JavaScript engine
+//! `program.ts` carries the reply and nothing else: no prologue, no wrapper, no appended line. Every
+//! name from gg's SDK the program uses comes from an `import` the program wrote, because the guest
+//! declares the emitted module by its own name and resolves `gg`, `gg:<family>` and `lib:<key>`
+//! through a loader. There is no injected scope and no reserved identifier — `const context = 1` is
+//! an ordinary declaration here.
 //!
-//! A model cannot emit wasm, so something must interpret its program. Writing that interpreter — a
-//! language, a parser, a tree-walker — would make gg's surface a dialect nothing was trained on and
-//! force every tool through one untyped door. Componentizing a real JavaScript engine instead means
-//! the model writes the language it already knows, and the trust boundary becomes a **WIT
-//! interface** in which each tool is its own typed function with its own typed result and its own
-//! typed failure. Nothing the interface does not declare is reachable *as a tool*: the component is
-//! built with no network and no module system, so a program reaches gg through the membrane and
-//! nowhere else.
+//! The one thing that is *not* the model's bytes is the text that executes, because types have to be
+//! erased and `tsc` erases them by re-printing. That is the position every compiled arm is in, and
+//! what makes it legitimate is the pair the invariants require: the bytes gg **compiles** are the
+//! model's, and the location a failure reports is recovered through the compiler's own **source
+//! map**. See [`compile`] for both halves.
 //!
-//! # Stripped **and** checked
+//! # What the check is for
 //!
-//! Two passes, in this order, and each does something the other cannot:
+//! It turns the signatures a documentation view showed the model from a contract the SDK enforces at
+//! run time — an options object that arrived as a bare number, a misspelled function — into one the
+//! model is told about before its program does any work. That is what makes this a **checked** arm
+//! of a cross-language study, and it is why
+//! [`prepare_compiles`](ProgramLanguage::prepare_compiles) answers `true`: the time the compile
+//! takes is charged to the program that paid it.
 //!
-//! 1. [`prepare`] parses with `oxc` and erases the types, in ~0.2 ms. It is what produces the
-//!    JavaScript the guest evaluates, what catches a syntax error and an ECMAScript early error in
-//!    gg's own located rendering, what refuses module syntax and top-level `await`, and what
-//!    notices the statements a program wrote after the one that ends it.
-//! 2. [`check`] runs `tsc` over the **unstripped** source against the SDK's own declarations. It is
-//!    what turns the signatures the system prompt shows from a contract the SDK enforces at run
-//!    time — an options object that arrived as a bare number, a misspelled function — into one the
-//!    model is told about before its program does any work. Measured end to end, the two passes
-//!    together take ~91 ms against a representative program.
-//!
-//! The cheap pass runs first, so a program with a syntax error costs a parse rather than a compiler,
-//! and every failure lands in the kind that names its cause: a typo is
-//! [`Syntax`](super::PrepareError::Syntax), two programs in one reply are usually
-//! [`Semantic`](super::PrepareError::Semantic), and a program the compiler read whole and rejected
-//! is [`Compile`](super::PrepareError::Compile).
-//!
-//! This is what makes TypeScript a **checked** arm of a cross-language study, and it is why
-//! [`prepare_compiles`](ProgramLanguage::prepare_compiles) answers `true` here: the time both passes
-//! take is charged to the program that paid it.
+//! gg's [JavaScript](super::javascript) arm exists to measure what that check is worth, and its
+//! catalogue is these same declarations reflected under a second id.
 
 use std::sync::OnceLock;
 
@@ -74,48 +53,26 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::locate::Locations;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
-#[path = "typescript.prepare.rs"]
-pub(super) mod prepare;
-
-#[path = "typescript.check.rs"]
-mod check;
+#[path = "typescript.compile.rs"]
+mod compile;
 
 #[path = "typescript.healing.rs"]
 pub(super) mod healing;
 
-/// The interpreter component: the TypeScript guest in `packages/gg-sandbox`, built by that
-/// package's `build.sh` with `componentize-js`.
-///
-/// It is ~13.4 MB because it embeds a JavaScript engine, and it is **embedded in the binary** rather
-/// than read from disk because gg is copied as a single file into an ephemeral run container and
-/// must carry everything it needs with it. Committing it zstd-compressed (~4 MB) was considered and
-/// rejected: it would drag a C toolchain onto a binary that is release-built for Linux, Windows and
-/// macOS and statically linked against musl, in order to shrink a developer/CI artifact nobody
-/// downloads on a budget.
-///
-/// It is not committed. `gg-artifact-typescript` runs that `build.sh` as a step of building this
-/// crate and this line embeds what it wrote into that crate's `OUT_DIR`, so the guest a program is
-/// evaluated in is baked out of the SDK sources in this checkout, on the build that compiles the
-/// module describing it — the same guarantee, and the same idiom, as [`SIGNATURES`] below. A guest
-/// is exactly the artifact that most needs it: nothing about a 13 MB `.wasm` looks stale, and what a
-/// stale one costs is not a build error but every TypeScript and JavaScript program in a run being
-/// evaluated by last month's scope, refusals and argument handling while the catalogue and the
-/// prompt describe this checkout's.
-///
-/// [`JavaScript`](super::javascript) serves these same bytes, reached through this constant rather
-/// than through a second `include_bytes!` of the same file: two embeddings would be two copies of
-/// 13.4 MB in every released binary, for an artifact that is the same artifact.
-pub(super) const COMPONENT: &[u8] = include_bytes!(concat!(
-    env!("GG_ARTIFACTS_TYPESCRIPT"),
-    "/typescript.component.wasm"
-));
+/// **The TypeScript arm's execution substrate**, driven end to end through its real compile and its
+/// real guest, and held to [gate G8](super::g8).
+#[cfg(test)]
+#[path = "typescript.substrate.test.rs"]
+mod substrate;
 
-/// This arm's catalogue, reflected out of the same SDK declarations the component is built from by
-/// the guest package's `signatures.sh`.
+/// This arm's catalogue, reflected out of the same SDK declarations the guest is built from by the
+/// guest package's `signatures.sh`.
 ///
 /// It is not committed. `crates/gg/build.rs` runs that reflection as a step of building this
 /// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so what a model is
@@ -129,27 +86,13 @@ const SIGNATURES: &str = include_str!(concat!(
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 
-/// Everything gg *says* about a TypeScript program that is written in TypeScript's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is,
-/// and are named for the language they belong to so a second one is a second file rather than a
-/// branch inside this one. Individual function spellings are **not** here, and not in the templates
-/// either: every name and signature they quote is resolved from this language's catalogue
-/// when the template renders, so there is one copy of each rather than two that have to agree.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.typescript.hbs"),
-    system_template_name: "system-code.typescript",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.typescript.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.typescript",
-};
-
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`; everything it "holds" is module-scope `const` and
 /// `OnceLock` state above.
 pub(super) static TYPESCRIPT: TypeScript = TypeScript;
 
-/// TypeScript: type-checked with the embedded `tsc`, type-stripped to JavaScript, and evaluated in
-/// the embedded `componentize-js` guest.
+/// TypeScript: compiled with the embedded `tsc` and evaluated, as a module, in the embedded
+/// ECMAScript guest.
 pub(super) struct TypeScript;
 
 impl ProgramLanguage for TypeScript {
@@ -161,20 +104,15 @@ impl ProgramLanguage for TypeScript {
         GgProgramLanguage::TypeScript.display_name()
     }
 
-    /// The `oxc` type-strip, then the `tsc` type check — in that order, because the first is a
-    /// parse and the second is a compiler, and a program with a syntax error should not cost one.
-    ///
-    /// The checked text is the model's own **unstripped** source, so what `tsc` reads is what the
-    /// model wrote, at the coordinates it wrote it at.
+    /// One `tsc` over the model's own file, which both judges the program and emits the module the
+    /// guest evaluates.
     fn prepare_program(
         &self,
         source: &str,
         _modules: &[CodeModule],
         context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
-        let prepared = prepare::prepare_program(source)?;
-        check::check_program(source, context)?;
-        Ok(prepared)
+        compile::compile_program(source, context)
     }
 
     /// `tsc`, and it is spelled the way a TypeScript programmer writes it rather than the way it is
@@ -189,47 +127,82 @@ impl ProgramLanguage for TypeScript {
         Some("tsc")
     }
 
-    /// Write the embedded checker — ~6.7 MB of compiler and declarations — into the directory every
-    /// check runs against, so the first code turn is not charged for unpacking it.
+    /// Write the embedded compiler — ~6.7 MB of compiler and declarations — into the directory every
+    /// compile runs against, so the first code turn is not charged for unpacking it.
     ///
     /// Idempotent and best effort: the result is cached for the process, and a failure here is
-    /// dropped rather than reported, because the first check makes the same attempt and fails there
-    /// as a [toolchain failure](PrepareFailure::Toolchain) the run is told about properly.
+    /// dropped rather than reported, because the first compile makes the same attempt and fails
+    /// there as a [toolchain failure](PrepareFailure::Toolchain) the run is told about properly.
     fn warm_prepare(&self) {
-        check::warm();
+        compile::warm();
     }
 
-    /// The same two passes a program gets, with the module's own coordinates: a code
-    /// [skill](crate::skills) or [memory](crate::memories) is source a model wrote too, and a module
-    /// that does not type-check would otherwise bind a `lib.<key>` whose every call fails later, in
-    /// a turn that has nothing to do with the one that wrote it.
+    /// The same compile a program gets, in the module's own coordinates: a code
+    /// [skill](crate::skills) or [memory](crate::memories) is source somebody wrote too, and a
+    /// module that does not type-check would otherwise be imported by a program whose every call
+    /// into it fails later, in a turn that has nothing to do with the one that wrote it.
     fn prepare_module(
         &self,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        let prepared = prepare::prepare_module(source)?;
-        check::check_module(source, context)?;
-        Ok(prepared)
+        compile::compile_module(source, context)
     }
 
     /// `.ts` first, `.js` accepted.
     ///
-    /// The second entry is not a courtesy: the [JavaScript](super::javascript) arm shares this
-    /// language's strip, so both arms can evaluate either spelling, and an arm that could not read a
-    /// skill the other could would differ from it in what its agents *have* rather than in the one
-    /// thing the pair exists to vary.
+    /// The second entry is not a courtesy: `tsc` compiles either spelling, and a module written as
+    /// plain JavaScript is a module this arm can load. It is also the one spelling both ECMAScript
+    /// arms read, so a skill authored as `skill.js` reaches either agent — which is what stops the
+    /// pair differing in what their agents *have* rather than in the one thing it exists to vary.
     fn module_file_extensions(&self) -> &'static [&'static str] {
         &["ts", "js"]
     }
 
-    /// [camelCase](self::binding_name), the convention this SDK spells every bound function in.
+    /// [camelCase](self::binding_name), the convention this SDK spells every bound function in and a
+    /// name a program can bind an import to.
     fn binding_name(&self, name: &str) -> String {
         binding_name(name)
     }
 
+    /// **The line a program writes to reach a code module**: a namespace import of the specifier
+    /// the guest's loader resolves it under, on the same terms [`SURFACE_IMPORT`] is a namespace
+    /// import.
+    fn lib_import(&self, key: &str) -> Option<String> {
+        lib_import(key)
+    }
+
+    /// What that import makes callable.
+    fn lib_access(&self, key: &str) -> String {
+        lib_access(key)
+    }
+
     fn guest_component(&self) -> Option<&'static [u8]> {
-        Some(COMPONENT)
+        Some(super::ecmascript::embedded())
+    }
+
+    /// This guest arms an interrupt handler off `GG_SANDBOX_DEADLINE_MS`, so a runaway loop is
+    /// stopped by quickjs with `InternalError: interrupted` and the JavaScript frames rather than by
+    /// gg's epoch trap. See [`stops_itself_at_ggs_deadline`](ProgramLanguage::stops_itself_at_ggs_deadline).
+    fn stops_itself_at_ggs_deadline(&self) -> bool {
+        true
+    }
+
+    /// `tsc`'s own source map, read out of the emitted JavaScript it is inlined in.
+    ///
+    /// The program's map answers to `program.js`, which is the name the guest declares it under and
+    /// the name every frame in it carries. A code module's answers to the specifier the program
+    /// imported it by, which is both what the guest declares it under and the name that identifies
+    /// it to whoever reads the failure.
+    fn locations(&self, program: &str, modules: &[CodeModule]) -> Option<Locations> {
+        Locations::read(
+            std::iter::once((compile::PROGRAM_EMITTED.to_string(), None, program)).chain(
+                modules.iter().map(|module| {
+                    let specifier = format!("{}{}", super::ecmascript::MODULE_SCHEME, module.name);
+                    (specifier.clone(), Some(specifier), module.source.as_str())
+                }),
+            ),
+        )
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.
@@ -257,41 +230,66 @@ impl ProgramLanguage for TypeScript {
         &healing::TYPESCRIPT_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
-    /// [`gg.views.openFile("src/main.ts");`](self::open_file_statement), with the call's name resolved
-    /// from this language's own catalogue rather than written out here.
+    /// [An `import` and one call](self::open_file_statement), with the call's name resolved from
+    /// this language's own catalogue rather than written out here.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
+        open_file_statement(self, path, window)
     }
 
-    /// [A `const` array of names and a `for…of` over
+    /// [One `import` and one call per view](self::open_file_program).
+    ///
+    /// Overridden rather than left to the seam's default, which joins one whole statement per view:
+    /// a program here opens with a line, and joining several would write that line several times
+    /// into one module, which is a redeclaration the compiler refuses.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        open_file_program(self, views)
+    }
+
+    /// [An `import`, a `const` array of names and a `for…of` over
     /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+        open_docs_views_statement(self, names)
+    }
+
+    /// [One `import`, two `const` arrays and two `for…of` loops](self::bootstrap_program).
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(self, modules, docs)
     }
 }
 
 // ---------------------------------------------------------------------------------------------
-// The syntax both ECMAScript arms write
+// The syntax gg synthesizes for the two ECMAScript arms
 // ---------------------------------------------------------------------------------------------
 //
-// Free functions rather than methods, because each is shared with [`JavaScript`](super::javascript)
-// and each takes the **already-resolved** name as an argument. That split is the seam's own division
-// in miniature: the syntax around the call is these two languages' shared business, and the name
-// inside it is each language's own, resolved from its own catalogue by the caller. A `JavaScript`
-// that delegated to `TypeScript`'s *method* would be quoting TypeScript's catalogue at its model.
+// Free functions taking the **arm**, so each call inside them is spelled from that arm's own
+// catalogue and the syntax around it is written once. [JavaScript](super::javascript) is this
+// language with the type check taken out and its programs are these programs: a second copy of them
+// would be the drift the pair exists to rule out. Every one of them opens with [`SURFACE_IMPORT`],
+// because a program here reaches gg through a line it wrote and these programs are run.
+
+/// **The line a program writes to reach gg's SDK**, and the one every synthesized program opens
+/// with.
+///
+/// The namespace form rather than a named one, and that is the arm's whole naming decision in one
+/// constant. `gg.files.readFile` is the name a documentation view is filed under, the name a search
+/// hit carries, the name the prompt quotes and the name [`spell`] resolves — and this
+/// is the line that makes it an expression a program can write. A named import
+/// (`import { files } from "gg";`) reaches the same module and is equally valid; it is not what gg
+/// teaches, because it would leave every name gg prints one edit away from compiling.
+///
+/// It is stated here **and** in `packages/gg-sandbox/tools/signatures.mjs`, which writes it into
+/// every module's `import` field, and `an_arms_import_line_is_the_one_its_own_opening_program_writes`
+/// holds the two to each other.
+const SURFACE_IMPORT: &str = "import * as gg from \"gg\";\n";
 
 /// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
 ///
-/// camelCase because that is what these SDKs spell every other bound function in, so a program
-/// reaching `lib.csvTools.parse` reads like the rest of its own scope. Any separator — `-`, `_`,
-/// `.`, or anything a name should not have had — joins the next word rather than surviving into
-/// an identifier that would not parse; a name that is nothing but separators becomes `module`,
-/// and a leading digit is prefixed, because the result has to be a valid identifier whatever the
-/// author wrote.
+/// camelCase because that is what this SDK spells every other bound function in, so a program that
+/// imports `lib:csvTools` and writes `csvTools.parse` reads like the rest of its own text. Any
+/// separator — `-`, `_`, `.`, or anything a name should not have had — joins the next word rather
+/// than surviving into an identifier that would not parse; a name that is nothing but separators
+/// becomes `module`, and a leading digit is prefixed, because the result has to be a valid
+/// identifier whatever the author wrote.
 pub(super) fn binding_name(name: &str) -> String {
     let mut out = String::new();
     let mut capitalize = false;
@@ -316,43 +314,119 @@ pub(super) fn binding_name(name: &str) -> String {
     out
 }
 
-/// `open_file("src/main.ts");`, or `open_file("src/main.ts", { offset: 400, limit: 200 });` for a
-/// window — with `open_file` already spelled by the language that asked.
+/// **The line a program writes to reach a code module**: a namespace import of the specifier the
+/// guest's loader resolves it under, on the same terms [`SURFACE_IMPORT`] is a namespace import.
+pub(super) fn lib_import(key: &str) -> Option<String> {
+    Some(format!(
+        "import * as {key} from \"{}{key}\";",
+        super::ecmascript::MODULE_SCHEME
+    ))
+}
+
+/// What that import makes callable.
+pub(super) fn lib_access(key: &str) -> String {
+    format!("{key}.<name>")
+}
+
+/// The import, then `gg.views.openFile("src/main.ts");` — or
+/// `gg.views.openFile("src/main.ts", { offset: 400, limit: 200 });` for a window.
 ///
-/// Deliberately the plainest statement that does the job: no `const`, no loop, no logging. It is
-/// synthesized into the agent's own transcript and read by the model as an example of its own
-/// output, so anything clever in it is a style the run did not intend to teach. The window is a
-/// **trailing options object**, which is this syntax's idiom for optional arguments and the same
-/// shape the system prompt teaches; the path is rendered through [`serde_json`] so a quote or a
-/// backslash in one cannot produce a program that would not parse.
+/// A whole program, because that is what gg synthesizes it as: it is written into the agent's own
+/// transcript and read by the model as an example of its own output, so it has to be a reply that
+/// compiles. Beyond the import it is deliberately the plainest thing that does the job — no `const`,
+/// no loop, no logging — because anything clever in it is a style the run did not intend to teach.
+/// The window is a **trailing options object**, which is this syntax's idiom for optional arguments
+/// and the same shape the system prompt teaches; the path is rendered through [`serde_json`] so a
+/// quote or a backslash in one cannot produce a program that would not parse.
 pub(super) fn open_file_statement(
-    open_file: &str,
+    language: &dyn ProgramLanguage,
     path: &str,
     window: Option<FileWindow>,
 ) -> String {
+    let open_file = spell(language, VIEWS_OPEN_FILE);
     let path = serde_json::Value::String(path.to_string());
     match window {
         Some(window) => format!(
-            "{open_file}({path}, {{ offset: {}, limit: {} }});",
+            "{SURFACE_IMPORT}\n{open_file}({path}, {{ offset: {}, limit: {} }});\n",
             window.offset, window.limit
         ),
-        None => format!("{open_file}({path});"),
+        None => format!("{SURFACE_IMPORT}\n{open_file}({path});\n"),
     }
 }
 
-/// A `const` array of names and a `for…of` over it, each iteration opening one documentation view.
+/// One import, then one call per view.
+///
+/// Every synthesized program on these arms opens with [`SURFACE_IMPORT`] exactly once, because that
+/// is what a module may carry: `import * as gg` twice is a redeclaration.
+pub(super) fn open_file_program(
+    language: &dyn ProgramLanguage,
+    views: &[(&str, Option<FileWindow>)],
+) -> String {
+    let open_file = spell(language, VIEWS_OPEN_FILE);
+    let calls: String = views
+        .iter()
+        .map(|(path, window)| {
+            let path = serde_json::Value::String((*path).to_string());
+            match window {
+                Some(window) => format!(
+                    "{open_file}({path}, {{ offset: {}, limit: {} }});\n",
+                    window.offset, window.limit
+                ),
+                None => format!("{open_file}({path});\n"),
+            }
+        })
+        .collect();
+    format!("{SURFACE_IMPORT}\n{calls}")
+}
+
+/// The import, a `const` array of names and a `for…of` over it, each iteration opening one
+/// documentation view.
 ///
 /// A loop rather than one statement per name because the list is as long as the family — eleven
 /// calls written out would be a program a model reads as a style to copy. The names are rendered
 /// through [`serde_json`] for the reason a path is: a name carrying a quote would otherwise produce
 /// a program that does not parse.
-pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
-    let entries: String = names
-        .iter()
-        .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
-        .collect();
+pub(super) fn open_docs_views_statement(language: &dyn ProgramLanguage, names: &[&str]) -> String {
+    let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
+    let entries = listed(names);
     format!(
-        "const functions = [\n{entries}];\nfor (const name of functions) {{\n  \
+        "{SURFACE_IMPORT}\nconst functions = [\n{entries}];\nfor (const name of functions) {{\n  \
          {open_docs_view}(name);\n}}\n"
     )
+}
+
+/// The opening turn: the import, one array of module paths listed in full, then one array of names
+/// opened as documentation views, each with a `for…of` over it.
+///
+/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. The module
+/// filter is passed as a **trailing options object**, which is this syntax's idiom for optional
+/// arguments and the one the system prompt teaches.
+///
+/// A failed call throws and is left to, which is this arm's failure model: a bootstrap that caught
+/// its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    language: &dyn ProgramLanguage,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let search = spell(language, DOCS_SEARCH);
+    let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
+    let paths = listed(modules);
+    let functions = listed(docs);
+    format!(
+        "{SURFACE_IMPORT}\nconst modules = [\n{paths}];\nfor (const path of modules) {{\n  \
+         {search}(\"\", {{ module: path, limit: {MAX_SEARCH_LIMIT} }});\n}}\n\
+         \n\
+         const functions = [\n{functions}];\nfor (const name of functions) {{\n  \
+         {open_docs_view}(name);\n}}\n"
+    )
+}
+
+/// One array literal's entries, each rendered through [`serde_json`].
+fn listed(names: &[&str]) -> String {
+    names
+        .iter()
+        .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
+        .collect()
 }

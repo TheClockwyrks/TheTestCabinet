@@ -1,4 +1,4 @@
-/// Show a file, a computed value, or a function's documentation.
+/// Show a file, a computed value, or an entry's documentation.
 ///
 /// A view is the only way material enters the agent's context window.
 ///
@@ -74,21 +74,22 @@ public enum views {
         }
     }
 
-    /// Place one function's full documentation into the context window.
+    /// Place one module's, function's or type's full documentation into the context window.
     ///
     /// Its signature, its description, and the declarations of any types it refers to that have not
-    /// already been shown this session. This is how a function is read. It is a view, not a return
+    /// already been shown this session. This is how an entry is read. It is a view, not a return
     /// value — the documentation arrives in the next prompt under a `Documentation` heading keyed by
-    /// the function name, exactly as a file or a computed value arrives — so it is not available in
-    /// the turn it is asked for. Ask in one turn, use it in the next. Opening the same function's
-    /// documentation again replaces the view rather than adding a second copy, and `docs.close`
+    /// the entry's name, exactly as a file or a computed value arrives — so it is not available in
+    /// the turn it is asked for. Ask in one turn, use it in the next. Opening an entry that is
+    /// already open does nothing at all, neither moving the view nor repeating it, and `docs.close`
     /// closes it — not `views.close`, which does not reach documentation.
     ///
-    /// - Parameter name: The function to document, by the fully-qualified name its documentation
-    ///   is keyed by — `"gg.files.readFile"`. The bare name it is called by in its module
-    ///   (`"readFile"`) also resolves and is a fallback rather than the form to reach for: two
-    ///   modules are free to declare a `close`, and only the qualified name says which one is
-    ///   meant. Searching the documentation is what says which names exist.
+    /// - Parameter name: What to document, by the fully-qualified name its documentation is keyed
+    ///   by — `"gg.files.readFile"`, or a module's own path, `"gg.files"`. The bare name it is
+    ///   called by in its module (`"readFile"`) also resolves and is a fallback rather than the form
+    ///   to reach for: two modules are free to declare a `close`, and only the qualified name says
+    ///   which one is meant. Searching the documentation says which names exist, and anything a
+    ///   search returns can be opened here.
     /// - Throws: `core.ToolError` with `.notFound` for an unknown or unbound name.
     /// - ggop: views.open_docs_view
     public static func openDocsView(_ name: String) throws {
@@ -154,7 +155,7 @@ public enum views {
         case file
         /// A computed value; its selector is the label it was given.
         case text
-        /// A function's documentation; its selector is the function's name.
+        /// An entry's documentation; its selector is the key it was opened under.
         case docs
 
         init(wire: test_cabinet_gg_views_view_kind_t) {

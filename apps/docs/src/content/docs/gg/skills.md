@@ -94,26 +94,35 @@ whitespace-only code file refuses the launch.
 
 ### Bound modules
 
-Reading a code skill binds its exports at `lib.<key>` in every program the agent
-writes from then on. The key is the skill's name spelled as an identifier in
-that language's own convention (`csv-tools` becomes `lib.csvTools`), and a key
-something else already claimed is given a numeric suffix starting at 2. The
-reply to the read states the key it really got, in the reader's own syntax, and
-what the module exports:
+Reading a code skill binds its exports in every program the agent writes from
+then on. The key is the skill's name spelled as an identifier in that language's
+own convention (`csv-tools` becomes `csvTools`), and a key something else already
+claimed is given a numeric suffix starting at 2. The reply to the read states the
+key it really got, in the reader's own syntax, the line that makes it resolve
+where the arm has one, and what the module exports:
 
 ```text
 ---
-The code this skill carries is loaded: call it as `lib.csvTools.<name>`. It exports:
-parseCsv, toRows. It stays bound for the rest of your session, including across a
-compaction.
+The code this skill carries is loaded: write `import * as csvTools from "lib:csvTools";`
+and call it as `csvTools.<name>`. It exports: parseCsv, toRows. It stays bound for
+the rest of your session, including across a compaction.
 ```
+
+That reply is where a model learns the spelling. `lib` binds no catalogued
+function, so a search finds nothing and the [system prompt](/gg/prompts/) states
+that a skill carries code without saying how the code is reached. Most arms write
+a path under `lib`, an arm whose guest resolves modules writes an import, and
+PureScript names both halves as strings, because on that one a module is compiled
+separately from the program that uses it. Each arm supplies its own form through
+`ProgramLanguage::lib_access` and `ProgramLanguage::lib_import`.
 
 What a module may contain, what it exports, and what it is refused for are one
 shared rule across skills and memories, documented under
 [responses-as-code](/gg/responses-as-code/sandbox/). A module exports what it
 `export`s, a file with no export at all exports everything it declares, and a
-module is evaluated against the same scope a program gets, so it may call
-`gg.files.readFile` or `gg.shell.shell` like anything else. The compiled arms link
+module reaches the same surface a program does through the same line a program
+writes, so it may call `gg.files.readFile` or `gg.shell.shell` like anything
+else. The compiled arms link
 the binding rather than looking it up, so a key or a name that does not exist is
 a diagnostic on the turn that wrote it; see [the language
 arms](/gg/languages/overview/) for how each spells a module.

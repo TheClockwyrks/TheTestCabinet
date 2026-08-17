@@ -132,7 +132,7 @@ type SubagentResult =
 -- | agent may spawn.
 spawnSubagent :: String -> Brief -> Effect SubagentHandle
 spawnSubagent agent brief =
-  Wire.call "spawn_subagent" "agents" "Gg.Delegation.spawnSubagent"
+  Wire.call "spawn_subagent" "delegation" "Gg.Delegation.spawnSubagent"
     [ case brief of
         Prompt prompt -> Wire.wire { agent, prompt }
         Issue issueId -> Wire.wire { agent, issueId }
@@ -167,7 +167,7 @@ waitForSubagents
   -> Effect (Array SubagentResult)
 waitForSubagents options =
   map subagentResult
-    <$> Wire.call "wait_for_subagents" "agents" "Gg.Delegation.waitForSubagents" [ Wire.pick "ids" options ]
+    <$> Wire.call "wait_for_subagents" "delegation" "Gg.Delegation.waitForSubagents" [ Wire.pick "ids" options ]
 
 -- | Deliver a message to a running child agent's inbox, which it reads at its next turn.
 -- |
@@ -185,7 +185,7 @@ waitForSubagents options =
 -- | `NotFound` for an unknown agent id, and `Conflict` when that child has already returned.
 sendMessage :: String -> String -> Effect Unit
 sendMessage agentId message =
-  Wire.call_ "send_message" "agents" "Gg.Delegation.sendMessage" [ Wire.wire agentId, Wire.wire message ]
+  Wire.call_ "send_message" "delegation" "Gg.Delegation.sendMessage" [ Wire.wire agentId, Wire.wire message ]
 
 -- | Deliver a message to a running child agent's inbox, which it reads at its next turn.
 -- |
@@ -237,7 +237,7 @@ transitionState
   -> Record given
   -> Effect Unit
 transitionState state options =
-  Wire.call_ "transition_state" "agents" "Gg.Delegation.transitionState"
+  Wire.call_ "transition_state" "delegation" "Gg.Delegation.transitionState"
     [ Wire.wire state, Wire.pick "note" options ]
 
 -- | Continue this session as a different agent, from the next turn.
@@ -271,7 +271,7 @@ exec
   -> Record given
   -> Effect Unit
 exec agent options =
-  Wire.call_ "exec" "agents" "Gg.Delegation.exec" [ Wire.wire agent, Wire.pick "prompt" options ]
+  Wire.call_ "exec" "delegation" "Gg.Delegation.exec" [ Wire.wire agent, Wire.pick "prompt" options ]
 
 -- | Run a copy of this agent, in parallel, on something it will not do itself.
 -- |
@@ -299,7 +299,7 @@ exec agent options =
 -- |
 -- | `LimitExceeded` at the delegation depth cap.
 fork :: String -> Effect SubagentHandle
-fork prompt = Wire.call "fork" "agents" "Gg.Delegation.fork" [ Wire.wire prompt ]
+fork prompt = Wire.call "fork" "delegation" "Gg.Delegation.fork" [ Wire.wire prompt ]
 
 
 -- | One child agent's result. A child that produced no return value at all has no ending.

@@ -177,15 +177,20 @@ views::view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire) {
 
 std::string_view lower(docs::doc_kind kind) {
   switch (kind) {
+    case docs::doc_kind::module: return "module";
     case docs::doc_kind::type: return "type";
     default: return "function";
   }
 }
 
-// `type` is the only word the documentation index files anything but a function under, so anything
-// else is a function rather than a parse this SDK could fail — the wire cannot produce a third.
+// `module` and `type` are the two words the documentation index files anything but a function under,
+// so anything else is a function rather than a parse this SDK could fail — a word a later gg adds is
+// then a hit read as the commonest kind rather than a program that stops.
 docs::doc_kind lift_doc_kind(const sandbox_string_t& wire) {
-  return lift(wire) == "type" ? docs::doc_kind::type : docs::doc_kind::function;
+  const std::string word = lift(wire);
+  if (word == "module") return docs::doc_kind::module;
+  if (word == "type") return docs::doc_kind::type;
+  return docs::doc_kind::function;
 }
 
 delegation::agent_status lift_agent_status(test_cabinet_gg_delegation_agent_status_t wire) {

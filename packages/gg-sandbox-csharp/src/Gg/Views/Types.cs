@@ -13,7 +13,7 @@ public static partial class Views
         /// <summary>A text view, keyed by the label it was opened under.</summary>
         Text,
 
-        /// <summary>A documentation view, keyed by the name of the function it documents.</summary>
+        /// <summary>A documentation view, keyed by the fully-qualified name of the entry it documents.</summary>
         Docs,
     }
 

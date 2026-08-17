@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module GG
-  # Show a file, a computed value, or a function's documentation.
+  # Show a file, a computed value, or a module, function or type's documentation.
   #
   # A view is the only way material enters the agent's context window.
   #
@@ -17,7 +17,7 @@ module GG
     #
     # A Symbol and a String are the name itself; a `Method` knows its own, and an SDK method's name
     # is a name gg catalogues it under. Anything else is refused here, before the lookup, so a `nil`
-    # that came from somewhere else is not looked up as a function literally called "" and reported
+    # that came from somewhere else is not looked up as an entry literally called "" and reported
     # as an unknown name nobody wrote.
     #
     # @param target [Object] whatever the program passed
@@ -29,7 +29,7 @@ module GG
       return target.name.to_s if target.respond_to?(:name) && target.is_a?(Method)
 
       raise Core::ToolError.new("open_docs_view", Core::ToolErrorCode::INVALID_ARGUMENT,
-                                "expected a function name or a method, got #{target.inspect}")
+                                "expected an entry name or a method, got #{target.inspect}")
     end
     private_class_method :docs_name
 
@@ -103,19 +103,20 @@ module GG
     end
     operation :open_text, "views.open_text"
 
-    # Place one function's full documentation into the context window.
+    # Place one module, function or type's full documentation into the context window.
     #
     # Its signature, its description, and the declarations of any types it refers to that have not
-    # already been shown this session. This is how a function is read. It is a **view**, not a
-    # return value — the documentation arrives in the next prompt under a `Documentation` heading
-    # keyed by the function name, exactly as a file or a computed value arrives — so it is not
-    # available in the turn it is asked for. Ask in one turn, use it in the next. Opening the same
-    # function's documentation again replaces the view rather than adding a second copy, and
-    # `GG::Docs.close` closes it — not `GG::Views.close`, which does not reach documentation.
+    # already been shown this session. Anything `GG::Docs.search` returns is read this way. It is a
+    # **view**, not a return value — the documentation arrives in the next prompt under a
+    # `Documentation` heading keyed by the entry's name, exactly as a file or a computed value
+    # arrives — so it is not available in the turn it is asked for. Ask in one turn, use it in the
+    # next. Opening a key that is already open does nothing at all — not a move, not a re-emit —
+    # so the band only ever grows, and `GG::Docs.close` is what takes a page back out, not
+    # `GG::Views.close`, which does not reach that band.
     #
-    # @param target [Symbol, String, Method] The function to document, by its fully-qualified name
+    # @param target [Symbol, String, Method] The entry to document, by its fully-qualified name
     #   (`"GG::Files.read_file"`), by the name it is called by in its module, or as the method
-    #   itself.
+    #   itself. A module's own key is its path, `"GG::Files"`.
     # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` for an unknown or unbound name.
     def self.open_docs_view(target)
@@ -181,7 +182,7 @@ module GG
       # A computed value; its selector is the label it was given.
       TEXT = :text
 
-      # A function's documentation; its selector is the function's name.
+      # A module, function or type's documentation; its selector is that entry's key.
       DOCS = :docs
     end
 

@@ -2,11 +2,11 @@ package gg.files;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
 import java.util.Optional;
-import org.teavm.jso.JSObject;
 
 /**
  * Read, write, edit and list the files of the workspace.
@@ -49,8 +49,8 @@ public final class Files {
      * @ggop files.read_file
      */
     public static FileRead readFile(String path) {
-        return Read.fileRead(Wire.call("read_file", Wire.fs(), "fs", "readFile",
-                Wire.args(Wire.text(path))));
+        return Read.fileRead(Coding.call("files.read_file", Value.of(path), Value.none(),
+                Value.none()));
     }
 
     /**
@@ -67,8 +67,8 @@ public final class Files {
      * @ggop files.read_file
      */
     public static FileRead readFile(String path, int offset, int limit) {
-        return Read.fileRead(Wire.call("read_file", Wire.fs(), "fs", "readFile",
-                Wire.args(Wire.text(path), window(offset, limit))));
+        return Read.fileRead(Coding.call("files.read_file", Value.of(path), Value.of(offset),
+                Value.of(limit)));
     }
 
     /**
@@ -84,8 +84,8 @@ public final class Files {
      * @ggop files.read_text_file
      */
     public static String readTextFile(String path) {
-        return Wire.asString(Wire.call("read_file", Wire.fs(), "fs", "readTextFile",
-                Wire.args(Wire.text(path))));
+        return Coding.call("files.read_text_file", Value.of(path), Value.none(), Value.none())
+                .text();
     }
 
     /**
@@ -99,8 +99,8 @@ public final class Files {
      * @ggop files.read_text_file
      */
     public static String readTextFile(String path, int offset, int limit) {
-        return Wire.asString(Wire.call("read_file", Wire.fs(), "fs", "readTextFile",
-                Wire.args(Wire.text(path), window(offset, limit))));
+        return Coding.call("files.read_text_file", Value.of(path), Value.of(offset),
+                Value.of(limit)).text();
     }
 
     /**
@@ -119,8 +119,7 @@ public final class Files {
      * @ggop files.write_file
      */
     public static int writeFile(String path, String contents) {
-        return Wire.asInteger(Wire.call("write_file", Wire.fs(), "fs", "writeFile",
-                Wire.args(Wire.text(path), Wire.text(contents))));
+        return Coding.call("files.write_file", Value.of(path), Value.of(contents)).integer();
     }
 
     /**
@@ -138,8 +137,7 @@ public final class Files {
      * @ggop files.edit_file
      */
     public static void editFile(String path, String oldString, String newString) {
-        Wire.run("edit_file", Wire.fs(), "fs", "editFile",
-                Wire.args(Wire.text(path), Wire.text(oldString), Wire.text(newString)));
+        Coding.call("files.edit_file", Value.of(path), Value.of(oldString), Value.of(newString));
     }
 
     /**
@@ -152,8 +150,7 @@ public final class Files {
      * @ggop files.list_dir
      */
     public static List<DirEntry> listDir() {
-        return Read.dirEntries(
-                Wire.call("list_dir", Wire.fs(), "fs", "listDir", Wire.args()));
+        return Read.dirEntries(Coding.call("files.list_dir", Value.none()));
     }
 
     /**
@@ -167,16 +164,7 @@ public final class Files {
      * @ggop files.list_dir
      */
     public static List<DirEntry> listDir(String path) {
-        return Read.dirEntries(Wire.call("list_dir", Wire.fs(), "fs", "listDir",
-                Wire.args(Wire.text(path))));
-    }
-
-    /** The window of lines a read covers, as the guest's own function takes it. */
-    private static JSObject window(int offset, int limit) {
-        JSObject options = Wire.object();
-        Wire.set(options, "offset", Wire.number(offset));
-        Wire.set(options, "limit", Wire.number(limit));
-        return options;
+        return Read.dirEntries(Coding.call("files.list_dir", Value.of(path)));
     }
 
     // -------------------------------------------------------------------------------------------

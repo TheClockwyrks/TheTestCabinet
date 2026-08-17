@@ -15,12 +15,9 @@ package gg.delegation
 
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.agentsObject
-import gg.internal.ggArgs
 import gg.internal.ggCall
 import gg.internal.ggRecord
 import gg.internal.ggRun
-import gg.internal.ggSet
 import gg.internal.ggText
 import gg.internal.ggTexts
 import gg.internal.lowered
@@ -42,13 +39,8 @@ import gg.internal.lowered
  *   this one may not spawn.
  */
 public fun spawnSubagent(agent: String, brief: Brief): SubagentHandle {
-    val request = ggRecord()
-    val (field, briefed) = brief.lowered()
-    ggSet(request, "agent", ggText(agent))
-    ggSet(request, field, ggText(briefed))
-    return Read.subagentHandle(
-        ggCall("spawn_subagent", agentsObject(), "gg.delegation", "spawnSubagent", ggArgs(request)),
-    )
+    val request = ggRecord().put("agent", ggText(agent)).put("task", brief.lowered())
+    return Read.subagentHandle(ggCall("delegation.spawn_subagent", request))
 }
 
 /**
@@ -65,13 +57,7 @@ public fun spawnSubagent(agent: String, brief: Brief): SubagentHandle {
  */
 public fun waitForSubagents(vararg ids: String): List<SubagentResult> =
     Read.subagentResults(
-        ggCall(
-            "wait_for_subagents",
-            agentsObject(),
-            "gg.delegation",
-            "waitForSubagents",
-            ggArgs(ggTexts(ids.asIterable())),
-        ),
+        ggCall("delegation.wait_for_subagents", ggTexts(ids.asIterable())),
     )
 
 /**
@@ -84,13 +70,7 @@ public fun waitForSubagents(vararg ids: String): List<SubagentResult> =
  *   returned.
  */
 public fun sendMessage(agentId: String, message: String) {
-    ggRun(
-        "send_message",
-        agentsObject(),
-        "gg.delegation",
-        "sendMessage",
-        ggArgs(ggText(agentId), ggText(message)),
-    )
+    ggRun("delegation.send_message", ggText(agentId), ggText(message))
 }
 
 /**
@@ -111,13 +91,7 @@ public fun sendMessage(agentId: String, message: String) {
  *   second declaration in one turn.
  */
 public fun transitionState(state: String, note: String? = null) {
-    ggRun(
-        "transition_state",
-        agentsObject(),
-        "gg.delegation",
-        "transitionState",
-        if (note == null) ggArgs(ggText(state)) else ggArgs(ggText(state), ggText(note)),
-    )
+    ggRun("delegation.transition_state", ggText(state), ggText(note))
 }
 
 /**
@@ -139,13 +113,7 @@ public fun transitionState(state: String, note: String? = null) {
  *   second succession in one turn.
  */
 public fun exec(agent: String, prompt: String? = null) {
-    ggRun(
-        "exec",
-        agentsObject(),
-        "gg.delegation",
-        "exec",
-        if (prompt == null) ggArgs(ggText(agent)) else ggArgs(ggText(agent), ggText(prompt)),
-    )
+    ggRun("delegation.exec", ggText(agent), ggText(prompt))
 }
 
 /**
@@ -165,7 +133,7 @@ public fun exec(agent: String, prompt: String? = null) {
  * @throws ToolError `LIMIT_EXCEEDED` at the delegation depth cap.
  */
 public fun fork(prompt: String): SubagentHandle =
-    Read.subagentHandle(ggCall("fork", agentsObject(), "gg.delegation", "fork", ggArgs(ggText(prompt))))
+    Read.subagentHandle(ggCall("delegation.fork", ggText(prompt)))
 
 /**
  * What a child agent is briefed with.

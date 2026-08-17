@@ -79,6 +79,36 @@ lines.each { |line| puts line }
     );
 }
 
+/// **The bytes the compiler reads are the bytes the model sent**, and the file it reads them from is
+/// the one its diagnostics name.
+///
+/// The [authorship gate](crate::sandbox::language::authorship) drives every arm through this same
+/// property with one generated program. This asks it of this arm directly, over the shapes a model's
+/// reply actually takes, and reads the answer out of the preparation's own workspace rather than out
+/// of anything the arm chose to report.
+#[test]
+fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
+    for source in [
+        "puts 1\n",
+        "require \"gg\"\n\nGG::Views.open_text(\"n\", \"body\")\n",
+        "# a comment first\n\nclass Ledger\n  def total = 0\nend\n\nputs Ledger.new.total\n",
+        // No trailing newline, which is the shape a model's reply most often really has.
+        "x = 1\nputs x",
+    ] {
+        let context = context();
+        compile_program(source, &context).expect("this Ruby compiles");
+        let workspace = context
+            .workspace()
+            .expect("the preparation has a workspace");
+        let written = std::fs::read_to_string(workspace.work().join(PROGRAM_FILE))
+            .expect("the compiler was handed a program.rb");
+        assert_eq!(
+            written, source,
+            "the file the compiler read is not the reply gg was handed"
+        );
+    }
+}
+
 #[test]
 fn ruby_the_parser_rejects_comes_back_as_the_models_own_error() {
     // A refusal is the only thing Opal can say about a program other than "here is your

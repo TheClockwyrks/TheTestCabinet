@@ -1,26 +1,30 @@
-// **The prelude every C++ program gg compiles is compiled against**, and the header this arm
-// precompiles once per machine.
+// **The standard library every C++ program gg compiles is compiled against**, and the header this
+// arm precompiles once per machine.
 //
 // A model's reply is compiled verbatim as `main.cpp` and this file is put in front of it with
-// clang's `-include-pch`, so the reply opens with gg's whole wire surface and the standard
-// library already declared. It is the one file in this arm that is *both* a compile input and a
-// performance decision, and the two are the same decision:
+// clang's `-include-pch`, so the reply opens with the C++ standard library already declared. It is
+// the one file in this arm that is *both* a compile input and a performance decision, and the two
+// are the same decision:
 //
 //   * A model writes `#include <vector>` without thinking, and it should work — so the reply is
 //     never edited and an ordinary `#include` is simply a second, redundant read of a header the
 //     preamble already saw. clang de-duplicates it against the PCH for nothing.
-//   * Parsing this set costs **~850 ms** every time a C++ program is compiled, and precompiling
-//     it costs ~40 ms. Measured on this repository's dev container: a small program is 883–1110 ms
-//     without the PCH and **82–95 ms** with it. That is the single largest reducer available to
-//     this arm and the reason the header is "always full" rather than tailored per program —
-//     tailoring it would key the PCH on the model's reply, which is a new PCH per turn and the
-//     whole saving gone.
+//   * Parsing this set costs the best part of a second every time a C++ program is compiled, and
+//     reading a precompiled copy back costs tens of milliseconds. Measured on this repository's dev
+//     container, aarch64, best of five: a small program is 836 ms without the PCH and 90 ms with it;
+//     the ranges/format/map program in `cpp.compile.rs`'s table is 1581 ms without and 952 ms with.
+//     That is the single largest reducer available to this arm and the reason the header is "always
+//     full" rather than tailored per program — tailoring it would key the PCH on the model's reply,
+//     which is a new PCH per turn and the whole saving gone.
 //
-// WHAT IS IN IT. Two things, and only two. The **SDK** — gg's own surface, hand-written in
-// `sdk/`, whose `///` comments are the model-facing documentation this arm's signature catalogue
-// is reflected out of — and the **standard library**, which is this arm's library set. What is
-// deliberately NOT in it is the raw canonical ABI: `sandbox.h` is a C header of `sandbox_string_t`
-// and out-parameters, it is what the SDK is written *against*, and a model never sees it.
+// WHAT IS IN IT: THE STANDARD LIBRARY, AND NOTHING ELSE. **gg's own surface is deliberately not
+// here**, and that is the [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+// rather than an omission: every SDK name a program writes is reached through an import that program
+// wrote, so `gg::files::read_file` is undeclared until the reply writes `#include <gg/files.hpp>`.
+// The SDK is still *available* — its headers are on the include path and its bodies are in the
+// `sdk.o` every artifact links, which is packaging — and what it is not is in scope. Measured, best
+// of five on the same machine: carrying the SDK here saved 33 ms of a 952 ms turn, and cost the arm
+// the one line that says where a call came from.
 //
 // WHAT DECIDES THE SET BELOW. Two rules, and both are the seam's rather than this file's.
 // Commonly used libraries are available by default in every arm, and for C++ that library is the
@@ -34,8 +38,10 @@
 // events and able to put what they read in front of the model, and a directory walk done behind
 // them is none of those things. It is not a compiler problem — `#include <filesystem>` beside this
 // prelude compiles and links on this target, measured — so this is the seam's answer about which
-// route the workspace has, stated once here and once to the model in
-// `crates/gg/templates/system-code.cpp.hbs`.
+// route the workspace has, stated once here and reaching a model only as an absence from the set
+// this arm's catalogue declares, which gg quotes back on a compile failure rather than in the
+// system prompt: a program that reached for it reads the set beside the diagnostic that made it
+// relevant.
 //
 // WHAT THIS SET IS NOT: AN ALLOWLIST. This file decides what is put IN FRONT of a program, not
 // what a program may reach. The whole of libc++ is on clang's default include path, so a reply
@@ -43,37 +49,12 @@
 // Measured, not assumed: a `std::thread` program compiles, links and throws `system_error: thread
 // constructor failed: Not supported` at run time. Making the list an allowlist would mean
 // `-nostdinc++` and an explicit include tree, which buys a refusal in place of a run-time
-// exception a model can read — so what gg does instead is TELL the model the truth, in
-// `crates/gg/templates/system-code.cpp.hbs`, and `cpp.surface.test.rs` holds it to that.
+// exception a model can read — so what gg does instead is TELL the model the truth: the set is
+// reflected into this arm's catalogue and quoted back on a compile failure, where the mistake it
+// prevents is the one the compiler just detected. `cpp.surface.test.rs` asserts both directions —
+// that every header on the list is reachable, and that one off it is reachable too.
 
 #pragma once
-
-// **gg's surface**, which is what a program is actually written against. It is declarations only —
-// every body is in the `sdk.o` this arm links, compiled once at build time — so putting it in the
-// precompiled header costs a program nothing and puts `files::read_file` in front of it with no
-// `#include` line of gg's own.
-#include "sdk/gg.hpp"
-
-// What makes `files::read_file(…)` reachable without writing `gg::`.
-//
-// A using-directive rather than declaring the modules at global scope, and the reason is not a
-// collision — measured against this arm's own pinned `clang++`, every one of the thirteen module
-// names compiles as a fresh `namespace` at global scope beside this prelude, `shell` and `core`
-// included. It is that the modules have to live inside `gg` for the fully-qualified name a program
-// writes and a search hit shows — `gg::files::read_file` — to be a real C++ path rather than a
-// label, which is what makes two modules free to each declare a `close`. The using-directive is
-// then what keeps the ordinary call site short.
-//
-// WHAT A PROGRAM DECLARING ITS OWN `files` GETS. Not shadowing. A using-directive makes gg's names
-// visible *at* global scope rather than nested inside it, so a program's own global `namespace
-// files { … }` — or the reflex `namespace files = std::filesystem;` — is a second candidate and an
-// unqualified `files::` is *reference to 'files' is ambiguous*, with both candidates named at the
-// model's own line. Measured, not read from a standard: the declaration itself is accepted, the
-// unqualified use is the error, and either `::files::` or `gg::files::` resolves it. That is a
-// compile error a model can read and fix in one line, and it is the only cost of the directive.
-// Block scope is unaffected, so a local type or variable named after a module is simply the
-// program's.
-using namespace gg;
 
 // --- The standard library -----------------------------------------------------------------
 // **This arm's library set**, grouped as the standard groups them, so the list reads as a claim
@@ -99,8 +80,8 @@ using namespace gg;
 #include <version>
 
 // == Diagnostics ==
-// The exception hierarchy a `throw` and a `catch` are written in — including gg's own
-// `tool_error`, which is a `std::runtime_error`.
+// The exception hierarchy a `throw` and a `catch` are written in, and the base gg's own
+// `gg::core::tool_error` derives from once a program has included the header declaring it.
 #include <cassert>
 #include <exception>
 #include <stdexcept>

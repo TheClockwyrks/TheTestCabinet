@@ -11,7 +11,8 @@ use test_cabinet_core::gg::{
 
 use super::fixture::fixture_language;
 use super::*;
-use crate::sandbox::operations::VIEWS_OPEN_DOCS_VIEW;
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW};
 use crate::validate::{LaunchDefect, LaunchReport};
 
 /// The language `profile` resolves to, asserting gg honoured its configuration exactly as written.
@@ -201,6 +202,285 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
     );
 }
 
+/// **Every language writes the program that opens a session in its own syntax, covering every
+/// module and every documentation key gg handed it — and can prepare what it wrote.**
+///
+/// This one is not a quotation gg could degrade: it is the agent's [opening
+/// turn](crate::bootstrap), prepared and *run* before the first request, so a language whose program
+/// did not prepare would fail every one of its agents' runs as an internal error rather than
+/// producing a worse prompt. The same gate the generated documentation program gets, for the same
+/// reason, plus the two things only this program can get wrong — a module gg listed and the program
+/// never searched, and a search that took the default page instead of the whole module.
+///
+/// The [fixture](super::fixture) is included and answers deliberately unlike every registered arm,
+/// which is what makes "the opening turn is written in the agent's own language" an assertion rather
+/// than a promise.
+#[test]
+fn every_language_writes_the_program_that_opens_the_session() {
+    const MODULES: [&str; 2] = ["gg.files", "gg.views"];
+    const DOCS: [&str; 1] = ["gg.docs.search"];
+
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let program = language.bootstrap_program(&MODULES, &DOCS);
+        let search = spell(language, DOCS_SEARCH);
+        let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
+        for call in [&search, &open_docs_view] {
+            assert!(
+                program.contains(call.as_str()),
+                "{}: the opening program does not call `{call}`:\n{program}",
+                language.display_name()
+            );
+        }
+        for name in MODULES.iter().chain(DOCS.iter()) {
+            assert!(
+                program.contains(name),
+                "{}: the opening program never names `{name}`:\n{program}",
+                language.display_name()
+            );
+        }
+        // The whole-module lookup, which is the difference between an agent that is shown every
+        // function it holds and one that is shown the first page of some of them.
+        assert!(
+            program.contains(&MAX_SEARCH_LIMIT.to_string()),
+            "{}: the opening program does not ask for the whole of a module:\n{program}",
+            language.display_name()
+        );
+        // The order the model reads: what was searched, then what was opened.
+        assert!(
+            program.find(&search) < program.find(&open_docs_view),
+            "{}: the opening program opens a view before it searches:\n{program}",
+            language.display_name()
+        );
+        language
+            .prepare_program(&program, &[], &PrepareContext::new())
+            .unwrap_or_else(|failure| {
+                panic!(
+                    "{}: cannot prepare the program it generated ({failure}):\n{program}",
+                    language.display_name()
+                )
+            });
+    }
+
+    // Two implementations, written out, because containment cannot show that the syntax *around*
+    // the two calls is each language's own: a trailing options object and a `for…of` here, keyword
+    // arguments and one statement per module there.
+    assert_eq!(
+        typescript().bootstrap_program(&MODULES, &DOCS),
+        format!(
+            "import * as gg from \"gg\";\n\
+             \n\
+             const modules = [\n  \"gg.files\",\n  \"gg.views\",\n];\n\
+             for (const path of modules) {{\n  \
+             gg.docs.search(\"\", {{ module: path, limit: {MAX_SEARCH_LIMIT} }});\n}}\n\
+             \n\
+             const functions = [\n  \"gg.docs.search\",\n];\n\
+             for (const name of functions) {{\n  gg.views.openDocsView(name);\n}}\n"
+        )
+    );
+    assert_eq!(
+        fixture_language().bootstrap_program(&MODULES, &DOCS),
+        format!(
+            "docs.search(\"\", module=\"gg.files\", limit={MAX_SEARCH_LIMIT})\n\
+             docs.search(\"\", module=\"gg.views\", limit={MAX_SEARCH_LIMIT})\n\
+             views.open_docs_view(\"gg.docs.search\")\n"
+        )
+    );
+}
+
+/// **What an arm's catalogue says about reaching a module is what gg's own program does about
+/// reaching it** — the assertion that keeps *in scope already* honest.
+///
+/// # The claim this holds
+///
+/// A documentation view of every symbol tells a model how its program reaches that symbol, out of
+/// [`ModuleView::import`](crate::sandbox::ModuleView): a line to write, or nothing to write because
+/// this arm's SDK is in a program's scope before the model's code is compiled. The arms that have
+/// not converted are in the second state, and the second state is a claim about **how that arm
+/// delivers its SDK** — a prelude, a precompiled header, a re-exported import, a scope injection.
+/// Nothing about the catalogue notices when that stops being true. The day an arm's SDK
+/// has to be imported, every view on that arm quietly tells every model the opposite, and the model
+/// pays with a compile error naming a symbol it was told it already had.
+///
+/// The one thing in gg that would notice is right here: the [opening turn](crate::bootstrap) is a
+/// program **gg writes and the arm compiles**, in that arm's own syntax, before the model's first
+/// request. So it is the arm's own demonstration of what a program has to do to call `docs.search`
+/// and `views.openDocsView`, and the catalogue has to agree with it:
+///
+/// * a module that states a line is reached in the program by the route [`PATH_ROUTE`] records for
+///   that arm: the line character for character, or the module's own
+///   [path](crate::sandbox::ModuleDoc::path) written at the call site with no line at all;
+/// * a module that states none has **no line in the program bringing it into scope**, which is what
+///   "already there" means when a compiler is the one being told.
+///
+/// What fails the first half is the case worth catching: a program calling into a module by a
+/// **short** name, with neither the line nor the path, which is an injection the catalogue denies.
+///
+/// The negative half looks for a scope-bringing statement that names *that module's path*, rather
+/// than for import syntax in general, so a program that imports something else entirely — a
+/// standard-library module, an effect type — is not what this fails on.
+#[test]
+fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
+    const MODULES: [&str; 2] = ["gg.files", "gg.views"];
+    const DOCS: [&str; 1] = ["gg.docs.search"];
+    /// The keywords the eleven arms bring a module into scope with. A line is a scope-bringing
+    /// statement when it opens with one of these *and* names the module, which is the pair that
+    /// makes this precise enough to keep.
+    const BRINGS_INTO_SCOPE: [&str; 5] = ["import ", "use ", "using ", "#include", "require "];
+    /// **The arms whose opening program reaches a module by writing its path rather than its line.**
+    ///
+    /// A fact about the language, recorded per arm because a rule that accepted either route
+    /// everywhere would assert nothing: every arm's call sites write the module's path, so
+    /// "the line or the path" is satisfied by every program that calls anything at all, including
+    /// one that had dropped its imports entirely.
+    ///
+    /// C#'s modules are `static class`es inside a namespace an assembly reference makes reachable
+    /// in full, Rust's are modules of a crate `--extern` puts in the extern prelude, and the two JVM
+    /// arms' are reached by their fully-qualified names off a jar on the classpath, so all four
+    /// opening programs name them in full and write no line. Every other arm that states a line
+    /// writes that line, and the table fails in both directions: an arm listed here that starts
+    /// writing its line fails, and an arm not listed that stops writing one fails.
+    const PATH_ROUTE: [GgProgramLanguage; 4] = [
+        GgProgramLanguage::CSharp,
+        GgProgramLanguage::Java,
+        GgProgramLanguage::Kotlin,
+        GgProgramLanguage::Rust,
+    ];
+
+    let mut lines_asserted = 0usize;
+    for language in all_languages() {
+        let name = language.display_name();
+        let program = language.bootstrap_program(&MODULES, &DOCS);
+        // The two modules the opening program actually calls into. Resolved through the operation
+        // rather than by reading a path out of the call, because the operation is gg's identity for
+        // a call and the module id is what the catalogue files it under.
+        for operation in [DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW] {
+            let function = crate::sandbox::catalogue_functions(language)
+                .into_iter()
+                .find(|function| {
+                    crate::sandbox::operation_of(function)
+                        .is_some_and(|declared| declared.id == operation)
+                })
+                .unwrap_or_else(|| {
+                    panic!("{name}: its catalogue carries no call for `{operation:?}`")
+                });
+            let module = crate::sandbox::catalogue_modules(language)
+                .into_iter()
+                .find(|module| module.id == function.module)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{name}: `{}` is filed under the module `{}`, which its catalogue does not \
+                         declare",
+                        function.fqn, function.module
+                    )
+                });
+            match module.import {
+                Some(line) => {
+                    match PATH_ROUTE.contains(&language.id()) {
+                        true => {
+                            assert!(
+                                program.contains(module.path),
+                                "{name}: `PATH_ROUTE` records that its opening program reaches a \
+                                 module by writing its path, and this one does not name `{}` at \
+                                 all:\n{program}",
+                                module.path
+                            );
+                            assert!(
+                                !program.contains(line),
+                                "{name}: `PATH_ROUTE` records that its opening program writes no \
+                                 line, and this one writes `{line}`; delete its row:\n{program}"
+                            );
+                        }
+                        false => assert!(
+                            program.contains(line),
+                            "{name}: its catalogue says `{}` is reached with `{line}`, and the \
+                             opening program gg writes for this arm calls into it without that \
+                             line. One of the two is wrong, and the model is told the catalogue's \
+                             answer:\n{program}",
+                            module.path
+                        ),
+                    }
+                    lines_asserted += 1;
+                }
+                None => {
+                    let brought = program.lines().find(|line| {
+                        let line = line.trim_start();
+                        BRINGS_INTO_SCOPE
+                            .iter()
+                            .any(|keyword| line.starts_with(keyword))
+                            && line.contains(module.path)
+                    });
+                    assert!(
+                        brought.is_none(),
+                        "{name}: its catalogue states no import line for `{}` — so every view of \
+                         every symbol in it tells models the module is in scope already — and the \
+                         opening program gg writes for this arm brings it into scope with \
+                         `{}`:\n{program}",
+                        module.path,
+                        brought.unwrap_or_default().trim()
+                    );
+                }
+            }
+        }
+    }
+
+    assert!(
+        lines_asserted > 0,
+        "no arm's opening program was checked against a declared import line, so the half of this \
+         gate that holds a stated line to being the real one never ran"
+    );
+}
+
+/// **Every language says how a program reaches the code a skill or memory bound**, in a form that
+/// arm's own compiler would accept.
+///
+/// This is the one fact about the surface that no search can answer: `lib` binds no catalogued
+/// function, so the reply to the read that bound the module is the only place a model is told, and
+/// [`Loaded::note`](crate::knowledge::Loaded::note) builds that sentence from here. A form quoted in
+/// a syntax the arm does not have is a binding the model has not been given.
+///
+/// Asserted as containment for every arm, plus the exact text of the two that reach a module by
+/// **string** rather than by path, because those two are the ones a `member_separator` would get
+/// wrong and get wrong silently — and of the two compiled arms whose path is checked by their own
+/// compiler, since a path that stopped compiling is the same silence.
+#[test]
+fn every_language_says_how_a_bound_module_is_reached() {
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let access = language.lib_access("csvTools");
+        // Both halves of the note, because both are what the model reads: on an arm whose module
+        // system resolves a specifier, `lib` is the scheme in the import line and the access is the
+        // namespace that line bound. Asserting the access alone would have made such an arm state
+        // its scheme nowhere.
+        let quoted = format!(
+            "{} {access}",
+            language.lib_import("csvTools").unwrap_or_default()
+        );
+        for part in ["lib", "csvTools", "<name>"] {
+            assert!(
+                quoted.to_lowercase().contains(&part.to_lowercase()),
+                "{}: `{quoted}` does not name `{part}`",
+                language.display_name()
+            );
+        }
+    }
+
+    assert_eq!(
+        language(GgProgramLanguage::Rust).lib_access("csvTools"),
+        "lib::csvTools::<name>"
+    );
+    assert_eq!(
+        language(GgProgramLanguage::Java).lib_access("csvTools"),
+        "Lib.csvTools.<name>"
+    );
+    assert_eq!(
+        language(GgProgramLanguage::Kotlin).lib_access("csvTools"),
+        "lib.csvTools.<name>"
+    );
+    assert_eq!(
+        language(GgProgramLanguage::PureScript).lib_access("csvTools"),
+        "Gg.Core.lib \"csvTools\" \"<name>\""
+    );
+}
+
 /// **A run that names no language gets the default**, whether the capability is absent, on with no
 /// params, or on with a null one — and none of those is reported as an unreadable setting.
 #[test]
@@ -351,63 +631,39 @@ fn every_model_facing_call_resolves_in_every_language() {
     }
 }
 
-/// **Every language registers its own templates under its own id**, so two languages cannot collide
-/// on one Handlebars name and silently render each other's prompt.
+/// **What the two ECMAScript arms share, and what they differ in today.**
 ///
-/// The names are authored rather than derived — a `&'static str` costs nothing and reads plainly at
-/// the definition — so the convention they are supposed to follow is asserted here rather than
-/// assumed.
-#[test]
-fn every_language_names_its_templates_after_itself() {
-    for language in all_languages() {
-        let prompt = language.prompt();
-        assert_eq!(
-            prompt.system_template_name,
-            format!("system-code.{}", language.id()),
-            "{}: the system template's registered name",
-            language.id()
-        );
-        assert_eq!(
-            prompt.nothing_shown_template_name,
-            format!("code-nothing-shown.{}", language.id()),
-            "{}: the nothing-shown template's registered name",
-            language.id()
-        );
-        assert!(
-            !prompt.system_template.trim().is_empty(),
-            "{}: an empty system prompt",
-            language.id()
-        );
-        assert!(
-            !prompt.nothing_shown_template.trim().is_empty(),
-            "{}: an empty nothing-shown notice",
-            language.id()
-        );
-    }
-}
-
-/// **The JavaScript arm is the TypeScript arm with the check taken out, and with nothing else
-/// taken out.**
+/// An A/B across the pair measures the compiler only while the compiler is what differs, and every
+/// other axis they could drift on is cheap to drift on: a catalogue regenerated from a pruned
+/// source, a prompt edited on one side, a binding convention that changed on one. Each of those is
+/// pinned here rather than left to the fact that both are generated today.
 ///
-/// This is the assertion that keeps the pair worth running. An A/B across two arms measures the
-/// check only while the check is the *only* thing that differs, and every other axis they could
-/// drift on is cheap to drift on: a catalogue regenerated from a pruned source, a prompt edited on
-/// one side, a strip that gained a refusal on one arm. So each is pinned here rather than left to
-/// the fact that both are generated today.
-///
-/// Four things must be equal — the surface a model is shown, down to its type annotations; the
-/// evaluator; the binding convention; and the lexical reading healing does — and exactly two must
-/// differ: which language the prompt says the model is writing, and whether a compiler is named.
+/// **The pair differs in the compiler and in nothing else**, which is what makes the A/B readable.
+/// Both arms evaluate a module in the same guest, reach gg through the same import line, and are
+/// generated from one set of declarations.
 #[test]
 fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     let ts = typescript();
     let js = language(GgProgramLanguage::JavaScript);
 
-    // What differs, and it is the whole of the arm.
+    // What differs by design, and is the whole reason for the pair.
     assert_eq!(ts.checker(), Some("tsc"));
     assert_eq!(js.checker(), None, "nothing judges a JavaScript program");
     assert!(ts.prepare_compiles());
     assert!(!js.prepare_compiles());
+
+    // The guest, the import line and the module specifier: one artifact, one line, one scheme.
+    assert_eq!(
+        ts.guest_component().map(<[u8]>::len),
+        js.guest_component().map(<[u8]>::len),
+        "the pair runs on two guests, so a study across it measures the guest as well"
+    );
+    assert_eq!(ts.lib_import("csvTools"), js.lib_import("csvTools"));
+    assert_eq!(
+        ts.bootstrap_program(&["gg.docs"], &["gg.docs.search"]),
+        js.bootstrap_program(&["gg.docs"], &["gg.docs.search"]),
+        "gg synthesizes one opening program for the pair"
+    );
 
     // The surface. Compared entry by entry rather than as whole catalogues, because the catalogues
     // differ in the one field that says whose they are — and rendered to text so that a signature,
@@ -441,54 +697,44 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
         "the JavaScript catalogue dropped its type annotations"
     );
 
-    // The evaluator, the binding convention, and the reading healing does.
-    assert_eq!(ts.guest_component(), js.guest_component());
-    assert_eq!(js.binding_name("csv-tools"), "csvTools");
+    // The binding convention and the reading healing does.
+    assert_eq!(ts.binding_name("csv-tools"), js.binding_name("csv-tools"));
     assert_eq!(
         ts.healing().program_fence_tags(),
         js.healing().program_fence_tags(),
     );
 
-    // And a type annotation prepares on both, because "JavaScript" here is a program nothing
-    // checked rather than a narrower grammar.
-    for language in [ts, js] {
-        let prepared = language
-            .prepare_program("const total: number = 1;", &[], &PrepareContext::new())
-            .unwrap_or_else(|err| panic!("{}: {err}", language.id()));
-        assert!(!prepared.source.contains(": number"), "{}", language.id());
-    }
     // The one program that separates them: a call the SDK does not have is a compile error on the
-    // checked arm and reaches the guest on the other.
-    let mistyped = "view.openText(1, 2);";
+    // checked arm and reaches the guest on the other, where the same text is what the engine
+    // evaluates.
+    const WRONG: &str = "import * as gg from \"gg\";\ngg.views.openText(1, 2);\n";
     assert!(
         matches!(
-            ts.prepare_program(mistyped, &[], &PrepareContext::new()),
+            ts.prepare_program(WRONG, &[], &PrepareContext::new()),
             Err(PrepareFailure::Program(PrepareError::Compile(_)))
         ),
-        "TypeScript's checker reads the program"
+        "TypeScript's compiler reads the program"
     );
-    assert!(
-        js.prepare_program(mistyped, &[], &PrepareContext::new())
-            .is_ok(),
-        "nothing on the JavaScript arm reads the program before it runs"
+    assert_eq!(
+        js.prepare_program(WRONG, &[], &PrepareContext::new())
+            .expect("nothing on the JavaScript arm reads the program before it runs")
+            .source,
+        WRONG,
+        "and what it hands the guest is the reply, byte for byte"
     );
 }
 
-/// **The JavaScript arm's prompt names its own language and not the other's**, and says nothing
-/// about a compiler.
+/// **The JavaScript arm names itself, and names no compiler.**
 ///
-/// Both halves are the arm. A prompt that still said "TypeScript program" would be a copied
-/// template nobody re-read; one that kept the type-check section would tell a model its program is
-/// judged by something that never runs, which is worse than saying nothing.
+/// The two facts the one system prompt renders a language from, and the two an arm cut from another
+/// arm is most likely to inherit: a JavaScript agent told it is writing TypeScript would have been
+/// handed the wrong language outright, and one told its program is judged by `tsc` would be promised
+/// a check that never runs.
 #[test]
-fn the_javascript_prompt_is_its_own_and_claims_no_compiler() {
-    let template = language(GgProgramLanguage::JavaScript)
-        .prompt()
-        .system_template;
-    assert!(template.contains("JavaScript program"), "{template}");
-    assert!(!template.contains("TypeScript"), "{template}");
-    assert!(!template.contains("tsc"), "{template}");
-    assert!(!template.contains("type-check"), "{template}");
+fn the_javascript_arm_names_itself_and_no_compiler() {
+    let js = language(GgProgramLanguage::JavaScript);
+    assert_eq!(js.display_name(), "JavaScript");
+    assert_eq!(js.checker(), None);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -550,83 +796,26 @@ const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[
     (
         GgProgramLanguage::TypeScript,
         GgProgramLanguage::JavaScript,
-        "the two arms differ in whether gg type-checks a program before handing it over, and in \
-         nothing else — the same SDK, the same signatures, the same strip, one evaluator. A second, \
-         byte-identical 13.4 MB component in the repository would be a second copy of one artifact, \
-         with nothing to observe between them and a standing chance for the one thing the arms must \
-         share to diverge",
+        "the pair is one language with the type check varied, so both arms evaluate a module in \
+         the ECMAScript guest and reach it through one constant. A second copy of that artifact is \
+         1.2 MB in every released binary for bytes that must not differ: an arm whose guest \
+         resolved `gg` differently, or reported a frame differently, would make the pair's A/B \
+         measure the guest as well as the compiler",
     ),
     (
         GgProgramLanguage::TypeScript,
         GgProgramLanguage::PureScript,
-        "a PureScript program is compiled to JavaScript by `purs` and flattened by `esbuild` before \
-         it crosses, and what arrives is a self-contained script with no runtime to boot — `purs` \
-         compiles the library code a program used into the program and the bundler tree-shakes the \
-         rest away. So a component of its own would differ from this one in nothing at all, where \
-         Ruby's differs in a 743 KB Opal runtime pre-initialised into it. Measured: 2.7 ms per turn \
-         against 2.1 ms for the equivalent plain JavaScript on the same artifact",
+        "PureScript compiles to JavaScript on the host, so what it hands the guest is an ES module \
+         the ECMAScript guest declares exactly as it declares this one's emission — down to the \
+         `gg` its SDK imports and the source map its frames are read back through. A guest of its \
+         own would be a second copy of one artifact and a second engine under a study that varies \
+         the source language rather than the runtime",
     ),
     (
         GgProgramLanguage::JavaScript,
         GgProgramLanguage::PureScript,
-        "the transitive half of the two entries above: JavaScript serves TypeScript's component and \
-         so does PureScript, so this pair shares one by consequence rather than by a third decision",
-    ),
-    (
-        GgProgramLanguage::TypeScript,
-        GgProgramLanguage::Java,
-        "a Java program is compiled to JavaScript by TeaVM before it crosses, and the alternative — \
-         a component of Java's own, with the classlib pre-initialised into it the way Ruby's holds \
-         Opal — is not available: TeaVM has no runtime to bake. It emits, per program, only the \
-         classlib methods that program's call graph reached, renamed and inlined into the same \
-         file, so there is no stable object two programs could share and a component carrying one \
-         would carry the wrong 600 KB for every program that was not the one it was built from. \
-         The cost of sharing is measured rather than hidden: ~9 ms of evaluation per turn against \
-         ~2 ms for the equivalent plain JavaScript on the same artifact",
-    ),
-    (
-        GgProgramLanguage::JavaScript,
-        GgProgramLanguage::Java,
-        "the transitive half of the entry above: JavaScript serves TypeScript's component and so \
-         does Java, so this pair shares one by consequence rather than by a third decision",
-    ),
-    (
-        GgProgramLanguage::PureScript,
-        GgProgramLanguage::Java,
-        "the other transitive half: both arms compile to JavaScript on the host and both are \
-         evaluated by TypeScript's component, so this pair shares one by consequence rather than by \
-         a third decision",
-    ),
-    (
-        GgProgramLanguage::Java,
-        GgProgramLanguage::Kotlin,
-        "the two JVM arms reach this guest by one road: a Kotlin program is compiled to bytecode \
-         and then to JavaScript by the same TeaVM, through the same driver backend, so the \
-         argument that a component of Java's own would carry nothing carries over unchanged. This \
-         is the pair the sharing is *about* — the other three Kotlin entries below are its \
-         consequences — and it is the pair where sharing an artifact is most worth saying out \
-         loud, because these two also share a compiler road, a classlib and a library claim. What \
-         they must not share is the surface a model writes against, and that is asserted \
-         separately: this arm carries no overload group at all where Java carries fourteen",
-    ),
-    (
-        GgProgramLanguage::TypeScript,
-        GgProgramLanguage::Kotlin,
-        "TypeScript's component is the ECMAScript guest every host-compiled arm is evaluated by, \
-         and Kotlin's output is JavaScript by the time it crosses",
-    ),
-    (
-        GgProgramLanguage::JavaScript,
-        GgProgramLanguage::Kotlin,
-        "the transitive half of the entry above: JavaScript serves TypeScript's component and so \
-         does Kotlin, so this pair shares one by consequence rather than by a third decision",
-    ),
-    (
-        GgProgramLanguage::PureScript,
-        GgProgramLanguage::Kotlin,
-        "the other transitive half: both arms compile to JavaScript on the host and both are \
-         evaluated by TypeScript's component, so this pair shares one by consequence rather than by \
-         a third decision",
+        "the same artifact, for the same reason: three arms compile to JavaScript and one guest \
+         evaluates it",
     ),
 ];
 
@@ -640,10 +829,10 @@ fn shared_artifacts(a: GgProgramLanguage, b: GgProgramLanguage) -> Option<&'stat
 
 /// **No language serves another language's artifacts**, except where the seam says so out loud.
 ///
-/// Four artifacts, each of which a consumer reaches through the trait object it was handed: the
-/// embedded component, the catalogue's spellings, the prompt's templates, and the healing dialect.
-/// A consumer that had kept a `static` of TypeScript's — the shape every one of these was in before
-/// the seam — would return the same value for both languages here.
+/// Three artifacts, each of which a consumer reaches through the trait object it was handed: the
+/// embedded component, the catalogue's spellings, and the healing dialect. A consumer that had kept
+/// a `static` of TypeScript's — the shape every one of these was in before the seam — would return
+/// the same value for both languages here.
 ///
 /// The rule is asserted over **every pair of registered languages** as well as against the fixture,
 /// because a registry with two real languages in it is the first tree where "one of them quietly
@@ -690,17 +879,11 @@ fn no_language_serves_another_languages_artifacts() {
                 ),
             }
             // Whatever an exemption covers, it never covers these: a language that answered another
-            // language's name, or rendered its prompt, would be a language an operator configured
-            // and did not get.
+            // language's id or another language's name would be a language an operator configured
+            // and did not get. The prompt is no longer among them — one template serves every arm,
+            // and what makes an arm's render its own is the segment gated on the id asserted here.
             assert_ne!(mine.id(), theirs.id());
             assert_ne!(mine.display_name(), theirs.display_name());
-            assert_ne!(
-                mine.prompt().system_template,
-                theirs.prompt().system_template,
-                "{} and {} render one system prompt",
-                mine.id(),
-                theirs.id(),
-            );
         }
     }
 
@@ -730,14 +913,6 @@ fn no_language_serves_another_languages_artifacts() {
     assert_eq!(spelling(ts), "readFile");
     assert_eq!(spelling(fixture), "read_file");
 
-    assert_ne!(
-        ts.prompt().system_template_name,
-        fixture.prompt().system_template_name,
-    );
-    assert_ne!(
-        ts.prompt().system_template,
-        fixture.prompt().system_template,
-    );
     assert_ne!(
         crate::sandbox::spell(ts, crate::sandbox::SESSION_REQUEST_CHANGES),
         crate::sandbox::spell(fixture, crate::sandbox::SESSION_REQUEST_CHANGES),
@@ -808,11 +983,12 @@ fn the_synthesized_file_view_statement_is_the_languages_own() {
 
     assert_eq!(
         typescript().open_file_statement("src/main.ts", None),
-        r#"gg.views.openFile("src/main.ts");"#
+        "import * as gg from \"gg\";\n\ngg.views.openFile(\"src/main.ts\");\n"
     );
     assert_eq!(
         typescript().open_file_statement("src/main.ts", Some(window)),
-        r#"gg.views.openFile("src/main.ts", { offset: 400, limit: 200 });"#
+        "import * as gg from \"gg\";\n\ngg.views.openFile(\"src/main.ts\", { offset: 400, limit: \
+         200 });\n"
     );
 
     let fixture = fixture_language();
@@ -891,7 +1067,7 @@ fn preparing_a_program_is_the_languages_own() {
     assert!(
         matches!(
             typescript().prepare_program(commented, &[], &PrepareContext::new()),
-            Err(PrepareFailure::Program(PrepareError::Syntax(_)))
+            Err(PrepareFailure::Program(PrepareError::Compile(_)))
         ),
         "`#` is not TypeScript"
     );
@@ -903,10 +1079,11 @@ fn preparing_a_program_is_the_languages_own() {
         "total = 1\n"
     );
 
-    // And each refuses what its own guest cannot resolve, in its own syntax.
+    // And each refuses what its own guest cannot resolve, in its own syntax. TypeScript's refusal is
+    // the compiler's, because a specifier is something a compiler resolves.
     assert!(matches!(
         typescript().prepare_program("import fs from \"fs\";\n", &[], &PrepareContext::new()),
-        Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
+        Err(PrepareFailure::Program(PrepareError::Compile(_)))
     ));
     assert!(matches!(
         fixture_language().prepare_program("use tools\n", &[], &PrepareContext::new()),

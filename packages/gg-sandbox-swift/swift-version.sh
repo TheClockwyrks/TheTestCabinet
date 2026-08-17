@@ -65,7 +65,7 @@ GG_WASMTIME_ADAPTER_VERSION="45.0.3"
 #
 # There is no Swift generator in `wit-bindgen`, and this arm does not need one. Swift imports C
 # natively, so the canonical ABI is generated once as C — the same generator the C++ arm would
-# use — compiled to a wasm object, and reached from Swift through a bridging header. Writing
+# use — compiled to a wasm object, and reached from Swift through a clang module. Writing
 # the lowering by hand in Swift would have been a second implementation of a specification
 # `wit-bindgen` already implements, drifting from the WIT on its own schedule.
 #

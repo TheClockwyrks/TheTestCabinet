@@ -138,7 +138,7 @@ type IssueCreated =
 -- | holds it.
 createEpic
   :: { prefix :: String, title :: String, description :: String } -> Effect EpicCreated
-createEpic epic = Wire.call "create_epic" "project" "Gg.Board.createEpic" [ Wire.wire epic ]
+createEpic epic = Wire.call "create_epic" "board" "Gg.Board.createEpic" [ Wire.wire epic ]
 
 -- | Create a self-contained, dispatchable issue.
 -- |
@@ -187,7 +187,7 @@ createIssue
      | given
      }
   -> Effect IssueCreated
-createIssue issue = Wire.call "create_issue" "project" "Gg.Board.createIssue" [ Wire.lower {} issue ]
+createIssue issue = Wire.call "create_issue" "board" "Gg.Board.createIssue" [ Wire.lower {} issue ]
 
 -- | Revise an issue, changing at least one of its fields.
 -- |
@@ -222,7 +222,7 @@ updateIssue
   -> Record given
   -> Effect Unit
 updateIssue id patch =
-  Wire.call_ "update_issue" "project" "Gg.Board.updateIssue"
+  Wire.call_ "update_issue" "board" "Gg.Board.updateIssue"
     [ Wire.wire id
     , Wire.lower
         { description: toNullable, epicId: toNullable, status: issueStatus }
@@ -246,7 +246,7 @@ updateIssue id patch =
 -- | `NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.
 setIssueBlockedBy :: String -> Array String -> Effect Unit
 setIssueBlockedBy id blockedBy =
-  Wire.call_ "set_issue_blocked_by" "project" "Gg.Board.setIssueBlockedBy"
+  Wire.call_ "set_issue_blocked_by" "board" "Gg.Board.setIssueBlockedBy"
     [ Wire.wire id, Wire.wire blockedBy ]
 
 -- | Remove an epic, keeping its issues and ungrouping them.
@@ -267,7 +267,7 @@ setIssueBlockedBy id blockedBy =
 -- |
 -- | `NotFound` for an unknown id.
 removeEpic :: String -> Effect BoardUsage
-removeEpic id = Wire.call "remove_epic" "project" "Gg.Board.removeEpic" [ Wire.wire id ]
+removeEpic id = Wire.call "remove_epic" "board" "Gg.Board.removeEpic" [ Wire.wire id ]
 
 -- | Remove an issue and every blocker edge pointing at it.
 -- |
@@ -287,7 +287,7 @@ removeEpic id = Wire.call "remove_epic" "project" "Gg.Board.removeEpic" [ Wire.w
 -- |
 -- | `NotFound` for an unknown id.
 removeIssue :: String -> Effect BoardUsage
-removeIssue id = Wire.call "remove_issue" "project" "Gg.Board.removeIssue" [ Wire.wire id ]
+removeIssue id = Wire.call "remove_issue" "board" "Gg.Board.removeIssue" [ Wire.wire id ]
 
 -- | Register a wait on an issue and hand back an acknowledgement.
 -- |
@@ -314,7 +314,7 @@ removeIssue id = Wire.call "remove_issue" "project" "Gg.Board.removeIssue" [ Wir
 -- |
 -- | `NotFound` for an unknown id.
 waitForIssue :: String -> Effect String
-waitForIssue id = Wire.call "wait_for_issue" "project" "Gg.Board.waitForIssue" [ Wire.wire id ]
+waitForIssue id = Wire.call "wait_for_issue" "board" "Gg.Board.waitForIssue" [ Wire.wire id ]
 
 -- | Register a wait on an issue that was just created.
 -- |

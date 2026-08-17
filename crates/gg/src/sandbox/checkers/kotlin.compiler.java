@@ -59,7 +59,6 @@ import org.jetbrains.kotlin.cli.common.messages.MessageCollector;
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler;
 import org.jetbrains.kotlin.config.Services;
 
-import org.teavm.backend.javascript.JSModuleType;
 import org.teavm.diagnostics.DefaultProblemTextConsumer;
 import org.teavm.diagnostics.Problem;
 import org.teavm.diagnostics.ProblemSeverity;
@@ -74,7 +73,7 @@ import org.teavm.vm.TeaVMOptimizationLevel;
 
 public final class GgCompiler {
     /** The protocol version gg checks at the handshake. Bump it when a field changes meaning. */
-    static final int PROTOCOL = 1;
+    static final int PROTOCOL = 2;
 
     /** The bytecode level gg's own generated entry class is compiled to. */
     static final String RELEASE = "21";
@@ -95,14 +94,8 @@ public final class GgCompiler {
     /** The classpath gg's generated entry class is compiled with, and TeaVM translates from. */
     static List<String> toolchain;
 
-    /** The classpath a model's PROGRAM is compiled against: the Kotlin standard library. */
+    /** The classpath a model's own Kotlin is compiled against: the standard library and gg's SDK. */
     static List<String> programPath;
-
-    /** The classpath a code MODULE is compiled against: the above, plus TeaVM's export annotations. */
-    static List<String> modulePath;
-
-    /** The directory the scripting plugin is loaded out of, as the compiler's `-kotlin-home`. */
-    static String kotlinHome;
 
     public static void main(String[] args) throws Exception {
         channel = new PrintStream(new FileOutputStream(FileDescriptor.out), true, "UTF-8");
@@ -113,8 +106,6 @@ public final class GgCompiler {
 
         toolchain = Arrays.asList(args[0].split(File.pathSeparator));
         programPath = Arrays.asList(args[1].split(File.pathSeparator));
-        modulePath = Arrays.asList(args[2].split(File.pathSeparator));
-        kotlinHome = args[3];
         settle();
         channel.println("{\"protocol\":" + PROTOCOL
                 + ",\"java\":" + Json.string(System.getProperty("java.version"))
@@ -137,10 +128,10 @@ public final class GgCompiler {
      *
      * <p>Not optional, and not decoration. `PathManager` throws
      * `Could not find installation home path. Please make sure product-info.json is present` out of
-     * a STATIC INITIALISER the moment the scripting pipeline asks for a configuration directory —
+     * a STATIC INITIALISER the moment the compiler's front end asks for a configuration directory —
      * before it has read a line of the model's program — and nothing about that message says what
      * gg would have to install to answer it. These three directories answer it without an
-     * installation.
+     * installation, and `tools/GgSignatures.kt` sets the same three for the same reason.
      *
      * <p>They are resolved against this process's working directory, which the seam gave this
      * daemon and gave to no other, so two daemons never share one. Set here rather than passed as
@@ -171,28 +162,33 @@ public final class GgCompiler {
     }
 
     /**
-     * One build: `<work>\t<output>\t<mainClass>\t<targetFile>\t<kind>\t<source>\t<entry>`.
-     *
-     * <p>`kind` is `program` or `module`, and it decides which classpath the model's own source
-     * is compiled against — a module needs the annotations gg writes into it to export a
-     * namespace, a program does not and is therefore compiled against the standard library
-     * alone.
+     * One build: `<work>\t<output>\t<mainClass>\t<targetFile>\t<entry>\t<source>[\t<source>…]`.
      *
      * <p>Every path is absolute and inside one preparation's own tree. Nothing is remembered
      * between requests, which is what makes a build a function of its request alone.
+     *
+     * <p>AN EMPTY {@code targetFile} MEANS THE KOTLIN COMPILER AND NOTHING ELSE. gg checks a code
+     * module that way: a module is compiled into the program that uses it, so there is no artifact
+     * for TeaVM to write here, no entry point for it to root a dependency graph at, and no entry
+     * class to compile — what the check buys is the compiler's located diagnostic at the read that
+     * binds the module, rather than one against somebody else's program on every turn after it.
+     * Empty is the one value the field cannot otherwise take, since a file has a name; {@code entry}
+     * is empty with it.
      */
     static String build(String request) {
         String[] fields = request.split("\t", -1);
-        if (fields.length != 7) {
+        if (fields.length < 6) {
             return Json.failure("internal", "gg sent a request with " + fields.length + " fields");
         }
         Path work = Paths.get(fields[0]);
         Path output = Paths.get(fields[1]);
         String mainClass = fields[2];
         String targetFile = fields[3];
-        boolean module = fields[4].equals("module");
-        File source = work.resolve(fields[5]).toFile();
-        File entry = work.resolve(fields[6]).toFile();
+        String entryFile = fields[4];
+        List<File> sources = new ArrayList<>();
+        for (int index = 5; index < fields.length; index++) {
+            sources.add(work.resolve(fields[index]).toFile());
+        }
 
         List<Diagnostics.Entry> entries = new ArrayList<>();
         long started = System.nanoTime();
@@ -206,12 +202,34 @@ public final class GgCompiler {
 
         boolean compiled;
         try {
-            compiled = kotlinc(source, classes, module ? modulePath : programPath, entries);
+            compiled = kotlinc(sources, classes, programPath, entries);
         } catch (Throwable failure) {
             return Json.failure("internal", "kotlinc fell over: " + Diagnostics.render(failure));
         }
         long afterKotlinc = System.nanoTime();
-        if (!compiled) {
+        if (!compiled || targetFile.isEmpty()) {
+            return Json.response(compiled, compiled ? null : "kotlinc", entries,
+                    Json.millis("kotlinc", afterKotlinc - started)
+                            + Json.millis("javac", 0) + Json.millis("teavm", 0));
+        }
+
+        // THE ONE NAME A PROGRAM MUST NOT TAKE, told here rather than discovered later. gg's entry
+        // class is compiled by javac into the same directory the model's Kotlin went into, and
+        // after it — so a program that declared the same name would have its own class overwritten
+        // and then read `Method GgEntry.… was not found` about a method it plainly declared. This
+        // is a diagnostic against the file the model wrote instead.
+        String entryClass = entryFile.endsWith(".java")
+                ? entryFile.substring(0, entryFile.length() - ".java".length())
+                : entryFile;
+        if (Files.exists(classes.resolve(entryClass + ".class"))) {
+            Diagnostics.Entry taken = new Diagnostics.Entry();
+            taken.stage = "kotlinc";
+            taken.error = true;
+            taken.file = sources.isEmpty() ? null : sources.get(0).getName();
+            taken.message = "`" + entryClass
+                    + "` is the name gg gives the class it reaches your program through. Declare "
+                    + "yours under another name.";
+            entries.add(taken);
             return Json.response(false, "kotlinc", entries,
                     Json.millis("kotlinc", afterKotlinc - started)
                             + Json.millis("javac", 0) + Json.millis("teavm", 0));
@@ -224,15 +242,17 @@ public final class GgCompiler {
         try {
             List<String> path = new ArrayList<>();
             path.add(classes.toString());
-            // The standard library as well as the toolchain: gg's entry class names Kotlin's own
-            // exception classes in its catch chain — `!!` on a null and a `lateinit` read too early
-            // are two of the three ways a Kotlin program most often stops — and those are declared
-            // in `kotlin-stdlib` rather than in `java.base`.
             path.addAll(programPath);
             path.addAll(toolchain);
-            if (!javac(List.of(entry), classes, path, entries)) {
-                return Json.failure("internal",
-                        "gg's own entry class did not compile: " + Diagnostics.first(entries));
+            if (!javac(List.of(work.resolve(entryFile).toFile()), classes, path, entries)) {
+                // NOT an internal failure: gg's entry class names the model's own `main`, so the
+                // one thing that can go wrong here is that the model declared a different shape.
+                // gg's side reads the file name off each diagnostic and turns that into a refusal
+                // the MODEL is shown, quoting the convention back.
+                return Json.response(false, "javac", entries,
+                        Json.millis("kotlinc", afterKotlinc - started)
+                                + Json.millis("javac", System.nanoTime() - afterKotlinc)
+                                + Json.millis("teavm", 0));
             }
         } catch (Throwable failure) {
             return Json.failure("internal", "javac fell over: " + Diagnostics.render(failure));
@@ -243,14 +263,14 @@ public final class GgCompiler {
             List<String> path = new ArrayList<>();
             path.addAll(programPath);
             path.addAll(toolchain);
-            teavm(classes, output, path, mainClass, targetFile, entries);
+            teavm(classes, output, path, mainClass, targetFile, sources.get(0).getName(), entries);
         } catch (Throwable failure) {
             return Json.failure("internal", "TeaVM fell over: " + Diagnostics.render(failure));
         }
         long afterTeaVm = System.nanoTime();
         boolean ok = true;
-        for (Diagnostics.Entry entry2 : entries) {
-            if (entry2.error) {
+        for (Diagnostics.Entry entry : entries) {
+            if (entry.error) {
                 ok = false;
             }
         }
@@ -261,7 +281,7 @@ public final class GgCompiler {
     }
 
     /** Compile the model's Kotlin to bytecode, collecting whatever the compiler disagreed with. */
-    static boolean kotlinc(File source, Path classes, List<String> classpath,
+    static boolean kotlinc(List<File> sources, Path classes, List<String> classpath,
             List<Diagnostics.Entry> entries) {
         // A FRESH compiler per build. `exec` builds and disposes its own environment, so nothing
         // survives a build except what the JVM's class loaders hold — which is why gg retires a
@@ -272,7 +292,7 @@ public final class GgCompiler {
         // arms of a study that came from a dotfile.
         compiler.setReadingSettingsFromEnvironmentAllowed(false);
         K2JVMCompilerArguments arguments = compiler.createArguments();
-        compiler.parseArguments(new String[] {
+        List<String> options = new ArrayList<>(List.of(
             "-classpath", String.join(File.pathSeparator, classpath),
             "-d", classes.toString(),
             "-jvm-target", JVM_TARGET,
@@ -285,17 +305,11 @@ public final class GgCompiler {
             // What makes a Kotlin diagnostic carry a STABLE code. Without it a message is prose
             // and the only way to tell "the parser could not read this" from "I read it and
             // disagreed" — which are two different bands to a model — is to match on English.
-            "-Xrender-internal-diagnostic-names",
-            // What makes this a SCRIPT rather than a program: a `.kts` in the source roots is
-            // compiled to classes, where `-script` would compile it and then RUN it inside this
-            // daemon. See `kotlin.source.rs` for why a program is a script at all.
-            "-Xallow-any-scripts-in-source-roots",
-            // Where the scripting plugin is found. Without it the compiler answers a script with
-            // `SCRIPTING_ERROR: Unable to evaluate script, no scripting plugin loaded`, which is a
-            // sentence about gg's packaging wearing the shape of a diagnostic about the program.
-            "-kotlin-home", kotlinHome,
-            source.toString(),
-        }, arguments);
+            "-Xrender-internal-diagnostic-names"));
+        for (File source : sources) {
+            options.add(source.toString());
+        }
+        compiler.parseArguments(options.toArray(new String[0]), arguments);
         Collector collector = new Collector(entries);
         ExitCode code = compiler.exec(collector, Services.EMPTY, arguments);
         return code == ExitCode.OK;

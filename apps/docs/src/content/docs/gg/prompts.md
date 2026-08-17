@@ -13,9 +13,9 @@ case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-template).
 - `system-tools.hbs` — the tool-calling system prompt: the base framing plus one
   section per enabled capability, each naming its free-standing tools
   (`add_task`, `create_epic`).
-- `system-code.<language>.hbs` — the responses-as-code system prompt, one file
-  per [program language](/gg/languages/overview/): the same capability sections
-  plus the code-protocol framing.
+- `system-code.hbs` — the responses-as-code system prompt: the same capability
+  sections plus the code-protocol framing, with one gated segment per [program
+  language](/gg/languages/overview/).
 - `tasks.hbs` — the pinned [task list](/gg/tasks/) block.
 - `board.hbs` — the pinned [project management](/gg/project-management/) board
   block.
@@ -23,10 +23,11 @@ case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-template).
 - `memory-index.hbs` — the pinned index the `markdown` memory strategy keeps.
 - `memory-notice.hbs` — the message a holder of a linked memory instance is
   given when another holder wrote, revised or deleted one.
-- `code-nothing-shown.<language>.hbs` — the `Notice` a program that ran and put
-  nothing in the window earns, checked against the assembled window rather than
-  inferred from the outcome. Per language, because it names what would have
-  shown the model something.
+- `code-nothing-shown.hbs` — the `Notice` a program that ran and put nothing in
+  the window earns, checked against the assembled window rather than inferred
+  from the outcome. The clause naming what would have shown the model something
+  is gated on the program language, by the same mechanism `system-code.hbs`
+  uses.
 
 ### Briefs
 
@@ -80,13 +81,19 @@ program that compiled, ran and did what it meant to earns none of them, because
 the views it opened are the turn's result.
 
 The two error messages have no template. Each carries the compiler's or the
-runtime's own text and nothing else: no preamble, no advice, no roster of what
-the program called, and no restatement of a rule the system prompt already
-states. gg may remove from an error, such as stack frames that are gg's own
-internals, and never adds to one. Everything a failing turn would otherwise be
-told is either something the program already learned by running, since a failed
-call throws into the program, or a standing rule stated once in the system
-prompt.
+runtime's own text: no preamble, no advice, no roster of what the program
+called, and no restatement of a rule the system prompt already states. gg may
+remove from an error, such as stack frames that are gg's own internals.
+Everything a failing turn would otherwise be told is either something the
+program already learned by running, since a failed call throws into the program,
+or a standing rule stated once in the system prompt.
+
+A compiler error carries one thing beside the diagnostic: the library set the
+arm's catalogue declares, where it declares one. That set is what the compiler
+measured the program against, so it is part of the diagnostic rather than advice
+about it, and it is rendered by the module that owns the [diagnostic
+bound](/gg/languages/compilation/#diagnostic-bounds). No prompt carries a
+package inventory.
 
 ## Assembly from the capability set
 
@@ -102,18 +109,20 @@ rendering context that carries both whether each capability is on and how it is
 configured. A run's actual limits are interpolated inline rather than restated
 in prose:
 
-- the `read_file` line cap, when one is in force, and whether this run's model
-  can be shown an image;
+- whether this run's model can be shown an image, and, in the tool-calling
+  template alone, the `read_file` line cap when one is in force;
 - where a command's output goes, when the [shell](/gg/shell/) offloads it;
-- the memories budget: count, per-memory length, total length, index length,
-  description length, and search results;
-- the task count ceiling;
+- in the tool-calling template alone, a memory's description length and the task
+  count ceiling, both of which the code arm leaves to the refusal that reports
+  the breach;
 - the epic and issue ceilings, and the rosters an issue's agent and reviewers
   may be named from;
 - the agents this one may spawn as subagents;
-- the catalog of available skills, each with its description, covering both the
-  workspace's authored skills and the built-ins gg generates for this agent's
-  own function families.
+- the catalog of available skills, each with its description and with whether it
+  carries code and whether it carries an on-use script, so that reading one is
+  described by what it will actually do. The catalog covers both the workspace's
+  authored skills and the built-ins gg generates for this agent's own function
+  families.
 
 The rendering context is a typed Rust struct (`prompts::SystemContext`), and
 rendering runs in strict mode: a template that references a variable the context
@@ -129,39 +138,51 @@ defect, because the prompt an agent runs under is the prompt its profile wrote.
 
 ## Template selection
 
-`prompts::render_system` selects the template from the run's execution mode and,
-on the code path, from its program language. A tool-calling run renders
-`system-tools.hbs`; a code run renders that language's own
-`system-code.<language>.hbs`.
+`prompts::render_system` selects the template from the run's execution mode
+alone. A tool-calling run renders `system-tools.hbs`; a code run renders
+`system-code.hbs`, whichever program language it is in.
 
-The two arms are separate files because every capability's calls change shape
+The two modes are separate files because every capability's calls change shape
 between them and the base framing carries a different ending rule and a
 different account of what a reply is. An operator's per-agent override renders
 against the same context in either mode, and the console seeds its editor with
-whichever built-in default matches the agent's mode.
+whichever built-in default matches the agent's mode. There is one built-in
+default per mode.
 
-The code arm is per program language rather than one file with language branches
-in it. Each template's example programs are written in one language's syntax and
-its sentences describe that language's own protocol, an operator overriding the
-prompt overrides it for the arm their run is in, and the system templates are
-self-contained so the console can render one standalone. Each language's pair of
-templates is registered under `system-code.<language id>` and
-`code-nothing-shown.<language id>` by walking the language registry, so a new
-arm arrives without a list being edited.
+### The language segment
 
-The cost of the split is that a copied template can lose a section, and the
-crate's gates buy it off. One renders every registered language's prompt and
-asserts each required section survives; a second asserts each rendered prompt
-still states the values the run configured; a third asserts it still states the
-standing rules a program runs under.
+`system-code.hbs` is language-agnostic apart from one gated segment per arm,
+selected with an `eq` helper over the `language` view the rendering context
+carries. That view holds an id, a display name and the arm's checker where it
+names one, and no prose: a sentence a model reads lives in the template.
+
+A segment states at most what a model can neither find by searching nor be told
+at the moment it matters:
+
+- the shape of a reply in this language;
+- what a failed call does, the one name that catches it, and, where the arm has
+  one, the helper a program builds a failure of its own with;
+- how a call's optional arguments are written, and how a module is reached where
+  the module list's own import field does not answer it.
+
+A gate holds every arm's segment to three paragraphs. Fenced examples inside a
+segment carry that arm's own language tag, so an arm that compiles the examples
+it is shown goes on compiling exactly those.
+
+Three gates hold what renders. One asserts every required section survives for
+every registered language; a second asserts each rendered prompt states the
+values the run configured; a third asserts it states the standing rules a
+program runs under. A fourth asserts each arm's render carries that arm's
+segment and no other arm's.
 
 ## The code arm
 
 The opening section states the reply contract: the model's whole reply is the
-program, with no plain text, no Markdown formatting and no other non-code text.
+program, with no plain text, no Markdown formatting and no other non-code text,
+and it is run as a program in that language every turn.
 
-Four rules follow it, and every arm's template states all four, because none of
-them is visible in a signature and each costs a turn to discover by trying it:
+Four rules follow it, stated for every arm, because none of them is visible in a
+signature and each costs a turn to discover by trying it:
 
 - every call is synchronous, so `await` is not a thing to reach for and a return
   value is not a promise;
@@ -170,26 +191,32 @@ them is visible in a signature and each costs a turn to discover by trying it:
 - a returned value is discarded;
 - what a view holds arrives on the next turn.
 
+A fifth is stated where the endings are: a failed program's ending is revoked. A
+gate holds every registered arm's rendered prompt to all five.
+
 Beyond those, the opening section states what only this run can answer. When the
 run's [read mode](/gg/filesystem/#read-modes) caps a read it states the cap,
 that a window can be named with an offset and a limit, and that a larger limit
 is honored; under `unlimited` a read takes no window and none of that renders.
 When the run offers a shell it states that the call hands the program back the
-command's `exitCode` and its merged output, with the reminder to open a view on
-that output to read it. Whether a value can be shown is never withheld, since a
-run with no tools at all must still be able to show its model something.
+command's exit code and its merged output, with the reminder to open a view on
+that output to read it, naming neither field in a spelling only one arm uses.
+Whether a value can be shown is never withheld, since a run with no tools at all
+must still be able to show its model something.
 
-The compiled arms carry a section stating that a program is compiled before it
-runs and that a program which fails to compile is not executed. An arm whose
-catalogue declares libraries states them, in the groups its own artifact files
-them under, interpolated from that catalogue.
+Where the arm names a [checker](/gg/languages/compilation/), the prompt states
+that the program is compiled before it runs, names the checker, and states that
+a program the checker refuses is not executed. The same gate carries the one
+consequence of a checked arm a model has to act on: a call the run withheld
+compiles and then fails at the capability it needed, so what a program may write
+is wider than what a search will find.
 
 ### Modules
 
 The prompt lists one line per capability module: the path this arm spells it
 under, the line the module's own declaration introduces it by, and the import
-that brings it into scope on the arm that needs one. Every field is the
-catalogue's, reflected from the module's declaration in the guest SDK.
+that brings it into scope. Every field is the catalogue's, reflected from the
+module's declaration in the guest SDK.
 
 That list is the whole vocabulary the prompt supplies. Nothing enumerates a
 module's functions; a module path is an exact lookup into the surface, and
@@ -197,23 +224,26 @@ everything finer is found by searching the documentation and opening a
 documentation view of a name the search returned.
 
 Because the calls that do the discovering are themselves functions, every code
-agent's session opens with a synthesized assistant turn: a program gg wrote in
-that agent's own language, opening the documentation of the discovery calls,
-with the views it opened beside it. The calls arrive as source the model can
-copy, and the prompt points at that turn.
+agent's session opens with a program gg wrote in that agent's own language and
+ran. It searches each module the agent holds and opens the documentation of the
+two discovery calls, so the window opens on every function the agent may call,
+one line each, beside the source of a program that provably ran. See [the
+opening turn](/gg/responses-as-code/views/#the-opening-turn).
 
 ### Function names
-
-Three gates hold this. Two read the template sources, so they cover every branch
-including the sections a test's context leaves off: one fails a template that
-names a catalogued function however it came by the name, and one fails a
-code-reachable template that names a bare gg tool. The third reads what is
-actually rendered, for every language.
 
 A prompt may name only what a model could not find for itself: the module paths,
 the failure type, the language-level helpers no catalogue carries, and the
 agent's own ending calls. It may never name a catalogued function, because that
 is precisely the set a search will hand over.
+
+Three gates hold this. Two read the template sources, so they cover every branch
+including the sections a test's context leaves off: one fails a template that
+names a catalogued function however it came by the name, and one fails a
+code-reachable template that names a bare gg tool. The first pools every arm's
+spellings, since one template serves them all, so a language segment may not
+name a catalogued call of any language. The third reads what is actually
+rendered, for every language.
 
 ### Message headings
 

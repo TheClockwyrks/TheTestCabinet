@@ -285,8 +285,8 @@ pub(crate) fn archive_search(found: gen::context::ArchiveSearch) -> ArchiveSearc
 ///
 /// The wire spells a hit's kind as a **word**, because WIT has no closed set to spell it as that
 /// both sides of a component boundary would agree on. The SDK spells it as a [`DocKind`], which is
-/// what makes a `match` on it exhaustive and a filter unmisspellable — and `type` is the only word
-/// the index files anything but a function under, so anything else lifts to
+/// what makes a `match` on it exhaustive and a filter unmisspellable — and the index files an entry
+/// under `module`, `function` or `type` and nothing else, so any other word lifts to
 /// [`DocKind::Function`] rather than costing every hit a fallible parse for a case the host cannot
 /// produce.
 pub(crate) fn doc_search(found: gen::docs::DocSearch) -> DocSearch {
@@ -299,6 +299,7 @@ pub(crate) fn doc_search(found: gen::docs::DocSearch) -> DocSearch {
             .map(|hit| DocHit {
                 key: hit.key,
                 kind: match hit.kind.as_str() {
+                    "module" => DocKind::Module,
                     "type" => DocKind::Type,
                     _ => DocKind::Function,
                 },

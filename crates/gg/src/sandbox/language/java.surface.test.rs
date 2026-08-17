@@ -20,55 +20,135 @@
 use serde_json::{Value, json};
 
 use super::compile::compile_program;
-use super::substrate::{evaluate_as, evaluate_closing_docviews, logs, program_error};
+use super::substrate::{
+    evaluate_as, evaluate_closing_docviews, java_language, logs, prepare, trap,
+};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::PrepareContext;
 use crate::sandbox::fake::{
     CallLog, all_operations, canned_outcome, typescript as typescript_language,
 };
 use crate::sandbox::membrane::RunEnding;
-use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
+use crate::sandbox::outcome::SandboxOutcome;
 use crate::tools::ToolOutcome;
 
 /// The catalogue this arm's build reflects, read as a document rather than through the language, because what
 /// is asserted below is a property of the emitted JSON.
 const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/java.signatures.json"));
 
-/// This arm, resolved from the registry — the same trait object a run resolves.
-fn java_language() -> &'static dyn crate::sandbox::ProgramLanguage {
-    crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Java)
+/// The `java.*` types the bodies below name, and the line each is reached by.
+///
+/// Written down because **gg writes no import into a program**: what makes these bodies compile is
+/// that the test wrote the lines a Java author would, and a table is where they are written. Each
+/// gg class is looked up in the catalogue instead — see [`whole`].
+const JAVA_TYPES: [(&str, &str); 14] = [
+    ("ArrayList", "java.util.ArrayList"),
+    ("Arrays", "java.util.Arrays"),
+    ("BigDecimal", "java.math.BigDecimal"),
+    ("Collections", "java.util.Collections"),
+    ("Collectors", "java.util.stream.Collectors"),
+    ("DateTimeFormatter", "java.time.format.DateTimeFormatter"),
+    ("Function", "java.util.function.Function"),
+    ("List", "java.util.List"),
+    ("LocalDate", "java.time.LocalDate"),
+    ("Map", "java.util.Map"),
+    ("NumberFormat", "java.text.NumberFormat"),
+    ("Optional", "java.util.Optional"),
+    ("Pattern", "java.util.regex.Pattern"),
+    ("Stream", "java.util.stream.Stream"),
+];
+
+/// **A whole Java program**, written the way a model writes one: an `import` line for every type
+/// `body` names, then the class and the `main` this arm asks for.
+///
+/// The gg lines come out of the **catalogue**, which is the one place that publishes them, so a
+/// body that compiles is a body whose published import line resolves. A name written in full — a
+/// `java.nio.file.Files` — needs no line and gets none, which is why a dot in front of a name
+/// disqualifies it.
+fn whole(body: &str) -> String {
+    let catalogue = java_language().catalogue();
+    let mut lines: Vec<String> = Vec::new();
+    for module in &catalogue.modules {
+        let Some(class) = module.path.rsplit('.').next() else {
+            continue;
+        };
+        if names(body, class)
+            && let Some(line) = &module.import
+        {
+            lines.push(line.clone());
+        }
+    }
+    for class in ["Gg", "ToolError", "ToolErrorCode"] {
+        if names(body, class) {
+            lines.push(format!("import gg.{class};"));
+        }
+    }
+    for (class, path) in JAVA_TYPES {
+        if names(body, class) {
+            lines.push(format!("import {path};"));
+        }
+    }
+    lines.sort_unstable();
+    lines.dedup();
+    let imports = match lines.is_empty() {
+        true => String::new(),
+        false => format!("{}\n\n", lines.join("\n")),
+    };
+    let indented: String = body
+        .lines()
+        .map(|line| match line.is_empty() {
+            true => "\n".to_string(),
+            false => format!("        {line}\n"),
+        })
+        .collect();
+    // `throws Exception` on `main`, which is what a Java author writes rather than wrapping every
+    // library call in a `try` — and what gg's own export declares `throws Throwable` for. Several
+    // of the library probes below reach a method with a checked exception.
+    format!(
+        "{imports}public final class Program {{\n\
+         \x20   public static void main(String[] args) throws Exception {{\n\
+         {indented}\
+         \x20   }}\n\
+         }}\n"
+    )
+}
+
+/// Whether `body` names `class` as a bare identifier — not as part of a longer word, and not as the
+/// tail of a name written in full.
+fn names(body: &str, class: &str) -> bool {
+    body.match_indices(class).any(|(at, _)| {
+        let before = body[..at].chars().next_back();
+        let after = body[at + class.len()..].chars().next();
+        !before.is_some_and(|it| it.is_alphanumeric() || it == '_' || it == '.')
+            && !after.is_some_and(|it| it.is_alphanumeric() || it == '_')
+    })
 }
 
 /// Compile and run one Java program, with the ending group and the library flag said out loud.
 fn run_as(
-    source: &str,
+    body: &str,
     operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    let prepared = match compile_program(source, &PrepareContext::new()) {
-        Ok(prepared) => prepared.source,
-        Err(failure) => panic!("the Java toolchain did not compile this program: {failure}"),
-    };
-    evaluate_as(&prepared, operations, &[], ending, library, responder)
-}
-
-/// One Java program through the production prepare step, or a panic with what the toolchain said.
-fn prepare_program(source: &str) -> String {
-    match compile_program(source, &PrepareContext::new()) {
-        Ok(prepared) => prepared.source,
-        Err(failure) => panic!("the Java toolchain did not compile this program: {failure}"),
-    }
+    evaluate_as(
+        &prepare(&whole(body)),
+        operations,
+        &[],
+        ending,
+        library,
+        responder,
+    )
 }
 
 /// Compile and run one Java program with `enabled`'s tools offered and no ending group.
 fn run_with(
-    source: &str,
+    body: &str,
     operations: &[crate::sandbox::operations::OperationId],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    run_as(source, operations, RunEnding::None, false, responder)
+    run_as(body, operations, RunEnding::None, false, responder)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -341,6 +421,7 @@ fn every_tool_crosses_the_membrane_from_its_java_spelling() {
         .map(|crossing| format!("{}\n", crossing.statement))
         .collect::<String>();
     let (outcome, log) = run_with(&program, &all_operations(), canned_outcome);
+
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the program did not run cleanly: {:?}",
@@ -389,9 +470,9 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          int closed = Views.close(\"summary\");\n\
          int missing = Views.close(\"never opened\");\n\
          List<Views.OpenView> open = Views.current();\n\
-         System.out.println(open.get(0).selector() + \" \" + open.get(0).kind());\n\
-         System.out.println(closed + \" \" + missing);\n\
-         System.out.println(switch (read) {\n\
+         Gg.log(open.get(0).selector() + \" \" + open.get(0).kind());\n\
+         Gg.log(closed + \" \" + missing);\n\
+         Gg.log(switch (read) {\n\
          \x20   case Files.TextFile file -> file.contents().split(\"\\n\")[0];\n\
          \x20   case Files.ImageFile picture -> picture.label();\n\
          });\n\
@@ -441,10 +522,10 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     // gets the other ending group and no `harness.finish` at all.
     let (outcome, _log) = run_as(
         "List<Programs.ProgramSummary> history = Programs.history();\n\
-         System.out.println(String.valueOf(history.size()));\n\
+         Gg.log(String.valueOf(history.size()));\n\
          try { Programs.get(2); }\n\
-         catch (ToolError failure) { System.out.println(failure.code().toString()); }\n\
-         Programs.rerun(\"System.out.println(\\\"again\\\");\");\n\
+         catch (ToolError failure) { Gg.log(failure.code().toString()); }\n\
+         Programs.rerun(\"Gg.log(\\\"again\\\");\");\n\
          Session.requestChanges(\"widen the test\", \"name the file\");\n",
         &[],
         RunEnding::Role(EndingRole::Review),
@@ -495,18 +576,18 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     // without this, the five names a model is shown would be the five nothing ever executed.
     let (outcome, log) = run_as(
         "Board.IssueCreated created = Board.createIssue(\"I\", \"s\", \"o\", \"c\", \"worker\");\n\
-         System.out.println(created.await());\n\
+         Gg.log(created.await());\n\
          List<Memories.MemoryHit> hits = Memories.searchMemories(\"build\");\n\
-         System.out.println(hits.get(0).read());\n\
+         Gg.log(hits.get(0).read());\n\
          Delegation.SubagentHandle child =\n\
          \x20       Delegation.spawnSubagent(\"subagent\", Delegation.Brief.prompt(\"go\"));\n\
          child.send(\"prefer the simpler parser\");\n\
          Views.openText(\"scratch\", \"body\");\n\
-         System.out.println(Views.current().get(0).close());\n\
+         Gg.log(String.valueOf(Views.current().get(0).close()));\n\
          try {\n\
          \x20   new Programs.ProgramSummary(2, 1, 1, true, Optional.empty()).source();\n\
          } catch (ToolError failure) {\n\
-         \x20   System.out.println(failure.code());\n\
+         \x20   Gg.log(String.valueOf(failure.code()));\n\
          }\n",
         &all_operations(),
         RunEnding::None,
@@ -553,12 +634,12 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          Docs.DocSearch narrowed = Docs.search(\"\",\n\
          \x20       new Docs.SearchFilters().module(\"gg.views.Views\")\n\
          \x20               .kind(Docs.DocKind.FUNCTION).limit(5));\n\
-         System.out.println(all.total() + \" \" + all.offset() + \" \" + all.hits().size());\n\
-         System.out.println(String.valueOf(narrowed.hits().isEmpty()));\n\
+         Gg.log(all.total() + \" \" + all.offset() + \" \" + all.hits().size());\n\
+         Gg.log(String.valueOf(narrowed.hits().isEmpty()));\n\
          try {\n\
          \x20   Docs.close(\"gg.files.Files.readFile\");\n\
          } catch (ToolError failure) {\n\
-         \x20   System.out.println(failure.code() + \" \" + failure.tool());\n\
+         \x20   Gg.log(failure.code() + \" \" + failure.tool());\n\
          }\n",
         &[],
         canned_outcome,
@@ -594,9 +675,9 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     // open and `0` is the honest count — a successful call rather than a failure, exactly as it is
     // in production.
     let (outcome, _log) = evaluate_closing_docviews(
-        &prepare_program(
-            "System.out.println(Docs.close(\"gg.files.Files.readFile\") + \" \" + Docs.closeAll());\n",
-        ),
+        &prepare(&whole(
+            "Gg.log(Docs.close(\"gg.files.Files.readFile\") + \" \" + Docs.closeAll());\n",
+        )),
         &[],
         canned_outcome,
     );
@@ -638,9 +719,9 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
         "try {\n\
          \x20   Files.readTextFile(\"gone.java\");\n\
          } catch (ToolError failure) {\n\
-         \x20   System.out.println(failure.code() + \" on \" + failure.tool());\n\
+         \x20   Gg.log(failure.code() + \" on \" + failure.tool());\n\
          }\n\
-         System.out.println(\"carried on\");\n",
+         Gg.log(\"carried on\");\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
@@ -654,14 +735,13 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
         ["NOT_FOUND on read_text_file", "carried on"]
     );
 
-    // And the half that no SDK could do for itself: one that ESCAPED must still reach the guest as a
-    // tool failure rather than as a Java exception, because gg classifies a turn's error from the
-    // host's own code. gg's generated entry class records the three fields on the way past and the
-    // bundle's tail throws those instead of the Java object.
+    // And the half that no SDK could do for itself: one that ESCAPED kills the program the way its
+    // runtime kills it, and what the model reads is the exception's own message — which is why
+    // `ToolError` builds one carrying all three of gg's fields — and the model's own line.
     let (outcome, _log) = run_with(
-        "System.out.println(\"before\");\n\
+        "Gg.log(\"before\");\n\
          Files.readTextFile(\"gone.java\");\n\
-         System.out.println(\"after\");\n",
+         Gg.log(\"after\");\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
@@ -670,14 +750,14 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
             )
         },
     );
-    let error = program_error(&outcome);
-    assert_eq!(error.kind, ProgramErrorKind::ToolFailure, "{error:?}");
+    let reported = trap(&outcome);
     assert!(
-        error
-            .message
-            .contains("`read_text_file` failed (not-found)"),
-        "the model reads gg's own sentence rather than a Java class: {}",
-        error.message
+        reported.contains("`read_text_file` failed (not-found): no such file: gone.java"),
+        "the model reads gg's own sentence about all three fields: {reported}"
+    );
+    assert!(
+        reported.contains("Program.java:"),
+        "and the model's own file and line: {reported}"
     );
     assert_eq!(outcome.logs, ["before"], "what ran before it still stands");
 }
@@ -690,24 +770,17 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // because gg classifies a turn's error from the code: a capability nobody granted must not be
     // recorded as a name the model got wrong.
     //
-    // The refusal is now the **host's** rather than this SDK's own null-target fallback: the
-    // ECMAScript guest this arm shares binds every module whatever the run enables, so the call
+    // The refusal is the **host's**: the SDK is one jar and every class on it compiles, so the call
     // reaches the membrane and comes back named the way this arm's catalogue names it.
     let (outcome, log) = run_with(
         "Files.readTextFile(\"src/Main.java\");\n",
         &[],
         canned_outcome,
     );
-    let error = program_error(&outcome);
-    // `UnknownName` is what gg makes of an `unavailable` code, whichever side raised it: the two are
-    // one fact and one recovery — this run does not offer that call.
-    assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
+    let reported = trap(&outcome);
     assert!(
-        error
-            .message
-            .ends_with("`gg.files.Files.readTextFile` is not available."),
-        "the refusal names the call the way this arm's catalogue spells it: {}",
-        error.message
+        reported.contains("`gg.files.Files.readTextFile` is not available."),
+        "the refusal names the call the way this arm's catalogue spells it: {reported}"
     );
     assert!(log.names().is_empty(), "and nothing reached gg's dispatch");
 
@@ -715,11 +788,129 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // rather than crash on it.
     let (outcome, _log) = run_with(
         "try { Delegation.fork(\"a copy\"); }\n\
-         catch (ToolError failure) { System.out.println(failure.code().wireName()); }\n",
+         catch (ToolError failure) { Gg.log(failure.code().wireName()); }\n",
         &[],
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["unavailable"]);
+}
+
+/// **Nothing this arm offers resolves without a line the program wrote**, and the line the catalogue
+/// states is the line that makes it resolve.
+///
+/// The jar on the classpath is packaging: it makes `gg.files.Files` reachable by its own
+/// fully-qualified name and puts no short name in a program's scope. So a program writes the name in
+/// full, or the single-type `import` the catalogue publishes, and a bare `Files` resolves to
+/// nothing.
+///
+/// Both halves are driven end to end rather than only compiled, so what is asserted about the two
+/// that work is that the call really crossed.
+#[test]
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    let refused = |source: &str| -> String {
+        compile_program(source, &[], &PrepareContext::new())
+            .expect_err("a name nothing brought into scope is refused")
+            .to_string()
+    };
+
+    // A module reached by its short name with no import above it: javac's own unresolved-symbol
+    // diagnostic, at the model's own line.
+    let diagnostic = refused(
+        "public final class Program {\n\
+         \x20   public static void main(String[] args) {\n\
+         \x20       String text = Files.readTextFile(\"a.md\");\n\
+         \x20   }\n\
+         }\n",
+    );
+    assert!(
+        diagnostic.contains("cannot find symbol") && diagnostic.contains("Program.java:3"),
+        "{diagnostic}"
+    );
+
+    // And the exception by its bare name, which is the `core` module's own package and the one place
+    // an on-demand import used to make an exception.
+    let diagnostic = refused(
+        "public final class Program {\n\
+         \x20   public static void main(String[] args) {\n\
+         \x20       ToolErrorCode code = null;\n\
+         \x20   }\n\
+         }\n",
+    );
+    assert!(
+        diagnostic.contains("cannot find symbol") && diagnostic.contains("Program.java:3"),
+        "{diagnostic}"
+    );
+
+    // The two that do compile: the name in full, and the line the catalogue states.
+    for source in [
+        "import gg.Gg;\n\
+         \n\
+         public final class Program {\n\
+         \x20   public static void main(String[] args) {\n\
+         \x20       Gg.log(gg.files.Files.readTextFile(\"a.md\"));\n\
+         \x20   }\n\
+         }\n",
+        "import gg.Gg;\n\
+         import gg.files.Files;\n\
+         \n\
+         public final class Program {\n\
+         \x20   public static void main(String[] args) {\n\
+         \x20       Gg.log(Files.readTextFile(\"a.md\"));\n\
+         \x20   }\n\
+         }\n",
+    ] {
+        let (outcome, log) = evaluate_as(
+            &prepare(source),
+            &all_operations(),
+            &[],
+            RunEnding::None,
+            false,
+            canned_outcome,
+        );
+        assert!(
+            logs(&outcome)[0].starts_with("contents of a.md"),
+            "{source}\n{:?}",
+            outcome.logs
+        );
+        assert_eq!(log.names(), ["read_file"], "{source}");
+    }
+
+    // The `core` module's own line resolves the name refused above. It is a package rather than a
+    // class, so the line the catalogue states is an on-demand import — and this is the case that
+    // decides whether the exception the prompt tells every model to catch has a line to write.
+    let published = |id: &str| -> String {
+        java_language()
+            .catalogue()
+            .modules
+            .iter()
+            .find(|module| module.id == id)
+            .and_then(|module| module.import.clone())
+            .unwrap_or_else(|| panic!("the catalogue states a line for `{id}`"))
+    };
+    let (outcome, _) = evaluate_as(
+        &prepare(&format!(
+            "{}\n\
+             \n\
+             public final class Program {{\n\
+             \x20   public static void main(String[] args) {{\n\
+             \x20       ToolErrorCode code = ToolErrorCode.NOT_FOUND;\n\
+             \x20       gg.Gg.log(code.toString());\n\
+             \x20   }}\n\
+             }}\n",
+            published("core"),
+        )),
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["NOT_FOUND"]);
+
+    // And the lines the catalogue publishes are the ones written above, character for character,
+    // rather than a second answer this test invented.
+    assert_eq!(published("files"), "import gg.files.Files;");
+    assert_eq!(published("core"), "import gg.*;");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -814,95 +1005,92 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
 /// graph reached, so an `import` alone proves nothing about whether the classlib carries anything
 /// usable behind the name.
 const PROBES: [(&str, &str); 22] = [
-    ("java.lang", "System.out.println(Integer.toHexString(255));"),
+    ("java.lang", "Gg.log(Integer.toHexString(255));"),
     (
         "java.lang.annotation",
-        "System.out.println(java.lang.annotation.RetentionPolicy.RUNTIME.name());",
+        "Gg.log(java.lang.annotation.RetentionPolicy.RUNTIME.name());",
     ),
     (
         "java.lang.ref",
-        "System.out.println(new java.lang.ref.WeakReference<>(\"a\").get().toString());",
+        "Gg.log(new java.lang.ref.WeakReference<>(\"a\").get().toString());",
     ),
     (
         "java.lang.reflect",
-        "System.out.println(String.valueOf(java.lang.reflect.Array.getLength(new int[3])));",
+        "Gg.log(String.valueOf(java.lang.reflect.Array.getLength(new int[3])));",
     ),
     (
         "java.util",
-        "System.out.println(String.valueOf(new ArrayList<String>().size()));",
+        "Gg.log(String.valueOf(new ArrayList<String>().size()));",
     ),
     (
         "java.util.function",
-        "Function<String, String> same = value -> value; System.out.println(same.apply(\"a\"));",
+        "Function<String, String> same = value -> value; Gg.log(same.apply(\"a\"));",
     ),
     (
         "java.util.regex",
-        "System.out.println(String.valueOf(Pattern.compile(\"a+\").matcher(\"aaa\").find()));",
+        "Gg.log(String.valueOf(Pattern.compile(\"a+\").matcher(\"aaa\").find()));",
     ),
     (
         "java.util.stream",
-        "System.out.println(Stream.of(1, 2).map(String::valueOf).collect(Collectors.joining()));",
+        "Gg.log(Stream.of(1, 2).map(String::valueOf).collect(Collectors.joining()));",
     ),
     (
         "java.util.concurrent",
-        "System.out.println(String.valueOf(\
+        "Gg.log(String.valueOf(\
          new java.util.concurrent.ConcurrentHashMap<String, String>().size()));",
     ),
     (
         "java.util.concurrent.atomic",
-        "System.out.println(String.valueOf(\
+        "Gg.log(String.valueOf(\
          new java.util.concurrent.atomic.AtomicLong(3).get()));",
     ),
     (
         "java.math",
-        "System.out.println(new BigDecimal(\"1.5\").add(new BigDecimal(\"1\")).toString());",
+        "Gg.log(new BigDecimal(\"1.5\").add(new BigDecimal(\"1\")).toString());",
     ),
     (
         "java.text",
-        "System.out.println(NumberFormat.getInstance().format(1234));",
+        "Gg.log(NumberFormat.getInstance().format(1234));",
     ),
     (
         "java.nio.charset",
-        "System.out.println(java.nio.charset.StandardCharsets.UTF_8.name());",
+        "Gg.log(java.nio.charset.StandardCharsets.UTF_8.name());",
     ),
-    (
-        "java.time",
-        "System.out.println(LocalDate.of(2026, 1, 2).toString());",
-    ),
+    ("java.time", "Gg.log(LocalDate.of(2026, 1, 2).toString());"),
     (
         "java.time.chrono",
-        "System.out.println(java.time.chrono.IsoChronology.INSTANCE.getId());",
+        "Gg.log(java.time.chrono.IsoChronology.INSTANCE.getId());",
     ),
     (
         "java.time.format",
-        "System.out.println(DateTimeFormatter.ISO_DATE.format(LocalDate.of(2026, 1, 2)));",
+        "Gg.log(DateTimeFormatter.ISO_DATE.format(LocalDate.of(2026, 1, 2)));",
     ),
     (
         "java.time.temporal",
-        "System.out.println(String.valueOf(\
+        "Gg.log(String.valueOf(\
          LocalDate.of(2026, 1, 2).get(java.time.temporal.ChronoField.YEAR)));",
     ),
     (
         "java.time.zone",
-        "System.out.println(String.valueOf(\
+        "Gg.log(String.valueOf(\
          java.time.zone.ZoneRulesProvider.getAvailableZoneIds().isEmpty()));",
     ),
     (
         "java.io",
         "java.io.StringWriter written = new java.io.StringWriter(); written.write(\"a\"); \
-         System.out.println(written.toString());",
+         Gg.log(written.toString());",
     ),
     (
         "java.nio",
-        "System.out.println(String.valueOf(java.nio.ByteBuffer.allocate(4).capacity()));",
+        "Gg.log(String.valueOf(java.nio.ByteBuffer.allocate(4).capacity()));",
     ),
     (
         "java.util.zip",
-        "System.out.println(String.valueOf(new java.util.zip.CRC32().getValue()));",
+        "Gg.log(String.valueOf(new java.util.zip.CRC32().getValue()));",
     ),
     (
         "java.net",
-        "System.out.println(new java.net.URI(\"https://x/y\").getHost());",
+        "Gg.log(new java.net.URI(\"https://x/y\").getHost());",
     ),
     // `java.util.logging` is declared and deliberately has no probe here: it is a package whose
     // whole point is a side effect, and a program that logged would be asserting on gg's operator
@@ -918,24 +1106,24 @@ const PROBES: [(&str, &str); 22] = [
 /// [`ABSENT`], and they are the reason this list exists: a declaration that is true of the package
 /// and false of the call is a claim a model pays for.
 const IDIOMS: [&str; 15] = [
-    "System.out.println(\"  padded  \".strip());",
-    // The workaround the prompt offers for the absent `String.lines()`, held to the artifact so the
-    // advice is measured rather than plausible.
-    "System.out.println(String.valueOf(\"a\\nb\".split(\"\\n\").length));",
-    "System.out.println(\"ab\".repeat(2));",
-    "System.out.println(String.valueOf(\" \".isBlank()));",
-    "System.out.println(String.join(\"-\", \"a\", \"b\"));",
-    "System.out.println(String.valueOf(Map.of(\"a\", 1).get(\"a\")));",
-    "System.out.println(String.valueOf(Stream.of(1, 2).toList().size()));",
-    "System.out.println(Optional.of(\"a\").orElseThrow());",
-    "var inferred = List.of(\"a\", \"b\"); System.out.println(String.valueOf(inferred.size()));",
-    "System.out.println(String.valueOf(Math.floorMod(-3, 5)));",
-    "System.out.println(Arrays.toString(new int[] {1, 2}));",
-    "System.out.println(String.valueOf(\
+    "Gg.log(\"  padded  \".strip());",
+    // The workaround for the absent `String.lines()`, held to the artifact so the alternative this
+    // arm's docs record is measured rather than plausible.
+    "Gg.log(String.valueOf(\"a\\nb\".split(\"\\n\").length));",
+    "Gg.log(\"ab\".repeat(2));",
+    "Gg.log(String.valueOf(\" \".isBlank()));",
+    "Gg.log(String.join(\"-\", \"a\", \"b\"));",
+    "Gg.log(String.valueOf(Map.of(\"a\", 1).get(\"a\")));",
+    "Gg.log(String.valueOf(Stream.of(1, 2).toList().size()));",
+    "Gg.log(Optional.of(\"a\").orElseThrow());",
+    "var inferred = List.of(\"a\", \"b\"); Gg.log(String.valueOf(inferred.size()));",
+    "Gg.log(String.valueOf(Math.floorMod(-3, 5)));",
+    "Gg.log(Arrays.toString(new int[] {1, 2}));",
+    "Gg.log(String.valueOf(\
      Collections.unmodifiableList(new ArrayList<>(List.of(\"a\"))).size()));",
-    "record Pair(int left, int right) {} System.out.println(new Pair(1, 2).toString());",
-    "System.out.println(String.valueOf(new StringBuilder(\"ab\").reverse()));",
-    "System.out.println(String.format(\"%.2f\", 1.5));",
+    "record Pair(int left, int right) {} Gg.log(new Pair(1, 2).toString());",
+    "Gg.log(String.valueOf(new StringBuilder(\"ab\").reverse()));",
+    "Gg.log(String.format(\"%.2f\", 1.5));",
 ];
 
 /// Calls that a Java author would expect to work and that TeaVM's classlib does not carry.
@@ -946,13 +1134,13 @@ const IDIOMS: [&str; 15] = [
 /// a model splitting a shell command's output, and `java.lang` is declared reachable.
 ///
 /// Each costs the model a turn and nothing else — the diagnostic arrives at the model's own line on
-/// the turn that wrote it — which is why the prompt and the docs name these by name rather than
-/// leaving "a large subset" to be discovered.
+/// the turn that wrote it — which is why this arm's docs name these by name rather than leaving
+/// "a large subset" to be discovered.
 const ABSENT: [&str; 4] = [
-    "System.out.println(java.security.MessageDigest.getInstance(\"SHA-256\").getAlgorithm());\n",
-    "System.out.println(String.valueOf(java.util.random.RandomGenerator.getDefault().nextInt(5)));\n",
-    "System.out.println(String.valueOf(\"a\\nb\".lines().count()));\n",
-    "System.out.println(new java.util.StringJoiner(\",\").add(\"a\").add(\"b\").toString());\n",
+    "Gg.log(java.security.MessageDigest.getInstance(\"SHA-256\").getAlgorithm());\n",
+    "Gg.log(String.valueOf(java.util.random.RandomGenerator.getDefault().nextInt(5)));\n",
+    "Gg.log(String.valueOf(\"a\\nb\".lines().count()));\n",
+    "Gg.log(new java.util.StringJoiner(\",\").add(\"a\").add(\"b\").toString());\n",
 ];
 
 #[test]
@@ -1005,11 +1193,11 @@ fn java_reaches_every_library_this_arm_says_it_may() {
     // a study has to say what each arm was NOT given. Two are packages and two are methods inside
     // packages this arm declares — the shape a "large subset" claim hides.
     for absent in ABSENT {
-        let failure = compile_program(absent, &PrepareContext::new())
+        let failure = compile_program(&whole(absent), &[], &PrepareContext::new())
             .err()
             .unwrap_or_else(|| panic!("a classlib gap is refused at compile time: {absent}"));
         assert!(
-            failure.to_string().contains("program.java:1"),
+            failure.to_string().contains("Program.java:"),
             "and is refused at the model's own line rather than at run time: {failure}"
         );
     }
@@ -1020,44 +1208,42 @@ fn java_reaches_every_library_this_arm_says_it_may() {
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn a_code_module_is_reached_from_java_rather_than_only_from_javascript() {
-    // `lib` is the one place in this SDK where the PROGRAM says what type it expects, because a code
-    // module is compiled separately and there is no `import` for javac to check the two against —
-    // the position a Java author is in when they reach something with reflection, answered the way
-    // Java answers it.
-    let (module, exports) = super::compile::compile_module(
+fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
+    // `Lib.<key>.<name>` is a path rather than a string, because a Java code module is compiled
+    // **into** the program that uses it: there is an `import`-free path for javac to check the two
+    // against, so a key or an export a session does not have is a diagnostic on the turn that wrote
+    // it rather than a failure at run time.
+    let prepared = super::compile::compile_module(
         "public static String greet(String who) { return \"hello, \" + who.toUpperCase(); }\n\
          \n\
          public static int add(int left, int right) { return left + right; }\n",
         &PrepareContext::new(),
     )
     .expect("the Java toolchain compiles a code module");
-    assert_eq!(exports, ["greet", "add"]);
+    assert_eq!(prepared.exports, ["greet", "add"]);
 
+    let modules = vec![crate::sandbox::CodeModule {
+        name: "helpers".to_string(),
+        source: prepared.source,
+    }];
+    let body = "Gg.log(Lib.helpers.greet(\"gg\"));\n\
+                Gg.log(String.valueOf(Lib.helpers.add(40, 2)));\n";
     let (outcome, _log) = evaluate_as(
-        &match compile_program(
-            "System.out.println(Lib.text(\"helpers\", \"greet\", \"gg\"));\n\
-             System.out.println(String.valueOf(Lib.number(\"helpers\", \"add\", 40, 2)));\n\
-             System.out.println(String.valueOf(Lib.has(\"helpers\", \"greet\")));\n\
-             System.out.println(String.valueOf(Lib.has(\"helpers\", \"absent\")));\n\
-             try { Lib.run(\"helpers\", \"absent\"); }\n\
-             catch (ToolError failure) { System.out.println(failure.code().wireName()); }\n",
-            &PrepareContext::new(),
-        ) {
-            Ok(prepared) => prepared.source,
-            Err(failure) => panic!("the Java toolchain did not compile this program: {failure}"),
-        },
+        &super::substrate::prepare_with(&whole(body), &modules),
         &[],
-        &[crate::sandbox::CodeModule {
-            name: "helpers".to_string(),
-            source: module,
-        }],
+        &modules,
         RunEnding::None,
         false,
         canned_outcome,
     );
-    assert_eq!(
-        logs(&outcome),
-        ["hello, GG", "42", "true", "false", "not-found"]
-    );
+    assert_eq!(logs(&outcome), ["hello, GG", "42"]);
+
+    // An export the module does not have is javac's own diagnostic, at the model's own line.
+    let failure = compile_program(
+        &whole("Lib.helpers.absent();\n"),
+        &modules,
+        &PrepareContext::new(),
+    )
+    .expect_err("a name a module does not offer does not compile");
+    assert!(failure.to_string().contains("Program.java:"), "{failure}");
 }

@@ -33,6 +33,16 @@
 //! the **kind** of evidence that matched it — its own name, its signature, its brief, its detail —
 //! and a worse kind never outranks a better one however often it occurs.
 //!
+//! Two of those four are **read off the catalogue's structure rather than off its rendered text**,
+//! and that is what makes the scheme mean the same thing on eleven arms. An argument's *name* is
+//! signature evidence and an argument's *documentation* is detail evidence, on every arm — but only
+//! ten of the eleven write the name into the signature string, because PureScript's declaration is a
+//! curried type (`editFile :: String -> String -> String -> Effect Unit`) that is valid PureScript
+//! and names nothing. Indexed from the rendering alone, a query for an argument's name found the
+//! call on ten arms and nothing on the eleventh, and the tier a search reported would have been a
+//! fact about a language's syntax rather than about the evidence. So the names and the descriptions
+//! come from `parameters`, which all eleven carry in full. See [`DocEntry::signature`].
+//!
 //! There is deliberately **no tuning surface**: no weights, no per-agent knob, and no committed
 //! table of expected results. What holds the ranking honest is the discoverability gate in
 //! `docs.discoverability.test.rs`, which asserts the property that actually matters — that every
@@ -49,21 +59,26 @@ use crate::tools::ToolFailure;
 
 use super::ProgramLanguage;
 use super::suggest::fold;
-use crate::sandbox::{TypeReference, ViewRefusal, catalogue_functions};
+use crate::sandbox::{Parameter, SignatureEntry, TypeReference, ViewRefusal, catalogue_functions};
 
 /// Which kind of thing an [entry](DocEntry) documents.
 ///
-/// Two, because today's catalogue has two: a function a program calls, and a type its signatures
-/// mention. A method is a third only once an arm hangs functions off the types they operate on,
-/// which is a reshape a later stage makes; nothing here has to change when it does beyond a variant.
+/// Three: a module a program imports, a function it calls, and a type its signatures mention. They
+/// are the three things a model has to be able to find, and the module is the one it needs first,
+/// because nothing gg offers is in scope until the program has imported the module the symbol lives
+/// in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocKind {
+    /// A module this language's SDK is divided into — whatever that language makes importable.
+    Module,
     /// A function this language's SDK offers.
     Function,
     /// A type its signatures mention.
     Type,
 }
 
+/// The `kind` filter's spelling of [`DocKind::Module`].
+const KIND_MODULE: &str = "module";
 /// The `kind` filter's spelling of [`DocKind::Function`].
 const KIND_FUNCTION: &str = "function";
 /// The `kind` filter's spelling of [`DocKind::Type`].
@@ -73,6 +88,7 @@ impl DocKind {
     /// The word a filter names this kind by, and a hit reports it as.
     pub fn id(self) -> &'static str {
         match self {
+            Self::Module => KIND_MODULE,
             Self::Function => KIND_FUNCTION,
             Self::Type => KIND_TYPE,
         }
@@ -140,15 +156,22 @@ struct DocEntry {
     /// [fold](super::suggest) a failed lookup's hint uses — so a query for `write_file` finds
     /// `writeFile` on every arm that spells it that way.
     folded: String,
-    /// The rendered signature text, joined across every shape this language offers the function in;
-    /// for a type, its declaration. Lowercased.
+    /// The rendered signature text, joined across every shape this language offers the function in
+    /// and followed by [every argument's name](parameter_names); for a type, its declaration.
+    /// Lowercased.
     signature: String,
     /// The one-line brief, as authored.
     brief: &'static str,
     /// The brief, lowercased.
     brief_folded: String,
-    /// The detail beneath the brief — everything the documentation says after its first line — with
-    /// the brief itself removed, so a word in the brief is not also counted here. Lowercased.
+    /// The detail beneath the brief — everything the documentation says after its first line, plus
+    /// [what each argument's own line says](parameter_docs) — with the brief itself removed, so a
+    /// word in the brief is not also counted here. Lowercased.
+    ///
+    /// An argument's description belongs here rather than with the signature because it is prose:
+    /// it is rendered under the signature in a [docview](super::DocsRuntime::read), and a sentence
+    /// about what to put in a field is the weakest kind of evidence there is that a call is the one
+    /// the model meant — which is exactly what this tier says.
     detail_folded: String,
 }
 
@@ -160,7 +183,9 @@ const TIER_IDENTIFIER_EXACT: u8 = 0;
 const TIER_IDENTIFIER_PREFIX: u8 = 1;
 /// The tier for a term the identifier merely **contains** — what makes `foobar` find `getFoobar`.
 const TIER_IDENTIFIER_CONTAINS: u8 = 2;
-/// The tier for a term in the rendered **signature**: a parameter name, an argument type.
+/// The tier for a term in the **signature**: an argument type, or an argument's name — the latter
+/// taken from the catalogue's `parameters` rather than from the rendering, so that it is available
+/// on the one arm whose declaration syntax writes no names. See [`parameter_names`].
 const TIER_SIGNATURE: u8 = 3;
 /// The tier for a term in the **brief**.
 const TIER_BRIEF: u8 = 4;
@@ -232,21 +257,61 @@ impl DocIndex {
                 identity: Some((function.object, function.key)),
                 referenced_by: Vec::new(),
                 folded: fold(function.name),
-                signature: function
-                    .signatures
-                    .iter()
-                    .map(|entry| entry.signature.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    .to_lowercase(),
+                signature: format!(
+                    "{}{}",
+                    function
+                        .signatures
+                        .iter()
+                        .map(|entry| entry.signature.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    parameter_names(function.signatures),
+                )
+                .to_lowercase(),
                 brief,
                 brief_folded: brief.to_lowercase(),
-                detail_folded: function.prose.detail.unwrap_or_default().to_lowercase(),
+                detail_folded: format!(
+                    "{}{}",
+                    function.prose.detail.unwrap_or_default(),
+                    parameter_docs(function.signatures),
+                )
+                .to_lowercase(),
             });
             references.push(function.types);
         }
 
         let functions = entries.len();
+
+        // The modules, keyed by the path a model reads and writes. A module is visible exactly where
+        // one of its own functions is, which is the rule a type already follows and for the same
+        // reason: the module is not itself a call, and an agent that may call something in it must
+        // be able to read where that something lives and how to reach it.
+        //
+        // The import line is folded into the searchable signature text, so a model that has seen an
+        // import line somewhere and half-remembers it can search its way back to the module.
+        for module in crate::sandbox::catalogue_modules(language) {
+            let referenced_by: Vec<usize> = (0..functions)
+                .filter(|position| entries[*position].modules.iter().any(|m| m.id == module.id))
+                .collect();
+            let brief = module.prose.brief;
+            entries.push(DocEntry {
+                key: module.path,
+                kind: DocKind::Module,
+                modules: vec![DocModule {
+                    id: module.id,
+                    path: module.path,
+                }],
+                name: module.path,
+                identity: None,
+                referenced_by,
+                folded: fold(module.path),
+                signature: module.import.unwrap_or(module.path).to_lowercase(),
+                brief,
+                brief_folded: brief.to_lowercase(),
+                detail_folded: module.prose.detail.unwrap_or_default().to_lowercase(),
+            });
+        }
+
         for declaration in &language.catalogue().types {
             let name = declaration.name.as_str();
             // A reference resolves to the type's own key — its fully-qualified name where the arm
@@ -299,6 +364,10 @@ impl DocIndex {
                     && declaration.name.eq_ignore_ascii_case(filter)
                     && declaration.referenced_by.contains(&position)
             }),
+            // A module names no type, so it is never what *what can I do with a value of this
+            // shape* is asking for. Composing the two filters narrows to nothing rather than
+            // widening to every module the matching functions live in.
+            DocKind::Module => false,
         }
     }
 }
@@ -396,14 +465,15 @@ impl super::DocsRuntime {
         let terms = normalize(query.query.split_whitespace());
         let kind = match query.kind.map(str::trim).filter(|kind| !kind.is_empty()) {
             None => None,
+            Some(kind) if kind.eq_ignore_ascii_case(KIND_MODULE) => Some(DocKind::Module),
             Some(kind) if kind.eq_ignore_ascii_case(KIND_FUNCTION) => Some(DocKind::Function),
             Some(kind) if kind.eq_ignore_ascii_case(KIND_TYPE) => Some(DocKind::Type),
             Some(kind) => {
                 return Err(ViewRefusal {
                     failure: ToolFailure::InvalidArgument,
                     message: format!(
-                        "`{kind}` is not a kind of documentation entry; use \
-                         `{KIND_FUNCTION}` or `{KIND_TYPE}`, or leave it out for both"
+                        "`{kind}` is not a kind of documentation entry; use `{KIND_MODULE}`, \
+                         `{KIND_FUNCTION}` or `{KIND_TYPE}`, or leave it out for all three"
                     ),
                 });
             }
@@ -527,8 +597,12 @@ impl super::DocsRuntime {
                 None => false,
             })
             .collect();
+        // A type and a module are both visible through the functions that reach them: a type
+        // through the ones whose signatures name it, a module through the ones it publishes.
+        // Neither is a call, so neither is gated on its own account, and both are asked the one
+        // question `bound` answers about the functions underneath them.
         for (position, entry) in index.entries.iter().enumerate() {
-            if entry.kind == DocKind::Type {
+            if matches!(entry.kind, DocKind::Type | DocKind::Module) {
                 visible[position] = entry.referenced_by.iter().any(|at| visible[*at]);
             }
         }
@@ -536,11 +610,80 @@ impl super::DocsRuntime {
     }
 }
 
-/// Where a kind sorts when everything else about two entries is equal: types before functions.
+/// Every argument name the shapes of one function declare, structured fields included, one per line
+/// and with a leading newline so it appends to a rendered signature.
+///
+/// **Why the names are read off `parameters` rather than out of the rendering.** A parameter's name
+/// is signature evidence, and on ten arms it is *in* the signature string because their declaration
+/// syntax writes it there. PureScript's does not: a call is declared as a curried type,
+/// `editFile :: String -> String -> String -> Effect Unit`, which is the honest rendering of what
+/// that arm's SDK declares and names no argument at all. Its catalogue names every one of them, and
+/// documents them, in `parameters` — so before this, a model on that arm searching `oldString` was
+/// told nothing matched, while the same query on the ten others returned the call at
+/// [`TIER_SIGNATURE`]. The tier is a claim about the *kind of evidence*, and it can only mean the
+/// same thing on eleven arms if it is read from the thing all eleven carry.
+///
+/// A name an arm does also write into its rendering is therefore counted twice on that arm. That is
+/// deliberate rather than tolerated. The alternative — appending a name only when the rendering does
+/// not already contain it — is a substring test that would drop a genuine second occurrence and make
+/// one entry's frequency depend on another field's spelling; and the doubling is uniform across every
+/// entry of an arm, since an arm renders names in all its signatures or in none, so it cannot reorder
+/// two entries within a tier.
+///
+/// The **fields** of a structured argument are walked too. A model writing a call reads
+/// `openDocsView`'s `key` and a search options record's `limit` as the same kind of thing, and only
+/// one of them is a top-level parameter.
+fn parameter_names(signatures: &'static [SignatureEntry]) -> String {
+    let mut out = String::new();
+    for entry in signatures {
+        for parameter in &entry.parameters {
+            append_parameter(parameter, &mut out, |parameter| &parameter.name);
+        }
+    }
+    out
+}
+
+/// What each argument's own line says, for every shape, one per line and with a leading newline so
+/// it appends to an entry's detail.
+///
+/// It is [detail](DocEntry::detail_folded) rather than signature evidence: the *name* is part of how
+/// the call is written, and the sentence beneath it is prose about what to put there. A model that
+/// searched the words of that sentence — `absolute path`, `wall-clock budget` — matched nothing at
+/// all before this, on any of the eleven arms, although it is text every docview shows.
+fn parameter_docs(signatures: &'static [SignatureEntry]) -> String {
+    let mut out = String::new();
+    for entry in signatures {
+        for parameter in &entry.parameters {
+            append_parameter(parameter, &mut out, |parameter| &parameter.doc);
+        }
+    }
+    out
+}
+
+/// One argument's `text`, and every field of it, appended to `out` a line at a time.
+fn append_parameter(
+    parameter: &'static Parameter,
+    out: &mut String,
+    text: fn(&'static Parameter) -> &'static str,
+) {
+    out.push('\n');
+    out.push_str(text(parameter));
+    for field in &parameter.fields {
+        append_parameter(field, out, text);
+    }
+}
+
+/// Where a kind sorts when everything else about two entries is equal: modules, then types, then
+/// functions.
+///
+/// A module leads because it is the one entry the others depend on: a model that has matched a
+/// module and a function in it equally well needs the module first, since the function is not a
+/// name it can write until the module is imported.
 fn kind_bias(kind: DocKind) -> u8 {
     match kind {
-        DocKind::Type => 0,
-        DocKind::Function => 1,
+        DocKind::Module => 0,
+        DocKind::Type => 1,
+        DocKind::Function => 2,
     }
 }
 
@@ -574,7 +717,10 @@ impl DocEntry {
     /// appears at all, which is also what keeps the filter and the report from disagreeing.
     fn modules_for(&self, index: &DocIndex, visible: &[bool]) -> Vec<DocModule> {
         match self.kind {
-            DocKind::Function => self.modules.clone(),
+            // A module's own module is itself, which is what makes the `module` filter and the hit
+            // agree: a model reading the hit's module and filtering on it gets that module's
+            // directory, with the module at the head of it.
+            DocKind::Function | DocKind::Module => self.modules.clone(),
             DocKind::Type => {
                 let mut modules: Vec<DocModule> = Vec::new();
                 for position in self.referenced_by.iter().filter(|at| visible[**at]) {

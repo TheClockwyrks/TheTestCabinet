@@ -13,13 +13,9 @@ package gg.shell
 
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.ggArgs
 import gg.internal.ggCall
 import gg.internal.ggNumber
-import gg.internal.ggRecord
-import gg.internal.ggSet
 import gg.internal.ggText
-import gg.internal.systemObject
 
 
 /**
@@ -43,17 +39,8 @@ import gg.internal.systemObject
  * @throws ToolError `LIMIT_EXCEEDED` when the timeout killed the process, and `IO_ERROR` when it
  *   could not be launched.
  */
-public fun run(command: String, timeoutSecs: Int? = null): ShellOutput {
-    val args =
-        if (timeoutSecs == null) {
-            ggArgs(ggText(command))
-        } else {
-            val options = ggRecord()
-            ggSet(options, "timeoutSecs", ggNumber(timeoutSecs))
-            ggArgs(ggText(command), options)
-        }
-    return Read.shellOutput(ggCall("shell", systemObject(), "gg.shell", "shell", args))
-}
+public fun run(command: String, timeoutSecs: Int? = null): ShellOutput =
+    Read.shellOutput(ggCall("shell.shell", ggText(command), ggNumber(timeoutSecs)))
 
 /**
  * What a command reported when it finished.

@@ -13,11 +13,11 @@
  * What the component model throws, though, is a bare record: `e instanceof Error` is `false`,
  * `String(e)` is `"Error: [object Object] (see error.payload)"`, and the fields are hidden one level
  * down under a non-enumerable `payload`. {@link asToolError} normalises that into a real `ToolError`,
- * which is what a program catches and what the shim reports.
+ * which is what a program catches and what the engine renders when nothing catches it.
  *
- * **Why the validators.** The host type-*strips* a model's TypeScript with `oxc`; it does not
- * type-*check* it. Nothing between the model and the membrane rejects a wrong argument, and three
- * mistakes are otherwise silent or unreadable:
+ * **Why the validators.** The JavaScript arm has no compiler at all, and the TypeScript arm's runs
+ * before the call rather than at it. Nothing between the model and the membrane rejects a wrong
+ * argument, and three mistakes are otherwise silent or unreadable:
  *
  * - `shell("npm test", 300)` reads `options.timeoutSecs` off a number, gets `undefined`, and quietly
  *   uses the 120 s default — the model never learns its timeout was ignored.
@@ -65,14 +65,12 @@ function unwrap(thrown: unknown): { tool: string; code: ErrorCode; message: stri
  * Normalise whatever the component-model binding threw into a `ToolError`.
  *
  * A value that is not a membrane failure — a `TypeError` from the program itself, a thrown string —
- * is returned unchanged, so the shim can describe it on its own terms.
+ * is returned unchanged, so the engine renders it on its own terms.
  */
 export function asToolError(thrown: unknown): unknown {
   // Already normalised: return it untouched rather than rebuilding an identical one. The rebuild
-  // was not free — a fresh `Error` captures a fresh stack, and this function is called a second
-  // time by the shim, from a frame the model's program is nowhere near. Re-wrapping there replaced
-  // the stack that knew which line of the program called the tool, and every tool failure lost its
-  // reported location.
+  // is not free — a fresh `Error` captures a fresh stack, replacing the stack that knew which line
+  // of the program called the tool.
   if (thrown instanceof ToolError) return thrown;
   const record = unwrap(thrown);
   return record ? new ToolError(record.tool, record.code as ToolErrorCode, record.message) : thrown;
@@ -86,7 +84,7 @@ export function asToolError(thrown: unknown): unknown {
  * against a *different* `Error` intrinsic than the one this module and the model's program see — so
  * the `TypeError: expected a string, received [undefined]` that a mistyped argument raises answers
  * `false` to `instanceof Error`, falls past every branch that reads `.name` and `.message`, and is
- * reported by the shim as whatever `JSON.stringify` makes of it. An `Error`'s own fields are not
+ * reported as whatever `JSON.stringify` makes of it. An `Error`'s own fields are not
  * enumerable, so that is the literal string `{}` — a runtime error carrying no information at all,
  * for the single most common mistake a model makes against this API.
  *

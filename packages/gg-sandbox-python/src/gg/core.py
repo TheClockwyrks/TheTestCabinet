@@ -5,9 +5,8 @@ A capability module owns the types it produces, so `FileRead` belongs to `gg.fil
 them: every function in this SDK raises `ToolError`, and `UNCHANGED` is the default of every patch
 argument that can also be cleared.
 
-They are also the names a program writes unqualified. `gg.scope` binds them directly into a
-program's namespace, because an `except` clause that had to spell out a module would be an `except`
-clause nobody writes.
+They are written the way every other name in this package is written: `import gg` and then
+`gg.core.ToolError`, which is the same path the documentation files them under.
 """
 
 from __future__ import annotations
@@ -18,6 +17,8 @@ from typing import Any, Callable, TypeVar
 
 from componentize_py_types import Err
 from wit_world.imports import types as wire
+
+from ._registry import missing
 
 __all__ = ["UNCHANGED", "ToolError", "ToolErrorCode", "Unchanged"]
 
@@ -92,12 +93,14 @@ class ToolError(Exception):
     A failure that is expected is an ordinary `except` on `code`:
 
     ```python
+    import gg
+
     try:
-        notes = files.read_text_file("notes.md")
-    except ToolError as failure:
-        if failure.code is not ToolErrorCode.NOT_FOUND:
+        notes = gg.files.read_text_file("notes.md")
+    except gg.core.ToolError as failure:
+        if failure.code is not gg.core.ToolErrorCode.NOT_FOUND:
             raise
-        files.write_file("notes.md", "")
+        gg.files.write_file("notes.md", "")
     ```
     """
 
@@ -215,3 +218,7 @@ def _strings(fn: str, name: str, value: object) -> list[str]:
                 f"every entry of `{name}` must be a string, got {item!r}",
             )
     return items
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

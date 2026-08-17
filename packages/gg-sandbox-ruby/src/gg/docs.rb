@@ -14,7 +14,7 @@ module GG
   module Docs
     extend Surface::Operations
 
-    # Search every function and type the agent can call, by keyword and by filter.
+    # Search every module, function and type the agent holds, by keyword and by filter.
     #
     # This is how a name is found. Matching is a case-insensitive substring over names, signatures,
     # briefs and detailed descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of
@@ -38,8 +38,8 @@ module GG
     # @param type [String, nil] One type's name, narrowing to that type and to the functions that
     #   take or return it. Like `in_module`, a name nothing declares matches nothing rather than
     #   failing.
-    # @param kind [GG::Docs::DocKind, nil] `:function` or `:type` — whether to return functions or
-    #   types. The default returns both.
+    # @param kind [GG::Docs::DocKind, nil] `:module`, `:function` or `:type` — whether to return
+    #   modules, functions or types. The default returns all three.
     # @param offset [Integer, nil] How many hits to skip, for reading past the first page. The
     #   default starts at the best hit.
     # @param limit [Integer, nil] The most hits to return. The default is gg's own page size and
@@ -47,8 +47,8 @@ module GG
     #   capped page. Zero is refused rather than read as "no cap".
     # @return [GG::Docs::DocSearch] the page that matched, best first, with the total behind it
     # @raise [GG::Core::ToolError] `:invalid_argument` for an empty query with no filter at all —
-    #   nothing matched and nothing was asked for are different answers — for a `kind` that is
-    #   neither `:function` nor `:type`, and for a `limit` of zero, which asks for a page that
+    #   nothing matched and nothing was asked for are different answers — for a `kind` that is none
+    #   of `:module`, `:function` and `:type`, and for a `limit` of zero, which asks for a page that
     #   answers nothing. A module or type name gg does not hold is not among them: it matches
     #   nothing.
     def self.search(query, in_module: nil, type: nil, kind: nil, offset: nil, limit: nil)
@@ -57,7 +57,8 @@ module GG
                           Wire.js(in_module),
                           Wire.js(type),
                           Wire.js(Wire.arm(Check.choice("search", "kind", kind,
-                                                        [DocKind::FUNCTION, DocKind::TYPE]))),
+                                                        [DocKind::MODULE, DocKind::FUNCTION,
+                                                         DocKind::TYPE]))),
                           Wire.js(Check.uint("search", "offset", offset)),
                           Wire.js(Check.uint("search", "limit", limit))
                         ])
@@ -114,8 +115,11 @@ module GG
     end
     private_class_method :hit_of
 
-    # Which of the two kinds of thing a documentation entry describes.
+    # Which of the three kinds of thing a documentation entry describes.
     module DocKind
+      # A module a program imports, with the functions it holds inside it.
+      MODULE = :module
+
       # A function a program calls.
       FUNCTION = :function
 
@@ -131,19 +135,20 @@ module GG
       #   entry.
       attr_reader :key
 
-      # @return [GG::Docs::DocKind] Whether it is a `:function` or a `:type`.
+      # @return [GG::Docs::DocKind] Whether it is a `:module`, a `:function` or a `:type`.
       attr_reader :kind
 
       # The module it lives in.
       #
-      # A function has exactly one. A type shows every module in which a function the agent can call
-      # mentions it — never one nothing is held in, and comma-separated when there are several,
-      # which makes it a description rather than something to pass back as `in_module`.
+      # A module is its own, and a function has exactly one. A type shows every module in which a
+      # function the agent can call mentions it — never one nothing is held in, and comma-separated
+      # when there are several, which makes it a description rather than something to pass back as
+      # `in_module`.
       #
       # @return [String] the module's id, or the ids of every module a type is mentioned in
       attr_reader :module
 
-      # @return [String] The name a program calls it by, or the type's own name.
+      # @return [String] The name a program calls it by, or the type's or the module's own name.
       attr_reader :name
 
       # @return [String] Its one-line brief, and only that. The rest is what a documentation view is

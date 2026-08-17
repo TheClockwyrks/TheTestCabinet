@@ -6,17 +6,17 @@
 //! A trait with exactly one implementation is not an abstraction; it is one implementation wearing a
 //! trait, and nothing distinguishes the two until a second one arrives. Every property the
 //! [seam](super) claims — that the healing skeleton asks a dialect rather than knowing TypeScript's
-//! answers, that the prompt is selected per language rather than shared, that one language's
-//! embedded artifacts cannot reach another's consumer, that the
+//! answers, that the source gg writes on a model's behalf is written in that model's own language,
+//! that one language's embedded artifacts cannot reach another's consumer, that the
 //! [capability gate](super::agreement) can be made to reject a surface at all —
 //! is unfalsifiable while TypeScript is the only thing that implements it. The fixture is what
 //! makes them falsifiable, a workflow before a second real language exists rather than a workflow
 //! after.
 //!
 //! A second language being registered did **not** retire it. [`JavaScript`](super::javascript) is
-//! TypeScript's arm with the type check removed: it shares that language's component, catalogue
-//! spellings, strip and dialect by design, so asking it any of the questions above gets
-//! TypeScript's answer back and proves nothing about who was asked. The fixture answers every one
+//! TypeScript's arm with the type check removed: it shares that language's guest, catalogue
+//! spellings, synthesized programs and dialect by design, so asking it any of the questions above
+//! gets TypeScript's answer back and proves nothing about who was asked. The fixture answers every one
 //! of them differently, which is the whole of what it is for.
 //!
 //! # What it is
@@ -61,8 +61,8 @@
 //! `GgProgramLanguage::ALL`, so the gates that iterate it keep costing exactly what the registered
 //! set costs, and no production reader can be handed a language that does not exist.
 //! [`fixture_languages`](super::fixture_languages) is the one accessor, `#[cfg(test)]` like
-//! everything here, and its only production-side consumer is the `#[cfg(test)]` arm of the prompt
-//! engine's template registration.
+//! everything here, and the gates that walk every arm chain it on so that each of them is asked of a
+//! surface no registered arm could have answered for.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -75,9 +75,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareError, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, PromptDialect, spell,
+    PreparedProgram, ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 /// **The surface the fixture's own is reshaped out of** — a registered arm's catalogue, embedded
 /// straight from the build's `OUT_DIR` rather than reached for through
@@ -234,7 +235,6 @@ impl ProgramLanguage for FixtureLanguage {
         }
         Ok(PreparedProgram {
             source: self.build(&strip_comments(source), context)?,
-            unreachable: None,
             component: None,
         })
     }
@@ -297,10 +297,6 @@ impl ProgramLanguage for FixtureLanguage {
         &FIXTURE_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// `csv-tools` → `csv_tools` — this language's own convention, and deliberately not
     /// TypeScript's, so "the binding key is the language's" is an assertion rather than a
     /// restatement of one implementation.
@@ -349,6 +345,31 @@ impl ProgramLanguage for FixtureLanguage {
             .iter()
             .map(|name| format!("{open_docs_view}({})\n", Value::String((*name).to_string())))
             .collect()
+    }
+
+    /// One search per module and one view per name, with no list literal and no loop — deliberately
+    /// unlike every registered arm's, because "the opening turn is written in the agent's own
+    /// language" is only an assertion while two languages generate different programs.
+    ///
+    /// The filters are keyword arguments and nothing terminates a statement, which is this
+    /// language's own idiom in both of the places it is free to have one.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        let search = spell(self, DOCS_SEARCH);
+        let open_docs_view = spell(self, VIEWS_OPEN_DOCS_VIEW);
+        let searched: String = modules
+            .iter()
+            .map(|path| {
+                format!(
+                    "{search}(\"\", module={}, limit={MAX_SEARCH_LIMIT})\n",
+                    Value::String((*path).to_string())
+                )
+            })
+            .collect();
+        let opened: String = docs
+            .iter()
+            .map(|name| format!("{open_docs_view}({})\n", Value::String((*name).to_string())))
+            .collect();
+        format!("{searched}{opened}")
     }
 }
 
@@ -423,8 +444,8 @@ pub(crate) fn a_language_whose_catalogue(
     }))
 }
 
-/// Every fixture language, for the `#[cfg(test)]` consumers that must know about them — today, the
-/// prompt engine, which cannot render a template it never registered.
+/// Every fixture language, for the `#[cfg(test)]` consumers that must know about them — the gates
+/// that walk every arm and would otherwise be walking one implementation eleven times.
 pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {
     std::iter::once(fixture_language() as &'static dyn ProgramLanguage)
 }
@@ -756,47 +777,6 @@ fn leak(json: String) -> &'static SignatureCatalogue {
         SignatureCatalogue::parse(&json).expect("the fixture catalogue is well-formed"),
     ))
 }
-
-// ---------------------------------------------------------------------------------------------
-// The prompt
-// ---------------------------------------------------------------------------------------------
-
-/// The fixture's model-facing prose, written in the fixture's own vocabulary.
-///
-/// It is short — no language's real prompt is — but it carries the two things the per-language
-/// prompt tests read: headings the shared machinery has to render, and a module list that must come
-/// from *this* language's catalogue rather than the other one's.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: FIXTURE_SYSTEM_TEMPLATE,
-    system_template_name: "system-code.fixture",
-    nothing_shown_template: "Your program showed you nothing. Open a view of it.",
-    nothing_shown_template_name: "code-nothing-shown.fixture",
-};
-
-/// The fixture's system prompt: enough Handlebars to prove the shared context renders against a
-/// template gg did not write in TypeScript, and enough interpolated vocabulary to prove the right
-/// language's catalogue answered.
-///
-/// It names **no function**, exactly as every shipped template does not, which is what makes "a
-/// prompt names nothing a model has to be able to find for itself" an assertion over two surfaces
-/// rather than over one. What it does carry is the module list, because that is the one vocabulary
-/// the prompt is allowed to supply and the one whose per-language resolution has to be proven.
-const FIXTURE_SYSTEM_TEMPLATE: &str = "\
-## Responses as Code
-
-Answer with a program in the fixture language. Comments start with `#`.
-
-### Ending your session
-
-Call `{{ending.finish}}(summary)`.
-
-### Your modules
-
-{{#each modules}}- `{{path}}` — {{brief}}
-{{/each}}
-
-Search these for the function you need, then open a documentation view of it.
-";
 
 // ---------------------------------------------------------------------------------------------
 // The healing dialect

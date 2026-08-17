@@ -3,11 +3,14 @@
 # Reflect the PureScript arm's signature catalogue out of its SDK, and write
 # `$GG_SIGNATURES_OUT_DIR/purescript.signatures.json`.
 #
-# gg embeds that file and renders the responses-as-code system prompt and every documentation view
-# from it, so it is the whole of what a model is told about this arm's surface. Every word of it is
-# reflected out of the SDK's own declarations by `tools/signatures.mjs`, which reads the `docs.json`
-# `purs` itself emits — so a sentence a model reads is the compiler's own reading of the declaration
-# it describes rather than prose typed into a table beside it.
+# gg embeds that file and answers every documentation SEARCH and every documentation VIEW out of
+# it, so it is the whole of what a model can learn about this arm's surface. The responses-as-code
+# system prompt is not one of its readers in any real sense: all it takes from here is the module
+# paths and the one-line brief each module introduces itself by, which is the vocabulary a search
+# starts from. Every word of it is reflected out of the SDK's own declarations by
+# `tools/signatures.mjs`, which reads the `docs.json` `purs` itself emits — so a sentence a model
+# reads is the compiler's own reading of the declaration it describes rather than prose typed into a
+# table beside it.
 #
 # WHERE IT WRITES, AND WHY THERE IS NO DEFAULT. The catalogue is a BUILD ARTIFACT.
 # `crates/gg/build.rs` runs `scripts/gg-signatures.sh` and embeds what lands in the build's own

@@ -9,8 +9,8 @@
 # compiler-version-private format — the compiled library set and the compiler that reads it must
 # be the same release, and the cheapest way to guarantee that is to have exactly one Rust release
 # in the repository, which `rust-toolchain.toml` names and this arm's artifact crate rebuilds
-# against. What a checkout does NOT necessarily have is the `wasm32-unknown-unknown`
-# STANDARD LIBRARY, which is a separate rustup component.
+# against. What a checkout does NOT necessarily have is the target's STANDARD LIBRARY, which is a
+# separate rustup component.
 #
 # WHY IT IS NOT `targets` IN rust-toolchain.toml, which would be one line and no script. A target
 # named there is fetched on the first cargo invocation of every checkout — including inside
@@ -18,6 +18,10 @@
 # cross-compile anything — so it would make several image builds network-dependent to serve one
 # crate's tests. The other three compiled arms install explicitly for the same kind of reason, so
 # this reads the same way they do.
+#
+# WHICH TARGET IS `rust-version.sh`'s TO SAY, and it says `wasm32-wasip1` — the target that gives a
+# model's program a real standard error, which is the only channel a Rust failure reaches the model
+# through. Read that file for the measurement behind it.
 #
 # Idempotent: a target already installed is left alone, and a machine whose Rust is not managed by
 # rustup is left alone too — it either already has the target (in which case nothing was needed) or
@@ -38,7 +42,7 @@ source "$ROOT/packages/gg-sandbox-rust/rust-version.sh"
 # `/usr/local/rustup/toolchains/1.96.0-…/lib/rustlib/wasm32-unknown-unknown/lib` and exited 0 while
 # that directory did not exist. Asking it as a yes/no question therefore answered "yes" everywhere,
 # which made this script a no-op on precisely the machines that needed it — and the cost of that was
-# paid several minutes later and one layer down, as `cargo rustdoc --target wasm32-unknown-unknown`
+# paid several minutes later and one layer down, as `cargo rustdoc --target <triple>`
 # failing to find `core` inside gg's build script. So look at the directory rustc names: rustup
 # creates it when the component is installed and removes it when the component is removed, so its
 # presence is the fact, and a rustc that is not managed by rustup answers this correctly too.

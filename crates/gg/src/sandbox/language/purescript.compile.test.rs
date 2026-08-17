@@ -1,6 +1,6 @@
-//! The host-side PureScript compile: the header rewrite it does before a compiler sees anything, the
-//! two verdicts it tells apart, and the agreement between the compiled library tree this build cut
-//! and the manifest that describes it.
+//! The host-side PureScript compile: the module header it reads out of the reply, the two verdicts it
+//! tells apart, and the agreement between the compiled library tree this build cut and the manifest
+//! that describes it.
 //!
 //! These spawn a real `purs` and a real `esbuild`, so they are seconds rather than microseconds — but
 //! they stop at the JavaScript. What that JavaScript *does* inside the guest is
@@ -11,7 +11,7 @@ use crate::sandbox::PrepareContext;
 
 /// Compile `source` as a program, or panic with what the toolchain said.
 fn program(source: &str) -> String {
-    match compile_program(source, &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::new()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
     }
@@ -19,7 +19,7 @@ fn program(source: &str) -> String {
 
 /// The failure compiling `source` as a program produced, or panic because it compiled.
 fn refusal(source: &str) -> PrepareFailure {
-    match compile_program(source, &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::new()) {
         Ok(_) => panic!("expected this PureScript to be refused, and it compiled"),
         Err(failure) => failure,
     }
@@ -36,87 +36,129 @@ const HELLO: &str = "module Main where\n\
                      main = Console.log \"hello\"\n";
 
 #[test]
-fn a_module_header_is_retargeted_without_moving_a_line() {
-    // The ordinary case: a model wrote a header, and the name is replaced where it stands. No line
-    // moves, so no diagnostic coordinate has to be corrected.
-    let (retargeted, shift) = retarget("module Solve where\nmain = 1\n");
-    assert_eq!(retargeted, "module Main where\nmain = 1\n");
-    assert_eq!(shift, 0);
+fn the_module_header_the_model_wrote_is_the_one_the_entry_point_imports() {
+    // Nothing rewrites the header and nothing supplies one, so the name `purs` files the emitted
+    // JavaScript under is the name gg reads here — and every coordinate stays the model's.
+    assert_eq!(module_name("module Solve where\nmain = 1\n"), Some("Solve"));
 
     // A qualified name is one name, not a name and two dots.
-    let (retargeted, shift) = retarget("module My.Deeply.Nested where\nx = 1\n");
-    assert_eq!(retargeted, "module Main where\nx = 1\n");
-    assert_eq!(shift, 0);
+    assert_eq!(
+        module_name("module My.Deeply.Nested where\nx = 1\n"),
+        Some("My.Deeply.Nested")
+    );
 
-    // An export list survives untouched: what a program exports is the model's business, and the
-    // bundler's complaint about a missing `main` is a better answer than gg quietly widening it.
-    let (retargeted, _) = retarget("module Solve\n  ( main\n  ) where\nmain = 1\n");
-    assert_eq!(retargeted, "module Main\n  ( main\n  ) where\nmain = 1\n");
+    // An export list ends the name, and primes and underscores are part of one.
+    assert_eq!(
+        module_name("module Solve\n  ( main\n  ) where\nmain = 1\n"),
+        Some("Solve")
+    );
+    assert_eq!(
+        module_name("module Solve_1' where\nx = 1\n"),
+        Some("Solve_1'")
+    );
 
-    // Already called `Main`: the rewrite is a no-op rather than a special case.
-    let (retargeted, shift) = retarget(HELLO);
-    assert_eq!(retargeted, HELLO);
-    assert_eq!(shift, 0);
+    assert_eq!(module_name(HELLO), Some("Main"));
 }
 
 #[test]
 fn comments_before_the_header_are_skipped_rather_than_searched() {
     // A line comment, a block comment, and a NESTED block comment — PureScript's nest — each of
     // which may legally precede the header and each of which may contain the word `module`.
-    let (retargeted, shift) = retarget("-- module NotThisOne where\nmodule Solve where\nx = 1\n");
     assert_eq!(
-        retargeted,
-        "-- module NotThisOne where\nmodule Main where\nx = 1\n"
+        module_name("-- module NotThisOne where\nmodule Solve where\nx = 1\n"),
+        Some("Solve")
     );
-    assert_eq!(shift, 0);
-
-    let (retargeted, _) = retarget("{- a note -}\nmodule Solve where\nx = 1\n");
-    assert_eq!(retargeted, "{- a note -}\nmodule Main where\nx = 1\n");
-
-    let (retargeted, _) =
-        retarget("{- outer {- inner -} still outer -}\nmodule Solve where\nx = 1\n");
     assert_eq!(
-        retargeted,
-        "{- outer {- inner -} still outer -}\nmodule Main where\nx = 1\n"
+        module_name("{- a note -}\nmodule Solve where\nx = 1\n"),
+        Some("Solve")
+    );
+    assert_eq!(
+        module_name("{- outer {- inner -} still outer -}\nmodule Solve where\nx = 1\n"),
+        Some("Solve")
     );
 }
 
 #[test]
-fn a_reply_with_no_header_is_given_one_and_charged_a_line() {
-    // What a model that thought it was writing a script produces. gg supplies the header rather than
-    // refusing, and the one line it costs is what every diagnostic is moved back by.
-    let (retargeted, shift) = retarget("import Prelude\nmain = 1\n");
-    assert_eq!(retargeted, "module Main where\nimport Prelude\nmain = 1\n");
-    assert_eq!(shift, 1);
-
+fn a_reply_with_no_header_is_the_compiler_s_own_refusal() {
+    // What a model that thought it was writing a script produces. gg supplies nothing: `purs` cannot
+    // read it, says so at line 1, and that is what the model reads.
+    assert_eq!(module_name("import Prelude\nmain = 1\n"), None);
     // `modulesomething` is an identifier, not a header keyword.
-    let (retargeted, shift) = retarget("moduleName = 1\n");
-    assert_eq!(retargeted, "module Main where\nmoduleName = 1\n");
-    assert_eq!(shift, 1);
+    assert_eq!(module_name("moduleName = 1\n"), None);
+
+    let failure = refusal("import Prelude\nmain :: Int\nmain = 1\n");
+    let PrepareFailure::Program(PrepareError::Syntax(message)) = &failure else {
+        panic!("expected a syntax error, got {failure:?}");
+    };
+    assert!(
+        message.contains("program.purs:1:1: ErrorParsingModule"),
+        "the compiler's own words at the compiler's own line: {message}"
+    );
 }
 
 #[test]
-fn a_real_program_compiles_to_a_bundle_that_defines_nothing_globally() {
+fn a_program_names_its_own_module_and_runs_from_it() {
+    // The name is the model's, and the bundle really is built from the module it named: `esbuild`
+    // resolves `./output/Solve/index.js`, and a name gg read wrongly would not resolve at all.
+    let bundled = program(
+        "module Solve where\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
+         \n\
+         main :: Effect Unit\n\
+         main = Console.log \"solved\"\n",
+    );
+    assert!(bundled.contains("console.log"), "the FFI came with it");
+}
+
+#[test]
+fn a_real_program_compiles_to_a_module_carrying_its_own_map() {
     let bundled = program(HELLO);
 
-    // An IIFE, because the guest evaluates a program as the body of a function whose parameters are
-    // the API objects: module syntax would not parse there, and a top-level declaration would leak
-    // into the scope a code module and the program share.
-    assert!(
-        bundled.starts_with("(() => {"),
-        "the bundle is an IIFE: {}",
-        &bundled[..bundled.len().min(120)]
-    );
-    assert!(
-        !bundled.contains("import "),
-        "the bundle carries no module syntax"
-    );
     // The library code the program reached is IN the bundle — this is what "no runtime component"
-    // means for this arm — and the code it did not reach is not.
+    // means for this arm — and the code it did not reach is not. This program calls nothing of
+    // gg's, so it carries none of gg's SDK either.
     assert!(bundled.contains("console.log"), "the FFI came with it");
     assert!(
         !bundled.contains("Data.Map"),
         "esbuild tree-shook what the program never imported"
+    );
+
+    // And the map that reads a frame in it back into PureScript, inline, composed by `esbuild` out
+    // of its own and `purs`'s. It names the model's own file, and it names it as the file `purs`
+    // read rather than through a path.
+    let map = crate::sandbox::locate::embedded(&bundled).expect("the bundle carries its own map");
+    let sources: Vec<&str> = (0..map.get_source_count())
+        .filter_map(|index| map.get_source(index))
+        .collect();
+    assert!(
+        sources.contains(&PROGRAM_FILE),
+        "the map names the model's own file: {sources:?}"
+    );
+    assert!(
+        sources
+            .iter()
+            .any(|source| source.ends_with("Console.purs")),
+        "and the library modules it was bundled with: {sources:?}"
+    );
+
+    // A program that DOES call gg reaches it through the `import` line the SDK's own bridge wrote,
+    // left external so the guest's loader resolves it to the instance a TypeScript program shares.
+    let calling = program(
+        "module Solve where\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         import Gg.Views as Gg.Views\n\
+         \n\
+         main :: Effect Unit\n\
+         main = void (Gg.Views.openText \"note\" \"hi\")\n",
+    );
+    assert!(
+        calling.contains("import * as gg from \"gg\";"),
+        "the bundle reaches gg through the line the SDK wrote"
     );
 }
 
@@ -168,25 +210,6 @@ fn a_syntax_error_and_a_type_error_are_different_bands() {
 }
 
 #[test]
-fn a_diagnostic_in_a_headerless_reply_names_the_line_the_model_wrote() {
-    // Line 5 of what the model wrote; line 6 of what purs read. The model reads its own.
-    let failure = refusal(
-        "import Prelude\n\
-         import Effect (Effect)\n\
-         import Effect.Class.Console as Console\n\
-         \n\
-         main = Console.log (1 + \"two\")\n",
-    );
-    let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
-        panic!("expected a compile error, got {failure:?}");
-    };
-    assert!(
-        message.contains("program.purs:5:"),
-        "moved back over the header gg supplied: {message}"
-    );
-}
-
-#[test]
 fn a_program_with_no_entry_point_is_told_so_in_a_sentence() {
     // It compiles: there is nothing wrong with the PureScript. There is just nothing to run, and the
     // model is told that rather than being shown a bundler's error about a file it never wrote.
@@ -201,7 +224,7 @@ fn a_program_with_no_entry_point_is_told_so_in_a_sentence() {
 
     // An export list that leaves `main` out is the same failure, and the message says so.
     let failure = refusal(
-        "module Main (helper) where\n\
+        "module Solve (helper) where\n\
          import Prelude\n\
          import Effect (Effect)\n\
          import Effect.Class.Console as Console\n\
@@ -248,7 +271,7 @@ fn fifty_call_sites_of_one_mistake_reach_the_model_as_eight_and_a_count() {
     let errors: Vec<String> = (1..=50)
         .map(|line| json_error("UnknownName", line, PROGRAM_FILE))
         .collect();
-    let failure = classify(&json_report(&errors), PROGRAM_FILE, 0).expect_err("refused");
+    let failure = classify(&json_report(&errors), PROGRAM_FILE).expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
         panic!("fifty diagnostics in the model's own file are its compile error, got {failure:?}");
     };
@@ -278,7 +301,7 @@ fn a_rejection_the_bound_does_not_reach_is_byte_for_byte_what_it_always_was() {
         json_error("UnknownName", 7, PROGRAM_FILE),
         json_error("TypesDoNotUnify", 9, PROGRAM_FILE),
     ];
-    let failure = classify(&json_report(&errors), PROGRAM_FILE, 0).expect_err("refused");
+    let failure = classify(&json_report(&errors), PROGRAM_FILE).expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
         panic!("expected a compile error, got {failure:?}");
     };
@@ -299,7 +322,7 @@ fn the_band_is_decided_before_anything_is_dropped_for_length() {
         .map(|line| json_error("UnknownName", line, PROGRAM_FILE))
         .collect();
     errors.push(json_error("ErrorParsingModule", 50, PROGRAM_FILE));
-    let failure = classify(&json_report(&errors), PROGRAM_FILE, 0).expect_err("refused");
+    let failure = classify(&json_report(&errors), PROGRAM_FILE).expect_err("refused");
     assert!(
         matches!(failure, PrepareFailure::Program(PrepareError::Syntax(_))),
         "a parse failure the cap dropped stopped being one: {failure:?}"
@@ -312,7 +335,7 @@ fn the_band_is_decided_before_anything_is_dropped_for_length() {
         .collect();
     assert!(
         matches!(
-            classify(&json_report(&ours), PROGRAM_FILE, 0),
+            classify(&json_report(&ours), PROGRAM_FILE),
             Err(PrepareFailure::Toolchain(_))
         ),
         "a tree that did not compile is gg's artifact failing, not the model's program"
@@ -331,14 +354,12 @@ fn a_code_module_compiles_to_a_namespace() {
     )
     .expect("purs compiles a code module");
 
-    // The last statement hands the namespace back, because that is the protocol `lib.<key>` needs:
-    // the guest evaluates this as a function body and binds whatever it returns.
+    // An ES module with the author's own exports, which is what the guest declares at `lib:<key>`
+    // and what a program's `import * as helpers from "lib:helpers"` reaches.
     assert!(
-        bundled
-            .trim_end()
-            .ends_with(&format!("return {MODULE_GLOBAL};")),
-        "the module hands its namespace back: {}",
-        &bundled[bundled.len().saturating_sub(120)..]
+        bundled.contains("export {"),
+        "the module exports what the author exported: {}",
+        &bundled[bundled.len().saturating_sub(200)..]
     );
     assert!(
         bundled.contains("greet"),
@@ -507,8 +528,8 @@ fn the_shared_tree_is_sealed_and_each_preparation_gets_its_own() {
     // isolation gate drives at sixteen.
     let first = PrepareContext::new();
     let second = PrepareContext::new();
-    assert!(compile_program(HELLO, &first).is_ok());
-    assert!(compile_program(HELLO, &second).is_ok());
+    assert!(compile_program(HELLO, &[], &first).is_ok());
+    assert!(compile_program(HELLO, &[], &second).is_ok());
     assert_ne!(
         first.opened_workspace().expect("the compile opened one"),
         second.opened_workspace().expect("the compile opened one"),

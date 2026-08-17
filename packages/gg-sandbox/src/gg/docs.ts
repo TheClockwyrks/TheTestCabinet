@@ -1,5 +1,5 @@
 /**
- * Find a function by searching for it, and take a documentation view back out of the window.
+ * Find a module, function or type by searching, and take a documentation view back out of the window.
  *
  * This is where a session starts. The system prompt names the modules and no function inside them,
  * so searching — by keyword, or by naming a module, which is an exact lookup of everything in it —
@@ -18,8 +18,10 @@
 import * as raw from "test-cabinet:gg/docs";
 import { U32_MAX, call, opts, uint } from "../internal/errors.js";
 
-/** Which of the two things a documentation entry is. */
+/** Which of the three things a documentation entry is. */
 export type DocKind =
+  /** A module a program imports, whose functions live inside it. */
+  | "module"
   /** A function a program calls. */
   | "function"
   /** A type a signature names. */
@@ -30,19 +32,20 @@ export interface DocHit {
   /** The fully-qualified name it is documented under, and what `gg.views.openDocsView` takes. */
   key: string;
 
-  /** Whether this entry is a function or a type. */
+  /** Whether this entry is a module, a function or a type. */
   kind: DocKind;
 
   /**
    * The module it lives in, written the way a program writes it.
    *
-   * A function has exactly one. A **type** has as many as there are modules whose functions mention
-   * it, and they arrive comma-separated — so this is a description rather than something to hand
-   * back to the `module` filter, which takes one module and nothing else.
+   * A function has exactly one, and a **module** is its own. A **type** has as many as there are
+   * modules whose functions mention it, and they arrive comma-separated — so this is a description
+   * rather than something to hand back to the `module` filter, which takes one module and nothing
+   * else.
    */
   module: string;
 
-  /** The name a program calls it by, or the type's own name. */
+  /** The name a program calls it by, the type's own name, or the module's path. */
   name: string;
 
   /** Its brief, and only its brief. Everything else written about it is what a view holds. */
@@ -62,7 +65,11 @@ export interface DocSearch {
 }
 
 /**
- * Search everything this agent can call, and every type their signatures name, best match first.
+ * Search the modules this agent holds, everything it can call, and every type their signatures name.
+ *
+ * Best match first, and a hit is one of three things: a **module** a program imports, a function it
+ * calls, or a type a signature names. The module is what a search wants first — nothing gg offers is
+ * in scope until the program has imported the module the function lives in.
  *
  * Matching is case-insensitive substring matching over names, signatures, briefs and detailed
  * descriptions, so `docs` finds `openDocsView`. A hit whose own name matched is ranked above one
@@ -86,7 +93,8 @@ export interface DocSearch {
  * gg's own id (`files`). Exact and case-insensitive.
  * @param options.type One type's own name, narrowing to that type and the functions whose signatures
  * mention it — what can be done with a value of this shape.
- * @param options.kind `"function"` or `"type"`, to see only one of them. Any other word is refused.
+ * @param options.kind `"module"`, `"function"` or `"type"`, to see only one of them. Any other word
+ * is refused.
  * @param options.offset How many hits to skip, for reading past the first page. Defaults to none.
  * @param options.limit How many hits to return: 20 by default, 100 at most, and zero is refused.
  * Compare it against `total` to see how much of the answer this page is.
@@ -121,8 +129,8 @@ export function search(
       total: page.total,
       offset: page.offset,
       // The membrane declares `kind` a bare string, because the WIT record does; gg writes exactly
-      // the two words this union carries, and the narrowing is here so a program branching on a hit
-      // gets the closed set rather than `string`.
+      // the three words this union carries, and the narrowing is here so a program branching on a
+      // hit gets the closed set rather than `string`.
       hits: page.hits.map((hit) => ({ ...hit, kind: hit.kind as DocKind })),
     };
   });

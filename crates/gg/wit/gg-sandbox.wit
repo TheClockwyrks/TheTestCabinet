@@ -11,12 +11,15 @@
 // exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
 // equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
 //
-// Six interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// Eight interfaces stand outside that correspondence, and each is separate for exactly that reason:
 // `feedback` is the shim's private channel back to gg and is never model-facing at all; `session`
 // carries the model-facing calls that end the run; `docs` is the always-bound documentation lookup;
 // `views` is how a program puts material into its own context window; `programs` is the library
-// of programs this agent has already run; and `helpers` holds the convenience wrappers built on a
-// tool without being one. None of the five model-facing ones has a name in `ALL_TOOL_NAMES` — no
+// of programs this agent has already run; `helpers` holds the convenience wrappers built on a
+// tool without being one; `wire` is not model-facing either — it is the one door the JVM arms
+// come through, naming a call by string BELOW their typed surface, for the reason it states; and
+// neither is `math`, which answers the `java.lang.Math` primitives TeaVM's WebAssembly backend
+// leaves to a host. None of the five model-facing ones has a name in `ALL_TOOL_NAMES` — no
 // capability offers them and nothing dispatches them by name — so keeping them out of the tool
 // interfaces is what lets the bijection above be checked mechanically rather than by reading.
 package test-cabinet:gg;
@@ -698,12 +701,12 @@ interface docs {
     record doc-hit {
         /// What `open-doc-view` takes to read the whole entry.
         key: string,
-        /// `"function"` or `"type"`.
+        /// `"module"`, `"function"` or `"type"`.
         kind: string,
         /// The module it lives in. A type shows every module in which a function YOU CAN CALL
         /// mentions it — never one you hold nothing in.
         module: string,
-        /// The name a program calls it by, or the type's own name.
+        /// The name a program calls it by, the type's own name, or the module's own path.
         name: string,
         /// Its one-line brief — and only that. The rest is what a documentation view is for.
         summary: string,
@@ -720,8 +723,8 @@ interface docs {
         hits: list<doc-hit>,
     }
 
-    /// Search everything you can call, and everything its signatures mention, by keyword — the way
-    /// to find a function nobody named to you.
+    /// Search every module you can import, everything you can call in one, and everything their
+    /// signatures mention, by keyword — the way to find a function nobody named to you.
     ///
     /// Matching is CASE-INSENSITIVE SUBSTRING over identifiers, signatures, briefs and detailed
     /// descriptions, so `foobar` finds `getFoobar`. Results are ranked by the KIND of thing that
@@ -731,7 +734,8 @@ interface docs {
     ///
     /// The filters compose with the query and with each other. `module` is exact and is a lookup
     /// rather than a search: an empty query plus a module is that module's whole directory.
-    /// `type` narrows to one type and what takes or returns it. `kind` is `"function"` or `"type"`.
+    /// `type` narrows to one type and what takes or returns it. `kind` is `"module"`, `"function"`
+    /// or `"type"`.
     /// An empty query with no filter at all is `invalid-argument` — "nothing matched" and "you asked
     /// for nothing" are different answers.
     ///
@@ -1134,21 +1138,205 @@ interface feedback {
     report-module-error: func(name: string, message: string);
 }
 
+/// **The one door the JVM arms come through**, and the only interface on this membrane that names a
+/// call by a string.
+///
+/// Every other guest reaches the fifteen interfaces above directly, because every other guest has a
+/// binding generator that can write the canonical ABI for them: `wit-bindgen` for Rust, C++ and
+/// Swift, `componentize-js` for the ECMAScript arms, `wit-bindgen` again through the C the C#, Python
+/// and Ruby guests link. **There is no wit-bindgen for Java**, and there is no prospect of one — so
+/// the Java and Kotlin arms, which compile to wasm through TeaVM, would otherwise have to carry a
+/// hand-written canonical-ABI lowering for every record, variant, enum, option and list in this
+/// 1200-line file. That is the cost this interface removes: the JVM side implements the canonical
+/// ABI for **one string, two byte lists and a scalar**, and gg owns what travels inside them.
+///
+/// # This is not a generic door onto the capability model
+///
+/// The seam's rule — that a capability reaches a program as a typed, namespaced binding and never as
+/// a dispatcher taking a name as data — is a rule about **what a model writes**. A model writing
+/// Java writes `Files.readTextFile("notes.txt")`, on a typed surface that is namespaced exactly like
+/// every other arm's; this is what that surface is implemented over, one layer below anything a model
+/// can see, in a package no catalogue describes and no program imports. It is the same split the
+/// arms' SDKs already had when their far side was a JavaScript object rather than gg's Rust: one
+/// bridge, written once, under a typed surface.
+///
+/// What is on **this** side of it is unchanged by that. `op` is one of gg's own rendered operation
+/// ids (`files.read_file`, `views.open_text`), and the host answers it by decoding the request and
+/// calling the very same typed host function the fifteen interfaces above are implemented by — same
+/// capability gate, same recorded call, same deadline, same `tool-error`. Nothing here is a second
+/// implementation of anything, and nothing reachable through it is reachable any other way.
+///
+/// # What travels inside the byte lists
+///
+/// gg's own tagged value encoding, described where it is implemented
+/// (`crates/gg/src/sandbox/membrane/wire.rs`, `packages/gg-sandbox-java/src/gg/internal/Coding.java`).
+/// It is deliberately **not** JSON: the rule that neither an argument nor a result is a JSON document
+/// is about the model-facing surface, and this is the wire beneath it, where gg holds both ends and
+/// pays for what it chose. A tagged binary form costs the guest no parser and cannot be confused with
+/// a document a model was expected to read.
+///
+/// # Why the answer arrives in two steps
+///
+/// Because a JVM guest cannot be told how big an answer is until the answer exists, and the one
+/// moment it may allocate is before the host is holding an address into its memory.
+///
+/// The canonical ABI hands a returned `list<u8>` to the guest by asking the guest's own
+/// `cabi_realloc` for room. TeaVM's collector **compacts** — it moves objects — so `cabi_realloc`
+/// cannot allocate a Java object: the host is holding the address of the return area across that
+/// call, and a collection would move it. It is therefore a bump pointer over a pre-sized arena, and
+/// an answer larger than the arena leaves it nothing to hand back. Measured, that ends the program
+/// with `wasm trap: cannot leave component instance` — a trap naming nothing the model could act on,
+/// for an answer gg itself chose to send.
+///
+/// So `call` runs the operation and answers **how many bytes** its encoded result is, holding those
+/// bytes; the guest sizes its arena — ordinary Java allocation, with nothing outstanding — and `take`
+/// hands them over. Any answer gg can produce, a program can receive; the ceiling is the guest's own
+/// heap, and reaching *that* is a resource fault its runtime reports in the model's own coordinates.
+///
+/// It is also what lets the guest keep gg's allocations apart from the ones the preview1 adapter
+/// makes through the same `cabi_realloc`: `take` is the one imported call the SDK receives bytes
+/// through, so it is the one moment gg is the caller. See
+/// `packages/gg-sandbox-java/src/gg/internal/Abi.java` for what the alternative did.
+interface wire {
+    /// Run one gg call and hold its encoded result: `op` is a rendered operation id and `request` is
+    /// the encoded arguments. What comes back is the **byte length** of the result — the value the
+    /// call returned, or the three fields of the `tool-error` it failed with — which [`take`] then
+    /// hands over.
+    ///
+    /// It cannot trap and it cannot fail: a request the host cannot decode, or an `op` it does not
+    /// know, is held as an encoded failure exactly as a refusal is, because a guest that trapped on a
+    /// malformed request would report a defect in gg as a defect in the model's program.
+    call: func(op: string, request: list<u8>) -> u32;
+
+    /// Hand over the result [`call`] is holding, and stop holding it.
+    ///
+    /// Called immediately after `call`, with the guest's arena sized for exactly the length `call`
+    /// answered. Taking twice, or taking with nothing held, answers an encoded failure saying gg's
+    /// own two halves have parted — the same shape a request that did not decode answers with, and
+    /// for the same reason.
+    take: func() -> list<u8>;
+}
+
+/// **The `java.lang.Math` primitives TeaVM's WebAssembly backend leaves to its host** — and the
+/// second of the two interfaces the JVM arms import that no model can see.
+///
+/// TeaVM's `WEBASSEMBLY_WASI` backend does not lower `Math.sin` to anything: `java.lang.Math`'s
+/// transcendental methods are `native`, annotated `@Import(module = "teavmMath", …)`, and the
+/// backend emits them as **core imports of a module named `teavmMath`** for a host to answer. Its
+/// own C runtime answers them with `#define teavmMath_sqrt sqrt` — that is, with libc — and a
+/// WebAssembly component has no libc. Measured on the production route: a program calling
+/// `Math.sqrt` produced a module gg could not encode at all, *"failed to resolve import
+/// `teavmMath::sqrt`"*.
+///
+/// So gg answers them, and a `ClassHolderTransformer` in each arm's SDK jar
+/// (`gg.internal.MathImports`) rewrites the annotation's module to this interface's own id, which is
+/// what makes the emitted import one `wit-component` resolves against this world. Nothing about the
+/// program changes; what changes is which module name the same fourteen imports carry.
+///
+/// **The set is the classlib's rather than gg's.** These are exactly the methods
+/// `org.teavm.classlib.java.lang.TMath` annotates with that module, read out of the compiled class
+/// rather than chosen — so a TeaVM release that added a fifteenth would fail the encode by name
+/// rather than silently losing a function.
+///
+/// Not model-facing, and not a capability: no name here is in `ALL_TOOL_NAMES`, nothing dispatches
+/// one, and a model writes `kotlin.math.sqrt(2.0)` or `Math.sqrt(2.0)` exactly as it would anywhere
+/// else. Every one is a total function on `f64` with no failure mode, which is why none of them can
+/// return a `tool-error`: `log(-1)` is `NaN` on this interface for the same reason it is `NaN` in
+/// Java.
+interface math {
+    /// The sine of an angle in radians.
+    sin: func(x: f64) -> f64;
+    /// The cosine of an angle in radians.
+    cos: func(x: f64) -> f64;
+    /// The tangent of an angle in radians.
+    tan: func(x: f64) -> f64;
+    /// The arc sine, in radians.
+    asin: func(x: f64) -> f64;
+    /// The arc cosine, in radians.
+    acos: func(x: f64) -> f64;
+    /// The arc tangent, in radians.
+    atan: func(x: f64) -> f64;
+    /// The angle in radians from the x-axis to the point (`x`, `y`).
+    atan2: func(y: f64, x: f64) -> f64;
+    /// Euler's number raised to `x`.
+    exp: func(x: f64) -> f64;
+    /// The natural logarithm.
+    log: func(x: f64) -> f64;
+    /// `base` raised to `power`.
+    pow: func(base: f64, power: f64) -> f64;
+    /// The positive square root.
+    sqrt: func(x: f64) -> f64;
+    /// The smallest whole number that is not less than `x`.
+    ceil: func(x: f64) -> f64;
+    /// The largest whole number that is not greater than `x`.
+    floor: func(x: f64) -> f64;
+    /// A pseudo-random number in [0, 1).
+    ///
+    /// Declared because the classlib annotates a method with it, and **not imported on this
+    /// target**: measured, `Math.random()` on `WEBASSEMBLY_WASI` reaches `random_get` through WASI
+    /// instead, and this is the WebAssembly-GC backend's spelling. Answered all the same, from the
+    /// same source WASI would have used, so the two roads cannot disagree.
+    random: func() -> f64;
+}
+
+/// **The world the JVM arms' compiled programs declare**: gg through one door, and the same two
+/// exports every other component of this membrane has.
+///
+/// A Java or Kotlin program is compiled — by `javac`/`kotlinc`, then by TeaVM's `WEBASSEMBLY_WASI`
+/// backend — into a component of its own, per turn, exactly as the Rust, C++ and Swift arms are.
+/// There is no baked JVM guest and there cannot be one: TeaVM does not produce a Java interpreter
+/// that later runs a program, it produces the program.
+///
+/// The exports are byte-for-byte the `sandbox` world's, because they are what gg instantiates every
+/// component through. The imports are not: this world imports [`wire`] and nothing else of gg's, for
+/// the reason that interface states.
+world jvm-sandbox {
+    use session.{ending-kind};
+
+    /// One code module bound into a program's scope, from a code skill or a code memory the agent
+    /// has read. The same record the `sandbox` world declares, because `run` is the same function.
+    record code-module {
+        /// The binding key: the module is reached as `lib.<name>`.
+        name: string,
+        /// The module's source.
+        source: string,
+    }
+
+    import wire;
+    import math;
+
+    /// Evaluate one program — the `sandbox` world's `run`, with the same parameters and the same
+    /// nothing returned. See that world for what each parameter is and why a compiled arm reads
+    /// none of them.
+    export run: func(
+        program: string,
+        modules: list<code-module>,
+        tools: list<string>,
+        ending: ending-kind,
+        library: bool,
+    );
+
+    /// The gg tool interfaces this component imports. A compiled arm's component imports exactly one
+    /// — [`wire`] — and so answers the empty list; the export exists because gg instantiates every
+    /// component through the `sandbox` world's bindings and a missing export is an instantiation
+    /// failure.
+    export bound-tools: func() -> list<string>;
+}
+
 /// The sandbox: one baked component that evaluates a program against exactly the tools a run
 /// enables.
 world sandbox {
     use session.{ending-kind};
 
-    /// One code module bound into a program's scope, from a code skill or a code memory the agent
-    /// has read.
+    /// One code module a program may reach, from a code skill or a code memory the agent has read.
     ///
-    /// The host has already transpiled it and appended the `return { … }` that makes its exports the
-    /// value of evaluating it, so the guest does nothing to the source but evaluate it as a function
-    /// body against the same scope the program gets — which is what lets a module call gg tools.
+    /// The host has already prepared it for this guest, exactly as it prepares a program, so the
+    /// guest does nothing to the source but make it reachable under the name below — which is what
+    /// lets a module call gg tools.
     record code-module {
-        /// The binding key: the module is reached as `lib.<name>`. Already a valid identifier and
-        /// already unique across this list; the host deduplicated it and told the model which key it
-        /// really got.
+        /// The binding key the module is reached under, in whatever form this guest reaches one.
+        /// Already a valid identifier and already unique across this list; the host deduplicated it
+        /// and told the model which key it really got.
         name: string,
         /// The module's source, in whatever this guest evaluates.
         source: string,
@@ -1194,13 +1382,18 @@ world sandbox {
     /// `feedback.report-module-error` and leaves `lib.<name>` empty — it never takes the program
     /// down with it.
     ///
-    /// It returns **nothing**, because a program's return value is not a channel: everything one
-    /// program has to say it says over `feedback` — what it logged, what it threw, and (through
-    /// `session`) whether the session is over. A value handed to a top-level `return` is
-    /// discarded, and `feedback.note-return` is how the model is told so rather than left to wonder.
+    /// It returns **nothing**, because a program's return value is not a channel: what a program
+    /// has to say about its own work it says over `feedback`, and what it has to say about its own
+    /// death it says the way its runtime says it.
     ///
-    /// A throw is caught and reported over `feedback.report-error`, never allowed to escape as an
-    /// opaque wasm trap.
+    /// A guest with an exception mechanism that survives to the export boundary MAY report an
+    /// uncaught throw over `feedback.report-error`, which is what carries the failure's class to the
+    /// host and files the turn under one of the `program_*` types. A guest without one lets the
+    /// program die as its runtime kills it: the runtime's own words reach the host on standard
+    /// error, the crossing ends in a trap, and the turn is filed as `sandbox_trap`. Both are
+    /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) — the mechanism is
+    /// capture rather than interception, and no guest may build a catch chain to type a throw it
+    /// would otherwise have died of.
     export run: func(
         program: string,
         modules: list<code-module>,

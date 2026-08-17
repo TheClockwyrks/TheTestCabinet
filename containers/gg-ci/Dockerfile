@@ -305,7 +305,7 @@ RUN set -eux; \
 	test -x "$HOME/.local/bin/purs"; \
 	test -x "$HOME/.local/bin/esbuild"; \
 	test -x "$HOME/.local/share/gg-java/jdk/bin/javac"; \
-	test -f "$HOME/.local/share/gg-kotlin/kotlin-home/lib/kotlin-scripting-compiler.jar"; \
+	test -f "$HOME"/.local/share/gg-kotlin/libs/kotlin-compiler-embeddable-*.jar; \
 	test -x "$HOME/.local/share/tcab/gg-swift/toolchain/usr/bin/swiftc"; \
 	test -x "$HOME/.local/share/tcab/gg-wasi-sdk/bin/clang++"; \
 	test -x "$HOME/.local/share/tcab/gg-dotnet/dotnet/dotnet"; \

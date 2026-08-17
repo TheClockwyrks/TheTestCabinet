@@ -54,8 +54,8 @@
 //! names did not resolve.
 //!
 //! **A `global using` is refused**, because it may only appear at the top of a compilation unit and
-//! gg's is already spoken for. The message names `using` as the answer, which is what the author
-//! meant.
+//! a module is compiled inside one. The message names `using` as the answer, which is what the
+//! author meant, and an ordinary `using` is hoisted to where it applies to the whole module.
 //!
 //! # Why gg looks at C# lexically at all
 //!
@@ -150,21 +150,21 @@ pub(super) fn binding_name(name: &str) -> String {
 ///
 /// `key` is the `<key>` of `lib.<key>`, already through [`binding_name`].
 pub(super) fn wrap_module(source: &str, key: &str) -> Result<Module, PrepareFailure> {
+    let import = super::SURFACE_IMPORT;
     let (body, usings) = hoist(source, &mask(source))?;
     // Re-lexed rather than re-used: a hoisted `using` leaves a blank line behind, so every byte
     // after the first one is at a different offset in the body than it was in the file, and a mask
     // read at the old offsets would answer about the wrong bytes.
     let exports = exports(&body, &mask(&body));
     if exports.is_empty() {
-        return Err(PrepareFailure::Program(PrepareError::Unsupported(
+        return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
             "this module offers nothing: gg binds a code module's `public` members at `lib.<key>`, \
-             and there are none. A module here is the body of a `static class`, so declare at least \
-             one, as `public static string Greet(string who) => $\"hello {who}\";`. Everything \
-             that is not `public` is the module's own business, exactly as it is in any C# class — \
-             and gg's whole surface is in scope with no `using` at all, so `Files.ReadTextFile` and \
-             `Views.OpenText` work here as they do in a program."
-                .to_string(),
-        )));
+             and there are none. A module here is the body of a `static class`, so declare at \
+             least one, as `public static string Greet(string who) => $\"hello {{who}}\";`. \
+             Everything that is not `public` is the module's own business, exactly as it is in any \
+             C# class — and gg's surface is reached here as it is in a program, by writing \
+             `{import}` at the top of this module or by writing `Gg.Views.OpenText` in full."
+        ))));
     }
 
     let file = module_file(key);

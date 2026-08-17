@@ -2,8 +2,9 @@ package gg.programs;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,8 +37,7 @@ public final class Programs {
      * @ggop programs.history
      */
     public static List<ProgramSummary> history() {
-        return Read.programSummaries(
-                Wire.call("history", Wire.programs(), "programs", "history", Wire.args()));
+        return Read.programSummaries(Coding.call("programs.history"));
     }
 
     /**
@@ -55,8 +55,7 @@ public final class Programs {
      * @ggop programs.get
      */
     public static String get() {
-        return Wire.asString(
-                Wire.call("get", Wire.programs(), "programs", "get", Wire.args()));
+        return Coding.call("programs.get", Value.none()).text();
     }
 
     /**
@@ -69,8 +68,7 @@ public final class Programs {
      * @ggop programs.get
      */
     public static String get(int turn) {
-        return Wire.asString(Wire.call("get", Wire.programs(), "programs", "get",
-                Wire.args(Wire.number(turn))));
+        return Coding.call("programs.get", Value.of(turn)).text();
     }
 
     /**
@@ -92,7 +90,7 @@ public final class Programs {
      * @ggop programs.rerun
      */
     public static void rerun(String source) {
-        Wire.run("rerun", Wire.programs(), "programs", "rerun", Wire.args(Wire.text(source)));
+        Coding.call("programs.rerun", Value.of(source));
     }
 
     // -------------------------------------------------------------------------------------------

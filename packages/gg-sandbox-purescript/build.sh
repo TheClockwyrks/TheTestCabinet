@@ -171,11 +171,17 @@ echo "Staging the SDK ..."
 mkdir -p "$TREE_DIR/libs/$SDK_DIR"
 cp -aL "$PACKAGE/src" "$TREE_DIR/libs/$SDK_DIR/src"
 
-# 4. Compile it, with exactly the arguments a turn's compile uses. `purs` writes `externs.cbor` and
-#    `index.js` per module and copies each module's FFI in as `foreign.js`; nothing else is emitted
-#    at the default codegen, so there is nothing to prune.
+# 4. Compile it, with exactly the arguments a turn's compile uses. `purs` writes `externs.cbor`,
+#    `index.js` and `index.js.map` per module and copies each module's FFI in as `foreign.js`;
+#    nothing else is emitted at this codegen, so there is nothing to prune.
+#
+#    THE CODEGEN SET MUST MATCH `purescript.compile.rs`'s. `purs` treats a module compiled for a
+#    different set of targets as stale, so a tree cut without the maps is a tree every turn's compile
+#    rebuilds whole: measured, ~2.9 s instead of ~200 ms. The maps are what a run-time frame is read
+#    back through — `esbuild` composes them with its own and gg reads the composition — and they cost
+#    ~120 KB in the packed tarball.
 echo "Compiling the library set ..."
-(cd "$TREE_DIR" && purs compile --output output 'libs/*/src/**/*.purs')
+(cd "$TREE_DIR" && purs compile --codegen js,sourcemaps --output output 'libs/*/src/**/*.purs')
 
 # 5. Pack it. The flags are all about making the same inputs produce the same bytes: entries sorted,
 #    ownership and timestamps zeroed, and gzip told not to stamp the archive with the time of day.

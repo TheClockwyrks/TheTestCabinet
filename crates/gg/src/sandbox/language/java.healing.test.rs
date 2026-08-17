@@ -20,17 +20,21 @@ use crate::healing::{Dialect, Healed, HealingConfig, HealingStrategy, heal};
 /// other arms, an inline code span that is deletable here and is not on any other C-shaped arm, and
 /// two replies that are no program at all. No strategy now touches a wrapper or a doubled program,
 /// which is precisely why they belong in a corpus asserting that nothing is ever added or moved.
+///
+/// Each reply is a **whole compilation unit** with its own `import` lines and its own
+/// `public final class Program`, spelled the way this arm's catalogue spells them, because that is
+/// what a program on this arm is.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```java\nList<DirEntry> rows = fs.listDir(\"src\");\nview.openText(\"rows\", rows.toString());\n```\n\nThat lists the directory.",
-    "new Thread(() -> {\n    List<DirEntry> rows = fs.listDir(\"src\");\n    view.openText(\"rows\", rows.toString());\n}).start();",
-    "Thread worker = new Thread(() -> {\n    view.openText(\"note\", \"done\");\n});\nworker.start();\nworker.join();",
-    "import java.util.concurrent.CompletableFuture;\n\nCompletableFuture.runAsync(() -> {\n    view.openText(\"note\", \"done\");\n}).join();",
-    "import java.util.stream.Collectors;\n\nString joined = fs.listDir(\"src\").stream()\n    .map(DirEntry::name)\n    .collect(Collectors.joining(\", \"));\nview.openText(\"names\", joined);",
-    "String usage = \"\"\"\n    Example:\n\n    new Thread(() -> {\n        int total = 1;\n    }).start();\n    \"\"\";\nint total = 2;\n",
-    "char comma = ',';\nString[] parts = \"a,b\".split(String.valueOf(comma));\nview.openText(\"parts\", Arrays.toString(parts));",
-    "int total = 1;\nview.openText(\"total\", String.valueOf(total));\n\nint total = 1;\nview.openText(\"total\", String.valueOf(total));",
-    "# Plan\n\nint total = 1;\nview.openText(\"total\", String.valueOf(total));",
-    "I'll read `Main.java` first.\n\nString source = fs.readTextFile(\"Main.java\");\nview.openText(\"source\", source);\n\nThat should be enough.",
+    "Here is the program.\n\n```java\nimport gg.files.Files;\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        Views.openText(\"rows\", Files.listDir().toString());\n    }\n}\n```\n\nThat lists the directory.",
+    "import gg.files.Files;\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        new Thread(() -> {\n            Views.openText(\"rows\", Files.listDir().toString());\n        }).start();\n    }\n}",
+    "import gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) throws InterruptedException {\n        Thread worker = new Thread(() -> {\n            Views.openText(\"note\", \"done\");\n        });\n        worker.start();\n        worker.join();\n    }\n}",
+    "import gg.views.Views;\nimport java.util.concurrent.CompletableFuture;\n\npublic final class Program {\n    public static void main(String[] args) {\n        CompletableFuture.runAsync(() -> {\n            Views.openText(\"note\", \"done\");\n        }).join();\n    }\n}",
+    "import gg.files.Files;\nimport gg.views.Views;\nimport java.util.stream.Collectors;\n\npublic final class Program {\n    public static void main(String[] args) {\n        String joined = Files.listDir().stream()\n            .map(Files.DirEntry::name)\n            .collect(Collectors.joining(\", \"));\n        Views.openText(\"names\", joined);\n    }\n}",
+    "public final class Program {\n    public static void main(String[] args) {\n        String usage = \"\"\"\n            Example:\n\n            new Thread(() -> {\n                int total = 1;\n            }).start();\n            \"\"\";\n        int total = 2;\n    }\n}\n",
+    "import gg.views.Views;\nimport java.util.Arrays;\n\npublic final class Program {\n    public static void main(String[] args) {\n        char comma = \',\';\n        String[] parts = \"a,b\".split(String.valueOf(comma));\n        Views.openText(\"parts\", Arrays.toString(parts));\n    }\n}",
+    "import gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        int total = 1;\n        Views.openText(\"total\", String.valueOf(total));\n    }\n}\n\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        int total = 1;\n        Views.openText(\"total\", String.valueOf(total));\n    }\n}",
+    "# Plan\n\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        int total = 1;\n        Views.openText(\"total\", String.valueOf(total));\n    }\n}",
+    "I\'ll read `Main.java` first.\n\nimport gg.files.Files;\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        Views.openText(\"source\", Files.readTextFile(\"Main.java\"));\n    }\n}\n\nThat should be enough.",
     "I have finished the task. Everything works.",
 ];
 

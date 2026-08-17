@@ -635,6 +635,279 @@ fn a_module_carries_ggs_id_and_the_arms_own_path() {
     );
 }
 
+/// **One module resolves by gg's id for it or by this arm's own path**, and by nothing that is
+/// merely a prefix of either.
+///
+/// It is the lookup a renderer goes through to say *where a symbol is defined and how to reach it*,
+/// so both halves of what it hands back are asserted: the arm's own path, and the
+/// [line a program writes](ModuleView::import) — including the `None` that says an arm has no line
+/// to write, which a renderer has to be able to tell apart from a module it failed to find.
+///
+/// The prefix case is worth a test rather than a comment. On C# and on Java the `core` module's path
+/// (`Gg`, `gg`) is a proper prefix of every other module path on the arm, so a lookup that accepted
+/// a prefix — or a caller that scanned a fully-qualified name for a path it starts with — would file
+/// the entire surface under one module, and no gate over the catalogue would see anything wrong.
+#[test]
+fn a_module_resolves_by_id_or_by_path_and_never_by_a_prefix() {
+    let catalogue = fixture::catalogue();
+
+    let by_id = super::module_of(catalogue, "programs").expect("gg's own id for a module resolves");
+    assert_eq!(by_id.path, "gg::programs");
+    assert_eq!(
+        by_id.import,
+        Some("use gg::programs;"),
+        "the lookup carries the line a program writes, which is why a renderer asks it at all"
+    );
+
+    let by_path =
+        super::module_of(catalogue, "gg::programs").expect("the arm's own path resolves too");
+    assert_eq!(
+        by_path.id, "programs",
+        "the two keys reach one module rather than two"
+    );
+
+    let injected = super::module_of(catalogue, "files").expect("gg's own id for a module resolves");
+    assert_eq!(
+        injected.import, None,
+        "an arm whose SDK is in scope already says so with a `None`, which is an answer"
+    );
+
+    assert!(
+        super::module_of(catalogue, "gg").is_none(),
+        "a prefix of a module path is not a module, however many paths begin with it"
+    );
+    assert!(
+        super::module_of(catalogue, "gg::programs::rerun").is_none(),
+        "a name filed under a module is not the module"
+    );
+    assert!(super::module_of(catalogue, "").is_none());
+}
+
+/// The catalogue `id`'s build reflected, as the **raw document** rather than the projection.
+///
+/// Read for the one question a parsed [`ModuleDoc`] cannot answer: whether a field was *stated* or
+/// merely absent. `import` is an `Option`, and serde fills an absent one in with `None` — so a
+/// reflector that stopped emitting the key would produce exactly the value an arm whose SDK is
+/// already in scope emits deliberately, and every renderer downstream would go on cheerfully telling
+/// models there is no line to write.
+///
+/// It is the artifact this very binary embeds (`crates/gg/build.rs` writes it into `OUT_DIR` and
+/// each arm `include_str!`s it), so a build that produced this test produced the file.
+fn reflected(id: GgProgramLanguage) -> serde_json::Value {
+    let path = std::path::Path::new(env!("OUT_DIR"))
+        .join("signatures")
+        .join(format!("{}.signatures.json", id.id()));
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|failure| {
+        panic!(
+            "{}: its reflected catalogue is not readable at {} ({failure})",
+            id.id(),
+            path.display()
+        )
+    });
+    serde_json::from_str(&text).unwrap_or_else(|failure| {
+        panic!(
+            "{}: its reflected catalogue at {} is not JSON ({failure})",
+            id.id(),
+            path.display()
+        )
+    })
+}
+
+/// Whether `candidate` is `path`, or a namespace `path` sits inside — under this arm's own
+/// `separator`, so no list of separators has to be kept anywhere.
+fn covers(candidate: &str, path: &str, separator: &str) -> bool {
+    candidate == path || path.starts_with(&format!("{candidate}{separator}"))
+}
+
+/// Whether `line` names `path` or any namespace `path` sits inside, which is the set of things an
+/// import line may name and still bring `path` into scope.
+///
+/// **ASCII case is ignored**, and for the arms whose line names a *file* rather than a namespace:
+/// Ruby's `require "gg"` brings in `GG::Docs`, because a Ruby file's name and the constant it
+/// defines are two different things and the language's convention is that they differ in exactly
+/// this way. C++'s `#include <gg/files.hpp>` is the same shape without the case difference. What the
+/// relaxation does not touch is the second half of the rule below, which still matches another
+/// module's path exactly, so a line filed under the wrong module still fails.
+fn reaches(line: &str, path: &str) -> bool {
+    let line = line.to_ascii_lowercase();
+    let identifier = |ch: char| ch.is_alphanumeric() || ch == '_';
+    let mut candidate = path;
+    loop {
+        if line.contains(&candidate.to_ascii_lowercase()) {
+            return true;
+        }
+        // Step out one namespace, whatever this arm punctuates one with — `.`, `::`, `/`. Read off
+        // the path rather than taken from `member_separator`, because the two are not always the
+        // same character: Ruby separates its modules with `::` and reaches a member with `.`.
+        let Some(cut) = candidate.rfind(|ch: char| !identifier(ch)) else {
+            return false;
+        };
+        candidate = candidate[..cut].trim_end_matches(|ch: char| !identifier(ch));
+        if candidate.is_empty() {
+            return false;
+        }
+    }
+}
+
+/// **Every module of every registered arm states the line a program writes to reach it.**
+///
+/// # Why a missing field is not an answer
+///
+/// [`ModuleDoc::import`] has two states and both of them render: `Some(line)` is quoted verbatim for
+/// a model to copy, and `None` becomes *in scope already*. The second is what a reflector that
+/// simply **stopped emitting the field** lands in, silently, because serde fills an absent `Option`
+/// in with `None` — and it is the sentence the invariants forbid, since a name in a program's scope
+/// with no line the model wrote is what every arm's conversion deleted. Only the raw document tells
+/// a dropped field from a `null`, so this reads it.
+///
+/// # What else is held here
+///
+/// * **The projection hop.** `a_module_carries_ggs_id_and_the_arms_own_path` proves
+///   [`ModuleDoc`] → [`ModuleView`] over the [fixture](fixture); this proves it over the eleven real
+///   catalogues, field by field, which is where a hop that dropped `import` would actually cost a
+///   model something. It is the field most likely to be dropped precisely because it is empty on
+///   most arms.
+/// * **A line that is really a line.** One line, not blank, naming the module it brings into scope
+///   or the namespace that module sits in, and naming no module it does not reach — because it is
+///   copied character for character into a program, and an import of some other module leaves the
+///   call it was written for unresolved.
+///
+///   All three forms are real. PureScript imports a module by its own full name, so its line names
+///   the path. C#'s modules are types in one namespace, and `using Gg;` reaches all of them at once,
+///   so its line names the namespace their paths sit in. C++'s line is a header path rather than a
+///   namespace path — `#include <gg/files.hpp>` for `gg::files` — so it names the enclosing
+///   namespace and nothing narrower, and Ruby's `require "gg"` for `GG::Docs` is that same form with
+///   the case difference a Ruby file name has from the constant it defines. That is why the ancestor form is accepted, and the second half
+///   of the rule is what keeps it honest: a `using Gg.Views;` filed under `Gg.Files` names a module
+///   that does not contain `Gg.Files`, and fails. What the ancestor form cannot see is an arm whose
+///   line names its module in a spelling of its own, so `cpp.surface.test.rs` holds all thirteen of
+///   this arm's lines to a written-out list and its reflector checks each header is a real file.
+/// * **Every module states one.** The [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+///   require a documentation view to state the line a program writes to reach the symbol it
+///   describes, and every registered arm now does. The count at the bottom is what says so: an arm
+///   that stopped stating a line for one of its modules would leave every view of every symbol in it
+///   telling a model the module is in scope already, which is the one thing the rule forbids.
+#[test]
+fn every_arm_states_the_line_a_program_writes_to_reach_a_module() {
+    let mut with_a_line = 0usize;
+    let mut in_scope_already = 0usize;
+
+    for &id in GgProgramLanguage::ALL {
+        let arm = language(id);
+        let name = arm.display_name();
+        let document = reflected(id);
+        let declared = document["modules"].as_array().unwrap_or_else(|| {
+            panic!("{name}: its reflected catalogue declares no `modules` array")
+        });
+        let modules = crate::sandbox::catalogue_modules(arm);
+        assert!(
+            !modules.is_empty(),
+            "{name}: its surface is divided into no modules at all, so nothing below is asserted"
+        );
+        assert_eq!(
+            modules.len(),
+            declared.len(),
+            "{name}: it reflected {} modules and the projection carries {} — the hop invented or \
+             dropped one",
+            declared.len(),
+            modules.len()
+        );
+
+        for module in &modules {
+            let raw = declared
+                .iter()
+                .find(|entry| entry["id"] == serde_json::json!(module.id))
+                .and_then(serde_json::Value::as_object)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{name}: the projection carries a module `{}` (`{}`) that the reflected \
+                         catalogue does not declare",
+                        module.id, module.path
+                    )
+                });
+            assert!(
+                raw.contains_key("import"),
+                "{name}: `{}` (`{}`) states no `import` field at all. Both states of that field are \
+                 an answer and an absent field is neither: an arm whose SDK is in scope already \
+                 says so with an explicit null, and a reflector that forgot the key is \
+                 indistinguishable from it — every view of every symbol in this module then tells a \
+                 model there is no line to write.",
+                module.id,
+                module.path
+            );
+
+            match module.import {
+                Some(line) => {
+                    assert_eq!(
+                        raw["import"].as_str(),
+                        Some(line),
+                        "{name}: `{}` reflected an import line and the projection carries a \
+                         different one",
+                        module.id
+                    );
+                    assert!(
+                        !line.trim().is_empty(),
+                        "{name}: `{}` states a blank import line, which says nothing a model can \
+                         write",
+                        module.id
+                    );
+                    assert!(
+                        !line.contains('\n'),
+                        "{name}: `{}` states a multi-line import line (`{line}`), and a view quotes \
+                         it as one line",
+                        module.id
+                    );
+                    let separator = arm.member_separator();
+                    assert!(
+                        reaches(line, module.path),
+                        "{name}: `{}` is reached with `{line}`, which names neither `{}` nor a \
+                         namespace it sits in — a line a model copies has to be the line that \
+                         brings *that* module into scope",
+                        module.id,
+                        module.path
+                    );
+                    let elsewhere = modules.iter().find(|other| {
+                        line.contains(other.path) && !covers(other.path, module.path, separator)
+                    });
+                    assert!(
+                        elsewhere.is_none(),
+                        "{name}: `{}` is reached with `{line}`, which names `{}` — another module \
+                         of this arm that does not contain it. A model copying that line is left \
+                         with the call it wrote unresolved.",
+                        module.id,
+                        elsewhere.map(|other| other.path).unwrap_or_default()
+                    );
+                    with_a_line += 1;
+                }
+                None => {
+                    assert!(
+                        raw["import"].is_null(),
+                        "{name}: `{}` reflected the import line {} and the projection handed back \
+                         `None` — the hop dropped the one field a model cannot recover from \
+                         anywhere else, and every view of this module now says it is in scope \
+                         already",
+                        module.id,
+                        raw["import"]
+                    );
+                    in_scope_already += 1;
+                }
+            }
+        }
+    }
+
+    assert_eq!(
+        in_scope_already,
+        0,
+        "{in_scope_already} of the {} modules across the eleven arms state no import line, so \
+         every view of every symbol in them tells a model the module is in scope already",
+        with_a_line + in_scope_already
+    );
+    assert!(
+        with_a_line > 0,
+        "no module stated a line, so every renderer's `Some` branch went unexercised"
+    );
+}
+
 /// **An authored brief and detail render as one block**, with the blank line between them a
 /// documentation view needs.
 #[test]

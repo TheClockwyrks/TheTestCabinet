@@ -130,6 +130,9 @@ binaryen
 wasmtime
 schemars
 wasip
+wasi
+quickjs
+rquickjs
 
 # Voxel asset-generation test cases (Skyshard interceptor, Ironward siege tank).
 skyshard

@@ -31,6 +31,10 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The crossing both JVM arms compile, which this arm's own sources name — it is on the
+# source path so javadoc can resolve `gg.internal.Value`, and excluded below so no word of it
+# reaches a model.
+SHARED="$(cd "$HERE/../gg-sandbox-jvm" && pwd)"
 
 if [ -z "${GG_SIGNATURES_OUT_DIR:-}" ]; then
 	echo "error: GG_SIGNATURES_OUT_DIR is not set. It names the directory this catalogue is" >&2
@@ -71,7 +75,7 @@ CLASSPATH="$(find "$LIBS" -name '*.jar' | sort | tr '\n' ':')"
 	-doclet tools.GgSignatures \
 	-docletpath "$WORK/doclet" \
 	-classpath "$CLASSPATH" \
-	-sourcepath "$HERE/src" \
+	-sourcepath "$HERE/src:$SHARED/src" \
 	-quiet \
 	-o "$WORK/java.signatures.json" \
 	--libraries "$HERE/libraries.txt" \

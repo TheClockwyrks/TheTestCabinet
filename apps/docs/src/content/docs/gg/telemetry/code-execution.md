@@ -17,7 +17,7 @@ denominator for every healing rate. A run with the capability off emits none.
 | `durationMs` | How long the program's own execution took, excluding time parked in a bridged call. Reported on every path that reached the engine, including a fault, a trap, or an execution-timeout stop, where it is the time burned up to the stop rather than the ceiling. |
 | `error` | The failure message when `ok` is `false`. Absent on a clean execution. |
 | `finished` | The summary a program passed to `finish`, present on exactly the turn that ended the run. |
-| `logs` / `logsSuppressed` | Every line the program wrote with `console.*`, and how many lines the capture caps dropped. Both omitted for a turn that printed nothing. |
+| `logs` / `logsSuppressed` | Every line the program logged, and how many lines the capture caps dropped. Both omitted for a turn that printed nothing. |
 | `compileWaitMs` | What this program spent obtaining the sandbox's compiled component. |
 | `compileMs` | What this turn's [language](/gg/languages/overview/) spent compiling for it. |
 | `healing` | What gg had to repair before it could run the reply. Omitted entirely for a clean one. |
@@ -26,24 +26,23 @@ denominator for every healing rate. A run with the capability off emits none.
 
 `logs` is the only record of a program's output. What a program shows itself is
 a [view](/gg/responses-as-code/views/), which arrives as its own context
-message, so `console.*` reaches whoever is watching the run and nowhere else.
+message, so a logged line reaches whoever is watching the run and nowhere else.
 The capture keeps the tail under caps of 200 lines, 16 KiB and 2 KiB per line,
 and `logsSuppressed` says how many lines were dropped.
 
 The same holds for far more than the logs. An
 [error message carries the error alone](/gg/responses-as-code/overview/), and a
-clean program earns no message at all beyond a process notice. There are two of
-those, and each names a fact nothing the program can observe reveals: statements
-after its top-level `return` that never ran, and a
+clean program earns no message at all beyond a process notice. Such a notice
+names a fact nothing the program can observe reveals, such as a
 [replacement program](/gg/program-library/) it handed over that gg did not run.
 
 This event and the operator-facing lines gg writes beside it on the run's own
 stream are therefore the only surviving record of what a turn did. That record
 covers every refused call and how many further refusals the cap suppressed,
 every refused view, every view opened, replaced or closed with its selector and
-token estimate, the roster's count of composed calls, a value the program
-returned and gg discarded, the summary a program ended with, and the revocation
-when a program called an ending function and then threw. A run's conclusion
+token estimate, the roster's count of composed calls, the summary a program
+ended with, and the revocation when a program called an ending function and then
+threw. A run's conclusion
 lives in `finished` and nowhere else, which is why the console's event feed
 surfaces it as the agent's own message.
 

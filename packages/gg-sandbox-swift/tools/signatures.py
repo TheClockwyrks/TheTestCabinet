@@ -51,6 +51,14 @@ SCHEMA = 1
 #: What the emitted catalogue records itself as reflected from.
 GENERATED_FROM = "packages/gg-sandbox-swift/Sources/SDK/ (swiftc -emit-symbol-graph)"
 
+#: The one line a Swift program writes to reach this surface, stated by every module.
+#:
+#: Composed here rather than reflected, which is the one thing the invariants let an arm compose
+#: itself: a Swift symbol graph records the module a declaration belongs to and no import line.
+#: ``crates/gg/src/sandbox/language/swift.rs``'s ``SURFACE_IMPORT`` is the other copy, and
+#: ``swift.test.rs`` holds this catalogue's modules to it.
+SURFACE_IMPORT = "import gg"
+
 #: The types every call's failure arm refers to, closed over on every entry because every fallible
 #: function in this SDK throws a ``core.ToolError`` — including the one that cannot fail, whose
 #: declaration says so by not being ``throws`` at all.
@@ -61,6 +69,20 @@ ALWAYS_REFERENCED = ("gg.core.ToolError", "gg.core.ToolErrorCode")
 #: names something this SDK declared, and one that does not names ``String``, ``Int``, ``Array`` or
 #: another module's type, which are not this catalogue's to describe.
 MODULE_PREFIX = "s:2gg"
+
+#: The longest a brief may be, in characters.
+#:
+#: The same cap ``crates/gg/src/sandbox/language/register.rs`` holds every arm's catalogue to, and it
+#: is enforced here as well because the host's copy is a ``#[test]``: a reflection that embedded a
+#: paragraph in the brief field would succeed, and so would a build, and the author would hear about
+#: it from a gate three steps away naming an entry they then have to go looking for. Here is where
+#: the author is standing.
+#:
+#: It carries more weight on this arm than on most, because :func:`prose` runs first: a ``///``
+#: comment whose opening paragraph is three sentences over four wrapped lines arrives at
+#: :func:`split` as ONE line, so the shape check below it cannot see it and this length is the only
+#: thing that can.
+BRIEF_CAP = 120
 
 
 class Failure(Exception):
@@ -285,13 +307,23 @@ def split(text, what):
     Doxygen's implicit structure, which is the whole of the convention this SDK is written to. The
     brief is authored rather than derived — there is no "first sentence of" anywhere in this file —
     and the split is on the blank line the author put there, so a doc comment whose opening
-    paragraph is really three sentences of narrative fails the register gate as the paragraph it is
-    rather than being silently cut at a full stop.
+    paragraph is really three sentences of narrative is never silently cut at a full stop.
+
+    It fails on :data:`BRIEF_CAP` instead. The text reaching here has already been through
+    :func:`prose`, so such a paragraph is one long line by now and no shape check could tell it from
+    a brief; its length can, and that is what this raises on — naming the declaration it was written
+    on, which is what the author is looking at.
     """
     if not text:
         raise Failure(f"{what} has no documentation")
     brief, _, detail = text.partition("\n\n")
-    return brief.strip(), (detail.strip() or None)
+    brief = brief.strip()
+    if len(brief) > BRIEF_CAP:
+        raise Failure(
+            f"{what} has a {len(brief)}-character brief, and a brief is capped at "
+            f"{BRIEF_CAP}: {brief!r}"
+        )
+    return brief, (detail.strip() or None)
 
 
 def documented(symbol, what):
@@ -784,10 +816,11 @@ class Reflector:
                     "path": module.path,
                     "brief": brief,
                     "detail": detail,
-                    # `null`, and truthfully: gg's own shell re-exports this SDK into the program's
-                    # module with `@_exported import gg`, so there is no import line a program would
-                    # be right to write.
-                    "import": None,
+                    # The one line a Swift program writes to reach any of this, and the same
+                    # string on every module: the thirteen are caseless `enum`s in ONE Swift
+                    # module, so one `import` brings all of them. `crates/gg`'s own
+                    # `SURFACE_IMPORT` is the other copy and a test holds the two equal.
+                    "import": SURFACE_IMPORT,
                 }
             )
         return out

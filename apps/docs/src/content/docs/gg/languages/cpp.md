@@ -24,8 +24,15 @@ cleanly and traps having run nothing. The reply is read lexically for the token
 `main` followed by an open parenthesis in its code bytes, so the reading can
 only be wrong in the accepting direction.
 
-`member_separator` is `::`, code modules are compiled from `.hpp` files, and
-`checker()` is `"clang++"`, so compile time is recorded on every turn.
+`member_separator` is `::`, a code skill's C++ file is a `.hpp`, and `checker()`
+is `"clang++"`, so compile time is recorded on every turn.
+
+Every name gg offers is reached through an `#include` the program wrote. The
+precompiled header carries the C++ standard library and nothing else, so `gg` is
+undeclared until the reply writes `#include <gg/files.hpp>` or the umbrella
+`#include <gg.hpp>`, and a code module in scope does not change that. The SDK's
+headers are on the compile's include path and its bodies are linked into every
+artifact, which is packaging rather than scope.
 
 ## Toolchain and build outputs
 
@@ -37,7 +44,7 @@ arm embeds them through `GG_ARTIFACTS_CPP`. None of them are committed.
 
 | Artifact | What it carries |
 | --- | --- |
-| `cpp.guest.tar.gz` | the generated WIT header, the SDK headers, `prelude.hpp`, gg's shell as source and as an object, and the SDK, bindings and component-type objects the link needs |
+| `cpp.guest.tar.gz` | the generated WIT header, the SDK headers under the `include/` root a program's own `#include <gg/…>` resolves against, `prelude.hpp`, gg's shell as source and as an object, and the SDK, bindings and component-type objects the link needs |
 | `cpp.adapter.wasm` | this arm's pinned `wasi_snapshot_preview1` reactor adapter |
 | `cpp.toolchain.json` | the pinned release, target, standard and adapter version, and the header list read out of the prelude |
 
@@ -56,16 +63,21 @@ surface. gg's engine is the one that opts in.
 
 ### The precompiled prelude
 
-`Sources/prelude.hpp` is gg's SDK header plus the standard-library headers a C++
-author reaches for; the raw canonical ABI header the SDK is written against is
-deliberately not in it. Parsing it as text costs around 850 ms of every compile,
-so it is precompiled into a shared, content-keyed toolchain directory, placed by
-rename and sealed read only. The key folds in the pinned release, a digest of the
-guest archive, a digest of the flags every compile passes and a stamp of the
-compiler binary's own size and modification time, so a reinstall at the same
-version cannot leave a stale header behind.
+`Sources/prelude.hpp` is the standard-library headers a C++ author reaches for,
+and only those. Parsing them as text costs the best part of a second of every
+compile, so the file is precompiled into a shared, content-keyed toolchain
+directory, placed by rename and sealed read only. The key folds in the pinned
+release, a digest of the guest archive, a digest of the flags every compile
+passes and a stamp of the compiler binary's own size and modification time, so a
+reinstall at the same version cannot leave a stale header behind.
+
 Warm-up unpacks the guest archive only, and the precompiled header is built by
 the first compile of a process, because building one means running a compiler.
+Measured on this repository's dev container, aarch64, best of five: a small
+program compiles in 90 ms with the header and 836 ms without it, and a program
+using ranges, `std::format` and `std::map` in 952 ms with and 1581 ms without.
+Keeping gg's own surface out of the header costs 33 ms of a turn, which is the
+parse the reply's own `#include` asks for.
 
 ## SDK and catalogue
 
@@ -76,14 +88,11 @@ value that is one of two things, and a thrown `gg::core::tool_error` deriving
 from `std::runtime_error` for a call that failed. One optional argument is a
 default argument; two or more are designated initialisers.
 
-Every capability module is a `namespace` inside `namespace gg`, with the types
-it produces nested in it, and the prelude writes `using namespace gg;` above the
-standard-library headers it goes on to include. A program writes
-`files::read_file(…)` with no include line of its own, and
-`gg::files::read_file` is the same call in full. The using-directive makes gg's
-module names visible at global scope, so a program's own file-scope
-`namespace files` leaves an unqualified `files::` ambiguous. `gg::files::` and
-`::files::` each resolve it.
+Every capability module is a `namespace` inside `namespace gg`, declared in one
+header of its own. A program writes `#include <gg/files.hpp>` and then
+`gg::files::read_file(…)`, and `#include <gg.hpp>` is the umbrella declaring all
+thirteen. Each module's catalogue entry states its own include line, which the
+system prompt's module list and every documentation view of a symbol in it quote.
 
 The library set is the C++ standard library and nothing else, declared header by
 header in `prelude.hpp` under `// == Heading ==` groups, which the compile,
@@ -112,16 +121,28 @@ it while building the crate. The reflection enforces four rules:
 
 A code skill's or memory's namespace is bound at `lib::<key>`, and on this arm
 that binding is a link. Each module in scope is written into the preparation's
-workspace with its declarations opened inside `namespace lib::<key>` where they
-stand, and named on the program's command line with `-include`, in binding order
-so one module may reach another's namespace. A `#line` directive states what the
-author's first line is, so no line number moves for a module either.
+workspace as a named C++ module — `export module lib.<key>;` over an
+`export namespace lib::<key>` opened around the author's declarations where they
+stand — precompiled into a module interface of its own, and named to the
+program's compile as `-fmodule-file=lib.<key>=…` and as a link input. The
+`import lib.<key>;` lines are in one generated file put in front of the model's
+own with `-include`, which leaves the primary file's line numbering alone. A
+`#line` directive states what the author's first line is, so no line number moves
+for a module either. Each module is compiled on its own and reaches gg's surface
+and the standard library.
+
+The module declaration is what keeps gg's surface out of the program. gg writes
+`#include <gg.hpp>` into the module's global module fragment, whose names are
+attached to the global module and reach nobody who imports the module, so a
+program with a code module in scope reaches `lib::<key>` and reaches gg only
+through a line it wrote. `module` and `import` are the two words a module-name
+component may not be and are both reachable keys, so each is escaped in the
+module name and left alone in the namespace.
 
 A `#include` at a module's top level is refused by name, and the refusal says to
 delete the line. `#include` is textual, so one inside a namespace puts the
 included header inside `lib::<key>`, and a header the prelude already read
-expands to nothing at all. The prelude stands in front of a module as it does in
-front of a program, so a module needs no include of its own.
+expands to nothing at all.
 
 A module is also compiled alone with `-fsyntax-only` when it is read, so a
 module that does not build is reported to its author rather than to every
@@ -147,37 +168,48 @@ never dropped at any depth, and clang's own `N errors generated.` summary is
 kept. The band is decided on the whole rendering before the cap runs, so capping
 can never turn a compile error into a toolchain failure.
 
-At run time there are three shapes. An uncaught `throw` is caught by gg's shell
+At run time there are four shapes. An uncaught `throw` is caught by gg's shell
 and reported as a recoverable program error carrying the exception's demangled
 class and its `what()`, with no location. A libc++ hardening check traps with
-libc++'s own sentence at the model's own line. Any other undefined behaviour is
-a trap with no words, located at the model's own line and no more.
+libc++'s own sentence at the model's own line. A non-zero status returned from
+`main` is read by the shell and reported with the number the program chose, which
+is the one failure channel C++ gives an entry point. Any other undefined
+behaviour is a trap with no words, located at the model's own line and no more.
 
-## Prompt dialect
+Two failures this arm cannot report faithfully are recorded by
+[gate G8](/gg/responses-as-code/invariants/). `std::exit(3)` reaches the model as
+an exit with a non-zero status, because the pinned preview1 adapter lowers every
+non-zero status to the same failure before gg is told, which
+[the sandbox page](/gg/responses-as-code/sandbox/#stopping-the-process) states in
+full. A null dereference is not a
+fault at all: address zero is ordinary linear memory in wasm, so reading and
+writing through a null pointer succeeds and the turn is recorded as a clean one.
 
-The templates are `system-code.cpp.hbs` and `code-nothing-shown.cpp.hbs` in
-`crates/gg/templates/`. Beyond what every arm's prompt states, this one states:
+## Prompt segment
 
-- the reply is compiled verbatim as a whole translation unit and must define
-  `int main`, and gg's surface and the standard library are already in front of
-  the first line;
-- each capability module is a namespace and a call is a qualified name; a
-  program's own file-scope namespace sharing a module's name makes the
-  unqualified form ambiguous, and `gg::` plus the module name always resolves;
-- one optional argument is a default argument, two or more are designated
-  initialisers, and a fixed choice is an `enum class`;
-- every call throws, an expected failure is caught as `core::tool_error`, and
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`cpp`, and `code-nothing-shown.hbs` through a clause naming printing. The
+segment states:
+
+- the reply is compiled verbatim as a whole translation unit and defines
+  `int main`, with the C++ standard library already in front of its first line;
+- every call throws, an expected failure is caught as `gg::core::tool_error`, and
   its `code()` is an `enum class`;
-- the header list, that a standard header outside it still resolves if the
-  program includes it, and that a non-standard header is `file not found`;
-- that container bounds are checked, that undefined behaviour is the one failure
-  the sandbox cannot explain, and that `<thread>`, `<future>` and `<atomic>`
-  have nothing to run on.
+- one optional argument is a default argument and two or more are designated
+  initialisers, and each module is a namespace inside `namespace gg` reached by
+  writing that module's own `#include` line and then its path in full.
 
-The statements gg synthesizes into a transcript use the same spelling. A file
-view is `gg::views::open_file("src/main.cpp");`, with a window as a designated
-initialiser, and a documentation-view program is a whole `int main` holding a
-`std::array` of names and a range `for` over it.
+The arm names `clang++` as its [checker](/gg/languages/compilation/), so the
+shared body states that a program is compiled before it runs, that one the
+compiler refuses is not executed, and that a call the run withheld compiles and
+fails when it runs. The header set is carried by a compile failure rather than
+by the prompt.
+
+Source gg synthesizes for this arm is a whole program by the same rules. The
+file-view program, the documentation-view program and the bootstrap program each
+carry the include lines the calls they make need and a whole `int main`. A file
+view is written `gg::views::open_file("src/main.cpp");`, with a window as a
+designated initialiser.
 
 ## Healing dialect
 

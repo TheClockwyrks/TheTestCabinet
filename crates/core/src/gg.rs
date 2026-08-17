@@ -3378,9 +3378,6 @@ pub enum GgTurnErrorType {
     /// The program is not valid source in its [language](GgProgramLanguage) — the parser's own
     /// diagnostics. Nothing ran.
     TranspileSyntax,
-    /// The program parses but breaks a rule the language enforces before any statement runs: a
-    /// `const` declared twice, a duplicate binding in a destructuring pattern.
-    TranspileSemantic,
     /// The language's **compiler read the whole program and rejected it** — a type error, a borrow
     /// error, a name that does not resolve, an interface a class does not satisfy. The model is
     /// handed the compiler's own diagnostics and writes another program; nothing ran.
@@ -3427,6 +3424,11 @@ pub enum GgTurnErrorType {
     /// The guest's linear memory grew past its cap and the program was stopped.
     SandboxOutOfMemory,
     /// The guest trapped for some other reason. The program ran and its landed calls stand.
+    ///
+    /// On an arm whose program dies the way its runtime kills it rather than reporting a throw to
+    /// the host, this is also where an ordinary uncaught program failure lands, so a slice over
+    /// this type — or over the [`SandboxLimit`](GgTurnErrorKind::SandboxLimit) kind above it — is a
+    /// comparison within one program language and not across them.
     SandboxTrap,
     /// A tool-calling turn ended with **no tool call** — the model replied in prose where the one
     /// way to end a session is an explicit, typed call.
@@ -3444,7 +3446,7 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 17] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
@@ -3452,7 +3454,6 @@ impl GgTurnErrorType {
         Self::ModelVisionUnsupported,
         Self::ModelParse,
         Self::TranspileSyntax,
-        Self::TranspileSemantic,
         Self::TranspileCompile,
         Self::TranspileUnsupported,
         Self::ProgramToolError,
@@ -3479,10 +3480,9 @@ impl GgTurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse => GgTurnErrorKind::ModelApi,
-            Self::TranspileSyntax
-            | Self::TranspileSemantic
-            | Self::TranspileCompile
-            | Self::TranspileUnsupported => GgTurnErrorKind::Transpile,
+            Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
+                GgTurnErrorKind::Transpile
+            }
             Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
                 GgTurnErrorKind::ProgramFault
             }
@@ -3510,7 +3510,6 @@ impl GgTurnErrorType {
             Self::ModelVisionUnsupported => "model_vision_unsupported",
             Self::ModelParse => "model_parse",
             Self::TranspileSyntax => "transpile_syntax",
-            Self::TranspileSemantic => "transpile_semantic",
             Self::TranspileCompile => "transpile_compile",
             Self::TranspileUnsupported => "transpile_unsupported",
             Self::ProgramToolError => "program_tool_error",
@@ -3538,7 +3537,6 @@ impl GgTurnErrorType {
             Self::ModelVisionUnsupported => "model cannot see images",
             Self::ModelParse => "unparseable model response",
             Self::TranspileSyntax => "syntax error",
-            Self::TranspileSemantic => "semantic error",
             Self::TranspileCompile => "compiler rejected the program",
             Self::TranspileUnsupported => "unsupported program feature",
             Self::ProgramToolError => "uncaught call failure",
@@ -4599,22 +4597,27 @@ pub enum GgProgramLanguage {
     /// The first arm whose guest carries its own interpreter rather than an engine gg lowers to.
     /// `componentize-py` links a real CPython 3.14 against gg's WIT world, so a program crosses the
     /// membrane as *source*, the standard library it is baked with is what a program may `import`,
-    /// and nothing is installed in the run container. Its SDK is hand-written and reads as Python
-    /// reads — `snake_case`, keyword arguments with real defaults, dataclasses for results, enums
-    /// for fixed choices, and a raised `ToolError` for the wire's error arm.
+    /// and nothing is installed in the run container. A program is executed in a namespace of its
+    /// own with nothing in it: the SDK is the ordinary package `gg`, baked into the guest and
+    /// reached by writing `import gg`, and the agent's code modules are the package `lib`. Its SDK
+    /// is hand-written and reads as Python reads — `snake_case`, keyword arguments with real
+    /// defaults, dataclasses for results, enums for fixed choices, and a raised `gg.core.ToolError`
+    /// for the wire's error arm.
     Python,
     /// Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries
-    /// Opal's runtime, gg's Ruby SDK and the libraries a program may `require`, all pre-initialised
-    /// into it.
+    /// Opal's runtime pre-initialised into it.
     ///
     /// The first arm whose program is neither evaluated as written nor lowered by a parse gg carries
     /// in-process: a real compiler runs in a real process on the turn path, so this arm reports a
     /// compile time and can tell a model *the compiler read your program and refused it* — which is
     /// the band [`Python`](Self::Python) has no producer for. The compiler is itself Ruby compiled to
-    /// JavaScript, so it rides inside gg's binary and the run image gains nothing. Its SDK is
-    /// hand-written and reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long
-    /// body, `Range` for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice,
-    /// and a raised `ToolError` that is a `StandardError`.
+    /// JavaScript, so it rides inside gg's binary and the run image gains nothing. gg's SDK, the
+    /// agent's code modules and the libraries a program may require are all compiled into the guest
+    /// as requirable units and none is loaded: a program reaches gg's surface by writing
+    /// `require "gg"` and its own loaded code by writing `require "lib"`. Its SDK is hand-written
+    /// and reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long body, `Range`
+    /// for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice, and a raised
+    /// `ToolError` that is a `StandardError`.
     Ruby,
     /// PureScript: **compiled to JavaScript on the host by `purs`**, flattened into one script by
     /// `esbuild`, and evaluated by the same ECMAScript guest
@@ -4670,10 +4673,19 @@ pub enum GgProgramLanguage {
     /// runtime (a CPython, an Opal, a JavaScript engine) and a program crosses the membrane as
     /// source that runtime reads. `rustc` produces no such thing — it produces the program — so this
     /// arm commits **no component at all** and compiles one per turn instead, against a prebuilt
-    /// library set that ships inside gg's binary. It is also the only arm with **no exception
-    /// mechanism in the guest**: `wasm32-unknown-unknown` has no unwinder, so a panic aborts and
-    /// traps, and what saves the error surface is a panic *hook* that reports through the host with
-    /// the model's own line and column before the abort.
+    /// library set that ships inside gg's binary.
+    ///
+    /// A program is the reply **verbatim**, as a whole Rust program declaring its own `fn main` —
+    /// no wrapper, no prologue, no offset to subtract. The crate type is `bin`, which is what makes
+    /// that `main` reachable: `rustc` emits the unmangled C entry symbol for a binary crate, and
+    /// gg's SDK calls it from the world's `run` export. `--extern gg=…` makes the SDK available and
+    /// puts no name in scope, so a program writes `gg::files::read_file` in full or the
+    /// `use gg::files;` its catalogue states.
+    ///
+    /// A failure reaches the model by **capture**, with nothing intercepted. The target is
+    /// `wasm32-wasip1`, so a panic writes `std`'s own message to a real standard error in the
+    /// model's own file, line and column before it aborts; a `main` returning `Err` writes
+    /// `Error: …` through `Termination`; and `std::process::exit` is `proc_exit`.
     ///
     /// A **code module** here is linked into the same artifact as the program that reads it, which
     /// is why the seam hands the modules in scope to a program's preparation at all: nothing can be
@@ -4681,8 +4693,8 @@ pub enum GgProgramLanguage {
     /// `snake_case`, an API object as a **module** so a call is a path, `Result<_, ToolError>`
     /// everywhere so `?` composes gg's calls with `std`'s own fallible ones, a struct with `Default`
     /// and functional update where a call has two or more optional arguments and a bare `Option<T>`
-    /// where it has one, real `enum`s for fixed choices, a `RangeInclusive` for a span of turns, and
-    /// one glob (`use gg::prelude::*;`) that a program's own `use` may shadow.
+    /// where it has one, real `enum`s for fixed choices, and a `RangeInclusive` for a span of
+    /// turns.
     Rust,
     /// Swift: **compiled by `swiftc` into the wasm component that turn is evaluated by**, and the
     /// one arm whose reply is compiled **byte for byte** while still admitting declarations.
@@ -4693,8 +4705,9 @@ pub enum GgProgramLanguage {
     /// and an arm that forbade `extension` would forbid the construct the language is built around.
     /// So nothing is prepended, nothing appended and no line moves: a diagnostic at line 7 is line
     /// 7. gg's shell is a second file of the same module, which is how it names the entry point
-    /// Swift lowers top-level code into and how `@_exported import gg` puts the whole SDK in the
-    /// model's file with no import line.
+    /// Swift lowers top-level code into. The SDK is a Swift module of its own, reached by the
+    /// `import gg` the program writes on its own first line; the shell's imports are file-scoped
+    /// and reach nothing the model wrote.
     ///
     /// It is also the arm with the **most expensive instantiate and the cheapest compile of its
     /// shape**: `swiftc` takes about a third of a second and the ~7 MB component it produces takes
@@ -4717,15 +4730,17 @@ pub enum GgProgramLanguage {
     /// prepare time, because wasi-libc references `main` weakly and would otherwise link a program
     /// that traps having run nothing.
     ///
-    /// It is the **cheapest compile of the three compiled arms** — ~85 ms against `swiftc`'s ~0.3 s
-    /// — and only because the prelude, gg's whole surface plus the standard library, is
-    /// precompiled: without that the same program costs about a second. Its SDK is hand-written and
-    /// reads like the standard library it arrives beside: `snake_case` functions *and* types, an
-    /// API object as a **namespace** so a call is a qualified name, `enum class` for a fixed
-    /// choice, aggregates for records, `std::variant` narrowed with `std::get_if` for a read, a
-    /// default argument for one optional part and a **designated initialiser** (`{.limit = 40}`)
-    /// for several — because C++ has no keyword arguments and a defaulted parameter cannot be
-    /// skipped over — and a thrown `gg::tool_error` for the error arm.
+    /// It is the **cheapest compile of the three compiled arms** — ~90 ms against `swiftc`'s ~0.3 s
+    /// — and only because the prelude, which is the C++ standard library, is precompiled: without
+    /// that the same program costs about a second. gg's own surface is deliberately not in that
+    /// prelude, so a program reaches it by writing `#include <gg/files.hpp>` for each module it
+    /// calls. Its SDK is hand-written and reads like the standard library it arrives beside:
+    /// `snake_case` functions *and* types, an API object as a **namespace** so a call is a
+    /// qualified name, `enum class` for a fixed choice, aggregates for records, `std::variant`
+    /// narrowed with `std::get_if` for a read, a default argument for one optional part and a
+    /// **designated initialiser** (`{.limit = 40}`) for several — because C++ has no keyword
+    /// arguments and a defaulted parameter cannot be skipped over — and a thrown
+    /// `gg::core::tool_error` for the error arm.
     ///
     /// It also carries a **comparability risk no other arm has**, stated rather than hidden: an
     /// uncaught `throw` and a failed libc++ hardening check both arrive with words, but undefined
@@ -4747,16 +4762,21 @@ pub enum GgProgramLanguage {
     ///
     /// A program is the reply **verbatim**, as a compilation unit with an entry point — no wrapper,
     /// no prologue, no offset to subtract — and all four ways a C# program may begin work, top-level
-    /// statements first. gg's surface reaches it through a `global using` the SDK itself declares,
-    /// so there is no import line for a model to forget. Its SDK is hand-written and reads as C#
-    /// reads: `PascalCase` methods, **optional arguments with defaults, passed by name**, nullable
+    /// statements first. Its SDK is compiled beside the program, which tells `csc` the library
+    /// exists and puts no name in scope: a program writes `Gg.Views.OpenText` in full, or writes
+    /// the `using Gg;` its catalogue states and then `Views.OpenText`. The SDK is hand-written and
+    /// reads as C# reads: `PascalCase` methods, **optional arguments with defaults, passed by name**, nullable
     /// reference types, `record`s for results, real `enum`s for fixed choices, and a thrown
     /// `ToolException` whose `Code` is an enum rather than free text. Nothing returns `Task` and
     /// nothing is `async`.
     ///
-    /// It has the **best error surface of any compiled arm here, and gg engineered none of it**:
-    /// `try`/`catch`/`finally` work because they are IL, and an unhandled exception is reported as
-    /// `Exception.ToString()` — the type, the message *and* the managed frames. Two absences are
+    /// It has the **best error surface of any compiled arm here**: `try`/`catch`/`finally` work
+    /// because they are IL, and an unhandled exception is reported as `Exception.ToString()` — the
+    /// type, the message *and* the managed frames, each frame carrying the model's own file and
+    /// line, because the assembly carries its own portable debug information and the guest
+    /// initialises the lookup that reads it. What a program ends by **returning** is read too: a
+    /// non-zero status from its entry point, the one failure C# reports without throwing. Two
+    /// absences are
     /// stated rather than glossed: `System.Net.Http`'s native handler is not in this guest, so the
     /// types compile and the transport is gone (the network is `system.Shell`, as on every arm), and
     /// `System.Security.Cryptography` is Mono's own gap and arrives as a catchable
@@ -4907,8 +4927,8 @@ impl std::fmt::Display for GgProgramLanguage {
 /// code-shaped turn.
 ///
 /// Healing is textual and conservative: it only ever **deletes**, so a healed program is always a
-/// subsequence of the response the model sent, and every repair is disclosed to the model in its
-/// turn feedback — this record is a fact the model was told, never something done behind it.
+/// subsequence of the response the model sent. The model is told nothing about a repair; this
+/// record and the run's operator stream are where every repair is disclosed.
 ///
 /// A response that needed nothing carries the default and is omitted from the wire entirely, so
 /// the presence of this object *is* "something was unusual about this response".
@@ -4928,6 +4948,17 @@ pub struct GgResponseHealing {
     /// distinguishable from a clean one, which is otherwise byte-identical on the wire.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub did_not_converge: bool,
+    /// The reply **as the model sent it**, carried whenever healing rewrote it into something else.
+    ///
+    /// The program that ran is what the model's own history carries and what every reported line
+    /// number counts lines of, so this is the only surviving copy of the text healing started from
+    /// — and reading the two against each other is what tells a defect in healing apart from a
+    /// mistake by the model. It is for the run's operator; no model is ever shown it.
+    ///
+    /// Absent for a clean response, where the reply and the program are the same string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub original: Option<String>,
 }
 
 impl GgResponseHealing {

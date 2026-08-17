@@ -14,18 +14,10 @@ package gg.files
 
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.fsObject
-import gg.internal.ggArgs
-import gg.internal.ggAsInteger
-import gg.internal.ggAsString
 import gg.internal.ggCall
 import gg.internal.ggNumber
-import gg.internal.ggRecord
 import gg.internal.ggRun
-import gg.internal.ggSet
 import gg.internal.ggText
-import org.teavm.jso.JSObject
-import org.teavm.jso.core.JSArray
 
 
 /**
@@ -58,7 +50,9 @@ import org.teavm.jso.core.JSArray
  * @throws ToolError `NOT_FOUND` for a missing path.
  */
 public fun readFile(path: String, offset: Int? = null, limit: Int? = null): FileRead =
-    Read.fileRead(ggCall("read_file", fsObject(), "gg.files", "readFile", window(path, offset, limit)))
+    Read.fileRead(
+        ggCall("files.read_file", ggText(path), ggNumber(offset), ggNumber(limit)),
+    )
 
 /**
  * Read a text file and hand back its contents directly.
@@ -74,9 +68,7 @@ public fun readFile(path: String, offset: Int? = null, limit: Int? = null): File
  *   inspects and `gg.views.openFile` shows.
  */
 public fun readTextFile(path: String, offset: Int? = null, limit: Int? = null): String =
-    ggAsString(
-        ggCall("read_file", fsObject(), "gg.files", "readTextFile", window(path, offset, limit)),
-    )
+    ggCall("files.read_text_file", ggText(path), ggNumber(offset), ggNumber(limit)).text()
 
 /**
  * Write text to a file, creating parent directories and replacing whatever was there.
@@ -92,15 +84,7 @@ public fun readTextFile(path: String, offset: Int? = null, limit: Int? = null): 
  *   directories or the write itself failed.
  */
 public fun writeFile(path: String, contents: String): Int =
-    ggAsInteger(
-        ggCall(
-            "write_file",
-            fsObject(),
-            "gg.files",
-            "writeFile",
-            ggArgs(ggText(path), ggText(contents)),
-        ),
-    )
+    ggCall("files.write_file", ggText(path), ggText(contents)).integer()
 
 /**
  * Replace the one exact occurrence of `oldString` in a file with `newString`.
@@ -116,13 +100,7 @@ public fun writeFile(path: String, contents: String): Int =
  *   of matches — when it appears more than once.
  */
 public fun editFile(path: String, oldString: String, newString: String) {
-    ggRun(
-        "edit_file",
-        fsObject(),
-        "gg.files",
-        "editFile",
-        ggArgs(ggText(path), ggText(oldString), ggText(newString)),
-    )
+    ggRun("files.edit_file", ggText(path), ggText(oldString), ggText(newString))
 }
 
 /**
@@ -139,30 +117,7 @@ public fun editFile(path: String, oldString: String, newString: String) {
  *   path that is given but empty — leaving it out is what lists the workspace root.
  */
 public fun listDir(path: String? = null): List<DirEntry> =
-    Read.dirEntries(
-        ggCall(
-            "list_dir",
-            fsObject(),
-            "gg.files",
-            "listDir",
-            if (path == null) ggArgs() else ggArgs(ggText(path)),
-        ),
-    )
-
-/** A path, and the window of lines a read covers, as the guest's own function takes them. */
-private fun window(path: String, offset: Int?, limit: Int?): JSArray<JSObject> {
-    if (offset == null && limit == null) {
-        return ggArgs(ggText(path))
-    }
-    val options = ggRecord()
-    if (offset != null) {
-        ggSet(options, "offset", ggNumber(offset))
-    }
-    if (limit != null) {
-        ggSet(options, "limit", ggNumber(limit))
-    }
-    return ggArgs(ggText(path), options)
-}
+    Read.dirEntries(ggCall("files.list_dir", ggText(path)))
 
 /**
  * What a file read handed back: a text file's window, or a picture's description.

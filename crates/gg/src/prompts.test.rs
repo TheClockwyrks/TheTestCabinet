@@ -2,6 +2,9 @@ use test_cabinet_core::gg::{GgAgentConfig, GgProgramLanguage};
 
 use super::*;
 use crate::ending::EndingRole;
+// The registry, imported here rather than inherited through the glob: `prompts` itself no longer
+// walks the languages — it registers one code template — so nothing above this module names it.
+use crate::sandbox::all_languages;
 
 /// [`super::render_system`] for the tests, which render gg's own templates against contexts they
 /// built to be renderable.
@@ -37,6 +40,27 @@ fn plain(rendered: &str) -> String {
 /// A context with every capability **off**: the minimum a run can render.
 fn bare_system() -> SystemContext {
     SystemContext::default()
+}
+
+/// The [language view](LanguageView) a code-mode context needs, for the arm most of these tests
+/// happen to render.
+///
+/// Which arm it is does not matter to a test about the shared body — there is one code template and
+/// every arm renders all of it — but *some* arm has to be named, because a code prompt that names
+/// none is an error rather than a document.
+fn code_language() -> Option<LanguageView> {
+    Some(language_view(GgProgramLanguage::TypeScript))
+}
+
+/// One skill as the prompt lists it, carrying neither code nor an on-use script — the ordinary
+/// entry the roster assertions are about.
+fn skill(name: &str, description: &str) -> SkillView {
+    SkillView {
+        name: name.to_string(),
+        description: description.to_string(),
+        carries_code: false,
+        carries_on_use_script: false,
+    }
 }
 
 /// A context with every capability **on**, so the maximal prompt is exercised. In tool-calling mode
@@ -76,10 +100,7 @@ fn full_system() -> SystemContext {
             tail: "last 200 lines".to_string(),
             directory: "/tmp/gg-shell".to_string(),
         },
-        skills: vec![SkillView {
-            name: "physics".to_string(),
-            description: "How to tune the simulation.".to_string(),
-        }],
+        skills: vec![skill("physics", "How to tune the simulation.")],
         memories: Some(MemoriesView {
             scratchpad: true,
             markdown: false,
@@ -193,18 +214,23 @@ fn a_bare_run_renders_almost_nothing() {
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
 }
 
-/// In responses-as-code mode the prompt names the API objects a program has, teaches discovery
-/// through `view.openDocsView`, and points at `finish` to end the run — and it lists no tool
-/// signatures or type declarations at all. Those are discovered on demand.
+/// In responses-as-code mode the prompt names the [modules](ModuleView) a program's surface is
+/// divided into, describes discovery as a **mechanism** — search for what you need, then open a
+/// documentation view of it — and points at the ending call, the one catalogued spelling it is
+/// allowed to write. It lists no tool signatures and no type declarations at all. Those are
+/// discovered on demand.
 ///
-/// The assertions check for the words the prompt must contain — each object's name and its
-/// description, the discovery calls, `finish` — not the punctuation that separates them, so the
-/// prompt's wording can be revised without breaking a test that was only ever about its content.
+/// Discovery is described rather than demonstrated because naming either of the two calls would be
+/// naming a function, which `prompts.spellings.test.rs` fails the build over; the spellings reach the
+/// model out of the [bootstrap](crate::bootstrap) turn instead. So the assertions check for the words
+/// the prompt must contain — each module's path and a distinctive phrase from its brief, and the
+/// words the mechanism is described in — not the punctuation that separates them, so the prompt's
+/// wording can be revised without breaking a test that was only ever about its content.
 #[test]
 fn code_mode_names_objects_and_teaches_discovery() {
     let context = SystemContext {
         responses_as_code: true,
-        language: Some(GgProgramLanguage::TypeScript),
+        language: code_language(),
         modules: vec![
             ModuleView {
                 path: "fs".to_string(),
@@ -263,12 +289,12 @@ fn code_mode_names_objects_and_teaches_discovery() {
     }
 }
 
-/// **The code prompt teaches views, not `console.log`.**
+/// **The code prompt teaches views, not printing.**
 ///
 /// This is the one section of the system prompt the whole context-view feature rests on. A model
 /// that is still told to print values will print them, and its output will vanish into the
-/// operator's stream — so the prompt has to name the channel that carries, show it being used, and
-/// say plainly where logging goes instead.
+/// operator's stream — so the prompt has to name the channel that carries and say plainly that
+/// printing is not one.
 ///
 /// The teaching is drawn from what the run actually binds: showing yourself a value you computed is
 /// ungated (a run with no tools at all must still be able to show its model something), while the
@@ -281,14 +307,21 @@ fn code_mode_names_objects_and_teaches_discovery() {
 /// It is taught in the opening paragraphs rather than under a section of its own — the rewrite in
 /// `b60d2798` folded the old *Showing yourself things* section into the intro, on the reasoning
 /// that the one fact a code-mode model has to hold from its first turn should not be four screens
-/// down. So these assertions pin the *content* — the channel, the gating, that logging is unread —
+/// down. So these assertions pin the *content* — the channel, the gating, that printing is unread —
 /// and not the heading it happens to sit under.
+///
+/// The **printing call itself** is no longer read here. One template serves eleven arms, so the word
+/// for a dead output channel (`println!`, `puts`, `Console.WriteLine`) is either one arm's segment
+/// or nothing at all; what every arm's model must be told is that whatever it printed did not reach
+/// it, which is the sentence asserted. The notice a program that showed itself nothing earns does
+/// name the arm's own call, and [`the_nothing_shown_notice_says_a_view_is_the_only_channel_back`]
+/// is where that is read.
 #[test]
 fn code_mode_teaches_views_rather_than_logging() {
     let with_reads = render_system(
         &SystemContext {
             responses_as_code: true,
-            language: Some(GgProgramLanguage::TypeScript),
+            language: code_language(),
             modules: vec![ModuleView {
                 path: "view".to_string(),
                 brief: "show yourself a file or a value — the only way material enters your \
@@ -310,21 +343,20 @@ fn code_mode_teaches_views_rather_than_logging() {
     // file it reads. Neither is named as a call; the sentence is what is asserted.
     assert!(flat_reads.contains("next turn"), "{with_reads}");
     assert!(
-        flat_reads.contains("Opening a view of a value you computed"),
+        flat_reads.contains("discarded unless you open a view of it"),
         "{with_reads}"
     );
     assert!(
         flat_reads.contains("You can read a workspace file"),
         "{with_reads}"
     );
-    // Logging is named, as the thing that does NOT reach the model — never as an instruction, and
+    // Printing is named, as the thing that does NOT reach the model — never as an instruction, and
     // never with the channel it *does* reach named either. A prompt that says where the output goes
     // gives a model a reason to aim at it, and most runs have only their result and metrics read.
     assert!(flat_reads.contains("the only way"), "{with_reads}");
-    assert!(flat_reads.contains("console.log"), "{with_reads}");
     assert!(
-        !flat_reads.contains("Use `console.log()`"),
-        "the prompt still instructs the model to log:\n{with_reads}"
+        flat_reads.contains("nothing your program prints is readable by you"),
+        "{with_reads}"
     );
     for aimed in ["the run's operator", "goes to the run"] {
         assert!(
@@ -343,7 +375,7 @@ fn code_mode_teaches_views_rather_than_logging() {
     let no_reads = render_system(
         &SystemContext {
             responses_as_code: true,
-            language: Some(GgProgramLanguage::TypeScript),
+            language: code_language(),
             modules: vec![ModuleView {
                 path: "view".to_string(),
                 brief: "show yourself a file or a value".to_string(),
@@ -354,7 +386,7 @@ fn code_mode_teaches_views_rather_than_logging() {
         None,
     );
     assert!(
-        no_reads.contains("Opening a view of a value you computed"),
+        no_reads.contains("discarded unless you open a view of it"),
         "{no_reads}"
     );
     assert!(
@@ -371,26 +403,28 @@ fn code_mode_teaches_views_rather_than_logging() {
 // that will be used to write the rule back. What resolves per language here now is the ending call
 // and nothing else, and `crate::sandbox::spell` is the one call that does it.
 
-/// **The code prompt states the run's own limits on the two things a program cannot get started
-/// without — and names neither call.**
+/// **The code prompt says a program can read a file and run a command — and states nothing else
+/// about either.**
 ///
-/// It used to name the argument shape of the file read and the shell call, on the reasoning that
-/// discovering each cost a turn. That reasoning is retired with the rest of the naming: the prompt
-/// names no function, and the turn a model spends finding one is the round trip the design is
-/// measuring rather than an overhead to remove.
+/// Two capabilities are named where the others are described, and they earn it for the same reason:
+/// reading a file and running a build are what a program is usually *for*, and an agent that does not
+/// know it may do them at all does not go looking. What it may *not* do is describe them, and this
+/// pins both halves of that.
 ///
-/// What survives — and is the whole of what is asserted here — is the half a search could never tell
-/// the model, because it is a fact about **this run** rather than about the SDK: that a read is
-/// capped at a number, that a window can be named to move it, that a limit larger than the cap is
-/// honored, and what a command hands back. Each is gated, on the same rule every section follows: a
-/// run that withholds the capability says none of it.
+/// The **read cap** is the case worth writing down. The prompt used to state the line cap, that a
+/// window could be named to move it, and that a larger `limit` was honored — three sentences every
+/// agent paid for, in front of an error that states all three at the moment a read is actually
+/// windowed. That is the just-in-time rule's own worked example, so the cap is asserted **absent**
+/// here rather than left untested: re-adding it must be a deliberate edit.
+///
+/// The gating is unchanged: a run that withholds the capability says nothing about it at all.
 #[test]
-fn code_mode_states_the_run_limits_a_program_starts_from() {
+fn code_mode_names_the_two_capabilities_a_program_starts_from() {
     let code = |read_file: ReadFileView, shell: ShellView| {
         render_system(
             &SystemContext {
                 responses_as_code: true,
-                language: Some(GgProgramLanguage::TypeScript),
+                language: code_language(),
                 modules: vec![ModuleView {
                     path: "view".to_string(),
                     brief: "show yourself a file or a value".to_string(),
@@ -404,9 +438,8 @@ fn code_mode_states_the_run_limits_a_program_starts_from() {
         )
     };
 
-    // A capped read is the only one that has a window to teach: under the unlimited policy
-    // `read_file` takes no `offset`/`limit` at all, so naming them would describe knobs that do
-    // nothing to the one run that cannot use them.
+    // A capped run and an uncapped one are told the same thing, which is the point: the cap is a
+    // number the read's own result carries when it matters.
     let capped = code(
         ReadFileView {
             offered: true,
@@ -418,17 +451,20 @@ fn code_mode_states_the_run_limits_a_program_starts_from() {
     );
     let flat_capped = flat(&capped);
     assert!(
-        flat_capped.contains("Reading a file returns 250 lines per call"),
+        flat_capped.contains("You can read a workspace file"),
         "{capped}"
     );
     assert!(
-        flat_capped.contains("an `offset` and a `limit`"),
+        flat_capped.contains("Reading images is supported"),
         "{capped}"
     );
-    assert!(
-        flat_capped.contains("A `limit` larger than 250 is honored."),
-        "{capped}"
-    );
+    for delivered_at_the_error in ["250", "offset", "limit"] {
+        assert!(
+            !flat_capped.contains(delivered_at_the_error),
+            "the code prompt states the read window up front (`{delivered_at_the_error}`), which \
+             the read that is actually windowed states at the moment it matters:\n{capped}"
+        );
+    }
 
     let uncapped = code(
         ReadFileView {
@@ -442,8 +478,6 @@ fn code_mode_states_the_run_limits_a_program_starts_from() {
         uncapped.contains("You can read a workspace file"),
         "{uncapped}"
     );
-    assert!(!uncapped.contains("offset"), "{uncapped}");
-    assert!(!uncapped.contains("limit"), "{uncapped}");
 
     // Running a command is the most common thing a program does, and it is named exactly when the
     // run offers it — independently of whether that run offloads the output.
@@ -460,7 +494,10 @@ fn code_mode_states_the_run_limits_a_program_starts_from() {
         with_shell.contains("You can run a shell command in the workspace"),
         "{with_shell}"
     );
-    assert!(with_shell.contains("`exitCode`"), "{with_shell}");
+    assert!(
+        flat(&with_shell).contains("exit code and its merged output"),
+        "{with_shell}"
+    );
     assert!(
         !with_shell.contains("\n\n\n"),
         "blank-line run:\n{with_shell}"
@@ -503,7 +540,7 @@ fn no_run_describes_shell_offloading() {
         for shell in [full_system().shell, ShellView::default()] {
             let context = SystemContext {
                 responses_as_code,
-                language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
+                language: code_language().filter(|_| responses_as_code),
                 shell,
                 ..full_system()
             };
@@ -563,7 +600,7 @@ fn no_run_describes_compaction() {
         let prompt = render_system(
             &SystemContext {
                 responses_as_code,
-                language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
+                language: code_language().filter(|_| responses_as_code),
                 modules,
                 ending: ending_view(EndingRole::Standard, responses_as_code),
                 ..SystemContext::default()
@@ -645,7 +682,7 @@ fn code_mode_names_the_grouped_ending_calls() {
         let prompt = render_system(
             &SystemContext {
                 responses_as_code: true,
-                language: Some(GgProgramLanguage::TypeScript),
+                language: code_language(),
                 modules: vec![ModuleView {
                     path: "harness".to_string(),
                     brief: "read documentation".to_string(),
@@ -708,7 +745,7 @@ fn the_two_modes_name_calls_in_their_own_form() {
     fn every_section_on(responses_as_code: bool) -> SystemContext {
         SystemContext {
             responses_as_code,
-            language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
+            language: code_language().filter(|_| responses_as_code),
             modules: vec![ModuleView {
                 path: "harness".to_string(),
                 brief: "the run itself".to_string(),
@@ -794,7 +831,7 @@ fn the_two_modes_name_calls_in_their_own_form() {
     for stated in [
         "You have access to a task list",
         "delegate work to another agent",
-        "shared project board",
+        "access to a project board",
     ] {
         assert!(
             code.contains(stated),
@@ -802,6 +839,73 @@ fn the_two_modes_name_calls_in_their_own_form() {
         );
     }
 }
+
+/// **A skill is described by what reading it will actually do, not by what reading *a* skill might
+/// do.**
+///
+/// The prompt used to enumerate all three outcomes — prose is pinned, code may be bound, an on-use
+/// script may run — at every agent, for every skill, and then say that the reply would tell the model
+/// which of them happened. Two of those three are things gg knows per skill before it renders
+/// anything, so a run whose skills are plain guides paid for two paragraphs about a mechanism none of
+/// them has, and every model reading them had to hold a branch it would never take.
+///
+/// Asserted as **differences** rather than as phrases: which words the two branches use is the
+/// template's to choose, and the property is that they are emitted per skill rather than for all of
+/// them. A skill with neither flag renders the shortest entry, each flag adds to it, and the two
+/// flags do not add the same thing.
+#[test]
+fn a_skills_entry_names_only_what_reading_that_skill_does() {
+    let listing = |carries_code: bool, carries_on_use_script: bool| {
+        render_system(
+            &SystemContext {
+                responses_as_code: true,
+                language: code_language(),
+                modules: vec![ModuleView {
+                    path: "harness".to_string(),
+                    brief: "the run itself".to_string(),
+                    import: None,
+                }],
+                skills: vec![SkillView {
+                    name: "gg-filesystem".to_string(),
+                    description: "reading and writing files".to_string(),
+                    carries_code,
+                    carries_on_use_script,
+                }],
+                ..SystemContext::default()
+            },
+            None,
+        )
+    };
+
+    let prose_only = listing(false, false);
+    let with_code = listing(true, false);
+    let with_script = listing(false, true);
+    let with_both = listing(true, true);
+
+    assert!(
+        prose_only.contains("`gg-filesystem`"),
+        "every skill is listed whatever it carries:\n{prose_only}"
+    );
+    for (what, longer) in [("code", &with_code), ("an on-use script", &with_script)] {
+        assert!(
+            longer.len() > prose_only.len(),
+            "a skill that carries {what} is described no differently from one that carries \
+             nothing:\n{longer}"
+        );
+        assert!(
+            with_both.len() > longer.len(),
+            "the two branches are not independent — a skill that carries both reads the same as one \
+             that carries only {what}:\n{with_both}"
+        );
+    }
+    assert_ne!(
+        with_code, with_script,
+        "carrying code and carrying an on-use script are described the same way, so a model cannot \
+         tell which one reading this skill will do"
+    );
+    assert_no_blank_run(&with_both);
+}
+
 /// The **Subagents** section is gated on the agent actually having `spawn_subagent`,
 /// **not** on its roster being non-empty — and the project-management section lists the
 /// roster's implementers and reviewers separately.
@@ -933,7 +1037,7 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
 fn code_mode_with_no_workspace_tools_still_names_harness() {
     let context = SystemContext {
         responses_as_code: true,
-        language: Some(GgProgramLanguage::TypeScript),
+        language: code_language(),
         modules: vec![ModuleView {
             path: "harness".to_string(),
             brief: "read documentation".to_string(),
@@ -993,7 +1097,7 @@ fn the_nothing_shown_notice_says_a_view_is_the_only_channel_back() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("nothing `console.log` writes is readable by you"),
+        flat(&rendered).contains("`console.log` writes is readable by you"),
         "a model whose output vanished must be told it cannot read it: {rendered}"
     );
     for aimed in ["operator", "goes to the run"] {
@@ -1113,7 +1217,7 @@ fn the_board_block_renders_epics_issues_and_briefs() {
 fn an_assigned_issue_names_the_issue_and_its_worktree() {
     let implementer = |responses_as_code: bool| SystemContext {
         responses_as_code,
-        language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
+        language: code_language().filter(|_| responses_as_code),
         // The code arm lists the objects a program reaches; the tool-calling arm ignores them.
         modules: vec![ModuleView {
             path: "fs".to_string(),
@@ -1657,18 +1761,20 @@ fn the_context_usage_signal_renders() {
 // The per-language gate
 // ---------------------------------------------------------------------------
 
-/// The headings every registered [program language](GgProgramLanguage)'s responses-as-code prompt
-/// must carry, paired with nothing: each is rendered under a context that turns its section **on**,
-/// so a template that dropped one fails here rather than shipping a model a prompt with a hole in
-/// it.
+/// The headings the one responses-as-code prompt must carry, whichever
+/// [language](GgProgramLanguage) it is rendered for: each is rendered under a context that turns its
+/// section **on**, so a template that dropped one fails here rather than shipping a model a prompt
+/// with a hole in it.
 ///
-/// This list is what pays for the decision to give each language its own template file rather than
-/// branching one shared file at every bullet. A copied template can silently lose a section — that
-/// is the one real cost of the split — and it is a cost a list of required headings buys off
-/// entirely, more cheaply and more honestly than a merged file with a branch at every line would
-/// have.
+/// It used to be the list that paid for eleven template files — a copied template can silently lose
+/// a section, and a table of required headings was the cheapest way to catch one that had. There is
+/// one file now and that failure is gone with it, but the list is not: what it catches now is a
+/// section swallowed by a `{{#if}}` that should not have been wrapped around it, and it is still
+/// rendered **for every arm**, because a language segment that forgot to close a block would take
+/// the rest of the document with it on that arm alone.
 const REQUIRED_SECTIONS: &[&str] = &[
     "## Responses as Code",
+    "### The program you are writing",
     "### Ending your session",
     "### Your modules",
     "### Reusing a program you already ran",
@@ -1697,17 +1803,16 @@ const REQUIRED_SECTIONS: &[&str] = &[
 /// are either sections the templates should regain or fields that should go, and that is a decision
 /// rather than a test fix.
 ///
-/// The **ending call it carries is TypeScript's**, and that is only correct for a gate reading the
-/// prompt's prose or its `{{#each}}` rosters. `ending.finish` is a *spelling* that arrives through
-/// the context rather than through the catalogue, so rendering this for another arm puts
-/// `harness.finish` into a document whose SDK may bind `harness.Finish` — which is a call that arm
-/// does not have. A gate that judges the calls a rendered prompt names must use
-/// [`every_code_section_on_for`] instead, which spells the ending the way the language it is
-/// rendered for does.
+/// The **ending call is spelled the way `language` spells it**, because it is the one call in a code
+/// prompt that reaches the template as data rather than through the catalogue: the loop resolves it
+/// from the agent's [role](crate::ending::EndingRole) and hands the template a string. A fixture that
+/// hard-coded TypeScript's spelling wrote `harness.finish` into a document whose SDK binds
+/// `harness.Finish`, and it went unnoticed for ten arms — every `.`-separated arm before C# also
+/// spells it `finish`, and Rust's and C++'s `::` kept them out of the reading entirely.
 pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContext {
     SystemContext {
         responses_as_code: true,
-        language: Some(language),
+        language: Some(language_view(language)),
         custom_instructions: Some("Prefer the smaller change.".to_string()),
         modules: vec![ModuleView {
             path: "harness".to_string(),
@@ -1731,10 +1836,7 @@ pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContex
             description: "the task you are working on".to_string(),
         }],
         program_library: true,
-        skills: vec![SkillView {
-            name: "gg-filesystem".to_string(),
-            description: "reading and writing files".to_string(),
-        }],
+        skills: vec![skill("gg-filesystem", "reading and writing files")],
         memories: Some(MemoriesView {
             scratchpad: true,
             markdown: false,
@@ -1774,44 +1876,23 @@ pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContex
         }),
         ending: EndingView {
             standard: true,
-            finish: "harness.finish".to_string(),
+            finish: crate::sandbox::spell(
+                crate::sandbox::language(language),
+                crate::sandbox::SESSION_FINISH,
+            ),
             ..EndingView::default()
         },
         ..SystemContext::default()
     }
 }
 
-/// [`every_code_section_on`] with the **ending call spelled the way `language` spells it** — the
-/// context a gate reading the *calls* a rendered prompt names has to use.
-///
-/// The ending is the one call in a code prompt that reaches the template as data rather than through
-/// the catalogue: the loop resolves it once, from the agent's [role](crate::ending::EndingRole), and
-/// hands the template a string. A fixture that hard-codes TypeScript's spelling of it therefore
-/// writes `harness.finish` into every arm's prompt, and it went unnoticed for ten arms because every
-/// `.`-separated arm before C# also spelled it `finish` — Java, Kotlin, Python, Ruby, PureScript and
-/// Swift all do, and Rust's and C++'s `::` kept them out of the reading entirely. C# is the first
-/// arm that writes `.` **and** `PascalCase`, so it is the first for which the fixture's own string
-/// names a call the language does not bind.
-///
-/// It takes the trait object rather than a [`GgProgramLanguage`] so the seam's
-/// [fixture language](crate::sandbox::fixture_languages) can be handed to it too: that one has no
-/// wire id at all, on purpose.
-pub(super) fn every_code_section_on_for(
-    language: &dyn crate::sandbox::ProgramLanguage,
-) -> SystemContext {
-    let mut context = every_code_section_on(GgProgramLanguage::TypeScript);
-    context.ending.finish = crate::sandbox::spell(language, crate::sandbox::SESSION_FINISH);
-    context
-}
-
 /// **Every registered language's responses-as-code prompt renders, and carries every section.**
 ///
-/// Three failures at once, and each of them is one a single-language tree could not have had. A
-/// template that does not *parse* panics in [`engine`]. One that references a variable
-/// [`SystemContext`] does not carry fails strict-mode rendering here rather than in a run. And one
-/// that was copied from another language and lost a heading on the way is caught by
-/// [`REQUIRED_SECTIONS`], which is the failure the per-language split makes possible and this gate
-/// exists to close.
+/// Three failures at once. A template that does not *parse* panics in [`engine`]. One that references
+/// a variable [`SystemContext`] does not carry fails strict-mode rendering here rather than in a run.
+/// And one whose language segment swallowed the document below it — an unclosed `{{#if}}`, which is
+/// a failure exactly one arm exhibits and every other arm hides — is caught by
+/// [`REQUIRED_SECTIONS`], which is why one shared template is still rendered eleven times.
 #[test]
 fn every_language_renders_a_complete_system_prompt() {
     for &language in GgProgramLanguage::ALL {
@@ -1825,157 +1906,259 @@ fn every_language_renders_a_complete_system_prompt() {
     }
 }
 
-/// **A language that declares a library set names every library in it, and names nothing else.**
+/// A language id **no segment is written for**, so a prompt rendered under it is the shared body and
+/// nothing else.
 ///
-/// Rule 8 of the seam — commonly used libraries are available by default — is the one part of an
-/// arm's model-facing surface that is not a signature, and it drifts exactly the way a hand-written
-/// signature does. The Python arm's prompt claimed "the whole standard library of CPython 3.14"
-/// where `componentize-py` had baked a curated subset of it, and a model that believed it lost a
-/// turn to `import unittest`. Nothing caught that, because the sentence was prose.
+/// It is what makes a language's segment a thing a test can hold in its hand: everything else about
+/// the two renders — the sections, the rosters, the ceilings, the ending, even the display name and
+/// the checker — is identical, so their difference is exactly what `{{#if (eq language.id …)}}`
+/// contributed and nothing else.
+const NO_SUCH_LANGUAGE: &str = "no-such-language";
+
+/// The most paragraphs a language's own [segment](language_segment) may render.
 ///
-/// So the set is reflected into the language's [catalogue](crate::sandbox) from the code that
-/// decides it, and this is what holds the prompt to it: every group's heading and its exact,
-/// comma-joined list must appear in the rendered prompt. Joined rather than name-by-name because
-/// `rendered.contains("os")` is true of any English paragraph — the assertion has to be the line
-/// itself.
+/// The design's number, and it is a ceiling on **prose a model reads about its own language**, not a
+/// budget to spend. Three is what is left when everything discoverable has been taken out of a
+/// segment: how a reply is shaped, what a failed call does, and how a call's optional arguments are
+/// written. A fourth paragraph is not a formatting choice — it is something the model could have
+/// found by searching, or something the error that reports it should be saying instead.
+const MAX_SEGMENT_PARAGRAPHS: usize = 3;
+
+/// The most characters a language's own [segment](language_segment) may render, which is the half of
+/// the ceiling that stops three paragraphs from becoming three pages.
 ///
-/// A language whose catalogue declares no libraries is skipped rather than failed: whether an arm
-/// ships a curated set or gives a program its runtime's own standard library and nothing else is a
-/// property of the arm, and TypeScript's answer (ES2022, enforced by the checker's `lib`) is as
-/// legitimate as Python's.
+/// Both halves are needed. A paragraph count alone is satisfied by one enormous paragraph, and a
+/// character bound alone is satisfied by nine short ones — and the eleven templates this replaced
+/// failed in both directions at once, at 289–372 lines each.
+const MAX_SEGMENT_CHARS: usize = 1_400;
+
+/// Every paragraph of `rendered`, blank-line separated and trimmed.
+///
+/// A paragraph is the unit the ceiling is written in because it is the unit the prompt is written
+/// in: [`tidy`](super::tidy) has already collapsed every longer run of newlines to one blank line, so
+/// a bulleted list or a fenced block is one paragraph and a sentence added to a segment is visible as
+/// what it is.
+fn paragraphs(rendered: &str) -> Vec<String> {
+    rendered
+        .split("\n\n")
+        .map(|paragraph| paragraph.trim().to_string())
+        .filter(|paragraph| !paragraph.is_empty())
+        .collect()
+}
+
+/// **The language segment**: the paragraphs `language`'s prompt has that the same prompt rendered
+/// under [an id no segment is written for](NO_SUCH_LANGUAGE) does not.
+///
+/// This is a measurement rather than a claim about where the segment sits in the file. A segment
+/// written in three places would be found the same way, and so would a sentence somebody gated
+/// halfway down the document — which is exactly the drift a ceiling has to be able to see.
+fn language_segment(language: GgProgramLanguage) -> Vec<String> {
+    let mut without = every_code_section_on(language);
+    without
+        .language
+        .as_mut()
+        .expect("a code context names its language")
+        .id = NO_SUCH_LANGUAGE.to_string();
+    let shared = paragraphs(&render_system(&without, None));
+    paragraphs(&render_system(&every_code_section_on(language), None))
+        .into_iter()
+        .filter(|paragraph| !shared.contains(paragraph))
+        .collect()
+}
+
+/// **No language's segment runs longer than three paragraphs.**
+///
+/// The gate the one-template design rests on, and the one that will actually be load-bearing over
+/// time: nothing stops a shared file from growing eleven private appendices except a test that
+/// refuses them. It fails with the offending paragraphs printed, because the fix is never "raise the
+/// ceiling" — it is deciding, for the paragraph that pushed the arm over, whether a model could have
+/// found it by searching or whether the error that reports the thing should be carrying it.
+///
+/// It also asserts each segment is **non-empty**, which is the failure the ceiling cannot see: a gate
+/// whose id is misspelled (`c#` for `csharp`) renders a document with no segment at all, and every
+/// other assertion in this file would pass over it.
 #[test]
-fn a_language_that_declares_libraries_names_every_one_in_its_prompt() {
-    for &id in GgProgramLanguage::ALL {
-        let libraries = &crate::sandbox::language(id).catalogue().libraries;
-        if libraries.is_empty() {
-            continue;
-        }
-        let rendered = render_system(&every_code_section_on(id), None);
-        for group in libraries {
-            assert!(
-                rendered.contains(&group.group),
-                "{id}: the prompt does not carry the `{}` library group:\n{rendered}",
-                group.group
-            );
-            let listed = group.modules.join(", ");
-            assert!(
-                rendered.contains(&listed),
-                "{id}: the prompt does not list `{}`'s libraries as the catalogue has them \
-                 (`{listed}`):\n{rendered}",
-                group.group
+fn no_language_segment_runs_longer_than_three_paragraphs() {
+    for &language in GgProgramLanguage::ALL {
+        let segment = language_segment(language);
+        assert!(
+            !segment.is_empty(),
+            "{language}: nothing in the prompt is gated on this arm's id, so it is rendered a \
+             document that never says how a reply of its own is shaped. Check the spelling in \
+             `{{{{#if (eq language.id \"{}\")}}}}`.",
+            language.id()
+        );
+        assert!(
+            segment.len() <= MAX_SEGMENT_PARAGRAPHS,
+            "{language}: the language segment is {} paragraphs, and the ceiling is \
+             {MAX_SEGMENT_PARAGRAPHS}. What a segment may say is how a reply is shaped, what a \
+             failed call does, and how optional arguments are written — everything else a model can \
+             search for, or the error should be saying:\n\n{}",
+            segment.len(),
+            segment.join("\n\n")
+        );
+        let characters: usize = segment
+            .iter()
+            .map(|paragraph| paragraph.chars().count())
+            .sum();
+        assert!(
+            characters <= MAX_SEGMENT_CHARS,
+            "{language}: the language segment is {characters} characters, and the ceiling is \
+             {MAX_SEGMENT_CHARS}:\n\n{}",
+            segment.join("\n\n")
+        );
+    }
+}
+
+/// **Every arm's segment is its own.**
+///
+/// Two arms may legitimately share a *sentence* — JavaScript and TypeScript are one syntax, and the
+/// paragraph describing how a reply is shaped is the same paragraph for both — so the claim is made
+/// over the whole segment rather than paragraph by paragraph. What it refuses is a gate that was
+/// copied and not edited, which renders one arm's contract to another and is otherwise invisible:
+/// the document still parses, still carries every section, and is still the wrong document.
+#[test]
+fn every_arms_segment_is_its_own() {
+    let segments: Vec<(GgProgramLanguage, Vec<String>)> = GgProgramLanguage::ALL
+        .iter()
+        .map(|&language| (language, language_segment(language)))
+        .collect();
+    for (index, (language, segment)) in segments.iter().enumerate() {
+        for (other, theirs) in &segments[index + 1..] {
+            assert_ne!(
+                segment, theirs,
+                "{language} and {other} render the same language segment, so one of them is \
+                 reading the other's contract"
             );
         }
     }
 }
 
-/// **A checked language's prompt says its programs are checked, and what that means for a model.**
+/// **A checked language's prompt says its programs are checked; an unchecked one's says nothing at
+/// all about a compiler.**
 ///
 /// Deliberately outside [`REQUIRED_SECTIONS`] and [`REQUIRED_RULES`], which are the *universal*
-/// tables: whether a program is type-checked is precisely the axis a cross-language study varies, so
-/// a language that checks nothing must be free to render no such section. What is not free is
-/// checking a program and not saying so — a model that believes its types are erased writes
-/// differently (and worse) than one that knows a mistake in a signature costs it a turn before any
-/// work happens.
-///
-/// The phrases are the terms the statement cannot be made without, on the same discipline
-/// [`REQUIRED_RULES`] keeps: the paragraph may be rewritten or re-emphasized around them.
+/// tables: whether a program is checked before it runs is precisely the axis a cross-language study
+/// varies, so an arm that checks nothing must render no such sentence. What is not free is either
+/// direction of getting it wrong — a model that believes its program is checked writes differently
+/// (and worse) than one that knows it is not, and a model promised diagnostics it will never receive
+/// spends turns waiting for them.
 ///
 /// Every assertion here is **identity**, never spelling — the compiler's name is taken from the
 /// language ([`ProgramLanguage::checker`]) rather than written down, because `tsc` is TypeScript's
 /// word for its own checker and a Rust or a Kotlin arm naming `rustc` or `kotlinc` is making the
-/// same statement, correctly. A gate that demanded the token `tsc` of every checked language would
-/// fail the next arm registered, and for exactly the wrong reason.
+/// same statement, correctly.
 ///
-/// **What the check *is* is not asserted either**, and that took a second checked arm to notice.
-/// This table once demanded the word `type-check`, which is TypeScript's answer to a question the
-/// seam never asked: [`checker`](ProgramLanguage::checker) says a program is read and judged before
-/// it runs, not that its *types* are. [Ruby](crate::sandbox::language)'s Opal has no type system at
-/// all and refuses a program on grammar alone, so a Ruby prompt saying `type-check` would be a
-/// sentence that is false about the arm it is rendered for. The term both can be stated without
-/// lying is gg's own — a program is **compiled**, which is exactly what naming a checker means here
-/// and what [`PrepareError::Compile`](crate::sandbox::PrepareError::Compile) is the band for.
+/// **What the check *is* is not asserted**, and that took a second checked arm to notice. This once
+/// demanded the word `type-check`, which is TypeScript's answer to a question the seam never asked:
+/// [`checker`](ProgramLanguage::checker) says a program is read and judged before it runs, not that
+/// its *types* are. Ruby's Opal has no type system at all and refuses a program on grammar alone. The
+/// term both can be stated without lying is gg's own — a program is **compiled**, which is what
+/// naming a checker means here and what
+/// [`PrepareError::Compile`](crate::sandbox::PrepareError::Compile) is the band for.
+///
+/// The **cross-arm** half is new with the shared template and is the failure it makes possible: one
+/// file that names `rustc` outside its gate names it at every arm, and a Swift model told its program
+/// is compiled by `rustc` has been handed a sentence that is false in a document it has no reason to
+/// doubt.
 #[test]
-fn a_prompt_for_a_checked_language_says_its_programs_are_checked() {
+fn a_prompt_says_which_compiler_judges_it_or_names_none_at_all() {
     for language in all_languages() {
-        let Some(checker) = language.checker() else {
-            continue;
-        };
         let name = language.display_name();
-        let rendered = plain(&render_system_for(
-            language,
-            &every_code_section_on(language.id()),
-        ));
-        for (what, phrase) in [
-            ("that the program is checked before it runs", "compile"),
-            (
-                "that a program which fails the check does not run",
-                "not executed",
+        let rendered = plain(&render_system(&every_code_section_on(language.id()), None));
+        match language.checker() {
+            Some(checker) => {
+                for (what, phrase) in [
+                    ("that the program is checked before it runs", "compile"),
+                    (
+                        "that a program which fails the check does not run",
+                        "not executed",
+                    ),
+                    ("which compiler judges it", checker),
+                ] {
+                    assert!(
+                        rendered.contains(phrase),
+                        "{name}: the prompt no longer states {what} (`{phrase}`):\n{rendered}"
+                    );
+                }
+            }
+            None => assert!(
+                !rendered.contains("not executed"),
+                "{name}: nothing reads this arm's programs before they run, so its prompt must not \
+                 promise a program can be refused before it does:\n{rendered}"
             ),
-            ("which compiler judges it", checker),
-        ] {
+        }
+        // Whatever this arm's answer, it is not another arm's compiler.
+        for other in all_languages() {
+            let Some(checker) = other.checker() else {
+                continue;
+            };
+            if language.checker() == Some(checker) {
+                continue;
+            }
             assert!(
-                rendered.contains(phrase),
-                "{name}: the prompt no longer states {what} (`{phrase}`):\n{rendered}"
+                !rendered.contains(&format!("`{checker}`")),
+                "{name}: the prompt names `{checker}`, which judges {}'s programs and not this \
+                 arm's:\n{rendered}",
+                other.display_name()
             );
         }
     }
 }
 
-/// **TypeScript's prompt says its programs are TYPE-checked, and not merely compiled.**
+/// **`language.checker` gates prose, and not only the compiler's name.**
 ///
-/// The coverage this restores. [`a_prompt_for_a_checked_language_says_its_programs_are_checked`]
-/// once demanded the token `type-check` of every checked language, and had to stop when Ruby
-/// registered — Opal refuses a program on grammar alone, so that word would be false there. But the
-/// shared term it moved to (`compile`) is true of both, which leaves the single most load-bearing
-/// sentence in the TypeScript arm unasserted: that a model's *types* are judged before its program
-/// runs is the entire content of the TypeScript/JavaScript A/B, and a prompt that quietly lost it
-/// would leave the two arms differing only in a `.ts` extension.
+/// The withheld-capability paragraph is the reason the flag is on the context at all. On a compiled
+/// arm the SDK declares every function whatever the run enabled, so a call to a capability this run
+/// withheld *compiles* and then fails when it runs — a model that was not told reads that as a bug in
+/// gg and retries. On an interpreted arm the same failure is indistinguishable from any other, so
+/// the paragraph is withheld rather than restated for every reader who cannot act on it.
 ///
-/// Scoped to this language rather than added back to the table for the reason
-/// [`typescripts_checked_prompt_says_a_caught_error_arrives_unnarrowed`] is scoped: what a checker
-/// checks is the language's own claim, and each arm gets to make its own.
+/// Asserted as a **difference** rather than as a phrase: what the paragraph says is the template's to
+/// word, and pinning it here would make an editing pass fail a test about gating. What is pinned is
+/// that flipping the flag changes the document at all — which is the property a `{{#if}}` either has
+/// or does not.
 #[test]
-fn typescripts_prompt_says_its_programs_are_type_checked() {
-    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
-    let rendered = plain(&render_system_for(
-        language,
-        &every_code_section_on(language.id()),
-    ));
-    assert!(
-        rendered.contains("type-check"),
-        "the prompt no longer states that the program's TYPES are checked (`type-check`), which is \
-         the whole difference between this arm and the JavaScript one:\n{rendered}"
-    );
+fn the_checker_gates_more_than_its_own_name() {
+    for language in all_languages() {
+        let name = language.display_name();
+        let mut flipped = every_code_section_on(language.id());
+        let view = flipped
+            .language
+            .as_mut()
+            .expect("a code context names its language");
+        view.checker = match language.checker() {
+            Some(_) => None,
+            None => Some("some-compiler".to_string()),
+        };
+        assert_ne!(
+            render_system(&every_code_section_on(language.id()), None),
+            render_system(&flipped, None),
+            "{name}: `language.checker` gates nothing, so an arm whose programs are compiled and \
+             one whose programs are not are told the same thing"
+        );
+    }
 }
 
-/// **TypeScript's checked prompt tells a model how to read the error a caught failure gives it.**
-///
-/// Split out of [`a_prompt_for_a_checked_language_says_its_programs_are_checked`] rather than folded
-/// into it, because `unknown` is a **TypeScript spelling**: it is what `catch` binds under this
-/// language's checker, and a program that treats it as anything else does not compile. Another
-/// language's checker raises the same problem in its own vocabulary or not at all, so holding every
-/// checked arm to this token would be holding them to TypeScript's grammar.
-#[test]
-fn typescripts_checked_prompt_says_a_caught_error_arrives_unnarrowed() {
-    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
-    let rendered = plain(&render_system_for(
-        language,
-        &every_code_section_on(language.id()),
-    ));
-    assert!(
-        rendered.contains("unknown"),
-        "the prompt no longer states that a caught error has to be narrowed (`unknown`):\n\
-         {rendered}"
-    );
-}
-
-/// **Every registered language's "nothing shown" notice renders, and is not the fallback.**
+/// **Every registered language's "nothing shown" notice renders, is not the fallback, and is worded
+/// for the arm it is rendered for.**
 ///
 /// The fallback exists so a broken template costs a turn its wording rather than the run its
 /// process, which means a template that stopped rendering would be invisible in production. So it is
 /// made visible here: the rendered notice must differ from the sentence that stands in for it.
+///
+/// The per-arm half is what the notice is a language's at all *for*. It no longer names the calls
+/// that would have shown the model something — nothing gg says does — so the one thing left in it
+/// that only one arm's model would recognize is that arm's own dead output channel: `println!`,
+/// `puts`, `Console.WriteLine`. That is asserted the way [`language_segment`] asserts a segment, by
+/// rendering the same notice under an id no clause is written for.
 #[test]
-fn every_language_renders_its_nothing_shown_notice() {
+fn every_language_renders_its_own_nothing_shown_notice() {
+    let bodiless = super::try_render(
+        "code-nothing-shown",
+        &serde_json::json!({ "language": { "id": NO_SUCH_LANGUAGE, "displayName": "None" } }),
+    )
+    .expect("the notice renders for a language no clause is written for");
     for &language in GgProgramLanguage::ALL {
         let rendered = render_code_nothing_shown(language);
         assert!(!rendered.trim().is_empty(), "{language}: an empty notice");
@@ -1984,114 +2167,25 @@ fn every_language_renders_its_nothing_shown_notice() {
             super::nothing_shown_fallback(),
             "{language}: the notice fell back, so its template did not render"
         );
-    }
-}
-
-/// **A language's prompt is its own**: the same context, rendered for two languages, produces two
-/// documents written in two sets of spellings.
-///
-/// This is the assertion the per-language split exists for, and it is the one a tree with a single
-/// registered language cannot make: with one template, "the prompt is selected per language" and
-/// "there is one prompt" are the same observation. So it is made against the seam's
-/// [fixture language](crate::sandbox::fixture_languages), through the **registered** template name
-/// rather than through the override path — because the registered name is the path a run takes.
-///
-/// Three things are asserted, and the third is the one that would catch a regression: each document
-/// is written in its own language's words; neither carries the other's marker; and both are rendered
-/// from *one* [`SystemContext`], so the shared machinery — the sections, the module list, the ending
-/// block — is genuinely shared and only the wording is per language.
-///
-/// The **spellings** half of this used to be carried by the two calls each template quoted from its
-/// own catalogue. With no template naming a function, what distinguishes the documents is their
-/// prose and their module lists, and that is what is read here.
-#[test]
-fn each_language_renders_its_own_prompt_and_not_another_languages() {
-    let context = every_code_section_on(GgProgramLanguage::TypeScript);
-    let fixture = crate::sandbox::fixture_languages()
-        .next()
-        .expect("the seam registers a fixture language under test");
-
-    let typescript = render_system_for(
-        crate::sandbox::language(GgProgramLanguage::TypeScript),
-        &context,
-    );
-    let rendered = render_system_for(fixture, &context);
-
-    assert!(
-        flat(&typescript).contains("TypeScript program"),
-        "TypeScript's prompt names the language it is written in:\n{typescript}"
-    );
-    assert!(
-        flat(&rendered).contains("program in the fixture language"),
-        "the fixture's prompt names its own language:\n{rendered}"
-    );
-    assert!(
-        !flat(&typescript).contains("fixture language"),
-        "one language's prompt leaked into the other's:\n{typescript}"
-    );
-
-    // Neither document carries the other's spellings. This is the assertion the two calls the
-    // fixture's template used to quote from its own catalogue were carrying; what carries it now is
-    // that TypeScript's names appear in no document rendered for another arm — which is exactly what
-    // a template copied between arms and left unedited would break.
-    //
-    // The **ending** is deliberately not read here even though it is the one name still resolved per
-    // language, because this test renders one `SystemContext` for both arms on purpose, and the
-    // ending reaches the template as data on that context rather than through a catalogue: both
-    // documents necessarily carry the same one. The gate that spells it per arm is
-    // `every_language_prompt_states_what_the_run_configured`.
-    assert!(
-        !rendered.contains("readFile") && !rendered.contains("openText"),
-        "the fixture's prompt quotes another language's spellings:\n{rendered}"
-    );
-
-    // One context, two documents: the module list the run built is in both.
-    for document in [&typescript, &rendered] {
-        assert!(
-            document.contains("`harness`"),
-            "the shared context did not reach this language's template:\n{document}"
+        assert_ne!(
+            rendered, bodiless,
+            "{language}: the notice says nothing about this arm's own output, so a model whose \
+             program printed its answer is not told the printing went nowhere"
         );
+        assert_no_blank_run(&rendered);
     }
-}
-
-/// **The "nothing shown" notice is per language too**, for what is left of the reason the prompt is.
-///
-/// It no longer names the calls that would have shown the model something — nothing gg says does —
-/// so what it is per language *for* is now the arm's own dead channel: the notice tells a model that
-/// what it wrote to `println!`, `puts` or `Console.WriteLine` is unreadable, and each of those is a
-/// word only one arm's model would recognize.
-///
-/// Asserted through the seam's fixture, whose notice is its own sentence: if the selection were not
-/// per language the shipped TypeScript one would render here instead.
-#[test]
-fn each_language_words_its_own_nothing_shown_notice() {
-    let fixture = crate::sandbox::fixture_languages()
-        .next()
-        .expect("the seam registers a fixture language under test");
-    let rendered = render_code_nothing_shown_for(fixture);
-    assert_eq!(
-        rendered,
-        "Your program showed you nothing. Open a view of it."
-    );
-    assert_ne!(
-        rendered,
-        super::nothing_shown_fallback(),
-        "the notice fell back, so its template did not render"
-    );
 }
 
 // ---------------------------------------------------------------------------
 // What a prompt still tells the model
 // ---------------------------------------------------------------------------
 
-/// Every language a prompt can be rendered for: the registry, plus the seam's fixture language.
-///
-/// A gate that walked only [`GgProgramLanguage::ALL`] would be a gate exercised against one
-/// implementation, which is the shape that cannot tell "the prompt is per language" apart from
-/// "there is one prompt".
-fn every_language() -> impl Iterator<Item = &'static dyn crate::sandbox::ProgramLanguage> {
-    all_languages().chain(crate::sandbox::fixture_languages())
-}
+// The seam's fixture language is no longer rendered anywhere in this file, and its absence is the
+// change rather than an oversight. It was here to tell "the prompt is selected per language" apart
+// from "there is one prompt" — a distinction that existed while there were eleven templates and one
+// registered arm to compare them with. There is one template now, every arm renders all of it, and
+// what is per language is a segment gated on a **wire id**, which is exactly the thing the fixture
+// deliberately does not have.
 
 /// The statements every registered language's responses-as-code prompt must still make about the
 /// run it was rendered for, each paired with the label that says which one went missing.
@@ -2126,11 +2220,12 @@ const REQUIRED_PHRASES: &[(&str, &str)] = &[
     // ## Skills — the library's roster. Reading a skill takes one of these names and no others.
     ("the skill's name", "`gg-filesystem`"),
     ("the skill's description", "reading and writing files"),
-    // ## Memory — the budget a model has to write within.
-    ("the memory description ceiling", "120 characters"),
-    ("the memory scope", "`run`"),
-    // ## Tasks — the ceiling.
-    ("the task ceiling", "100"),
+    // ## Memory and ## Tasks carry no entry here any more, and the three that went are all one
+    // decision. The memory description ceiling and the task ceiling were numbers every agent read
+    // in front of an error that states them at the moment one is actually exceeded, which is the
+    // just-in-time rule's own worked example. The memory *scope* went with the paragraph that
+    // needed it: an agent is not told that other agents hold the same memories and curate them
+    // alongside it, because knowing changes nothing it can do.
     // ## Subagents — the roster a delegation may name.
     ("the spawnable agent's name", "`helper`"),
     ("the spawnable agent's description", "does scoped work"),
@@ -2146,19 +2241,13 @@ const REQUIRED_PHRASES: &[(&str, &str)] = &[
 /// **Every registered language's prompt still says what the run configured.**
 ///
 /// Rendered under [`every_code_section_on`], which turns on every section a code prompt can carry,
-/// for every **registered** language — so a template copied to a new language and pruned on the way
-/// fails here as loudly as the shared one would. The seam's fixture language is deliberately out of
-/// scope, on the same terms as [`REQUIRED_SECTIONS`]: its template is a stub that renders four
-/// sections on purpose, and holding a stub to the registry's contract would only force the stub to
-/// grow.
+/// for every registered language — because a language segment is a `{{#if}}` like any other, and one
+/// that failed to close would take the rosters and the ceilings below it with it on that arm alone.
 #[test]
 fn every_language_prompt_states_what_the_run_configured() {
     for language in all_languages() {
         let name = language.display_name();
-        let rendered = flat(&render_system_for(
-            language,
-            &every_code_section_on_for(language),
-        ));
+        let rendered = flat(&render_system(&every_code_section_on(language.id()), None));
         for (what, phrase) in REQUIRED_PHRASES {
             assert!(
                 rendered.contains(phrase),
@@ -2188,8 +2277,11 @@ fn every_language_prompt_states_what_the_run_configured() {
 /// Unlike [`REQUIRED_PHRASES`], whose every entry is a value the context carried, each phrase here is
 /// a word of the prompt's **own prose**. That is unavoidable — a rule is prose — so the discipline
 /// instead is that the phrase must be the term the rule cannot be stated without. A paragraph may be
-/// rewritten, re-wrapped or re-emphasized around it and still pass; a language whose template
-/// translates the rule keeps the word because the word is the rule.
+/// rewritten, re-wrapped or re-emphasized around it and still pass.
+///
+/// All five are in the **shared body**, and that is where they belong: none of them is a fact about a
+/// language. A segment that restated one would be spending an arm's three paragraphs on something
+/// every arm is already told.
 const REQUIRED_RULES: &[(&str, &str)] = &[
     // Every call blocks. The alternative reading — that a call returns something to be awaited — is
     // the one a model brings with it, and a program written under it does its work in a callback
@@ -2219,10 +2311,7 @@ const REQUIRED_RULES: &[(&str, &str)] = &[
 fn every_language_prompt_states_the_rules_a_program_runs_under() {
     for language in all_languages() {
         let name = language.display_name();
-        let rendered = plain(&render_system_for(
-            language,
-            &every_code_section_on(GgProgramLanguage::TypeScript),
-        ));
+        let rendered = plain(&render_system(&every_code_section_on(language.id()), None));
         for (what, phrase) in REQUIRED_RULES {
             assert!(
                 rendered.contains(phrase),
@@ -2238,8 +2327,13 @@ fn every_language_prompt_states_the_rules_a_program_runs_under() {
 /// `REQUIRED_CALLS`: a table pairing every capability with the call its section had to name, so a
 /// model handed "You have access to a task list" and no call could not be mistaken for a model that
 /// simply could not use tasks. With the prompt naming nothing, that table is retired rather than
-/// retargeted — pointing it at the prompt and the bootstrap would force one named call per granted
-/// capability, which is exactly the immediate function information the design removes.
+/// retargeted, and the reason is the template rather than the design: one file now serves every
+/// [program language](crate::sandbox::ProgramLanguage), and a language-agnostic template **cannot
+/// spell a call** — the spelling is the arm's. There is no sentence left for such a table to hold to
+/// account. What it once asserted is not withheld from the model either: the
+/// [bootstrap](crate::bootstrap)'s opening turn runs a program that lists every module the run
+/// granted, with a one-line brief per function, so the surface still arrives on turn one — just not
+/// out of a `.hbs` file.
 ///
 /// What it was protecting moved to [the discoverability gate](crate::docs), which verifies the same
 /// property end to end and far better: for every capability an agent is granted, the words a model
@@ -2258,7 +2352,7 @@ fn every_language_prompt_states_the_rules_a_program_runs_under() {
 /// template's: [`modules`](SystemContext::modules), whose lines are the catalogue's own prose, and
 /// [`code_headings`](SystemContext::code_headings), whose descriptions are authored in Rust. Both
 /// are exactly where a call name gets in — and running this against
-/// [`every_code_section_on_for`]'s literals, which is what it used to do, is running it against the
+/// [`every_code_section_on`]'s literals, which is what it used to do, is running it against the
 /// one input that cannot exhibit the failure. It passed over a prompt that named a function on
 /// every arm.
 ///
@@ -2293,7 +2387,7 @@ fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
             let name = language.display_name();
             // The fixture supplies the sections; the loop's own projections supply the two fields
             // whose text is the catalogue's rather than a template's.
-            let mut context = every_code_section_on_for(language);
+            let mut context = every_code_section_on(id);
             context.modules = crate::agent::module_views(held, granted, EndingRole::Standard, id);
             context.code_headings = crate::agent::code_heading_views(true, true, true, true);
 
@@ -2320,7 +2414,7 @@ fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
                 }
             }
 
-            let rendered = render_system_for(language, &context);
+            let rendered = render_system(&context, None);
             // The ending this context was rendered with, spelled as this arm writes it: the one
             // exception, named rather than pattern-matched so widening it is a visible edit.
             let allowed = [context.ending.finish.as_str()];
@@ -2375,13 +2469,13 @@ fn a_read_only_memory_holder_is_told_the_memories_are_not_its_own() {
     ] {
         for language in all_languages() {
             let name = language.display_name();
-            let mut context = every_code_section_on(GgProgramLanguage::TypeScript);
+            let mut context = every_code_section_on(language.id());
             let memories = context.memories.as_mut().expect("the memory section is on");
             memories.scratchpad = false;
             memories.markdown = markdown;
             memories.keyword_search = keyword_search;
             memories.read_only = true;
-            let rendered = flat(&render_system_for(language, &context));
+            let rendered = flat(&render_system(&context, None));
             assert!(
                 rendered.contains("read-only access to another agent's memories"),
                 "{name}: a read-only holder reading {what} is not told whose memories these \
@@ -2409,8 +2503,8 @@ fn a_read_only_memory_holder_is_told_the_memories_are_not_its_own() {
 /// mandatory review optional.
 #[test]
 fn a_run_that_requires_reviewers_tells_the_model_it_must_name_one() {
-    fn board(reviewers_required: bool) -> SystemContext {
-        let mut context = every_code_section_on(GgProgramLanguage::TypeScript);
+    fn board(language: GgProgramLanguage, reviewers_required: bool) -> SystemContext {
+        let mut context = every_code_section_on(language);
         context
             .board
             .as_mut()
@@ -2421,12 +2515,12 @@ fn a_run_that_requires_reviewers_tells_the_model_it_must_name_one() {
 
     for language in all_languages() {
         let name = language.display_name();
-        let required = flat(&render_system_for(language, &board(true)));
+        let required = flat(&render_system(&board(language.id(), true), None));
         assert!(
             required.contains("Every issue must name one or more `reviewers`"),
             "{name}: a run requiring reviewers no longer says so:\n{required}"
         );
-        let optional = flat(&render_system_for(language, &board(false)));
+        let optional = flat(&render_system(&board(language.id(), false), None));
         assert!(
             optional.contains("An issue may name one or more `reviewers`"),
             "{name}: a run not requiring reviewers no longer says they are optional:\n{optional}"
@@ -2457,12 +2551,12 @@ fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
         crate::sandbox::VIEWS_OPEN_FILE,
         crate::sandbox::SHELL_SHELL,
     ];
-    for language in every_language() {
+    for language in all_languages() {
         let name = language.display_name();
         // Every section off, and only the ending — which every agent has — left on.
         let context = SystemContext {
             responses_as_code: true,
-            language: Some(GgProgramLanguage::TypeScript),
+            language: Some(language_view(language.id())),
             modules: vec![ModuleView {
                 path: "harness".to_string(),
                 brief: "the run itself".to_string(),
@@ -2475,7 +2569,7 @@ fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
             },
             ..SystemContext::default()
         };
-        let rendered = render_system_for(language, &context);
+        let rendered = render_system(&context, None);
         for call in withheld {
             let spelling = crate::sandbox::spell(language, call);
             assert!(
@@ -2575,4 +2669,103 @@ fn an_override_that_does_not_parse_is_refused_at_launch() {
     let mut report = crate::validate::LaunchReport::collecting();
     check_launch(&GgAgentConfig::root(), &mut report);
     assert!(report.is_empty());
+}
+
+// ---------------------------------------------------------------------------------------------
+// The copy the console reads
+// ---------------------------------------------------------------------------------------------
+
+/// The generated-and-committed copy of both templates the console seeds its editors from.
+///
+/// `scripts/gen-contract.mjs` writes it out of the two `.hbs` files gg embeds, and
+/// `scripts/ci/contract-drift.sh` regenerates and diffs it in CI. It is included here so the
+/// staleness is a *suite* failure as well, for the reason it went unnoticed once: the drift script
+/// is reached for when somebody thinks a contract **type** moved, and a template is not a type.
+const COMMITTED_TEMPLATES: &str =
+    include_str!("../../../packages/run-record/src/gg-system-prompt.ts");
+
+/// The string literal `name` is assigned in [`COMMITTED_TEMPLATES`], unescaped.
+///
+/// Written out rather than taken from a parser because the escaping is the whole of it: the
+/// generator writes `JSON.stringify(template)` and prettier then re-quotes the literal to whichever
+/// quote character needs fewer escapes, so a byte comparison against either spelling would be a test
+/// about prettier. Unescaping answers the question actually being asked — *is the text in this file
+/// the text gg embeds* — in either spelling.
+fn committed_template(name: &str) -> String {
+    let assignment = format!("export const {name} =");
+    let tail = COMMITTED_TEMPLATES
+        .split_once(&assignment)
+        .unwrap_or_else(|| {
+            panic!("{name} is exported by packages/run-record/src/gg-system-prompt.ts")
+        })
+        .1;
+    let opened = tail
+        .find(['\'', '"'])
+        .expect("the constant is assigned a string literal");
+    let quote = tail.as_bytes()[opened] as char;
+    let mut text = String::new();
+    let mut characters = tail[opened + 1..].chars();
+    while let Some(character) = characters.next() {
+        match character {
+            _ if character == quote => return text,
+            '\\' => match characters
+                .next()
+                .expect("an escape is not the last character")
+            {
+                'n' => text.push('\n'),
+                't' => text.push('\t'),
+                'r' => text.push('\r'),
+                escaped => text.push(escaped),
+            },
+            _ => text.push(character),
+        }
+    }
+    panic!("the string literal assigned to {name} is never closed");
+}
+
+/// **What the console shows an operator is what gg would render.**
+///
+/// The console seeds its per-agent System Prompt editor from these two constants and stores an
+/// override whenever the text an operator saves differs from them — and
+/// [`render_system`](super::render_system) runs an override *instead of* gg's own template. So a
+/// committed copy that has fallen behind is not a stale comment: it is a path from a template edit
+/// to a real model reading a paragraph describing an arrangement this tree deleted. That is not
+/// hypothetical either — the eleventh and last arm to convert on this branch edited
+/// `system-code.hbs` and did not regenerate, and every gate but the drift script stayed green.
+#[test]
+fn the_committed_copy_of_each_template_is_the_one_gg_embeds() {
+    for (name, embedded) in [
+        ("DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE", SYSTEM_TOOLS_TEMPLATE),
+        (
+            "DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE",
+            SYSTEM_CODE_TEMPLATE,
+        ),
+    ] {
+        let committed = committed_template(name);
+        // The first line that differs rather than `assert_eq!`, because these are ~500-line
+        // documents and the whole of both printed twice buries the one line that moved.
+        let differing = committed
+            .lines()
+            .zip(embedded.lines())
+            .enumerate()
+            .find(|(_, (committed, embedded))| committed != embedded)
+            .map(|(index, (committed, embedded))| {
+                format!(
+                    "first at line {}:\n  committed: {committed}\n  gg embeds: {embedded}",
+                    index + 1
+                )
+            })
+            .unwrap_or_else(|| {
+                format!(
+                    "the committed copy is {} lines and gg's is {}",
+                    committed.lines().count(),
+                    embedded.lines().count()
+                )
+            });
+        assert!(
+            committed == embedded,
+            "{name} in packages/run-record/src/gg-system-prompt.ts is not the template gg embeds \
+             — {differing}\n\nRun `npm run gen:contract` and commit the result."
+        );
+    }
 }

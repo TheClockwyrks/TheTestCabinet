@@ -45,8 +45,8 @@
 //!
 //! The programs below do call the SDK, and that is deliberate rather than incidental: `gg.log` and
 //! `files.readTextFile` are what a model writes, so a substrate proven with them is a substrate proven
-//! through the prebuilt `gg` module, the `@_exported import` in the shell and the `-I` that resolves
-//! it — every part of the arrangement that puts a surface in a model's scope with no import line.
+//! through the prebuilt `gg` module, the `import gg` the program itself writes and the `-I` that
+//! resolves it — every part of the arrangement a call really travels.
 //!
 //! # Why these tests are consolidated
 //!
@@ -58,6 +58,9 @@
 use std::time::Instant;
 
 use test_cabinet_core::gg::GgProgramLanguage;
+
+use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
@@ -173,7 +176,7 @@ fn evaluate_granting(
         store.data_mut().revoke_completion();
     }
     let returned = keep_reported_error(returned, &store);
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     (outcome, log)
 }
 
@@ -224,7 +227,9 @@ fn a_real_swift_program_runs_through_the_real_membrane() {
     // string interpolation, `guard let` over an optional, and a `throws` function caught with
     // `do`/`catch`. The point is not that any one of them is doubtful — it is that a whole Swift
     // program survives `swiftc`, the component encode and the crossing rather than a subset.
-    let outcome = run(r#"struct Entry {
+    let outcome = run(r#"import gg
+
+struct Entry {
     let word: String
     let count: Int
     var label: String { "\(word)=\(count)" }
@@ -288,8 +293,10 @@ fn a_swift_program_dispatches_a_real_call_through_the_membrane() {
     // `files.readTextFile` takes a string and hands one back, which is the shortest round trip this arm
     // has through the membrane. What it proves is that a Swift program's arguments are lowered, that
     // gg's host dispatches the tool, and that what comes back is a value the program can compute
-    // with — through the SDK a model really writes against, with no import line in front of it.
-    let program = r#"do {
+    // with — through the SDK a model really writes against, reached by the import it wrote itself.
+    let program = r#"import gg
+
+do {
     let contents = try files.readTextFile("notes.md")
     let firstLine = contents.split(separator: "\n").first.map(String.init) ?? ""
     gg.log("read \(firstLine.uppercased())")
@@ -330,7 +337,9 @@ fn a_swift_runtime_failure_arrives_with_what_it_was_and_where() {
     // bare `unreachable` and encodes the message as the name of a synthetic inlined frame. So `-g`
     // plus a symbolicating engine is the difference between the two lines below and
     // `program.wasm!main`.
-    let outcome = run(r#"let numbers = [1, 2, 3]
+    let outcome = run(r#"import gg
+
+let numbers = [1, 2, 3]
 gg.log("before")
 let missing = numbers[9]
 gg.log("after \(missing)")
@@ -342,7 +351,7 @@ gg.log("after \(missing)")
         "the Swift runtime's own message did not reach the model: {failure}"
     );
     assert!(
-        failure.contains("main.swift:3:"),
+        failure.contains("main.swift:5:"),
         "an out-of-range subscript was not located at the model's own line: {failure}"
     );
     assert!(
@@ -358,7 +367,9 @@ gg.log("after \(missing)")
 
     // The other three shapes a model actually writes. Each carries its own words and its own line —
     // which is what compiling the reply verbatim buys, since there is no offset to subtract.
-    let unwrapped = run(r#"let text = "not a number"
+    let unwrapped = run(r#"import gg
+
+let text = "not a number"
 let parsed = Int(text)!
 gg.log("\(parsed)")
 "#);
@@ -368,25 +379,26 @@ gg.log("\(parsed)")
         "a force-unwrapped nil did not carry its own message: {failure}"
     );
     assert!(
-        failure.contains("main.swift:2:"),
+        failure.contains("main.swift:4:"),
         "a force-unwrapped nil was not located at the model's line: {failure}"
     );
 
-    let stopped = run("gg.log(\"one\")\nfatalError(\"gg substrate stop\")\n");
+    let stopped = run("import gg\n\ngg.log(\"one\")\nfatalError(\"gg substrate stop\")\n");
     let failure = sandbox_error(&stopped).to_string();
     assert!(
         failure.contains("gg substrate stop"),
         "a fatalError's own message did not reach the model: {failure}"
     );
     assert!(
-        failure.contains("main.swift:2:"),
+        failure.contains("main.swift:4:"),
         "a fatalError was not located at the model's line: {failure}"
     );
 
     // Arithmetic overflow is the fourth, and the one whose failure is furthest from what the model
     // wrote: `+` on two `Int`s is a trap rather than a wrap.
-    let overflowed =
-        run("var big = Int.max\ngg.log(\"counting\")\nbig += 1\ngg.log(\"\\(big)\")\n");
+    let overflowed = run(
+        "import gg\n\nvar big = Int.max\ngg.log(\"counting\")\nbig += 1\ngg.log(\"\\(big)\")\n",
+    );
     let failure = sandbox_error(&overflowed).to_string();
     assert!(
         failure.contains("arithmetic overflow"),
@@ -406,7 +418,8 @@ fn what_a_program_writes_to_stderr_reaches_the_model() {
     // `a_swift_runtime_failure_arrives_with_what_it_was_and_where`). What comes through here is
     // what a program says on purpose — and what any future guest whose runtime does print its
     // failures would say.
-    let outcome = run(r#"import WASILibc
+    let outcome = run(r#"import gg
+import WASILibc
 
 gg.log("logged")
 fputs("gg substrate said this on stderr\n", stderr)
@@ -429,7 +442,7 @@ precondition(false, "and then stopped")
         "the failure that followed it was lost: {failure}"
     );
     assert!(
-        failure.contains("main.swift:6:"),
+        failure.contains("main.swift:7:"),
         "the failure was not located at the model's line: {failure}"
     );
     assert_eq!(outcome.logs, ["logged"]);
@@ -441,7 +454,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // before meaning is considered: an unclosed brace and a type error are both an `error:` from
     // one invocation.
     let syntax = compile_program(
-        "let x = (1 + 2\ngg.log(\"\\(x)\")\n",
+        "import gg\n\nlet x = (1 + 2\ngg.log(\"\\(x)\")\n",
         &[],
         &PrepareContext::new(),
     );
@@ -453,7 +466,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
                 "a rejected program did not carry the compiler's diagnostic: {rendered}"
             );
             assert!(
-                rendered.contains("main.swift:1"),
+                rendered.contains("main.swift:3"),
                 "a diagnostic was not located in the model's own coordinates: {rendered}"
             );
         }
@@ -475,7 +488,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // A compiler that is not there at all. Never a diagnostic, because nothing was decided about
     // the program — and the message names what an operator can fix.
     let missing = temp_env(compile::SWIFT_HOME_ENV, "/nonexistent/gg-swift", || {
-        compile_program("gg.log(\"hi\")\n", &[], &PrepareContext::new())
+        compile_program("import gg\n\ngg.log(\"hi\")\n", &[], &PrepareContext::new())
     });
     match missing {
         Err(PrepareFailure::Toolchain(message)) => {
@@ -512,7 +525,8 @@ fn a_swift_program_is_compiled_verbatim() {
 
     // And the reverse: an `import`, an `extension` and a `protocol` all compile, which is the whole
     // reason a reply is a top-level file rather than a function body.
-    let outcome = run(r#"import Swift
+    let outcome = run(r#"import gg
+import Swift
 
 protocol Greets { func greet() -> String }
 
@@ -550,7 +564,7 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
         .to_string(),
     };
     let component = match compile_program(
-        "gg.log(lib.csvTools.parse(\"a,b\", delimiter: \",\").cells.joined(separator: \"|\"))\n",
+        "import gg\n\ngg.log(lib.csvTools.parse(\"a,b\", delimiter: \",\").cells.joined(separator: \"|\"))\n",
         std::slice::from_ref(&module),
         &PrepareContext::new(),
     ) {
@@ -561,6 +575,79 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
     };
     let outcome = evaluate(&component, &[], RunEnding::None, false, canned_outcome).0;
     assert_eq!(logs(&outcome), ["a|b"]);
+}
+
+/// **A code module reaches gg's surface through its own import line**, which is the same line a
+/// program writes and is written by the module's author rather than by gg.
+///
+/// A Swift `import` is file-scoped, so nothing the program wrote reaches the module's file and
+/// nothing gg's shell wrote reaches either. What makes the arrangement work without a line of gg's
+/// is that `import` is one of the declarations Swift keeps at file scope, so the namespacing wrap
+/// steps over it and the author's first line is still line 1 — asserted here by making the module's
+/// call fail at run time and reading which line the model is sent to.
+#[test]
+fn a_code_module_writes_the_same_import_line_a_program_does() {
+    let module = CodeModule {
+        name: "notes".to_string(),
+        source: "import gg
+
+public func show(_ path: String) throws {
+    try views.openText(path, body: try files.readTextFile(path))
+}
+"
+        .to_string(),
+    };
+    let component = match compile_program(
+        "import gg\n\ntry lib.notes.show(\"notes.md\")\n",
+        std::slice::from_ref(&module),
+        &PrepareContext::new(),
+    ) {
+        Ok(prepared) => prepared
+            .component
+            .expect("a compiled arm hands back the component it built"),
+        Err(failure) => panic!("a module that writes its own import did not compile: {failure}"),
+    };
+    let outcome = evaluate(
+        &component,
+        &all_operations(),
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["notes.md"],
+        "the module's own call did not cross the membrane"
+    );
+
+    // And the same module without the line, which is the compiler saying the surface is not in
+    // scope in a file that did not ask for it — at the author's own line, since nothing gg wrote
+    // stands above it.
+    let bare = CodeModule {
+        name: "notes".to_string(),
+        source: "public func show(_ path: String) throws {\n    try views.openText(path, body: \"\")\n}\n"
+            .to_string(),
+    };
+    match compile_program(
+        "import gg\n\ntry lib.notes.show(\"notes.md\")\n",
+        std::slice::from_ref(&bare),
+        &PrepareContext::new(),
+    ) {
+        Err(PrepareFailure::Program(error)) => {
+            let rendered = error.to_string();
+            assert!(
+                rendered.contains("module_notes.swift:2:") && rendered.contains("'views'"),
+                "a module reaching gg's surface with no import line was refused for another \
+                 reason, or at the wrong line: {rendered}"
+            );
+        }
+        other => panic!("a module naming a surface it never imported does not compile: {other:?}"),
+    }
 }
 
 #[test]
@@ -600,7 +687,7 @@ fn what_compiling_a_swift_program_cost_is_a_reading_the_seam_can_take() {
     // Bounds rather than a figure: the reading is a wall clock on a shared machine. What would
     // fail this is a compile that did not happen at all.
     let started = Instant::now();
-    let _ = prepare("gg.log(\"compiled\")\n");
+    let _ = prepare("import gg\n\ngg.log(\"compiled\")\n");
     let accepted = started.elapsed();
 
     let started = Instant::now();
@@ -628,7 +715,7 @@ fn what_a_compiled_swift_program_weighs_is_the_arms_dominant_per_turn_cost() {
     // mean the link stopped dead-stripping or the debug information stopped being the only thing
     // between 5.5 MB and 7 MB.
     let started = Instant::now();
-    let component = prepare("gg.log(\"weighed\")\n");
+    let component = prepare("import gg\n\ngg.log(\"weighed\")\n");
     let compiled = started.elapsed();
 
     assert!(
@@ -669,4 +756,168 @@ fn temp_env<T>(key: &str, value: &str, body: impl FnOnce() -> T) -> T {
         None => unsafe { std::env::remove_var(key) },
     }
     outcome
+}
+
+/// **A whole Swift program, written the way a model writes one, runs through gg's own turn path.**
+///
+/// Everything else in this file drives [`evaluate`], which is the production path with the language
+/// registry left out. This one calls [`run_program`](crate::sandbox::run_program) — the function a
+/// turn calls — so what answers is the registered arm: its real prepare step, a real `swiftc`, the
+/// component it produced and the real membrane.
+///
+/// The program is what the [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+/// ask a model for on this arm and nothing gg supplies: its own `import` lines, its own top-level
+/// statements, a declaration beside them, a call that crosses to the host, and a view opened on
+/// what came back. What is asserted is the whole round trip — the call arrived, the turn carries no
+/// error, and the view the program opened is in the outcome under the selector the program gave it.
+#[test]
+fn a_whole_swift_program_a_model_would_write_runs_through_the_turn_path() {
+    let log = CallLog::default();
+    let api = FakeToolApi::with(&log, canned_outcome);
+    let operations = granted_operations(&all_operations(), false);
+    let scope = ProgramScope {
+        capabilities: &all_capabilities(),
+        operations: &operations,
+        modules: &[],
+        ending: RunEnding::None,
+    };
+    let (outcome, _api) = crate::sandbox::run_program(
+        crate::sandbox::language(GgProgramLanguage::Swift),
+        r#"import gg
+import Foundation
+
+struct Summary {
+    let path: String
+    let characters: Int
+
+    var line: String { "\(path): \(characters) characters" }
+}
+
+let notes = try files.readTextFile("notes.md")
+let summary = Summary(path: "notes.md", characters: notes.count)
+gg.log(summary.line)
+try views.openText("notes", body: notes)
+"#,
+        scope,
+        SandboxLimits::default(),
+        None,
+        api,
+    );
+
+    let result = match &outcome.result {
+        Ok(result) => result,
+        Err(error) => panic!("the program did not run: {error:?}"),
+    };
+    assert!(
+        result.error.is_none(),
+        "the program ran and reported a failure: {:?}",
+        result.error
+    );
+    assert_eq!(
+        log.names(),
+        ["read_file"],
+        "the call the program wrote did not reach the host"
+    );
+    assert_eq!(
+        outcome.logs,
+        ["notes.md: 30 characters"],
+        "what the program computed from the answer did not come back"
+    );
+    let opened: Vec<&str> = outcome
+        .views_opened
+        .iter()
+        .map(|view| view.selector.as_str())
+        .collect();
+    assert_eq!(
+        opened,
+        ["notes"],
+        "the view the program opened is not in what the turn hands back"
+    );
+}
+
+/// **Gate [G8](super::super::g8) for Swift** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Swift,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+import gg
+
+let text = try files.readTextFile(
+    "missing.md"
+)
+gg.log(text)
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::At("main.swift:4:"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): an index past the end of an array.
+import gg
+
+let values = [1, 2, 3]
+let missing = values[7]
+gg.log("\(missing)")
+"#,
+                names: &["Swift runtime failure: Index out of range"],
+                located: Located::At("main.swift:5:21"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): an async failure nothing observes.
+
+struct StepFailure: Error {}
+
+Task {
+    throw StepFailure()
+}
+"#,
+                names: &["StepFailure"],
+                located: Located::Nowhere,
+                answered: Answered::AtRuntime,
+                recorded: None,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion.
+import gg
+
+func deeper(_ n: Int) -> Int {
+    return 1 + deeper(n + 1)
+}
+
+gg.log("\(deeper(0))")
+"#,
+                names: &["call stack exhausted"],
+                located: Located::At("main.swift:5:16"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+import gg
+import WASILibc
+
+gg.log("before the exit")
+exit(
+    3
+)
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+        ],
+    );
 }

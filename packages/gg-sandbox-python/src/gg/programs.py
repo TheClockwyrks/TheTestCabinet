@@ -5,8 +5,8 @@ program costs the sixty lines again. The library makes the fix proportional to t
 what ran, patch it with ordinary string work, hand it back.
 
 ```python
-source = programs.get()
-programs.rerun(source.replace("improt", "import"))
+source = gg.programs.get()
+gg.programs.rerun(source.replace("improt", "import"))
 ```
 """
 
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from wit_world.imports import programs as wire
 
-from ._registry import alias, operation
+from ._registry import alias, missing, operation
 from .core import _call, _uint
 
 __all__ = ["ProgramSummary", "get", "history", "rerun"]
@@ -136,3 +136,7 @@ def rerun(source: str) -> None:
             source, and `unavailable` when this agent keeps no program library.
     """
     _call(wire.rerun, source)
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

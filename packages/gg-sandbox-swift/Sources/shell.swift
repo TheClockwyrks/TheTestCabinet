@@ -1,38 +1,48 @@
 // The **shell** a model's Swift program runs inside: what the sandbox world's two exports do,
-// how the SDK gets into the program's scope, and how the program's own top-level code is
-// reached.
+// and how the program's own top-level code is reached.
 //
-// It is compiled as a second file of the SAME module as the model's `main.swift`, once per
-// turn, by `crates/gg/src/sandbox/language/swift.compile.rs`. Being in one module is what buys
-// this arm its defining property: a model's reply is compiled **verbatim**, with no wrapper
-// line, no `import` and no line offset, so every diagnostic and every located trap carries the
-// model's own coordinates.
+// It is compiled ahead of time by `build.sh` into `shell.o` as a module of its own, and every
+// turn links that object beside the model's `main.swift`. The model's own module holds its
+// reply and the code modules in its scope and nothing else, which is what makes a reply
+// compiled **verbatim**, with no wrapper line and no line offset, carry the model's own
+// coordinates in every diagnostic and every located trap.
+//
+// It reaches the model's top-level code the way anything reaches a C symbol: `__main_argc_argv`
+// is what Swift lowers a top-level file into on this target, declared by the clang module
+// below and resolved by the linker.
+//
+// Both imports below are FILE-scoped, which is the whole point of them. A Swift `import` puts
+// names in the file that wrote it and in no other file of the module, so nothing here reaches
+// the model's own `main.swift`: a reply that calls gg writes its own `import gg`, and nothing
+// gg carries is in scope in a reply that wrote no line at all.
+//
+// The two `@_cdecl` functions below are `public`, and this file is a MODULE of its own, compiled
+// ahead of time by `build.sh` into `shell.o` and only linked per turn. Both halves are needed and
+// neither is optional: an access level is module-wide where an `import` is file-scoped, so
+// `public` or `internal` in the model's own module would put a name the model was never told
+// about into the model's file, and anything narrower than `public` gives the `@_cdecl` symbol
+// internal linkage, which the linker then drops and the world's `run` export goes undefined.
 //
 // It is not the SDK. Nothing here is model-facing and nothing here is in the signature
 // catalogue; a program written by a model calls the curated surface in `Sources/SDK/`, which
-// is compiled ahead of time into the `gg` module the line below re-exports.
+// is compiled ahead of time into the `gg` module imported below.
 
-/// **The one line that puts gg's surface in a model's scope**, and the reason a Swift reply
-/// needs no import of its own.
+/// The SDK, for [`ggBoundTools`](ggBoundTools) alone — this file dispatches nothing else.
 ///
-/// `@_exported` rather than a plain `import`, and the difference is the whole arm. A Swift
-/// `import` is FILE-scoped: written here it would put `fs` in scope in `shell.swift` and
-/// nowhere else, and the model's `main.swift` — a second file of the same module — would
-/// still fail with `cannot find 'fs' in scope`. `@_exported` re-exports the module through
-/// this one, and a re-export is MODULE-scoped, so every file of the program's module sees it.
-/// Measured both ways, because the alternative was making a model write `import gg` on line 1
-/// and paying a line offset on every diagnostic and every located trap for the rest of the
-/// arm's life.
+/// A separate Swift module from the program's is also what makes the SDK **shadowable**: a
+/// program that declares its own `files`, its own `DirEntry` or its own `log` wins over gg's
+/// rather than colliding with it, which a single-module SDK compiled beside the reply could not
+/// do, since two declarations of one name in one module is a redeclaration error.
+import gg
+
+/// The canonical ABI, as the clang module `Sources/module.modulemap` declares — the generated
+/// `sandbox_*` records, `malloc` and `free`, and the model program's own entry-point symbol.
 ///
-/// It is also what makes the SDK **shadowable**. `gg` is a different module, so a program that
-/// declares its own `fs`, its own `DirEntry` or its own `log` wins over this one rather than
-/// colliding with it — which a single-module SDK compiled beside the reply could not do, since
-/// two declarations of one name in one module is a redeclaration error.
-///
-/// The underscore says the attribute is not part of Swift's stable surface. It is what the
-/// standard library's own overlays are built on, it has behaved this way since Swift 3, and
-/// this arm pins one compiler release — so the risk it carries is bounded by the pin.
-@_exported import gg
+/// A module import rather than `swiftc -import-objc-header`, which is what this used to be. A
+/// bridging header is MODULE-scoped: it put gg's wire, the C allocator and `__main_argc_argv`
+/// into the model's `main.swift` with no line the model wrote. This import reaches them here and
+/// nowhere else.
+import GgShell
 
 /// The gg tool names this component can bind — what `bound-tools` answers.
 ///

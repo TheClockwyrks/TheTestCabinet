@@ -14,19 +14,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
-import org.teavm.jso.JSObject;
-import org.teavm.jso.core.JSArray;
 
 /**
- * <b>Reading the wire</b> — every JavaScript value the guest hands back, as the Java value this
- * SDK's signatures promise.
+ * <b>Reading the wire</b> — every {@link Value} gg answers with, as the Java value this SDK's
+ * signatures promise.
  *
  * <p>Nothing here is model-facing, and nothing here is clever: each function is the one place that
- * knows a field's name on the wire, so a rename is one edit rather than a search. The three
- * shapes worth naming are the ones a language with no {@code undefined} has to decide about — a
- * field the wire may leave out becomes {@link Optional} or {@link OptionalInt}, a discriminated
- * union becomes a real Java subtype, and a fixed choice becomes an enum constant rather than the
- * string it arrived as.
+ * knows a field's name on the wire, so a rename is one edit rather than a search. A field name is
+ * the <b>WIT</b> name verbatim, hyphens and all, because that is what
+ * {@code crates/gg/src/sandbox/membrane/wire.*.rs} writes and gg owns both ends of it.
+ *
+ * <p>The three shapes worth naming are the ones a language with no {@code undefined} has to decide
+ * about — a field the wire may leave out becomes {@link Optional} or {@link OptionalInt}, a
+ * discriminated union becomes a real Java subtype, and a fixed choice becomes an enum constant
+ * rather than the case name it arrived as.
  */
 public final class Read {
     private Read() {
@@ -37,23 +38,20 @@ public final class Read {
     // -------------------------------------------------------------------------------------------
 
     /** A whole number the wire may have left out. */
-    public static OptionalInt optionalInt(JSObject owner, String name) {
-        JSObject value = Wire.get(owner, name);
-        return Wire.absent(value) ? OptionalInt.empty() : OptionalInt.of(Wire.asInteger(value));
+    public static OptionalInt optionalInt(Value value) {
+        return value.absent() ? OptionalInt.empty() : OptionalInt.of(value.integer());
     }
 
     /** Text the wire may have left out. */
-    public static Optional<String> optionalText(JSObject owner, String name) {
-        JSObject value = Wire.get(owner, name);
-        return Wire.absent(value) ? Optional.empty() : Optional.of(Wire.asString(value));
+    public static Optional<String> optionalText(Value value) {
+        return value.absent() ? Optional.empty() : Optional.of(value.text());
     }
 
-    /** An array of text, as an unmodifiable list. */
-    public static List<String> texts(JSObject owner, String name) {
-        JSArray<JSObject> array = Wire.array(owner, name);
-        List<String> out = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            out.add(Wire.asString(array.get(index)));
+    /** A list of text, as an unmodifiable list. */
+    public static List<String> texts(Value value) {
+        List<String> out = new ArrayList<>(value.size());
+        for (int index = 0; index < value.size(); index++) {
+            out.add(value.at(index).text());
         }
         return List.copyOf(out);
     }
@@ -63,159 +61,156 @@ public final class Read {
     // -------------------------------------------------------------------------------------------
 
     /** What a command reported. */
-    public static Shell.ShellOutput shellOutput(JSObject value) {
-        return new Shell.ShellOutput(optionalInt(value, "exitCode"), Wire.string(value, "output"),
-                Wire.bool(value, "truncated"));
+    public static Shell.ShellOutput shellOutput(Value value) {
+        return new Shell.ShellOutput(optionalInt(value.get("exit-code")),
+                value.get("output").text(), value.get("truncated").flag());
     }
 
-    /** A read, narrowed to the arm the guest tagged it with. */
-    public static Files.FileRead fileRead(JSObject value) {
-        if ("image".equals(Wire.string(value, "kind"))) {
-            return new Files.ImageFile(Wire.string(value, "mediaType"), Wire.string(value, "label"),
-                    Wire.integer(value, "bytes"), Wire.bool(value, "shown"),
-                    optionalText(value, "notShownReason"));
+    /** A read, narrowed to the arm gg tagged it with. */
+    public static Files.FileRead fileRead(Value value) {
+        Value read = value.get("value");
+        if ("image".equals(value.get("case").text())) {
+            return new Files.ImageFile(read.get("media-type").text(), read.get("label").text(),
+                    read.get("bytes").integer(), read.get("shown").flag(),
+                    optionalText(read.get("not-shown-reason")));
         }
-        return new Files.TextFile(Wire.string(value, "contents"), Wire.integer(value, "firstLine"),
-                Wire.integer(value, "lastLine"), Wire.integer(value, "totalLines"),
-                Wire.bool(value, "byteTruncated"));
+        return new Files.TextFile(read.get("contents").text(), read.get("first-line").integer(),
+                read.get("last-line").integer(), read.get("total-lines").integer(),
+                read.get("byte-truncated").flag());
     }
 
     /** One directory entry. */
-    public static Files.DirEntry dirEntry(JSObject value) {
-        return new Files.DirEntry(Wire.string(value, "name"), entryKind(Wire.string(value, "kind")));
+    public static Files.DirEntry dirEntry(Value value) {
+        return new Files.DirEntry(value.get("name").text(), entryKind(value.get("kind").text()));
     }
 
-    /** Every directory entry in an array. */
-    public static List<Files.DirEntry> dirEntries(JSObject value) {
-        JSArray<JSObject> array = Wire.asArray(value);
-        List<Files.DirEntry> out = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            out.add(dirEntry(array.get(index)));
+    /** Every directory entry in a list. */
+    public static List<Files.DirEntry> dirEntries(Value value) {
+        List<Files.DirEntry> out = new ArrayList<>(value.size());
+        for (int index = 0; index < value.size(); index++) {
+            out.add(dirEntry(value.at(index)));
         }
         return List.copyOf(out);
     }
 
     /** The memory budget. */
-    public static Memories.MemoryUsage memoryUsage(JSObject value) {
-        return new Memories.MemoryUsage(Wire.integer(value, "count"), optionalInt(value, "maxCount"),
-                Wire.integer(value, "totalChars"), optionalInt(value, "maxTotalChars"),
-                optionalInt(value, "indexChars"), optionalInt(value, "maxIndexChars"));
+    public static Memories.MemoryUsage memoryUsage(Value value) {
+        return new Memories.MemoryUsage(value.get("count").integer(),
+                optionalInt(value.get("max-count")), value.get("total-chars").integer(),
+                optionalInt(value.get("max-total-chars")), optionalInt(value.get("index-chars")),
+                optionalInt(value.get("max-index-chars")));
     }
 
     /** Every memory a search matched. */
-    public static List<Memories.MemoryHit> memoryHits(JSObject value) {
-        JSArray<JSObject> array = Wire.asArray(value);
-        List<Memories.MemoryHit> out = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            JSObject hit = array.get(index);
-            out.add(new Memories.MemoryHit(Wire.string(hit, "name"), Wire.string(hit, "description"),
-                    Wire.integer(hit, "matched"), Wire.integer(hit, "occurrences"),
-                    Wire.string(hit, "excerpt")));
+    public static List<Memories.MemoryHit> memoryHits(Value value) {
+        List<Memories.MemoryHit> out = new ArrayList<>(value.size());
+        for (int index = 0; index < value.size(); index++) {
+            Value hit = value.at(index);
+            out.add(new Memories.MemoryHit(hit.get("name").text(), hit.get("description").text(),
+                    hit.get("matched").integer(), hit.get("occurrences").integer(),
+                    hit.get("excerpt").text()));
         }
         return List.copyOf(out);
     }
 
     /** One page of a documentation search. */
-    public static Docs.DocSearch docSearch(JSObject value) {
-        JSArray<JSObject> array = Wire.array(value, "hits");
-        List<Docs.DocHit> hits = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            JSObject hit = array.get(index);
-            hits.add(new Docs.DocHit(Wire.string(hit, "key"), docKind(Wire.string(hit, "kind")),
-                    Wire.string(hit, "module"), Wire.string(hit, "name"),
-                    Wire.string(hit, "summary")));
+    public static Docs.DocSearch docSearch(Value value) {
+        Value found = value.get("hits");
+        List<Docs.DocHit> hits = new ArrayList<>(found.size());
+        for (int index = 0; index < found.size(); index++) {
+            Value hit = found.at(index);
+            hits.add(new Docs.DocHit(hit.get("key").text(), docKind(hit.get("kind").text()),
+                    hit.get("module").text(), hit.get("name").text(),
+                    hit.get("summary").text()));
         }
-        return new Docs.DocSearch(Wire.integer(value, "total"), Wire.integer(value, "offset"),
+        return new Docs.DocSearch(value.get("total").integer(), value.get("offset").integer(),
                 List.copyOf(hits));
     }
 
     /** The task budget. */
-    public static Tasks.TaskUsage taskUsage(JSObject value) {
-        return new Tasks.TaskUsage(Wire.integer(value, "count"), Wire.integer(value, "maxTasks"));
+    public static Tasks.TaskUsage taskUsage(Value value) {
+        return new Tasks.TaskUsage(value.get("count").integer(),
+                value.get("max-tasks").integer());
     }
 
     /** The board budget. */
-    public static Board.BoardUsage boardUsage(JSObject value) {
-        return new Board.BoardUsage(Wire.integer(value, "epics"), Wire.integer(value, "maxEpics"),
-                Wire.integer(value, "issues"), Wire.integer(value, "maxIssues"));
+    public static Board.BoardUsage boardUsage(Value value) {
+        return new Board.BoardUsage(value.get("epics").integer(),
+                value.get("max-epics").integer(), value.get("issues").integer(),
+                value.get("max-issues").integer());
     }
 
     /** An epic that was just created. */
-    public static Board.EpicCreated epicCreated(JSObject value) {
-        return new Board.EpicCreated(Wire.string(value, "id"),
-                boardUsage(Wire.get(value, "board")));
+    public static Board.EpicCreated epicCreated(Value value) {
+        return new Board.EpicCreated(value.get("id").text(), boardUsage(value.get("board")));
     }
 
     /** An issue that was just created. */
-    public static Board.IssueCreated issueCreated(JSObject value) {
-        return new Board.IssueCreated(Wire.string(value, "id"),
-                boardUsage(Wire.get(value, "board")));
+    public static Board.IssueCreated issueCreated(Value value) {
+        return new Board.IssueCreated(value.get("id").text(), boardUsage(value.get("board")));
     }
 
     /** What a reclaim freed. */
-    public static Context.ReclaimReport reclaimReport(JSObject value) {
-        return new Context.ReclaimReport(Wire.integer(value, "items"),
-                Wire.integer(value, "reclaimedTokens"), texts(value, "paths"),
-                Wire.string(value, "detail"));
+    public static Context.ReclaimReport reclaimReport(Value value) {
+        return new Context.ReclaimReport(value.get("items").integer(),
+                value.get("reclaimed-tokens").integer(), texts(value.get("paths")),
+                value.get("detail").text());
     }
 
     /** What an archive search found. */
-    public static Context.ArchiveSearch archiveSearch(JSObject value) {
-        JSArray<JSObject> array = Wire.array(value, "hits");
-        List<Context.ArchiveHit> hits = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            JSObject hit = array.get(index);
-            hits.add(new Context.ArchiveHit(Wire.integer(hit, "seq"),
-                    messageRole(Wire.string(hit, "role")), Wire.string(hit, "text")));
+    public static Context.ArchiveSearch archiveSearch(Value value) {
+        Value found = value.get("hits");
+        List<Context.ArchiveHit> hits = new ArrayList<>(found.size());
+        for (int index = 0; index < found.size(); index++) {
+            Value hit = found.at(index);
+            hits.add(new Context.ArchiveHit(hit.get("seq").integer(),
+                    messageRole(hit.get("role").text()), hit.get("text").text()));
         }
-        return new Context.ArchiveSearch(Wire.bool(value, "archiveEmpty"), List.copyOf(hits));
+        return new Context.ArchiveSearch(value.get("archive-empty").flag(), List.copyOf(hits));
     }
 
     /** Every view open in the window. */
-    public static List<Views.OpenView> openViews(JSObject value) {
-        JSArray<JSObject> array = Wire.asArray(value);
-        List<Views.OpenView> out = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            JSObject open = array.get(index);
-            JSObject region = Wire.get(open, "region");
-            out.add(new Views.OpenView(viewKind(Wire.string(open, "kind")),
-                    Wire.string(open, "selector"), Wire.integer(open, "tokens"),
-                    Wire.absent(region)
+    public static List<Views.OpenView> openViews(Value value) {
+        List<Views.OpenView> out = new ArrayList<>(value.size());
+        for (int index = 0; index < value.size(); index++) {
+            Value open = value.at(index);
+            Value region = open.get("region");
+            out.add(new Views.OpenView(viewKind(open.get("kind").text()),
+                    open.get("selector").text(), open.get("tokens").integer(),
+                    region.absent()
                             ? Optional.empty()
-                            : Optional.of(new Views.ViewRegion(Wire.integer(region, "offset"),
-                                    Wire.integer(region, "limit")))));
+                            : Optional.of(new Views.ViewRegion(region.get("offset").integer(),
+                                    region.get("limit").integer()))));
         }
         return List.copyOf(out);
     }
 
     /** A child agent's handle. */
-    public static Delegation.SubagentHandle subagentHandle(JSObject value) {
-        return new Delegation.SubagentHandle(Wire.string(value, "id"), Wire.string(value, "slot"),
-                Wire.string(value, "modelId"));
+    public static Delegation.SubagentHandle subagentHandle(Value value) {
+        return new Delegation.SubagentHandle(value.get("id").text(), value.get("slot").text(),
+                value.get("model-id").text());
     }
 
     /** Every child agent's result. */
-    public static List<Delegation.SubagentResult> subagentResults(JSObject value) {
-        JSArray<JSObject> array = Wire.asArray(value);
-        List<Delegation.SubagentResult> out = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            JSObject result = array.get(index);
-            out.add(new Delegation.SubagentResult(Wire.string(result, "id"),
-                    optionalText(result, "status").map(Read::agentEnding),
-                    Wire.string(result, "summary")));
+    public static List<Delegation.SubagentResult> subagentResults(Value value) {
+        List<Delegation.SubagentResult> out = new ArrayList<>(value.size());
+        for (int index = 0; index < value.size(); index++) {
+            Value result = value.at(index);
+            out.add(new Delegation.SubagentResult(result.get("id").text(),
+                    optionalText(result.get("status")).map(Read::agentEnding),
+                    result.get("summary").text()));
         }
         return List.copyOf(out);
     }
 
     /** Every program this session has run. */
-    public static List<Programs.ProgramSummary> programSummaries(JSObject value) {
-        JSArray<JSObject> array = Wire.asArray(value);
-        List<Programs.ProgramSummary> out = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            JSObject program = array.get(index);
-            out.add(new Programs.ProgramSummary(Wire.integer(program, "turn"),
-                    Wire.integer(program, "lines"), Wire.integer(program, "chars"),
-                    Wire.bool(program, "ok"), optionalText(program, "error")));
+    public static List<Programs.ProgramSummary> programSummaries(Value value) {
+        List<Programs.ProgramSummary> out = new ArrayList<>(value.size());
+        for (int index = 0; index < value.size(); index++) {
+            Value program = value.at(index);
+            out.add(new Programs.ProgramSummary(program.get("turn").integer(),
+                    program.get("lines").integer(), program.get("chars").integer(),
+                    program.get("ok").flag(), optionalText(program.get("error"))));
         }
         return List.copyOf(out);
     }
@@ -224,7 +219,7 @@ public final class Read {
     // The fixed choices
     // -------------------------------------------------------------------------------------------
 
-    /** What a directory entry is, from the word the wire used. */
+    /** What a directory entry is, from the case name the wire used. */
     private static Files.EntryKind entryKind(String wire) {
         return switch (wire) {
             case "file" -> Files.EntryKind.FILE;
@@ -233,7 +228,7 @@ public final class Read {
         };
     }
 
-    /** Who said an archived message, from the word the wire used. */
+    /** Who said an archived message, from the case name the wire used. */
     private static Context.MessageRole messageRole(String wire) {
         return switch (wire) {
             case "system" -> Context.MessageRole.SYSTEM;
@@ -245,10 +240,14 @@ public final class Read {
 
     /** Which kind a documentation entry is, from the word the wire used. */
     private static Docs.DocKind docKind(String wire) {
-        return "type".equals(wire) ? Docs.DocKind.TYPE : Docs.DocKind.FUNCTION;
+        return switch (wire) {
+            case "module" -> Docs.DocKind.MODULE;
+            case "type" -> Docs.DocKind.TYPE;
+            default -> Docs.DocKind.FUNCTION;
+        };
     }
 
-    /** Which kind a view is, from the word the wire used. */
+    /** Which kind a view is, from the case name the wire used. */
     private static Views.ViewKind viewKind(String wire) {
         return switch (wire) {
             case "file" -> Views.ViewKind.FILE;
@@ -257,14 +256,14 @@ public final class Read {
         };
     }
 
-    /** How a child agent ended, from the word the wire used. */
+    /** How a child agent ended, from the case name the wire used. */
     private static Delegation.AgentEnding agentEnding(String wire) {
         return switch (wire) {
             case "completed" -> Delegation.AgentEnding.COMPLETED;
             case "exhausted" -> Delegation.AgentEnding.EXHAUSTED;
-            case "timed_out" -> Delegation.AgentEnding.TIMED_OUT;
-            case "auth_error" -> Delegation.AgentEnding.AUTH_ERROR;
-            case "limit_exceeded" -> Delegation.AgentEnding.LIMIT_EXCEEDED;
+            case "timed-out" -> Delegation.AgentEnding.TIMED_OUT;
+            case "auth-error" -> Delegation.AgentEnding.AUTH_ERROR;
+            case "limit-exceeded" -> Delegation.AgentEnding.LIMIT_EXCEEDED;
             default -> Delegation.AgentEnding.MODEL_ERROR;
         };
     }

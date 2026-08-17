@@ -169,7 +169,9 @@ Turn #123
 ```
 
 The number is the agent's session turn. It is one-based; turn 0 is the
-unnumbered opening context (the system prompt, the build prompt, any
+unnumbered opening context (the system prompt, the build prompt, the
+[opening turn](/gg/responses-as-code/views/#the-opening-turn)'s program and the
+views its own calls placed, any
 [autoloaded specifications](/gg/autoload-specifications/), and the file views
 [persistence](/gg/agent-persistence/) re-opens), which carries no header. It is
 monotonic for the whole life of the agent: neither a compaction nor an archival

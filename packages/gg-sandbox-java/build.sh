@@ -38,9 +38,13 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=scripts/gg-artifacts-out-dir.sh
 source "$ROOT/scripts/gg-artifacts-out-dir.sh"
 OUT="$GG_ARTIFACTS_OUT_DIR/java.sdk.jar"
+# The crossing both JVM arms compile — see the two-pass note below.
+SHARED="$ROOT/packages/gg-sandbox-jvm"
 
 # shellcheck source=packages/gg-sandbox-java/java-version.sh
 source "$HERE/java-version.sh"
+# shellcheck source=scripts/gg-downloads.sh
+source "$ROOT/scripts/gg-downloads.sh"
 
 INSTALL_DIR="${JAVA_INSTALL_DIR:-$HOME/.local/share/gg-java}"
 JAVAC="${TCAB_GG_JAVAC:-$INSTALL_DIR/jdk/bin/javac}"
@@ -66,10 +70,32 @@ CLASSPATH="$(find "$LIBS" -name '*.jar' | sort | tr '\n' ':')"
 # version fails with a message no model could act on. `-g` so a stack frame inside the SDK still
 # carries a line number.
 #
-# The source list is sorted so the compile — and therefore the class files — do not depend on the
+# Each source list is sorted so the compile — and therefore the class files — do not depend on the
 # order the filesystem happened to hand them back.
-mapfile -t SOURCES < <(find "$HERE/src" -name '*.java' | sort)
-"$JAVAC" -Xlint:all -Werror -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${SOURCES[@]}"
+#
+# TWO PASSES, because `vendor/` is not gg's text. It holds one third-party runtime class, kept under
+# its own licence and changed in exactly one place so that an uncaught exception says WHAT was thrown
+# as well as where; it is compiled into this jar because the jar is what goes on TeaVM's program
+# classpath, AHEAD of TeaVM's own jars (see `java.compile.rs`). `-Xlint:all -Werror` is gg's gate on
+# gg's own sources and is not applied to it: upstream text is kept as upstream wrote it rather than
+# edited to satisfy a lint. The file's own header carries the whole argument.
+#
+# THE FIRST PASS READS TWO TREES. `packages/gg-sandbox-jvm/src` is the crossing BOTH JVM arms
+# compile — `gg.internal.Abi`, `gg.internal.Value` and `gg.internal.Frames`, which are the canonical
+# ABI and the wire encoding and are the same on either side of a compiler that only decides what
+# bytecode reaches them. The Kotlin arm's `build.sh` compiles the identical two trees into its own
+# jar; what is NOT shared is the one file above them that raises this arm's own `gg.ToolError`, which
+# is a model-facing class with a catalogue entry of its own. See `gg/internal/Abi.java`'s class note.
+mapfile -t OWN < <(find "$HERE/src" "$SHARED/src" -name '*.java' | sort)
+mapfile -t VENDORED < <(find "$SHARED/vendor" -name '*.java' | sort)
+"$JAVAC" -Xlint:all -Werror -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${OWN[@]}"
+"$JAVAC" -nowarn -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${VENDORED[@]}"
+
+# The one non-class file in this jar: the descriptor TeaVM finds `gg.internal.ThrowableNames`
+# through, which is what makes an uncaught exception name its own class. See the script's header.
+# shellcheck source=packages/gg-sandbox-jvm/plugin-descriptor.sh
+source "$SHARED/plugin-descriptor.sh"
+gg_jvm_plugin_descriptor "$WORK/classes"
 
 # A second pass over the MODEL-FACING package alone, with the JDK's own documentation checker on:
 # an undocumented parameter, a `@param` naming an argument the method does not take, a missing
@@ -87,7 +113,7 @@ mapfile -t DOCUMENTED < <(find "$HERE/src/gg" -name '*.java' -not -path "$HERE/s
 	-cp "$CLASSPATH:$WORK/classes" -d "$WORK/lint" "${DOCUMENTED[@]}"
 
 # A fixed timestamp and a sorted entry list: two builds of the same sources are the same bytes.
-mapfile -t ENTRIES < <(cd "$WORK/classes" && find . -name '*.class' | sed 's|^\./||' | sort)
+mapfile -t ENTRIES < <(cd "$WORK/classes" && find . -type f | sed 's|^\./||' | sort)
 "$JAR" --create --file "$WORK/gg-sdk.jar" --date "2026-01-01T00:00:00Z" \
 	-C "$WORK/classes" "${ENTRIES[0]}" >/dev/null
 for ENTRY in "${ENTRIES[@]:1}"; do
@@ -96,4 +122,14 @@ for ENTRY in "${ENTRIES[@]:1}"; do
 done
 
 mv "$WORK/gg-sdk.jar" "$OUT"
-echo "wrote $OUT ($(wc -c <"$OUT") bytes, ${#ENTRIES[@]} classes)"
+echo "wrote $OUT ($(wc -c <"$OUT") bytes, ${#ENTRIES[@]} entries)"
+
+# java.adapter.wasm — COPIED FROM A CACHE, NOT DOWNLOADED on a machine an installer has touched.
+# TeaVM's `WEBASSEMBLY_WASI` backend emits a core module importing the preview1 snapshot (four
+# functions: `clock_time_get`, `args_sizes_get`, `args_get`, `fd_write`); this is what implements
+# them in terms of the preview 2 interfaces gg's linker provides. Without it the component would
+# import a WASI generation the host does not have. See `jvm.rs`.
+cp "$(gg_wasmtime_adapter "$GG_WASMTIME_ADAPTER_VERSION" "$(gg_wasmtime_adapter_url)")" \
+	"$GG_ARTIFACTS_OUT_DIR/java.adapter.wasm"
+test -s "$GG_ARTIFACTS_OUT_DIR/java.adapter.wasm"
+echo "wrote $GG_ARTIFACTS_OUT_DIR/java.adapter.wasm (adapter $GG_WASMTIME_ADAPTER_VERSION)"

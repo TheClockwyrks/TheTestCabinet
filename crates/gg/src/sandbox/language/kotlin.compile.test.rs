@@ -6,8 +6,8 @@
 //! arm had no wire id for [the seam's own gate](crate::sandbox::language::isolation) to reach it by;
 //! now that it is registered, that gate drives both halves of this arm along with every other
 //! language's, and a second copy would be 32 real builds asserting a property already asserted. And
-//! what TeaVM's own output is read with — the prelude, the source-map fold and its VLQ — is
-//! [shared with the Java arm](crate::sandbox::language::jvm) and asserted there.
+//! the generated entry class is [shared with the Java arm](crate::sandbox::language::jvm) and
+//! asserted there — what is left here is the one line this arm adds to it.
 
 use super::*;
 
@@ -52,36 +52,35 @@ fn the_rust_and_shell_halves_of_the_toolchain_pin_agree() {
 }
 
 #[test]
-fn the_scripting_plugin_is_installed_under_the_names_the_compiler_looks_for() {
-    // The compiler finds its scripting plugin by four UNVERSIONED file names under
-    // `<kotlin home>/lib`, and a program is a script — so getting this wrong turns every compile
-    // into `SCRIPTING_ERROR: Unable to evaluate script, no scripting plugin loaded`, which reads
-    // like a diagnostic about the model's program and is a sentence about gg's packaging.
+fn the_scripting_plugin_is_gone_from_every_place_that_installed_it() {
+    // A program on this arm is an ordinary `.kt` file with its own `fun main()`, so the reason the
+    // scripting plugin existed — Kotlin refusing `object`, `interface`, `enum class`, `typealias`
+    // and `private fun` as LOCAL declarations inside a wrapper gg wrote — is gone with the wrapper.
+    // Four jars, a `kotlin-home` directory and a compiler flag went with it, and this is the gate
+    // that keeps any one of them from drifting back in unnoticed.
     for name in [
-        "kotlin-scripting-compiler.jar",
-        "kotlin-scripting-compiler-impl.jar",
-        "kotlin-scripting-common.jar",
-        "kotlin-scripting-jvm.jar",
+        "kotlin-scripting-compiler",
+        "kotlin-scripting-common",
+        "kotlin-scripting-jvm",
+        "KOTLIN_SCRIPTING_JARS",
+        "kotlin-home",
     ] {
         assert!(
-            VERSION_SH.contains(name),
-            "the scripting plugin's {name} is not in kotlin-version.sh",
+            !VERSION_SH.contains(name),
+            "kotlin-version.sh still names {name}, which belonged to the retired script road",
+        );
+        assert!(
+            !INSTALL_SH.contains(name),
+            "install-kotlin.sh still installs {name}, which belonged to the retired script road",
         );
     }
-    // The `-embeddable` variants specifically: the plain jars reference `com.intellij.…`, which the
-    // embeddable compiler has relocated, and the plugin then fails to load with a message about a
-    // missing class rather than about a mismatched distribution.
     assert!(
-        VERSION_SH.contains("kotlin-scripting-compiler-embeddable:")
-            && VERSION_SH.contains("kotlin-scripting-compiler-impl-embeddable:"),
-        "the embeddable variants are the ones that plug into an embeddable compiler",
+        !FRONT.contains("-Xallow-any-scripts-in-source-roots") && !FRONT.contains("-kotlin-home"),
+        "the driver still asks the compiler for a script",
     );
-    // And the install script writes that directory rather than only the classpath one, because gg
-    // names it and refuses to start a daemon without it.
-    assert!(
-        INSTALL_SH.contains(KOTLIN_HOME),
-        "install-kotlin.sh writes the {KOTLIN_HOME} directory gg names",
-    );
+    // And the pinned jars stay, because the compiler's own POM declares them: what went is the
+    // PLUGIN, not the compiler.
+    assert!(VERSION_SH.contains("kotlin-compiler-embeddable:"));
 }
 
 #[test]
@@ -96,19 +95,8 @@ fn the_driver_gg_carries_speaks_the_protocol_gg_expects() {
     let assembled = jvm::driver(FRONT);
     assert!(
         assembled.contains("setStrict(true)")
-            && assembled.contains("setJsModuleType(JSModuleType.NONE)"),
+            && assembled.contains("setTargetType(TeaVMTargetType.WEBASSEMBLY_WASI)"),
         "the Kotlin arm's assembled driver carries the shared TeaVM build",
-    );
-    // The three flags that make a program a script rather than something the compiler runs. Each of
-    // them was arrived at by measurement, and losing any one of them fails every compile on this arm
-    // with a message about something else.
-    assert!(
-        FRONT.contains("-Xallow-any-scripts-in-source-roots"),
-        "a script in the source roots is COMPILED; `-script` would compile it and then run it",
-    );
-    assert!(
-        FRONT.contains("-kotlin-home"),
-        "the scripting plugin is loaded out of a kotlin-home directory",
     );
     assert!(
         FRONT.contains("idea.") && FRONT.contains("setProperty"),
@@ -142,6 +130,17 @@ fn a_handshake_from_another_protocol_or_another_release_is_refused_by_name() {
         "the operator is told what is installed and what to run: {refused}",
     );
 
+    // A greeting gg cannot read at all is reported with the line in it, because a parse error alone
+    // says a JVM answered wrongly and never what it answered — and on this road the answer that
+    // mattered came from the VM rather than from the driver. See `jvm::LOG_TO_STDERR`, and the
+    // measurement of it in the Java arm's `a_vm_that_warns_about_its_machine_is_not_read_as_a_greeting`,
+    // which drives the launch this arm's JVM is started by too.
+    let unreadable = handshake("not json at all").expect_err("a greeting gg cannot read");
+    assert!(
+        unreadable.contains("\"not json at all\""),
+        "the greeting gg could not read is in the message it reports: {unreadable}"
+    );
+
     // A version that could not be read at all is deliberately not a mismatch: that is a strange
     // machine rather than a wrong one, and the compile that follows has far more to say about it.
     handshake(&format!(
@@ -165,39 +164,33 @@ fn diagnostic(stage: &str, code: Option<&str>, file: Option<&str>, line: usize) 
 }
 
 #[test]
-fn a_diagnostic_is_located_in_the_model_s_own_coordinates() {
-    // A program with one hoisted import: the compiler saw the model's line 3 as line 4, and what the
-    // model reads is 3.
+fn a_diagnostic_is_the_compiler_s_own_uncorrected_coordinate() {
+    // NO ARITHMETIC. gg writes nothing in front of a program, so the line the compiler reports is
+    // the line the model wrote and there is nothing to subtract — which is what ruling D11 asks of a
+    // location and what this arm's `shift` parameter used to violate.
     let located = diagnostic(
         "kotlinc",
         Some("UNRESOLVED_REFERENCE"),
         Some(PROGRAM_FILE),
         4,
     )
-    .render(PROGRAM_FILE, 1);
-    assert_eq!(located, "program.kts:3:5: something was wrong");
+    .render(PROGRAM_FILE);
+    assert_eq!(located, "Program.kt:4:5: something was wrong");
 
     // A TeaVM diagnostic has no column — its locations are per statement — so it prints one
     // coordinate rather than two.
     let mut teavm = diagnostic("teavm", None, Some(PROGRAM_FILE), 9);
     teavm.column = 0;
     assert_eq!(
-        teavm.render(PROGRAM_FILE, 0),
-        "program.kts:9: something was wrong"
+        teavm.render(PROGRAM_FILE),
+        "Program.kt:9: something was wrong"
     );
 
-    // A line the shift would move above the file's first is clamped rather than wrapped: a
-    // coordinate of 0 or a huge number is worse than a coordinate that is one line out.
-    assert_eq!(
-        diagnostic("kotlinc", None, Some(PROGRAM_FILE), 1).render(PROGRAM_FILE, 4),
-        "program.kts:1:5: something was wrong",
-    );
-
-    // A module's diagnostics say `module.kt`, so an author of a code skill is not told the line is
+    // A module's diagnostics say `Module.kt`, so an author of a code skill is not told the line is
     // in a program.
     assert_eq!(
-        diagnostic("kotlinc", None, Some(MODULE_FILE), 2).render(MODULE_FILE, 0),
-        "module.kt:2:5: something was wrong",
+        diagnostic("kotlinc", None, Some(MODULE_FILE), 2).render(MODULE_FILE),
+        "Module.kt:2:5: something was wrong",
     );
 }
 
@@ -217,7 +210,6 @@ fn the_compilers_own_diagnostic_names_decide_which_band_a_refusal_is() {
             2,
         )]),
         PROGRAM_FILE,
-        0,
     )
     .expect_err("refused");
     assert!(
@@ -234,7 +226,6 @@ fn the_compilers_own_diagnostic_names_decide_which_band_a_refusal_is() {
             2,
         )]),
         PROGRAM_FILE,
-        0,
     )
     .expect_err("refused");
     assert!(
@@ -255,7 +246,6 @@ fn the_compilers_own_diagnostic_names_decide_which_band_a_refusal_is() {
             diagnostic("kotlinc", Some("SYNTAX"), Some(PROGRAM_FILE), 3),
         ]),
         PROGRAM_FILE,
-        0,
     )
     .expect_err("refused");
     assert!(
@@ -266,11 +256,14 @@ fn the_compilers_own_diagnostic_names_decide_which_band_a_refusal_is() {
     // A warning is not a refusal.
     let mut warning = diagnostic("kotlinc", Some("UNUSED_VARIABLE"), Some(PROGRAM_FILE), 2);
     warning.error = false;
-    verdict(&report(vec![warning]), PROGRAM_FILE, 0).expect("a warning is not a verdict");
+    verdict(&report(vec![warning]), PROGRAM_FILE).expect("a warning is not a verdict");
 }
 
 #[test]
-fn a_refusal_about_gg_s_own_generated_file_is_not_the_model_s_to_fix() {
+fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
+    // gg's entry class names the model's own `main`, so the one thing that can go wrong in it is
+    // that the model declared a different shape. That is a SHAPE REFUSAL shown to the model — ruling
+    // D4 — rather than a toolchain failure nobody is told about.
     let failure = verdict(
         &Report {
             internal: None,
@@ -282,12 +275,52 @@ fn a_refusal_about_gg_s_own_generated_file_is_not_the_model_s_to_fix() {
             )],
         },
         PROGRAM_FILE,
-        0,
+    )
+    .expect_err("refused");
+    assert!(
+        matches!(
+            failure,
+            PrepareFailure::Program(PrepareError::Unsupported(_))
+        ),
+        "{failure:?}",
+    );
+    let rendered = failure.to_string();
+    assert!(rendered.contains("ProgramKt.main()"), "{rendered}");
+    assert!(rendered.contains("fun main()"), "{rendered}");
+    // The trap worth naming, because it is legal Kotlin: `fun main(args: Array<String>)` compiles to
+    // a method gg's call cannot resolve, and a model told only "declare a main" would write it.
+    assert!(rendered.contains("Array<String>"), "{rendered}");
+}
+
+#[test]
+fn a_refusal_about_a_code_module_names_the_key_and_one_about_nobody_s_file_does_not() {
+    // A code module's own file names the code this session loaded, which is compiled into the
+    // program. The model is told which key to fix or to stop loading, because reporting it to the
+    // operator alone would take every turn from then on with nothing said.
+    let failure = verdict(
+        &Report {
+            internal: None,
+            diagnostics: vec![diagnostic("kotlinc", None, Some("GgModule_helpers.kt"), 3)],
+        },
+        PROGRAM_FILE,
+    )
+    .expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    };
+    assert!(rendered.contains("`helpers`"), "{rendered}");
+
+    let failure = verdict(
+        &Report {
+            internal: None,
+            diagnostics: vec![diagnostic("kotlinc", None, Some("Whatever.kt"), 3)],
+        },
+        PROGRAM_FILE,
     )
     .expect_err("refused");
     assert!(
         matches!(failure, PrepareFailure::Toolchain(_)),
-        "gg's own generated code failing is gg's bug, not the model's: {failure:?}",
+        "a file gg does not write is drift: {failure:?}",
     );
 }
 
@@ -308,7 +341,6 @@ fn a_refusal_inside_the_standard_library_is_the_model_s_and_says_what_it_reached
             )],
         },
         PROGRAM_FILE,
-        0,
     )
     .expect_err("refused");
     assert!(
@@ -317,7 +349,7 @@ fn a_refusal_inside_the_standard_library_is_the_model_s_and_says_what_it_reached
     );
     let rendered = failure.to_string();
     assert!(
-        rendered.contains("program.kts, inside kotlin/concurrent/Thread.kt:40"),
+        rendered.contains("Program.kt, inside kotlin/concurrent/Thread.kt:40"),
         "the model is told what its own program reached through: {rendered}",
     );
 
@@ -333,7 +365,6 @@ fn a_refusal_inside_the_standard_library_is_the_model_s_and_says_what_it_reached
             diagnostics: many,
         },
         PROGRAM_FILE,
-        0,
     )
     .expect_err("refused")
     .to_string();
@@ -346,49 +377,27 @@ fn a_refusal_inside_the_standard_library_is_the_model_s_and_says_what_it_reached
 }
 
 #[test]
-fn the_entry_class_names_every_exception_it_catches() {
-    let entry = entry_for_program();
-    for name in CAUGHT {
-        assert!(entry.contains(&format!("catch ({name} failure)")), "{name}");
+fn the_entry_class_calls_the_model_s_own_main_and_carries_nothing_else() {
+    let entry = entry_class();
+    // THE ONE LINE the two JVM arms differ by. `ProgramKt` is the facade the Kotlin compiler emits
+    // `Program.kt`'s top-level declarations into, and `main()` with no arguments is the form
+    // `fun main()` produces — the `main(String[])` beside it is synthetic and javac ignores it.
+    assert!(
+        entry.contains(&format!("{}.main();", source::PROGRAM_CLASS)),
+        "{entry}",
+    );
+    // gg catches nothing: what a model reads is what TeaVM's own runtime printed.
+    assert!(!entry.contains("catch"), "{entry}");
+    // And it names no exception class of its own. This arm used to add three to a shared list of
+    // fifteen, so that TeaVM's dependency analysis would emit their name strings — including the two
+    // `kotlin-stdlib` declares, which a list that was only Java's printed a blank header for. What
+    // answers that now is `gg.internal.ThrowableNames`, which derives the set from the program being
+    // compiled; `kotlin.substrate.test.rs` drives both of those failures through the real toolchain
+    // and reads the names off the model-facing body.
+    for name in ["SPELLABLE", "KotlinNullPointerException", ".class,"] {
+        assert!(
+            !entry.contains(name),
+            "{name} is still in the entry class:\n{entry}"
+        );
     }
-    // Kotlin's own failures are named, which is the half of this list that is not Java's: `!!` on a
-    // null, a `lateinit` read too early. A model that reads `java.lang.RuntimeException` where its
-    // language would have said `UninitializedPropertyAccessException` has been told less than the
-    // language knows.
-    assert!(entry.contains("kotlin.UninitializedPropertyAccessException"));
-    // The order is what makes the specific name reach the model: a supertype clause first would
-    // swallow it, and Java takes the first clause that matches.
-    let at = |name: &str| entry.find(name).expect("present");
-    assert!(at("kotlin.KotlinNullPointerException") < at("java.lang.NullPointerException"));
-    assert!(at("ArrayIndexOutOfBoundsException") < at("java.lang.IndexOutOfBoundsException"));
-    assert!(at("NumberFormatException") < at("IllegalArgumentException"));
-    // A class the list does not name still gets a name, and a runtime that cannot answer gets a
-    // sentence rather than the word `null`.
-    assert!(entry.contains("catch (Throwable failure)"));
-    assert!(entry.contains("a failure whose class this runtime cannot name"));
-    // A failure raised by a BINDING is rethrown untouched: the guest classifies a tool failure from
-    // what the host said, and re-describing one would hide it behind a class nobody wrote.
-    assert!(entry.contains(&format!("{FOREIGN_MARKER:?}")));
-    // And the entry rethrows rather than swallowing — a program that failed must not be recorded as
-    // one that finished.
-    assert!(entry.contains("throw seen("));
-    // It starts the script by constructing it, which is what a compiled Kotlin script is.
-    assert!(entry.contains(&format!("new {}(new String[0])", source::PROGRAM_CLASS)));
-}
-
-#[test]
-fn a_module_bundle_hands_its_namespace_back_and_a_program_does_not() {
-    // A plain object, copied off the class TeaVM exported onto: the guest takes what a module
-    // evaluated to only if it is an `object`, and a class is a `function` — so handing the export
-    // back directly would bind an empty namespace and no error, which is the quiet kind of wrong.
-    let tail = Entry::Module.tail();
-    assert!(tail.contains("var $ggNamespace = {}"));
-    assert!(tail.contains(&format!("Object.keys({})", source::MODULE_GLOBAL)));
-    assert!(tail.contains("return $ggNamespace"));
-    // A program's tail hands nothing back: what a program is worth is what it logged and what it
-    // did, and a namespace is a module's answer alone.
-    assert!(!Entry::Program.tail().contains("$ggNamespace"));
-    // Both start the same way, because both are TeaVM's own entry point and both report a failure
-    // through the callback rather than through a field nothing reads.
-    assert!(Entry::Program.tail().starts_with("main([], function"));
 }

@@ -2,9 +2,9 @@
 //!
 //! # Why this gate exists, and why it exists *here*
 //!
-//! Two things gg renders contain C# a model is invited to copy: this arm's responses-as-code system
-//! prompt (with the "your program showed you nothing" notice beside it) and its generated signature
-//! catalogue, whose prose is reflected out of the SDK's own XML documentation comments and rendered
+//! Two things gg renders contain C# a model is invited to copy: the responses-as-code system prompt
+//! as it renders for this arm (with the "your program showed you nothing" notice beside it) and this
+//! arm's generated signature catalogue, whose prose is reflected out of the SDK's own XML documentation comments and rendered
 //! into documentation views. Everything about those two that can be checked without a compiler
 //! already is — [`prompts::spellings`](crate::prompts) resolves every call *name* they quote against
 //! the catalogue, and every argument name beside one against that signature — and none of it can
@@ -56,7 +56,7 @@ use super::compile::compile_program;
 use crate::prompts::{
     AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
     ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
-    render_code_nothing_shown_for, render_system_for,
+    render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
     PrepareContext, ProgramLanguage, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
@@ -68,8 +68,8 @@ fn csharp() -> &'static dyn ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::CSharp)
 }
 
-/// A context with every section this arm's prompt can render turned on, so no example is missed for
-/// living in a branch a narrower run does not take.
+/// A context with every section the prompt can render for this arm turned on, so no example is
+/// missed for living in a branch a narrower run does not take.
 ///
 /// Both ending roles are on at once, which no real run is: the template asks after each
 /// independently, and rendering both is how one pass covers all three ending spellings.
@@ -80,12 +80,12 @@ fn everything_on() -> SystemContext {
     };
     SystemContext {
         responses_as_code: true,
-        language: Some(GgProgramLanguage::CSharp),
+        language: Some(crate::prompts::language_view(GgProgramLanguage::CSharp)),
         program_library: true,
         modules: vec![ModuleView {
             path: "Gg.Files".to_string(),
             brief: "Read, write, edit and list the files of the workspace.".to_string(),
-            import: None,
+            import: Some(super::SURFACE_IMPORT.to_string()),
         }],
         code_headings: vec![CodeHeadingView {
             heading: "File".to_string(),
@@ -108,6 +108,8 @@ fn everything_on() -> SystemContext {
         skills: vec![SkillView {
             name: "physics".to_string(),
             description: "How to tune the simulation.".to_string(),
+            carries_code: true,
+            carries_on_use_script: true,
         }],
         memories: Some(MemoriesView {
             scratchpad: false,
@@ -156,7 +158,7 @@ fn everything_on() -> SystemContext {
 /// reference set and the same flags a model's own reply gets, with the same SDK compiled beside it.
 #[test]
 fn every_csharp_example_a_model_is_shown_compiles() {
-    let prompt = render_system_for(csharp(), &everything_on());
+    let prompt = render_system(&everything_on(), None).expect("the code system prompt renders");
     let notice = render_code_nothing_shown_for(csharp());
     let catalogue: serde_json::Value =
         serde_json::from_str(super::SIGNATURES).expect("the generated catalogue is JSON");
@@ -205,9 +207,20 @@ fn every_csharp_example_a_model_is_shown_compiles() {
         snippets.len()
     );
 
-    // The one entry point, and it comes first because C# requires top-level statements to precede
-    // every type declaration in the file.
-    let mut program = String::from("return;\n\n");
+    // What a program that copied these examples would have written above them. An example is a
+    // fragment shown inside a documentation view, so it carries no `using` of its own and cannot:
+    // the view states the line beside it (`ModuleView::import`), and the model writes it once at the
+    // top of its own program. Reconstructing that context is what makes this gate compile what a
+    // model would really have compiled.
+    //
+    // `using Gg;` alone, which is this arm's own import line, held to the catalogue's by
+    // `csharp.test.rs` and the one line a documentation view quotes. Nothing else is opened: an
+    // example that needed a .NET namespace would fail here, and that failure is the signal, because
+    // either the example has to write the name in full or the view has to state the second line.
+    //
+    // The one entry point comes after it and before every type declaration, because C# requires
+    // top-level statements to precede both.
+    let mut program = format!("{}\n\nreturn;\n\n", super::SURFACE_IMPORT);
     for (index, (label, snippet)) in snippets.iter().enumerate() {
         let body = snippet.trim_end();
         program.push_str(&format!(

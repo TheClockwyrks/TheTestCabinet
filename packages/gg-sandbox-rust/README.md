@@ -18,17 +18,17 @@ component" and hand its bytes back from the preparation instead.
 What this package **is** is the crate a program is compiled against — named `gg`,
 because `rustc --extern gg=…` is what puts it in scope and so it is the first word of
 every Rust program in the study. It carries the hand-written, idiomatic SDK a model
-calls, the shell gg's generated entry file names, and the generated bindings both are
-written against.
+calls, the shell that answers gg's world and calls the model's own `main`, and the
+generated bindings both are written against.
 
 The SDK is **twelve capability modules** — `files`, `shell`, `board`, `tasks`,
 `memories`, `views`, `docs`, `context`, `delegation`, `skills`, `programs`, `session` —
 plus a thirteenth, `core`, which declares no function and holds the three types every other
 module's signatures name. Each module owns the types it produces, so `gg::files::FileRead`
 is at once the path a program writes and the key its documentation view is opened by, and
-two modules are free to declare a type of the same name. `gg::prelude` re-exports the
-**modules**, never the types inside them: that is what keeps a call qualified by the
-module that documents it, which is the whole of how a model discovers one.
+two modules are free to declare a type of the same name. There is no prelude and gg
+imports nothing on a program's behalf: a program writes `gg::files::read_file(…)` in full,
+or `use gg::files;` and then `files::read_file(…)`.
 
 ## What it produces
 
@@ -40,7 +40,8 @@ Nothing here is committed. Every file below is generated during an ordinary
 | Artifact | What it is |
 | --- | --- |
 | `rust.libraries.tar.gz`, in `$GG_ARTIFACTS_RUST` | Every `.rlib` a program links — this SDK and the curated set — gzipped. ~9.4 MB, `include_bytes!`d by the host and unpacked once per machine into a shared, sealed, read-only directory named on `rustc -L`. |
-| `rust.toolchain.json`, in `$GG_ARTIFACTS_RUST` | What that set was built by — the compiler, the target, the `wit-bindgen` release — and every crate in it, each marked with whether a **program** may name it. |
+| `rust.adapter.wasm`, in `$GG_ARTIFACTS_RUST` | The pinned `wasi_snapshot_preview1` **reactor** adapter, 52 KB, which turns the preview1 core module `rustc` emits into the component gg's engine instantiates. `include_bytes!`d by the host and never written to disk. |
+| `rust.toolchain.json`, in `$GG_ARTIFACTS_RUST` | What that set was built by — the compiler, the target, the `wit-bindgen` release, the adapter — and every crate in it, each marked with whether a **program** may name it. |
 | `rust.signatures.json`, in the build's `OUT_DIR` | The signature catalogue: the whole of what a model is told about this surface, reflected out of this crate's own rustdoc by `signatures.sh`, which `crates/gg/build.rs` runs on every build. |
 
 There is no `rust.component.wasm`: the component is the program, compiled per turn.
@@ -50,8 +51,8 @@ equivalent is `scripts/gg-signatures.sh`.
 
 ## Why the set rides inside gg and the compiler does not
 
-`rustc` with its `wasm32-unknown-unknown` standard library is **~376 MB** and cannot
-ride inside a single static `tcab` binary, so it is installed into the gg toolchain
+`rustc` with its `wasm32-wasip1` standard library is **~380 MB** and cannot ride
+inside a single static `tcab` binary, so it is installed into the gg toolchain
 image ([`containers/gg-toolchains/Dockerfile`](../../containers/gg-toolchains/Dockerfile))
 and found on `PATH` at run time.
 
@@ -77,17 +78,17 @@ with the one on the machine; there is no longer an interval in which the two can
 
 | Path | What it holds |
 | --- | --- |
-| `rust-version.sh` | The pins: the compiler (read out of `rust-toolchain.toml`), the target, and the `wit-bindgen` release. Sourced by every script here and by `containers/build.sh`. |
+| `rust-version.sh` | The pins: the compiler (read out of `rust-toolchain.toml`), the target, the preview1 reactor adapter, and the `wit-bindgen` release. Sourced by every script here and by `containers/build.sh`. |
 | `Cargo.toml` | Its own workspace on purpose — it is compiled for wasm and its output is a set of `.rlib` files, so a member of the repository's workspace would be built by every `cargo build --workspace` for no reason. |
-| `src/lib.rs` | The crate's own front door: the capability modules with the gg module id each declares itself to be, the `prelude` gg glob-imports into every program, and `log`. |
+| `src/lib.rs` | The crate's own front door: the capability modules with the gg module id each declares itself to be, and `log`. |
 | `src/files.rs`, `src/shell.rs`, … | One file per capability module. Each declares its functions with the gg operation each binds, the types those functions hand back, and the gg tools they dispatch (`TOOLS`). |
 | `src/core.rs` | The two types that belong to no module because they belong to all of them: `ToolError` and `ToolErrorCode`. |
 | `src/wire.rs` | The bridge onto the generated bindings — the only part of this crate a model never reads. |
-| `src/program.rs` | The shell gg's generated entry file names: the panic hook, the `Failure` type a program's body returns, and what `bound-tools` answers. |
+| `src/program.rs` | The shell: the type gg's world is exported on, the `export!` that makes a program a component, the call into the model's own `main`, the `Failure` type that `main` returns, and what `bound-tools` answers. |
 | `signatures.sh`, `tools/` | The catalogue: `rustdoc` JSON in, `rust.signatures.json` out, into `$GG_SIGNATURES_OUT_DIR`. `tools/catalogue.py` holds the one thing the sources cannot say — which modules the surface is divided into and in what order a reader meets them — and `tools/signatures.py` is everything else. A function's gg operation id is written on the declaration itself, as `#[doc(alias = "ggop:files.read_file")]`, and a module's as `#[doc(alias = "ggmodule:files")]`. |
 | `src/bindings.rs` | **Generated and not committed** — a pure function of `crates/gg/wit/gg-sandbox.wit` and the pinned `wit-bindgen`. `bindings.sh` writes it. |
 | `bindings.sh` | Resolves the pinned `wit-bindgen` and generates `src/bindings.rs`. Its own script rather than a step of `build.sh` because both `build.sh` and `signatures.sh` need it, and folding it into `build.sh` would give the two one rerun set instead of two — see below. |
-| `build.sh` | Generates the bindings, compiles the set for `wasm32-unknown-unknown`, packs it and writes the manifest. |
+| `build.sh` | Generates the bindings, compiles the set for `wasm32-wasip1`, packs it with the pinned adapter and writes the manifest. |
 
 ## Why the bindings are generated by a CLI rather than by the macro
 
@@ -112,9 +113,9 @@ on every turn.
 `use` with no manifest to edit: `regex`, `serde_json`, `base64`, `itertools` and
 `indexmap`. They sit under `# --- heading ---` comments, and those headings are
 **machine-readable**: `build.sh` marks exactly those crates `extern` in the manifest (which
-is what `rustc --extern` puts in a program's prelude) and `tools/signatures.py` groups the
-catalogue's library list by them. One declaration, two readers, so what a model is told it
-may use and what the compile lets it name cannot drift.
+is what `rustc --extern` puts in a program's extern prelude) and `tools/signatures.py`
+groups the catalogue's library list by them. One declaration, two readers, so what a model
+is told it may use and what the compile lets it name cannot drift.
 
 Two constraints decide what may be in it, and both are hard:
 
@@ -122,8 +123,8 @@ Two constraints decide what may be in it, and both are hard:
   rlib whose metadata names one cannot be loaded on any other architecture (measured:
   `E0463`). That rules out `serde`'s `derive`, `thiserror` and `clap`; `build.sh` fails on
   one rather than trusting nobody adds it.
-- **It must compile for `wasm32-unknown-unknown`**, which has no clock, no filesystem, no
-  sockets and no randomness. That rules out `rand`, `chrono` and `reqwest`. Reaching the
+- **It must compile for `wasm32-wasip1`**, which the sandbox gives no clock, no filesystem,
+  no sockets and no randomness. That rules out `rand`, `chrono` and `reqwest`. Reaching the
   world is what `gg::files` and `gg::shell` are for.
 
 ## Building it
@@ -142,7 +143,7 @@ everything else is local.
 You never have to run `signatures.sh` for correctness: `crates/gg/build.rs` runs it on
 every build of `test-cabinet-gg`, so a doc comment or a signature edited in `src/` reaches
 the model's prompt on the next `cargo build`. It needs this checkout's own `rustdoc`, the
-`wasm32-unknown-unknown` standard library (`scripts/ci/install-rust-wasm.sh`) and
+`wasm32-wasip1` standard library (`scripts/ci/install-rust-wasm.sh`) and
 `src/bindings.rs`, which it generates with `bindings.sh` when it is missing. Run it by hand
 — with `GG_SIGNATURES_OUT_DIR` set, or through `scripts/gg-signatures.sh` — when you want
 to *read* the emitted JSON, which is where a reflector bug shows and nowhere else.
@@ -167,31 +168,38 @@ can reason about, so the property is kept.
 
 ## What a Rust program looks like
 
-A **sequence of statements**, as on every gg arm but PureScript, put inside the body of a
-function gg declares on one line before them — so a diagnostic is reported against the line
-the model wrote, minus that one. Everything Rust allows in a function body is allowed:
-`use`, `struct`, `enum`, `trait`, `impl`, `fn`, `const`, `static`, `mod`, `#[derive(…)]`,
-even an inner `#![allow(…)]`.
+A **whole Rust program**: the `use` lines the model wrote and the `fn main` it declared,
+compiled as a binary crate under the name `program`. gg writes nothing around it, so the
+file `rustc` reads is the file the model sent and every diagnostic is already in the
+model's own coordinates.
 
-The body returns `Result<(), gg::Failure>`, which is what makes `?` the operator a Rust
-author reaches for against a `Result`-returning SDK. Anything implementing
-`std::error::Error` converts into `Failure`; `gg::program::message("…")` is the constructor
-for a program that wants to stop on a sentence of its own.
+`fn main() -> Result<(), gg::Failure>` is the shape against a `Result`-returning SDK,
+because it is what makes `?` compose. Anything implementing `std::error::Error` converts
+into `Failure`; `gg::program::message("…")` is the constructor for a program that wants to
+stop on a sentence of its own.
 
-One shape is refused by name: a program that defines `fn main` and expects gg to call it.
-gg does not, so that program would have run nothing while reporting a clean turn.
+## How the shell reaches the model's `main`
 
-## The panic hook, and why this arm needs one
+`src/program.rs` is this arm's shell. It declares the type gg's world is exported on,
+expands the `export!` that makes every program a component, and calls the model's `main`
+through `__main_void` — the unmangled C entry symbol `rustc` emits for a **binary** crate
+and asks `rust-lld` to export. A library crate type emits neither, since there the model's
+`main` is dead code and the Rust-mangled symbol carries a `-C metadata` hash no `extern`
+declaration can name.
 
-`wasm32-unknown-unknown` has **no unwinder** — `panic = "unwind"` is not available on it —
-so a panic aborts, and an abort traps the whole store. A trap carries no message, no class
-and no location, so left alone this arm would have the worst error surface of any in the
-study: every `unwrap` on `None`, every index out of bounds and every division by zero would
-reach the model as "your program trapped".
+`__main_void` is a wasi-libc convention rather than a stable ABI, so it is guarded by a
+test rather than trusted: `rust.substrate.test.rs` compiles a `fn main()` program, drives
+the `run` export and asserts both that the model's `main` ran and that a panicking one's
+stderr reaches the host.
 
-A panic *hook* runs before the abort, on a live guest, and can make an ordinary synchronous
-host call. `gg::program::begin` installs one that completes `feedback.report-error` carrying
-the panic's own message and the model's own line and column, and gg's host half prefers what
-the program said about itself over the trap that followed it. The location comes from
-`std::panic::Location`, which is static data rather than a symbol name — which is why
-`-C strip=symbols` can delete the whole name section without costing this anything.
+## How a failure reaches the model
+
+By capture. Nothing here intercepts a failure: the program dies the way its runtime kills
+it, and gg reads the standard error `wasm32-wasip1` gives it.
+
+A panic writes `std`'s own `thread 'main' (1) panicked at program.rs:6:5:` — the model's
+own file at the model's own line and column — and then aborts, which traps the store; gg
+shows the trap with that stderr in front of it. A `main` returning `Err` has `std`'s
+`Termination` write `Error: …` before the shell propagates the status.
+`std::process::exit` is `proc_exit`, which reaches gg as an `I32Exit`. `-C strip=symbols`
+costs none of it, since `Location` is static data rather than a symbol name.

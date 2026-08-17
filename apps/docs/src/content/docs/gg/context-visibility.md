@@ -30,7 +30,7 @@ one band per source, in this fixed order.
 | File views | The contents of files read into the window. |
 | Agent views | Material a program composed and opened for itself, keyed by label. |
 | Documentation | The documentation views an agent opened, keyed by name. |
-| Doc search | The results of the agent's last documentation search. |
+| Doc search | The agent's last documentation search, and the opening turn's listing of each module it was granted. |
 | Skills | The [skills](/gg/skills/) shown and read. |
 | Memories | The [memories](/gg/memories/) in play. |
 | Task list | The [task](/gg/tasks/) list. |
@@ -45,10 +45,13 @@ Documentation does not follow from a capability. It holds the views a
 [responses-as-code](/gg/responses-as-code/overview/) program opened with
 `gg.views.openDocsView`, and those are bound whatever the capability set says,
 because reading the signature of a call an agent was given is not a privilege.
-So a run with skills switched off can still fill it. Doc search holds one thing:
-the results of the last documentation search, under one selector, because each
-search replaces the last. It is banded apart from Documentation so that what a
-model spends finding its surface is readable separately from what it spends
+So a run with skills switched off can still fill it. Doc search holds two kinds
+of listing under two kinds of selector. An agent's own searches are keyed by the
+constant `search results`, so each of them replaces the last. The
+[opening turn](/gg/responses-as-code/views/#the-opening-turn) keys its listing of
+each granted module under that module's own path, so every listing stands until
+that module is listed again. The band sits apart from Documentation so that what
+a model spends finding its surface is readable separately from what it spends
 reading it.
 
 Compiler errors and Runtime errors sit directly after tool output rather
@@ -243,8 +246,10 @@ open view into the next prompt. The spellings below are TypeScript's; each
 - `gg.views.openText(label, body)` lands in Agent views, keyed by the label.
 - `gg.views.openDocsView(name)` lands in Documentation, keyed by the name of the
   thing it documents.
-- `gg.docs.search(...)` opens its results in Doc search, under one constant
-  selector.
+- `gg.docs.search(...)` opens its results in Doc search, under the constant
+  selector `search results`, so each search an agent runs replaces the last. The
+  opening turn's module listings land in the same band keyed by module path, and
+  each stands until its own module is listed again.
 
 The bands are separate because the authorship is: a file view is workspace
 material with an on-disk truth behind it, tool output is gg's reporting back to

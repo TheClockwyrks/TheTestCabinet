@@ -1,10 +1,12 @@
-// The bridging header gg compiles every Swift program against.
+// The header gg's shell reaches the canonical ABI through, as the clang module
+// `Sources/module.modulemap` declares it.
 //
 // Swift has no `wit-bindgen` generator and does not need one: it imports C natively, so the
 // canonical ABI is generated once as C (`sandbox.h`/`sandbox.c`, from `crates/gg/wit`) and
-// reached from Swift through this header. `swiftc -import-objc-header` puts everything below
-// into the program's scope with no import line of its own — which is what lets a model's reply
-// be compiled VERBATIM, with no prologue and no line offset.
+// reached from Swift through this header. It is a clang MODULE rather than a bridging header,
+// and the difference is which files see it: `swiftc -import-objc-header` puts a header into every
+// file of the Swift module compiled with it, the model's own reply included, while `import
+// GgShell` puts it into the one file that wrote the line. Nothing below is model-facing.
 //
 // It exists as a file of its own, rather than as `sandbox.h` alone, for two things `sandbox.h`
 // does not carry. The first is `malloc`/`free`: what an export RETURNS across the canonical ABI

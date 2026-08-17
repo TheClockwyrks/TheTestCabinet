@@ -28,7 +28,69 @@
 //! * how a code [skill](crate::skills)'s or [memory](crate::memories)'s file becomes a namespace
 //!   bound at `lib.<key>` ([`ProgramLanguage::prepare_module`]);
 //! * which prebuilt component evaluates it ([`ProgramLanguage::guest_component`]);
-//! * and how its SDK spells the surface ([`ProgramLanguage::catalogue`]).
+//! * how its SDK spells the surface ([`ProgramLanguage::catalogue`]);
+//! * and the source gg **writes on the model's behalf** — the synthesized file view
+//!   ([`ProgramLanguage::open_file_program`]), the on-use script of a built-in family skill
+//!   ([`ProgramLanguage::open_docs_views_statement`]), and the program that opens the session
+//!   ([`ProgramLanguage::bootstrap_program`]).
+//!
+//! # What a preparation may do
+//!
+//! A preparation reads a reply and either accepts it or refuses it with a diagnostic the model can
+//! act on. It is not a source transform, and it is not an arrangement: the bytes an arm compiles are
+//! the bytes the model sent. The rule is one rule for every arm, so it is stated once, here, and
+//! each half of the seam repeats the part of it that is its own
+//! ([`prepare_program`](ProgramLanguage::prepare_program),
+//! [`prepare_module`](ProgramLanguage::prepare_module)).
+//!
+//! * **No prologue, no epilogue, no entry point, no import.** Where a language requires an entry
+//!   point, the *model* declares it; where a language executes top-level statements, the model
+//!   writes statements. A reply missing what its language requires earns that language's own
+//!   diagnostic, which is a thing a model can fix — and is what makes the program that ran the
+//!   program the model wrote, rather than gg's arrangement of it.
+//! * **Package availability is packaging, and is allowed.** A classpath entry, an `--extern`, an
+//!   include path, a linked archive: everything that puts gg's SDK where this language's compiler
+//!   can find it is how a library is delivered. What is not allowed is a **name in scope with no
+//!   line the model wrote** — a prelude glob, a `global using`, a precompiled header carrying the
+//!   surface, a re-exported import, a scope of names handed to an evaluator. The test is whether
+//!   the program contains the line that reaches the name.
+//! * **A line number is reached through a source map or not at all.** An arm that arrives at one by
+//!   arithmetic over its own wrapper is reporting a program other than the one the model sees, and a
+//!   wrong line costs more than no line: the model reads it as a fact and rewrites the wrong
+//!   statement.
+//! * **The sources gg writes on a model's behalf are whole programs by the arm's own rules.** The
+//!   program that opens the session ([`bootstrap_program`](ProgramLanguage::bootstrap_program)), the
+//!   on-use script of a built-in family skill
+//!   ([`open_docs_views_statement`](ProgramLanguage::open_docs_views_statement)), the synthesized
+//!   file view ([`open_file_program`](ProgramLanguage::open_file_program), which
+//!   [autoload](crate::agent) pushes into the transcript) and the module a gate drives an arm with
+//!   (`gate_module`, which is `#[cfg(test)]` and so unreachable from a doc link) are all read by a
+//!   model as examples of its own output, and one of them is compiled and run before the model's
+//!   first request. A generated
+//!   source that only compiles because a wrapper completes it is gg teaching the shape this rule
+//!   forbids.
+//!
+//! Which arms keep it is measured rather than asserted: the **authorship gate**
+//! (`language/authorship.rs`) drives every registered arm's two preparation steps with a whole
+//! program of that arm's own and reports what the preparation did to the bytes — kept, wrapped or
+//! rewritten — against a table of the arms that have not converted.
+//!
+//! # What a language does not own: the prose
+//!
+//! There is **one** responses-as-code system prompt for every arm, registered in
+//! [`prompts`](crate::prompts) and rendered from one `.hbs` file. A sentence that really is one
+//! arm's — the shape of a reply, what a failed call does, how an optional argument is written — is a
+//! segment of that template gated on the language's id, and anything a model can find by searching
+//! is in no part of it. Its **spellings** are authored nowhere: a template quotes
+//! `{{api.view.open_text.call}}` and the name is resolved from the rendering language's own
+//! [catalogue](ProgramLanguage::catalogue) at render time, so there is one copy of each name rather
+//! than two that have to agree, and no segment may write a call out in prose.
+//!
+//! Two things stay out of that template, each for its own reason. The refusals a language produces
+//! while *preparing* a program belong to the prepare step, because they answer something the model
+//! just wrote rather than standing in front of it. And a function's signature, description and
+//! summary are reflected out of the declaration they describe into the arm's catalogue, because a
+//! signature authored on gg's side is one nothing can compare against the code.
 //!
 //! # Why the registry is trait objects
 //!
@@ -36,7 +98,7 @@
 //! [`all_languages`] is *derived* from [`GgProgramLanguage::ALL`] rather than being a second list
 //! somebody has to remember to extend. Adding a variant to the core enum therefore fails to compile
 //! until this module has an arm for it, and the new arm is instantly in every iteration — the drift
-//! gates, the healing invariant, the prompt registration. `ALL` itself is not a list anyone can
+//! gates, the healing invariant, the opening turn. `ALL` itself is not a list anyone can
 //! forget either: [`GgProgramLanguage::ordinal`] is a second exhaustive `match` whose every arm is
 //! checked against `ALL` in a `const` block, so a variant that never reached the list is a build
 //! failure rather than a language every gate here silently skips.
@@ -58,6 +120,7 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 use crate::limits::TurnErrorType;
 
 use super::CodeModule;
+use super::locate::Locations;
 use super::operations::OperationId;
 use super::signatures::SignatureCatalogue;
 
@@ -72,11 +135,20 @@ pub use compile::{
 #[path = "language/diagnostics.rs"]
 mod diagnostics;
 
+pub use diagnostics::library_set;
+
 #[path = "language/typescript.rs"]
 mod typescript;
 
 #[path = "language/javascript.rs"]
 mod javascript;
+
+/// The ECMAScript guest, which is a shared artifact rather than a language arm: quickjs-ng in a
+/// component that declares gg's own world, evaluating a program as a **module**.
+/// [TypeScript](typescript), [JavaScript](javascript) and [PureScript](purescript) all evaluate in
+/// it, since all three compile to JavaScript.
+#[path = "language/ecmascript.rs"]
+pub(super) mod ecmascript;
 
 #[path = "language/python.rs"]
 pub(super) mod python;
@@ -146,8 +218,8 @@ mod isolation;
 // there be either described by a manifest or argued for by name.
 //
 // GG CARRIES NO COMMITTED BINARY ANY MORE, so it had no subject left. Ten crates under
-// `crates/gg-sandbox-artifacts/` serve the eleven arms — `typescript` serves JavaScript too, because
-// those two arms are one guest — each running its `build.sh` into a cargo `OUT_DIR`, and the arm
+// `crates/gg-sandbox-artifacts/` serve the eleven arms — `typescript` cuts the guest the JavaScript
+// and PureScript arms read too — each running its `build.sh` into a cargo `OUT_DIR`, and the arm
 // modules `include_bytes!` from there — so a source edited without a rebuild is not a
 // state the tree can reach, rather than a state a test reports. `guests/` no longer exists at all,
 // and `checkers/` holds five files that are gg's own hand-written Java and its two JVM pins.
@@ -158,6 +230,35 @@ mod isolation;
 // build" — is the one every arm took. `scripts/gg-arms.sh`'s `--artifacts` list is what a twelfth
 // arm must now be added to, and `gg-artifact-build` checks that list against what the build really
 // wrote, which is the same forcing function one layer up and on the right side of the gap.
+
+/// The **authorship gate**: the assertion that the bytes an arm compiles are the bytes it was
+/// handed, held against the table of the arms that do something else.
+///
+/// `#[cfg(test)]` for the reason [`isolation`] is — it drives every registered arm's real
+/// preparation, compilers and all. Its module documentation carries what the measurement cannot
+/// see, and why the table fails in both directions.
+#[cfg(test)]
+#[path = "language/authorship.rs"]
+mod authorship;
+
+/// The **documentation-example gate**: the assertion that every program gg's own documentation
+/// pages show a reader is compiled by the arm that page is about.
+///
+/// `#[cfg(test)]` for the reason [`authorship`] is — it runs real compilers over text that lives
+/// outside this crate. Its module documentation says why the pages are a subject at all.
+#[cfg(test)]
+#[path = "language/docs.rs"]
+mod docs;
+
+/// **Gate G8**: the assertion that a runtime failure reaches the model — on every arm, for all five
+/// shapes a failure takes.
+///
+/// `#[cfg(test)]` because it drives eleven real toolchains through five real failures each, which is
+/// a gate's budget and not a turn's. Its module documentation carries the table of every cell that
+/// is not satisfied today and why the table fails in both directions.
+#[cfg(test)]
+#[path = "language/g8.rs"]
+mod g8;
 
 /// A **second implementation of this trait, for tests only** — the thing that makes the seam an
 /// abstraction rather than one implementation wearing a trait.
@@ -194,9 +295,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// A spelling, and one of the few the seam has to know about rather than resolve from a
     /// catalogue: every function's *name* comes out of the catalogue, but the punctuation between an
     /// object and its function is not a name and appears in no declaration. gg quotes qualified calls
-    /// in its own sentences ([`spell`]) and in every prompt template
-    /// (`{{api.view.open_text.call}}`), so a language that writes `view::open_text` and is quoted as
-    /// `view.open_text` is one whose model reads a prompt full of code that does not compile.
+    /// in its own sentences ([`spell`]) and in the system prompt (`{{api.view.open_text.call}}`), so
+    /// a language that writes `view::open_text` and is quoted as `view.open_text` is one whose model
+    /// reads a prompt full of code that does not compile.
     ///
     /// The **object** half is still identity and no language may rename it. This is only how the two
     /// halves are joined. `"."` is the default because it is what every arm but one writes.
@@ -204,19 +305,79 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         "."
     }
 
+    /// **How a program reaches one export of a module bound at `lib.<key>`**, in this arm's own
+    /// spelling, with `<name>` standing in for the export.
+    ///
+    /// This is the sentence the reply to a [code skill or memory](crate::knowledge)'s read is built
+    /// from, and it is the **only** place a model learns it: `lib` binds no catalogued function, so
+    /// there is nothing to search for, and the system prompt states what a model cannot be told at
+    /// the moment it matters rather than what it can. The moment it matters is the read that bound
+    /// the module, so the read is what says it.
+    ///
+    /// The default is a path, which is what eight arms write. The three that reach a module **by
+    /// string** — because it is compiled separately and there is no import for their compiler to
+    /// check a program against — override it, and a family of calls that differ by what they hand
+    /// back is written `<text|number|flag|run>` rather than as one of its members, so a model
+    /// reading the note is not shown one arm of a choice it has to make.
+    fn lib_access(&self, key: &str) -> String {
+        let step = self.member_separator();
+        format!("lib{step}{key}{step}<name>")
+    }
+
+    /// The line a program writes to reach the module bound at `key`, on an arm that needs one.
+    ///
+    /// `None` on the arms where a code module lands somewhere a program can already name: a
+    /// namespace of the compiled program, a value the guest hands the evaluator, a lookup by string.
+    /// Where the module is a real unit of the language's own module system, the program reaches it
+    /// the way it reaches any other, and the read that binds it
+    /// ([`Loaded::note`](crate::knowledge::Loaded::note)) is the one place a model is told the line
+    /// — the same place it is told the [access](Self::lib_access) that line makes resolve.
+    ///
+    /// It takes the key because on an arm whose module system resolves a *specifier*, the line names
+    /// the module it brings in and there is no key-independent line to write.
+    fn lib_import(&self, _key: &str) -> Option<String> {
+        None
+    }
+
     /// This language's name as a **human** reads it — `"TypeScript"`.
     ///
-    /// The operator-facing name: the launch warning that lists the languages gg can drive, the
-    /// warm-up line that names which component compiled. What the *model* reads is its own prompt
-    /// template, which is written in this language's syntax and names the language in its own words
-    /// — so this is not the string a model is shown, and changing it changes no prompt.
+    /// Read by the operator — the launch warning that lists the languages gg can drive, the warm-up
+    /// line that names which component compiled — **and by the model**: one system prompt serves
+    /// every arm, so the sentence that tells an agent which language its reply is read as is
+    /// rendered from this name rather than written out eleven times. Changing it changes what an
+    /// agent is told it is writing.
     fn display_name(&self) -> &'static str;
 
-    /// Turn a model's reply into the source the guest evaluates as a program.
+    /// Prepare a model's reply for the guest that evaluates it: check it, compile it where this arm
+    /// compiles, and refuse it — with a sentence the model can act on — where it cannot be run.
     ///
     /// This is where a language spends whatever it must to make untrusted text safe to hand to a
-    /// parser, and where it refuses — with a sentence the model can act on — anything the sandbox
-    /// has no implementation of.
+    /// parser, and where it refuses anything the sandbox has no implementation of.
+    ///
+    /// # What this may do to the bytes: nothing
+    ///
+    /// **The bytes compiled here are the bytes the model sent.** No prologue, no epilogue, no entry
+    /// point and no import is written around them. Where this language requires an entry point the
+    /// model declares it, and a reply that declares none earns this language's own diagnostic rather
+    /// than a body gg completed for it.
+    ///
+    /// **Making the SDK available is packaging and is allowed** — a classpath entry, an `--extern`,
+    /// an include path, a linked archive. **A name in scope with no line the model wrote is not**: a
+    /// prelude glob, a `global using`, a precompiled header carrying gg's surface, an
+    /// re-exported import, a scope of names handed to an evaluator. Every SDK name a program writes
+    /// is reached through an import that program writes, and the
+    /// [documentation view](crate::sandbox::ModuleView) of a symbol states that line.
+    ///
+    /// **A location this step reports is the compiler's own, over the model's own file, or one
+    /// resolved through a source map** — never a line arrived at by arithmetic over a wrapper,
+    /// because that is a coordinate in a program the model cannot see. The rule, and the gate that
+    /// measures who keeps it, are in this module's own documentation.
+    ///
+    /// **A compiler's own emission is not a wrapper.** An arm whose compiler emits *source* rather
+    /// than an object file hands the guest that emission, exactly as a compiled arm hands it a wasm
+    /// module — [TypeScript](typescript) does, because types have to be erased. What that arm owes
+    /// is the map: it answers [`locations`](Self::locations) with the compiler's own source map, so
+    /// a frame the guest reports is read back into the file the model wrote.
     ///
     /// # Why the modules are here
     ///
@@ -290,10 +451,10 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     ///
     /// The name is a **spelling**, and belongs to the language for the same reason every call's
     /// does: what two arms of a study share is that a program is checked before it runs, never what
-    /// the thing doing the checking is called. A language names its checker in its own
-    /// [system prompt](Self::prompt), because a model told its program is checked and not told by
-    /// what has been given half a sentence — and declaring the name here is what lets the prompt
-    /// gate hold *every* checked language to saying it, without holding them all to saying `tsc`.
+    /// the thing doing the checking is called. The one system prompt renders the name from here,
+    /// because a model told its program is checked and not told by what has been given half a
+    /// sentence — and answering `None` is what takes the sentence away entirely on an arm where
+    /// nothing reads a program before it runs, rather than leaving a promise no compiler keeps.
     ///
     /// The answer decides one further thing: whether the sandbox reports what preparing this
     /// program took, as [`SandboxOutcome::compile`](super::SandboxOutcome::compile). A language
@@ -331,11 +492,15 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// Turn a code skill's or code memory's source into the source the guest evaluates to produce
     /// that module's namespace, bound at `lib.<key>`.
     ///
-    /// A module compiles exactly as a program does, so `context` means what it means there and the
-    /// [isolation rule](Self::prepare_program)
-    /// is the same rule. It is not a lesser path: a turn that reads three code skills compiles three
-    /// modules beside its own program, and every one of those compilations is concurrent with every
-    /// other agent's.
+    /// A module compiles exactly as a program does, so `context` means what it means there, the
+    /// [isolation rule](Self::prepare_program) is the same rule, and so is the
+    /// [authorship rule](Self::prepare_program): the bytes compiled here are the bytes the file
+    /// holds, reached through the imports it writes. The one thing this step owes that the program
+    /// step does not is the [export list](PreparedModule::exports), and it reads that off the
+    /// module the author wrote rather than off a namespace gg wrapped around it.
+    ///
+    /// It is not a lesser path: a turn that reads three code skills compiles three modules beside
+    /// its own program, and every one of those compilations is concurrent with every other agent's.
     fn prepare_module(
         &self,
         source: &str,
@@ -356,9 +521,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// A list rather than a single extension because two languages may share a module runtime, and
     /// where they do, withholding a skill from one of them would be a difference between the arms
     /// far larger than the one a study of those two arms is measuring. [`TypeScript`](typescript)
-    /// and [`JavaScript`](javascript) are that pair: one strip serves both, so each accepts the
-    /// other's spelling and merely prefers its own. A language whose modules nothing else can
-    /// evaluate names one extension and no more.
+    /// and [`JavaScript`](javascript) are that pair: one guest evaluates both, so a module written
+    /// as plain JavaScript is a module either arm can load. A language whose modules nothing else
+    /// can evaluate names one extension and no more.
     ///
     /// The first entry is the spelling this language *writes* — what gg keys a generated on-use
     /// script under. The rest are spellings it will *read*.
@@ -393,7 +558,8 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     ///
     /// Usually a language's own. It need not be: two languages that differ in what gg does to a
     /// program *before* handing it over, and not in what evaluates it, are entitled to one component
-    /// — [`JavaScript`](javascript) serves [`TypeScript`](typescript)'s, and the seam's
+    /// — [`JavaScript`](javascript) and [`TypeScript`](typescript) reach the
+    /// [ECMAScript guest](ecmascript) through one constant, and the seam's
     /// "no language serves another's artifacts" gate names that pair so the sharing is declared
     /// rather than inferred from a passing test.
     ///
@@ -421,6 +587,61 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         self.guest_component().is_none()
     }
 
+    /// Whether the **file and line** wasmtime symbolicates a trap's frames with, out of this
+    /// artifact's own DWARF, name places the model's program actually has.
+    ///
+    /// Almost everywhere the answer is yes, and it is why gg turns
+    /// [`WasmBacktraceDetails`](wasmtime::WasmBacktraceDetails) on at all: on the Swift arm the
+    /// runtime's message lives in an inlined frame's name and nowhere else, and on the C++ and Rust
+    /// arms a trap's line is the only line a failure has.
+    ///
+    /// An arm answers `false` when its toolchain writes DWARF that is **wrong** rather than absent —
+    /// at which point the frames are not a nicety gg can leave in, they are gg reporting a program
+    /// other than the one the model wrote. [`classify`](super::engine::classify) keeps the function
+    /// names, which are correct, and drops the locations. Ruling D11 is the rule this serves: a
+    /// location comes from a compiler reporting against the model's own file or from a source map,
+    /// and by no other means.
+    fn wasm_frames_are_located(&self) -> bool {
+        true
+    }
+
+    /// **Whether this arm's guest reads gg's execution budget and stops itself at it**, rather than
+    /// running until gg's own epoch deadline traps the store.
+    ///
+    /// gg states the budget in [`GUEST_DEADLINE`](super::membrane::GUEST_DEADLINE), one epoch tick
+    /// short of its own ceiling, so that a runaway loop is answered by the engine in the model's own
+    /// words. What that costs is gg's [`timed_out`](super::membrane::MembraneState::timed_out) flag:
+    /// the deadline callback never fires, because the store is already dead when it would have, so
+    /// [`classify`](super::engine::classify) recognises the ceiling from the elapsed time instead.
+    ///
+    /// That recognition is a heuristic — any failure in the last tick of a program's budget looks
+    /// like it — so it is confined to the arms it is the truth about. An arm gg stops with its own
+    /// epoch deadline keeps `timed_out` as its only timeout signal, and a panic it happens to make
+    /// as the ceiling arrives is still reported as a panic.
+    fn stops_itself_at_ggs_deadline(&self) -> bool {
+        false
+    }
+
+    /// **How a frame this arm's guest reports is read back into the text the model wrote**, for an
+    /// arm whose compiler emits source.
+    ///
+    /// `None` on every arm that hands the guest the model's own bytes, because a frame there is
+    /// already in the model's coordinates and there is nothing to resolve. An arm whose compiler
+    /// *re-prints* the program — [TypeScript](typescript), whose types `tsc` erases by emitting new
+    /// text — answers with the [locations](crate::sandbox::locate::Locations) its compiler's own
+    /// source map resolves, and gg applies them to everything the guest wrote to standard error.
+    ///
+    /// It takes the texts rather than a map because that is where an arm puts one: the map is
+    /// inlined in the emitted source, so it reaches every caller the source reaches, including a
+    /// script prepared at a skill's read and run several turns later.
+    ///
+    /// This is the only mechanism by which a location may be corrected. An arm that arrives at a
+    /// line number by arithmetic of its own is reporting a program other than the one the model
+    /// sees.
+    fn locations(&self, _program: &str, _modules: &[CodeModule]) -> Option<Locations> {
+        None
+    }
+
     /// This language's signature catalogue, parsed once per process.
     ///
     /// Every implementation answers with a `&'static str` embedded from the build's own `OUT_DIR`:
@@ -438,15 +659,12 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// knows both halves exist.
     fn healing(&self) -> &'static dyn crate::healing::Dialect;
 
-    /// The authored, model-facing prose and spellings that are written in this language's syntax.
-    fn prompt(&self) -> &'static PromptDialect;
-
     /// The one statement a program writes to open a view of `path` — the whole file, or one
     /// `offset`/`limit` [window](FileWindow) of it — as this language spells it, terminated the way
     /// this language terminates a statement.
     ///
-    /// A trait method rather than a spelling in [`PromptDialect`] because it is not a name. The
-    /// optional half is an **arguments idiom** the seam explicitly leaves to each language (a
+    /// A trait method rather than something resolved out of the catalogue because it is not a name.
+    /// The optional half is an **arguments idiom** the seam explicitly leaves to each language (a
     /// trailing options object in TypeScript; keyword arguments where that is the idiom), and gg
     /// does not merely quote this call — it synthesizes it into the agent's own transcript, as an
     /// assistant turn the agent is meant to read as an example of its own output. A statement in
@@ -457,10 +675,32 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// [agent persistence](crate::persistence::restore_file_views).
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String;
 
+    /// **A whole program that opens a view of each of `views`**, in the order given, as this
+    /// language spells and structures one.
+    ///
+    /// gg pushes it into an agent's transcript as an assistant turn — [autoload](crate::agent) with
+    /// every file a test case provided, [persistence](crate::persistence) with one restored view at
+    /// a time — and a model reads its own transcript as the example of what a well-formed reply
+    /// looks like. Nothing on the turn path compiles it, which is exactly why the seam names it: a
+    /// text that is a *statement list* rather than a program teaches a shape the model's own next
+    /// reply would be refused for.
+    ///
+    /// The default is the statement list, because on nine of the eleven arms a program **is** one:
+    /// a language with a top level takes the statements as they stand. An arm that requires an
+    /// entry point, or a line to reach the call, overrides it — [C++](cpp) does both.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        views
+            .iter()
+            .map(|(path, window)| self.open_file_statement(path, *window))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// A whole **program** that opens one documentation view per name in `names`, as this language
     /// spells and structures it.
     ///
-    /// The one place gg generates source rather than quoting a call, and it is not optional: it is
+    /// One of the two whole programs gg generates rather than quoting — the other opens the session
+    /// ([`bootstrap_program`](Self::bootstrap_program)) — and it is not optional: it is
     /// the on-use script of every [built-in family skill](crate::skills), so a language that could
     /// not write it would be a language whose agents read a skill and are shown nothing. The set of
     /// names is exactly the family this agent binds, which is why the program is generated at all —
@@ -474,6 +714,37 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// writing it out, for the same reason nothing else does.
     fn open_docs_views_statement(&self, names: &[&str]) -> String;
 
+    /// A whole **program** that lists each module in `modules` and opens a documentation view of
+    /// each name in `docs`, as this language spells and structures it.
+    ///
+    /// It is gg's [opening turn](crate::bootstrap): the program is pushed into the agent's window as
+    /// the assistant message the session opens on, and *then* prepared and run. That order is the
+    /// window's rather than the work's convenience — the reply comes first and everything its own
+    /// calls placed comes after it, which is how a transcript reads when a turn really happened. So
+    /// the first example of its own output a model reads is a program that provably ran, and the
+    /// documentation beside it was placed by that program's own calls rather than by gg reaching
+    /// around it.
+    ///
+    /// Two groups, in the order the model reads them: every search first, then every documentation
+    /// view. Each search is a **whole-module lookup** rather than a query — an empty query string,
+    /// one module as the filter, and an explicit limit of
+    /// [`MAX_SEARCH_LIMIT`](crate::docs::MAX_SEARCH_LIMIT), because the default page would silently
+    /// truncate the listing of a large module and a truncated listing is a function the agent never
+    /// learns it has.
+    ///
+    /// Both names are resolved with [`spell`]`(self, …)` rather than written out, exactly as
+    /// [`open_docs_views_statement`](Self::open_docs_views_statement) resolves its one. What an
+    /// implementation owns is the syntax around them, and it owes this program two things a quoted
+    /// call does not owe: it must be **idiomatic**, because a model copies the shape it is shown;
+    /// and it must handle failure the way this arm's programs handle it — propagating on a `Result`
+    /// arm, letting it escape on a throwing one — because a bootstrap that swallowed a failure
+    /// would open the window on a program the model would be wrong to imitate, and would leave a
+    /// [failure that is gg's](crate::bootstrap) looking like a turn that worked.
+    ///
+    /// Not a concatenation of two generated statements: on several arms a program is one module,
+    /// one `main` or one translation unit, so two programs do not add up to one.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String;
+
     /// Replies this language contributes to the delete-only invariant corpus.
     ///
     /// `#[cfg(test)]`, and on the trait rather than beside the tests so that a language cannot be
@@ -486,18 +757,20 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     }
 
     /// A **code module** in this language's own syntax, carrying `name` somewhere its prepared
-    /// artifact will still hold it — the subject the isolation gate (`language/isolation.rs`) drives this
-    /// language's [module step](Self::prepare_module) with.
+    /// artifact will still hold it — the subject the gates over this seam drive this language's
+    /// [module step](Self::prepare_module) with: the isolation gate (`language/isolation.rs`) and
+    /// the authorship gate (`language/authorship.rs`).
     ///
-    /// That gate drives *both* preparation steps sixteen ways, so it needs a source valid for each,
-    /// and the seam guarantees exactly one whole program per language:
+    /// The isolation gate drives *both* preparation steps sixteen ways, so it needs a source valid
+    /// for each, and it takes the shorter of the two whole programs the seam guarantees, which is
+    /// the one that carries a name it can look for afterwards:
     /// [`open_docs_views_statement`](Self::open_docs_views_statement). Wherever a code module is
     /// **ordinary source of the language** — which is every arm but one — that program is a module
     /// too, so it is the default and no language has to answer this.
     ///
     /// The two JVM arms are the exceptions and are the reason this exists: a [Java](java) program is a
-    /// sequence of statements and a Java code module is a **class body**, while a [Kotlin](kotlin)
-    /// program is a script and a Kotlin code module is an ordinary file whose public top-level
+    /// whole compilation unit and a Java code module is a **class body**, while a [Kotlin](kotlin)
+    /// program declares a `fun main()` and a Kotlin code module is a file whose public top-level
     /// functions are its namespace. On neither is one shape the other, and on both the default is a
     /// module that offers nothing.
     ///
@@ -507,7 +780,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// preparation's own diagnostic. A language for which the default is wrong finds out on the
     /// first run of the gate rather than by review.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         self.open_docs_views_statement(&[name])
     }
 
@@ -563,45 +836,6 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     fn isolation_marker_forms(&self, marker: &str) -> Vec<String> {
         vec![marker.to_string()]
     }
-}
-
-/// The model-facing **prose** that is written in one language's syntax: two Handlebars templates,
-/// and nothing else.
-///
-/// The responses-as-code system prompt is written per language because its *sentences* are — how a
-/// program is structured, what a statement ends with, what its example code looks like. Its
-/// **spellings** are not written here or in the template: every function name and every signature a
-/// template quotes is resolved from that language's own committed
-/// [catalogue](super::signatures) at render time, so a template says `{{api.view.open_text.call}}`
-/// and never `view.openText`. That is the whole rule — gg quotes what the SDK really binds, and
-/// there is no second copy of a name to drift.
-///
-/// What is deliberately **not** here:
-///
-/// * The refusals a language produces while *preparing* a program (a module import where there is no
-///   loader, an `await` where there is no event loop). Those belong to the prepare step and stay with
-///   it, because they are answers to something the model just wrote rather than standing prose.
-/// * Any function's **signature, description or summary**. All of it is reflected out of the
-///   declaration it describes and arrives in the language's catalogue — a signature authored on gg's
-///   side is one nothing can compare against the code, which is exactly the defect the catalogue
-///   exists to remove.
-pub struct PromptDialect {
-    /// This language's responses-as-code system prompt template, verbatim.
-    pub system_template: &'static str,
-    /// The name it is registered under: `system-code.<language id>`.
-    pub system_template_name: &'static str,
-    /// This language's "your program showed you nothing" notice template, verbatim.
-    ///
-    /// The one message a *successful* program can produce, and only because a request has to end on
-    /// something for the model to answer. It is per language for the same reason the system prompt
-    /// is: it names the calls that would have shown the model something.
-    ///
-    /// There is deliberately no counterpart for a program that *did* show itself something — the
-    /// views are the report, and a covering note over them would be gg narrating what the model can
-    /// already read.
-    pub nothing_shown_template: &'static str,
-    /// The name that is registered under: `code-nothing-shown.<language id>`.
-    pub nothing_shown_template_name: &'static str,
 }
 
 /// How `language` spells the [operation](super::operations::OperationId) `id`, qualified exactly as
@@ -668,15 +902,17 @@ pub fn all_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {
     GgProgramLanguage::ALL.iter().copied().map(language)
 }
 
-/// A program that prepared cleanly: the source the guest evaluates, and what preparing it observed
-/// about the model's own text on the way past.
+/// A program that prepared cleanly: what the guest is handed, in whichever of the two shapes this
+/// arm produces.
 ///
-/// The observation rides with the source rather than being recovered later because it is a fact
-/// about the **model's** text, in the model's own coordinates, and the only place both that text and
-/// the language's own understanding of it exist together is inside the prepare step.
+/// It carries no observation *about* the model's text, and that absence is the contract rather than
+/// an omission. A preparation reads a program and either accepts it or refuses it with a diagnostic
+/// the model can act on; anything else it thought it noticed on the way past would be gg's account
+/// of a program in front of the language's own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedProgram {
-    /// The source the guest evaluates. For TypeScript, the type-stripped JavaScript.
+    /// The source the guest evaluates — for an arm whose compiler emits source, what that
+    /// compiler emitted.
     ///
     /// Empty for a language that [compiled its own component](Self::component): there is no source
     /// left to evaluate, because the program *is* the artifact. The `program` parameter of the
@@ -684,9 +920,6 @@ pub struct PreparedProgram {
     /// read it costs nothing to pass an empty string to, and making the wire's shape depend on the
     /// arm would be a difference between two arms of a study in the one place there must not be one.
     pub source: String,
-    /// Top-level statements the program wrote that cannot execute, when it wrote any. See
-    /// [`UnreachableTail`].
-    pub unreachable: Option<UnreachableTail>,
     /// **The component that evaluates this program**, for a language that compiled one *for this
     /// program* — `None` for every language whose programs are evaluated by a
     /// [prebuilt](ProgramLanguage::guest_component) one.
@@ -722,29 +955,6 @@ pub struct PreparedModule {
     pub exports: Vec<String>,
 }
 
-/// Top-level statements a program wrote **after** a statement that ends it — code that provably
-/// never runs.
-///
-/// This is not an error and nothing is refused: a language whose program body may end early is
-/// entitled to dead code after the statement that ends it. It exists because of what it is a symptom
-/// of. A model that drafts two programs and pastes the second after the first produces exactly this
-/// shape, and without a word about it gg reports "your program ran to completion" over a reply whose
-/// second half — the half that wrote the deliverable and ended the run — never executed. Round 1
-/// proved that silent discard is the one failure a model cannot recover from, so gg counts what did
-/// not run and says so.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnreachableTail {
-    /// How many top-level statements followed it that could have done something. Declarations the
-    /// language hoists into scope before the first statement runs, and declarations that do not
-    /// exist at run time at all, are excluded: calling either "did not run" would be false.
-    pub statements: usize,
-    /// The 1-based line of the first such statement, in the **program's** coordinates.
-    pub line: usize,
-    /// The first such statement's own source text, trimmed and capped — what lets a model recognise
-    /// the half of its reply that never ran without counting lines.
-    pub excerpt: String,
-}
-
 /// Why a source could not be prepared for its guest — because of what the **model wrote**.
 ///
 /// Every variant is **recoverable and model-facing** — the model wrote something it can fix, is told
@@ -777,23 +987,17 @@ pub enum PrepareError {
     /// program's own coordinates so the model sees *where* rather than only *what*.
     #[error("{0}")]
     Syntax(String),
-    /// It parses, but breaks a rule the language enforces before any statement runs: a `const`
-    /// declared twice, a duplicate binding in a destructuring pattern. Carries the same located
-    /// rendering a syntax error does.
-    #[error("{0}")]
-    Semantic(String),
     /// A **compiler read the whole program and rejected it** on grounds that are neither a parse
     /// failure nor an early error the language enforces before any statement runs: a type error, a
     /// borrow error, a name that does not resolve, an interface a class does not satisfy. Carries
     /// the compiler's own diagnostics, located in the program's own coordinates.
     ///
-    /// Kept apart from [`Syntax`](Self::Syntax) and [`Semantic`](Self::Semantic) rather than folded
-    /// into either, because the three have different causes and want different answers. A syntax
-    /// error is a typo and a semantic error is almost always two programs in one reply; a compile
-    /// error is a program the model wrote *whole and coherently* and got wrong about the surface it
-    /// was writing against — which is the single most interesting thing a checked language's arm can
-    /// tell a study about the SDK it was handed. Folding it into one of the others would destroy a
-    /// distinction that already earns its keep.
+    /// Kept apart from [`Syntax`](Self::Syntax) rather than folded into it, because the two have
+    /// different causes and want different answers. A syntax error is a typo; a compile error is a
+    /// program the model wrote *whole and coherently* and got wrong about the surface it was writing
+    /// against — which is the single most interesting thing a checked language's arm can tell a
+    /// study about the SDK it was handed. Folding it into the other would destroy a distinction that
+    /// already earns its keep.
     ///
     /// It is **recoverable**, like every variant here: the model is handed the diagnostic and writes
     /// another program. A model's own type error must never reach
@@ -803,8 +1007,8 @@ pub enum PrepareError {
     /// Every arm with a compiler in front of it raises it: TypeScript's prepare step runs `tsc` over
     /// the model's own source against the SDK's declarations, and the checked arms beside it run
     /// their own. What each hands back is that compiler's diagnostics, in the program's own
-    /// coordinates — the one line number the wrapper it was checked in made wrong is corrected, and
-    /// nothing else about the text is.
+    /// coordinates — the compiler read the model's own file, so there is no coordinate to correct
+    /// and nothing about the text is edited.
     ///
     /// It is **bounded**, and this is the type that makes the bound necessary. The `Display` above
     /// is `"{0}"` and nothing downstream shortens it: what an arm renders here is what the next
@@ -816,8 +1020,8 @@ pub enum PrepareError {
     #[error("{0}")]
     Compile(String),
     /// It asks for something the sandbox will not run it with, and is refused with an explanation of
-    /// what to write instead — a module import where there is no loader, an `await` where there is
-    /// no event loop, a nesting depth the host's parser is not given room for.
+    /// what to write instead — a code module that exports nothing for a program to reach, an
+    /// `#include` inside a module whose declarations are compiled into a namespace of gg's naming.
     #[error("{0}")]
     Unsupported(String),
 }
@@ -825,7 +1029,7 @@ pub enum PrepareError {
 impl PrepareError {
     /// The [turn error type](TurnErrorType) this failure is recorded as.
     ///
-    /// It lives here, beside the enum, rather than in the turn loop's `match`: the four causes this
+    /// It lives here, beside the enum, rather than in the turn loop's `match`: the three causes this
     /// type exists to keep apart are this module's knowledge, and a caller re-deriving them would be
     /// a second place for them to be got wrong. Every one lands under
     /// [`Transpile`](crate::limits::TurnErrorKind::Transpile) at the base level, so the wire value
@@ -839,7 +1043,6 @@ impl PrepareError {
     pub fn turn_error_type(&self) -> TurnErrorType {
         match self {
             Self::Syntax(_) => TurnErrorType::TranspileSyntax,
-            Self::Semantic(_) => TurnErrorType::TranspileSemantic,
             Self::Compile(_) => TurnErrorType::TranspileCompile,
             Self::Unsupported(_) => TurnErrorType::TranspileUnsupported,
         }
@@ -924,8 +1127,8 @@ pub const PARAM_LANGUAGE: &str = "language";
 /// | `"python"` | [`Python`](GgProgramLanguage::Python) — a committed CPython, evaluating the reply as written |
 /// | `"ruby"` | [`Ruby`](GgProgramLanguage::Ruby) — compiled to JavaScript by the embedded Opal, then evaluated |
 /// | `"purescript"` | [`PureScript`](GgProgramLanguage::PureScript) — type-checked and compiled to JavaScript by the image's `purs`, bundled, then evaluated |
-/// | `"java"` | [`Java`](GgProgramLanguage::Java) — compiled by `javac` and TeaVM in a warm JVM, then evaluated |
-/// | `"kotlin"` | [`Kotlin`](GgProgramLanguage::Kotlin) — compiled as a script by the Kotlin compiler and TeaVM in a warm JVM, then evaluated |
+/// | `"java"` | [`Java`](GgProgramLanguage::Java) — compiled by `javac` and TeaVM in a warm JVM into the wasm component the turn is evaluated by |
+/// | `"kotlin"` | [`Kotlin`](GgProgramLanguage::Kotlin) — compiled by the Kotlin compiler and TeaVM in a warm JVM into the wasm component the turn is evaluated by |
 /// | `"rust"` | [`Rust`](GgProgramLanguage::Rust) — compiled by `rustc` into the wasm component the turn is evaluated by |
 /// | `"swift"` | [`Swift`](GgProgramLanguage::Swift) — compiled by `swiftc`, byte for byte, into the wasm component the turn is evaluated by |
 /// | `"cpp"` | [`Cpp`](GgProgramLanguage::Cpp) — compiled by `clang++`, byte for byte, into the wasm component the turn is evaluated by |

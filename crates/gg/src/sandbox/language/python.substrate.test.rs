@@ -48,6 +48,9 @@ use crate::sandbox::{
 };
 use crate::tools::ToolOutcome;
 
+use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
+
 /// This arm, resolved from the registry — the same `&'static dyn ProgramLanguage` a run resolves.
 fn python() -> &'static dyn crate::sandbox::ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Python)
@@ -172,7 +175,7 @@ fn run_as(
             library,
         )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     (outcome, log)
 }
 
@@ -226,6 +229,196 @@ fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
             .unwrap_or_else(|| panic!("the program did not throw; it logged {:?}", outcome.logs)),
         Err(error) => panic!("expected a program fault, but the sandbox failed: {error}"),
     }
+}
+
+/// **A whole Python program, written the way a model writes one, runs through gg's own turn path.**
+///
+/// Everything else in this file builds its own store, which is the production path with the language
+/// registry left out. This one calls [`run_program`](crate::sandbox::run_program) — the function a
+/// turn calls — so what answers is the registered arm: its real prepare step, the embedded guest and
+/// the real membrane.
+///
+/// The program is what the [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+/// ask a model for on this arm and nothing gg supplies: its own `import` lines, its own top-level
+/// statements, a declaration beside them, a call that crosses to the host, and a view opened on what
+/// came back. What is asserted is the whole round trip — the call arrived, the turn carries no
+/// error, what the program computed came back, and the view it opened is in the outcome under the
+/// selector the program gave it.
+#[test]
+fn a_whole_python_program_a_model_would_write_runs_through_the_turn_path() {
+    let log = CallLog::default();
+    let api = FakeToolApi::with(&log, canned_outcome);
+    let operations = granted_operations(&all_operations(), false);
+    let scope = ProgramScope {
+        capabilities: &all_capabilities(),
+        operations: &operations,
+        modules: &[],
+        ending: RunEnding::None,
+    };
+    let (outcome, _api) = crate::sandbox::run_program(
+        crate::sandbox::language(GgProgramLanguage::Python),
+        r#"import textwrap
+from dataclasses import dataclass
+
+import gg
+
+
+@dataclass(frozen=True)
+class Summary:
+    path: str
+    characters: int
+
+    @property
+    def line(self) -> str:
+        return f"{self.path}: {self.characters} characters"
+
+
+notes = gg.files.read_text_file("notes.md")
+summary = Summary("notes.md", len(notes))
+print(summary.line)
+gg.views.open_text("notes", textwrap.dedent(notes))
+"#,
+        scope,
+        SandboxLimits::default(),
+        None,
+        api,
+    );
+
+    let result = match &outcome.result {
+        Ok(result) => result,
+        Err(error) => panic!("the program did not run: {error:?}"),
+    };
+    assert!(
+        result.error.is_none(),
+        "the program ran and reported a failure: {:?}",
+        result.error
+    );
+    assert_eq!(
+        log.names(),
+        ["read_file"],
+        "the call the program wrote did not reach the host"
+    );
+    assert_eq!(
+        outcome.logs,
+        ["notes.md: 30 characters"],
+        "what the program computed from the answer did not come back"
+    );
+    let opened: Vec<&str> = outcome
+        .views_opened
+        .iter()
+        .map(|view| view.selector.as_str())
+        .collect();
+    assert_eq!(
+        opened,
+        ["notes"],
+        "the view the program opened is not in what the turn hands back"
+    );
+}
+
+/// **Nothing this arm offers resolves without a line the program wrote.**
+///
+/// The [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) condition every
+/// registered arm holds, and the one no byte comparison can see: this arm's preparation always
+/// handed the model's source across untouched, and the violation was in the guest, which updated a
+/// program's globals from a table of every capability module, every type and the `gg` name itself.
+///
+/// So the proof is a program that omits the import and fails. CPython is the only thing that reads a
+/// program here, so the failure is a `NameError` at the line the model wrote rather than a compile
+/// diagnostic — the same claim the compiled arms make with `error: use of undeclared identifier`.
+/// The positive half is beside it, because a rule that refused everything would pass the negative
+/// half alone.
+#[test]
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    let operations = all_operations();
+    // Each of the names the guest used to bind: a capability module under its bare id, the same
+    // module under `gg`, and a type the SDK declares. None of them is a name a program starts with.
+    for (program, missing) in [
+        (r#"views.open_text("notes", "eight files")"#, "views"),
+        (r#"gg.views.open_text("notes", "eight files")"#, "gg"),
+        (r#"print(files.read_file)"#, "files"),
+        (r#"print(ToolError)"#, "ToolError"),
+        (r#"print(UNCHANGED)"#, "UNCHANGED"),
+        // The shim's own module namespace is not the program's either: a program is executed in a
+        // mapping of its own rather than in the file that executes it.
+        (r#"print(feedback)"#, "feedback"),
+        (r#"print(PROGRAM_FILENAME)"#, "PROGRAM_FILENAME"),
+    ] {
+        let (outcome, log) = run_with(
+            program,
+            &operations,
+            &[],
+            SandboxLimits::default(),
+            canned_outcome,
+        );
+        let error = program_error(&outcome);
+        assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{program}");
+        assert!(
+            error
+                .message
+                .contains(&format!("NameError: name '{missing}' is not defined")),
+            "`{program}` was refused in some other way: {}",
+            error.message
+        );
+        assert!(log.calls().is_empty(), "`{program}` reached the host");
+    }
+
+    // And the same question asked of `run_program` — the function a turn calls, so the arm's own
+    // registered prepare step runs rather than being stepped around. `run_with` above leaves that
+    // step out deliberately, and on this arm it is the identity function, but the claim this test
+    // carries is about the production path and so is at least one of its cells.
+    let log = CallLog::default();
+    let (outcome, _api) = crate::sandbox::run_program(
+        python(),
+        r#"notes = gg.files.read_text_file("notes.md")
+gg.views.open_text("notes", notes)
+"#,
+        ProgramScope {
+            capabilities: &all_capabilities(),
+            operations: &granted_operations(&all_operations(), false),
+            modules: &[],
+            ending: RunEnding::None,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::with(&log, canned_outcome),
+    );
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+    assert!(
+        error
+            .message
+            .contains("NameError: name 'gg' is not defined"),
+        "the turn path refused a program that wrote no import in some other way: {}",
+        error.message
+    );
+    assert!(
+        log.calls().is_empty(),
+        "a program that never reached its import reached the host"
+    );
+
+    // And with the line the catalogue states, the same call resolves and crosses. Read out of the
+    // catalogue rather than typed here, so this is the line a model is really shown.
+    let stated = crate::sandbox::catalogue_modules(python())
+        .into_iter()
+        .find(|module| module.id == "views")
+        .and_then(|module| module.import)
+        .expect("`gg.views` states the line a program writes");
+    let (outcome, _log) = run_with(
+        &format!("{stated}\ngg.views.open_text(\"notes\", \"eight files\")"),
+        &operations,
+        &[],
+        SandboxLimits::default(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), [] as [String; 0]);
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["notes"]
+    );
 }
 
 #[test]
@@ -565,17 +758,21 @@ print("still here")
 }
 
 #[test]
-fn the_embedded_guest_carries_every_library_the_prompt_names() {
+fn the_embedded_guest_carries_every_library_its_catalogue_declares() {
     // `componentize-py` bakes only the modules the entry module's import closure reached, so the
     // library set is a property of the ARTIFACT rather than of a policy — and one nothing would
     // notice losing.
     //
     // What makes it checkable is that nothing hand-writes the set twice: `src/library.py` imports
-    // what the arm offers, the catalogue is reflected out of those imports, and the system prompt
-    // renders the catalogue. So the list driven in here is **the list a model is told about**, read
-    // out of the generated catalogue rather than typed out again — and a curated import quietly
-    // dropped in a rebuild fails here rather than months later inside a run, on the turn a model
-    // spends discovering that a module the prompt promised is not there.
+    // what the arm offers, and the catalogue is reflected out of those imports. So the list driven
+    // in here is **the list gg claims this arm carries**, read out of the generated catalogue rather
+    // than typed out again — and nothing tells a model that list up front. It reaches one only as
+    // the tail of a compile failure (`agent.code.rs`'s compiler-error body, which appends
+    // `library_set`), which this interpreted arm never renders; here the whole of what a model ever
+    // learns about a missing module is the guest's own `ModuleNotFoundError`, on the turn its
+    // program imported one. So a curated import quietly dropped in a rebuild fails here rather than
+    // months later inside a run, on the turn a model spends discovering that a module the catalogue
+    // declares is not in the component.
     let named: Vec<&str> = python()
         .catalogue()
         .libraries
@@ -585,7 +782,7 @@ fn the_embedded_guest_carries_every_library_the_prompt_names() {
     assert!(
         named.len() > 50,
         "the generated catalogue names {} libraries, which is too few to be the curated set — the \
-         prompt is describing a sandbox nobody has",
+         catalogue is describing a sandbox nobody has",
         named.len()
     );
     let outcome = run(&format!(
@@ -598,9 +795,10 @@ for name in {named}:
         missing.append(name)
 print("missing", missing)
 
-# Deliberately absent, and the prompt says so by name: a WASI component cannot spawn a process,
-# nothing here is asynchronous, and these C extensions are not in this CPython. Their absence is a
-# loud `ModuleNotFoundError` rather than an import that succeeds and a call that fails.
+# Deliberately absent, and the catalogue leaves every one of them out: a WASI component cannot
+# spawn a process, nothing here is asynchronous, and these C extensions are not in this CPython.
+# Their absence is a loud `ModuleNotFoundError` rather than an import that succeeds and a call that
+# fails.
 for name in ["subprocess", "multiprocessing", "asyncio", "ssl", "ctypes"]:
     try:
         __import__(name)
@@ -761,9 +959,10 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
     // A code skill's or code memory's module. Python's answer to "what are a module's exports?" is
     // the language's own: the public names its body left behind. There is nothing for the host to
     // append — the JavaScript guest's `return { … }` has no Python counterpart — so `prepare_module`
-    // for this arm hands the source over unchanged, and this is the contract that decides.
+    // for this arm hands the source over unchanged, and this is the contract that decides. The
+    // program reaches it the way it reaches any other package, by writing the import.
     let outcome = run_with_modules(
-        "print(lib.csv_tools.HEADER)\nprint(lib.csv_tools.widen('a', 3))\nprint(hasattr(lib.csv_tools, '_private'))",
+        "import lib\nprint(lib.csv_tools.HEADER)\nprint(lib.csv_tools.widen('a', 3))\nprint(hasattr(lib.csv_tools, '_private'))",
         &[(
             "csv_tools",
             "HEADER = 'name,size'\n_private = 1\n\ndef widen(text, width):\n    return text.ljust(width, '.')\n",
@@ -774,7 +973,7 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
     // Two modules, each its own namespace, and one of them importing from the curated library set —
     // a module is ordinary Python and gets everything a program gets.
     let outcome = run_with_modules(
-        "print(lib.first.shout('hi'), lib.second.encode({'a': 1}))",
+        "from lib import first, second\nprint(first.shout('hi'), second.encode({'a': 1}))",
         &[
             ("first", "def shout(text):\n    return text.upper()\n"),
             (
@@ -788,7 +987,7 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
     // A module that throws is REPORTED, not raised: a broken skill belongs to whoever authored it,
     // so its binding is left empty and the program still runs.
     let outcome = run_with_modules(
-        "print('ran', hasattr(lib.broken, 'anything'), lib.fine.ok)",
+        "import lib.broken\nimport lib.fine\nprint('ran', hasattr(lib.broken, 'anything'), lib.fine.ok)",
         &[
             ("broken", "raise ValueError('bad skill')\n"),
             ("fine", "ok = 'yes'\n"),
@@ -803,9 +1002,27 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
         outcome.module_errors[0].1
     );
 
+    // A module reaches gg through the line a program writes, and reaches it as the same objects.
+    let outcome = run_with_modules(
+        "import lib\nprint(lib.notes.header())",
+        &[(
+            "notes",
+            "import gg\n\n\ndef header():\n    return gg.files.read_file.__name__\n",
+        )],
+    );
+    assert_eq!(logs(&outcome), ["read_file"]);
+
     // No modules, no `lib` — the rule every family obeys: what a run does not offer is not a name.
     let outcome = run("print(lib)");
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
+    let outcome = run("import lib");
+    assert!(
+        program_error(&outcome)
+            .message
+            .contains("No module named 'lib'"),
+        "{:?}",
+        program_error(&outcome).message
+    );
 }
 
 /// One tool, called through the Python spelling of it, and the JSON gg's dispatch must have seen.
@@ -831,77 +1048,77 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            program: "shell.shell(\"npm test\", timeout_secs=30)",
+            program: "import gg\ngg.shell.shell(\"npm test\", timeout_secs=30)",
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            program: "files.read_file(\"src/a.py\", offset=2, limit=5)",
+            program: "import gg\ngg.files.read_file(\"src/a.py\", offset=2, limit=5)",
             expected: || json!({ "path": "src/a.py", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            program: "files.write_file(\"out.txt\", \"hello\")",
+            program: "import gg\ngg.files.write_file(\"out.txt\", \"hello\")",
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            program: "files.edit_file(\"src/a.py\", \"alpha\", \"beta\")",
+            program: "import gg\ngg.files.edit_file(\"src/a.py\", \"alpha\", \"beta\")",
             expected: || json!({ "path": "src/a.py", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            program: "files.list_dir(\"src\")",
+            program: "import gg\ngg.files.list_dir(\"src\")",
             expected: || json!({ "path": "src" }),
         },
         Crossing {
             tool: "read_skill",
-            program: "skills.read_skill(\"testing\")",
+            program: "import gg\ngg.skills.read_skill(\"testing\")",
             expected: || json!({ "name": "testing" }),
         },
         Crossing {
             tool: "write_memory",
-            program: "memories.write_memory(\"layout\", \"d\", \"b\")",
+            program: "import gg\ngg.memories.write_memory(\"layout\", \"d\", \"b\")",
             expected: || json!({ "name": "layout", "description": "d", "body": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "update_memory",
-            program: "memories.update_memory(\"layout\", \"d2\", \"b2\")",
+            program: "import gg\ngg.memories.update_memory(\"layout\", \"d2\", \"b2\")",
             expected: || json!({ "name": "layout", "description": "d2", "body": "b2", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "create_memory",
-            program: "memories.create_memory(\"layout\", \"d\", \"b\")",
+            program: "import gg\ngg.memories.create_memory(\"layout\", \"d\", \"b\")",
             expected: || json!({ "name": "layout", "description": "d", "contents": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "read_memory",
-            program: "memories.read_memory(\"layout\")",
+            program: "import gg\ngg.memories.read_memory(\"layout\")",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            program: "memories.edit_memory(\"layout\", \"old\", \"new\")",
+            program: "import gg\ngg.memories.edit_memory(\"layout\", \"old\", \"new\")",
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            program: "memories.search_memories([\"cargo\", \"nextest\"])",
+            program: "import gg\ngg.memories.search_memories([\"cargo\", \"nextest\"])",
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            program: "memories.delete_memory(\"layout\")",
+            program: "import gg\ngg.memories.delete_memory(\"layout\")",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            program: "tasks.add_task(\"t1\", \"T\", description=\"D\", blocked_by=[\"t0\"])",
+            program: "import gg\ngg.tasks.add_task(\"t1\", \"T\", description=\"D\", blocked_by=[\"t0\"])",
             expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
         },
         Crossing {
             tool: "update_task",
-            program: "tasks.update_task(\"t1\", title=\"T2\", description=None, status=TaskStatus.IN_PROGRESS)",
+            program: "import gg\ngg.tasks.update_task(\"t1\", title=\"T2\", description=None, status=gg.tasks.TaskStatus.IN_PROGRESS)",
             expected: || {
                 // `description=None` is the sentinel that CLEARS it — the argument left out is the
                 // one that keeps it — and `in_progress` is gg's own spelling, so the membrane's
@@ -911,27 +1128,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_blocked_by",
-            program: "tasks.set_blocked_by(\"t1\", [])",
+            program: "import gg\ngg.tasks.set_blocked_by(\"t1\", [])",
             expected: || json!({ "id": "t1", "blockedBy": [] }),
         },
         Crossing {
             tool: "complete_task",
-            program: "tasks.complete_task(\"t1\")",
+            program: "import gg\ngg.tasks.complete_task(\"t1\")",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "remove_task",
-            program: "tasks.remove_task(\"t1\")",
+            program: "import gg\ngg.tasks.remove_task(\"t1\")",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "create_epic",
-            program: "board.create_epic(\"epc\", \"E\", \"D\")",
+            program: "import gg\ngg.board.create_epic(\"epc\", \"E\", \"D\")",
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            program: "board.create_issue(\"I\", \"s\", \"o\", \"c\", \"worker\", reviewers=[\"critic\"])",
+            program: "import gg\ngg.board.create_issue(\"I\", \"s\", \"o\", \"c\", \"worker\", reviewers=[\"critic\"])",
             expected: || {
                 json!({
                     "title": "I",
@@ -948,7 +1165,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            program: "board.update_issue(\"i1\", status=IssueStatus.DONE, epic_id=None)",
+            program: "import gg\ngg.board.update_issue(\"i1\", status=gg.board.IssueStatus.DONE, epic_id=None)",
             expected: || {
                 // `epic_id=None` ungroups the issue, which gg's schema spells as the empty string;
                 // a `description` left out keeps the one it has, so its key is absent entirely.
@@ -965,72 +1182,72 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            program: "board.set_issue_blocked_by(\"i1\", [\"i0\"])",
+            program: "import gg\ngg.board.set_issue_blocked_by(\"i1\", [\"i0\"])",
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            program: "board.remove_epic(\"e1\")",
+            program: "import gg\ngg.board.remove_epic(\"e1\")",
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            program: "board.remove_issue(\"i1\")",
+            program: "import gg\ngg.board.remove_issue(\"i1\")",
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            program: "board.wait_for_issue(\"i1\")",
+            program: "import gg\ngg.board.wait_for_issue(\"i1\")",
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
             tool: "evict_file_view",
-            program: "context.evict_file_view(\"src/a.py\")",
+            program: "import gg\ngg.context.evict_file_view(\"src/a.py\")",
             expected: || json!({ "path": "src/a.py" }),
         },
         Crossing {
             tool: "archive_thread",
-            program: "context.archive_thread([TurnRange(4, 19)])",
+            program: "import gg\ngg.context.archive_thread([gg.context.TurnRange(4, 19)])",
             expected: || json!({ "ranges": [[4, 19]] }),
         },
         Crossing {
             tool: "search_archive",
-            program: "context.search_archive(\"the parser\")",
+            program: "import gg\ngg.context.search_archive(\"the parser\")",
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
             tool: "compact",
-            program: "context.compact(\"scaffolded the page\", [\"src/main.py\"])",
+            program: "import gg\ngg.context.compact(\"scaffolded the page\", [\"src/main.py\"])",
             expected: || json!({ "summary": "scaffolded the page", "files": ["src/main.py"] }),
         },
         Crossing {
             tool: "spawn_subagent",
-            program: "delegation.spawn_subagent(\"subagent\", prompt=\"write the lexer\")",
+            program: "import gg\ngg.delegation.spawn_subagent(\"subagent\", prompt=\"write the lexer\")",
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            program: "delegation.wait_for_subagents([\"agent-1\"])",
+            program: "import gg\ngg.delegation.wait_for_subagents([\"agent-1\"])",
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            program: "delegation.send_message(\"agent-1\", \"prefer the simpler parser\")",
+            program: "import gg\ngg.delegation.send_message(\"agent-1\", \"prefer the simpler parser\")",
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            program: "delegation.transition_state(\"verify\", \"the build is green\")",
+            program: "import gg\ngg.delegation.transition_state(\"verify\", \"the build is green\")",
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            program: "delegation.exec(\"Builder\", \"pick it up from here\")",
+            program: "import gg\ngg.delegation.exec(\"Builder\", \"pick it up from here\")",
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            program: "delegation.fork(\"try the other fix\")",
+            program: "import gg\ngg.delegation.fork(\"try the other fix\")",
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -1090,30 +1307,32 @@ fn the_sdk_hands_a_program_values_python_can_read() {
     let operations = all_operations();
     let (outcome, _log) = run_with(
         r#"
-read = files.read_file("notes.md")
+import gg
+
+read = gg.files.read_file("notes.md")
 print(type(read).__name__, read.first_line, read.total_lines, read.byte_truncated)
 print(repr(read.contents.splitlines()[0]))
 
-picture = files.read_file("logo.png")
+picture = gg.files.read_file("logo.png")
 print(type(picture).__name__, picture.label, picture.bytes, picture.shown, picture.not_shown_reason is not None)
-print(isinstance(read, TextFile), isinstance(picture, TextFile), isinstance(picture, FileRead))
+print(isinstance(read, gg.files.TextFile), isinstance(picture, gg.files.TextFile), isinstance(picture, gg.files.FileRead))
 
-entries = files.list_dir("src")
-print([entry.name for entry in entries], entries[2].kind is EntryKind.DIRECTORY, entries[0].kind)
+entries = gg.files.list_dir("src")
+print([entry.name for entry in entries], entries[2].kind is gg.files.EntryKind.DIRECTORY, entries[0].kind)
 
-budget = memories.write_memory("layout", "d", "b")
+budget = gg.memories.write_memory("layout", "d", "b")
 print(budget.count, budget.max_count, budget.index_chars)
 
-ran = shell.shell("make")
+ran = gg.shell.shell("make")
 print(ran.exit_code, ran.truncated)
 
-collected = delegation.wait_for_subagents()
-print(collected[0].status is AgentEnding.COMPLETED, collected[0].summary)
+collected = gg.delegation.wait_for_subagents()
+print(collected[0].status is gg.delegation.AgentEnding.COMPLETED, collected[0].summary)
 
-archive = context.search_archive("the parser")
-print(archive.archive_empty, archive.hits[0].role is MessageRole.ASSISTANT, archive.hits[0].seq)
+archive = gg.context.search_archive("the parser")
+print(archive.archive_empty, archive.hits[0].role is gg.context.MessageRole.ASSISTANT, archive.hits[0].seq)
 
-created = board.create_issue("I", "s", "o", "c", "worker")
+created = gg.board.create_issue("I", "s", "o", "c", "worker")
 print(created.id, created.board.issues, created.board.max_issues)
 "#,
         &operations,
@@ -1148,9 +1367,11 @@ print(created.id, created.board.issues, created.board.max_issues)
         r#"
 import dataclasses
 
-span = TurnRange(4, 19)
+import gg
+
+span = gg.context.TurnRange(4, 19)
 print(span)
-print(dataclasses.asdict(span), span == TurnRange(4, 19))
+print(dataclasses.asdict(span), span == gg.context.TurnRange(4, 19))
 try:
     span.start = 5
 except dataclasses.FrozenInstanceError:
@@ -1180,10 +1401,12 @@ fn a_failed_call_arrives_as_a_python_exception() {
     // failure to be handled.
     let (outcome, _log) = run_with(
         r#"
+import gg
+
 try:
-    files.edit_file("src/a.py", "alpha", "beta")
-except ToolError as failure:
-    print(failure.tool, failure.code is ToolErrorCode.CONFLICT, failure.code.value)
+    gg.files.edit_file("src/a.py", "alpha", "beta")
+except gg.core.ToolError as failure:
+    print(failure.tool, failure.code is gg.core.ToolErrorCode.CONFLICT, failure.code.value)
     print(str(failure))
 "#,
         &operations,
@@ -1212,7 +1435,7 @@ except ToolError as failure:
     // host branches on — which is what makes a failure raised through the SDK indistinguishable, to
     // gg, from one a program raised by reaching past it into the generated bindings.
     let (outcome, _log) = run_with(
-        "files.read_file(\"missing.py\")",
+        "import gg\ngg.files.read_file(\"missing.py\")",
         &operations,
         &[],
         SandboxLimits::default(),
@@ -1225,12 +1448,18 @@ except ToolError as failure:
     );
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::ToolFailure, "{error:?}");
-    assert_eq!(error.message, "no such file, from `read_file`");
+    // The exception's own rendering, which names the call that failed before the host's detail:
+    // a program with twenty reads in it is otherwise told a file was not found and left to guess
+    // which read wanted it.
+    assert_eq!(
+        error.message,
+        "read_file: not-found: no such file, from `read_file`"
+    );
     assert!(
         error
             .location
             .as_deref()
-            .is_some_and(|it| it.starts_with("line 1")),
+            .is_some_and(|it| it.starts_with("line 2")),
         "located in the program: {:?}",
         error.location
     );
@@ -1238,7 +1467,7 @@ except ToolError as failure:
     // An argument of the right type and the wrong range is refused HERE, before it wraps into a
     // `u32` and reads a window nobody asked for.
     let (outcome, log) = run_with(
-        "files.read_file(\"a.py\", offset=-1)",
+        "import gg\ngg.files.read_file(\"a.py\", offset=-1)",
         &operations,
         &[],
         SandboxLimits::default(),
@@ -1256,7 +1485,7 @@ except ToolError as failure:
     // A missing REQUIRED argument is Python's own `TypeError`, naming the function and the argument
     // — better than anything the SDK could add, and the reason there is no validator for it.
     let (outcome, _log) = run_with(
-        "tasks.add_task(\"t1\")",
+        "import gg\ngg.tasks.add_task(\"t1\")",
         &operations,
         &[],
         SandboxLimits::default(),
@@ -1274,8 +1503,8 @@ except ToolError as failure:
 
     // Briefing a child with neither half of the choice, or with both, is refused by name.
     for program in [
-        "delegation.spawn_subagent(\"worker\")",
-        "delegation.spawn_subagent(\"worker\", prompt=\"p\", issue_id=\"AUTH-1\")",
+        "import gg\ngg.delegation.spawn_subagent(\"worker\")",
+        "import gg\ngg.delegation.spawn_subagent(\"worker\", prompt=\"p\", issue_id=\"AUTH-1\")",
     ] {
         let (outcome, log) = run_with(
             program,
@@ -1286,7 +1515,7 @@ except ToolError as failure:
         );
         assert_eq!(
             program_error(&outcome).message,
-            "expected exactly one of `prompt` or `issue_id`",
+            "spawn_subagent: invalid-argument: expected exactly one of `prompt` or `issue_id`",
             "`{program}` was not refused"
         );
         assert!(log.calls().is_empty(), "`{program}` reached the host");
@@ -1296,12 +1525,12 @@ except ToolError as failure:
 #[test]
 fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     // **The surface does not follow the run.** This SDK is static: every function is on its module
-    // whatever the run operations, and every module is on `gg`, so what a program gets for calling one
-    // it was not granted is a refusal from the HOST naming the capability that is missing — not an
-    // `AttributeError` from Python naming an absence. The two were never the same information, and
-    // the second is what the model reads on the ten sibling arms.
+    // whatever the run operations, so what a program gets for calling one it was not granted is a
+    // refusal from the HOST naming the capability that is missing — not an `AttributeError` from
+    // Python naming an absence. The two were never the same information, and the second is what the
+    // model reads on the ten sibling arms.
     let (outcome, log) = run_with(
-        "files.read_file(\"notes.md\")",
+        "import gg\ngg.files.read_file(\"notes.md\")",
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         SandboxLimits::default(),
@@ -1312,9 +1541,11 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     // side raised it: reaching for something this run does not offer is one event and one metric on
     // every arm.
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
+    // The host's sentence, under the exception's own rendering: the call this program wrote, and
+    // the code a handler branches on.
     assert_eq!(
-        error.message, "`gg.files.read_file` is not available.",
-        "the call is named as this program would write it, and nothing more is said"
+        error.message,
+        "read_file: unavailable: `gg.files.read_file` is not available."
     );
     assert!(
         log.calls().is_empty(),
@@ -1324,7 +1555,7 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     // A module none of whose functions this run buys is still a module, and reaching for one of them
     // is refused on exactly the same terms rather than failing one level up.
     let (outcome, _log) = run_with(
-        "board.create_epic(\"epc\", \"E\", \"D\")",
+        "import gg\ngg.board.create_epic(\"epc\", \"E\", \"D\")",
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         SandboxLimits::default(),
@@ -1332,12 +1563,15 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     );
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
-    assert_eq!(error.message, "`gg.board.create_epic` is not available.");
+    assert_eq!(
+        error.message,
+        "create_epic: unavailable: `gg.board.create_epic` is not available."
+    );
 
     // A name gg does not have AT ALL is the other failure, and it is still this arm's spelling of an
     // unknown name: the module says what it declares, which is now the whole of what gg declares.
     let (outcome, _log) = run_with(
-        "files.read_fil(\"notes.md\")",
+        "import gg\ngg.files.read_fil(\"notes.md\")",
         &all_operations(),
         &[],
         SandboxLimits::default(),
@@ -1348,7 +1582,7 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     assert!(
         error
             .message
-            .contains("is not one of the functions gg declares there"),
+            .contains("is not one of the names gg declares there"),
         "{}",
         error.message
     );
@@ -1363,13 +1597,13 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     );
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
 
-    // The refusal is a VALUE, which is the whole point of moving the gate to the host: a program can
-    // catch it, read the code off it, and carry on. Reaching the function through an ordinary
-    // `import` rather than through the injected scope changes nothing, because neither was ever the
-    // gate.
+    // The refusal is a VALUE, which is the whole point of putting the gate at the host: a program
+    // can catch it, read the code off it, and carry on. Python's other import spellings reach the
+    // same objects, so a program that wrote `from gg import files` meets the same refusal.
     let (outcome, log) = run_with(
         r#"
 from gg import files
+from gg.core import ToolError, ToolErrorCode
 
 try:
     files.read_file("notes.md")
@@ -1423,12 +1657,10 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     // is derived from the entry rather than assumed.
     let written = |value: &Value| -> String {
         let name = value["name"].as_str().expect("a name");
+        let module = value["module"].as_str().expect("a module");
         match value["receiver"].as_str() {
-            Some(receiver) => format!("{receiver}.{name}"),
-            None => {
-                let module = value["module"].as_str().expect("a module");
-                format!("{module}.{name}")
-            }
+            Some(receiver) => format!("gg.{module}.{receiver}.{name}"),
+            None => format!("gg.{module}.{name}"),
         }
     };
     let entry = |value: &Value| -> (String, String) {
@@ -1451,7 +1683,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         .map(|(_, call)| call)
         .collect();
     let program = format!(
-        "print(\",\".join(\"missing\" if not callable(f) else \"ok\" for f in [{}]))",
+        "import gg\nprint(\",\".join(\"missing\" if not callable(f) else \"ok\" for f in [{}]))",
         calls.join(", ")
     );
     let (outcome, _log) = run_as(
@@ -1469,10 +1701,10 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         "every call the catalogue describes is bound where it says it is"
     );
 
-    // And under the FULLY-QUALIFIED name the catalogue keys it by, which is the same object rather
-    // than a second binding of it. That name is what a documentation view is opened by, what a
-    // search returns and what gg quotes back in a refusal, so a program that read it everywhere and
-    // could not type it would be reading a key it has no use for.
+    // And under the FULLY-QUALIFIED name the catalogue keys it by, which is what a program writes:
+    // the same name a documentation view is opened by, a search returns and gg quotes back in a
+    // refusal. One `import gg` is what makes every one of them resolve, and a key a model read
+    // everywhere and could not type would be a key it has no use for.
     //
     // Asked of the module-level functions alone, and the exclusion is about what a member's key IS
     // rather than about what this guest binds. `gg.views.OpenView.close` is a documentation key
@@ -1499,7 +1731,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         .map(|(fqn, short)| format!("\"ok\" if {fqn} is {short} else \"different\""))
         .collect();
     let (outcome, _log) = run_as(
-        &format!("print(\",\".join([{}]))", pairs.join(", ")),
+        &format!("import gg\nprint(\",\".join([{}]))", pairs.join(", ")),
         &all_operations(),
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
@@ -1522,7 +1754,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         .collect();
     let (outcome, _log) = run_as(
         &format!(
-            "print(\",\".join(\"missing\" if not callable(f) else \"ok\" for f in [{}]))",
+            "import gg\nprint(\",\".join(\"missing\" if not callable(f) else \"ok\" for f in [{}]))",
             review.join(", ")
         ),
         &[],
@@ -1535,17 +1767,25 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     assert_eq!(logs(&outcome), [vec!["ok"; review.len()].join(",")]);
 
     // And every TYPE it declares is a name a program can write, because a signature that mentions
-    // one a program cannot name is a signature a model cannot act on: `TurnRange(4, 19)` is an
-    // argument, `ToolError` is what an `except` clause catches, and `TaskStatus.DONE` is a status.
+    // one a program cannot name is a signature a model cannot act on: `gg.context.TurnRange(4, 19)`
+    // is an argument, `gg.core.ToolError` is what an `except` clause catches, and
+    // `gg.tasks.TaskStatus.DONE` is a status. Each is written under the module that declares it,
+    // which is the key the catalogue files it under.
     let types: Vec<String> = catalogue["types"]
         .as_array()
         .expect("an array")
         .iter()
-        .map(|entry| entry["name"].as_str().expect("a name").to_string())
+        .map(|entry| {
+            format!(
+                "gg.{}.{}",
+                entry["module"].as_str().expect("a module"),
+                entry["name"].as_str().expect("a name")
+            )
+        })
         .collect();
     let (outcome, _log) = run_with(
         &format!(
-            "print(\",\".join([{}]))",
+            "import gg\nprint(\",\".join([{}]))",
             types
                 .iter()
                 .map(|name| format!("\"ok\" if {name} is not None else \"missing\""))
@@ -1583,18 +1823,20 @@ fn a_convenience_method_reaches_the_operation_it_is_an_alias_of() {
     // them — it is a view rather than a tool — and it is checked by what it answers instead.
     let (outcome, log) = run_as(
         r#"
-issue = board.create_issue("Parse the manifest", "the parser", "the writer", "tests pass", "Builder")
+import gg
+
+issue = gg.board.create_issue("Parse the manifest", "the parser", "the writer", "tests pass", "Builder")
 print(issue.id, issue.wait())
 
-hit = memories.search_memories(["build"])[0]
+hit = gg.memories.search_memories(["build"])[0]
 print(hit.name, hit.read())
 
-child = delegation.spawn_subagent("Builder", prompt="take the writer")
+child = gg.delegation.spawn_subagent("Builder", prompt="take the writer")
 child.send("prefer the simpler parser")
 print(child.id)
 
-views.open_text("summary", "eight files, two failing")
-print(views.current()[0].close(), len(views.current()))
+gg.views.open_text("summary", "eight files, two failing")
+print(gg.views.current()[0].close(), len(gg.views.current()))
 "#,
         &all_operations(),
         &[],
@@ -1665,7 +1907,9 @@ print(views.current()[0].close(), len(views.current()))
         .call_run(
             &mut store,
             r#"
-summary = programs.history()[0]
+import gg
+
+summary = gg.programs.history()[0]
 print(summary.turn, repr(summary.source()))
 "#,
             &[],
@@ -1674,7 +1918,7 @@ print(summary.turn, repr(summary.source()))
             true,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(logs(&outcome), ["3 \"print('the program that ran')\""]);
 }
 
@@ -1693,19 +1937,21 @@ fn the_views_the_docs_and_the_program_library_modules_are_reached_in_python_too(
     // silent bridging mistake would cost the most.
     let (outcome, _log) = run_as(
         r#"
-views.open_text("summary", "eight files, two failing")
-views.open_text("scratch", "throwaway")
-open = views.current()
-print(len(open), [v.selector for v in open], open[0].kind is ViewKind.TEXT, open[0].tokens)
-print(views.close("scratch"), views.close("never opened"), len(views.current()))
+import gg
+
+gg.views.open_text("summary", "eight files, two failing")
+gg.views.open_text("scratch", "throwaway")
+open = gg.views.current()
+print(len(open), [v.selector for v in open], open[0].kind is gg.views.ViewKind.TEXT, open[0].tokens)
+print(gg.views.close("scratch"), gg.views.close("never opened"), len(gg.views.current()))
 
 # The documentation of a function, named by the FUNCTION rather than by a string — which works
 # because an SDK function's `__name__` is the name gg catalogues it under.
-views.open_docs_view(files.read_file)
-views.open_docs_view("write_file")
+gg.views.open_docs_view(gg.files.read_file)
+gg.views.open_docs_view("write_file")
 
-whole = views.open_file("notes.md")
-print(type(whole).__name__, [v.region for v in views.current() if v.kind is ViewKind.FILE])
+whole = gg.views.open_file("notes.md")
+print(type(whole).__name__, [v.region for v in gg.views.current() if v.kind is gg.views.ViewKind.FILE])
 "#,
         &all_operations(),
         &[],
@@ -1741,8 +1987,10 @@ print(type(whole).__name__, [v.region for v in views.current() if v.kind is View
     // whatever the membrane's `option<view-region>` looks like.
     let (outcome, _log) = run_with(
         r#"
-views.open_file("notes.md", offset=2, limit=1)
-region = [v.region for v in views.current() if v.kind is ViewKind.FILE][0]
+import gg
+
+gg.views.open_file("notes.md", offset=2, limit=1)
+region = [v.region for v in gg.views.current() if v.kind is gg.views.ViewKind.FILE][0]
 print(type(region).__name__, region.offset, region.limit)
 "#,
         &all_operations(),
@@ -1769,7 +2017,7 @@ print(type(region).__name__, region.offset, region.limit)
     // A value that is neither a function nor a name is refused before the lookup, so a model is
     // never told that a function called "None" does not exist.
     let (outcome, _log) = run_with(
-        "views.open_docs_view(None)",
+        "import gg\ngg.views.open_docs_view(None)",
         &all_operations(),
         &[],
         SandboxLimits::default(),
@@ -1809,11 +2057,13 @@ print(type(region).__name__, region.offset, region.limit)
         .call_run(
             &mut store,
             r#"
-ran = programs.history()
+import gg
+
+ran = gg.programs.history()
 print(len(ran), ran[0].turn, ran[0].ok, ran[0].error)
-source = programs.get(3)
+source = gg.programs.get(3)
 print(repr(source))
-programs.rerun(source.replace("ran", "walked"))
+gg.programs.rerun(source.replace("ran", "walked"))
 "#,
             &[],
             &[],
@@ -1821,7 +2071,7 @@ programs.rerun(source.replace("ran", "walked"))
             true,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(
         logs(&outcome),
         ["1 3 True None", "\"print('the program that ran')\""]
@@ -1859,9 +2109,11 @@ programs.rerun(source.replace("ran", "walked"))
         .call_run(
             &mut store,
             r#"
-page = docs.search("read", module="files", type="FileRead", kind=DocKind.FUNCTION, limit=5)
+import gg
+
+page = gg.docs.search("read", module="files", type="FileRead", kind=gg.docs.DocKind.FUNCTION, limit=5)
 print(type(page).__name__, page.total, page.offset, page.hits)
-print(docs.close("gg.files.read_file"), docs.close_all())
+print(gg.docs.close("gg.files.read_file"), gg.docs.close_all())
 "#,
             &[],
             &[],
@@ -1869,7 +2121,7 @@ print(docs.close("gg.files.read_file"), docs.close_all())
             false,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(logs(&outcome), ["DocSearch 0 0 []", "0 0"]);
     let searched: Vec<&str> = outcome
         .views_opened
@@ -1887,10 +2139,12 @@ print(docs.close("gg.files.read_file"), docs.close_all())
     // module — the same shape every other bought call refuses in, and a value a program can catch.
     let (outcome, _log) = run_with(
         r#"
+import gg
+
 try:
-    docs.close_all()
-except ToolError as failure:
-    print(failure.tool, failure.code is ToolErrorCode.UNAVAILABLE)
+    gg.docs.close_all()
+except gg.core.ToolError as failure:
+    print(failure.tool, failure.code is gg.core.ToolErrorCode.UNAVAILABLE)
 "#,
         &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
@@ -1898,4 +2152,89 @@ except ToolError as failure:
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["close_all True"]);
+}
+
+/// **Gate [G8](super::super::g8) for Python** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Python,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"# G8 (a): a gg call the host answers `not-found`, uncaught.
+
+import gg
+
+text = gg.files.read_file(
+    "missing.md",
+)
+print(text)
+"#,
+                names: &["read_file", "missing.md"],
+                located: Located::At("line 5, column 8"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramToolError),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"# G8 (b): an index past the end of a list.
+
+values = [1, 2, 3]
+print(
+    values[7],
+)
+"#,
+                names: &["IndexError", "list index out of range"],
+                located: Located::At("line 5, column 5"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramThrow),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"# G8 (c): ending by a failure value.
+
+import sys
+
+sys.exit(
+    3,
+)
+"#,
+                names: &["SystemExit: 3"],
+                located: Located::At("line 5, column 1"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramThrow),
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"# G8 (d): unbounded recursion.
+
+def deeper(n):
+    return deeper(n + 1)
+
+deeper(0)
+"#,
+                names: &["RecursionError", "maximum recursion depth exceeded"],
+                located: Located::At("line 4, column 12"),
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramThrow),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"# G8 (e): stopping the process outright.
+
+import os
+
+os._exit(
+    3,
+)
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+                answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
+            },
+        ],
+    );
 }

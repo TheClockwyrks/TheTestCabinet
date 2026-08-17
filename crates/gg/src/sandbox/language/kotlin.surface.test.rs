@@ -20,11 +20,13 @@
 use serde_json::{Value, json};
 
 use super::compile::{compile_module, compile_program};
-use super::substrate::{evaluate_as, evaluate_closing_docviews, logs, program_error};
+use super::substrate::{
+    evaluate_as, evaluate_closing_docviews, logs, prepare, prepare_with, trap, whole,
+};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, all_operations, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
-use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
+use crate::sandbox::outcome::SandboxOutcome;
 use crate::sandbox::{CodeModule, PrepareContext};
 use crate::tools::ToolOutcome;
 
@@ -39,27 +41,34 @@ const SIGNATURES: &str = include_str!(concat!(
     "/signatures/kotlin.signatures.json"
 ));
 
-/// Compile and run one Kotlin program, with the ending group and the library flag said out loud.
+/// Compile and run one Kotlin **statement body**, with the ending group and the library flag said
+/// out loud.
+///
+/// The body is put in the `fun main()` this arm asks for by
+/// [`whole`](super::substrate::whole) — the same helper the substrate tests use, and the same one a
+/// model writes for itself. It is a helper here rather than a literal at every call site because
+/// what these cases are about is the SDK's spellings rather than the entry point, and every gg name
+/// below is written in full so nothing needs an `import` either.
 fn run_as(
-    source: &str,
+    body: &str,
     operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    let prepared = match compile_program(source, &PrepareContext::new()) {
-        Ok(prepared) => prepared.source,
-        Err(failure) => panic!("the Kotlin toolchain did not compile this program: {failure}"),
-    };
-    evaluate_as(&prepared, operations, &[], ending, library, responder)
+    evaluate_as(
+        &prepare(&whole("", body)),
+        operations,
+        &[],
+        ending,
+        library,
+        responder,
+    )
 }
 
-/// One Kotlin program through the production prepare step, or a panic with what the toolchain said.
-fn prepare_program(source: &str) -> String {
-    match compile_program(source, &PrepareContext::new()) {
-        Ok(prepared) => prepared.source,
-        Err(failure) => panic!("the Kotlin toolchain did not compile this program: {failure}"),
-    }
+/// One Kotlin statement body through the production prepare step, as the component it becomes.
+fn prepare_program(body: &str) -> Vec<u8> {
+    prepare(&whole("", body))
 }
 
 /// Compile and run one Kotlin program with `enabled`'s tools offered and no ending group.
@@ -389,9 +398,9 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          val closed = gg.views.close(\"summary\")\n\
          val missing = gg.views.close(\"never opened\")\n\
          val open = gg.views.current()\n\
-         println(open[0].selector + \" \" + open[0].kind)\n\
-         println(\"$closed $missing\")\n\
-         println(when (read) {\n\
+         gg.log(open[0].selector + \" \" + open[0].kind)\n\
+         gg.log(\"$closed $missing\")\n\
+         gg.log(when (read) {\n\
          \x20   is gg.files.TextFile -> read.contents.lines()[0]\n\
          \x20   is gg.files.ImageFile -> read.label\n\
          })\n\
@@ -441,13 +450,13 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     // gets the other ending group and no `gg.session.finish` at all.
     let (outcome, _log) = run_as(
         "val history = gg.programs.history()\n\
-         println(history.size.toString())\n\
+         gg.log(history.size.toString())\n\
          try {\n\
          \x20   gg.programs.get(2)\n\
          } catch (failure: gg.core.ToolError) {\n\
-         \x20   println(failure.code.toString())\n\
+         \x20   gg.log(failure.code.toString())\n\
          }\n\
-         gg.programs.rerun(\"println(\\\"again\\\")\")\n\
+         gg.programs.rerun(\"gg.log(\\\"again\\\")\")\n\
          gg.session.requestChanges(\"widen the test\", \"name the file\")\n",
         &[],
         RunEnding::Role(EndingRole::Review),
@@ -505,17 +514,17 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     // receiver was carrying.
     let (outcome, log) = run_as(
         "val created = gg.board.createIssue(\"I\", \"s\", \"o\", \"c\", \"worker\")\n\
-         println(created.wait())\n\
+         gg.log(created.wait())\n\
          val hits = gg.memories.searchMemories(\"build\")\n\
-         println(hits[0].read())\n\
+         gg.log(hits[0].read())\n\
          val child = gg.delegation.spawnSubagent(\"subagent\", gg.delegation.Brief.Prompt(\"go\"))\n\
          child.send(\"prefer the simpler parser\")\n\
          gg.views.openText(\"scratch\", \"body\")\n\
-         println(gg.views.current()[0].close().toString())\n\
+         gg.log(gg.views.current()[0].close().toString())\n\
          try {\n\
          \x20   gg.programs.ProgramSummary(2, 1, 1, true, null).source()\n\
          } catch (failure: gg.core.ToolError) {\n\
-         \x20   println(failure.code.toString())\n\
+         \x20   gg.log(failure.code.toString())\n\
          }\n",
         &all_operations(),
         RunEnding::None,
@@ -564,12 +573,12 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          \x20   kind = gg.docs.DocKind.FUNCTION,\n\
          \x20   limit = 5,\n\
          )\n\
-         println(\"${all.total} ${all.offset} ${all.hits.size}\")\n\
-         println(narrowed.hits.isEmpty().toString())\n\
+         gg.log(\"${all.total} ${all.offset} ${all.hits.size}\")\n\
+         gg.log(narrowed.hits.isEmpty().toString())\n\
          try {\n\
          \x20   gg.docs.close(\"gg.files.readFile\")\n\
          } catch (failure: gg.core.ToolError) {\n\
-         \x20   println(failure.code.toString() + \" \" + failure.tool)\n\
+         \x20   gg.log(failure.code.toString() + \" \" + failure.tool)\n\
          }\n",
         &[],
         canned_outcome,
@@ -608,7 +617,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         &prepare_program(
             "val closed = gg.docs.close(\"gg.files.readFile\")\n\
              val every = gg.docs.closeAll()\n\
-             println(\"$closed $every\")\n",
+             gg.log(\"$closed $every\")\n",
         ),
         &[],
         canned_outcome,
@@ -644,18 +653,16 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
 
 #[test]
 fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
-    // The whole of this arm's failure story, and the half of it that is the toolchain's rather than
-    // gg's. TeaVM wraps a JavaScript exception crossing into the JVM world in a `RuntimeException` it
-    // prefixes with `(JavaScript) `, so a `catch (failure: gg.core.ToolError)` would catch NOTHING if the SDK
-    // let the guest's throw propagate. It catches the throw in JavaScript instead and raises a real
-    // Kotlin exception, which is what makes the clause below work at all.
+    // The whole of this arm's failure story. gg's refusal crosses as three encoded fields and this
+    // SDK's own one-line bridge raises them as `gg.core.ToolError` — an ordinary Kotlin exception,
+    // which is what makes the clause below work at all and what a `runCatching` can see.
     let (outcome, _log) = run_with(
         "try {\n\
          \x20   gg.files.readTextFile(\"gone.kt\")\n\
          } catch (failure: gg.core.ToolError) {\n\
-         \x20   println(\"${failure.code} on ${failure.tool}\")\n\
+         \x20   gg.log(\"${failure.code} on ${failure.tool}\")\n\
          }\n\
-         println(\"carried on\")\n",
+         gg.log(\"carried on\")\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
@@ -669,14 +676,13 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
         ["NOT_FOUND on read_text_file", "carried on"]
     );
 
-    // And the half that no SDK could do for itself: one that ESCAPED must still reach the guest as a
-    // tool failure rather than as a JVM exception, because gg classifies a turn's error from the
-    // host's own code. gg's generated entry class records the three fields on the way past and the
-    // bundle's tail throws those instead of the exception object.
+    // And one that ESCAPED. There is no second channel for it on a compiled arm — gg catches
+    // nothing — so what the model reads is the exception's own header on the guest's standard error,
+    // which is why `ToolError`'s message carries the tool and the code as well as gg's sentence.
     let (outcome, _log) = run_with(
-        "println(\"before\")\n\
+        "gg.log(\"before\")\n\
          gg.files.readTextFile(\"gone.kt\")\n\
-         println(\"after\")\n",
+         gg.log(\"after\")\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
@@ -685,22 +691,22 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
             )
         },
     );
-    let error = program_error(&outcome);
-    assert_eq!(error.kind, ProgramErrorKind::ToolFailure, "{error:?}");
+    let reported = trap(&outcome);
     assert!(
-        error
-            .message
-            .contains("`read_text_file` failed (not-found)"),
-        "the model reads gg's own sentence rather than a Kotlin class: {}",
-        error.message
+        reported.contains("gg.core.ToolError: `read_text_file` failed (not-found)")
+            && reported.contains("no such file: gone.kt"),
+        "the model reads gg's own sentence under the class it would have caught: {reported}",
     );
+    // And its own line, because nothing intercepted the throw: the frames are TeaVM's own over the
+    // model's own file.
+    assert!(reported.contains("Program.kt:3"), "{reported}");
     assert_eq!(outcome.logs, ["before"], "what ran before it still stands");
 
     // A `runCatching` is the other way a Kotlin author reaches a failure, and it works for the same
     // reason: what the SDK raises is an ordinary exception rather than something the bridge wrapped.
     let (outcome, _log) = run_with(
         "val read = runCatching { gg.files.readTextFile(\"gone.kt\") }\n\
-         println(read.exceptionOrNull().let { it is gg.core.ToolError }.toString())\n",
+         gg.log(read.exceptionOrNull().let { it is gg.core.ToolError }.toString())\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
@@ -724,14 +730,12 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
         &[],
         canned_outcome,
     );
-    let error = program_error(&outcome);
-    // `UnknownName` is what gg makes of an `unavailable` code, whichever side raised it: the two are
-    // one fact and one recovery — this run does not offer that call.
-    assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
+    let reported = trap(&outcome);
     assert!(
-        error.message.contains("gg.files.readTextFile"),
-        "the refusal names the call the model wrote: {}",
-        error.message
+        reported.contains("`read_text_file` failed (unavailable)")
+            && reported.contains("`gg.files.readTextFile` is not available"),
+        "the refusal names the call the model wrote, in the host's own words, under the code gg \
+         classifies an out-of-set call with: {reported}",
     );
     assert!(log.names().is_empty(), "and nothing reached gg's dispatch");
 
@@ -741,7 +745,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
         "try {\n\
          \x20   gg.delegation.fork(\"a copy\")\n\
          } catch (failure: gg.core.ToolError) {\n\
-         \x20   println(failure.code.wireName)\n\
+         \x20   gg.log(failure.code.wireName)\n\
          }\n",
         &[],
         canned_outcome,
@@ -841,88 +845,92 @@ fn libraries() -> Vec<Library> {
     vec![
         Library {
             package: "kotlin",
-            probe: "println((\"ab\".repeat(2)))",
+            probe: "gg.log((\"ab\".repeat(2)))",
             expected: "abab",
         },
         Library {
             package: "kotlin.collections",
-            probe: "println(listOf(3, 1, 2).sorted().joinToString(\"-\"))",
+            probe: "gg.log(listOf(3, 1, 2).sorted().joinToString(\"-\"))",
             expected: "1-2-3",
         },
         Library {
             package: "kotlin.text",
-            probe: "println(Regex(\"a(\\\\d+)\").find(\"a42\")!!.groupValues[1])",
+            probe: "gg.log(Regex(\"a(\\\\d+)\").find(\"a42\")!!.groupValues[1])",
             expected: "42",
         },
         Library {
             package: "kotlin.ranges",
-            probe: "println((1..4).sum().toString())",
+            probe: "gg.log((1..4).sum().toString())",
             expected: "10",
         },
         Library {
             package: "kotlin.sequences",
-            probe: "println(sequenceOf(1, 2, 3).map { it * 2 }.joinToString(\",\"))",
+            probe: "gg.log(sequenceOf(1, 2, 3).map { it * 2 }.joinToString(\",\"))",
             expected: "2,4,6",
         },
         Library {
             package: "kotlin.comparisons",
-            probe: "println(listOf(\"bb\", \"a\").sortedWith(compareBy { it.length })[0])",
+            probe: "gg.log(listOf(\"bb\", \"a\").sortedWith(compareBy { it.length })[0])",
             expected: "a",
         },
         Library {
             package: "kotlin.io",
-            probe: "print(\"printed\\n\")",
+            // NOT `print`, which is this package's most obvious member and reaches nobody: gg
+            // attaches a standard error to a program and deliberately no standard output. And not
+            // `use` either, which this arm does not carry — see
+            // `what_this_toolchain_is_not_is_recorded_rather_than_assumed`.
+            probe: "gg.log(java.io.StringReader(\"printed\").readText())",
             expected: "printed",
         },
         Library {
             package: "kotlin.math",
-            probe: "println(kotlin.math.max(2, 3).toString())",
+            probe: "gg.log(kotlin.math.max(2, 3).toString())",
             expected: "3",
         },
         Library {
             package: "kotlin.random",
-            probe: "println((kotlin.random.Random(7).nextInt(10) in 0..9).toString())",
+            probe: "gg.log((kotlin.random.Random(7).nextInt(10) in 0..9).toString())",
             expected: "true",
         },
         Library {
             package: "kotlin.time",
-            probe: "println(kotlin.time.Duration.parse(\"1m\").toString())",
+            probe: "gg.log(kotlin.time.Duration.parse(\"1m\").toString())",
             expected: "1m",
         },
         Library {
             package: "java.lang",
-            probe: "println(java.lang.Integer.toHexString(255))",
+            probe: "gg.log(java.lang.Integer.toHexString(255))",
             expected: "ff",
         },
         Library {
             package: "java.util",
-            probe: "println(java.util.ArrayList(listOf(\"x\")).size.toString())",
+            probe: "gg.log(java.util.ArrayList(listOf(\"x\")).size.toString())",
             expected: "1",
         },
         Library {
             package: "java.math",
-            probe: "println(java.math.BigInteger(\"2\").pow(70).toString())",
+            probe: "gg.log(java.math.BigInteger(\"2\").pow(70).toString())",
             expected: "1180591620717411303424",
         },
         Library {
             package: "java.time",
-            probe: "println(java.time.LocalDate.of(2026, 8, 7).toString())",
+            probe: "gg.log(java.time.LocalDate.of(2026, 8, 7).toString())",
             expected: "2026-08-07",
         },
         Library {
             package: "java.time.format",
-            probe: "println(java.time.LocalDate.of(2026, 8, 7).format(\
+            probe: "gg.log(java.time.LocalDate.of(2026, 8, 7).format(\
                     java.time.format.DateTimeFormatter.ofPattern(\"yyyy/MM\")))",
             expected: "2026/08",
         },
         Library {
             package: "java.io",
-            probe: "println(java.io.StringWriter().apply { write(\"w\") }.toString())",
+            probe: "gg.log(java.io.StringWriter().apply { write(\"w\") }.toString())",
             expected: "w",
         },
         Library {
             package: "java.nio.charset",
-            probe: "println(java.nio.charset.StandardCharsets.UTF_8.name())",
+            probe: "gg.log(java.nio.charset.StandardCharsets.UTF_8.name())",
             expected: "UTF-8",
         },
     ]
@@ -976,15 +984,18 @@ fn what_this_arm_does_not_carry_is_recorded_rather_than_discovered() {
         // classpath precisely so that this is ONE diagnostic at the model's own line rather than
         // forty-five inside somebody else's file.
         (
-            "import kotlinx.coroutines.runBlocking\nrunBlocking { }\n",
-            "program.kts:1:8: Unresolved reference 'kotlinx'.",
+            "import kotlinx.coroutines.runBlocking\n\nfun main() {\n    runBlocking { }\n}\n",
+            "Program.kt:1:8: Unresolved reference 'kotlinx'.",
         ),
         // A thread is scheduled with `setTimeout`, which this sandbox denies — and this arm finds out
-        // at COMPILE time, inside the standard library's own file, which is the answer that arm's
+        // at COMPILE time, inside the standard library's own file, which is the answer this arm's
         // `verdict` calls the model's rather than gg's.
-        ("kotlin.concurrent.thread { println(\"x\") }\n", "Thread"),
+        (
+            "fun main() {\n    kotlin.concurrent.thread { gg.log(\"x\") }\n}\n",
+            "Thread",
+        ),
     ] {
-        let failure = compile_program(source, &PrepareContext::new())
+        let failure = compile_program(source, &[], &PrepareContext::new())
             .err()
             .unwrap_or_else(|| panic!("this arm compiled `{source}`, which it must not"));
         let rendered = failure.to_string();
@@ -995,26 +1006,94 @@ fn what_this_arm_does_not_carry_is_recorded_rather_than_discovered() {
     }
 }
 
+/// **Nothing this arm offers resolves without a line the program wrote.**
+///
+/// The catalogue tells a model how to reach every module it describes, and this is the assertion
+/// that the answer is true in both directions. Two forms resolve — a name written in full, and the
+/// `import gg.<module>.*` the catalogue states — and a short name written with neither does not.
+///
+/// It is the one gate on this arm that could rot silently: gg writes no import into a program, so an
+/// SDK that started arriving in a program's scope some other way would make every documentation view
+/// on this arm tell a model something that is no longer true, and nothing else would notice.
+#[test]
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    // THE TWO THAT RESOLVE. Both are driven through the real membrane rather than merely compiled,
+    // because a call that resolves and then reaches nothing would pass a compile check.
+    let (outcome, log) = run_with(
+        "    gg.log(gg.files.readTextFile(\"a.md\"))\n",
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["contents of a.md\nline two\n"]);
+    assert_eq!(log.names(), ["read_file"]);
+
+    let line = crate::sandbox::catalogue_modules(crate::sandbox::language::language(
+        test_cabinet_core::gg::GgProgramLanguage::Kotlin,
+    ))
+    .into_iter()
+    .find(|module| module.id == "files")
+    .and_then(|module| module.import)
+    .expect("the catalogue states the line a program writes to reach `gg.files`");
+    assert_eq!(line, "import gg.files.*");
+    let (outcome, log) = evaluate_as(
+        &prepare(&whole(line, "    gg.log(readTextFile(\"a.md\"))\n")),
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["contents of a.md\nline two\n"]);
+    assert_eq!(log.names(), ["read_file"]);
+
+    // AND THE ONE THAT DOES NOT: the short name with neither the line nor the path, which is what an
+    // injected scope would have made work.
+    let failure = compile_program(
+        &whole("", "    gg.log(readTextFile(\"a.md\"))\n"),
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("a name nothing brought into scope is refused");
+    let rendered = failure.to_string();
+    assert!(
+        rendered.contains("Unresolved reference") && rendered.contains("Program.kt:2"),
+        "the compiler's own diagnostic, at the model's own line: {rendered}"
+    );
+
+    // The same for a type, because a signature names types as well as calls.
+    let failure = compile_program(
+        &whole(
+            "",
+            "    val code: ToolErrorCode? = null\n    gg.log(code.toString())\n",
+        ),
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("a type nothing brought into scope is refused");
+    assert!(
+        failure.to_string().contains("Unresolved reference"),
+        "{failure}"
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // A code module, reached from Kotlin
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn a_code_module_is_reached_from_kotlin_rather_than_only_from_javascript() {
-    // `lib` is the one place in this SDK where the PROGRAM says what type it expects, because a code
-    // module is compiled separately and there is no `import` for the compiler to check the two
-    // against — the position a Kotlin author is in when they reach something at run time, answered
-    // the way Kotlin answers it. That makes it the one part of the surface a compile cannot vouch
-    // for, so the whole of it is driven here: the four readings, the presence check, the refusal, and
-    // the lowering each Kotlin value goes through on the way across.
+fn a_code_module_is_reached_by_a_path_the_compiler_checks() {
+    // A code module used to be the one place in this SDK where the PROGRAM said what type it
+    // expected, because a module was compiled separately and there was no path for the compiler to
+    // check the two against. That premise stopped holding: a module is now compiled INTO the program
+    // that uses it, in a package of gg's naming, so `lib.<key>.<name>` is an ordinary call the
+    // compiler resolves — and the string family that stood in for it (`lib.text`, `lib.number`,
+    // `lib.flag`, `lib.run`, `lib.has`) is deleted rather than reimplemented over the wire.
     //
-    // [The substrate's own module test](super::substrate) reaches the same namespace from
-    // JavaScript, which is the claim that the guest binds `gg.core.lib.<key>` at all. This is the different
-    // claim that Kotlin's own `Lib` reaches it — and it is the claim the study rests on, because
-    // `lib` is the surface where [Java's arm](super::super::java) and this one are deliberately
-    // alike, so a difference in what a model can do with it would be a difference in the harness
-    // rather than in the language.
-    let (module, exports) = compile_module(
+    // That is the shape [Rust](super::super::rust) and [Java](super::super::java) already have.
+    // What this drives is the whole of it: every return type reached without a reading function, a
+    // value handed back through a real crossing, and a name that does not exist refused by the
+    // COMPILER rather than at run time.
+    let prepared = compile_module(
         r#"private val seen: MutableList<String> = mutableListOf()
 
 fun greet(who: String): String = "hello, " + who.uppercase()
@@ -1035,40 +1114,28 @@ fun recalled(): String = seen.joinToString("+")
     )
     .expect("the Kotlin toolchain compiles a code module");
     assert_eq!(
-        exports,
+        prepared.exports,
         [
             "greet", "add", "negated", "describe", "remember", "recalled"
         ],
         "a module's public top-level functions are its namespace, in the order it declares them",
     );
 
+    let modules = vec![CodeModule {
+        name: "helpers".to_string(),
+        source: prepared.source,
+    }];
+    let body = "    gg.log(lib.helpers.greet(\"gg\"))\n\
+                \x20   gg.log(lib.helpers.add(40, 2).toString())\n\
+                \x20   gg.log(lib.helpers.negated(false).toString())\n\
+                \x20   gg.log(lib.helpers.describe(1.5, \"note\"))\n\
+                \x20   lib.helpers.remember(\"one\")\n\
+                \x20   lib.helpers.remember(\"two\")\n\
+                \x20   gg.log(lib.helpers.recalled())\n";
     let (outcome, _log) = evaluate_as(
-        &match compile_program(
-            r#"println(gg.core.lib.text("helpers", "greet", "gg"))
-println(gg.core.lib.number("helpers", "add", 40, 2))
-println(gg.core.lib.flag("helpers", "negated", false))
-println(gg.core.lib.text("helpers", "describe", 1.5, listOf(1, 2)))
-println(gg.core.lib.has("helpers", "greet"))
-println(gg.core.lib.has("helpers", "absent"))
-gg.core.lib.run("helpers", "remember", "one")
-gg.core.lib.run("helpers", "remember", "two")
-println(gg.core.lib.text("helpers", "recalled"))
-try {
-    gg.core.lib.run("helpers", "absent")
-} catch (failure: gg.core.ToolError) {
-    println(failure.code.wireName)
-}
-"#,
-            &PrepareContext::new(),
-        ) {
-            Ok(prepared) => prepared.source,
-            Err(failure) => panic!("the Kotlin toolchain did not compile this program: {failure}"),
-        },
+        &prepare_with(&whole("", body), &modules),
         &[],
-        &[CodeModule {
-            name: "helpers".to_string(),
-            source: module,
-        }],
+        &modules,
         RunEnding::None,
         false,
         canned_outcome,
@@ -1076,23 +1143,56 @@ try {
     assert_eq!(
         logs(&outcome),
         [
-            // The four readings, one per lowering: text, a whole number, a flag, and the two values
-            // `lower` has no branch of its own for — a `Double`, and anything else, which crosses as
-            // its `toString()`.
+            // Every type the module declares, reached at its own type rather than through a reading
+            // function that named one: a `String`, an `Int`, a `Boolean` and a `Double` argument.
             "hello, GG",
             "42",
             "true",
-            "1.5/[1, 2]",
-            // A namespace answers about itself before it is called, which is what lets a program
-            // depend on a module it is not certain was read.
-            "true",
-            "false",
-            // `run` really calls: the module remembered both words across two crossings, so a `run`
-            // that quietly did nothing would read here rather than pass.
+            "1.5/note",
+            // The module really holds state across two calls, so a call that quietly did nothing
+            // would read here rather than pass.
             "one+two",
-            // And a missing export is a gg failure an ordinary Kotlin `catch` catches, rather than a
-            // null the next line trips over.
-            "not-found",
         ]
     );
+
+    // AND A NAME THAT IS NOT THERE IS THE COMPILER'S REFUSAL, on the turn that wrote it, rather than
+    // a `NOT_FOUND` at run time. That is the whole of what compiling a module into the program buys
+    // a model, and it is what the deleted string family could not have said.
+    let failure = compile_program(
+        &whole("", "    lib.helpers.absent()\n"),
+        &modules,
+        &PrepareContext::new(),
+    )
+    .expect_err("a name the module does not export is refused");
+    let rendered = failure.to_string();
+    assert!(
+        rendered.contains("Program.kt:2") && rendered.contains("absent"),
+        "the model is told at its own line: {rendered}"
+    );
+
+    // The access the reply that binds a module quotes back is the one that compiles.
+    let kotlin =
+        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+    assert_eq!(kotlin.lib_access("helpers"), "lib.helpers.<name>");
+
+    // AND A SKILL WHOSE NAME IS A KEYWORD IS STILL REACHABLE. The key is a package segment, so a
+    // module bound at `object` would make `lib.object.greet(…)` a syntax error against the MODEL's
+    // own file, every turn, for a name gg minted and told it to use.
+    let key = kotlin.binding_name("object");
+    let modules = vec![CodeModule {
+        name: key.clone(),
+        source: modules[0].source.clone(),
+    }];
+    let (outcome, _log) = evaluate_as(
+        &prepare_with(
+            &whole("", &format!("    gg.log(lib.{key}.greet(\"gg\"))\n")),
+            &modules,
+        ),
+        &[],
+        &modules,
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["hello, GG"]);
 }

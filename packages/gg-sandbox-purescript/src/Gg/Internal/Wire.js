@@ -1,96 +1,69 @@
-// The JavaScript half of the bridge: the only file in this SDK that names the guest's own objects.
+// The JavaScript half of the bridge: the one file in this SDK that names gg's own SDK.
 //
-// A compiled PureScript program is evaluated by the shared ECMAScript guest as the body of a
-// function whose PARAMETERS are gg's modules. So `fs`, `system`, `view` and the rest are free
-// identifiers here, resolved at call time against the scope the guest built — which is exactly why
-// every reference below is inside a function body rather than at the top level: evaluating this
-// bundle must not touch a name before the scope carrying it exists.
+// A compiled PureScript program is an ES module the ECMAScript guest declares under the model's own
+// name, so gg's surface is reached the way every other module reaches it — through an `import` line
+// written in the source. That line is the one below. `esbuild` is told `gg` is external, so it
+// survives into the bundle unchanged, and the guest's loader resolves it to the same SDK instance a
+// TypeScript program imports. One instance is what makes `ToolError` one class.
 //
-// THE GUEST BINDS EVERY MODULE, WHATEVER THE RUN ENABLED. It did not always: the scope used to be
-// built from the run's enabled tools, so a withheld capability arrived here as an absent object and
-// this file synthesized the refusal for it. The host is the gate now, on every arm, so what is
-// absent below is drift between this SDK and the guest artifact rather than a capability the run
-// withheld — which is why the fallback says so in those words.
-
-// The API object `name`, or `undefined` when the guest does not export it under that name.
-//
-// A switch rather than a lookup on `globalThis`, and that is forced rather than chosen: these names
-// are the enclosing function's parameters, so nothing can reach them by string. `typeof` is what
-// makes an absent one answerable at all — reading an undeclared identifier throws, and `typeof` on
-// one does not.
-const objectFor = (name) => {
-  switch (name) {
-    case "fs":
-      return typeof fs === "undefined" ? undefined : fs;
-    case "system":
-      return typeof system === "undefined" ? undefined : system;
-    case "project":
-      return typeof project === "undefined" ? undefined : project;
-    case "tasks":
-      return typeof tasks === "undefined" ? undefined : tasks;
-    case "memory":
-      return typeof memory === "undefined" ? undefined : memory;
-    case "docs":
-      return typeof docs === "undefined" ? undefined : docs;
-    case "view":
-      return typeof view === "undefined" ? undefined : view;
-    case "context":
-      return typeof context === "undefined" ? undefined : context;
-    case "agents":
-      return typeof agents === "undefined" ? undefined : agents;
-    case "skills":
-      return typeof skills === "undefined" ? undefined : skills;
-    case "programs":
-      return typeof programs === "undefined" ? undefined : programs;
-    case "harness":
-      return typeof harness === "undefined" ? undefined : harness;
-    case "review":
-      return typeof review === "undefined" ? undefined : review;
-    default:
-      return undefined;
-  }
-};
+// `gg` binds every family whatever the run enabled. A capability this run withheld is refused by the
+// host, as a `ToolError` carrying `unavailable`, exactly as it is for every other arm — so a family
+// missing here is drift between this SDK and the guest artifact rather than a capability the run
+// withheld, which is what the fallback below says.
+import * as gg from "gg";
+import { ToolError } from "gg";
 
 // The code gg reports a call that could not be made under. Not `unavailable`, which is the host's
-// word for a capability this agent was not granted: this file cannot produce that case any more,
-// and reusing its code would put a second, differently-worded refusal into the one class a study
-// counts withheld capabilities in.
+// word for a capability this agent was not granted: this file cannot produce that case, and reusing
+// its code would put a second, differently-worded refusal into the one class a study counts withheld
+// capabilities in.
 const NOT_EXPORTED = "other";
 
-// What a call the guest does not export throws — an SDK and a guest artifact that disagree.
+// What a call gg's SDK does not export throws — this SDK and the guest's SDK disagreeing.
 //
-// It is NOT a withheld capability, and the message must not say it is. Every module is bound in
+// It is NOT a withheld capability, and the message must not say it is. Every family is bound in
 // every program and every function on it is the host's to permit or refuse, so the only way the
-// lookup below fails is that this SDK names something `packages/gg-sandbox`'s guest does not
-// export: one of the two was rebuilt without the other. A model told its *capability set* was the
-// problem would go looking for a tool to enable, which is a turn spent on the wrong thing.
-//
-// The alternative is a bare `TypeError: fn is not a function`, which says nothing about which call
-// failed. `ToolError` is bound into every program's scope by the guest, so this is the same class a
-// program's `attempt` catches; the fallback is for a scope that somehow has not got it, where a
-// plain error beats no error at all.
-const notExported = (tool, written) => {
-  const message =
-    `\`${written}\` did not reach the guest: gg's SDK declares it and this run's guest does ` +
-    "not export it, which is a mismatch between the two rather than anything this program did";
-  return typeof ToolError === "function"
-    ? new ToolError(tool, NOT_EXPORTED, message)
-    : new Error(message);
-};
+// lookup below fails is that this SDK names something `packages/gg-sandbox`'s SDK does not export:
+// one of the two was written without the other. A model told its capability set was the problem
+// would go looking for a tool to enable, which is a turn spent on the wrong thing.
+const notExported = (tool, written) =>
+  new ToolError(
+    tool,
+    NOT_EXPORTED,
+    `\`${written}\` did not reach gg's SDK: this SDK declares it and the SDK the guest carries ` +
+      "does not export it, which is a mismatch between the two rather than anything this program did",
+  );
 
-// `written` is the fully-qualified name a PureScript program writes — `Gg.Files.readFile` — and its
-// last segment is the guest's own name for the same function. One string rather than two because
-// the two halves are the same word: what differs is the qualifier, which is `Gg.Files` on the side
-// the model reads and an object in this scope on the side the call lands in.
+// `namespace` is gg's own name for the family holding the function; `written` is the
+// fully-qualified name a PureScript program writes — `Gg.Files.readTextFile` — and its last segment
+// is the family's own name for the same function. One string rather than two because the two halves
+// are the same word: what differs is the qualifier.
 export const callImpl = (tool) => (namespace) => (written) => (args) => () => {
-  const target = objectFor(namespace);
+  const family = gg[namespace];
   const name = written.slice(written.lastIndexOf(".") + 1);
-  const fn = target === undefined ? undefined : target[name];
+  const fn = family === undefined ? undefined : family[name];
   if (typeof fn !== "function") throw notExported(tool, written);
-  return fn.apply(target, args);
+  return fn.apply(family, args);
 };
 
-export const boundImpl = (name) => () => objectFor(name) !== undefined;
+// The code modules this turn was given, by the key each is bound at.
+//
+// A program cannot import one: `Gg.Core.lib` names a module and an export as strings, because a code
+// module is compiled separately and there is no import for `purs` to check the two against. So the
+// entry module gg generates imports each of them by its `lib:<key>` specifier and hands the set over
+// here before it calls the program's `main`.
+let libraries = {};
+
+export const registerLib = (modules) => () => {
+  libraries = modules;
+};
+
+export const libImpl = (key) => (name) => {
+  const module_ = libraries[key];
+  if (module_ === undefined || module_ === null) return null;
+  const value = module_[name];
+  return value === undefined ? null : value;
+};
 
 export const lowerImpl = (converters) => (record) => {
   const lowered = {};

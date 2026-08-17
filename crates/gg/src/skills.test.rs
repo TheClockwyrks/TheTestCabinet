@@ -233,7 +233,7 @@ fn two_skill_runtime() -> SkillsRuntime {
 fn disabled_runtime_offers_nothing() {
     let runtime = SkillsRuntime::disabled();
     assert!(!runtime.offers_skills());
-    assert!(runtime.prompt_entries().is_empty());
+    assert!(runtime.library().skills().is_empty());
     assert!(runtime.state_event().is_none());
 }
 
@@ -241,18 +241,20 @@ fn disabled_runtime_offers_nothing() {
 fn enabled_but_empty_runtime_offers_nothing() {
     let runtime = SkillsRuntime::new(Arc::new(SkillLibrary::empty()));
     assert!(!runtime.offers_skills());
-    assert!(runtime.prompt_entries().is_empty());
+    assert!(runtime.library().skills().is_empty());
     assert!(runtime.state_event().is_none());
 }
 
-/// The catalog the system prompt lists carries every skill's name and description — the
-/// "shown up front" affordance.
+/// The library the agent builds the prompt's catalog from carries every skill's name and
+/// description — the "shown up front" affordance.
 #[test]
-fn prompt_entries_carry_each_skill_with_its_description() {
-    let entries = two_skill_runtime().prompt_entries();
-    let listed: Vec<(&str, &str)> = entries
+fn the_offered_library_carries_each_skill_with_its_description() {
+    let runtime = two_skill_runtime();
+    let library = runtime.library();
+    let listed: Vec<(&str, &str)> = library
+        .skills()
         .iter()
-        .map(|entry| (entry.name.as_str(), entry.description.as_str()))
+        .map(|skill| (skill.name(), skill.description()))
         .collect();
     assert_eq!(listed, vec![("a", "does a."), ("b", "does b.")]);
 }
@@ -354,20 +356,33 @@ fn a_module_in_another_language_is_not_offered() {
     assert_eq!(skill.body(), "Prose.");
 }
 
-/// **The two arms that share a runtime share a skill's code**, and each prefers its own spelling.
+/// **One `skill.js` reaches both ECMAScript arms**, and each prefers its own spelling.
 ///
-/// TypeScript and JavaScript differ in whether a program is type-checked and in nothing else. A
-/// directory carrying only `skill.ts` must therefore reach the JavaScript agent too: a skill present
-/// on one arm and absent on the other would be a far larger difference than the one the pair exists
-/// to measure. Where both spellings are present, each arm still takes its own.
+/// The pair exists to measure the type check, so a skill authored for both is authored in the
+/// language they share: `tsc` compiles plain JavaScript, and the guest evaluates it, so `skill.js`
+/// is a module either agent gets. `skill.ts` is TypeScript, and nothing on the unchecked arm erases
+/// an annotation, so it is offered to the checked arm alone — which is what the extension means
+/// everywhere else too.
 #[test]
-fn the_two_ecmascript_arms_read_each_others_spellings_but_prefer_their_own() {
+fn one_javascript_module_reaches_both_ecmascript_arms() {
+    let (_root, only_js) = library_with(&[("skill.js", "export const a = 1;")]);
+    let skill = only_js.get("helpers").unwrap();
+    assert_eq!(
+        skill.code(lang(GgProgramLanguage::TypeScript)),
+        Some("export const a = 1;"),
+        "a `.js` module must reach the checked arm"
+    );
+    assert_eq!(
+        skill.code(lang(GgProgramLanguage::JavaScript)),
+        Some("export const a = 1;")
+    );
+
     let (_root, only_ts) = library_with(&[("skill.ts", "export const a = 1;")]);
     let skill = only_ts.get("helpers").unwrap();
     assert_eq!(
         skill.code(lang(GgProgramLanguage::JavaScript)),
-        Some("export const a = 1;"),
-        "a `.ts` module must reach the unchecked arm"
+        None,
+        "a `.ts` module is TypeScript, and nothing on the unchecked arm erases an annotation"
     );
 
     let (_root, both) = library_with(&[
@@ -390,7 +405,10 @@ fn the_two_ecmascript_arms_read_each_others_spellings_but_prefer_their_own() {
 #[test]
 fn an_on_use_script_is_resolved_per_language_too() {
     let (_root, library) = library_with(&[
-        ("on-use.ts", "view.openText(\"hi\", \"there\");"),
+        (
+            "on-use.ts",
+            "import * as gg from \"gg\";\ngg.views.openText(\"hi\", \"there\");",
+        ),
         ("skill.fixture", "def helper(): return 1"),
     ]);
     let skill = library.get("helpers").unwrap();
@@ -398,7 +416,7 @@ fn an_on_use_script_is_resolved_per_language_too() {
     let typescript = lang(GgProgramLanguage::TypeScript);
     assert_eq!(
         skill.on_use(typescript),
-        Some("view.openText(\"hi\", \"there\");")
+        Some("import * as gg from \"gg\";\ngg.views.openText(\"hi\", \"there\");")
     );
     assert_eq!(skill.code(typescript), None);
 

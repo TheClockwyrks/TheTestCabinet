@@ -443,9 +443,12 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
 /// [brief](crate::sandbox::signatures::Prose::brief). They must not be the same string: a module's
 /// detail is written for a reader who has already chosen the family, so it
 /// says what the family is for — and on most arms it does that by naming calls, sometimes in a
-/// fenced worked example. Rendering it into the prompt would put those names into the one document that
-/// tells the model in as many words that it names none, and handed it for free the round trip the
-/// whole discovery design exists to require.
+/// fenced worked example. Rendering it into the prompt would put those names into the one document
+/// that tells the model in as many words that it names none, and would hand it for free the one
+/// round trip the discovery design still requires: from a brief to the whole signature, by opening a
+/// documentation view of it. (A function's brief is not itself earned any more: the
+/// [bootstrap](crate::bootstrap) lists every granted module, a line per function, before the first
+/// real turn. What is left to go and get is the signature.)
 ///
 /// So this asserts the paths and the order agree, and that the brief is a **prefix** of the
 /// description rather than equal to it: both are projections of one authored entry, which is the
@@ -510,12 +513,14 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
             .any(|(api, view)| api.description.len() > view.brief.len()),
         "a module with a detail is in this surface, or the prefix rule above proves nothing"
     );
-    // The TypeScript arm imports nothing — its SDK is in a program's scope already — so every
-    // import here is `None`. It is asserted rather than left unsaid because a projection that
-    // invented one would be gg telling a model to write a line its arm does not accept.
+    // The TypeScript arm reaches its whole surface through one line, so every module here states
+    // that line. It is asserted rather than left unsaid because a projection that dropped it would
+    // leave a model hunting for the import its compiler requires.
     assert!(
-        views.iter().all(|view| view.import.is_none()),
-        "an arm whose catalogue declares no import line is given none"
+        views
+            .iter()
+            .all(|view| view.import.as_deref() == Some("import * as gg from \"gg\";")),
+        "an arm whose catalogue declares an import line states it on every module"
     );
     // The library is the one family a capability gates rather than a role, so it is the one whose
     // presence proves the grant is threaded through both consumers.

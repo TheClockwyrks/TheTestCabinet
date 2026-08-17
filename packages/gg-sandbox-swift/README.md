@@ -1,8 +1,8 @@
 # `gg-sandbox-swift` — gg's Swift SDK, shell and library set
 
 The **Swift** arm of gg's [responses as code] capability: the surface a model's program calls, the
-shell it is compiled beside, the bridging header both are compiled against, the curated libraries it
-may import, and the builds that commit all of it into gg's binary.
+shell it is compiled beside, the clang module that shell reaches gg's wire through, the curated
+libraries a program may import, and the builds that commit all of it into gg's binary.
 
 It is not an npm package and not a Cargo crate. It is a directory of sources and three scripts,
 because what it produces is not a library anybody links from this repository — it is compile
@@ -19,20 +19,21 @@ There is no baked guest and no interpreter: this is the second arm of that shape
 
 Three things about it are worth knowing before reading anything here.
 
-**A model's reply is compiled verbatim, as `main.swift`.** No wrapper, no prologue, no `import`
-line and no line offset. That is forced rather than chosen: Swift refuses `extension`, `protocol`
-and `import` inside a function body, so the wrapper every other statement-shaped arm uses would
-forbid three things a Swift author writes without thinking. A top-level file is the only Swift
-context that admits declarations and bare statements together — and `Sources/shell.swift` is a
-second file of the *same module*, which is what lets it name the entry point Swift lowers that
-file's statements into and call it from the sandbox world's `run` export.
+**A model's reply is compiled verbatim, as `main.swift`.** No wrapper, no prologue and no line
+offset — the model's own `import gg` on line 1 included. That is forced rather than chosen: Swift
+refuses `extension`, `protocol` and `import` inside a function body, so the wrapper every other
+statement-shaped arm uses would forbid three things a Swift author writes without thinking. A
+top-level file is the only Swift context that admits declarations and bare statements together, and
+`Sources/shell.swift` calls the entry point Swift lowers that file's statements into from the
+sandbox world's `run` export. It is a module of its own, built ahead of time and linked per turn,
+because a Swift access level is module-wide and gg's two exports compiled beside the reply would be
+names in the model's own file.
 
-**The SDK reaches that file through one line, and the line is `@_exported import gg`.** A Swift
-`import` is file-scoped: written in the shell it would put `fs` in scope in the shell and nowhere
-else, and the model's `main.swift` would still fail with `cannot find 'fs' in scope`. A re-export is
-module-scoped, so every file of the program's module sees it. Both were measured; the alternative
-was making a model write `import gg` on line 1 and paying a line offset on every diagnostic and every
-located trap for the rest of the arm's life.
+**The SDK reaches that file through one line the program writes, and the line is `import gg`.**
+A Swift `import` is file-scoped, so what the shell imports is in scope in the shell and in no other
+file of the module. What the compile supplies is the `-I` that resolves the `gg` module, which tells
+the compiler the module exists and puts no name in scope: a reply that writes no import reaches
+nothing gg carries, and `swift.surface.test.rs` asks `swiftc` to say so.
 
 **Its failures are traps, and what a model is told about one comes out of the artifact's debug
 information.** At `-Osize` Swift does not print `Fatal error: Index out of range` anywhere: the
@@ -45,8 +46,9 @@ which is what gets both the message and the model's own line and column out.
 | | |
 | --- | --- |
 | `Sources/SDK/` | **The SDK a model writes against.** One file per capability module under `Modules/`, each carrying its functions and the types they produce, plus `Internal/` — the wire bridge and the two public functions that belong to no module. Compiled ahead of time into a module called `gg`. |
-| `Sources/shell.swift` | gg's shell — the `@_exported import` that puts the SDK in the model's scope, the two exports the sandbox world declares, and the call into the model's own top-level code. Compiled beside every program, once per turn. |
-| `Sources/gg-shell.h` | The bridging header: the generated WIT surface as C, `stdlib.h` for the allocator the canonical ABI's post-return frees with, and the one declaration that is not generated (the program's entry point). |
+| `Sources/shell.swift` | gg's shell — the two exports the sandbox world declares and the call into the model's own top-level code, under two file-scoped imports that reach nothing the model wrote. Compiled ahead of time into `shell.o` as a module of its own and linked into every program. |
+| `Sources/gg-shell.h` | The shell's header: the generated WIT surface as C, `stdlib.h` for the allocator the canonical ABI's post-return frees with, and the one declaration that is not generated (the program's entry point). |
+| `Sources/module.modulemap` | The clang module the shell imports that header through, which is what keeps the header out of the model's own file. |
 | `libraries.txt` | Every module a program may `import`, grouped as the catalogue renders them. One declaration, two readers: `tools/signatures.py` and a gg test that compiles a program importing all of them. |
 | `swift-version.sh` | Every pin — the Swift release, the wasm SDK, the target triple, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release, the three vendored packages — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-swift.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
@@ -55,9 +57,11 @@ which is what gets both the message and the model's own line and column out.
 
 ## What a Swift program looks like
 
-An ordinary top-level Swift file with gg's whole surface already in scope:
+An ordinary top-level Swift file that opens by importing gg's surface:
 
 ```swift
+import gg
+
 let entries = try files.listDir("src")
 let sources = entries.filter { $0.kind == .file }
 let built = try shell.run("swift build")
@@ -74,9 +78,9 @@ this SDK's spelling: they are the vocabulary every arm shares, and no language m
 which is the one place this SDK departs from Swift's UpperCamelCase convention for types and the
 reason it does.
 
-A caseless `enum` rather than that many real Swift modules behind an `@_exported` umbrella. The
-umbrella was measured and does re-export transitively, so that was not what decided it: a module of
-its own would have to be called `GgFiles` where the vocabulary is `files`, and a program that
+A caseless `enum` rather than that many real Swift modules behind an umbrella that re-exports them.
+The umbrella was measured and does re-export transitively, so that was not what decided it: a module
+of its own would have to be called `GgFiles` where the vocabulary is `files`, and a program that
 declares its own `files` shadows either shape equally. What answers the shadowing is the fully
 qualified form — `gg.files.readFile(…)`, a real path in the module the SDK is compiled into, which
 still resolves in a file that has taken the short name for itself. That is why it is the name the
@@ -84,7 +88,7 @@ catalogue publishes.
 
 Everything else is Swift's own idiom:
 
-- **Every call `throws`**, so `try` is the whole of the ceremony and `core.ToolError` is an
+- **Every fallible call `throws`**, so `try` is the whole of the ceremony and `core.ToolError` is an
   ordinary `Error`. Catch what you expect
   (`catch let failure as core.ToolError where failure.code == .notFound`) and let the rest out.
 - **Required arguments are positional; optional ones are default values.** There is no options
@@ -137,7 +141,7 @@ during an ordinary `cargo build -p test-cabinet-gg`, into that crate's own `OUT_
 build runs, and put somewhere you can open it by `scripts/gg-artifacts.sh`.
 
 ```
-swift.guest.tar.gz     182 KB — the compile inputs, SDK included
+swift.guest.tar.gz     185 KB — the compile inputs, SDK included
 swift.libraries.tar.gz 3.4 MB — the curated library set
 swift.adapter.wasm      52 KB — the preview1 reactor adapter
 swift.toolchain.json          — what built them, and what is in them
@@ -153,7 +157,7 @@ The split every compiled arm here has. The toolchain is ~835 MB even pruned, so 
 gg run image (`containers/gg-toolchains/Dockerfile`). These go the other way because they are a
 function of gg's own wire and gg's own surface, and gg is copied as a single file into an ephemeral
 run container whose image was built separately — so an SDK that lived in the image could be a
-different vintage from the prompt describing it.
+different vintage from the catalogue describing it.
 
 **The pin is hard now, and it was not before.** A `.swiftmodule` is a compiler-version-private
 format, so the release that reads this arm's SDK must be the release that wrote it. A bump to
@@ -170,7 +174,8 @@ nothing records the path of the checkout it was built in; what varies is the has
 `wit-bindgen` has no Swift generator, and this arm does not need one: Swift imports C natively.
 The canonical ABI is generated once with the **C** generator, compiled to a wasm object at build
 time (3,000 lines of generated C that never changes between programs is ~90 ms a turn that buys
-nothing), and reached from Swift through the bridging header. Hand-writing the lowering in Swift
+nothing), and reached from Swift through the clang module over `Sources/gg-shell.h`. Hand-writing
+the lowering in Swift
 would have been a second implementation of a specification that drifts from `crates/gg/wit` on
 its own schedule.
 
@@ -214,7 +219,7 @@ scripts/gg-signatures.sh                   # all eleven, into target/gg-signatur
 There is nothing to commit and nothing to remember. `crates/gg-sandbox-artifacts/swift` runs
 `build.sh` on every build of gg whose declared inputs moved, and `crates/gg/build.rs` reflects the
 catalogue out of `Sources/SDK/` on the same build — so an edit to the SDK reaches both the archives a
-program is compiled against and the prompt describing them, together, and neither can be the older
+program is compiled against and the catalogue describing them, together, and neither can be the older
 of the two. `swift.compile.test.rs` used to fail by name when the archive's copy of the shell was not
 this checkout's; that assertion is gone, because the state it named is not one this repository can be
 in. Running either script by hand is for reading what it emitted.

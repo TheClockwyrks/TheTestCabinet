@@ -3,20 +3,20 @@ package gg.views;
 import gg.ToolError;
 import gg.ToolErrorCode;
 import gg.files.Files;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
 import java.util.Optional;
-import org.teavm.jso.JSObject;
 
 /**
- * Put a file, a computed value or a function's documentation into the context window.
+ * Put a file, a computed value or an entry's documentation into the context window.
  *
  * <p>A program's own output goes nowhere the model can read it. A view is how a program puts
  * something in front of the model that wrote it: one attributable item in the next prompt, closeable
  * once it has been read.
  *
- * <p>There are three kinds and the list is closed: a file, a computed string, and one function's
+ * <p>There are three kinds and the list is closed: a file, a computed string, and one entry's
  * documentation. A picture is not a fourth kind — it is a file view of an image file, and the view
  * carries the picture.
  *
@@ -44,8 +44,8 @@ public final class Views {
      * @ggop views.open_file
      */
     public static Files.FileRead openFile(String path) {
-        return Read.fileRead(Wire.call("open_file", Wire.view(), "view", "openFile",
-                Wire.args(Wire.text(path))));
+        return Read.fileRead(Coding.call("views.open_file", Value.of(path), Value.none(),
+                Value.none()));
     }
 
     /**
@@ -63,11 +63,8 @@ public final class Views {
      * @ggop views.open_file
      */
     public static Files.FileRead openFile(String path, int offset, int limit) {
-        JSObject options = Wire.object();
-        Wire.set(options, "offset", Wire.number(offset));
-        Wire.set(options, "limit", Wire.number(limit));
-        return Read.fileRead(Wire.call("open_file", Wire.view(), "view", "openFile",
-                Wire.args(Wire.text(path), options)));
+        return Read.fileRead(Coding.call("views.open_file", Value.of(path), Value.of(offset),
+                Value.of(limit)));
     }
 
     /**
@@ -87,31 +84,30 @@ public final class Views {
      * @ggop views.open_text
      */
     public static void openText(String label, String body) {
-        Wire.run("open_text", Wire.view(), "view", "openText",
-                Wire.args(Wire.text(label), Wire.text(body)));
+        Coding.call("views.open_text", Value.of(label), Value.of(body));
     }
 
     /**
-     * Show the full documentation for one function: its signature, its description, and its types.
+     * Show the full documentation for one entry: a module, a function or a type.
      *
-     * <p>This is how a function is read. It is a view rather than a return value — the documentation
-     * arrives in the next prompt under a {@code Documentation} heading keyed by the name, exactly as
-     * a file or a computed value arrives — so it is not available in the turn that asks for it. Ask
-     * in one turn, use it in the next. Opening the same function's documentation again replaces the
-     * view rather than adding a second copy, and {@code gg.docs.Docs.close} closes it — not
-     * {@link #close}, which does not reach documentation.
+     * <p>Whatever a search can return can be read this way. It is a view rather than a return
+     * value — the documentation arrives in the next prompt under a {@code Documentation} heading
+     * keyed by the name, exactly as a file or a computed value arrives — so it is not available in
+     * the turn that asks for it. Ask in one turn, use it in the next. Opening an entry already open
+     * does nothing at all, neither moving it nor sending it again, and {@code gg.docs.Docs.close}
+     * closes it — not {@link #close}, which does not reach documentation.
      *
-     * @param name The function to document, by the fully-qualified name its documentation is
-     *     keyed by — {@code "gg.files.Files.readFile"}. The bare name it is called by
-     *     ({@code "readFile"}) also resolves and is a fallback rather than the form to reach for:
-     *     two modules are free to declare a {@code close}, and only the qualified name says which
-     *     one is meant. Searching the documentation is what says which names exist.
+     * @param name The entry to document, by the fully-qualified name its documentation is keyed
+     *     by — {@code "gg.files.Files.readFile"}, and a module by its own path
+     *     ({@code "gg.files.Files"}). The bare name it is called by ({@code "readFile"}) also
+     *     resolves and is a fallback rather than the form to reach for: two modules are free to
+     *     declare a {@code close}, and only the qualified name says which one is meant. Searching
+     *     the documentation is what says which names exist.
      * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown or unbound name.
      * @ggop views.open_docs_view
      */
     public static void openDocsView(String name) {
-        Wire.run("open_docs_view", Wire.view(), "view", "openDocsView",
-                Wire.args(Wire.text(name)));
+        Coding.call("views.open_docs_view", Value.of(name));
     }
 
     /**
@@ -136,8 +132,7 @@ public final class Views {
      * @ggop views.close
      */
     public static int close(String selector) {
-        return Wire.asInteger(Wire.call("close", Wire.view(), "view", "close",
-                Wire.args(Wire.text(selector))));
+        return Coding.call("views.close", Value.of(selector)).integer();
     }
 
     /**
@@ -151,8 +146,7 @@ public final class Views {
      * @ggop views.current
      */
     public static List<OpenView> current() {
-        return Read.openViews(
-                Wire.call("current", Wire.view(), "view", "current", Wire.args()));
+        return Read.openViews(Coding.call("views.current"));
     }
 
     // -------------------------------------------------------------------------------------------
@@ -197,7 +191,7 @@ public final class Views {
         FILE,
         /** A computed value, whose selector is the label it was opened under. */
         TEXT,
-        /** One function's documentation, whose selector is that function's name. */
+        /** One entry's documentation, whose selector is that entry's key. */
         DOCS
     }
 

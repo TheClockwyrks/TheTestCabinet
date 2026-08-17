@@ -53,11 +53,11 @@ membrane refuses every bridged call once the run's budget is spent.
   `shell("sleep 3600")` would carry the run past its deadline with nothing left
   to stop it; and down to a day, because the tool builds a `Duration` from
   whatever number arrives and a `Duration` cannot hold every `f64`.
-- The ECMAScript arms' preparation step refuses a program whose brackets nest
-  more than 200 deep, checked before the parse. The parser is recursive descent
-  and a stack overflow would take the gg process down. A program's length is
-  unbounded: a reply is processed in full however long it is, and the parse runs
-  on a stack sized for that program.
+- A guest may spend 1 MiB of wasm call stack before wasmtime traps it. The
+  ceiling is above the JavaScript recursion ceiling the
+  [ECMAScript guest](/gg/languages/ecmascript-guest/) sets, so that engine
+  reports an overflow itself rather than the store dying, and below a thread's
+  own stack, so the trap is a trap rather than a crash.
 
 ### The run's wall-clock budget
 
@@ -93,12 +93,32 @@ guest cannot run a command through its standard library and an agent not granted
 the call cannot run one at all.
 
 Stdout is withheld, because gg's telemetry stream is on fd 1. Stderr is captured
-rather than inherited: the host keeps the last 8 KiB of it and never fails a
-write, so a guest runtime's dying message reaches the model's feedback instead
-of the operator's log.
+rather than inherited and never fails a write, so a guest runtime's dying message
+reaches the model's feedback instead of the operator's log.
 
-The environment is inherited because a language runtime needs `HOME`, `PATH`,
-`TMPDIR` and the locale to work at all. The accepted consequence is that
+What is captured is bounded at both ends: the host keeps the first 4 KiB and the
+last 4 KiB, so anything a guest wrote up to 8 KiB reaches the model whole. Both
+ends are kept because the runtimes disagree about which one carries the fault.
+Mono names a `StackOverflowException` on the first line and then repeats one
+frame for fifty kilobytes, while a Rust panic and a Swift `fatalError` are the
+last thing on a channel the program itself has been writing to. Keeping one end
+alone loses the fault on the arms that use the other.
+
+Where the two ends do not meet, a line of its own counts the deletion between
+them, reading `… 43992 bytes dropped`.
+[Trimming](/gg/responses-as-code/invariants/#trimming) requires that of every
+trim, so a model can tell a bounded report from a whole one. Each cut is moved
+out to the nearest line boundary and the bytes that move with it are added to
+the count, so a model never reads a frame the bound cut in half.
+
+gg adds `GG_SANDBOX_DEADLINE_MS` to the environment, holding this program's
+execution budget one epoch tick short of gg's own deadline. It is for a guest
+whose engine can stop a runaway loop itself and report which function was
+looping; a guest that leaves it alone has the epoch deadline as its only
+ceiling.
+
+The rest of the environment is inherited because a language runtime needs
+`HOME`, `PATH`, `TMPDIR` and the locale to work at all. The accepted consequence is that
 whatever this process's environment holds, including the run's model
 credentials, is readable from inside a program. That is the same reach a program
 has through the preopened filesystem, and the same reach an agent has through
@@ -109,34 +129,51 @@ the host cannot open `/` at all. The failure is ignored: a guest that never
 touches the filesystem is unaffected, and one that does gets an ordinary WASI
 error from its own runtime.
 
-### Globals the ECMAScript guest shadows
+### Stopping the process
 
-Seven globals this engine defines cannot be honoured, and each is replaced with
-a thrower so it raises an ordinary, located, catchable program error naming what
-is missing and why.
+A program that calls its language's `exit` is reported as having stopped itself,
+in place of the wasm backtrace that carries neither the word nor the status.
+
+The status reaches gg as success or failure and not as a number. The
+`wasi_snapshot_preview1` adapter every component is encoded with lowers
+`proc_exit(n)` to `wasi:cli/exit.exit`, whose argument is a result. So `exit(0)`
+is reported with its number, and every other status is reported as a non-zero
+exit whose value gg was not told. Naming the `1` that arrives would be gg
+reporting a program the model did not write, which the
+[invariants](/gg/responses-as-code/invariants/) forbid.
+
+A status a model wants read is one its entry point returns. C++ and C# are the
+arms whose entry point carries one, and an entry point that returned a non-zero
+status is reported with the number the program chose.
+
+### Globals an ECMAScript guest shadows
+
+Six globals cannot be honoured, and each is replaced with a thrower so it raises
+an ordinary, catchable program error naming what is missing and why.
 
 | Global | Reason given |
 | --- | --- |
 | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `requestAnimationFrame` | there is no event loop, so a scheduled callback would never run |
-| `queueMicrotask` | deferred work is not part of your program's result |
 | `fetch` | this program's runtime is built without an HTTP client |
 
 Both underlying failures are silent without a thrower. gg's `run` export is
 synchronous, so an unshadowed `setTimeout(() => { hit = 1 }, 0)` leaves `hit` at
-`0` and reports no error at all. Baking the component without the HTTP
-capability removes the WASI import but leaves the builtin defined, so an
-unshadowed `fetch` reaches a missing import and traps the whole store, which is
-uncatchable and unreportable.
+`0` and reports no error at all. Baking a component without the HTTP capability
+removes the WASI import but leaves the builtin defined, so an unshadowed `fetch`
+reaches a missing import and traps the whole store, which is uncatchable and
+unreportable.
+
+`queueMicrotask` is real: the [ECMAScript guest](/gg/languages/ecmascript-guest/)
+drains its job queue before it returns, which is the same mechanism a top-level
+`await` finishes on.
 
 Nothing here denies a capability the component has. The clock, `Math.random` and
 `crypto` are real and reachable. `fetch`'s reason is a fact about this artifact:
 the host links `wasi:sockets` for every guest, so a guest that imported it would
 have the network.
 
-Each replacement is defensive. Some globals in this engine are accessor
-properties with no setter, and a plain assignment to one throws out of the
-shim's own setup, which `componentize-js` turns into an opaque trap. A global
-that refuses redefinition keeps its engine behaviour instead.
+Each is a named thrower rather than an absence, because the engine's message for
+calling a missing global carries neither the name nor a reason.
 
 ## Build and distribution
 
@@ -151,8 +188,9 @@ Each arm's `build.sh` writes the files that arm needs into
 `crates/gg-sandbox-artifacts/<arm>/`. That crate's `links` key carries the
 output directory to `crates/gg`'s build script, which republishes it as an
 environment variable the arm's module reads with `include_bytes!`. Ten crates
-serve eleven arms: `typescript` (which serves the JavaScript arm too), `python`,
-`ruby`, `java`, `kotlin`, `rust`, `purescript`, `cpp`, `swift` and `csharp`.
+serve eleven arms: `typescript` (whose guest serves the JavaScript and PureScript
+arms too), `python`, `ruby`, `java`, `kotlin`, `rust`, `purescript`, `cpp`,
+`swift` and `csharp`.
 
 There is one crate per arm rather than more steps of one build script, because a
 build script has a single rerun set. Per-arm crates buy three things. Editing

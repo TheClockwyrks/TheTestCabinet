@@ -22,9 +22,9 @@ namespace gg {
 /// fetch what ran, patch it with ordinary string work, hand it back.
 ///
 /// ```cpp
-/// auto source = programs::get();
-/// source.replace(source.find("files::read_fil("), 16, "files::read_file(");
-/// programs::rerun(source);
+/// auto source = gg::programs::get();
+/// source.replace(source.find("gg::files::read_fil("), 20, "gg::files::read_file(");
+/// gg::programs::rerun(source);
 /// ```
 ///
 /// <ggmodule>programs</ggmodule>
@@ -52,7 +52,7 @@ struct program_summary {
   /// <ggop-alias>programs.get</ggop-alias>
   ///
   /// \returns that program's exact source.
-  /// \throws core::tool_error `not_found` when the library has since dropped that turn.
+  /// \throws gg::core::tool_error `not_found` when the library has since dropped that turn.
   std::string source() const;
 };
 
@@ -66,7 +66,7 @@ struct program_summary {
 /// <ggop>programs.history</ggop>
 ///
 /// \returns one summary per program this session has run, oldest first.
-/// \throws core::tool_error `unavailable` when this agent keeps no program library at all — a
+/// \throws gg::core::tool_error `unavailable` when this agent keeps no program library at all — a
 ///   different fact from a library that is empty, and the reason this can fail.
 std::vector<programs::program_summary> history();
 
@@ -82,7 +82,7 @@ std::vector<programs::program_summary> history();
 /// \param turn The turn whose program to fetch, as the history reports it; empty fetches the most
 ///   recent one.
 /// \returns that program's exact source.
-/// \throws core::tool_error `not_found`, naming the turns that are held, for a turn that ran no
+/// \throws gg::core::tool_error `not_found`, naming the turns that are held, for a turn that ran no
 ///   program or one old enough that the library has dropped it.
 std::string get(std::optional<std::uint32_t> turn = std::nullopt);
 
@@ -98,7 +98,7 @@ std::string get(std::optional<std::uint32_t> turn = std::nullopt);
 ///
 /// \param source The program to run in place of this one, as C++. It may not be blank, and it must
 ///   define `main`.
-/// \throws core::tool_error `refused` for a second hand-over in one turn, and `invalid_argument`
+/// \throws gg::core::tool_error `refused` for a second hand-over in one turn, and `invalid_argument`
 ///   for a blank source.
 void rerun(std::string_view source);
 

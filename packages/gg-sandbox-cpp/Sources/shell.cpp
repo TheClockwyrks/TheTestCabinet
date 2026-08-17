@@ -157,6 +157,22 @@ static void report_uncaught(const char *kind, const char *what,
   test_cabinet_gg_feedback_report_error(&error);
 }
 
+// **The status the program's own entry point returned**, reported with the number it chose.
+//
+// A separate report from `report_uncaught` above, because nothing was thrown and nothing was
+// uncaught: the program ran to the end of `main` and ended by handing back a failure. It carries no
+// gg error code for the same reason — the failure is the program's rather than a call's — and no
+// location, because a returned status is not raised at a statement.
+static void report_status(int status) {
+  test_cabinet_gg_feedback_program_error_t error;
+  error.kind = TEST_CABINET_GG_FEEDBACK_ERROR_KIND_OTHER;
+  error.code.is_some = false;
+  error.location.is_some = false;
+  sandbox_string_set(&error.message,
+                     ("the program's entry point returned " + std::to_string(status)).c_str());
+  test_cabinet_gg_feedback_report_error(&error);
+}
+
 // The wire's code for a failure the SDK threw.
 static test_cabinet_gg_types_error_code_t wire_code(gg::core::tool_error_code code) {
   switch (code) {
@@ -199,11 +215,17 @@ extern "C" void exports_sandbox_run(sandbox_string_t *program,
   (void)ending;
   (void)library;
   try {
-    // The value `main` returned is deliberately discarded. A program's return value is not a channel
-    // on this membrane — everything a program has to say it says over `feedback` — so a non-zero
-    // `return 1` is not an error gg invents a band for, exactly as a top-level `return` on the
-    // ECMAScript arms is not.
-    (void)__main_void();
+    // **The status `main` returned is read**, because it is the one way a C++ program reports a
+    // failure without throwing and the one that walks past every `catch` there is. C++ gives an
+    // entry point exactly one channel of its own and this is it, so a program that ended with
+    // `return 3` is told gg read the 3 — where discarding it recorded the turn as a clean one and
+    // told the model its program worked.
+    //
+    // Nothing is added about what to do instead: a program that returns a status meant to.
+    const int status = __main_void();
+    if (status != 0) {
+      report_status(status);
+    }
   } catch (const gg::core::tool_error &failure) {
     // A gg call the program did not catch. `what()` is already gg's own sentence about it — the
     // call, the class and the guidance — so what is added here is only that nothing caught it, and

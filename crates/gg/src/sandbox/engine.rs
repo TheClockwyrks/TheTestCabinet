@@ -9,12 +9,14 @@ use std::time::{Duration, Instant};
 use test_cabinet_core::gg::GgProgramLanguage;
 use wasmtime::component::Component;
 use wasmtime::{Config, Engine, OptLevel, Store, WasmBacktraceDetails};
+use wasmtime_wasi::I32Exit;
 
 use super::SandboxError;
 use super::invoker::ToolApi;
 use super::language::ProgramLanguage;
 use super::limits::SandboxLimits;
 use super::membrane::MembraneState;
+use super::outcome::with_guest_stderr;
 
 /// The process-wide wasm engine.
 static ENGINE: OnceLock<Engine> = OnceLock::new();
@@ -122,6 +124,31 @@ fn engine() -> &'static Engine {
         // turn `gc_support` back off on their own engines rather than inheriting a wider validation
         // surface from a decision made here. See the root `Cargo.toml`.
         config.wasm_exceptions(true);
+        // **How much host stack a guest may spend before wasmtime traps it**, raised from wasmtime's
+        // 512 KiB default to 1 MiB for one arm's sake and measured rather than chosen.
+        //
+        // A JavaScript recursion on the ECMAScript guest (`packages/gg-sandbox/guest`) spends TWO
+        // stacks at once: quickjs's own, which lives in the guest's linear memory and is what the
+        // engine measures a recursion against, and the wasm call stack under it, which is this. If
+        // this one runs out first the store dies with `wasm trap: call stack exhausted` and the model
+        // reads nothing at all; if the engine's does, the model reads `RangeError: Maximum call stack
+        // size exceeded` with its own frames, which is the whole point. Measured on that guest, the
+        // recursion depth reached before the engine reports the overflow itself:
+        //
+        //     JavaScript ceiling  |  512 KiB here  |  1 MiB here  |  2 MiB here
+        //     128 KiB             |  452           |  452         |  452
+        //     256 KiB             |  907           |  907         |  907
+        //     512 KiB             |  host trap     |  1817        |  1817
+        //     1 MiB               |  host trap     |  host trap   |  3637
+        //
+        // The guest's ceiling is 512 KiB, so this is the 1 MiB row. NOT 2 MiB, although wasmtime
+        // accepts it: this engine runs wasm on whatever thread called it, and a Rust test thread's
+        // default stack is 2 MiB — a ceiling equal to the whole thread stack would turn a guest
+        // overflow into a native one, which is not a trap but a crash.
+        //
+        // It widens what every other arm may spend before being trapped, by half a megabyte, and
+        // costs them nothing else: the limit is a ceiling, not an allocation.
+        config.max_wasm_stack(1024 * 1024);
         // A fixed, known-valid configuration: nothing here depends on the host, the run, or any
         // input, so a failure would be a programming error rather than a runtime condition.
         let engine = Engine::new(&config).expect("the fixed wasmtime Config is valid");
@@ -134,7 +161,7 @@ fn engine() -> &'static Engine {
 /// every execution timeout: a 30 s ceiling is 300 ticks, and a program is stopped within one tick of
 /// its deadline. A tenth of a second is far finer than a timeout sized in tens of seconds needs, and
 /// coarse enough that the ticker's own cost — one atomic increment — is utterly negligible.
-const EPOCH_TICK: Duration = Duration::from_millis(100);
+pub(crate) const EPOCH_TICK: Duration = Duration::from_millis(100);
 
 /// The number of [epoch ticks](EPOCH_TICK) that span `budget`, for
 /// [`Store::set_epoch_deadline`](wasmtime::Store::set_epoch_deadline) and the deadline callback's
@@ -290,7 +317,10 @@ pub(crate) fn compiles() -> u64 {
 /// — is always valid in a real build.
 pub(crate) fn compile_bytes(bytes: &[u8]) -> Result<Component, SandboxError> {
     COMPILES.fetch_add(1, Ordering::Relaxed);
-    Component::new(engine(), bytes).map_err(|err| SandboxError::Compile(err.to_string()))
+    // Through [`failure_reason`] like every other wasmtime error path here: a component that will
+    // not compile fails with the validator's own sentence buried in the chain, and `to_string()`
+    // hands back the outer link alone.
+    Component::new(engine(), bytes).map_err(|err| SandboxError::Compile(failure_reason(&err)))
 }
 
 /// One language's embedded component bytes, for the test that guards its size band.
@@ -320,6 +350,20 @@ pub(crate) fn component_bytes(language: &'static dyn ProgramLanguage) -> &'stati
 /// and carry on. Reading a stale denial would blame the memory cap for whatever the program
 /// eventually did wrong instead.
 ///
+/// Both ceilings are read before the error itself, because both are things **gg** did to a program
+/// that was still running and neither leaves a distinguishable trap behind. Only then is the error
+/// asked whether it is an explicit [`exit`](wasmtime_wasi::I32Exit) — which a program chose, and
+/// which arrives as a trap carrying a backtrace and no mention of the word "exit" or the status. It
+/// is named by [`exit_message`] and reported as a [`Trap`](SandboxError::Trap) whichever phase it
+/// came from, because a guest that exited is a program that stopped itself and never the artifact
+/// drift `fallback` names on the instantiate path.
+///
+/// [What the guest said](MembraneState::stderr_kept) rides on **every** one of those paths. It used
+/// to ride on the last one alone, so the two early returns above threw it away: a Swift program
+/// stopped at the memory cap had already written `Fatal error: failed to allocate 33554440 bytes of
+/// memory with alignment 4`, and gg had already located it at `main.swift:3:32`, and the model was
+/// shown neither.
+///
 /// `fallback` is what an unclassified failure becomes, and it differs by phase — an error from
 /// [`instantiate`](wasmtime::component::Linker) means the embedded artifact and the membrane have
 /// drifted apart, while one from the call is an ordinary trap — so the caller names it.
@@ -329,35 +373,206 @@ pub(crate) fn classify<A: ToolApi>(
     err: &wasmtime::Error,
     fallback: fn(String) -> SandboxError,
 ) -> SandboxError {
-    if store.data().timed_out() {
+    let said = store.data().stderr_kept();
+    if store.data().timed_out() || spent_its_budget(store, limits) {
         return SandboxError::Timeout {
             limit: limits.timeout,
+            said,
         };
     }
     if store.data().memory_denied() {
         return SandboxError::OutOfMemory {
             limit: limits.max_memory_bytes,
+            said,
         };
     }
-    fallback(with_guest_stderr(
-        err.to_string(),
-        store.data().stderr_tail(),
-    ))
+    if let Some(exit) = err.downcast_ref::<I32Exit>() {
+        return SandboxError::Trap(with_guest_stderr(exit_message(exit.0), &said));
+    }
+    let reason = failure_reason(err);
+    let reason = match store.data().language().wasm_frames_are_located() {
+        true => reason,
+        false => without_frame_locations(&reason),
+    };
+    fallback(with_guest_stderr(without_nameless_frames(&reason), &said))
 }
 
-/// What the guest said about itself, in front of the engine's account of what happened to it.
+/// **Whether the guest stopped itself because it reached the budget gg gave it.**
 ///
-/// The order is the point. On a guest with an exception mechanism the engine's account is the whole
-/// story, because a throw was caught, reported and never became a trap. On one without — the
-/// [Swift](super::language::swift) arm, where an index out of range, a force-unwrapped `nil` and a
-/// `fatalError` are all unrecoverable by design — the *only* description of the failure is the line
-/// the runtime wrote to stderr on its way down, and burying it under a wasm backtrace would be
-/// showing a model the machinery instead of the fault. See
-/// [`GuestStderr`](MembraneState::stderr_tail).
-fn with_guest_stderr(error: String, said: String) -> String {
-    match said.is_empty() {
-        true => error,
-        false => format!("{said}\n\n{error}"),
+/// gg states its execution ceiling to a guest that can stop itself
+/// ([`GUEST_DEADLINE`](super::membrane::GUEST_DEADLINE)), one epoch tick short of its own, so that a
+/// runaway program is answered by the engine — in the engine's words, at the model's own line —
+/// rather than by an epoch trap that names nothing. What that costs is the flag: gg's own deadline
+/// callback never fires, because the store is already dead when it would have.
+///
+/// So the ceiling is recognised here instead, on the same terms the memory cap is: a guest that
+/// spent at least the budget gg handed it and then stopped, stopped for the reason gg set. The time
+/// is [`guest_elapsed`](MembraneState::guest_elapsed) — the guest's own execution, with the time
+/// parked in bridged calls subtracted — which is the same clock the budget was written from.
+///
+/// **Only for an arm whose guest actually reads that budget**
+/// ([`stops_itself_at_ggs_deadline`](ProgramLanguage::stops_itself_at_ggs_deadline)). On any other
+/// arm gg's own deadline is the only ceiling and its flag always fires, so this would be pure
+/// heuristic: a panic, a trap or an allocation failure in the last tick of a program's budget would
+/// be reported to the model as a timeout rather than as what it was.
+fn spent_its_budget<A: ToolApi>(store: &Store<MembraneState<A>>, limits: SandboxLimits) -> bool {
+    store.data().language().stops_itself_at_ggs_deadline()
+        && store.data().guest_elapsed() >= super::membrane::guest_deadline(limits)
+}
+
+/// The same failure with every **nameless** wasm frame struck, and the backtrace header with them
+/// when nothing survives under it.
+///
+/// wasmtime writes a frame as `0: 0x1a2b - <module>!<function>`, taking both names from the module's
+/// name section. An artifact built without one renders every frame as
+/// `<unknown>!<wasm function 1785>`, which names neither a place nor a thing: on the arms whose
+/// guest is an *engine* rather than the program, those indices are quickjs's own internals, and six
+/// lines of them follow the engine's own located rendering on every runtime failure.
+///
+/// Struck rather than counted, on the same terms [`without_frame_locations`] drops a misattributed
+/// location: a frame with no name and no location is not a shorter account of the failure, it is no
+/// account of it, and a count of how many there were is the same nothing one line longer. That is
+/// the [invariants page](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)'s
+/// distinction between a strike and a trim, and it is why a
+/// [trim](super::membrane::GuestStderr) beside it does count.
+///
+/// A frame the name section does name is kept, which is every frame on the arms whose program is
+/// the wasm module.
+fn without_nameless_frames(reason: &str) -> String {
+    /// What wasmtime renders for a frame it has no name for.
+    const NAMELESS: &str = "<unknown>!<wasm function ";
+    /// The line wasmtime opens a backtrace with.
+    const HEADER: &str = "error while executing at wasm backtrace:";
+
+    let mut kept: Vec<&str> = Vec::new();
+    for line in reason.lines() {
+        if line.contains(NAMELESS) {
+            continue;
+        }
+        // The header, once every frame beneath it has gone. `lines()` has already consumed the
+        // blank line that separated it from the reason, so that goes too.
+        if line.trim() == HEADER
+            && !reason
+                .lines()
+                .skip_while(|earlier| earlier.trim() != HEADER)
+                .skip(1)
+                .any(|frame| !frame.trim().is_empty() && !frame.contains(NAMELESS))
+        {
+            while kept.last().is_some_and(|last| last.trim().is_empty()) {
+                kept.pop();
+            }
+            continue;
+        }
+        kept.push(line);
+    }
+    while kept.last().is_some_and(|last| last.trim().is_empty()) {
+        kept.pop();
+    }
+    kept.join("\n")
+}
+
+/// The same failure with every frame's **file and line struck out**, for an arm whose DWARF is
+/// misattributed — see [`ProgramLanguage::wasm_frames_are_located`].
+///
+/// wasmtime renders a located frame over two lines: the address and the function name, then an
+/// indented `at <file>:<line>:<column>`. The function names come from the module's name section and
+/// are right; only the second line is the lie, so only the second line goes. A strike rather than a
+/// trim, and it closes without a count for the reason [`without_nameless_frames`] gives. What is left is the
+/// reason, the frames a model can recognise, and no claim about where in its own source they are —
+/// which for the JVM arms is what the guest's own standard error already says, correctly.
+fn without_frame_locations(reason: &str) -> String {
+    let kept: Vec<&str> = reason
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            // An `at …:<line>:<column>` line, and nothing else: the guest's own stderr is not in
+            // this string at all (it rides beside it), and a reason of gg's own never has this
+            // shape.
+            !(line.starts_with(' ')
+                && trimmed.starts_with("at ")
+                && trimmed
+                    .rsplit(':')
+                    .take(2)
+                    .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())))
+        })
+        .collect();
+    kept.join("\n")
+}
+
+/// What a program that called its language's `exit` is told, in place of the backtrace that carried
+/// neither the word "exit" nor the status.
+///
+/// Two facts, because they are the two a model can act on: that it stopped itself, and that
+/// returning is how a program ends. `exit(0)` is not spared — it is a program that stopped before
+/// its own last statement — and it is the one status this sentence names, because it is the one gg
+/// is told.
+///
+/// # Why a non-zero status is not a number here
+///
+/// **Because gg is never handed one.** Every arm that can reach an exit at all reaches it through
+/// the pinned `wasi_snapshot_preview1` adapter, whose `proc_exit` is
+///
+/// ```text
+/// let status = if rval == 0 { Ok(()) } else { Err(()) };
+/// crate::bindings::wasi::cli::exit::exit(status); // does not return
+/// ```
+///
+/// — `crates/wasi-preview1-component-adapter/src/lib.rs` at the pinned release and on `main` alike.
+/// The import it calls, `wasi:cli/exit.exit`, carries a `result` and not a status, and the host end
+/// of it (`wasmtime_wasi`'s `p2::host::exit`) turns that back into `I32Exit(0)` or `I32Exit(1)`. So
+/// a program's `exit(3)` and its `exit(7)` arrive here as the same integer, and that integer is not
+/// one either program chose.
+///
+/// The interface does carry an `exit-with-code(u8)` that would survive, and the host implements it;
+/// no adapter calls it, so nothing gg runs can produce one. Reaching it would mean gg building its
+/// own adapter out of a patched upstream source — replacing the one input a component's ABI is
+/// pinned by with a binary of gg's own making — and that is a worse trade than a sentence that says
+/// what is true.
+///
+/// So the number is not printed. A model reading `exit(1)` after writing `exit(3)` would be reading
+/// gg's report of a program other than its own, which is the thing
+/// [the invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) forbid; a model
+/// told the status did not survive knows both that it stopped itself and that the value it picked
+/// is not a channel back to gg. Gate G8 holds the five arms that can reach this to what they read.
+///
+/// It is composed here rather than being a [`SandboxError`] variant of its own for the reason
+/// [`Trap`](SandboxError::Trap) states: a recordable variant is one-to-one with a **published** turn
+/// error type, and minting `sandbox_exit` is a contract change rather than a classification fix.
+fn exit_message(status: i32) -> String {
+    match status {
+        0 => "the program called exit(0) instead of returning; nothing after the call ran"
+            .to_string(),
+        _ => "the program called exit with a non-zero status instead of returning; nothing after \
+              the call ran, and the status itself did not reach gg — what crosses the sandbox \
+              boundary is that the exit was a failure, not the number the program passed"
+            .to_string(),
+    }
+}
+
+/// **Why** a wasmtime error happened, in front of the frames it happened in.
+///
+/// A [`wasmtime::Error`] is an `anyhow`-shaped chain, and wasmtime attaches the wasm backtrace as
+/// the **outermost** context with the reason as its source. `Display` renders the outermost link
+/// alone, so reporting `err.to_string()` — which is what this replaced — showed a model `error while
+/// executing at wasm backtrace:` and a wall of frames, while `wasm trap: integer divide by zero`,
+/// `wasm trap: call stack exhausted` and `out of bounds memory access` sat in the chain and reached
+/// nobody. Measured that way on the C++, Swift and Rust arms.
+///
+/// `{err:#}` prints the whole chain, and in that same order: the frames lead and the reason lands
+/// last, behind them. A model reads the first line, so this walks the chain and leads with the
+/// **innermost** cause — the reason — putting the outer links after it, blank-line separated.
+///
+/// The backtrace is kept rather than dropped because on a compiled arm it is the only line and
+/// column a program failure has: [`WasmBacktraceDetails::Enable`] symbolicates it out of the guest's
+/// own DWARF for exactly that, and on the Swift arm the runtime's message is encoded in an inlined
+/// frame's name and lives nowhere else.
+fn failure_reason(err: &wasmtime::Error) -> String {
+    // Outermost first, and never empty — the error is always its own first link.
+    let mut chain: Vec<String> = err.chain().map(ToString::to_string).collect();
+    let reason = chain.pop().unwrap_or_else(|| err.to_string());
+    match chain.is_empty() {
+        true => reason,
+        false => format!("{reason}\n\n{}", chain.join("\n\n")),
     }
 }
 

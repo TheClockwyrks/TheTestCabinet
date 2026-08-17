@@ -8,8 +8,10 @@ every arm.
 
 ## Call shape
 
-- A capability is a function reached through a qualified name. A module path, a
-  type or an import qualifies every call.
+- A capability is a function the program imported. The import is a line the
+  model wrote, and a name gg offers is reachable from the line after it.
+- A capability is reached through a qualified name. A module path, a type or an
+  import qualifies every call.
 - Every call is synchronous. Nothing returns a promise, a future or a
   coroutine. The sandbox is linked and driven synchronously, and no guest
   carries an event loop.
@@ -83,12 +85,14 @@ it.
 
 A component is affected only by the imports it declares, and gg's
 `test-cabinet:gg/*` namespace does not overlap WASI's, so a guest pays nothing
-for what it leaves out. The TypeScript guest imports seven interfaces:
-`wasi:clocks`, `wasi:random` and `wasi:io`, which is how a program's
-`Date.now()` reads the host clock, and `wasi:cli/stderr`. The Python guest
-imports the whole surface, twenty of them. Each guest's list is asserted against
-its built artifact, because the list is decided by flags in that arm's build
-script.
+for what it leaves out. The ECMAScript guest is a preview1 module through the
+reactor adapter, so the adapter's whole surface is declared whether the engine
+reaches it or not. The Ruby guest imports seven interfaces: `wasi:clocks`,
+`wasi:random` and `wasi:io`, which is how a program reads the host clock, and
+`wasi:cli/stderr`. The Python guest imports the whole surface, twenty-five of
+them.
+Each guest's list is asserted against its built artifact, because the list is
+decided by how that arm's guest is built.
 
 A program's context inherits the process environment and the network, and
 preopens the container's root. A model reaching for its language's ordinary file
@@ -96,6 +100,11 @@ or clock APIs is writing the language it was told to write in. The one thing the
 host withholds is stdout. gg's [telemetry](/gg/telemetry/overview/) stream is the
 process's own stdout, so the guest's WASI context is built without it and a
 guest's console output is rebound to gg's feedback channel.
+
+Standard error is bound and captured on every arm. It is where a runtime writes
+its dying words, so it is how a program's own failure reaches the model with the
+runtime's own text and location. An arm's guest is built with the channel open,
+and what a failing program wrote on it rides out with the failure gg reports.
 
 ## The signature catalogue
 
@@ -105,13 +114,23 @@ describes. A module's description comes from the comment on the module, an
 argument's from the annotation on that argument, and a type member's from the
 comment above the member.
 
+That reflection is the language's own documentation generator reading the SDK's
+sources. Each arm reaches for the tool its own users would, and reads the tool's
+output rather than the sources. The import line for a symbol is the one thing an
+arm may compose itself, and only where its generator does not report it.
+
+Every entry is written in Doxygen's implicit structure, first line the brief and
+the lines below it the detail. Each function documents the arguments it takes,
+the failures it raises and the value it returns, and states the preconditions,
+postconditions and invariants it holds.
+
 Every registered arm emits schema 1: three provenance lines naming the schema,
 the language it was generated for and what it was reflected out of, then four
 sections. A catalogue must declare its schema, and gg refuses any number but 1.
 
 | Section | What it carries |
 | --- | --- |
-| `modules` | Every module the surface is divided into, in the order a model meets them, each with its gg id, the path this arm spells it under, a brief and optional detail, and the line a program writes to bring it into scope where the arm needs one. |
+| `modules` | Every module the surface is divided into, in the order a model meets them, each with its gg id, the path this arm spells it under, a brief and optional detail, and the line a program writes to bring it into scope. |
 | `libraries` | The libraries a program may import, grouped as the artifact that decides the set groups them, each name spelled as a program must write it. Absent where an arm's programs get their runtime's standard library and nothing more. |
 | `functions` | Every call a program can write, in one flat array. Each entry names the gg `operation` it binds, the `module` it is documented under, its `kind` and `receiver`, the `name` a program calls it by, its `fqn`, a brief with optional detail, its `signatures`, and its `returns` and `types` as resolved references. A second way into a capability the arm already binds carries `aliasOf`. |
 | `types` | Every type a signature refers to: its `fqn` and `module`, its declaration, the prose explaining what it is for, a line per member, and the member functions an arm hangs off the type. |
@@ -148,7 +167,9 @@ gg's prompts name no catalogued function at all, because a model finds one by
 searching. Three gates hold that line.
 
 - No template names a function of the surface it describes, read off the
-  template sources so that it covers a branch no test context renders.
+  template sources so that it covers a branch no test context renders. The
+  code template serves every arm, so it is judged against every arm's spellings
+  pooled and a language segment may name none of them.
 - No template a code agent reads names a bare gg tool. A tool name is the right
   identity in the tool-calling prompt, and a program calls a function in a
   module.
@@ -166,16 +187,16 @@ and the catalogue test fixture as the two exemptions.
 
 On the Rust, Swift, C++ and C# arms, every example a model is shown is gathered
 into one program and put through the arm's production prepare step, with the
-same compiler, wrapper and library set a model's own reply gets. That covers the
+same compiler and library set a model's own reply gets. That covers the
 prompt's fenced blocks, the nothing-shown notice and the fenced blocks in that
 arm's own catalogue. On a compiled arm an example that does not build costs the
 whole turn.
 
 ## Prompt requirements
 
-Each arm writes its own two templates, and a gate renders every registered arm's
-under every context fixture and reads what came out. Four things must survive
-the rendering.
+Each arm reaches the shared templates through a segment of its own, and a gate
+renders every registered arm under every context fixture and reads what came
+out. Four things must survive the rendering.
 
 - Every required section. A copied template can lose a section whole, and a
   heading can survive with nothing under it.
@@ -190,13 +211,15 @@ the rendering.
   ending is revoked.
 
 A fifth is read the other way, off a context with every capability off: a
-capability the agent was not granted appears nowhere. An arm's template fixtures
-need both contexts, because the maximal one alone cannot show that an ungranted
-capability stays out.
+capability the agent was not granted appears nowhere. Both contexts are needed,
+because the maximal one alone cannot show that an ungranted capability stays
+out.
 
-An arm that declares a library set renders it group by group, each group's
-heading beside that group's own list of names, so what a model is told it may
-import is what the arm's artifact carries.
+A sixth reads the language segments against each other. Every arm's render
+carries that arm's segment, no arm's render carries another's, and no segment is
+longer than three paragraphs. What an arm might have said beyond them is said by
+the error that reports it, which is where the library set an arm declares
+reaches its model.
 
 Wording is not asserted. The gate reads names, numbers, identifiers and the one
 term each rule cannot be stated without, so rewrapping a paragraph or rewriting
@@ -256,5 +279,5 @@ gg has and offers them differently: one is filed under a module gg has no word
 for, two are methods on the types they operate on, one is bound twice as an
 alias, and every name is spelled another way. The gate accepts all of it, and
 the test asserts the reshape is real. The fixture carries its own preparation
-step, healing dialect and prompt templates, and it has no wire id, so it can
-never be configured, recorded or run.
+step, healing dialect and bootstrap program, and it has no wire id, so it can
+never be configured, recorded or run, and no prompt segment is gated on it.

@@ -16,7 +16,9 @@
 //!
 //! **A model's reply is compiled verbatim, as `main.cpp`.** No wrapper, no prologue, no `#include`
 //! line gg wrote, and therefore **no line offset at all** — a diagnostic at line 7 is line 7 of what
-//! the model wrote.
+//! the model wrote. gg's own surface is reached by the reply's own `#include <gg/files.hpp>`: the
+//! header is on the compile's include path and its bodies are in the `sdk.o` every artifact links,
+//! which is packaging, and nothing gg passes puts a name of that SDK in scope.
 //!
 //! Like [Swift](super::super::swift::compile)'s, that is forced rather than chosen, and C++ forces it
 //! harder than any arm before it. A function-body wrapper — the shape [Rust](super::super::rust) uses —
@@ -34,22 +36,27 @@
 //!
 //! # The precompiled header, which is what makes this arm affordable
 //!
-//! Parsing the prelude (`packages/gg-sandbox-cpp/Sources/prelude.hpp`) — gg's generated wire header
-//! plus the ~55 standard-library headers a C++ author reaches for — costs **~850 ms of every
-//! compile**. Precompiling it
-//! costs ~40 ms to read back. Measured on this repository's dev container, aarch64, on a small
-//! program:
+//! Parsing the prelude (`packages/gg-sandbox-cpp/Sources/prelude.hpp`) — the 53 standard-library
+//! headers a C++ author reaches for — costs the best part of a second of every compile. Measured on
+//! this repository's dev container, aarch64, best of five, on two programs: a small one that logs a
+//! line, and the ranges/format/map program this module's cost table also quotes.
 //!
-//! | | |
-//! | --- | --- |
-//! | `clang++` with no PCH, prelude included as text | 883–1110 ms |
-//! | `clang++` with the PCH | **82–95 ms** |
+//! | | small | realistic |
+//! | --- | --- | --- |
+//! | `clang++` with no PCH, prelude included as text | 836 ms | 1581 ms |
+//! | `clang++` with the PCH | **90 ms** | **952 ms** |
+//!
+//! **What the PCH does not carry is gg's own surface**, and that costs a measured 33 ms a turn on
+//! both programs — the parse of `<gg.hpp>` the reply's own `#include` now asks for. It is the price
+//! of the [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) that every SDK
+//! name a program writes is reached through a line that program wrote, and it is 3% of a realistic
+//! turn.
 //!
 //! So the PCH is built, and three properties of it decide where it lives.
 //!
 //! * It is **compiler-version-private and path-bearing**: only the clang that wrote one may read it,
 //!   and it records the absolute path of every header it precompiled. A PCH built in this
-//!   repository's checkout could not be read by the wasi-sdk in a run image, so putting 26 MB of one
+//!   repository's checkout could not be read by the wasi-sdk in a run image, so putting 28 MB of one
 //!   into the archive would be shipping something no other machine can use.
 //! * It is a pure function of the prelude and the toolchain, which is exactly what a
 //!   [shared toolchain directory](shared_toolchain_dir) is for.
@@ -114,10 +121,13 @@
 //!
 //! | | small program | ranges/format/map program |
 //! | --- | --- | --- |
-//! | `clang++`, with the PCH warm | **~85 ms** | ~0.95 s |
+//! | `clang++`, with the PCH warm | **~90 ms** | ~0.95 s |
 //! | The [`wit_component`] encode | ~2 ms | ~7 ms |
-//! | Artifact | ~790 KB | ~3.7 MB |
+//! | Artifact | ~830 KB | ~4.2 MB |
 //! | wasmtime `Component::new`, at `OptLevel::None`, **per turn** | ~25 ms | ~220 ms |
+//!
+//! A code module in scope adds one `clang++ --precompile` of its own — **~73 ms** and a ~1.2 MB
+//! module interface for a small module, paid per module per compile.
 //!
 //! `-O0` rather than `-Oz`, and it is a measurement rather than a preference: `-Oz` costs ~1.26 s of
 //! compile against ~0.95 s and saves ~45 ms of `Component::new`, so it is ~270 ms a turn dearer
@@ -125,19 +135,30 @@
 //! CPU** against programs that use milliseconds — so the trade is latency a model waits for against
 //! headroom nothing uses.
 //!
-//! # A code module is a further **header**, put in front of the model's file
+//! # A code module is a **named C++ module** the program imports
 //!
 //! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at
 //! `lib::<key>`, and on a compiled arm that binding is a **link** — so the modules in scope are
-//! inputs to the program's own compile. Each is written into the preparation's workspace with its
-//! declarations [opened inside `namespace lib::<key>`](super::source::namespaced) and named on the
-//! command line with **`-include`**, which is the one way to add declarations to a translation unit
-//! whose first line has to stay the model's own: `-include` leaves the primary file's line numbering
-//! alone, so a diagnostic at line 7 is line 7 with three skills loaded. They are named in binding
-//! order, so one module may reach another's namespace.
+//! inputs to the program's own compile. Each is written into the preparation's workspace as a module
+//! interface unit [exporting `namespace lib::<key>`](super::source::namespaced), precompiled by
+//! [`precompile_module`] into a `.pcm`, and named to the program's compile twice: as
+//! `-fmodule-file=lib.<key>=…`, which says where the interface is, and as a link input, which is
+//! where its bodies are.
+//!
+//! **This is what keeps gg's surface out of a program that binds a module.** A module reaches gg
+//! through an `#include` in its own global module fragment, and a global module fragment's names are
+//! attached to the global module rather than exported, so a program that imports the module reaches
+//! `lib::<key>` and earns *use of undeclared identifier 'gg'* for anything of gg's it wrote no line
+//! for. A header put in front of the model's file could not hold that line: `#include` is textual,
+//! and a header carrying gg's surface declares it in whatever translation unit reads it.
+//!
+//! The `import lib.<key>;` lines themselves are in one generated [file](BINDER_FILE) named with
+//! `-include`, which leaves the primary file's line numbering alone — a diagnostic at line 7 is line
+//! 7 with three skills loaded. Each module is compiled on its own, so a module reaches gg and the
+//! standard library and no other module.
 //!
 //! A module is also compiled **alone** when it is read — [`compile_module`], one `-fsyntax-only`
-//! over the namespaced file as its own translation unit — which is what buys its author a
+//! over the namespaced file as its own module interface unit — which is what buys its author a
 //! diagnostic in their own coordinates rather than a program that stops compiling a turn later for
 //! reasons in somebody else's file.
 //!
@@ -176,8 +197,8 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::sandbox::{
-    CodeModule, CompilerReport, PrepareContext, PrepareError, PrepareFailure, PreparedModule,
-    PreparedProgram, Workspace, place_tree, shared_toolchain_dir,
+    CodeModule, CompilerCommand, CompilerReport, PrepareContext, PrepareError, PrepareFailure,
+    PreparedModule, PreparedProgram, Workspace, place_tree, shared_toolchain_dir,
 };
 
 /// Everything a compile needs on disk that is not the model's own file: the generated WIT header,
@@ -221,7 +242,7 @@ const USER_HOME_SUFFIX: &str = ".local/share/tcab/gg-wasi-sdk";
 /// How long one `clang++` may take before it is killed and reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).
 ///
-/// A compile here is ~85 ms warm and ~1 s for a template-heavy program; the worst honest case is a
+/// A compile here is ~90 ms warm and ~1 s for a template-heavy program; the worst honest case is a
 /// program whose template instantiation is genuinely deep, which is seconds. Two minutes is
 /// unmistakably a hang, and matches the Swift arm rather than the Rust arm's minute because the
 /// **first** compile of a process additionally builds the precompiled header.
@@ -232,6 +253,86 @@ pub(super) const PROGRAM_FILE: &str = "main.cpp";
 
 /// What `clang++` is told to write, in this preparation's own output directory.
 const ARTIFACT_FILE: &str = "program.wasm";
+
+/// The file that names the code modules in a program's scope, one `import lib.<key>;` per module,
+/// put in front of the model's file with `-include`.
+///
+/// It is the other half of the [module wrapper](super::source::namespaced) and carries nothing else:
+/// a module name binds `lib::<key>` and reaches no other name at all, which is why a program with a
+/// code module in scope still has to write its own line for anything of gg's.
+const BINDER_FILE: &str = "bound_modules.hpp";
+
+/// What one code module's precompiled interface is called, given its binding key.
+fn interface_file(key: &str) -> String {
+    format!("module_{key}.pcm")
+}
+
+/// Everything a `clang++` invocation on the turn path needs that is not the preparation's own: the
+/// wasi-sdk tree, the unpacked guest and the precompiled prelude.
+///
+/// Bundled because all three compiles this arm runs — the module's own check, a bound module's
+/// precompile and the program's build — open with the same six arguments, and a difference between
+/// them would be a module accepted at its read and rejected at a program's compile.
+struct Toolchain<'a> {
+    /// The wasi-sdk tree the compiler comes out of.
+    home: &'a Path,
+    /// The unpacked guest: gg's headers, shell and prebuilt objects.
+    guest: &'a Guest,
+    /// The precompiled standard-library prelude.
+    prelude: &'a Path,
+}
+
+impl Toolchain<'_> {
+    /// Everything shared, resolved once: the toolchain's tree, the unpacked guest and the prelude.
+    fn resolve(context: &PrepareContext) -> Result<(PathBuf, &'static Guest, PathBuf), String> {
+        let home = wasi_sdk_home()?;
+        let guest = guest()?;
+        let prelude = precompiled_prelude(&home, guest, context)?;
+        Ok((home, guest, prelude))
+    }
+
+    /// A `clang++` carrying the arguments every compile on this arm passes: the shared flags, the
+    /// precompiled prelude, gg's include root and this preparation's own path rewrite.
+    fn command<'a>(
+        &self,
+        workspace: &Workspace,
+        context: &'a PrepareContext,
+    ) -> Result<CompilerCommand<'a>, String> {
+        let mut command = context
+            .compiler(clang(self.home))
+            .map_err(|error| format!("{}{error}", spawn_prefix(self.home)))?;
+        command
+            .args(shared_flags(self.home))
+            .arg("-include-pch")
+            .arg(self.prelude)
+            // **Where gg's headers are**, which is the whole of what this argument does: it makes
+            // `#include <gg/files.hpp>` resolve. It is packaging rather than injection — the names
+            // in that header are declared by the line the model wrote and by nothing else — and it
+            // is the C++ spelling of the classpath entry, the `--extern` and the linked archive
+            // every other compiled arm passes.
+            .arg("-I")
+            .arg(self.guest.include())
+            // Every path this preparation's own tree contributes to the artifact, rewritten to a
+            // fixed one. A model that traps is shown the frame, and `/gg/work/main.cpp:7:13` is a
+            // thing it can read, where `/tmp/gg-prepare/8421-3/work/main.cpp:7:13` names a
+            // directory that was deleted before the message reached it.
+            .arg(format!(
+                "-ffile-prefix-map={}={PREPARATION_PREFIX}",
+                workspace.root().display()
+            ));
+        Ok(command)
+    }
+
+    /// Run a prepared command, telling a compiler that could not start from one that ran.
+    fn run(&self, mut command: CompilerCommand<'_>) -> Result<CompilerReport, String> {
+        command
+            .run(COMPILE_TIMEOUT)
+            .map_err(|error| match error.starts_with("could not run") {
+                true => format!("{}{error}", spawn_prefix(self.home)),
+                false => error,
+            })
+    }
+}
 
 /// What a preparation's own tree is called in anything the compiler records — a diagnostic's path,
 /// a line-table file entry, a located trap's frame.
@@ -258,8 +359,8 @@ const PCH_FILE: &str = "prelude.pch";
 /// bounds` — exists only because of this flag. It is the same mechanism the [Swift](super::super::swift)
 /// arm's entire error surface rests on, reached here for a narrower class of failure.
 ///
-/// `-g1` rather than `-g`, measured: full debug information costs ~800 ms more per compile, takes
-/// the artifact from 3.7 MB to 4.3 MB and `Component::new` from 220 ms to 350 ms, and what it adds
+/// `-g1` rather than `-g`, measured: full debug information costs ~800 ms more per compile, adds
+/// ~0.6 MB to the artifact and takes `Component::new` from 220 ms to 350 ms, and what it adds
 /// over line tables is variable and type description that nothing in gg reads — the verbose-trap
 /// frames survive `-g1` intact. Line tables cost ~80 ms and ~110 KB.
 const DEBUG_INFO: &str = "-g1";
@@ -430,11 +531,6 @@ pub(super) fn warm() {
 
 /// Compile a **program** — a model's reply — into the component that evaluates it.
 ///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero: the measurement counts top-level statements written after one that *ends* the program,
-/// which in the ECMAScript arms is a top-level `return`. A C++ translation unit has no top level to
-/// put a statement at, so the shape this field records does not exist on this arm.
-///
 /// [`source`](PreparedProgram::source) is empty for the same reason the Rust arm's is: there is
 /// nothing left for a guest to evaluate, because the guest *is* what this returned.
 pub(super) fn compile_program(
@@ -444,7 +540,6 @@ pub(super) fn compile_program(
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: String::new(),
-        unreachable: None,
         component: Some(compile(source, modules, context)?),
     })
 }
@@ -457,12 +552,12 @@ pub(super) fn compile_program(
 /// own. It is the author's own bytes rather than the namespaced form, because the namespace is
 /// written under the key the *program* knows and a module's own preparation is handed none.
 ///
-/// The check is `-fsyntax-only` over the namespaced module **as its own translation unit**, which is
-/// the whole of what this step can decide and about half of what a full build costs: there is
-/// nothing to instantiate templates for, nothing to optimise and nothing to link for a file that is
-/// going to be compiled again as part of a program. A module needs no entry point to be checked this
-/// way, which is why this arm's one refusal — [a program with no `main`](self::NO_MAIN) — has no
-/// counterpart here.
+/// The check is `-fsyntax-only` over the namespaced module **as its own module interface unit**,
+/// which is the whole of what this step can decide and a fraction of what a full build costs: there
+/// is nothing to instantiate templates for, nothing to optimise and no interface to write for a file
+/// that is going to be compiled again as part of a program. A module needs no entry point to be
+/// checked this way, which is why this arm's one refusal —
+/// [a program with no `main`](self::NO_MAIN) — has no counterpart here.
 ///
 /// Compiling it now is what buys the author a diagnostic **at the read**, in their own coordinates,
 /// rather than a program that stops compiling a turn later for reasons in somebody else's file.
@@ -470,10 +565,13 @@ pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
-    let guest = guest().map_err(PrepareFailure::Toolchain)?;
-    let home = wasi_sdk_home().map_err(PrepareFailure::Toolchain)?;
+    let (home, guest, prelude) = Toolchain::resolve(context).map_err(PrepareFailure::Toolchain)?;
+    let toolchain = Toolchain {
+        home: &home,
+        guest,
+        prelude: &prelude,
+    };
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
-    let prelude = precompiled_prelude(&home, guest, context).map_err(PrepareFailure::Toolchain)?;
 
     let file = super::source::module_file(super::source::CHECK_KEY);
     workspace
@@ -483,38 +581,63 @@ pub(super) fn compile_module(
         )
         .map_err(PrepareFailure::Toolchain)?;
 
-    let mut command = context
-        .compiler(clang(&home))
-        .map_err(|error| PrepareFailure::Toolchain(format!("{}{error}", spawn_prefix(&home))))?;
-    command
-        .args(shared_flags(&home))
-        .arg("-include-pch")
-        .arg(&prelude)
-        .arg("-I")
-        .arg(guest.tree())
-        .arg(format!(
-            "-ffile-prefix-map={}={PREPARATION_PREFIX}",
-            workspace.root().display()
-        ))
-        .arg("-fsyntax-only")
-        // A `.hpp` would otherwise be compiled as a header, which is how the prelude is built and
-        // not what this is: the module is being read as an ordinary translation unit.
-        .arg("-x")
-        .arg("c++")
-        .arg(&file);
-    let report =
-        command
-            .run(COMPILE_TIMEOUT)
-            .map_err(|error| match error.starts_with("could not run") {
-                true => PrepareFailure::Toolchain(format!("{}{error}", spawn_prefix(&home))),
-                false => PrepareFailure::Toolchain(error),
-            })?;
+    let mut command = toolchain
+        .command(workspace, context)
+        .map_err(PrepareFailure::Toolchain)?;
+    command.arg("-fsyntax-only").args(MODULE_INPUT).arg(&file);
+    let report = toolchain.run(command).map_err(PrepareFailure::Toolchain)?;
     classify_module(&report, &file)?;
 
     Ok(PreparedModule {
         source: source.to_string(),
         exports: super::source::exports(source),
     })
+}
+
+/// What tells `clang++` the file that follows is a **module interface unit** rather than a header or
+/// an ordinary translation unit, which is what decides whether its `export module` line is read at
+/// all.
+const MODULE_INPUT: [&str; 2] = ["-x", "c++-module"];
+
+/// Compile one code module in a program's scope into its **precompiled module interface**, and hand
+/// back where it was written.
+///
+/// This is the step that keeps gg's surface out of the program's translation unit. A module's own
+/// `#include <gg.hpp>` is in its global module fragment, so the names it declares are attached to
+/// the global module and are unreachable from whoever imports it: the program gets `lib::<key>` and
+/// nothing else.
+///
+/// A diagnostic here is the author's, in the author's own coordinates, and reaches the model as a
+/// compile failure the same way one in the model's own file does. It is rare rather than routine —
+/// the module was already checked at its [read](compile_module) — and it is what happens when a
+/// module and the toolchain it was read under have drifted apart.
+fn precompile_module(
+    module: &CodeModule,
+    toolchain: &Toolchain<'_>,
+    workspace: &Workspace,
+    context: &PrepareContext,
+) -> Result<PathBuf, PrepareFailure> {
+    let file = super::source::module_file(&module.name);
+    workspace
+        .write(
+            &file,
+            &super::source::namespaced(&module.source, &module.name)?,
+        )
+        .map_err(PrepareFailure::Toolchain)?;
+    let interface = workspace.output().join(interface_file(&module.name));
+
+    let mut command = toolchain
+        .command(workspace, context)
+        .map_err(PrepareFailure::Toolchain)?;
+    command
+        .arg("--precompile")
+        .args(MODULE_INPUT)
+        .arg(&file)
+        .arg("-o")
+        .arg(&interface);
+    let report = toolchain.run(command).map_err(PrepareFailure::Toolchain)?;
+    classify_module(&report, &file)?;
+    Ok(interface)
 }
 
 /// The refusal a reply with no entry point gets, at prepare time.
@@ -540,31 +663,42 @@ fn compile(
         )));
     }
 
-    let guest = guest().map_err(PrepareFailure::Toolchain)?;
-    let home = wasi_sdk_home().map_err(PrepareFailure::Toolchain)?;
+    let (home, guest, prelude) = Toolchain::resolve(context).map_err(PrepareFailure::Toolchain)?;
+    let toolchain = Toolchain {
+        home: &home,
+        guest,
+        prelude: &prelude,
+    };
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
-    let prelude = precompiled_prelude(&home, guest, context).map_err(PrepareFailure::Toolchain)?;
 
     // Verbatim. Nothing is prepended, appended or re-indented, which is what makes every line and
     // column below the model's own.
     workspace
         .write(PROGRAM_FILE, program)
         .map_err(PrepareFailure::Toolchain)?;
-    let mut included = Vec::with_capacity(modules.len());
+
+    // Each code module is compiled into a module interface of its own before the program is, and
+    // the program is handed the interfaces rather than the sources. That is what puts gg's surface
+    // out of the program's reach: a global module fragment's includes are attached to the global
+    // module and reach nobody who imports it.
+    let mut binder = String::new();
+    let mut interfaces = Vec::with_capacity(modules.len());
     for module in modules {
-        let file = super::source::module_file(&module.name);
-        workspace
-            .write(
-                &file,
-                &super::source::namespaced(&module.source, &module.name)?,
-            )
-            .map_err(PrepareFailure::Toolchain)?;
-        included.push(workspace.work().join(file));
+        interfaces.push(precompile_module(module, &toolchain, workspace, context)?);
+        binder.push_str(&super::source::module_import(&module.name));
     }
+    workspace
+        .write(BINDER_FILE, &binder)
+        .map_err(PrepareFailure::Toolchain)?;
 
     let artifact = workspace.output().join(ARTIFACT_FILE);
     let report = invoke_clang(
-        &artifact, &prelude, &included, guest, &home, workspace, context,
+        &artifact,
+        modules,
+        &interfaces,
+        &toolchain,
+        workspace,
+        context,
     )
     .map_err(PrepareFailure::Toolchain)?;
     classify(&report, &authored_files(modules))?;
@@ -587,58 +721,45 @@ fn compile(
 /// module.
 ///
 /// One invocation does the whole job — parse, instantiate, generate and link — because the model's
-/// file is the only translation unit that changes and everything else is already an object. The
-/// model's file is named **relatively** while everything else is absolute: the command's working
-/// directory is this preparation's own, so a diagnostic in the model's program reads `main.cpp:7`
-/// rather than a temporary path nobody should be shown, and a diagnostic in one of gg's own inputs
-/// is unmistakable because it carries one.
+/// file is the only translation unit that changes and everything else is already an object or a
+/// precompiled module interface. The model's file is named **relatively** while everything else is
+/// absolute: the command's working directory is this preparation's own, so a diagnostic in the
+/// model's program reads `main.cpp:7` rather than a temporary path nobody should be shown, and a
+/// diagnostic in one of gg's own inputs is unmistakable because it carries one.
 fn invoke_clang(
     artifact: &Path,
-    prelude: &Path,
-    modules: &[PathBuf],
-    guest: &Guest,
-    home: &Path,
+    modules: &[CodeModule],
+    interfaces: &[PathBuf],
+    toolchain: &Toolchain<'_>,
     workspace: &Workspace,
     context: &PrepareContext,
 ) -> Result<CompilerReport, String> {
-    let mut command = context
-        .compiler(clang(home))
-        .map_err(|error| format!("{}{error}", spawn_prefix(home)))?;
+    let mut command = toolchain.command(workspace, context)?;
     command
-        .args(shared_flags(home))
         // What makes `--gc-sections` below able to drop anything at all: without these the linker's
         // unit is a whole object rather than a function.
         .arg("-ffunction-sections")
-        .arg("-fdata-sections")
-        // The prelude, already parsed. This is the single largest cost reducer this arm has —
-        // ~850 ms of every compile — and it is also what puts gg's wire surface and the standard
-        // library in front of the model's file with no line of gg's own in it.
-        .arg("-include-pch")
-        .arg(prelude)
-        // Where the SDK's headers and `prelude.hpp` are, for a program that includes one by name.
-        // A model's program needs no include at all — the precompiled prelude is already in front
-        // of it — but writing `#include "sdk/gg.hpp"` anyway costs nothing, which is the point of
-        // compiling the reply verbatim.
-        .arg("-I")
-        .arg(guest.tree())
-        // Every path this preparation's own tree contributes to the artifact, rewritten to a fixed
-        // one. A model that traps is shown the frame, and `/gg/work/main.cpp:7:13` is a thing it can
-        // read, where `/tmp/gg-prepare/8421-3/work/main.cpp:7:13` names a directory that was deleted
-        // before the message reached it.
-        .arg(format!(
-            "-ffile-prefix-map={}={PREPARATION_PREFIX}",
-            workspace.root().display()
+        .arg("-fdata-sections");
+    // Where each code module's precompiled interface is, which is what makes the matching
+    // `import lib.<key>;` resolve. Packaging, on the same terms `-I` above is: it says the module
+    // exists and puts no name in scope.
+    for (module, interface) in modules.iter().zip(interfaces) {
+        command.arg(format!(
+            "-fmodule-file={}={}",
+            super::source::module_name(&module.name),
+            interface.display()
         ));
-    // The code modules in scope, each put in front of the model's file the way a header is — which
-    // is the one way to add declarations to a translation unit whose first line must stay the
-    // model's own. `-include` leaves the primary file's line numbering alone, so a diagnostic at
-    // line 7 is still line 7 with three skills loaded, and the modules arrive in binding order so
-    // one may reach another's namespace.
-    for module in modules {
-        command.arg("-include").arg(module);
+    }
+    if !modules.is_empty() {
+        // The one file put in front of the model's own, holding one `import lib.<key>;` per module
+        // in scope. `-include` leaves the primary file's line numbering alone, so a diagnostic at
+        // line 7 is still line 7 with three skills loaded, and an import declaration binds the
+        // module's namespace and nothing else — gg's surface included.
+        command
+            .arg("-include")
+            .arg(workspace.work().join(BINDER_FILE));
     }
     command
-
         // A **reactor**, not a command: a component's exports are called after `_initialize`, and
         // the default execution model would insist on a `_start` this guest does not have — and
         // would run the model's program at instantiation rather than when `run` is called.
@@ -646,25 +767,26 @@ fn invoke_clang(
         .arg("-Wl,--gc-sections")
         .arg("-o")
         .arg(artifact)
-        .arg(PROGRAM_FILE)
-        .arg(guest.file("shell.o"))
-        // gg's own SDK, whose declarations the prelude already put in front of the program and
-        // whose bodies are here. One object rather than an archive, because `--gc-sections` above
-        // works at function granularity: an artifact for a program that calls two of its
+        .arg(PROGRAM_FILE);
+    // Each module interface again, this time as an input: a `.pcm` is where the bodies of the
+    // module's own declarations are, and the artifact needs them linked in.
+    for interface in interfaces {
+        command.arg(interface);
+    }
+    command
+        .arg(toolchain.guest.file("shell.o"))
+        // gg's own SDK, whose declarations the model's own `#include` put in front of the program
+        // and whose bodies are here. One object rather than an archive, because `--gc-sections`
+        // above works at function granularity: an artifact for a program that calls two of its
         // thirty-eight functions carries two of them.
-        .arg(guest.file("sdk.o"))
-        .arg(guest.file("sandbox.o"))
-        .arg(guest.file("sandbox_component_type.o"))
+        .arg(toolchain.guest.file("sdk.o"))
+        .arg(toolchain.guest.file("sandbox.o"))
+        .arg(toolchain.guest.file("sandbox_component_type.o"))
         // Named explicitly, because the driver does not add it and the failure without it is four
         // undefined symbols out of `libc++abi` — `_Unwind_RaiseException` and friends — on any
         // program at all rather than only on one that throws.
         .arg("-lunwind");
-    command
-        .run(COMPILE_TIMEOUT)
-        .map_err(|error| match error.starts_with("could not run") {
-            true => format!("{}{error}", spawn_prefix(home)),
-            false => error,
-        })
+    toolchain.run(command)
 }
 
 /// The files a diagnostic may be located in that somebody a model can be told about **wrote**: the
@@ -1077,10 +1199,17 @@ impl Guest {
         self.tree.join(name)
     }
 
-    /// The directory itself, which is what `clang++ -I` is given so `#include "sandbox.h"`
-    /// resolves.
-    pub(super) fn tree(&self) -> &Path {
-        &self.tree
+    /// **The model-facing include root** — the one directory `clang++ -I` is given on the turn
+    /// path, so that `#include <gg/files.hpp>` and `#include <gg.hpp>` resolve and nothing else
+    /// gg carries does.
+    ///
+    /// `build.sh` fills it with the umbrella header, the thirteen module headers a catalogue entry
+    /// states as its own import line, and the one header the umbrella includes by name. The
+    /// generated `sandbox.h` and the SDK's `wire.hpp` are in the tree beside it and off this path
+    /// deliberately: they are the C the SDK is written against, no model-facing header includes
+    /// either, and an include root is a claim about what a program may write.
+    pub(super) fn include(&self) -> PathBuf {
+        self.tree.join("include")
     }
 }
 
@@ -1220,8 +1349,8 @@ fn build_prelude(home: &Path, guest: &Guest, context: &PrepareContext) -> Result
             .compiler(clang(home))
             .map_err(|error| format!("{}{error}", spawn_prefix(home)))?
             .args(&flags)
-            .arg("-I")
-            .arg(guest.tree())
+            // No `-I`: the prelude is the standard library and nothing else, so there is no header
+            // of gg's own for it to find.
             .arg("-x")
             .arg("c++-header")
             .arg("-o")

@@ -1,4 +1,4 @@
-"""Show a file, a computed value, or a function's documentation.
+"""Show a file, a computed value, or an entry's documentation.
 
 A view is the only way material enters the agent's context window.
 
@@ -19,7 +19,7 @@ from typing import Callable
 
 from wit_world.imports import views as wire
 
-from ._registry import alias, operation
+from ._registry import alias, missing, operation
 from .core import ToolError, ToolErrorCode, _call, _uint
 from .files import FileRead, _as_file_read
 
@@ -49,7 +49,7 @@ class ViewKind(Enum):
     """A computed value; its selector is the label it was given."""
 
     DOCS = "docs"
-    """A function's documentation; its selector is the function's name."""
+    """An entry's documentation; its selector is the key it was opened under."""
 
 
 @dataclass(frozen=True)
@@ -161,22 +161,24 @@ def open_text(label: str, body: str) -> None:
 
 @operation("views.open_docs_view")
 def open_docs_view(target: Callable[..., object] | str) -> None:
-    """Place one function's full documentation into the context window.
+    """Place one module, function, or type's full documentation into the context window.
 
     Its signature, its description, and the declarations of any types it refers to that have not
-    already been shown this session. This is how a function is read. It is a **view**, not a return
-    value — the documentation arrives in the next prompt under a `Documentation` heading keyed by the
-    function name, exactly as a file or a computed value arrives — so it is not available in the turn
-    it is asked for. Ask in one turn, use it in the next. Opening the same function's documentation
-    again replaces the view rather than adding a second copy, and `docs.close` closes it — not the
-    `close` in this module, which does not reach documentation.
+    already been shown this session. This is how an entry is read, and anything `docs.search`
+    returns can be opened. It is a **view**, not a return value — the documentation arrives in the
+    next prompt under a `Documentation` heading keyed by the entry's name, exactly as a file or a
+    computed value arrives — so it is not available in the turn it is asked for. Ask in one turn,
+    use it in the next. Opening a key that is already open does nothing at all: the documentation
+    band is append-only for the life of a session, and `docs.close` is the only thing that disturbs
+    it — not the `close` in this module, which does not reach documentation.
 
     Args:
-        target: The function to document: the function object itself (`files.read_file`), or the
-            fully-qualified name its documentation is keyed by (`"gg.files.read_file"`). The bare
-            name it is called by in its module (`"read_file"`) also resolves and is a fallback
-            rather than the form to reach for: two modules are free to declare a `close`, and only
-            the qualified name says which one is meant.
+        target: What to document: the function object itself (`files.read_file`), or the
+            fully-qualified name its documentation is keyed by (`"gg.files.read_file"`), which for
+            a module is that module's own path (`"gg.files"`). The bare name it is called by in its
+            module (`"read_file"`) also resolves and is a fallback rather than the form to reach
+            for: two modules are free to declare a `close`, and only the qualified name says which
+            one is meant.
 
     Raises:
         ToolError: `not-found` for an unknown or unbound name.
@@ -260,3 +262,7 @@ def current() -> list[OpenView]:
         )
         for view in _call(wire.current_views)
     ]
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

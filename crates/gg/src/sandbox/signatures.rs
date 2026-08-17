@@ -153,14 +153,18 @@ pub(crate) struct SignatureCatalogue {
     ///
     /// It belongs in the catalogue for the reason every signature does: it is **model-facing text
     /// about this arm's surface**, so the rule that nothing a model reads may be authored anywhere
-    /// but on the code that decides it applies word for word. A prompt that listed a language's
-    /// libraries in prose would drift from the artifact with nothing to catch it — and on the
+    /// but on the code that decides it applies word for word. Prose listing a language's libraries
+    /// would drift from the artifact with nothing to catch it — and on the
     /// [Python](super::language::python) arm it did, claiming a whole standard library where
     /// `componentize-py` had baked a curated subset of it.
     ///
+    /// What a model reads it through is a **compile failure**
+    /// ([`library_set`](super::library_set)): the set is what the compiler measured the program
+    /// against, and a program that reached outside it is answered with it on the turn that did.
+    ///
     /// Empty for a language whose programs get their runtime's own standard library and nothing
     /// else: `#[serde(default)]`, so an arm with nothing to declare emits a catalogue without the
-    /// key and its templates simply render no such section.
+    /// key and a compile failure on it carries the diagnostic alone.
     #[serde(default)]
     pub libraries: Vec<LibraryGroup>,
     /// The **modules** the surface is divided into, in the order it is presented in.
@@ -212,13 +216,42 @@ pub struct ModuleDoc {
     pub brief: String,
     /// What more there is to say about the module, when there is more. See [`Prose`].
     pub detail: Option<String>,
-    /// The literal line a program writes to bring the module into scope, or `None` where the SDK is
-    /// in scope already and there is no line to write.
+    /// **How a program reaches this module**: the literal line it writes to bring the module into
+    /// scope, or `None` where this arm's SDK is in a program's scope already and there is no line to
+    /// write.
     ///
-    /// It is `None` on ten of the eleven arms, and that is the honest answer rather than a missing
-    /// one: gg injects the SDK into a program's scope through a prelude, a precompiled header, an
-    /// `@_exported import`, a global using or a scope injection, so a documented "import" would be a
-    /// line the model would be wrong to write. The one arm that writes a real one says so here.
+    /// # Two states, and both of them are an answer
+    ///
+    /// Every reader that tells a model where a symbol lives has to render both, because a model that
+    /// is shown neither cannot tell "nothing to write" from "nobody said":
+    ///
+    /// * **`Some(line)`** — this arm needs a line and this is it, character for character, so the
+    ///   model copies it rather than guessing at the arm's import syntax. The PureScript arm emits
+    ///   one for every module it declares: that language resolves a qualified name only under a
+    ///   qualified import, so `Gg.Files.readFile` is an expression a program can write only after
+    ///   `import Gg.Files as Gg.Files`. The C# arm emits `using Gg;` for all of its, because its
+    ///   modules are types in one namespace and one `using` of that namespace reaches them all; the
+    ///   Swift arm emits `import gg` for all of its, because its modules are caseless `enum`s in one
+    ///   Swift module; and the TypeScript arm emits `import * as gg from "gg";` for all of its,
+    ///   because that is the line that makes `gg.files.readFile` — the name this catalogue prints
+    ///   everywhere — an expression a program can write.
+    /// * **`None`** — there is *no line to write*, because gg puts the SDK in a program's scope
+    ///   before the model's code is compiled: a prelude, a precompiled header, a re-exported
+    ///   import, a scope injection. It is a fact about how that arm delivers its SDK
+    ///   rather than a field an arm left blank, and the honest rendering of it is to *say* the
+    ///   module is reachable already — not to fall silent and leave the model hunting for an import
+    ///   line its compiler would refuse.
+    ///
+    /// # Why it stays an `Option` and stays per module
+    ///
+    /// Per module, because the answer is the arm's to give module by module: an arm that put half
+    /// its surface behind a line and half in scope would have nowhere else to say so.
+    ///
+    /// An `Option<String>` rather than an enum, because two states are all there are. A third —
+    /// *reachable already, but a line would shorten what a call site writes* — would be a widening
+    /// of this type and of every renderer that reads it, and whether an arm is ever in it is decided
+    /// by how a program is compiled rather than by this field. That is where a third state would be
+    /// added, and it is not a decision a doc comment gets to make in advance.
     pub import: Option<String>,
 }
 
@@ -393,7 +426,7 @@ pub struct MemberFunction {
     pub brief: String,
 }
 
-/// One group of [libraries](SignatureCatalogue::libraries), as the prompt lists them.
+/// One group of [libraries](SignatureCatalogue::libraries), as a compile failure lists them.
 ///
 /// Grouped rather than flat because ninety names in one paragraph is a wall a model skims. The
 /// grouping is the *artifact's* — the headings the file that decides the set files them under — so
@@ -420,14 +453,18 @@ pub struct TypeDeclaration {
     /// The type's module-qualified fully-qualified name (`gg::fs::FileRead`) — what a documentation
     /// view of it is opened by, and what a resolved [type reference](TypeReference) names.
     pub fqn: String,
-    /// The [module](ModuleDoc::id) the type belongs to.
-    #[allow(
-        dead_code,
-        reason = "read only by the gates that hold an arm to its own shape (`signatures.fqn.rs`, \
-                  `language/register.rs`, `language/agreement.rs`), which are `#[cfg(test)]`, so it \
-                  is genuinely unread in a build. It is carried on the projection all the same, so \
-                  that a reader moving onto it does not first have to change the projection."
-    )]
+    /// The [module](ModuleDoc::id) the type belongs to — **gg's cross-arm id for it**, not this
+    /// arm's path.
+    ///
+    /// It is the join every reader that has to say *where this declaration lives* goes through:
+    /// [`module_of`] turns it into the arm's own [path](ModuleDoc::path) and the
+    /// [line a program writes](ModuleDoc::import) to reach it, which is what a model needs before it
+    /// can name the type at all. The console reference files a type entry under it and resolves the
+    /// entry's family through it, and the gates that hold an arm to its own shape
+    /// (`signatures.fqn.rs`, `language/register.rs`, `language/agreement.rs`) read it too.
+    ///
+    /// The id rather than the path, for the reason [`ModuleDoc`] carries both: the path is one arm's
+    /// spelling, and a reader joining eleven arms on eleven strings is joining nothing.
     pub module: String,
     /// The single line the type is summarized by, authored. See [`Prose`].
     pub brief: String,
@@ -839,11 +876,48 @@ pub(crate) fn functions_of(catalogue: &'static SignatureCatalogue) -> Vec<Catalo
 /// the name rule (`signatures.fqn.rs`) reports by name, and degrading a *grouping label* mid-run is a
 /// worse answer than showing gg's own word for the module until that gate is read.
 fn module_path(catalogue: &'static SignatureCatalogue, id: &'static str) -> &'static str {
-    catalogue
-        .modules
+    module_of(catalogue, id).map_or(id, |module| module.path)
+}
+
+/// **The one module `module` names**, as a [view](ModuleView) of it: gg's id for it, this arm's own
+/// path, the line it is introduced by and the [line a program writes](ModuleView::import) to bring
+/// it into scope. `None` where the catalogue declares no such module.
+///
+/// It takes either key — gg's [id](ModuleDoc::id) (`files`) or this arm's own
+/// [path](ModuleDoc::path) (`gg::fs`) — because its two kinds of caller hold different ones. A
+/// renderer that has to say *where a symbol is defined and how to reach it* holds an id, since that
+/// is what a [function](CatalogueFunction::module) and a [type](TypeDeclaration::module) each carry;
+/// anything resolving a name a model typed holds a path, since the path is what a model reads. The
+/// id is tried across every module before the path is, so an id can never lose to a coincidence.
+///
+/// # Both keys are matched whole, and a fully-qualified name is not one of them
+///
+/// Both comparisons are equality. **Nothing here matches a prefix, and a caller must not be tempted
+/// to add one**: a module resolved by scanning a symbol's fully-qualified name for a module path it
+/// starts with is wrong on the arms where one module's path is a proper prefix of every other's —
+/// `Gg` on C#, `gg` on Java, where the `core` module's path prefixes the whole surface — and it is
+/// wrong *silently*, filing every symbol on the arm under `core` while every gate stays green. A
+/// resolution from a name, if one is ever needed, has to take the **longest** matching path and then
+/// check that a separator follows it, which is what the name rule (`signatures.fqn.rs`) already
+/// does.
+///
+/// The reason this asks for a module rather than a name is exactly that trap: the catalogue carries
+/// the module on every entry it declares, so the question never has to be put to an fqn at all.
+///
+/// A caller holding an arm rather than a catalogue reaches it through the arm's own
+/// [`catalogue`](ProgramLanguage::catalogue), for the reason [`functions_of`] is split from
+/// [`catalogue_functions`]: the lookup is about the JSON, and a test of it should not have to build
+/// an arm.
+pub(crate) fn module_of(
+    catalogue: &'static SignatureCatalogue,
+    module: &str,
+) -> Option<ModuleView> {
+    let modules = &catalogue.modules;
+    modules
         .iter()
-        .find(|module| module.id == id)
-        .map_or(id, |module| module.path.as_str())
+        .find(|declared| declared.id == module)
+        .or_else(|| modules.iter().find(|declared| declared.path == module))
+        .map(view_of)
 }
 
 /// How `language`'s SDK writes the [operation](OperationId) `id`: **the grouping it is reached
@@ -892,7 +966,7 @@ pub(crate) fn spelling(
 ///   itself emits and what a docview is filed under;
 /// * the [spelling](TypeReference::spelled) a signature writes — `Files.FileRead`,
 ///   `files::FileRead` — which is module-qualified but relative, because that is what compiles at a
-///   call site under the arm's prelude or `global using`;
+///   call site under the arm's prelude or the module's own import line;
 /// * the bare [name](TypeDeclaration::name) — `FileRead`.
 ///
 /// The middle one is the string the model has most often just read, since it is the one printed in
@@ -955,16 +1029,22 @@ pub fn catalogue_modules(language: &dyn ProgramLanguage) -> Vec<ModuleView> {
 /// [`catalogue_modules`], reached by the catalogue rather than by the arm that owns it, for the
 /// reason [`functions_of`] is.
 pub(crate) fn modules_of(catalogue: &'static SignatureCatalogue) -> Vec<ModuleView> {
-    catalogue
-        .modules
-        .iter()
-        .map(|module| ModuleView {
-            id: module.id.as_str(),
-            path: module.path.as_str(),
-            prose: Prose::authored(module.brief.as_str(), module.detail.as_deref()),
-            import: module.import.as_deref(),
-        })
-        .collect()
+    catalogue.modules.iter().map(view_of).collect()
+}
+
+/// One [module document](ModuleDoc) as the [view](ModuleView) every consumer reads it through.
+///
+/// One projection rather than one per caller, so that the whole list and a single lookup
+/// ([`module_of`]) can never disagree about what a module says — which they could the moment one of
+/// them forgot a field, and the field they would forget is the [import line](ModuleView::import),
+/// since it is the one that is empty on most arms.
+fn view_of(module: &'static ModuleDoc) -> ModuleView {
+    ModuleView {
+        id: module.id.as_str(),
+        path: module.path.as_str(),
+        prose: Prose::authored(module.brief.as_str(), module.detail.as_deref()),
+        import: module.import.as_deref(),
+    }
 }
 
 /// One module as every consumer reads it — the [module](ModuleDoc) half of what
@@ -983,13 +1063,14 @@ pub struct ModuleView {
     pub path: &'static str,
     /// The line the module is introduced by, and what more there is to say. See [`Prose`].
     pub prose: Prose<'static>,
-    /// The literal line a program writes to bring it into scope, where there is one.
-    #[allow(
-        dead_code,
-        reason = "`None` on every registered arm, because each of the eleven puts its SDK in scope \
-                  without a line a program writes. It is read by the prompt when an arm that needs \
-                  one is converted — PureScript is the one that will."
-    )]
+    /// **The literal line a program writes to bring the module into scope**, or `None` where this
+    /// arm's SDK is in a program's scope already and there is no line to write. See
+    /// [`ModuleDoc::import`] for the two states, and for what a `None` asserts rather than omits.
+    ///
+    /// It is carried on the projection because it is model-facing: the system prompt's module list
+    /// (`crate::prompts`) writes it, and so does the console's reference page (`crate::reference`).
+    /// The place it matters most is a documentation view of a single symbol, which is the one text a
+    /// model reads at the moment it is about to write the call.
     pub import: Option<&'static str>,
 }
 

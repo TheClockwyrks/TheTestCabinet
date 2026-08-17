@@ -1,11 +1,11 @@
 //! **The Opal compile** — how a model's Ruby becomes something the [Ruby guest](super) can
 //! evaluate.
 //!
-//! Ruby is the first arm whose program is neither evaluated as written (as
-//! [Python](super::super::python)'s is, by a CPython inside the artifact) nor lowered by a parse gg
-//! carries in-process (as [TypeScript](super::super::typescript)'s is, by `oxc`). It is **compiled**,
-//! by a real compiler, in a real process, on the turn path — and everything in this module follows
-//! from that.
+//! Ruby's program is neither evaluated as written (as [Python](super::super::python)'s is, by a
+//! CPython inside the artifact) nor compiled by something gg carries inside its own binary (as
+//! [TypeScript](super::super::typescript)'s is, by an embedded `tsc`). It is **compiled** by a real
+//! compiler, in a real process, on the turn path — and everything in this module follows from
+//! that.
 //!
 //! # Why the compiler is Opal, and why it runs here rather than in the guest
 //!
@@ -179,11 +179,11 @@ pub(super) fn compiler_version() -> &'static str {
 /// The Ruby version this arm's programs are written in, as Opal reports it.
 ///
 /// `#[cfg(test)]` because it is a **gate** rather than a runtime need, in the same sense
-/// [`OPERATIONS`](super::super::operations::OPERATIONS) is: the language level a program is
-/// written in is a sentence in [this arm's system prompt](super::PROMPT), which is prose and cannot
-/// be generated from a manifest — so what this exists for is the test that holds that sentence to
-/// what the embedded compiler actually reports. Nothing at run time asks; a compile reports which
-/// *compiler* read the program, which is [`compiler_version`] and a different fact.
+/// [`OPERATIONS`](super::super::operations::OPERATIONS) is: it is what the embedded compiler says
+/// about the language level it implements, held to a band by this arm's own compile gate. Nothing
+/// at run time asks, and nothing model-facing quotes it — the one system prompt names no version of
+/// any language, and a compile reports which *compiler* read the program, which is
+/// [`compiler_version`] and a different fact.
 #[cfg(test)]
 pub(super) fn ruby_version() -> &'static str {
     &manifest().ruby_version
@@ -199,90 +199,58 @@ pub(super) fn warm() {
 }
 
 /// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
-///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero. The measurement counts top-level statements written after one that **ends the program**,
-/// which in the ECMAScript arms is a top-level `return` — the program is evaluated as a function
-/// body there. A Ruby program's top level has no statement that ends it early: a bare `return` at
-/// the top level is a `LocalJumpError` rather than an exit, and every other way out is an exception.
-/// So the shape this field records does not exist on this arm rather than going unmeasured, exactly
-/// as it does not exist on [Python](super::super::python)'s.
 pub(super) fn compile_program(
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: compile(PROGRAM_FILE, source, context)?,
-        unreachable: None,
         component: None,
     })
 }
 
-/// The call a code module's body is wrapped in, so that evaluating it produces a **namespace**.
+/// What a code module's body is wrapped in, so that evaluating it produces a **namespace**.
 ///
 /// A Ruby file has no exports: its top level defines methods on `Object`, which is exactly what
 /// `require` gives a Ruby program and exactly not what `lib.<key>` needs. So the author's source is
-/// evaluated as a block against a fresh anonymous `Module`, which extends itself — the guest's
-/// `GG::Lib` — and what the body defined is what the namespace offers. There is no export protocol
-/// for a skill's author to remember.
+/// evaluated as the block of a fresh anonymous `Module`, and what the body defined is what the
+/// namespace offers. There is no export protocol for a skill's author to remember, and the module
+/// the block builds is the unit's own last expression, which is what the guest collects.
+///
+/// # Two things it deliberately is not
+///
+/// **It names nothing of gg's.** It used to call `GG::Lib.define`, which meant gg's SDK had to be
+/// loaded before any module ran — and Ruby's `require` is process-wide, so that would have put
+/// `GG::` in front of a program that wrote no `require "gg"`. `Module.new` is Ruby's own. A module
+/// whose body calls gg writes `require "gg"` itself, exactly as a program does.
+///
+/// **It occupies no line.** There is no newline after it, so the author's first line is compiled
+/// line 1 and every diagnostic Opal reports is already at the author's own number. The alternative
+/// was subtracting one from every module diagnostic, which is the arithmetic
+/// [ruling D11](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) forbids: a location
+/// comes from a compiler reading the author's own coordinates, and Ruby has no `#line` directive to
+/// restore them with once they are lost.
 ///
 /// It takes no key because this step has not been told one: a module's binding key is assigned when
 /// the agent reads the skill or the memory, which is after its code was compiled. The guest names
-/// the namespace immediately after evaluating it.
-const MODULE_PROLOGUE: &str = "GG::Lib.define do\n";
+/// the namespace when it evaluates it.
+const MODULE_PROLOGUE: &str = "Module.new do ";
 
 /// What closes [`MODULE_PROLOGUE`]. On its own line, so a module whose last line has no newline is
 /// still closed.
 const MODULE_EPILOGUE: &str = "\nend\n";
 
-/// How many lines [`MODULE_PROLOGUE`] puts in front of the author's own first line, and therefore
-/// what a diagnostic's line number has to be moved back by.
-const MODULE_LINE_OFFSET: usize = 1;
-
 /// Compile a **code module** — the code half of a [skill](crate::skills) or a
 /// [memory](crate::memories) — into JavaScript whose evaluation leaves a namespace behind.
 ///
-/// The wrapping is what a diagnostic has to be corrected for: Opal reports the line it read the
-/// error on, which is one further down than the line the author wrote. A skill's author reading
-/// "line 4" over their line 3 would go looking in the wrong place, so the number is moved back
-/// here — the one thing about this compile that is not [`compile`]'s.
+/// Nothing is corrected afterwards: [`MODULE_PROLOGUE`] shares the author's first line, so the line
+/// Opal read an error on is the line the author wrote it on.
 pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,
 ) -> Result<String, PrepareFailure> {
     let wrapped = format!("{MODULE_PROLOGUE}{source}{MODULE_EPILOGUE}");
-    compile(MODULE_FILE, &wrapped, context).map_err(shift_module_diagnostic)
-}
-
-/// Move a module diagnostic's line number back over [`MODULE_PROLOGUE`].
-///
-/// Only the number is touched. The offending text the driver quotes under it is read out of the
-/// wrapped source at that line, which *is* the author's own line, so it is already right.
-fn shift_module_diagnostic(failure: PrepareFailure) -> PrepareFailure {
-    let shift = |text: String| {
-        let prefix = format!("{MODULE_FILE}:");
-        let Some(rest) = text.strip_prefix(&prefix) else {
-            return text;
-        };
-        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-        match digits.parse::<usize>() {
-            Ok(line) if line > MODULE_LINE_OFFSET => format!(
-                "{prefix}{}{}",
-                line - MODULE_LINE_OFFSET,
-                &rest[digits.len()..]
-            ),
-            _ => text,
-        }
-    };
-    match failure {
-        PrepareFailure::Program(PrepareError::Syntax(text)) => {
-            PrepareFailure::Program(PrepareError::Syntax(shift(text)))
-        }
-        PrepareFailure::Program(PrepareError::Compile(text)) => {
-            PrepareFailure::Program(PrepareError::Compile(shift(text)))
-        }
-        other => other,
-    }
+    compile(MODULE_FILE, &wrapped, context)
 }
 
 /// Compile one Ruby source, filed as `file`, and hand back the JavaScript.

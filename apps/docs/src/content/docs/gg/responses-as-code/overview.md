@@ -18,6 +18,9 @@ two, so an A/B of the response shape is a comparison inside a single run.
   program. The reply is healed, prepared by the configured program language, and
   the language's compiler or parser is what accepts or refuses it. A reply that
   fails to compile is an error turn and counts against the run's error ceilings.
+- The program is a whole program in its language, written by the model. It
+  declares whatever entry point that language requires and imports gg's SDK
+  itself, and the bytes that compile are the bytes the model sent.
 - A responses-as-code agent is offered no native tool definitions. The system
   prompt names the capability modules and their one-line briefs, and names no
   function. An agent finds a function by searching the documentation and opening
@@ -30,9 +33,10 @@ two, so an A/B of the response shape is a comparison inside a single run.
   `gg.session.finish(summary)`; a reviewer calls `gg.session.approve()` or
   `gg.session.requestChanges(items)`. A program that throws after calling one
   loses the ending.
-- Every function of the SDK is bound in every program whatever the run enabled.
-  A call the agent was not granted runs and fails, saying that the call is not
-  available and, where the agent has one, which call to make instead.
+- Every function of the SDK is compiled, linked and callable in every program
+  whatever the run enabled. A call the agent was not granted runs and fails,
+  saying that the call is not available and, where the agent has one, which call
+  to make instead.
 
 ## Configuration
 
@@ -47,7 +51,7 @@ the agent-type selector is its switch. Six parameters are read:
 | `maxMemoryBytes` | `268435456` | Guest linear-memory ceiling for one program, as a whole number of bytes. |
 | `docViewTypes` | `return` | Which SDK types opening a function's documentation opens beside it: `return`, `return-and-parameters` or `off`. |
 | `healing` | per-strategy defaults | Which [response-healing](/gg/response-healing/) repairs are armed. |
-| `assistantMessages` | `none` | How the assistant turn is recorded: `none` records the reply as the model sent it, `response-healing` records the healed program that ran. |
+| `assistantMessages` | `response-healing` | How the assistant turn is recorded: `response-healing` records the healed program that ran, `none` records the reply as the model sent it. |
 
 Each param takes the default above when it is absent, and neither numeric param
 is clamped. A value that is present and unhonourable refuses the launch: a
@@ -80,6 +84,8 @@ for each arm.
 
 ## This section
 
+- [Invariants](/gg/responses-as-code/invariants/): the rules every arm keeps,
+  whatever language an agent writes in.
 - [Programs](/gg/responses-as-code/programs/): the reply gg accepts, how a turn
   executes, the outcomes a turn can have, hand-over chains, and the rules for
   ending a session.

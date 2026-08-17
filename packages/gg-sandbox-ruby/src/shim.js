@@ -1,6 +1,7 @@
 /**
- * The **Ruby guest's entry module**: an Opal runtime, gg's hand-written Ruby SDK, the libraries a
- * program may require, and the `run` that puts a program in front of them.
+ * The **Ruby guest's entry module**: an Opal runtime, the requirable units a program may reach —
+ * gg's hand-written Ruby SDK, the agent's own code, and the libraries — and the `run` that evaluates
+ * one program.
  *
  * A gg Ruby program never crosses the membrane as Ruby. It is compiled to JavaScript on the *host*,
  * by Opal, before it is handed over (`crates/gg/src/sandbox/language/ruby.compile.rs`), so what this
@@ -8,12 +9,20 @@
  * modules are constants under `GG`, the types are declared inside them, a failure is a raised
  * `GG::Core::ToolError`, and a code module is a `Module` bound at `lib.<key>`.
  *
- * # Why the runtime and the SDK are imported at top level
+ * # Nothing of gg's is loaded when a program starts
+ *
+ * The three imports below are Opal's runtime and two files of compiled Ruby that **register**
+ * modules in Opal's require registry without running any of them: `gg` is gg's SDK, `lib` is the
+ * code modules this agent read, and `libraries.js` is the set `src/library.rb` declares. A program
+ * reaches any of them by writing Ruby's own `require`, and a program that writes none has no `GG`
+ * constant, no `lib` and no `JSON` — it has Opal's corelib and its own text.
+ *
+ * # Why the runtime is imported at top level
  *
  * `componentize-js` runs this module's top level at BUILD time under `wizer` and snapshots the
- * resulting heap, so everything the three imports below allocate — Opal's corelib, every library's
- * module definition, every class this SDK declares — is built once, into the artifact, instead of
- * once per turn. Measured, on this repository's dev container, through gg's own store and linker:
+ * resulting heap, so Opal's corelib — the dispatch tables, the exception hierarchy, `String`,
+ * `Array`, `Hash` — is built once, into the artifact, instead of once per turn. Measured, on this
+ * repository's dev container, through gg's own store and linker:
  *
  * | Where Opal's runtime lives | Per program |
  * | --- | --- |
@@ -32,8 +41,9 @@
  * SDK can reach them, evaluate a program, and describe what happened when it did not finish.
  */
 
-// Opal's runtime, the curated libraries, and gg's Ruby SDK — vendored beside this file by
-// `build.sh`, and imported for their side effects in this order because each needs the last.
+// Opal's runtime, then the two files of registered-but-unloaded modules: the curated libraries, and
+// gg's own `gg` and `lib`. Vendored beside this file by `build.sh`, and imported for their side
+// effects in this order because each needs the last.
 import "./opal.js";
 import "./libraries.js";
 import "./gg.js";
@@ -58,8 +68,9 @@ import * as views from "test-cabinet:gg/views";
  *
  * The SDK is Ruby and the bindings are JavaScript modules, so there has to be one hand-off, and
  * this is it: one object, keyed by the interface name the WIT gives, read by Opal's
- * inline-JavaScript interop. Nothing here is model-facing — a program's scope is built by
- * `GG::Scope`, out of the capability modules, and `__ggWire` is not one of them.
+ * inline-JavaScript interop. It is not part of the surface `GG::Scope` builds: a program that
+ * reaches it has written inline JavaScript to do so, and every call it makes is checked at the
+ * membrane like any other.
  */
 globalThis.__ggWire = {
   board,
@@ -125,8 +136,16 @@ globalThis.__ggAdopt = function (value) {
   return Array.isArray(value) ? Array.from(value, globalThis.__ggAdopt) : value;
 };
 
-/** One Ruby constant, by name, off the `GG` module. */
+/**
+ * One Ruby constant, by name, off the `GG` module — **requiring gg's SDK first**.
+ *
+ * `require "gg"` is the model's line to write, and this guest never writes it on a program's
+ * behalf. The two places this is called are neither of them a program's: `boundTools` is a drift
+ * gate gg runs in a unit test, and the unknown-name hint is composed *after* a program has already
+ * failed, where loading the SDK changes nothing the program could observe.
+ */
 function gg(name) {
+  Opal.require("gg");
   const root = Opal.const_get_relative([], "GG");
   return Opal.const_get_qualified(root, name);
 }
@@ -242,8 +261,51 @@ function replaceGlobal(name, value) {
   }
 }
 
+/**
+ * End the program the way `Kernel#exit` ends a Ruby one.
+ *
+ * `Kernel#exit` runs the `at_exit` blocks, coerces its argument to an Integer and hands it to
+ * `Opal.exit`, which Opal leaves for its host to supply — and on a host that supplies nothing it is
+ * a no-op that logs under `$DEBUG`, so `exit 1` returned `nil` and the next statement ran. A model
+ * that wrote `exit 1` had its program read as the opposite of what it said and the turn recorded as
+ * a success.
+ *
+ * A `SystemExit` carrying the status is what CRuby raises there, so it is what this supplies. It is
+ * not caught: it unwinds the program the way any other exception does and is reported by `report`,
+ * which is the whole of D8a's "let the program die the way its runtime kills it".
+ *
+ * `status` and `success?` are defined on the raised object because Opal's `SystemExit` has neither
+ * and a program that rescues one asks for both. `abort` and `exit!` are Ruby's other two spellings
+ * of the same ending and Opal defines neither, so a model that reached for either had its program
+ * fail on the spelling rather than end on it.
+ */
+function installExit() {
+  const systemExit = () => Opal.const_get_relative([], "SystemExit");
+  const raise = (status) => {
+    const error = Opal.send(systemExit(), "new", [status]);
+    error.$status = () => status;
+    error["$success?"] = () => status === 0;
+    throw error;
+  };
+  Opal.exit = raise;
+  // `exit!` skips the `at_exit` blocks `Kernel#exit` runs, and `abort` writes its message to
+  // standard error first and ends with status 1. Both are defined on the object the program's own
+  // top level runs as, which is where `Kernel`'s private instance methods are reached from.
+  const kernel = Opal.const_get_relative([], "Kernel");
+  Opal.def(kernel, "$exit!", function (status) {
+    raise(status === undefined || status === null ? 0 : status);
+  });
+  Opal.def(kernel, "$abort", function (message) {
+    if (message !== undefined && message !== null) {
+      feedback.log(String(message));
+    }
+    raise(1);
+  });
+}
+
 /** Shadow every denied global with a thrower, and route `console` to gg's feedback channel. */
 function installEnvironment() {
+  installExit();
   for (const [name, why] of DENIED_GLOBALS) {
     replaceGlobal(name, () => {
       throw new Error(`${name} is not available in the sandbox: ${why}`);
@@ -272,29 +334,72 @@ function renderLog(arg) {
 // ------------------------------------------------------------------------------------------------
 
 /**
- * How many lines the `Function` constructor puts in front of a body, calibrated once per
- * instantiation. Measured at 2 on this engine; calibrated anyway so an engine update costs nothing.
+ * The name the **program's** compiled JavaScript is evaluated under, so that its stack frames say
+ * which unit they came from.
+ *
+ * Everything this guest evaluates goes through one `eval`, and the engine files every one of them
+ * under the same name — `eval` — so a frame from a code module and a frame
+ * from the program would be indistinguishable. That is not a cosmetic gap: a module is compiled
+ * separately and carries its **own** source map, so a raise inside `lib.<key>` mapped through the
+ * program's map produced a Ruby line number that was plausible, was in the model's own file, and
+ * was wrong. `//# sourceURL` renames the unit, and a frame therefore carries where it is from.
  */
-let bodyLineOffset;
+const PROGRAM_UNIT = "gg-program";
 
-function lineOffset() {
-  if (bodyLineOffset !== undefined) return bodyLineOffset;
-  bodyLineOffset = 2;
-  try {
-    new Function("throw new Error('calibrate')")();
-  } catch (thrown) {
-    const frame = firstProgramFrame(thrown);
-    if (frame) bodyLineOffset = frame.line - 1;
-  }
-  return bodyLineOffset;
+/**
+ * What a code module's compiled JavaScript is evaluated under. Never [`PROGRAM_UNIT`].
+ *
+ * A module's binding key is `[a-z0-9_]` by the time gg sends it, so it cannot end the comment this
+ * name is written into or introduce a line of its own.
+ */
+function moduleUnit(name) {
+  return `gg-module-${name}`;
 }
 
-/** The first stack frame inside the constructed function, if the engine recorded one. */
-function firstProgramFrame(thrown) {
+/**
+ * `source`, named so that the engine files the frames of everything in it under `unit`.
+ *
+ * Appended rather than prepended, because a line added above the body would move every line of it
+ * and falsify the map the compile emitted.
+ */
+function named(source, unit) {
+  return `${source}\n//# sourceURL=${unit}\n`;
+}
+
+/**
+ * Evaluate one compiled unit **at its own coordinates**, and hand back what it evaluated to.
+ *
+ * An indirect `eval` rather than the `Function` constructor, and that is the whole point of it: a
+ * `Function` body is spliced into a function the engine writes, so line 1 of the compiled
+ * JavaScript is line 3 of what the engine reports, and reaching the map's coordinates from a frame
+ * meant subtracting a number this file had calibrated for itself. A source map is the only thing
+ * allowed to move a location, so the subtraction had to go rather than be made more accurate. Here
+ * a frame's line **is** the compiled unit's line, and the map does the rest.
+ *
+ * The completion value is the unit's own last expression — `Opal.queue` hands back what the queued
+ * body returned — which is how a code module's namespace is collected without gg naming anything
+ * inside the module's own source.
+ */
+function evaluateUnit(source, unit) {
+  return (0, eval)(named(source, unit));
+}
+
+/**
+ * The innermost stack frame belonging to `unit`, if the engine recorded one.
+ *
+ * Innermost **of that unit**, rather than innermost of the stack: a raise inside a code module, or
+ * inside Opal's baked corelib, leaves frames of its own above the program's, and the one this
+ * guest can honestly locate is the program's own — the line the model wrote that led there. A
+ * frame from anywhere else is skipped rather than mapped, because the map it would be mapped
+ * through is not the map it was compiled with.
+ */
+function firstFrameIn(thrown, unit) {
   const stack = thrown === null || thrown === undefined ? undefined : thrown.stack;
   if (typeof stack !== "string") return undefined;
+  // `unit` is one of this file's own constants, so it carries no regular-expression syntax.
+  const marker = new RegExp(`${unit}:(\\d+):(\\d+)`);
   for (const frame of stack.split("\n")) {
-    const match = /Function:(\d+):(\d+)/.exec(frame);
+    const match = marker.exec(frame);
     if (match) return { line: Number(match[1]), column: Number(match[2]) };
   }
   return undefined;
@@ -367,14 +472,18 @@ function sourceMap(program) {
  * The frame is a position in the compiled JavaScript, so it is mapped through the source map the
  * compile emitted; a program with no map, or a frame the map does not cover, reports no location
  * at all rather than a line of a file nobody wrote.
+ *
+ * The frame is the program's own, [by name](firstFrameIn), and `program`'s map is therefore the map
+ * that unit was compiled with. A raise inside a code module is located at the line of the model's
+ * program that called into it — which is a line the model wrote and can act on — rather than at the
+ * module's own line read through somebody else's map.
  */
 function locate(thrown, program) {
-  const frame = firstProgramFrame(thrown);
+  const frame = firstFrameIn(thrown, PROGRAM_UNIT);
   if (!frame) return undefined;
-  const generated = frame.line - lineOffset();
   const mappings = sourceMap(program);
   if (!mappings) return undefined;
-  const entries = mappings[generated - 1];
+  const entries = mappings[frame.line - 1];
   if (!entries || entries.length === 0) return undefined;
   let original = entries[0][1];
   for (const [column, line] of entries) {
@@ -399,7 +508,7 @@ function locate(thrown, program) {
  * precompiled corelib is the one place that still produces one — it is outside gg's compile, so
  * `[1, 2].fetch` with no argument is a JavaScript `TypeError` rather than an `ArgumentError`.
  */
-function report(thrown, program, modules, lib) {
+function report(thrown, program, lib) {
   const location = locate(thrown, program);
   const klass = thrown && thrown.$$class ? String(thrown.$$class.$$name) : undefined;
   const message = klass === undefined ? describe(thrown) : String(Opal.send(thrown, "message"));
@@ -415,21 +524,21 @@ function report(thrown, program, modules, lib) {
     };
   }
   if (klass === "NoMethodError" || klass === "NameError") {
-    // The most common cause is a program reaching for a name gg does not have, so answer the
-    // question it is about to ask: what are the constants? Searching the documentation is how it
-    // finds a function inside one.
-    //
-    // "GG's modules" rather than "modules this run", which is what this said while the SDK's scope
-    // was built from the run. Every module is defined in every program now, so the list is the same
-    // one every time and says nothing about what this run enabled — and a model told that *this
-    // run* offers it the board and the task list writes a call into one and is refused for it.
-    const lend = lib ? ", plus `lib` for loaded skill and memory code" : "";
-    return {
-      kind: "unknown-name",
-      code: undefined,
-      message: `${message}; GG's modules: ${modules.join(", ")}${lend}`,
-      location,
-    };
+    // The hint is a REMEDY, so it is only written where it is one: the name that could not be
+    // resolved is gg's own or the code the agent has read, and nothing has loaded it yet. A model
+    // whose `nil.upcase` failed, or one that already wrote the require, is told to write a line
+    // that cannot fix its program — which is tokens spent to say something untrue.
+    const missing = missingName(thrown);
+    if ((missing === "GG" || missing === "lib") && !alreadyLoaded(missing)) {
+      const lend = lib ? ", and `require \"lib\"` for the code you have read" : "";
+      return {
+        kind: "unknown-name",
+        code: undefined,
+        message: `${message}; \`require "gg"\` reaches ${modulePaths().join(", ")}${lend}`,
+        location,
+      };
+    }
+    return { kind: "unknown-name", code: undefined, message, location };
   }
   return {
     kind: "other",
@@ -437,6 +546,100 @@ function report(thrown, program, modules, lib) {
     message: klass === undefined ? message : `${klass}: ${message}`,
     location,
   };
+}
+
+// ------------------------------------------------------------------------------------------------
+// The code modules this run read, and the `lib` a program requires to reach them
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * The code the agent loaded by reading a code skill or a code memory, as gg handed it over: each
+ * already compiled, each wrapped by the host so that evaluating it yields a namespace.
+ *
+ * Held rather than evaluated, because evaluating one runs somebody's Ruby — and a module whose own
+ * body calls gg writes `require "gg"`, which would put gg's surface in front of a program that
+ * wrote no such line. Nothing here runs until the program requires `lib`.
+ */
+let pendingModules = [];
+
+/**
+ * Evaluate every held code module and hand back the namespaces, keyed by binding key.
+ *
+ * Called from `src/knowledge.rb` — the `lib` a program requires — and from nowhere else, so a
+ * program that never writes `require "lib"` never runs a line of anybody's skill.
+ *
+ * A module that raises does not take the turn down: its author is whoever wrote the skill or the
+ * memory, not the model whose program merely has it in scope. It is reported on its own channel and
+ * bound to an empty namespace, so a program that calls into it gets a `NoMethodError` naming the
+ * member it wanted rather than one naming `lib`.
+ *
+ * @returns {unknown} a Ruby `Hash` of binding key to `Module`
+ */
+globalThis.__ggBindModules = function () {
+  const keys = [];
+  const namespaces = {};
+  for (const module of pendingModules) {
+    let namespace;
+    try {
+      // Named, so that a frame raised inside this module later — while the program is running,
+      // through `lib.<key>` — is recognisable as not the program's and is not read through the
+      // program's source map. The unit's own last expression is the namespace its wrapper built.
+      namespace = evaluateUnit(module.source, moduleUnit(module.name));
+      Opal.send(namespace, "extend", [namespace]);
+    } catch (thrown) {
+      const klass = thrown && thrown.$$class ? `${String(thrown.$$class.$$name)}: ` : "";
+      const message = thrown && thrown.$$class
+        ? String(Opal.send(thrown, "message"))
+        : describe(thrown);
+      feedback.reportModuleError(module.name, `${klass}${message}`);
+      namespace = Opal.send(Opal.const_get_relative([], "Module"), "new");
+    }
+    keys.push(module.name);
+    namespaces[module.name] = namespace;
+  }
+  return Opal.hash2(keys, namespaces);
+};
+
+/**
+ * The name a `NameError` or a `NoMethodError` could not resolve, or `undefined` where the exception
+ * does not carry one.
+ *
+ * Read through Ruby's own `NameError#name` rather than off the message, because the message is
+ * Opal's wording and a hint that keyed on it would be a second statement of what the exception
+ * already says. A failure to read it costs the hint and nothing else.
+ */
+function missingName(thrown) {
+  try {
+    const name = Opal.send(thrown, "name");
+    return name === null || name === undefined ? undefined : String(name);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether the name the hint would tell a program to reach for is already there — which makes the
+ * hint a remedy for a failure that has some other cause.
+ */
+function alreadyLoaded(missing) {
+  const root = Opal.Object.$$const || {};
+  return missing === "GG" ? root.GG !== undefined : root.Lib !== undefined;
+}
+
+/**
+ * The capability modules gg's SDK declares, for the unknown-name hint alone.
+ *
+ * A constant list: the SDK is static, so every capability module carries every function it declares
+ * on every turn, and which of them this agent may actually CALL is the host's answer rather than
+ * this guest's.
+ */
+function modulePaths() {
+  try {
+    return Array.from(Opal.const_get_qualified(gg("Scope"), "MODULE_PATHS"));
+  } catch {
+    // A hint is not worth a second failure on top of the one being reported.
+    return [];
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -455,17 +658,21 @@ export function boundTools() {
 }
 
 /**
- * Evaluate one program against the whole SDK.
+ * Evaluate one program.
  *
  * `program` is the JavaScript Opal compiled on the host — the model's Ruby never reaches here —
  * with the source map that maps it back appended. `modules` is the code the agent loaded by reading
- * a code skill or a code memory, each already compiled and each wrapped by the host in the
- * `GG::Lib.define` call that makes its body a namespace.
+ * a code skill or a code memory, each already compiled and each wrapped by the host so that
+ * evaluating it yields a namespace. None of it is evaluated unless the program requires `lib`.
+ *
+ * **Nothing of gg's is in scope when the first line runs.** `gg` and `lib` are registered in Opal's
+ * require registry and not loaded, so the program reaches either one by writing its own `require`,
+ * and one that writes neither has Opal's corelib and its own text.
  *
  * `enabled`, `ending` and `library` are **read by nothing here**. They used to build the surface;
- * the surface is now the whole SDK, bound at load into the baked heap, and every capability question
- * is answered at the membrane — the one place that can answer it the same way for all eleven
- * language arms. gg still sends them, because the WIT world is shared with ten sibling guests.
+ * the surface is now the whole SDK, and every capability question is answered at the membrane — the
+ * one place that can answer it the same way for all eleven language arms. gg still sends them,
+ * because the WIT world is shared with ten sibling guests.
  *
  * Nothing comes back: a raise is reported over `feedback.report-error` rather than being allowed to
  * escape as an opaque wasm trap, everything a program wanted to show itself it opened a view of,
@@ -478,42 +685,18 @@ export function run(program, modules, _enabled, _ending, _library) {
   installEnvironment();
   const flush = attachStreams();
   try {
-    // The module paths a program may reach, for the unknown-name hint alone. It is a constant: the
-    // SDK is static, so every capability module carries every function it declares on every turn,
-    // and which of them this agent may actually CALL is the host's answer rather than this guest's.
-    const bound = Array.from(Opal.const_get_qualified(gg("Scope"), "MODULE_PATHS"));
-
-    // Code modules are evaluated after the scope and before the program, so one may call
-    // `GG::Files.read_file` like anything else, and each is given the same surface the program
-    // gets.
-    // A module that raises does not take the turn down: its author is whoever wrote the skill or
-    // the memory, not the model whose program merely has it in scope.
-    Opal.send(gg("Lib"), "reset");
-    for (const module of modules) {
-      try {
-        new Function(module.source)();
-      } catch (thrown) {
-        const klass = thrown && thrown.$$class ? `${String(thrown.$$class.$$name)}: ` : "";
-        const message = thrown && thrown.$$class
-          ? String(Opal.send(thrown, "message"))
-          : describe(thrown);
-        feedback.reportModuleError(module.name, `${klass}${message}`);
-      }
-      // Named whether it succeeded or not: a module that raised binds an empty namespace, so a
-      // program that calls into it gets a `NoMethodError` naming the member rather than a
-      // `NoMethodError` naming `lib`.
-      Opal.send(gg("Lib"), "bind", [module.name]);
-    }
-    const lib = Opal.send(gg("Scope"), "install_lib");
+    pendingModules = modules;
 
     try {
-      new Function(program)();
+      // Named, so that a frame this guest locates is a frame of THIS unit — `program`'s source map
+      // is the only map it has — and a frame raised inside a code module is recognisably not it.
+      evaluateUnit(program, PROGRAM_UNIT);
     } catch (thrown) {
-      feedback.reportError(report(thrown, program, bound, lib));
+      feedback.reportError(report(thrown, program, modules.length > 0));
     }
   } catch (thrown) {
-    // Everything above the program's own `catch` — building the surface, evaluating the modules —
-    // is this guest's, and a throw out of it would otherwise escape as an opaque wasm trap: no
+    // Everything outside the program's own `catch` is this guest's, and a throw out of it would
+    // otherwise escape as an opaque wasm trap: no
     // `feedback` call, nothing in the run record, and a model told only that the sandbox stopped.
     // Reported instead, on its own terms, so the failure names itself.
     feedback.reportError({

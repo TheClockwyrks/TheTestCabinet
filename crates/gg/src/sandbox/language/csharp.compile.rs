@@ -8,10 +8,11 @@
 //! artifact gg ships is a runtime rather than a program, and the per-turn cost is one `csc` and
 //! nothing else.
 //!
-//! What `csc` is given is the model's program **and the SDK's own sources** — twenty-two `.cs` files
+//! What `csc` is given is the model's program **and the SDK's own sources** — twenty-six `.cs` files
 //! written into the preparation's workspace beside it, so that gg's surface is in the program's own
-//! assembly and the prebuilt guest has nothing extra to carry. See [`sdk`](super::sdk) for why, and
-//! below for what it costs.
+//! assembly and the prebuilt guest has nothing extra to carry. It puts no name in the program's
+//! scope: what reaches `Views.OpenText` is the `using Gg;` the program wrote. See [`sdk`](super::sdk)
+//! for why, and below for what it costs.
 //!
 //! That shape is what a prior feasibility study missed. Priced on `componentize-dotnet` —
 //! NativeAOT-LLVM, which compiles the *program* to native wasm — this arm measured **25–43 seconds a
@@ -29,7 +30,7 @@
 //! | Every compile after that | **~0.28 s** |
 //! | Of which the SDK's own 2,500 lines | ~70 ms, against ~210 ms for a program alone |
 //!
-//! Which puts it **second among the compiled arms**, behind [C++](super::super::cpp)'s ~85 ms — and
+//! Which puts it **second among the compiled arms**, behind [C++](super::super::cpp)'s ~90 ms — and
 //! that arm is only there because it precompiles a header once per machine — and comfortably ahead
 //! of `swiftc`, both JVM arms and `purs`. What it costs *beyond* the compiler is where this arm
 //! differs from those: none of them instantiates a prebuilt guest, and this one instantiates the
@@ -223,11 +224,6 @@ fn usable(root: &Path) -> bool {
 
 /// Compile a **program** — a model's reply — into the IL the guest interprets, base64-encoded.
 ///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and it is an absence rather than a zero:
-/// the measurement counts top-level statements written after one that *ends the program*, and C#'s
-/// entry point has no such statement — every way out of `Main` is a `return` the compiler already
-/// treats as the end, or an exception.
-///
 /// [`component`](PreparedProgram::component) is `None` because this arm evaluates its program with a
 /// **prebuilt** runtime — one the build linked, once, and gg embeds — rather than compiling one per
 /// turn. That is what separates it from the
@@ -241,7 +237,6 @@ pub(super) fn compile_program(
     let assembly = compile(program, modules, context)?;
     Ok(PreparedProgram {
         source: base64::engine::general_purpose::STANDARD.encode(assembly),
-        unreachable: None,
         component: None,
     })
 }
@@ -280,6 +275,7 @@ pub(super) fn compile_module(
             &response_file(
                 &root,
                 Target::Library,
+                workspace.work(),
                 &sdk,
                 std::slice::from_ref(&file),
                 &output,
@@ -332,7 +328,14 @@ fn compile(
     let response = workspace
         .write(
             RESPONSE_FILE,
-            &response_file(&root, Target::Exe, &sdk, &sources, &output)?,
+            &response_file(
+                &root,
+                Target::Exe,
+                workspace.work(),
+                &sdk,
+                &sources,
+                &output,
+            )?,
         )
         .map_err(PrepareFailure::Toolchain)?;
 
@@ -396,6 +399,19 @@ impl Target {
 /// * `-optimize+` — the IL is *interpreted*, so optimisation here is not about native code: it is
 ///   what removes the debug-build scaffolding an interpreter would otherwise walk instruction by
 ///   instruction.
+/// * `-debug:embedded` — **what puts the model's own line on a runtime frame.** A portable PDB, in
+///   the assembly rather than beside it, because the assembly is the only thing that crosses to the
+///   guest: a `program.pdb` written into a workspace gg deletes is a file the interpreter never
+///   sees. Mono reads it once the guest has initialised its debug lookup
+///   (`packages/gg-sandbox-csharp/Sources/shell.c`), and an unhandled exception's frames then name
+///   `./program.cs` and a line, where they used to name a method and an IL offset. It is compatible
+///   with `-optimize+`: the sequence points are in the PDB, not in the IL.
+/// * `-pathmap` — the preparation's own workspace, mapped onto `./`. Two things need it. A model
+///   reads those frames, and `/tmp/gg-prepare/1234-0/work/program.cs` is a path it cannot open and
+///   did not write; and the PDB is *in* the assembly, so an absolute path would make two
+///   preparations of one program differ in the bytes `-deterministic` exists to hold equal. The
+///   value is `./` because Roslyn refuses an empty one (`CS8101`), which is the only spelling that
+///   would have left the bare `program.cs` the compiler's own diagnostics use.
 /// * `-deterministic` — Roslyn stamps a build with an MVID derived from its inputs rather than from
 ///   the clock, so two preparations of one program produce byte-identical assemblies. Nothing in the
 ///   seam demands that (the isolation gate in `language/isolation.rs` searches artifacts
@@ -411,13 +427,14 @@ impl Target {
 ///
 /// The **SDK's own sources** are compiled with the program, which is what makes gg's surface
 /// reachable without an assembly the guest would have to carry — see [`sdk`](super::sdk). They are
-/// listed before the program so that a `csc` reading them in order meets `GlobalUsings.cs` first;
-/// nothing about C# requires it, and it makes the response file read the way the compilation is
-/// meant to. `sources` is everything else, in the order it is to be read: a program's code modules
-/// and then its own file, or a single module on its own check.
+/// listed before it because a library is read before the thing that depends on it; nothing about C#
+/// requires the order, and it makes the response file read the way the compilation is meant to.
+/// `sources` is everything else, in the order it is to be read: a program's code modules and then
+/// its own file, or a single module on its own check.
 fn response_file(
     root: &Path,
     target: Target,
+    work: &Path,
     sdk: &[PathBuf],
     sources: &[PathBuf],
     output: &Path,
@@ -429,6 +446,12 @@ fn response_file(
         format!("-langversion:{LANGUAGE_VERSION}"),
         "-nullable:enable".to_string(),
         "-optimize+".to_string(),
+        "-debug:embedded".to_string(),
+        format!(
+            "-pathmap:{}{sep}=.{sep}",
+            work.display(),
+            sep = std::path::MAIN_SEPARATOR
+        ),
         "-deterministic".to_string(),
         "-utf8output".to_string(),
         format!("-out:{}", output.display()),

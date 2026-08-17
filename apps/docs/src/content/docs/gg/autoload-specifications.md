@@ -6,8 +6,10 @@ With the `autoload-specs` capability on, an agent's opening context is seeded
 with the full contents of every file the test case provided, its specifications
 and its reference images, injected as though the model had already read each for
 itself. The whole brief is in the window from the first turn. An agent with the
-capability off opens with the [build prompt](/gg/prompts/) alone and reads what
-it needs itself.
+capability off reads what it needs itself. Its opening context is the
+[build prompt](/gg/prompts/) and, in code mode, the
+[opening turn](/gg/responses-as-code/views/#the-opening-turn) every fresh window
+is seeded with.
 
 It is off by default and per agent. It is one profile's
 [capability](/gg/configurations/), listed in the editor's Context group, so a
@@ -59,16 +61,18 @@ of file-view calls, one per provided file in seeding order, followed by the file
 views that program opened:
 
 ```ts
+import * as gg from "gg";
+
 gg.views.openFile("specs/rules.md");
 gg.views.openFile("reference/board.png");
 ```
 
-The program holds that list of calls and no scaffolding around it, because an
-opening move is exactly that. Each statement is written by the agent's own
-program language, so a Python agent is shown Python. Paths are JSON-quoted, so a
-quote or a backslash in a path cannot break the parse. The views arrive as
-headed `File` items keyed by path, the same envelope a real file-view call
-produces.
+The program is a whole program of the agent's own language, on the terms the
+[invariants](/gg/responses-as-code/invariants/) set for every program: the line
+that reaches gg's surface, then one call per file, and nothing else. A Python
+agent is shown Python. Paths are JSON-quoted, so a quote or a backslash in a
+path cannot break the parse. The views arrive as headed `File` items keyed by
+path, the same envelope a real file-view call produces.
 
 The reads run first, and the program holds one call per file that was read.
 Every one of those views is present in the same opening context, since the run

@@ -52,12 +52,12 @@ stored run keys on, so they are stable. `transpile` in particular keeps a name
 wider than its meaning, because the value is what persisted records carry.
 
 Underneath each base kind sits an `errorType`, and that is where the failure is
-named. There are eighteen types, one per distinction gg makes.
+named. There are seventeen types, one per distinction gg makes.
 
 | Base kind | Types under it |
 | --- | --- |
 | `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse` |
-| `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported` |
+| `transpile` | `transpile_syntax`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported` |
 | `program_fault` | `program_tool_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
 | `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending, which is answered differently) |
@@ -75,6 +75,25 @@ runtime bug.
 A slice on this base kind is therefore not a valid cross-arm comparison. Read
 `transpile` as the programs this arm refused before running, which only an arm
 with a host-side preparation step does.
+:::
+
+:::caution[`program_fault` and `sandbox_limit` split one event by arm]
+A program owns its failures, and gg reads what the program's own runtime said
+rather than intercepting the throw. So an uncaught failure ends the turn the way
+that arm's runtime ends a program, and which base kind the turn lands under
+follows from that.
+
+An arm whose guest reports the throw to the host before it dies hands up the
+failure's class, and the turn is filed under `program_fault`. An arm whose
+program dies as its runtime kills it reports nothing, so the turn is filed as
+`sandbox_trap`, under `sandbox_limit` beside the two ceilings gg imposes. The
+same model mistake therefore counts as a program fault on one arm and a sandbox
+limit on another.
+
+A slice on either base kind is a valid comparison within one arm and not across
+arms. Across arms, read the two together, or read the
+[per-arm table](/gg/languages/static-sdks/#the-turn-error-for-an-uncaught-refusal)
+of what each one files.
 :::
 
 Every type's id names its base, because a "top error types" ranking shows one row

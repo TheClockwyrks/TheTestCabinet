@@ -297,6 +297,7 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
     let rendered = response_file(
         path,
         Target::Exe,
+        path,
         &sdk,
         &[path.join("module_Kit.cs"), path.join("program.cs")],
         &path.join("out.dll"),
@@ -378,6 +379,7 @@ fn a_module_is_compiled_as_a_library_because_a_class_body_has_no_entry_point() {
     let rendered = response_file(
         path,
         Target::Library,
+        path,
         &[path.join("sdk/ToolException.cs")],
         &[path.join("module_Kit.cs")],
         &path.join("out.dll"),

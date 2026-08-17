@@ -57,7 +57,9 @@ public static partial class Docs
     /// <param name="type">
     /// One type's name, which narrows to that type and to the functions taking or returning it.
     /// </param>
-    /// <param name="kind">Narrow to functions or to types. Left out, both are searched.</param>
+    /// <param name="kind">
+    /// Narrow to modules, to functions or to types. Left out, all three are searched.
+    /// </param>
     /// <param name="offset">How many hits to skip. Left out, the page starts at the first.</param>
     /// <param name="limit">
     /// How many hits to return: 20 where it is left out, 100 at most, and zero refused. Compare it

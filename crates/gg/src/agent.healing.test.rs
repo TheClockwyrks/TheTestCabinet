@@ -96,7 +96,7 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
             // A real fenced reply, with prose either side of the block.
             code_reply(FENCED_PROGRAM),
             // The same shape, sent the way the prompt asks for it.
-            code_reply("return fs.listDir(\"src\").length;"),
+            code_reply("import * as gg from \"gg\";\ngg.files.listDir(\"src\").length;"),
             code_reply(FINISHING_PROGRAM),
         ],
     );
@@ -124,6 +124,19 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
         records[1].is_clean() && records[2].is_clean(),
         "a reply that needed nothing carries the default, which the wire omits: {records:?}"
     );
+
+    // The repaired turn carries the reply as the model sent it. Nothing else on the wire does: the
+    // program is what the model's own history now holds and what every location gg reports counts
+    // lines of, so this is the operator's only route back to what healing started from.
+    let original = records[0]
+        .original
+        .as_deref()
+        .expect("a rewritten reply carries the text it was rewritten from");
+    assert_eq!(original, FENCED_PROGRAM);
+    assert!(
+        records[1].original.is_none() && records[2].original.is_none(),
+        "a clean reply and its program are the same string, so neither is carried twice: {records:?}"
+    );
 }
 
 /// **Healing never reaches the model.**
@@ -146,7 +159,7 @@ async fn healing_is_never_disclosed_to_the_model() {
         &dir,
         healing_set(json!({})),
         vec![
-            code_reply("```ts\nreturn 1;\n```"),
+            code_reply("```ts\n1;\n```"),
             code_reply("```ts\nconst x = ;\n```"),
             code_reply("```ts\n// nothing but a note to myself\n```"),
             code_reply(FINISHING_PROGRAM),
@@ -174,7 +187,7 @@ async fn healing_is_never_disclosed_to_the_model() {
         &dir,
         healing_set(json!({ "timeoutSecs": RUNAWAY_TIMEOUT_SECS })),
         vec![
-            code_reply("```ts\nlet x = 0;\nwhile (true) {\n  x += 1;\n}\nreturn x;\n```"),
+            code_reply("```ts\nlet x = 0;\nwhile (true) {\n  x += 1;\n}\nx;\n```"),
             code_reply(FINISHING_PROGRAM),
         ],
     )
@@ -208,12 +221,12 @@ async fn every_reply_is_compiled_rather_than_judged() {
             // Comments only: a program that does nothing, which is what it is.
             code_reply("// I will write the manifest next turn."),
             // Several candidate blocks: healing declines and the whole reply is compiled.
-            code_reply("```ts\nreturn 1;\n```\n\nor perhaps\n\n```ts\nreturn 2;\n```"),
+            code_reply("```ts\n1;\n```\n\nor perhaps\n\n```ts\n2;\n```"),
             // Two programs pasted together with no fence anywhere: a redeclaration, which the
             // type-strip reports as one.
             code_reply(
-                "const files = fs.listDir(\"src\");\nreturn files.length;\n\n\
-                 const files = fs.listDir(\".\");\nreturn files.map((e) => e.name);",
+                "import * as gg from \"gg\";\nconst files = gg.files.listDir(\"src\");\nfiles.length;\n\n\
+                 const files = gg.files.listDir(\".\");\nfiles.map((e) => e.name);",
             ),
         ],
     );
@@ -316,7 +329,7 @@ async fn disarming_a_strategy_changes_only_what_healing_returns() {
     // wrapper comes off and this runs; with it disarmed the whole reply goes to the compiler.
     let client = MockClient::new(
         "mock/primary",
-        vec![code_reply("Here is the program:\n\n```ts\nreturn 1;\n```")],
+        vec![code_reply("Here is the program:\n\n```ts\n1;\n```")],
     );
 
     let end = drive_root(
@@ -399,8 +412,9 @@ async fn an_unreadable_healing_param_refuses_the_launch() {
 /// the transcript stored it.
 ///
 /// The last rather than the first, and that is not incidental. A code agent's window opens with a
-/// synthesized assistant turn of gg's own: the [bootstrap](crate::bootstrap) program that opens the
-/// documentation of the calls discovery is made of. It sits ahead of every reply the model has
+/// synthesized assistant turn of gg's own: the [bootstrap](crate::bootstrap) program that lists
+/// every module the run granted this agent and opens the documentation of the two calls discovery is
+/// made of. It sits ahead of every reply the model has
 /// actually sent, so reading the first assistant message here would read gg's program and never the
 /// model's.
 fn assistant_message(request: &[Message]) -> String {
@@ -445,17 +459,17 @@ async fn response_healing_mode_records_the_healed_program() {
     );
 }
 
-/// **No post-processing (the default) records the reply verbatim, fence and prose and all.**
+/// **No post-processing records the reply verbatim, fence and prose and all.**
 ///
-/// The mirror of the above: a run that says nothing about `assistantMessages` stores exactly what the
-/// model sent, which is what a study of a model's code-only compliance reads.
+/// The mirror of the above, and the arm a study of a model's code-only compliance reads. It is asked
+/// for explicitly, because the default is the healed program.
 #[tokio::test]
 async fn no_post_processing_records_the_raw_reply() {
     let dir = TempDir::new().unwrap();
     std::fs::create_dir_all(dir.path().join("src")).unwrap();
     let (_, _, requests) = drive_recorded_code_run(
         &dir,
-        healing_set(json!({})),
+        healing_set(json!({ "assistantMessages": "none" })),
         vec![code_reply(FENCED_PROGRAM), code_reply(FINISHING_PROGRAM)],
     )
     .await;
@@ -482,7 +496,7 @@ async fn a_code_run_heads_the_task_and_gg_s_reply() {
     let (_, _, requests) = drive_recorded_code_run(
         &dir,
         healing_set(json!({})),
-        vec![code_reply("return 1;"), code_reply(FINISHING_PROGRAM)],
+        vec![code_reply("1;"), code_reply(FINISHING_PROGRAM)],
     )
     .await;
 

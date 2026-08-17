@@ -1,9 +1,12 @@
-"""Emit the signature catalogue gg renders the Python arm's system prompt and doc views from.
+"""Emit the signature catalogue gg answers the Python arm's doc searches and doc views from.
 
-gg has to tell a model, every turn, what functions its program may call and what they do. The wrong
-way to do that is a hand-written list in the prompt template: it drifts away from the SDK silently,
-and a model shown a signature the sandbox does not have wastes a whole turn discovering that. So the
-list is REFLECTED out of the SDK's own declarations and docstrings instead.
+A model DISCOVERS what its program may call: gg's one system prompt names the modules this run
+granted and nothing else, the opening turn runs a program that lists each of them, and a search or a
+documentation view answers for everything after that. Every one of those answers has to describe the
+SDK the guest actually exports. The wrong way to do that is a hand-written list — in a prompt
+template or anywhere else — because it drifts away from the SDK silently, and a model shown a
+signature the sandbox does not have wastes a whole turn discovering that. So what is answered is
+REFLECTED out of the SDK's own declarations and docstrings instead.
 
 The pipeline:
 
@@ -44,9 +47,10 @@ reflector's whole job is to fail the build rather than emit a gap. Concretely:
 
 The catalogue carries one thing that is not a signature, on the same rule: the LIBRARY SET a program
 may import, read off the module-scope imports of `src/library.py` — the file that decides it, because
-`componentize-py` bakes that module's import closure and nothing else. The prompt renders that list,
-so what a model is told it may import is what the artifact was built with rather than a sentence
-somebody wrote once. See `libraries`.
+`componentize-py` bakes that module's import closure and nothing else. gg quotes that list back on a
+COMPILE FAILURE rather than putting it in a prompt — the mistake it prevents is one the compile
+detects — so what a model is told it may import is what the artifact was built with rather than a
+sentence somebody wrote once. See `libraries`.
 
 Usage:
     python tools/signatures.py --out-dir <dir>
@@ -93,6 +97,12 @@ GENERATED_FROM = "packages/gg-sandbox-python/src/gg/ (griffe, static)"
 """The provenance string written into the catalogue, so a reader of the JSON knows it is generated
 and where from."""
 
+SURFACE_IMPORT = "import gg"
+"""The line a program writes to reach this SDK, carried by every module this catalogue declares.
+
+The same string as `python.rs`'s `SURFACE_IMPORT`, which the host holds this catalogue to, and the
+line the programs gg synthesizes for this arm open with."""
+
 OPERATION_DECORATOR = "operation"
 """The decorator that names the gg operation a declaration binds.
 
@@ -117,6 +127,16 @@ Exactly one, and it is not a convenience: every function in this SDK raises `Too
 which is the half of a signature Python states in prose rather than in the annotation. An arm whose
 `Result<_, ToolError>` is written in the return type carries it in every entry's references; this one
 would carry it in none, and the failure type would be a declaration no model could open.
+"""
+
+BRIEF_CAP = 120
+"""The longest a brief may be, in characters.
+
+The same cap `crates/gg/src/sandbox/language/register.rs` holds every arm's catalogue to, and it is
+enforced here as well because the host's copy is a `#[test]`: a reflection that embedded a paragraph
+in the brief field would succeed, and so would a build, and the author would hear about it from a
+gate three steps away naming an entry they then have to go looking for. Here is where the author is
+standing.
 """
 
 def load_catalogue() -> ModuleType:
@@ -210,10 +230,11 @@ class Prose:
 def prose_of(docstring: str | None, where: str) -> Prose:
     """Split one docstring into its brief and its detail, or fail naming the declaration.
 
-    The rule is PEP 257's: a summary line, then a blank line, then the rest. It is enforced here
-    rather than in a gate over the emitted JSON because here is where the author is standing — a
-    first paragraph that wraps over two lines is a mistake to be told about at the `def`, not three
-    steps later under a name the author has to go looking for.
+    The rule is PEP 257's: a summary line, then a blank line, then the rest, and that line no longer
+    than `BRIEF_CAP`. Both halves are enforced here rather than in a gate over the emitted JSON
+    because here is where the author is standing — a first paragraph that wraps over two lines, or a
+    summary line that runs on for a paragraph's worth of characters, is a mistake to be told about at
+    the `def`, not three steps later under a name the author has to go looking for.
     """
     if docstring is None or not docstring.strip():
         raise SystemExit(
@@ -230,6 +251,11 @@ def prose_of(docstring: str | None, where: str) -> Prose:
             f"{where}'s brief runs over more than one line. The first line of a docstring is the "
             "brief and everything after the blank line that follows it is the detail, so a first "
             f"paragraph that wraps has no brief in it: {brief!r}"
+        )
+    if len(brief) > BRIEF_CAP:
+        raise SystemExit(
+            f"{where} has a {len(brief)}-character brief, and a brief is capped at "
+            f"{BRIEF_CAP}: {brief!r}"
         )
     detail = reflow("\n".join(rest))
     return Prose(brief=brief, detail=detail or None)
@@ -845,9 +871,12 @@ def build() -> str:
                 "path": path,
                 "brief": prose.brief,
                 "detail": prose.detail,
-                # `None`, and honestly: gg injects this SDK into a program's scope, so a documented
-                # import would be a line a model would be wrong to think it had to write.
-                "import": None,
+                # Composed rather than reflected: griffe describes what a package declares and says
+                # nothing about how another file reaches it, and this is the one field the
+                # invariants let an arm write for itself where its generator does not report it.
+                # One line for all thirteen, because `gg` is one package and importing it is what
+                # makes every path this catalogue carries resolve exactly as written.
+                "import": SURFACE_IMPORT,
             }
         )
         for name in public_names(module, f"`{path}`"):
@@ -904,8 +933,8 @@ def build() -> str:
                 "name": name,
                 "fqn": fqn,
                 # The fully-qualified name IS what a program writes: `gg.files.read_file` resolves
-                # after `import gg`, and the module the scope binds makes `files.read_file` the same
-                # object. There is no third spelling for a call site to need.
+                # after `import gg`, which is the line every module of this catalogue states. There
+                # is no second spelling for a call site to need.
                 "call": None,
                 "brief": prose.brief,
                 "detail": prose.detail,

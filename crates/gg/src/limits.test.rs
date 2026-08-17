@@ -506,7 +506,6 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorType::ModelVisionUnsupported
                 | TurnErrorType::ModelParse
                 | TurnErrorType::TranspileSyntax
-                | TurnErrorType::TranspileSemantic
                 | TurnErrorType::TranspileCompile
                 | TurnErrorType::TranspileUnsupported
                 | TurnErrorType::ProgramToolError
@@ -546,10 +545,10 @@ fn every_outcome_publishes_itself_and_carries_a_kind_exactly_when_it_is_an_error
             Some(GgTurnErrorType::ModelAuth),
         ),
         (
-            TurnOutcome::Error(TurnErrorType::TranspileSemantic),
+            TurnOutcome::Error(TurnErrorType::TranspileCompile),
             GgTurnOutcome::Error,
             Some(GgTurnErrorKind::Transpile),
-            Some(GgTurnErrorType::TranspileSemantic),
+            Some(GgTurnErrorType::TranspileCompile),
         ),
         (
             TurnOutcome::Error(TurnErrorType::ProgramToolError),
@@ -702,7 +701,6 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
         TurnErrorType::ModelVisionUnsupported,
         TurnErrorType::ModelParse,
         TurnErrorType::TranspileSyntax,
-        TurnErrorType::TranspileSemantic,
         TurnErrorType::TranspileCompile,
         TurnErrorType::TranspileUnsupported,
         TurnErrorType::ProgramToolError,
@@ -724,7 +722,6 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
             | TurnErrorType::ModelVisionUnsupported
             | TurnErrorType::ModelParse
             | TurnErrorType::TranspileSyntax
-            | TurnErrorType::TranspileSemantic
             | TurnErrorType::TranspileCompile
             | TurnErrorType::TranspileUnsupported
             | TurnErrorType::ProgramToolError

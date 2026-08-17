@@ -51,6 +51,8 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=scripts/gg-artifacts-out-dir.sh
 source "$ROOT/scripts/gg-artifacts-out-dir.sh"
 OUT="$GG_ARTIFACTS_OUT_DIR/kotlin.sdk.jar"
+# The crossing both JVM arms compile — see the javac pass below.
+SHARED="$ROOT/packages/gg-sandbox-jvm"
 
 KOTLIN_DIR="${KOTLIN_INSTALL_DIR:-$HOME/.local/share/gg-kotlin}"
 JAVA_DIR="${JAVA_INSTALL_DIR:-$HOME/.local/share/gg-java}"
@@ -58,6 +60,7 @@ JAVA="${TCAB_GG_JAVA:-$JAVA_DIR/jdk/bin/java}"
 JAR="${TCAB_GG_JAR:-$JAVA_DIR/jdk/bin/jar}"
 KOTLIN_LIBS="${TCAB_GG_KOTLIN_LIBS:-$KOTLIN_DIR/libs}"
 TEAVM_LIBS="${TCAB_GG_TEAVM:-$JAVA_DIR/libs}"
+JAVAC="${TCAB_GG_JAVAC:-$JAVA_DIR/jdk/bin/javac}"
 
 if [ ! -x "$JAVA" ]; then
 	echo "error: no java at $JAVA — run scripts/ci/install-kotlin.sh" >&2
@@ -73,15 +76,40 @@ trap 'rm -rf "$WORK"' EXIT
 
 COMPILER="$(find "$KOTLIN_LIBS" -name '*.jar' | sort | tr '\n' ':')"
 # What the SDK is compiled AGAINST: the standard library a model's program also gets, plus TeaVM's
-# annotations and JavaScript types, which is what the bridge is written in and what a program never
+# interop annotations, which is what the crossing below is written with and what a program never
 # sees. Deliberately not the compiler's own classpath — this SDK must be reachable from exactly what
 # a program is compiled against, and nothing else.
 STDLIB="$(find "$KOTLIN_LIBS" -name 'kotlin-stdlib-*.jar' | head -n1)"
 TEAVM="$(find "$TEAVM_LIBS" -name '*.jar' | sort | tr '\n' ':')"
 
+# THE CROSSING FIRST, AND IT IS JAVA. `packages/gg-sandbox-jvm/src` holds `gg.internal.Abi`,
+# `gg.internal.Value` and `gg.internal.Frames` — the canonical ABI this SDK reaches gg through and
+# the encoding that travels inside it. Both JVM arms compile the identical two trees into their own
+# jars, because a second implementation of one WIT is the thing the single door exists to avoid; what
+# is NOT shared is the one function above them that raises the arm's own `ToolError`, which here is
+# `gg/internal/Wire.kt` and on the Java arm is `gg/internal/Coding.java`.
+#
+# Written in Java rather than translated, and compiled by `javac` here rather than read as source by
+# the Kotlin compiler: `@Import`, `@Export` and `@StaticInit` are TeaVM annotations on static
+# methods, and the Kotlin compiler emits no class files for the Java it reads.
+#
+# `vendor/` is not gg's text — one TeaVM runtime class kept under its own licence and changed in one
+# place so that an uncaught exception says WHAT was thrown as well as where — so it is a pass of its
+# own with `-Xlint` off, exactly as the Java arm's `build.sh` does it.
+mapfile -t SHARED_SOURCES < <(find "$SHARED/src" -name '*.java' | sort)
+mapfile -t VENDORED < <(find "$SHARED/vendor" -name '*.java' | sort)
+"$JAVAC" -Xlint:all -Werror -g --release 21 -cp "$TEAVM" -d "$WORK/classes" "${SHARED_SOURCES[@]}"
+"$JAVAC" -nowarn -g --release 21 -cp "$TEAVM" -d "$WORK/classes" "${VENDORED[@]}"
+
+# The descriptor TeaVM finds `gg.internal.ThrowableNames` through, which is what makes an uncaught
+# exception name its own class. See the script's header.
+# shellcheck source=packages/gg-sandbox-jvm/plugin-descriptor.sh
+source "$SHARED/plugin-descriptor.sh"
+gg_jvm_plugin_descriptor "$WORK/classes"
+
 mapfile -t SOURCES < <(find "$HERE/src" -name '*.kt' | sort)
 "$JAVA" -cp "$COMPILER" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
-	-classpath "$STDLIB:$TEAVM" \
+	-classpath "$STDLIB:$TEAVM:$WORK/classes" \
 	-d "$WORK/classes" \
 	-jvm-target 21 \
 	-module-name gg \

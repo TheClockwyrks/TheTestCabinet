@@ -4,9 +4,10 @@ The **Kotlin** program language's toolchain pin and its hand-written SDK.
 
 | | |
 | --- | --- |
-| [`kotlin-version.sh`](kotlin-version.sh) | the Kotlin release this arm is pinned to, the jars its compiler runs with, and the four the scripting plugin is loaded by name from |
+| [`kotlin-version.sh`](kotlin-version.sh) | the Kotlin release this arm is pinned to, and the jars its compiler runs with |
 | [`src/`](src/) | the **SDK** a model's program is compiled against, and the KDoc every word a model reads is reflected out of |
-| [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the prompt shows them |
+| [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/) | the canonical ABI and the wire encoding, which the Java arm compiles too |
+| [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the catalogue renders them |
 | [`build.sh`](build.sh) | compiles the SDK to `$GG_ARTIFACTS_OUT_DIR/kotlin.sdk.jar`; `crates/gg-sandbox-artifacts/kotlin` runs it on every build |
 | [`signatures.sh`](signatures.sh) | reflects `kotlin.signatures.json` out of the SDK's own KDoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
 | [`tools/`](tools/) | the reflector `signatures.sh` runs, and the module table it reads |
@@ -29,21 +30,17 @@ files ever name different releases, or if a jar in the list is at another versio
 
 ## What this arm does *not* install
 
-A JDK, and TeaVM. It compiles Kotlin to JVM bytecode and hands that bytecode to the Java arm's
-second half, so `install-kotlin.sh` **runs** `install-java.sh` rather than installing a second
-JDK beside it. One JDK per machine, one place where the TeaVM release is decided, and one
-`crates/gg/src/sandbox/language/jvm.rs` where both arms find them.
+A JDK, and TeaVM. It compiles Kotlin to JVM bytecode and hands that bytecode to the road it
+shares with the Java arm, so `install-kotlin.sh` **runs** `install-java.sh` rather than
+installing a second JDK beside it. One JDK per machine, one place where the TeaVM release is
+decided, and one `crates/gg/src/sandbox/language/jvm.rs` where both arms find them.
 
-## The one directory that is not a classpath
+## What a program is
 
-`kotlin-home/lib`. gg compiles a model's program as a Kotlin **script**, because Kotlin refuses
-`object`, `interface`, `enum class`, `typealias` and `private fun` as *local* declarations —
-so wrapping a reply in a function gg declares would refuse five things a Kotlin author writes
-without thinking. The compiler loads its scripting plugin by four **unversioned** file names
-out of that tree, which is a Kotlin distribution's layout rather than a Maven repository's, so
-the installer lays one out. Without it every program on this arm fails with
-`SCRIPTING_ERROR: Unable to evaluate script, no scripting plugin loaded` — a sentence about
-gg's packaging wearing the shape of a diagnostic about the model's program.
+A whole Kotlin file: the `import` lines the model wrote, and a `fun main()` with no parameters.
+gg writes nothing into it, so the compiler reads the reply byte for byte and every diagnostic and
+every stack frame is already in the model's own coordinates. TeaVM's `WEBASSEMBLY_WASI` backend
+turns the bytecode into a core module and gg encodes that as the component the turn runs.
 
 ## The surface is thirteen packages, and a program writes a name in full
 
@@ -58,20 +55,17 @@ Idiomatic Kotlin is a **top-level function in a package**, which is the closest 
 has to a free function, so that is what these are. There is no holder object, no static class,
 and nothing that has to be in scope before anything can be reached.
 
-**gg writes no import header, and a program still needs none.** A fully-qualified Kotlin name
-resolves from the root package with nothing above it — a model's program has no `package` line,
-so it is itself in the root one — and `gg.files.readFile("main.kt")` is therefore a call a reply
-can write as it stands. That keeps the substrate's headline property intact: *a reply with no
-`import` in it is compiled byte for byte, with a shift of zero*, where every other compiled arm
-writes a header and moves every diagnostic back over it.
+**gg writes no import into a program, and a program has two ways to reach a name.** A
+fully-qualified Kotlin name resolves from the root package with nothing above it — a model's
+program has no `package` line, so it is itself in the root one — and `gg.files.readFile("main.kt")`
+is a call a reply can write as it stands. The other is `import gg.files.*`, which is the line every
+module's catalogue entry states and what a Kotlin author writes to reach a package's top-level
+functions and the types its signatures name.
 
-A star import per package was the alternative and it **buys nothing**. Every name in this arm's
-documentation is written in full — `gg.files.readFile` is the fully-qualified name the catalogue
-carries and the spelling a model reads — so a header of star imports would shorten nothing a model
-was ever going to write, while putting a line per module in front of every program. They would also
-cost something: two modules are free to declare a type of the same name, and two star imports
-decide between them by a rule that is nowhere in the call. A program that wants the short form
-still writes its own import — gg hoists it — and picks which names it is importing.
+`gg.log` is the one declaration outside those thirteen packages. It writes a line to the run's own
+log, which reaches the operator and never the model, and it is outside the catalogue on the terms
+every arm's `console.log` is: the catalogue describes the capability modules and this belongs to
+none of them. Standard output reaches nobody at all.
 
 The bridge is out of a program's reach, and by a stronger fence than a package alone would give
 it. Everything in [`src/gg/internal/`](src/gg/internal/) is `internal`, which in Kotlin means
@@ -104,16 +98,14 @@ Each of them can only go one way, and where each goes is the argument:
   `InProcessBuildStrategy` on gg's behalf — is a single `.java` file at
   `crates/gg/src/sandbox/checkers/kotlin.compiler.java`, assembled with the JVM arms' shared
   back end and run by the JDK's **single-file source-code launcher**.
-- The **SDK** is a jar, because a classpath entry is what Kotlin calls a library, and it is
-  **committed** rather than installed beside TeaVM. The image is built separately from the
-  binary that runs in it, so an SDK living there could be a different vintage from the gg whose
-  catalogue describes it — and a model shown one surface in its prompt and compiled against
-  another is the failure this whole seam is built to prevent. Committed, the jar travels with
-  the gg that describes it — and it is the half of the pair that can be committed stale, since
-  the catalogue is reflected out of the same `src/` on every build, which is why
-  [`scripts/ci/contract-drift.sh`](../../scripts/ci/contract-drift.sh) re-cuts and diffs the
-  jar. `build.sh` fixes every jar entry's timestamp and sorts the entry list, so two builds of
-  identical sources are identical bytes.
+- The **SDK** is a jar, because a classpath entry is what Kotlin calls a library, and it rides
+  inside gg's own binary rather than being installed beside TeaVM. The image is built separately
+  from the binary that runs in it, so an SDK living there could be a different vintage from the gg
+  whose catalogue describes it — and a model shown one surface in its prompt and compiled against
+  another is the failure this whole seam is built to prevent. `crates/gg-sandbox-artifacts/kotlin`
+  cuts it on every build of gg, out of the same `src/` the catalogue is reflected from, so the two
+  cannot be two vintages. `build.sh` fixes every jar entry's timestamp and sorts the entry list, so
+  two builds of identical sources are identical bytes.
 
 One detail of that jar is a measured trap rather than a preference: it carries
 `META-INF/gg.kotlin_module` as well as its class files. That file is what tells the compiler
@@ -157,14 +149,14 @@ as a paragraph where it expected a summary — fails on the author instead.
 
 ## Where the rest of this arm is
 
-- `crates/gg/src/sandbox/language/kotlin.compile.rs` — the warm-JVM pool, the four classpaths,
-  the three failure bands and the generated entry class.
-- `crates/gg/src/sandbox/language/kotlin.source.rs` — the script shape, the import hoist and the
-  export scan.
+- `crates/gg/src/sandbox/language/kotlin.compile.rs` — the warm-JVM pool, the three classpaths,
+  the four failure bands and the generated entry class.
+- `crates/gg/src/sandbox/language/kotlin.source.rs` — the one convention a program keeps, the
+  code-module wrapper and the export scan.
 - `crates/gg/src/sandbox/language/kotlin.substrate.test.rs` — real Kotlin through gg's real
   linker, membrane and store.
 - `crates/gg/src/sandbox/language/kotlin.surface.test.rs` — every gg tool driven through that
   membrane from its Kotlin spelling, the agreement gate over the generated catalogue, and every
   declared library driven into the real compiler.
 - [`gg/languages/kotlin.md`](../../apps/docs/src/content/docs/gg/languages/kotlin.md) — the
-  prose, including why a program is a script.
+  prose, including what a program is and what this toolchain is not.

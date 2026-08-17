@@ -2,13 +2,16 @@
 # Build the **Rust** program language's library set, into `$GG_ARTIFACTS_OUT_DIR`:
 #
 #   rust.libraries.tar.gz   every `.rlib` a model's program is compiled against, gzipped.
+#   rust.adapter.wasm       the pinned `wasi_snapshot_preview1` REACTOR adapter, which turns the
+#                           preview1 core module `rustc` emits into the preview 2 component gg's
+#                           engine instantiates.
 #   rust.toolchain.json     what they were built by and what is in them.
 #
 # gg embeds both with `include_bytes!`/`include_str!` and unpacks the first, once per machine, into
 # a shared read-only directory it then names on `rustc -L`. See
 # `crates/gg/src/sandbox/language/rust.compile.rs`.
 #
-# WHY THE SET RIDES INSIDE gg's BINARY AND THE COMPILER DOES NOT. `rustc` is ~376 MB with its wasm standard
+# WHY THE SET RIDES INSIDE gg's BINARY AND THE COMPILER DOES NOT. `rustc` is ~380 MB with its wasm standard
 # library and cannot ride inside a single static `tcab` binary, so it is installed into the gg
 # toolchain image (`containers/gg-toolchains/Dockerfile`) and found on `PATH` at run time. The rlibs
 # go the other way: they are 9.4 MB gzipped — most of it `regex`, whose `regex-syntax` and
@@ -40,6 +43,8 @@ source "$HERE/rust-version.sh"
 # The destination, which is required and has no default — see the file itself for why.
 # shellcheck source=scripts/gg-artifacts-out-dir.sh
 source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+# shellcheck source=scripts/gg-downloads.sh
+source "$ROOT/scripts/gg-downloads.sh"
 
 # ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
 # rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
@@ -110,7 +115,7 @@ mkdir -p "$STAGE"
 # different size. Two things followed, and the second is the worse one: the shipped rlibs baked in
 # the builder's home directory, which `rustc` then prints in diagnostics gg shows a MODEL; and
 # `scripts/build-gg-static.sh` exports `RUSTFLAGS=-C target-feature=+crt-static` for the host binary,
-# which arrived here encoded and was applied to a `wasm32-unknown-unknown` compile nobody intended it
+# which arrived here encoded and was applied to a wasm compile nobody intended it
 # for. Unsetting it is what makes this arm's compile decided here rather than by whatever invoked it.
 unset CARGO_ENCODED_RUSTFLAGS
 export RUSTFLAGS="--remap-path-prefix=$HERE=/gg/sdk --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/gg/cargo"
@@ -215,9 +220,20 @@ cat >"$GG_ARTIFACTS_OUT_DIR/rust.toolchain.json" <<EOF
   "rustc": "$GG_RUST_VERSION",
   "target": "$GG_RUST_TARGET",
   "witBindgen": "$GG_WIT_BINDGEN_VERSION",
+  "adapter": "$GG_WASMTIME_ADAPTER_VERSION",
   "crates": [$crates_json]
 }
 EOF
+
+# --- The adapter ------------------------------------------------------------
+# COPIED FROM A CACHE, NOT DOWNLOADED. `scripts/gg-downloads.sh` resolves the pinned file from an
+# override, the toolchain image, or a version-stamped per-user cache, and only downloads on a
+# machine no installer has touched. THE PIN IS THIS ARM'S OWN — see `rust-version.sh` for why the
+# C++ and Swift arms keeping separate ones matters.
+echo "==> rust.adapter.wasm"
+cp "$(gg_wasmtime_adapter "$GG_WASMTIME_ADAPTER_VERSION" "$(gg_wasmtime_adapter_url)")" \
+	"$GG_ARTIFACTS_OUT_DIR/rust.adapter.wasm"
+test -s "$GG_ARTIFACTS_OUT_DIR/rust.adapter.wasm"
 
 # --- Pack -------------------------------------------------------------------
 # Sorted names, fixed mtime, fixed owner: the tarball is content-addressed by gg (its digest keys
@@ -257,5 +273,6 @@ gzip -9 -n -c "$BUILD/rust.libraries.tar" >"$GG_ARTIFACTS_OUT_DIR/rust.libraries
 # now, on every build, before a single rlib is produced.
 
 echo "==> wrote"
-ls -la "$GG_ARTIFACTS_OUT_DIR/rust.libraries.tar.gz" "$GG_ARTIFACTS_OUT_DIR/rust.toolchain.json"
+ls -la "$GG_ARTIFACTS_OUT_DIR/rust.libraries.tar.gz" "$GG_ARTIFACTS_OUT_DIR/rust.adapter.wasm" \
+	"$GG_ARTIFACTS_OUT_DIR/rust.toolchain.json"
 cat "$GG_ARTIFACTS_OUT_DIR/rust.toolchain.json"
