@@ -46,9 +46,10 @@
 //! * **A second compilation unit that names the model's.** A generated entry class calling into a
 //!   class the model's statements were placed in, a `GlobalUsings.cs` beside the program, a shell
 //!   that calls `main`. Every byte the model wrote is still there, in its own file.
-//! * **An SDK in scope with no line the model wrote.** A precompiled header carrying gg's surface, a
-//!   re-exported import, a prelude glob, a scope of names handed to an evaluator. Nothing is added
-//!   to the source; the compiler is simply told the names already exist.
+//! * **A library in scope with no line the model wrote.** A precompiled header, a re-exported
+//!   import, a prelude glob, a scope of names handed to an evaluator. Nothing is added to the
+//!   source; the compiler is simply told the names already exist — and it is as much a violation
+//!   when the names are the language's own standard library as when they are gg's SDK.
 //!
 //!   The shape that cost the most to delete was evaluating a program as the body of a function,
 //!   which the ECMAScript arms once did: beyond the names it bought, a top-level `return` ended the
@@ -277,11 +278,18 @@ const UNCONVERTED: &[Unconverted] = &[
     Unconverted {
         arm: GgProgramLanguage::Cpp,
         half: Half::Module,
-        did: Did::Wrapped,
+        // `Rewritten` rather than `Wrapped` because the hoist MOVES a line the author wrote: an
+        // `#include` at the module's top level is lifted into the global module fragment, so the
+        // handed bytes are no longer present whole and in order. `Did::Rewritten` names "a hoisted
+        // line" as exactly this shape. The move is the one this arm cannot avoid — `#include` is
+        // textual, and one left inside `export namespace lib::<key>` would expand the header into
+        // that namespace — and every moved line carries a `#line` stating where its author wrote it,
+        // so no diagnostic moves with it.
+        did: Did::Rewritten,
         adds: "export module lib.Module;\nexport namespace lib::module {",
         instead: "compiles the module as a named C++ module exporting a namespace it declares, \
-                  under an include of gg's surface in the module's own global fragment, anchored by \
-                  a `#line` directive",
+                  under an include of gg's surface and the author's own includes hoisted beside it \
+                  in the module's own global fragment, anchored by `#line` directives",
     },
     // ---- csharp ---------------------------------------------------------------------------------
     Unconverted {

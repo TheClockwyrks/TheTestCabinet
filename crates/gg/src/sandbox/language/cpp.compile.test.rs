@@ -117,9 +117,9 @@ fn every_header_the_manifest_claims_is_one_the_prelude_really_includes() {
 
 #[test]
 fn a_compiler_that_said_nothing_is_never_reported_as_the_models_failure() {
-    // The band the study needs kept apart: a crash, a timeout and a precompiled header the compiler
-    // could not read all exit non-zero, and reporting any of them as "your program did not compile"
-    // sends a model rewriting a program that was never wrong.
+    // The band the study needs kept apart: a crash, a timeout and a toolchain the compiler could not
+    // read all exit non-zero, and reporting any of them as "your program did not compile" sends a
+    // model rewriting a program that was never wrong.
     match classify(&report(false, ""), &authored()) {
         Err(PrepareFailure::Toolchain(message)) => {
             assert!(
@@ -269,31 +269,14 @@ fn the_toolchain_is_looked_for_where_the_installer_and_the_image_put_it() {
     );
 }
 
-#[test]
-fn the_precompiled_headers_key_moves_when_the_compiler_is_reinstalled() {
-    // A PCH may only be read by the clang that wrote it AND records the identity of every header it
-    // precompiled, so a wasi-sdk reinstalled at the same version invalidates one without changing
-    // any version anybody wrote down. The stamp is what makes the shared directory's name move with
-    // it; without it, a reinstall would leave a stale PCH that every compile then failed to load.
-    let home = wasi_sdk_home().expect("resolving the wasi-sdk home never fails");
-    let stamp = compiler_stamp(&home);
-    assert_ne!(
-        stamp,
-        "absent",
-        "no compiler at {} to stamp — run scripts/ci/install-wasi-sdk.sh",
-        home.display()
-    );
-    assert_eq!(
-        stamp,
-        compiler_stamp(&home),
-        "the stamp is not a function of the compiler alone"
-    );
-    assert_eq!(
-        compiler_stamp(Path::new("/nonexistent/gg-wasi-sdk")),
-        "absent",
-        "a missing compiler must stamp to something rather than panicking"
-    );
-}
+// WHAT USED TO BE HERE: `the_precompiled_headers_key_moves_when_the_compiler_is_reinstalled`, which
+// asserted that the shared directory a precompiled prelude was written into was keyed on a stamp of
+// the compiler binary — because a PCH may only be read by the clang that wrote it, so a wasi-sdk
+// reinstalled at the same version invalidated one without changing any version anybody wrote down.
+//
+// There is no PCH. Nothing is put in front of a C++ program, so nothing is precompiled ahead of one,
+// so there is no shared artifact to key and no stamp to move. The test has no subject left rather
+// than a weaker one, and `compiler_stamp` is gone with it.
 
 #[test]
 fn the_flags_that_have_to_agree_are_the_ones_the_prebuilt_objects_were_built_with() {

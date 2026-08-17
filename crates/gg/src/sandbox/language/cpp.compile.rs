@@ -3,9 +3,10 @@
 //! # The strategy, in one sentence
 //!
 //! A C++ program is **compiled on the host, per turn, into a component of its own**: one `clang++`
-//! from wasi-sdk over the model's reply, against a **precompiled** prelude and gg's prebuilt shell
-//! and bindings, then an in-process [`wit_component`] encode with the pinned preview1 adapter — and
-//! what crosses the membrane is not source at all but the artifact gg's engine instantiates.
+//! from wasi-sdk over the model's reply, against gg's prebuilt shell and bindings and whatever
+//! headers the reply itself included, then an in-process [`wit_component`] encode with the pinned
+//! preview1 adapter — and what crosses the membrane is not source at all but the artifact gg's
+//! engine instantiates.
 //!
 //! It is the third arm of that shape, after [Rust](super::super::rust) and [Swift](super::super::swift), and it
 //! inherits the seam Rust grew and the preview1 adaptation Swift added:
@@ -16,9 +17,11 @@
 //!
 //! **A model's reply is compiled verbatim, as `main.cpp`.** No wrapper, no prologue, no `#include`
 //! line gg wrote, and therefore **no line offset at all** — a diagnostic at line 7 is line 7 of what
-//! the model wrote. gg's own surface is reached by the reply's own `#include <gg/files.hpp>`: the
-//! header is on the compile's include path and its bodies are in the `sdk.o` every artifact links,
-//! which is packaging, and nothing gg passes puts a name of that SDK in scope.
+//! the model wrote. Every name a program uses is reached through a line that program wrote, gg's own
+//! surface and the C++ standard library alike: `#include <gg/files.hpp>` for the first,
+//! `#include <vector>` for the second. gg's headers are on the compile's include path and their
+//! bodies are in the `sdk.o` every artifact links, which is packaging, and nothing gg passes puts a
+//! name — of the SDK or of libc++ — in scope.
 //!
 //! Like [Swift](super::super::swift::compile)'s, that is forced rather than chosen, and C++ forces it
 //! harder than any arm before it. A function-body wrapper — the shape [Rust](super::super::rust) uses —
@@ -34,43 +37,25 @@
 //! name at prepare time — see [`source::defines_main`](super::source::defines_main) for why the
 //! linker cannot be asked that question and gg has to.
 //!
-//! # The precompiled header, which is what makes this arm affordable
+//! # The prelude is a declaration, not a compile input
 //!
-//! Parsing the prelude (`packages/gg-sandbox-cpp/Sources/prelude.hpp`) — the 53 standard-library
-//! headers a C++ author reaches for — costs the best part of a second of every compile. Measured on
-//! this repository's dev container, aarch64, best of five, on two programs: a small one that logs a
-//! line, and the ranges/format/map program this module's cost table also quotes.
+//! `packages/gg-sandbox-cpp/Sources/prelude.hpp` is 53 `#include` lines under `// == Heading ==`
+//! groups, and **nothing puts it in front of anything**. It is where this arm *declares* which
+//! libraries it makes available: `build.sh` reads its include lines into the manifest's
+//! [header list](Manifest::headers), the reflector reads its groups into the catalogue's `libraries`
+//! section, and a [compile failure](crate::agent) quotes that set back to the model group by group.
+//! A program that wants `std::vector` writes `#include <vector>`, exactly as it writes
+//! `#include <gg/files.hpp>` for gg's own surface.
 //!
-//! | | small | realistic |
-//! | --- | --- | --- |
-//! | `clang++` with no PCH, prelude included as text | 836 ms | 1581 ms |
-//! | `clang++` with the PCH | **90 ms** | **952 ms** |
+//! Nothing is precompiled and nothing is named to a compile with `-include-pch`. The
+//! [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) is that everything a
+//! program uses it imports, and it holds for the standard library too, so no header reaches a
+//! reply that asked for none of it.
 //!
-//! **What the PCH does not carry is gg's own surface**, and that costs a measured 33 ms a turn on
-//! both programs — the parse of `<gg.hpp>` the reply's own `#include` now asks for. It is the price
-//! of the [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) that every SDK
-//! name a program writes is reached through a line that program wrote, and it is 3% of a realistic
-//! turn.
-//!
-//! So the PCH is built, and three properties of it decide where it lives.
-//!
-//! * It is **compiler-version-private and path-bearing**: only the clang that wrote one may read it,
-//!   and it records the absolute path of every header it precompiled. A PCH built in this
-//!   repository's checkout could not be read by the wasi-sdk in a run image, so putting 28 MB of one
-//!   into the archive would be shipping something no other machine can use.
-//! * It is a pure function of the prelude and the toolchain, which is exactly what a
-//!   [shared toolchain directory](shared_toolchain_dir) is for.
-//! * It is **built by the first compile**, not by [`warm`], because building it means running a
-//!   compiler and a compiler is spawned through a [`PrepareContext`] — which a warm-up does not
-//!   have. The first program of a process pays ~1.1 s more than the rest; every process after that
-//!   on the same machine pays nothing, because the directory is already there.
-//!
-//! The key folds in the pinned release, a digest of the embedded guest archive (which carries the
-//! prelude) **and a stamp of the compiler binary itself** — its size and its modification time.
-//! That last part is not fussiness: a wasi-sdk reinstalled at the same version writes new files with
-//! new timestamps, and clang refuses a PCH whose inputs have moved. Without the stamp in the key,
-//! a reinstall would leave a stale PCH that every compile then failed to load, for as long as the
-//! directory survived.
+//! What that costs is a parse per compile of the headers the program named, and it is bounded above
+//! by the 836 ms / 1581 ms column of that measurement: those two numbers are a program that included
+//! **the whole set** as text, and a program includes what it uses. The cost table below is the
+//! measurement taken under the PCH and is now a floor rather than a figure.
 //!
 //! # Exceptions work, and enabling them cost the workspace one build feature
 //!
@@ -117,11 +102,13 @@
 //!
 //! # What it costs
 //!
-//! Measured in this repository's dev container, aarch64, 18 cores:
+//! Measured in this repository's dev container, aarch64, 18 cores — the `clang++` row **under the
+//! precompiled header this arm no longer has**, so it is the floor a program that includes nothing
+//! approaches rather than what a program that includes `<ranges>` and `<format>` pays:
 //!
 //! | | small program | ranges/format/map program |
 //! | --- | --- | --- |
-//! | `clang++`, with the PCH warm | **~90 ms** | ~0.95 s |
+//! | `clang++` | **~90 ms** + the parse of what the program included | ~0.95 s + the same |
 //! | The [`wit_component`] encode | ~2 ms | ~7 ms |
 //! | Artifact | ~830 KB | ~4.2 MB |
 //! | wasmtime `Component::new`, at `OptLevel::None`, **per turn** | ~25 ms | ~220 ms |
@@ -150,12 +137,14 @@
 //! attached to the global module rather than exported, so a program that imports the module reaches
 //! `lib::<key>` and earns *use of undeclared identifier 'gg'* for anything of gg's it wrote no line
 //! for. A header put in front of the model's file could not hold that line: `#include` is textual,
-//! and a header carrying gg's surface declares it in whatever translation unit reads it.
+//! and a header carrying gg's surface declares it in whatever translation unit reads it. **An
+//! author's own `#include` lines are [hoisted](super::source::namespaced) into that same fragment**,
+//! which is why they reach no importer either.
 //!
 //! The `import lib.<key>;` lines themselves are in one generated [file](BINDER_FILE) named with
 //! `-include`, which leaves the primary file's line numbering alone — a diagnostic at line 7 is line
-//! 7 with three skills loaded. Each module is compiled on its own, so a module reaches gg and the
-//! standard library and no other module.
+//! 7 with three skills loaded. Each module is compiled on its own, so a module reaches gg, the
+//! headers it included itself, and no other module.
 //!
 //! A module is also compiled **alone** when it is read — [`compile_module`], one `-fsyntax-only`
 //! over the namespaced file as its own module interface unit — which is what buys its author a
@@ -164,15 +153,12 @@
 //!
 //! # Isolation
 //!
-//! This arm satisfies the [contract](super::compile) the way the Rust and Swift arms do, with one
-//! addition of its own.
+//! This arm satisfies the [contract](super::compile) the way the Rust and Swift arms do.
 //!
 //! The embedded archive is unpacked into a [shared toolchain directory](shared_toolchain_dir),
-//! content-keyed, placed by rename and sealed read-only; `clang++` only ever **reads** it. The PCH
-//! lives in a second such directory and is **written once**, by whichever preparation gets there
-//! first, into `place_tree`'s own staging directory under a process-unique name — so two
-//! preparations racing to build it either both win or one discards its copy for an identical one,
-//! and neither can see the other's half-written file.
+//! content-keyed, placed by rename and sealed read-only; `clang++` only ever **reads** it. That is
+//! the whole of what this arm shares between preparations — there is no per-machine build step left
+//! for two of them to race over.
 //!
 //! Everything a compile writes goes into that preparation's own workspace, most of it without this
 //! arm having asked: clang's intermediates go to `TMPDIR` and its module cache under the directory
@@ -202,9 +188,9 @@ use crate::sandbox::{
 };
 
 /// Everything a compile needs on disk that is not the model's own file: the generated WIT header,
-/// gg's hand-written SDK as headers and as a prebuilt object, the prelude the program is compiled
-/// against, gg's shell as source and as a prebuilt object, the compiled bindings object, and the
-/// component-type object that names the world.
+/// gg's hand-written SDK as headers and as a prebuilt object, the prelude this arm declares its
+/// library set in, gg's shell as source and as a prebuilt object, the compiled bindings object, and
+/// the component-type object that names the world.
 ///
 /// Embedded for the reason the guest components are: gg is copied as a single file into an
 /// ephemeral run container and must carry everything it needs with it. Built by
@@ -242,10 +228,11 @@ const USER_HOME_SUFFIX: &str = ".local/share/tcab/gg-wasi-sdk";
 /// How long one `clang++` may take before it is killed and reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).
 ///
-/// A compile here is ~90 ms warm and ~1 s for a template-heavy program; the worst honest case is a
-/// program whose template instantiation is genuinely deep, which is seconds. Two minutes is
-/// unmistakably a hang, and matches the Swift arm rather than the Rust arm's minute because the
-/// **first** compile of a process additionally builds the precompiled header.
+/// A compile here is a fraction of a second for a program that includes little and ~1.5 s for one
+/// that includes the whole of this arm's library set; the worst honest case is a program whose
+/// template instantiation is genuinely deep, which is seconds. Two minutes is unmistakably a hang,
+/// and matches the Swift arm rather than the Rust arm's minute because every compile on this arm
+/// parses the standard-library headers the program asked for rather than reading a prepared copy.
 const COMPILE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The file a model's reply is compiled as — **verbatim**.
@@ -268,31 +255,26 @@ fn interface_file(key: &str) -> String {
 }
 
 /// Everything a `clang++` invocation on the turn path needs that is not the preparation's own: the
-/// wasi-sdk tree, the unpacked guest and the precompiled prelude.
+/// wasi-sdk tree and the unpacked guest.
 ///
 /// Bundled because all three compiles this arm runs — the module's own check, a bound module's
-/// precompile and the program's build — open with the same six arguments, and a difference between
-/// them would be a module accepted at its read and rejected at a program's compile.
+/// precompile and the program's build — open with the same arguments, and a difference between them
+/// would be a module accepted at its read and rejected at a program's compile.
 struct Toolchain<'a> {
     /// The wasi-sdk tree the compiler comes out of.
     home: &'a Path,
     /// The unpacked guest: gg's headers, shell and prebuilt objects.
     guest: &'a Guest,
-    /// The precompiled standard-library prelude.
-    prelude: &'a Path,
 }
 
 impl Toolchain<'_> {
-    /// Everything shared, resolved once: the toolchain's tree, the unpacked guest and the prelude.
-    fn resolve(context: &PrepareContext) -> Result<(PathBuf, &'static Guest, PathBuf), String> {
-        let home = wasi_sdk_home()?;
-        let guest = guest()?;
-        let prelude = precompiled_prelude(&home, guest, context)?;
-        Ok((home, guest, prelude))
+    /// Everything shared, resolved once: the toolchain's tree and the unpacked guest.
+    fn resolve() -> Result<(PathBuf, &'static Guest), String> {
+        Ok((wasi_sdk_home()?, guest()?))
     }
 
-    /// A `clang++` carrying the arguments every compile on this arm passes: the shared flags, the
-    /// precompiled prelude, gg's include root and this preparation's own path rewrite.
+    /// A `clang++` carrying the arguments every compile on this arm passes: the shared flags, gg's
+    /// include root and this preparation's own path rewrite.
     fn command<'a>(
         &self,
         workspace: &Workspace,
@@ -303,8 +285,6 @@ impl Toolchain<'_> {
             .map_err(|error| format!("{}{error}", spawn_prefix(self.home)))?;
         command
             .args(shared_flags(self.home))
-            .arg("-include-pch")
-            .arg(self.prelude)
             // **Where gg's headers are**, which is the whole of what this argument does: it makes
             // `#include <gg/files.hpp>` resolve. It is packaging rather than injection — the names
             // in that header are declared by the line the model wrote and by nothing else — and it
@@ -341,9 +321,6 @@ const PREPARATION_PREFIX: &str = "/gg";
 /// What the wasi-sdk tree is called in anything the compiler records — the file a libc++ hardening
 /// failure names, above all.
 const TOOLCHAIN_PREFIX: &str = "/wasi-sdk";
-
-/// The precompiled prelude, inside its shared directory.
-const PCH_FILE: &str = "prelude.pch";
 
 /// **`-g1`, which is line tables and nothing else** — and it does two jobs rather than one.
 ///
@@ -392,36 +369,30 @@ const EXCEPTION_FLAGS: &[&str] = &["-fwasm-exceptions", "-mllvm", "-wasm-use-leg
 /// `libc++ Hardening: assertion vector[] index out of bounds failed` at the model's own line.
 const HARDENING_FLAG: &str = "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE";
 
-/// **Everything the precompiled prelude and the program that reads it must agree on**, in one place
-/// because they must be one list.
+/// **Everything every `clang++` this arm spawns passes**, in one place because the three of them —
+/// a module's own check, a bound module's precompile and the program's build — must be one list.
 ///
-/// clang refuses a PCH whose language options differ from the invocation reading it, and — worse,
-/// because it is silent — a `-D` that differs is a macro the PCH was *parsed under* and the program
-/// is not. That is not theoretical: this arm's hardening flag was added, the prelude was already
-/// precompiled without it, and `values[9]` went on reading past the end of the vector while every
-/// command line said it should not. So the list is written once, passed by both, and
-/// [fingerprinted into the shared directory's key](self::build_prelude) — a flag change writes a new
-/// key rather than reading a prelude parsed under the old one.
+/// A difference between them is a module accepted at its read and rejected at a program's compile,
+/// and a `-D` that differs is worse because it is silent: this arm's hardening flag was once passed
+/// by the program's compile and not by the header it was compiled against, and `values[9]` went on
+/// reading past the end of the vector while every command line said it should not.
 fn shared_flags(home: &Path) -> Vec<String> {
     let mut flags = vec![
         format!("--target={}", target()),
         format!("-std={}", language_standard()),
-        // The toolchain's own tree, shortened. It is here rather than beside the per-preparation
-        // rewrite below because it has to reach the PRELUDE: libc++ builds a hardening failure's
-        // message out of `__FILE__`, and `__FILE__` is fixed when the header is parsed — which for
-        // this arm is when the prelude is precompiled. Mapped there, a model reads
-        // `/wasi-sdk/…/vector.h:412` rather than ninety characters of somebody's home directory, on
-        // every frame of every backtrace. A rewrite of what the compiler RECORDS, which can change
-        // no verdict.
+        // The toolchain's own tree, shortened, beside the per-preparation rewrite the command adds:
+        // libc++ builds a hardening failure's message out of `__FILE__`, so without this a model
+        // reads ninety characters of somebody's home directory on every frame of every backtrace
+        // rather than `/wasi-sdk/…/vector.h:412`. A rewrite of what the compiler RECORDS, which can
+        // change no verdict.
         format!("-ffile-prefix-map={}={TOOLCHAIN_PREFIX}", home.display()),
     ];
     flags.extend(EXCEPTION_FLAGS.iter().map(|flag| (*flag).to_string()));
     flags.push(HARDENING_FLAG.to_string());
     // Measured, not assumed: `-Oz` is ~270 ms a turn dearer end to end than `-O0` once the engine's
     // own `Component::new` is counted, and what it buys is guest speed against a budget nothing
-    // uses. clang additionally refuses a PCH built at another level outright — `OptimizationLevel
-    // differs in precompiled file` — which is why it is in this list rather than beside the link
-    // options.
+    // uses. It is in this list rather than beside the link options because a module's interface and
+    // the program that imports it are compiled at one level or not at all.
     flags.push("-O0".to_string());
     flags.push(DEBUG_INFO.to_string());
     flags
@@ -433,8 +404,8 @@ fn shared_flags(home: &Path) -> Vec<String> {
 struct Manifest {
     /// The wasi-sdk release a program is compiled by.
     wasi_sdk: String,
-    /// The clang release inside it, as the compiler reports itself. What a diagnostic's reader
-    /// needs, and what the PCH's shared directory is keyed on.
+    /// The clang release inside it, as the compiler reports itself — what a diagnostic's reader
+    /// needs in order to know whose diagnostic it is.
     clang: String,
     /// The target triple a program is compiled to.
     target: String,
@@ -446,12 +417,14 @@ struct Manifest {
     /// The wasmtime release [`ADAPTER`] came from.
     #[allow(dead_code)]
     adapter: String,
-    /// Every standard-library header the [prelude](self::GUEST_TAR_GZ) puts in front of a program,
-    /// read out of the prelude that actually ships rather than restated — the same rule every other
-    /// arm's library manifest follows.
+    /// **This arm's declared library set**: every standard-library header a program here may
+    /// include, read out of the [prelude](self::GUEST_TAR_GZ) that declares it rather than restated
+    /// — the same rule every other arm's library manifest follows.
     ///
-    /// Read only by `prelude_headers`, which is a gate rather than a runtime need: nothing on the
-    /// turn path asks what is in the prelude, because the precompiled header already answers it.
+    /// A declaration rather than a compile input: the prelude is put in front of nothing, and a
+    /// program reaches `<vector>` by writing `#include <vector>`. Read only by `prelude_headers`,
+    /// which is a gate rather than a runtime need — what a model is *told* the set is comes from the
+    /// catalogue, reflected out of the same file.
     #[cfg_attr(not(test), allow(dead_code))]
     headers: Vec<String>,
     /// Every file in the guest archive.
@@ -504,11 +477,11 @@ pub(super) fn guest_files() -> impl Iterator<Item = &'static str> {
     manifest().files.iter().map(|file| file.name.as_str())
 }
 
-/// Every standard-library header a program of this language is compiled with already included.
+/// Every standard-library header this arm declares a program may include.
 ///
 /// `#[cfg(test)]` because it is a gate rather than a runtime need — the two readers of the list are
-/// the [surface](super::surface) gate, which compiles a program using every group in it, and the
-/// [compile](self::tests) one, which holds the manifest to the prelude that actually ships.
+/// the [surface](super::surface) gate, which compiles a program that includes every group in it, and
+/// the [compile](self::tests) one, which holds the manifest to the prelude that actually ships.
 #[cfg(test)]
 pub(super) fn prelude_headers() -> impl Iterator<Item = &'static str> {
     manifest().headers.iter().map(String::as_str)
@@ -516,11 +489,10 @@ pub(super) fn prelude_headers() -> impl Iterator<Item = &'static str> {
 
 /// Unpack the embedded archive now, so the first compile does not.
 ///
-/// The whole of this language's warm-up that can be done without a compiler: 32 KB decompressed,
-/// once per machine. The **precompiled header** is deliberately not built here — building one means
-/// running `clang++`, and a compiler is spawned through a [`PrepareContext`] a warm-up does not
-/// have. The result is dropped, because a failure here is the failure the first compile will make,
-/// and there it is classified, counted and reported.
+/// The whole of this arm's warm-up, and the whole of what it *can* be: 32 KB decompressed, once per
+/// machine. There is nothing else to prepare — no header is compiled in advance of a program,
+/// because no header is put in front of one. The result is dropped, because a failure here is the
+/// failure the first compile will make, and there it is classified, counted and reported.
 pub(super) fn warm() {
     let _ = guest();
 }
@@ -565,19 +537,15 @@ pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
-    let (home, guest, prelude) = Toolchain::resolve(context).map_err(PrepareFailure::Toolchain)?;
-    let toolchain = Toolchain {
-        home: &home,
-        guest,
-        prelude: &prelude,
-    };
+    let (home, guest) = Toolchain::resolve().map_err(PrepareFailure::Toolchain)?;
+    let toolchain = Toolchain { home: &home, guest };
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
     let file = super::source::module_file(super::source::CHECK_KEY);
     workspace
         .write(
             &file,
-            &super::source::namespaced(source, super::source::CHECK_KEY)?,
+            &super::source::namespaced(source, super::source::CHECK_KEY),
         )
         .map_err(PrepareFailure::Toolchain)?;
 
@@ -621,7 +589,7 @@ fn precompile_module(
     workspace
         .write(
             &file,
-            &super::source::namespaced(&module.source, &module.name)?,
+            &super::source::namespaced(&module.source, &module.name),
         )
         .map_err(PrepareFailure::Toolchain)?;
     let interface = workspace.output().join(interface_file(&module.name));
@@ -663,12 +631,8 @@ fn compile(
         )));
     }
 
-    let (home, guest, prelude) = Toolchain::resolve(context).map_err(PrepareFailure::Toolchain)?;
-    let toolchain = Toolchain {
-        home: &home,
-        guest,
-        prelude: &prelude,
-    };
+    let (home, guest) = Toolchain::resolve().map_err(PrepareFailure::Toolchain)?;
+    let toolchain = Toolchain { home: &home, guest };
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
     // Verbatim. Nothing is prepended, appended or re-indented, which is what makes every line and
@@ -793,7 +757,7 @@ fn invoke_clang(
 /// model's own program, and the code modules in its scope, which a skill's author wrote.
 ///
 /// Named rather than pattern-matched, because the direction the classification may be wrong in is
-/// only one: a diagnostic located in gg's own prelude or shell reported to a model as "your program
+/// only one: a diagnostic located in gg's own headers or shell reported to a model as "your program
 /// did not compile" would send it rewriting a program that was never wrong.
 fn authored_files(modules: &[CodeModule]) -> Vec<String> {
     let mut files = vec![PROGRAM_FILE.to_string()];
@@ -858,9 +822,9 @@ fn classify(report: &CompilerReport, authored: &[String]) -> Result<(), PrepareF
     }
     let rendered = rendered(&report.stderr);
     if rendered.is_empty() {
-        // A compiler that could not finish: it crashed, was killed by its timeout, or could not read
-        // the precompiled header. It must never reach the model as "your program did not compile",
-        // because nothing was ever decided about the program.
+        // A compiler that could not finish: it crashed, was killed by its timeout, or could not
+        // read one of its own inputs. It must never reach the model as "your program did not
+        // compile", because nothing was ever decided about the program.
         return Err(PrepareFailure::Toolchain(format!(
             "clang {} {}{}",
             compiler_version(),
@@ -890,7 +854,8 @@ fn classify(report: &CompilerReport, authored: &[String]) -> Result<(), PrepareF
 ///
 /// The same three answers [`classify`] gives and one narrower test of whose failure it is: a
 /// module's own file is the only source in this translation unit, so a diagnostic located anywhere
-/// else is located in gg's prelude and is gg's. There is no linker here and therefore no
+/// else is located in gg's own headers or in the standard library and is gg's. There is no linker
+/// here and therefore no
 /// [undefined symbol](self::UNDEFINED_SYMBOL) row — a module that declares something and never
 /// defines it is a module the program linking it will report, which is the right place for it
 /// because the program is where the call is.
@@ -914,7 +879,7 @@ fn classify_module(report: &CompilerReport, file: &str) -> Result<(), PrepareFai
         ))));
     }
     Err(PrepareFailure::Toolchain(format!(
-        "clang {} rejected gg's own prelude rather than the module: {}",
+        "clang {} rejected gg's own headers rather than the module: {}",
         compiler_version(),
         report.stderr_tail(),
     )))
@@ -1163,7 +1128,7 @@ fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
 const ADAPTER_NAME: &str = "wasi_snapshot_preview1";
 
 // ---------------------------------------------------------------------------------------------
-// The toolchain, the embedded guest and the precompiled prelude
+// The toolchain and the embedded guest
 // ---------------------------------------------------------------------------------------------
 
 /// Where this arm's toolchain tree is: what an operator said, then what a gg run image guarantees,
@@ -1229,9 +1194,9 @@ pub(super) fn guest() -> Result<&'static Guest, String> {
 /// wasi-sdk version reads a different directory rather than another build's files; the write goes
 /// through [`place_tree`], which fills a staging directory, seals it read-only and renames it in.
 ///
-/// Sharing it needs no further argument than that, because `clang++` only ever **reads** it: the
-/// header and the prelude are found by `-I`, the three objects are link inputs, and every artifact
-/// goes to this preparation's own output directory.
+/// Sharing it needs no further argument than that, because `clang++` only ever **reads** it: gg's
+/// headers are found by `-I`, the objects are link inputs, and every artifact goes to this
+/// preparation's own output directory.
 fn materialise() -> Result<Guest, String> {
     let root = shared_toolchain_dir(&format!(
         "cpp-{}-{:016x}",
@@ -1269,132 +1234,6 @@ fn fingerprint(archive: &[u8]) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
     archive.hash(&mut hasher);
     hasher.finish()
-}
-
-/// **The precompiled prelude**, built once per machine and read by every compile after it.
-///
-/// See this module's own documentation for what it saves and why it cannot be shipped. The
-/// mechanics are the seam's: a [shared directory](shared_toolchain_dir) keyed on everything that
-/// could change the bytes, filled through [`place_tree`] — which stages under a process-unique
-/// name, seals the result read-only and renames it in — so two preparations racing to build it
-/// either both win or one discards an identical copy, and neither can read the other's half-written
-/// file.
-///
-/// The key folds in three things and the third is the one worth naming. The pinned wasi-sdk release
-/// and a digest of the embedded archive are the ordinary content-keying every shared directory
-/// here does. **A stamp of the compiler binary** is not: a PCH may only be read by the clang that
-/// wrote it *and* records the absolute path and identity of every header it precompiled, so a
-/// wasi-sdk reinstalled at the same version — new files, new timestamps — invalidates one without
-/// changing any version anybody wrote down. Without the stamp, that would leave a stale PCH in a
-/// directory whose name still looked right, and every compile on the machine would then fail to
-/// load it.
-///
-/// Cached per process once it has **succeeded**, so only the first program of a process pays even
-/// the `place_tree` existence check — and, deliberately, not cached when it has failed. That is the
-/// one place this differs from [`guest`], and the difference is what the two do: unpacking bytes gg
-/// carries fails for reasons that will not have changed by the next turn, and *running a compiler*
-/// fails for reasons that may have — a full disk, a process the machine killed. A run whose first
-/// turn hit one of those would otherwise be a run where every later turn failed with a message
-/// about the first.
-///
-/// **The process cache is keyed on `home`**, which is the same thing the directory it caches is
-/// keyed on. Anything less would undo the care taken over the key below: the compiler stamp is in
-/// there precisely so a reinstalled wasi-sdk cannot leave a stale PCH behind, and a cache in front
-/// of it that answered the same path for every toolchain would hand the second `home` of a process
-/// a PCH built for the first. In production the variable is fixed for a run's lifetime and the
-/// failure direction is safe — clang refuses a foreign PCH, which is a
-/// [toolchain failure](PrepareFailure::Toolchain) rather than anything blamed on a model — so this
-/// is an invariant made *checked* rather than a bug fixed.
-///
-/// The lock is not held across the build, so two preparations that arrive together both build:
-/// `place_tree` is what makes that safe, exactly as it is when two processes race.
-pub(super) fn precompiled_prelude(
-    home: &Path,
-    guest: &Guest,
-    context: &PrepareContext,
-) -> Result<PathBuf, String> {
-    static PRELUDE: std::sync::Mutex<Option<(PathBuf, PathBuf)>> = std::sync::Mutex::new(None);
-    let cached = |built: &Option<(PathBuf, PathBuf)>| match built {
-        Some((keyed, path)) if keyed == home => Some(path.clone()),
-        _ => None,
-    };
-    if let Some(built) = cached(
-        &PRELUDE
-            .lock()
-            .expect("the C++ prelude cache is not poisoned"),
-    ) {
-        return Ok(built);
-    }
-    let built = build_prelude(home, guest, context)?;
-    *PRELUDE
-        .lock()
-        .expect("the C++ prelude cache is not poisoned") =
-        Some((home.to_path_buf(), built.clone()));
-    Ok(built)
-}
-
-/// Build [`precompiled_prelude`]'s directory, once.
-fn build_prelude(home: &Path, guest: &Guest, context: &PrepareContext) -> Result<PathBuf, String> {
-    let flags = shared_flags(home);
-    let root = shared_toolchain_dir(&format!(
-        "cpp-pch-{}-{:016x}-{:016x}-{}",
-        sdk_version(),
-        fingerprint(GUEST_TAR_GZ),
-        fingerprint(flags.join(" ").as_bytes()),
-        compiler_stamp(home),
-    ))?;
-    let tree = root.join("pch");
-    place_tree(&tree, |into| {
-        let report = context
-            .compiler(clang(home))
-            .map_err(|error| format!("{}{error}", spawn_prefix(home)))?
-            .args(&flags)
-            // No `-I`: the prelude is the standard library and nothing else, so there is no header
-            // of gg's own for it to find.
-            .arg("-x")
-            .arg("c++-header")
-            .arg("-o")
-            .arg(into.join(PCH_FILE))
-            .arg(guest.file("prelude.hpp"))
-            .run(COMPILE_TIMEOUT)
-            .map_err(|error| match error.starts_with("could not run") {
-                true => format!("{}{error}", spawn_prefix(home)),
-                false => error,
-            })?;
-        match report.ok {
-            true => Ok(()),
-            false => Err(format!(
-                "clang {} could not precompile gg's own C++ prelude, which is gg's arrangement \
-                 failing rather than any program's: {}{}",
-                compiler_version(),
-                report.status,
-                report.stderr_tail(),
-            )),
-        }
-    })?;
-    Ok(tree.join(PCH_FILE))
-}
-
-/// A stamp of the compiler binary — its size and its modification time — for the
-/// [prelude](precompiled_prelude)'s key.
-///
-/// Deliberately not a digest of a 63 MB shared object, which would be read on every process start
-/// to answer a question a `stat` answers. A reinstall changes both fields; a bit-for-bit identical
-/// reinstall that somehow preserved both would produce a PCH the existing one is identical to.
-///
-/// A compiler that cannot be `stat`ed yields a stamp of `absent`, which keys a directory the build
-/// below will then fail to fill — with the message that names where gg looked, which is the failure
-/// an operator can act on.
-fn compiler_stamp(home: &Path) -> String {
-    let Ok(metadata) = std::fs::metadata(clang(home)) else {
-        return "absent".to_string();
-    };
-    let modified = metadata
-        .modified()
-        .ok()
-        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-        .map_or(0, |since| since.as_secs());
-    format!("{:x}-{:x}", metadata.len(), modified)
 }
 
 #[cfg(test)]

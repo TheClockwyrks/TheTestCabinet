@@ -119,8 +119,7 @@ program's compile as `-fmodule-file=lib.<key>=…` and as a link input. The
 `import lib.<key>;` lines are in one generated file put in front of the model's
 own with `-include`, which leaves the primary file's line numbering alone. A
 `#line` directive states what the author's first line is, so no line number moves
-for a module either. Each module is compiled on its own and reaches gg's surface
-and the standard library.
+for a module either. Each module is compiled on its own.
 
 The module declaration is what keeps gg's surface out of the program. gg writes
 `#include <gg.hpp>` into the module's global module fragment, whose names are
@@ -130,9 +129,16 @@ through a line it wrote. `module` and `import` are the two words a module-name
 component may not be and are both reachable keys, so each is escaped in the
 module name and left alone in the namespace.
 
-A `#include` at a module's top level is refused by name, and the refusal says to
-delete the line. `#include` is textual, so one inside a namespace puts the
-included header inside `lib::<key>`.
+An author's `#include` lines are hoisted into that same fragment beside gg's own,
+above `export module lib.<key>;`. The fragment is where they belong for the
+reason gg's line is there: its names are attached to the global module and reach
+no importer, so a module's own headers stay the module's own. `#include` is
+textual, so a line left inside `export namespace lib::<key>` would nest the
+header in that namespace.
+
+Each hoisted line carries a `#line` stating where its author wrote it, and the
+`#line 1` in front of the body is untouched, so a module's body keeps the
+numbering its author wrote.
 
 A module is also compiled alone with `-fsyntax-only` when it is read, so a
 module that does not build is reported to its author rather than to every

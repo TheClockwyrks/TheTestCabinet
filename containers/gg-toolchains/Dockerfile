@@ -384,14 +384,14 @@ RUN set -eux; \
 # under `TMPDIR` and its module cache under the directory it derives from `HOME`, both of which
 # the calling side has already redirected into the preparation's own tree.
 #
-# One thing this arm produces per MACHINE rather than per invocation is worth naming here,
-# because it is the only toolchain input in this image's history that gg *builds*: a
-# **precompiled header** of the ~55 standard-library headers every program is compiled against.
-# Parsing them costs ~850 ms of every compile and reading the PCH back costs ~40 ms, which is
-# the difference between an ~85 ms floor and a second. It cannot be committed — a PCH is
-# readable only by the clang that wrote it and records the absolute path of every header in it —
-# so it is built into a content-keyed shared toolchain directory, placed by rename and sealed
-# read-only, exactly as the seam's contract requires of anything shared.
+# This arm builds nothing per MACHINE, and that is worth naming because it used to. A
+# **precompiled header** of the ~55 standard-library headers was built into a content-keyed
+# shared toolchain directory by the first compile, worth ~850 ms of parsing on every one after
+# it. It also put those headers in scope of a program that had included none of them, which
+# https://docs.testcabinet.ai/gg/responses-as-code/invariants/ forbids: a program reaches every
+# name it uses through a line it wrote, its language's own standard library included. So it is
+# gone, every compile parses what the program itself asked for, and the only shared directory
+# this arm has left is the read-only unpacking of the archive gg carries.
 #
 # WHAT IS PRUNED, and why each is safe: `lldb` (117 MB), `clang-tidy`, `clang-format`,
 # `clang-scan-deps`, the PE/Mach-O/ELF linker drivers, the `llvm-*` object utilities and

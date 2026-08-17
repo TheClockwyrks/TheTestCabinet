@@ -74,12 +74,28 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
 /// A whole program out of a body of statements, which is what C++ needs and no other arm does.
 ///
 /// It is the one place these tests add anything to what a model would write, and what it adds is
-/// what a model's own reply has to carry: the `#include` that declares gg's surface, and the entry
-/// point C++ has no top level to do without. The umbrella header rather than the thirteen module
-/// ones, because the bodies below reach across most of them and a per-body include list would be a
-/// second copy of what each one calls.
+/// what a model's own reply has to carry: the `#include` lines for the names the body writes, and the
+/// entry point C++ has no top level to do without. The umbrella header rather than the thirteen
+/// module ones, because the bodies below reach across most of them and a per-body include list would
+/// be a second copy of what each one calls.
+///
+/// **The standard headers are on that list now**, and that is the
+/// [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) rather than a
+/// preference: nothing is put in front of a C++ program on this arm, so `std::format` is undeclared
+/// until a program says `#include <format>`. These four are what the bodies below name between them;
+/// a body reaching further writes its own list through [`program_with`].
 fn program(body: &str) -> String {
-    format!("#include <gg.hpp>\n\nint main() {{\n{body}\n  return 0;\n}}\n")
+    program_with(&["<cstdint>", "<format>", "<string>", "<variant>"], body)
+}
+
+/// [`program`] for a body that reaches further than the shared four — the standard headers first,
+/// then gg's umbrella, which is the order this arm's own SDK writes its includes in.
+fn program_with(headers: &[&str], body: &str) -> String {
+    let includes: String = headers
+        .iter()
+        .map(|header| format!("#include {header}\n"))
+        .collect();
+    format!("{includes}\n#include <gg.hpp>\n\nint main() {{\n{body}\n  return 0;\n}}\n")
 }
 
 /// Compile and run one C++ program with `enabled`'s operations offered and no ending group.
@@ -663,9 +679,13 @@ fn cpp_reaches_every_library() {
     // the first. It used to be the guard on a hand-cut archive going stale — a committed `.a` that
     // no longer carried what the catalogue claimed, with nothing to say so. That state is not
     // reachable any more. What is still reachable, and is what this asserts, is the two halves of
-    // one arm DISAGREEING at one vintage: `Sources/prelude.hpp` decides which headers the archive
-    // carries and the catalogue's `libraries` section is reflected separately, so a header added to
-    // one and not the other is a library gg offers a model and the compile refuses.
+    // one arm DISAGREEING at one vintage: `Sources/prelude.hpp` declares which headers this arm says
+    // it makes available and the catalogue's `libraries` section is reflected separately, so a header
+    // added to one and not the other is a library gg offers a model and the compile refuses.
+    //
+    // `prelude.hpp` is a DECLARATION and no longer a compile input. Nothing is put in front of a
+    // program on this arm, so what the list means is "write the include and this header is there",
+    // which is what the program at the bottom of this function measures header by header.
     let catalogue = catalogue();
     let named: Vec<&str> = section(&catalogue, "libraries")
         .iter()
@@ -673,9 +693,9 @@ fn cpp_reaches_every_library() {
         .map(|module| module.as_str().expect("a module is named by a string"))
         .collect();
 
-    // The other direction, which nothing else closes: what the prelude really puts in front of a
-    // program, read off the manifest `build.sh` wrote out of that same file. A header added to the
-    // prelude and left out of a group heading would be a library this arm ships and never mentions.
+    // The other direction, which nothing else closes: the set `build.sh` read out of that same file
+    // into this arm's manifest. A header declared in `prelude.hpp` and left out of a group heading
+    // would be a library this arm ships and never mentions.
     let mut declared: Vec<String> = named
         .iter()
         .map(|module| module.trim_matches(['<', '>']).to_string())
@@ -687,15 +707,31 @@ fn cpp_reaches_every_library() {
     shipped.sort();
     assert_eq!(
         declared, shipped,
-        "the set a model is told it may include and the set the prelude really includes differ"
+        "the set a model is told it may include and the set `prelude.hpp` declares differ"
     );
 
     // And a program that reaches for a representative of each group, written the way a model writes
-    // one: with no `#include` of the standard library at all, because the precompiled prelude is
-    // already in front of it. The one include it does carry is gg's, which is the line every
-    // program on this arm writes for itself.
+    // one: an `#include` line of its own for every library it names, gg's among them. That is what
+    // "the catalogue advertises this header" now costs a program and it is the whole of what it
+    // buys — the header resolves, compiles, links and runs, and nothing was in front of the program
+    // to make it look reachable when it was not.
     let outcome = evaluate(
-        &prepare(&program(
+        &prepare(&program_with(
+            &[
+                "<algorithm>",
+                "<chrono>",
+                "<expected>",
+                "<format>",
+                "<map>",
+                "<numbers>",
+                "<random>",
+                "<ranges>",
+                "<regex>",
+                "<sstream>",
+                "<string>",
+                "<utility>",
+                "<vector>",
+            ],
             r####"
   std::vector<int> values{3, 1, 2};
   std::ranges::sort(values);
@@ -727,7 +763,7 @@ fn cpp_reaches_every_library() {
 #[test]
 fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
     // The direction [`cpp_reaches_every_library`] does not close: what happens to a header this arm
-    // does NOT list. The prelude is what is put in FRONT of a program, not an allowlist — clang's
+    // does NOT list. The library set is a DECLARATION, not an allowlist — clang's
     // default include path is the whole of libc++ — so what the catalogue's library set means for a
     // header outside it is a fact about this toolchain, measured here rather than inferred from the
     // list. It is what a compile failure naming that set is allowed to imply, and there are three
@@ -1131,10 +1167,12 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 ///   exists and *no member named 'views'* is in it, which is the diagnostic that proves the
 ///   acceptance above is that header doing the work rather than any include at all being enough.
 ///
-/// And the standard library the other way round, because the prompt makes a claim about it that is
-/// the opposite claim: `std::vector` with no `#include` compiles, because the precompiled prelude
-/// really does carry it. A program is told two different things about two different libraries and
-/// both are true.
+/// **And the standard library under the same rule, which is the half that changed.** It used to be
+/// the exception — a precompiled prelude carried it, so `std::vector` with no `#include` compiled —
+/// and that was the one place a name reached a model's program without a line the model wrote. The
+/// prelude is off the compile, so the two libraries now answer identically: `std` is as undeclared as
+/// `gg` until the program says which header it wants, and it is the *same sentence* from the same
+/// compiler that says so.
 ///
 /// It compiles and never runs, so it instantiates no component: what a compiler refuses never
 /// reaches a guest.
@@ -1183,12 +1221,33 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         "including some other module's header was refused for another reason: {wrong:?}"
     );
 
-    // And the half the prompt states positively: the standard library needs no line, because the
-    // precompiled prelude carries it and carries nothing else.
-    compile("int main() {\n  std::vector<int> values{1};\n  return (int)values.size() - 1;\n}\n")
-        .expect(
-            "the precompiled prelude declares the standard library with no line of the program's",
-        );
+    // And the standard library, which is now the same answer rather than the opposite one. A
+    // program naming `std::vector` above no include of its own is refused, and refused with the
+    // sentence the bare gg call above earned — which is the ruling stated by the compiler: this arm
+    // resolves nothing a program did not ask for, its own language's library included.
+    const VECTOR: &str =
+        "int main() {\n  std::vector<int> values{1};\n  return (int)values.size() - 1;\n}\n";
+    let unasked = compile(VECTOR).expect_err("the standard library is not in front of a program");
+    match unasked {
+        crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
+            diagnostic,
+        )) => assert!(
+            diagnostic.starts_with("main.cpp:2:")
+                && diagnostic.contains("use of undeclared identifier 'std'"),
+            "a program naming the standard library with no include line was refused for another \
+             reason: {diagnostic}"
+        ),
+        other => panic!(
+            "a name that is not in scope is the model's compile error, not {other:?}. The standard \
+             library is reaching a program that never asked for it, which is the one thing the \
+             prelude used to do and no longer may."
+        ),
+    }
+
+    // And with the line the program has to write for itself, it compiles — so what the catalogue's
+    // library set advertises is reachable, exactly as gg's own modules are.
+    compile(&format!("#include <vector>\n{VECTOR}"))
+        .expect("the header a program includes declares the library it names");
 
     // **And the same question with a code module bound**, which is the one state in which this arm
     // has anything of gg's to put in front of a program that never asked. A module reaches gg's

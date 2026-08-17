@@ -29,9 +29,9 @@ extern "C" {
 //
 // clang lowers a wasm translation unit's `main` to `__main_void` when it is `int main()` and to
 // `__main_argc_argv` when it takes arguments — and wasi-libc supplies a `__main_void` that calls
-// the latter, so this single name reaches both spellings. It is declared here rather than taken
-// from the prelude because this file is compiled ONCE, at build time, and has no business reading
-// the header a model's program is precompiled against.
+// the latter, so this single name reaches both spellings. It is declared here rather than included
+// from anywhere because this file is compiled ONCE, at build time, and the model's program is a
+// separate translation unit it is only ever linked against.
 //
 // It is worth knowing why the shell cannot simply call `main`: in C++ `main` may not be named or
 // called by a program at all ([basic.start.main]), and clang enforces it. `__main_void` is the

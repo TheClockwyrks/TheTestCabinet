@@ -51,9 +51,10 @@
 //! * **Package availability is packaging, and is allowed.** A classpath entry, an `--extern`, an
 //!   include path, a linked archive: everything that puts gg's SDK where this language's compiler
 //!   can find it is how a library is delivered. What is not allowed is a **name in scope with no
-//!   line the model wrote** — a prelude glob, a `global using`, a precompiled header carrying the
-//!   surface, a re-exported import, a scope of names handed to an evaluator. The test is whether
-//!   the program contains the line that reaches the name.
+//!   line the model wrote** — a prelude glob, a `global using`, a precompiled header, a re-exported
+//!   import, a scope of names handed to an evaluator. It is the name that is forbidden rather than
+//!   whose name it is: the language's own standard library is a name in scope on the same terms
+//!   gg's SDK is. The test is whether the program contains the line that reaches the name.
 //! * **A line number is reached through a source map or not at all.** An arm that arrives at one by
 //!   arithmetic over its own wrapper is reporting a program other than the one the model sees, and a
 //!   wrong line costs more than no line: the model reads it as a fact and rewrites the wrong
@@ -361,12 +362,12 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// model declares it, and a reply that declares none earns this language's own diagnostic rather
     /// than a body gg completed for it.
     ///
-    /// **Making the SDK available is packaging and is allowed** — a classpath entry, an `--extern`,
-    /// an include path, a linked archive. **A name in scope with no line the model wrote is not**: a
-    /// prelude glob, a `global using`, a precompiled header carrying gg's surface, an
-    /// re-exported import, a scope of names handed to an evaluator. Every SDK name a program writes
-    /// is reached through an import that program writes, and the
-    /// [documentation view](crate::sandbox::ModuleView) of a symbol states that line.
+    /// **Making a library available is packaging and is allowed** — a classpath entry, an
+    /// `--extern`, an include path, a linked archive. **A name in scope with no line the model wrote
+    /// is not**: a prelude glob, a `global using`, a precompiled header, a re-exported import, a
+    /// scope of names handed to an evaluator. Every name a program writes — gg's SDK and this
+    /// language's own standard library alike — is reached through an import that program writes, and
+    /// the [documentation view](crate::sandbox::ModuleView) of a symbol states that line.
     ///
     /// **A location this step reports is the compiler's own, over the model's own file, or one
     /// resolved through a source map** — never a line arrived at by arithmetic over a wrapper,

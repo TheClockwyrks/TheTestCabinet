@@ -17,7 +17,7 @@
 //!
 //! There is no prebuilt guest anywhere in that path, which is what makes this arm's proof
 //! *stronger* than the interpreted arms': what these tests instantiate was compiled from this
-//! checkout's WIT, this checkout's prelude and this checkout's shell, seconds earlier.
+//! checkout's WIT, this checkout's SDK and this checkout's shell, seconds earlier.
 //!
 //! # What is here and what is not
 //!
@@ -43,13 +43,11 @@
 //!
 //! # Why these tests are consolidated
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and every program in them costs a
-//! `clang++` — ~90 ms once the precompiled prelude is warm, and ~1.2 s more in the process that
-//! builds it. So each function drives *many* programs rather than being one behaviour per function,
-//! exactly as `sandbox.test.rs` does. Add a program to an existing function rather than adding a
-//! function.
+//! Each `#[test]` is its own process under `cargo nextest`, and every program in them costs a real
+//! `clang++` over the whole of what the program included. So each function drives *many* programs
+//! rather than being one behaviour per function, exactly as `sandbox.test.rs` does. Add a program to
+//! an existing function rather than adding a function.
 
-use std::path::Path;
 use std::time::Instant;
 
 use test_cabinet_core::gg::GgProgramLanguage;
@@ -295,7 +293,9 @@ fn a_cpp_program_dispatches_a_real_call_through_the_membrane() {
     // trip this arm has through the membrane that is not a bare string. What it proves is that a
     // C++ program's arguments are lowered, that gg's host dispatches the tool, and that what comes
     // back is a value the program can compute with — through the SDK a model actually writes.
-    let program = "#include <gg.hpp>\n\n#include <string>\n\
+    let program = "#include <gg.hpp>\n\n#include <cctype>\n\
+         #include <string>\n\
+         #include <variant>\n\
          int main() {\n\
          \x20 const auto read = gg::files::read_file(\"notes.md\");\n\
          \x20 const auto *text = std::get_if<gg::files::text_file>(&read);\n\
@@ -339,7 +339,8 @@ fn a_cpp_program_throws_and_catches_which_no_other_compiled_arm_can_do() {
     // Everything it takes is being exercised at once: `-fwasm-exceptions` with the standardised
     // encoding, libc++'s `eh` build, `-lunwind`, and `Config::wasm_exceptions` on gg's engine. Any
     // one of them missing and this program either does not link or does not load.
-    let outcome = run("#include <gg.hpp>\n\n#include <stdexcept>\n\
+    let outcome = run("#include <gg.hpp>\n\n#include <cstddef>\n\
+         #include <stdexcept>\n\
          #include <string>\n\
          #include <vector>\n\
          struct TooSmall : std::runtime_error {\n\
@@ -469,7 +470,8 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
     //    carries the words is a synthetic inlined frame in the debug information, which is why
     //    `-g1` is what makes the sentence readable at all. It is the single largest thing standing
     //    between this arm and undefined behaviour.
-    let hardened = run("#include <gg.hpp>\n\n#include <vector>\n\
+    let hardened = run("#include <gg.hpp>\n\n#include <string>\n\
+         #include <vector>\n\
          int main() {\n\
          \x20 std::vector<int> values{1, 2, 3};\n\
          \x20 gg::log(\"before\");\n\
@@ -498,7 +500,8 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
     //    coordinate rather than an address, and there is nothing gg can do to make it more than
     //    that. This is the comparability risk this arm carries: in a run record, a failure the
     //    LANGUAGE caused here is hard to tell from a model that reasoned badly.
-    let undefined = run("#include <gg.hpp>\n\n\
+    let undefined = run("#include <gg.hpp>\n\n#include <string>\n\
+         \n\
          static int divide(int left, int right) { return left / right; }\n\
          \n\
          int main() {\n\
@@ -529,7 +532,8 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
     //    It is MEASURED here rather than left unstated, because this arm's own documentation makes
     //    the claim and the claim is the whole of the comparability risk: gg cannot make it a fault
     //    without an address-sanitizer runtime in every artifact, and what it can do is say so.
-    let dereferenced = run("#include <gg.hpp>\n\n\
+    let dereferenced = run("#include <gg.hpp>\n\n#include <string>\n\
+         \n\
          int main() {\n\
          \x20 int *missing = nullptr;\n\
          \x20 *missing = 7;\n\
@@ -553,6 +557,7 @@ fn what_a_program_writes_to_stderr_reaches_the_model() {
     // available but load-bearing: it is where libc++ puts BOTH of the failure messages the test
     // above reads. Here it is exercised the way a program would use it on purpose.
     let outcome = run("#include <gg.hpp>\n\n#include <cstdio>\n\
+         #include <cstdlib>\n\
          int main() {\n\
          \x20 gg::log(\"logged\");\n\
          \x20 std::fputs(\"gg substrate said this on stderr\\n\", stderr);\n\
@@ -614,7 +619,10 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
     // resolves. On this arm `lib::csv_tools::parse` is a NAME THE COMPILER RESOLVES rather than a
     // property looked up on a value, which is the visible consequence of a module being linked.
     compile::warm();
-    let authored = "std::vector<std::string> split(std::string_view text, char sep = ',') {\n                      std::vector<std::string> out;\n                      std::string current;\n                      for (const char byte : text) {\n                        if (byte == sep) {\n                          out.push_back(current);\n                          current.clear();\n                          continue;\n                        }\n                        current.push_back(byte);\n                      }\n                      out.push_back(current);\n                      return out;\n                    }\n";
+    // Written the way a skill author writes one now: its own `#include` lines, which gg hoists into
+    // the module's global module fragment — so the module has `<string>` and `<vector>` and the
+    // program that binds it does not.
+    let authored = "#include <string>\n#include <string_view>\n#include <vector>\n\nstd::vector<std::string> split(std::string_view text, char sep = ',') {\n                      std::vector<std::string> out;\n                      std::string current;\n                      for (const char byte : text) {\n                        if (byte == sep) {\n                          out.push_back(current);\n                          current.clear();\n                          continue;\n                        }\n                        current.push_back(byte);\n                      }\n                      out.push_back(current);\n                      return out;\n                    }\n";
     let prepared = compile::compile_module(authored, &PrepareContext::new())
         .expect("an ordinary code module is prepared");
     // What comes back is the AUTHOR'S OWN BYTES, because the namespace is written under the key the
@@ -630,7 +638,7 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
     // The default argument the author wrote is the one the program gets, because nothing was
     // re-synthesized: the second call passes no separator at all.
     let component = compile_program(
-        "#include <gg.hpp>\n\nint main() {\n           const auto fields = lib::csv_tools::split(\"a;b;c\", ';');\n           gg::log(std::format(\"{} {}\", fields.size(), fields[1]));\n           gg::log(std::format(\"{}\", lib::csv_tools::split(\"x,y\").size()));\n           return 0;\n         }\n",
+        "#include <format>\n\n#include <gg.hpp>\n\nint main() {\n           const auto fields = lib::csv_tools::split(\"a;b;c\", ';');\n           gg::log(std::format(\"{} {}\", fields.size(), fields[1]));\n           gg::log(std::format(\"{}\", lib::csv_tools::split(\"x,y\").size()));\n           return 0;\n         }\n",
         &modules,
         &PrepareContext::new(),
     )
@@ -659,14 +667,14 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
 }
 
 #[test]
-fn a_module_is_read_at_its_own_line_and_may_not_include_anything() {
+fn a_module_is_read_at_its_own_line_and_its_includes_are_hoisted() {
     compile::warm();
 
     // A module that does not compile is reported AT THE AUTHOR'S OWN LINE, and that is the `#line`
-    // directive doing its job: the declaration below is line 3 of what was written and line 5 of
-    // what clang read.
+    // directive doing its job: the declaration below is line 3 of what was written and several lines
+    // further down what clang read.
     let broken = compile::compile_module(
-        "int one() { return 1; }\n\n         std::string two() { return 2; }\n",
+        "#include <string>\n\n         std::string two() { return 2; }\n",
         &PrepareContext::new(),
     );
     match broken {
@@ -679,32 +687,76 @@ fn a_module_is_read_at_its_own_line_and_may_not_include_anything() {
         other => panic!("a module that does not compile is a compile error, not {other:?}"),
     }
 
-    // The one refusal this half has, made before any compiler runs — and it is not the compiler's
-    // opinion: `#include <vector>` inside `namespace lib::<key>` would expand to NOTHING here,
-    // because the prelude already read that header and its include guard is defined. The module
-    // would compile, and the same line would detonate the day somebody wrote a header the prelude
-    // does not carry.
+    // **An author's `#include` is hoisted rather than refused**, which is what the prelude going away
+    // decided. It used to be refused by name, on the ground that a module already had the standard
+    // library in front of it; nothing is in front of a module now, so refusing the line would leave a
+    // skill author with no route to the standard library at all.
+    //
+    // It is MOVED rather than left where it stands because `#include` is textual: a line inside
+    // `export namespace lib::<key>` would nest the whole header in that namespace. gg lifts it into
+    // the module's global module fragment, beside the `#include <gg.hpp>` gg writes there itself —
+    // and a name attached to the global module reaches nobody who imports the module, so the header
+    // is the module's own and not the program's.
+    //
+    // `<deque>` on purpose: it is not a header gg's own umbrella drags in, so the module below
+    // compiles only if the author's line really was carried over.
     let included = compile::compile_module(
-        "#include <vector>\nstd::vector<int> ones() { return {1}; }\n",
-        &PrepareContext::new(),
-    );
-    match included {
-        Err(PrepareFailure::Program(PrepareError::Unsupported(message))) => {
-            assert!(message.starts_with("line 1:"), "{message}");
-            assert!(message.contains("Delete the line"), "{message}");
-        }
-        other => panic!("a module carrying an include is refused, not {other:?}"),
-    }
-
-    // And the module that needs no include is the same module with the line taken out, which is
-    // what makes the refusal a refusal rather than a loss: the prelude is in front of a module
-    // exactly as it is in front of a program, and gg writes the one include that declares its own
-    // surface above the namespace itself.
-    let fine = compile::compile_module(
-        "std::vector<int> ones() { return {1}; }\n",
+        "#include <deque>\nstd::deque<int> ones() { return {1, 2}; }\n",
         &PrepareContext::new(),
     )
-    .expect("a module needs no include of its own");
+    .expect("a module's own `#include` is hoisted into its global module fragment");
+    assert_eq!(included.exports, vec!["ones".to_string()]);
+    assert_eq!(
+        included.source, "#include <deque>\nstd::deque<int> ones() { return {1, 2}; }\n",
+        "what comes back is the author's own bytes, hoist or no hoist"
+    );
+
+    // And the hoist moves no line number, which is the rule this arm answers with `#line` rather than
+    // with arithmetic: the mistake below is on the author's line 4, above an include on line 1 that
+    // gg lifted out of the body altogether.
+    let located = compile::compile_module(
+        "#include <deque>\n\
+         \n\
+         std::deque<int> ones() { return {1}; }\n\
+         int two() { return missingName; }\n",
+        &PrepareContext::new(),
+    );
+    match located {
+        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
+            assert!(
+                rendered.contains("module_module.cppm:4:"),
+                "hoisting the include moved the author's line numbers, which is exactly what the \
+                 `#line` in front of the body is there to prevent: {rendered}"
+            );
+        }
+        other => panic!("a module that does not compile is a compile error, not {other:?}"),
+    }
+
+    // A header nobody has is the author's own compile error, at the author's own line — the second
+    // half of what a hoisted `#line` buys, and the reason each hoisted line carries one.
+    let missing = compile::compile_module(
+        "int one() { return 1; }\n#include <boost/asio.hpp>\n",
+        &PrepareContext::new(),
+    );
+    match missing {
+        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
+            assert!(
+                rendered.contains("module_module.cppm:2:") && rendered.contains("file not found"),
+                "a header this toolchain does not carry is reported where its author wrote it: \
+                 {rendered}"
+            );
+        }
+        other => panic!("a header that is not there is a compile error, not {other:?}"),
+    }
+
+    // And a module that includes nothing is still a module: gg's own line is in the fragment
+    // whatever the author wrote, so `gg::log` is reachable from a module with no include of its own
+    // — which is the one thing gg does put in front of a module, and the only one.
+    let fine = compile::compile_module(
+        "int ones() {\n  gg::log(\"from the module\");\n  return 1;\n}\n",
+        &PrepareContext::new(),
+    )
+    .expect("gg's own include is in every module's global module fragment");
     assert_eq!(fine.exports, vec!["ones".to_string()]);
 }
 
@@ -874,7 +926,8 @@ fn a_cpp_program_is_compiled_verbatim() {
     // And the reverse: an `#include`, a `namespace` and a `template` all compile, which is the whole
     // reason a reply is a translation unit rather than a function body — a `template` may not be
     // declared at block scope at all.
-    let outcome = run("#include <gg.hpp>\n\n#include <string>\n\
+    let outcome = run("#include <gg.hpp>\n\n#include <cctype>\n\
+         #include <string>\n\
          namespace greeting {\n\
          template <typename T> std::string shout(const T &value) {\n\
          \x20 std::string text = std::string(value);\n\
@@ -888,74 +941,6 @@ fn a_cpp_program_is_compiled_verbatim() {
          \x20 return 0;\n\
          }\n");
     assert_eq!(logs(&outcome), ["HELLO"]);
-}
-
-#[test]
-fn the_prelude_is_precompiled_once_and_read_only_afterwards() {
-    // The decision this arm's affordability rests on. Parsing the standard library costs the best
-    // part of a second of EVERY compile and reading it back precompiled costs tens of milliseconds,
-    // which is the difference between a 90 ms floor and 836 ms.
-    //
-    // What is asserted is what the seam's contract asks: that the artifact exists where a shared
-    // toolchain directory puts it, and that it is SEALED — because a shared tree a compilation can
-    // write to is the measured `purs` corruption exactly, and this is the one shared file on this arm
-    // that gg produces rather than ships.
-    let component = prepare("#include <gg.hpp>\n\nint main() { gg::log(\"warm\"); return 0; }\n");
-    assert!(!component.is_empty());
-
-    let home = compile::wasi_sdk_home().expect("resolving the wasi-sdk home never fails");
-    let guest = compile::guest().expect("the embedded C++ guest unpacks");
-    let prelude = compile::precompiled_prelude(&home, guest, &PrepareContext::new())
-        .expect("the prelude precompiles");
-    let metadata = std::fs::metadata(&prelude).expect("the precompiled prelude is on disk");
-    assert!(
-        metadata.len() > 1024 * 1024,
-        "a {} byte precompiled prelude is not the ~28 MB one this arm builds",
-        metadata.len()
-    );
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            metadata.permissions().mode() & 0o222,
-            0,
-            "{} is writable inside a shared toolchain directory",
-            prelude.display()
-        );
-    }
-
-    // The process cache in front of that directory is keyed on the toolchain, which is what the
-    // directory itself is keyed on. A cache that answered the same path for every `home` would hand
-    // back a PCH built for another wasi-sdk and undo the compiler stamp folded into the key above —
-    // so asking for a second toolchain's prelude must go and try to build one rather than return
-    // the one already warm.
-    let elsewhere = compile::precompiled_prelude(
-        Path::new("/nonexistent/gg-wasi-sdk"),
-        guest,
-        &PrepareContext::new(),
-    );
-    match elsewhere {
-        Err(message) => assert!(
-            message.contains("/nonexistent/gg-wasi-sdk"),
-            "a second toolchain's prelude was not built against that toolchain: {message}"
-        ),
-        Ok(path) => panic!(
-            "the warm prelude was handed back for a toolchain it was not built for: {}",
-            path.display()
-        ),
-    }
-
-    // And what it buys, which is the arm's whole cost argument: a program that includes NOTHING
-    // still has the standard library, because the prelude is in front of it. A model that writes
-    // `#include <vector>` anyway gets the same program — the include is a second, free read of a
-    // header the preamble already saw.
-    let outcome = run("#include <gg.hpp>\n\nint main() {\n\
-         \x20 std::vector<int> values{3, 1, 2};\n\
-         \x20 std::ranges::sort(values);\n\
-         \x20 gg::log(std::format(\"{} {} {}\", values[0], values[1], values[2]));\n\
-         \x20 return 0;\n\
-         }\n");
-    assert_eq!(logs(&outcome), ["1 2 3"]);
 }
 
 #[test]

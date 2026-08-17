@@ -16,10 +16,10 @@
 //! first arm to be given this gate, because exactly that had shipped there.
 //!
 //! It lives with the arm rather than with the prompt tests because it needs the arm's whole compile
-//! path: the real precompiled prelude, the real flags, the real SDK object. That is also why it is
-//! one `clang++` rather than one per example — every snippet is enclosed in a `namespace` of its
-//! own, so nothing one declares is visible to another and the compiler reports all of their
-//! diagnostics at once.
+//! path: the real toolchain, the real flags, the real SDK object. That is also why the fragments are
+//! one `clang++` rather than one per example — each is enclosed in a `namespace` of its own, so
+//! nothing one declares is visible to another and the compiler reports all of their diagnostics at
+//! once.
 //!
 //! # What is treated as an example, and what is not
 //!
@@ -39,13 +39,28 @@
 //!
 //! # The one thing this gate has to know about C++
 //!
-//! **A snippet may be a whole program, and a whole program cannot be nested in a function.** The
-//! prompt's examples are translation units — this arm's programs define `main`, so its examples show
-//! one — while the catalogue's are statements out of a `///` comment. Both go into a `namespace` of
-//! their own; a snippet that defines `main` goes in as it stands, because a `main` inside a namespace
-//! is an ordinary function rather than an entry point, and one that does not is enclosed in a `void`
-//! function first, because C++ has nowhere else for a statement to live. Nothing calls either: this
-//! gate compiles examples rather than running them.
+//! **A snippet may be a whole program, and a whole program is compiled as one.** The prompt's
+//! examples are translation units — this arm's programs define `main`, so its examples show one —
+//! while the catalogue's are statements out of a `///` comment. The two are put through the compiler
+//! differently, and since the [prelude](super::compile) went off the compile path that difference is
+//! the whole of what this gate is about.
+//!
+//! **A snippet that defines `main` is compiled on its own, with nothing added to it.** Under the
+//! [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) a program reaches
+//! every name it writes through a line it wrote, gg's surface and the C++ standard library alike —
+//! so an example of a *program* that needed a line this gate supplied would be a text gg shows a
+//! model and this arm refuses. Its own `clang++`, therefore, exactly as a model's reply gets, and no
+//! `#include` of this gate's above it.
+//!
+//! **A snippet that does not is a fragment of a call site**, and is gathered with the others into
+//! one program under one line of this gate's own: `#include <gg.hpp>`, which is what the program
+//! quoting such a fragment would have written. Each goes into a `namespace` of its own, enclosed in
+//! a `void` function because C++ has nowhere else for a statement to live. A fragment that carries
+//! its own `#include` has it **hoisted** to the top of the gathered file — for the same reason a
+//! code module's is hoisted out of `namespace lib::<key>`: `#include` is textual, and one inside a
+//! namespace nests the whole header in it.
+//!
+//! Nothing calls either: this gate compiles examples rather than running them.
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
@@ -148,11 +163,24 @@ fn everything_on() -> SystemContext {
     }
 }
 
-/// **Every C++ example a model is shown compiles.**
+/// **Every C++ example a model is shown compiles — a whole program on its own terms.**
 ///
-/// The prompt, the "nothing shown" notice and the generated catalogue, gathered into one program and
-/// put through this arm's production prepare step — the same `clang++`, the same precompiled prelude
-/// and the same flags a model's own reply gets.
+/// The prompt, the "nothing shown" notice and the generated catalogue, put through this arm's
+/// production prepare step: the same `clang++` and the same flags a model's own reply gets, and —
+/// for an example that is a program rather than a fragment — the same *nothing else*. That is the
+/// half this gate gained when the precompiled prelude left the compile path. It used to prepend
+/// `#include <gg.hpp>` to everything on the stated ground that the prelude supplied the rest; the
+/// prelude supplies nothing now, so an example program stands or falls on the include lines its own
+/// author wrote.
+///
+/// **The fix is here rather than in the examples**, and that is a finding rather than a preference:
+/// every fenced C++ block a model is shown today is a *fragment* out of a `///` comment on the SDK —
+/// three of them, none defining `main` — and a fragment is not a program. Rewriting each into a
+/// translation unit would put an `int main` and an include list into a two-line documentation
+/// comment that exists to show one call. So the gate states what a fragment is compiled in — the
+/// one line the program quoting it would have written — and compiles anything that *is* a program
+/// with nothing at all. The day a `` ```cpp `` block in the prompt shows a whole program, this gate
+/// asks that program for its own includes.
 #[test]
 fn every_cpp_example_a_model_is_shown_compiles() {
     let prompt = render_system(&everything_on(), None).expect("the code system prompt renders");
@@ -196,26 +224,48 @@ fn every_cpp_example_a_model_is_shown_compiles() {
         snippets.len()
     );
 
-    // gg's whole surface, under one line of this gate's own — because that is the line a model's
-    // own program carries and an example is a fragment of one. Nothing else is added: the standard
-    // library arrives from the precompiled prelude exactly as it does on the turn path.
-    let mut program = format!("{}\n\n", super::source::SURFACE_INCLUDE);
-    for (index, (label, snippet)) in snippets.iter().enumerate() {
-        let body = snippet.trim_end();
-        // A whole program goes in as it stands; a statement fragment is enclosed in a function
-        // first. See this module's own documentation for why the distinction is C++'s rather than
-        // this gate's.
-        let enclosed = match super::source::defines_main(body) {
-            true => body.to_string(),
-            false => format!("void run() {{\n{body}\n}}"),
-        };
+    // An example that is a whole program is compiled AS ONE, with nothing above it that its author
+    // did not write. There are none today; the moment the prompt shows one, this is what asks it for
+    // its own `#include` lines rather than lending it the gate's.
+    let (programs, fragments): (Vec<_>, Vec<_>) = snippets
+        .iter()
+        .partition(|(_, snippet)| super::source::defines_main(snippet.trim_end()));
+    for (label, snippet) in &programs {
+        if let Err(failure) = compile_program(snippet.trim_end(), &[], &PrepareContext::new()) {
+            panic!(
+                "gg shows a model a whole C++ program that does not compile on its own terms — \
+                 which is what an example of a reply has to be, now that nothing is put in front of \
+                 a program on this arm. From {label}. clang++ said:\n\n{failure:?}\n\nThe \
+                 example:\n\n{snippet}"
+            );
+        }
+    }
+
+    // And the fragments, gathered into one program under the one line of this gate's own that a
+    // fragment is written against: a doc-comment example is a call site, and the program quoting it
+    // wrote `#include <gg.hpp>` before it. Nothing else is lent — no standard header — so a fragment
+    // that names `std::regex` has to say so where it is written.
+    let mut hoisted = format!("{}\n", super::source::SURFACE_INCLUDE);
+    let mut program = String::new();
+    for (index, (label, snippet)) in fragments.iter().enumerate() {
+        // An `#include` inside `namespace __gg_example_N` would nest the whole header in it, because
+        // `#include` is textual — the same fact the code-module hoist rests on — so a fragment's own
+        // lines go to the top of the file and the rest of it stays where it was written.
+        let (body, includes): (Vec<&str>, Vec<&str>) = snippet
+            .trim_end()
+            .lines()
+            .partition(|line| !line.trim_start().starts_with("#include"));
+        for line in includes {
+            hoisted.push_str(&format!("{}\n", line.trim()));
+        }
         program.push_str(&format!(
-            "// {label}\nnamespace __gg_example_{index} {{\n{enclosed}\n}}\n"
+            "// {label}\nnamespace __gg_example_{index} {{\nvoid run() {{\n{}\n}}\n}}\n",
+            body.join("\n")
         ));
     }
     // The one entry point, because this arm refuses a program that defines none — and it is gg's
-    // rather than an example's, so no snippet has to be the one that provides it.
-    program.push_str("int main() { return 0; }\n");
+    // rather than an example's, so no fragment has to be the one that provides it.
+    let program = format!("{hoisted}\n{program}int main() {{ return 0; }}\n");
 
     if let Err(failure) = compile_program(&program, &[], &PrepareContext::new()) {
         panic!(

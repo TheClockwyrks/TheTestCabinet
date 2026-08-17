@@ -1,6 +1,7 @@
 //! **What gg reads out of a model's C++ before handing it to the compiler** — which for a
-//! *program* is exactly one thing, whether the reply defines a `main` — and **the one thing gg
-//! writes**, which is the namespace a **code module**'s declarations are moved into.
+//! *program* is exactly one thing, whether the reply defines a `main` — and **what gg writes around
+//! a code module**, which is the named module and namespace its declarations are opened inside, with
+//! the author's own `#include` lines lifted to where that construct requires them.
 //!
 //! Nothing here rewrites a program's text. A C++ program is compiled
 //! [verbatim](super::compile::PROGRAM_FILE), so for that half this module is a *reader* rather than
@@ -20,6 +21,9 @@
 //! ```text
 //! module;                                       // gg's line
 //! #include <gg.hpp>                             // gg's line
+//! #line 4 "module_csv_tools.cppm"               // gg's line
+//! #include <vector>                             // as authored, from the author's own line 4
+//! #line 6 "module_csv_tools.cppm"               // gg's line, restoring this file's numbering
 //! export module lib.csv_tools;                  // gg's line
 //! export namespace lib::csv_tools {             // gg's line
 //! #line 1 "module_csv_tools.cppm"               // gg's line
@@ -42,24 +46,33 @@
 //! Two modules may therefore declare the same name, which is a thing the [Swift](super::super::swift)
 //! arm cannot say: two `struct row`s in two modules are `lib::a::row` and `lib::b::row`.
 //!
-//! # The one refusal, and why it is a refusal rather than a rewrite
+//! # The one thing that is moved: an author's `#include`
 //!
-//! **A `#include` at a module's top level.** `#include` is textual, so one inside a namespace puts
-//! the whole of the included header inside `lib::<key>` — and when the header is one the
-//! [prelude](super::compile) already read, its include guard is already defined and it expands to
-//! *nothing at all*, which is worse: the module would compile, and the same line would detonate the
-//! day somebody wrote a header the prelude does not carry.
+//! **A `#include` at a module's top level is hoisted into the global module fragment**, beside the
+//! [one gg writes](SURFACE_INCLUDE) and above `export module lib.<key>;`. It is moved rather than
+//! left where it stands because `#include` is *textual*: a line inside `export namespace lib::<key>`
+//! expands the whole of the included header into that namespace, so `std::vector` would be declared
+//! at `lib::<key>::std::vector` and nothing the author wrote afterwards would resolve.
 //!
-//! Hoisting it out is the alternative and it is the one thing this arm has never done to anybody's
-//! text. It does not need to: the precompiled prelude puts the standard library in front of a
-//! module exactly as it does in front of a program, and gg writes [one include](SURFACE_INCLUDE) of
-//! its own into the module's **global module fragment** — so a module that includes nothing already
-//! has `std::vector` and `gg::files::read_file`, and nobody importing it has either. That is the one
-//! asymmetry between the two halves of this arm and it
-//! is [ruling D5](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)'s: a module is a
-//! skill author's file that gg wraps, where a program is a model's reply that gg does not touch.
-//! The refusal says so, at the author's own line, and it is the whole of what a module author has to
-//! know that a program author does not.
+//! The fragment is where it belongs for the same reason gg's own line is there. Names a global
+//! module fragment includes are attached to the global module and reach no importer, so a module's
+//! own headers stay the module's own: a program that binds this module still earns *use of
+//! undeclared identifier 'std'* for a `std::vector` it wrote no include for.
+//!
+//! Moving a line an author wrote is the wrapper
+//! [a module is allowed and a program is not](https://docs.testcabinet.ai/gg/responses-as-code/invariants/):
+//! a module is a skill author's file that gg wraps, where a program is a model's reply that gg does
+//! not touch. It is the same hoist the [C#](super::super::csharp::source) arm does with a `using`,
+//! for the same reason — the construct an author writes at the top of a file has nowhere to live
+//! inside the one gg opened around it.
+//!
+//! It is a **move and not a rewrite**: each hoisted line carries a `#line` stating where its author
+//! wrote it, the numbering of this file is restored under the block, and the body keeps the blank
+//! line each hoist left behind, so `#line 1` in front of it holds all the way down.
+//!
+//! The line is hoisted rather than refused because nothing else declares the standard library for a
+//! module: gg precompiles no header in front of one, so an author who cannot write `#include` has no
+//! route to `std::vector` at all.
 //!
 //! # Why gg has to look at all
 //!
@@ -95,8 +108,6 @@
 //! Being wrong in that direction is the rule this whole subsystem is built on: a model told to fix
 //! a program that was never wrong is the misattribution this codebase spends the most effort not
 //! making.
-
-use crate::sandbox::PrepareError;
 
 /// The file a code module is compiled under, given its binding key — `module_csv_tools.cppm`.
 ///
@@ -144,13 +155,17 @@ pub(super) const MODULE_FILE_PREFIX: &str = "module_";
 /// resolves under all of them.
 pub(super) const CHECK_KEY: &str = "module";
 
-/// A code module's own file: a global module fragment carrying gg's surface, the module declaration,
-/// and `export namespace lib::<key> {` around the author's source verbatim — with a `#line` directive
-/// in between so the author's first line is line 1.
+/// A code module's own file: a global module fragment carrying gg's surface and the author's own
+/// `#include` lines, the module declaration, and `export namespace lib::<key> {` around the rest of
+/// the author's source verbatim — with `#line` directives so that every line of it is reported where
+/// its author wrote it.
 ///
 /// ```text
 /// module;                                       // gg's line
 /// #include <gg.hpp>                             // gg's line
+/// #line 4 "module_csv_tools.cppm"               // gg's line
+/// #include <vector>                             // as authored, from the author's own line 4
+/// #line 6 "module_csv_tools.cppm"               // gg's line, restoring this file's numbering
 /// export module lib.csv_tools;                  // gg's line
 /// export namespace lib::csv_tools {             // gg's line
 /// #line 1 "module_csv_tools.cppm"               // gg's line
@@ -158,37 +173,92 @@ pub(super) const CHECK_KEY: &str = "module";
 /// ```
 ///
 /// **A named module is what keeps gg's surface out of the program that binds this one.** Everything
-/// the global module fragment includes is attached to the global module and is invisible to whoever
-/// imports this one, so a program with a code module in scope reaches `lib::<key>` and still earns
-/// `use of undeclared identifier 'gg'` for a gg name it wrote no line for.
+/// the global module fragment includes — gg's line and the author's alike — is attached to the
+/// global module and is invisible to whoever imports this one, so a program with a code module in
+/// scope reaches `lib::<key>` and still earns `use of undeclared identifier 'gg'` for a gg name it
+/// wrote no line for.
 ///
-/// The refusal is [`refuse_include`]'s and is made here rather than at the program's compile,
-/// because a module is read once and used by every program the agent writes afterwards — so the
-/// author is told at the read, in their own file's coordinates, rather than the model being handed a
-/// diagnostic about a file it never wrote.
-pub(super) fn namespaced(source: &str, key: &str) -> Result<String, PrepareError> {
-    refuse_include(source)?;
-    let file = module_file(key);
+/// **Three `#line` directives, and each is doing a different job.** The one in front of a hoisted
+/// include says where its author wrote it, so a header this guest does not carry is reported at the
+/// author's own line rather than where gg moved it to. The one under the hoisted block restores
+/// *this* file's own numbering, so a diagnostic on the two lines gg writes next is not reported
+/// against a line of the author's that has nothing to do with it. And the `#line 1` in front of the
+/// body is what makes the author's first line line 1, whatever stands above it — the body keeps the
+/// blank line every hoist left behind, so that stays true to the last line.
+pub(super) fn namespaced(source: &str, key: &str) -> String {
+    let quoted = serde_json::Value::String(module_file(key)).to_string();
+    let (body, includes) = hoist(source);
+
+    let mut lines = vec!["module;".to_string(), SURFACE_INCLUDE.to_string()];
+    for (number, directive) in &includes {
+        lines.push(format!("#line {number} {quoted}"));
+        lines.push(directive.clone());
+    }
+    if !includes.is_empty() {
+        // What follows is gg's own, so it is reported at the line it really is on. `#line N` names
+        // the line AFTER the directive, and the directive itself is the line this is counting from —
+        // hence two rather than one. This is gg stating where its own text is, which is the one
+        // thing a line-control directive is for; no diagnostic's coordinates are computed from it.
+        lines.push(format!("#line {} {quoted}", lines.len() + 2));
+    }
+    lines.push(format!("export module {};", module_name(key)));
+    lines.push(format!("export namespace lib::{key} {{"));
+    lines.push(format!("#line 1 {quoted}"));
+
     // The closing brace is on a line of its own AFTER the author's last, and the newline in front of
     // it is unconditional: a module whose final line is `int last() { return 1; }` with no trailing
     // newline would otherwise have gg's brace glued to it.
-    Ok(format!(
-        "module;\n{SURFACE_INCLUDE}\nexport module {};\nexport namespace lib::{key} {{\n#line 1 \
-         {}\n{source}\n}}  // namespace lib::{key}\n",
-        module_name(key),
-        serde_json::Value::String(file)
-    ))
+    format!(
+        "{}\n{body}\n}}  // namespace lib::{key}\n",
+        lines.join("\n")
+    )
+}
+
+/// Lift every `#include` an author wrote out of the module's body, leaving a blank line where each
+/// stood, and hand back the body beside the lines and the 1-based numbers they were written on.
+///
+/// Every one of them, at whatever depth, rather than only the run at the top of the file the
+/// [C#](super::super::csharp::source) arm takes: `#include` has exactly one meaning in C++, where
+/// `using` has two and only one of them is hoistable. A directive inside a `#ifdef` is hoisted out
+/// of the condition with it, which is the one shape this is wrong about and one no skill file in
+/// this repository has.
+///
+/// The mask is what decides: an `#include` behind a `//` or inside a raw string is text rather than
+/// a directive, and this arm's lexer is what knows the difference. The line's own terminator stays
+/// in the body, so the body has exactly as many lines as the author wrote — which is what makes the
+/// `#line 1` above it true all the way down.
+fn hoist(source: &str) -> (String, Vec<(usize, String)>) {
+    let code = code_mask(source);
+    let mut body = String::with_capacity(source.len());
+    let mut includes: Vec<(usize, String)> = Vec::new();
+    let mut offset = 0usize;
+    for (index, line) in source.split_inclusive('\n').enumerate() {
+        let start = offset;
+        offset += line.len();
+        // The directive's own `#`, which is where the mask is asked.
+        let hash = start + (line.len() - line.trim_start().len());
+        if opens_an_include(line) && code.get(hash) == Some(&true) {
+            includes.push((index + 1, line.trim().to_string()));
+            body.push_str(match line.ends_with('\n') {
+                true => "\n",
+                false => "",
+            });
+            continue;
+        }
+        body.push_str(line);
+    }
+    (body, includes)
 }
 
 /// The one line gg writes into a code module's global module fragment: gg's whole surface, included
 /// **above** the module declaration so it is attached to the global module rather than exported.
 ///
-/// It is here rather than in the module because a module may not `#include` anything
-/// ([`refuse_include`]) — `#include` is textual, so one written inside `namespace lib::<key>` would
-/// pull the header into that namespace. So the author writes none and gg writes this one, which is
-/// the [module wrapper](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) a code module
-/// is allowed and a *program* is not: a module is a skill's or a memory's source rather than a
-/// model's reply, and it never crosses the line an authorship rule is about.
+/// It is gg's rather than the author's because a compiled arm cannot link a module to gg's surface
+/// without it, which is the [module wrapper](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+/// a code module is allowed and a *program* is not: a module is a skill's or a memory's source
+/// rather than a model's reply, and it never crosses the line an authorship rule is about. The
+/// author's own includes are [hoisted](hoist) into the fragment beside it, where the same property
+/// holds for them — a name in it reaches this module and reaches nobody who imports it.
 ///
 /// The umbrella rather than a module header, because gg has no way to know which of the thirteen an
 /// author will reach for and a wrong guess is a diagnostic in somebody else's coordinates.
@@ -196,42 +266,6 @@ pub(super) fn namespaced(source: &str, key: &str) -> Result<String, PrepareError
 /// Above the `#line 1` directive, so it cannot move a number: the directive is what says the
 /// author's first line is line 1, whatever stands in front of it.
 pub(super) const SURFACE_INCLUDE: &str = "#include <gg.hpp>";
-
-/// The refusal a module carrying a `#include` gets, with the author's own line.
-///
-/// It names what to do instead rather than only what is wrong, because the answer is *delete the
-/// line and write nothing in its place* — which is a surprising enough instruction that it has to be
-/// said outright.
-fn refuse_include(source: &str) -> Result<(), PrepareError> {
-    let code = code_mask(source);
-    let Some(number) = source
-        .split_inclusive('\n')
-        .scan(0usize, |offset, line| {
-            let start = *offset;
-            *offset += line.len();
-            Some((start, line))
-        })
-        .enumerate()
-        // The directive's own `#`, which is where the mask is asked: a `#include` behind a `//` or
-        // inside a raw string is text rather than a directive, and this arm's lexer is what knows
-        // the difference.
-        .find(|(_, (start, line))| {
-            let hash = start + (line.len() - line.trim_start().len());
-            opens_an_include(line) && code.get(hash) == Some(&true)
-        })
-        .map(|(number, _)| number + 1)
-    else {
-        return Ok(());
-    };
-    Err(PrepareError::Unsupported(format!(
-        "line {number}: a code module here may not `#include` anything. Its declarations are \
-         compiled inside `namespace lib::<key>`, and `#include` is textual — so the header would be \
-         pulled into that namespace rather than into the file. Delete the line and write nothing in \
-         its place: this sandbox compiles every module against a precompiled C++ standard library \
-         and writes `{SURFACE_INCLUDE}` into the module's own global fragment, so `std::vector`, \
-         `std::format` and `gg::files::read_file` are in scope with no include of your own."
-    )))
-}
 
 /// Whether `line`'s own text is a preprocessor `#include` directive.
 ///

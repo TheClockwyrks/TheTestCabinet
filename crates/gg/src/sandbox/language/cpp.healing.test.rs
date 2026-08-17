@@ -104,11 +104,12 @@ fn a_heading_is_prose_and_a_directive_is_code() {
 
 /// **A `#include` a model wrote survives every strategy**, because the line works.
 ///
-/// gg's surface and the standard library are already in front of the program, put there by a
-/// precompiled prelude, so a redundant include is de-duplicated against that header for nothing —
-/// and a header the prelude does not carry is a located diagnostic naming it, which is a better
-/// answer than a silent deletion. What healing must not do is take the line for prose on the way
-/// past, which is this dialect's own reading of `#` and the thing this asserts.
+/// Nothing is in front of a C++ program on this arm, so an `#include` a model wrote is the ONLY
+/// thing standing between it and the library it named — deleting one would refuse a program that was
+/// about to compile. A line naming a header this toolchain has not got is a located diagnostic
+/// naming it, which is a better answer than a silent deletion in any case. What healing must not do
+/// is take the line for prose on the way past, which is this dialect's own reading of `#` and the
+/// thing this asserts.
 #[test]
 fn an_include_is_never_deleted() {
     let reply = "#include <vector>\n#include <algorithm>\n\n\

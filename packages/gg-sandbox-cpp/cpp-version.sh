@@ -8,12 +8,13 @@
 # the generated WIT bindings and gg's shell, compiled for wasm at build time — and an object
 # is not a compiler-private format the way a `.swiftmodule` or an `.rlib` is: `wasm-ld` will
 # link one clang's object against another's. So the pin here is softer than the Swift and
-# Rust arms', and it is still a pin, for the thing that *is* version-private: the
-# **precompiled header** this arm builds once per machine out of `Sources/prelude.hpp`. A PCH
-# may only be read by the clang that wrote it, so `cpp.compile.rs` keys the shared directory
-# it lives in on this release AND on a stamp of the compiler binary itself — a reinstall at
-# the same version writes a different key rather than leaving a PCH that every compile would
-# then fail to load.
+# Rust arms', and it is still a pin, for two things nothing else answers. A **named C++
+# module**'s interface IS compiler-private, and a code skill's module is precompiled into one
+# and handed to the program's own compile in the same preparation — one clang, or nothing
+# builds. And a model's diagnostic, its libc++ hardening messages and the standard library it
+# is measured against are this release's: an arm whose front end varied by machine would be
+# comparing runs that were not compiled by the same compiler. `cpp.toolchain.json` records
+# what actually ran, so the pin is checkable rather than declared.
 set -euo pipefail
 
 CPP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

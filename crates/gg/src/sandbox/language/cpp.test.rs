@@ -125,18 +125,25 @@ fn the_synthesized_file_view_is_cpp() {
 }
 
 /// **The generated documentation program is a whole translation unit**, because this arm has nowhere
-/// else to put a statement.
+/// else to put a statement — **and it writes every include it needs**, gg's and the standard
+/// library's alike.
 ///
 /// Every other language answers this with a statement list or a file of declarations. C++ has no
 /// top level a statement may live at and gg refuses a reply with no `main`, so what the seam asks
 /// for and what the language allows are the same thing here — which is exactly why the seam asks for
 /// a *program* rather than a line.
+///
+/// The include list is the half the [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+/// decide. Nothing is put in front of a C++ program any more, so a program gg *writes* is under the
+/// same rule as a program a model writes: `std::array` is a name in `<array>` and this program says
+/// so itself. It is pushed into a model's own transcript as an example of a well-formed reply, so a
+/// text that leaned on something invisible would teach exactly the shape the arm no longer compiles.
 #[test]
 fn the_generated_documentation_program_is_a_translation_unit() {
     let program = cpp().open_docs_views_statement(&["read_file", "open_text"]);
     assert_eq!(
         program,
-        "#include <gg/views.hpp>\n\nint main() {\n  \
+        "#include <array>\n\n#include <gg/views.hpp>\n\nint main() {\n  \
          const std::array functions{\n      \
          \"read_file\",\n      \"open_text\",\n  };\n  \
          for (const auto &name : functions) {\n    \
@@ -146,11 +153,17 @@ fn the_generated_documentation_program_is_a_translation_unit() {
     assert!(source::defines_main(&program), "{program}");
 
     // The empty case carries its element type and its length, because an empty braced initialiser
-    // gives `std::array` nothing to deduce from.
+    // gives `std::array` nothing to deduce from — and having named `std::string_view` it includes
+    // the header that declares it, which is the one line the populated spelling above does not need.
     let empty = cpp().open_docs_views_statement(&[]);
     assert!(
         empty.contains("const std::array<std::string_view, 0> functions{};"),
         "{empty}"
+    );
+    assert!(
+        empty.contains("#include <string_view>"),
+        "the empty spelling names `std::string_view` and must include the header that declares it, \
+         because nothing is in front of a program on this arm any more:\n{empty}"
     );
     assert!(source::defines_main(&empty), "{empty}");
 }
@@ -161,8 +174,9 @@ fn the_generated_documentation_program_is_a_translation_unit() {
 /// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
 /// its window is a program that ran — and on this arm that program has to define `main`, because
 /// there is nowhere else for a statement to live. What is asserted here is that gg wrote C++ —
-/// `std::array`s, range `for`s, a **designated initialiser** for the filters — and that the search
-/// is the whole-module lookup rather than the default page of one.
+/// `std::array`s, range `for`s, a **designated initialiser** for the filters — that it wrote the
+/// include line for every one of those names, gg's two modules and `<array>` alike, and that the
+/// search is the whole-module lookup rather than the default page of one.
 #[test]
 fn the_opening_program_is_a_translation_unit() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
@@ -170,7 +184,7 @@ fn the_opening_program_is_a_translation_unit() {
     assert_eq!(
         program,
         format!(
-            "#include <gg/docs.hpp>\n#include <gg/views.hpp>\n\nint main() {{\n  \
+            "#include <array>\n\n#include <gg/docs.hpp>\n#include <gg/views.hpp>\n\nint main() {{\n  \
                  const std::array modules{{\n      \"files\",\n      \"views\",\n  }};\n  \
                  for (const auto &path : modules) {{\n    \
                      gg::docs::search(\"\", {{.module = path, .limit = {limit}}});\n  }}\n\
@@ -199,7 +213,7 @@ fn the_opening_program_is_a_translation_unit() {
 fn a_code_module_is_a_namespace_opened_in_place() {
     let module = "std::vector<std::string> split(std::string_view text, char sep = ',') {\n  \
                   return {};\n}\n";
-    let wrapped = source::namespaced(module, "csv_tools").expect("an ordinary module is wrapped");
+    let wrapped = source::namespaced(module, "csv_tools");
     assert!(
         wrapped.starts_with(
             "module;\n#include <gg.hpp>\nexport module lib.csv_tools;\nexport namespace \
@@ -222,7 +236,7 @@ fn a_code_module_is_a_namespace_opened_in_place() {
     assert!(wrapped.contains("char sep = ','"), "{wrapped}");
 
     // A module whose last line has no newline still gets its closing brace on a line of its own.
-    let glued = source::namespaced("int one() { return 1; }", "notes").expect("wrapped");
+    let glued = source::namespaced("int one() { return 1; }", "notes");
     assert!(
         glued.contains("int one() { return 1; }\n}"),
         "the closing brace was glued to the author's last line:\n{glued}"
@@ -232,7 +246,7 @@ fn a_code_module_is_a_namespace_opened_in_place() {
     // reachable keys — `binding_name` answers `module` for a slug that is nothing but separators —
     // so each is escaped where the module name is written and left alone where the namespace is.
     for (key, escaped) in [("module", "lib.Module"), ("import", "lib.Import")] {
-        let reserved = source::namespaced("int one() { return 1; }\n", key).expect("wrapped");
+        let reserved = source::namespaced("int one() { return 1; }\n", key);
         assert!(
             reserved.contains(&format!("export module {escaped};")),
             "{reserved}"
@@ -244,46 +258,119 @@ fn a_code_module_is_a_namespace_opened_in_place() {
     }
 }
 
-/// **A `#include` in a module is refused by name, at the author's own line.**
+/// **A `#include` in a module is hoisted into the global module fragment, on the author's own
+/// line.**
 ///
-/// The one refusal this half has, and it is a refusal rather than a rewrite because hoisting the
-/// line out would be gg editing somebody's file — the thing this arm has never done. The message
-/// says to delete it and write nothing in its place, which is surprising enough to have to be said
-/// outright: the prelude already declares the standard library, and gg writes the one include that
-/// declares its own surface above the namespace itself.
+/// It used to be refused by name, and the reason it was is gone with the precompiled prelude:
+/// nothing is put in front of a module any more, so refusing the line would leave a module author
+/// with no route to the standard library at all. The line is therefore *moved* rather than deleted —
+/// the same answer [C#](super::super::csharp) gives an author's `using` lines — up above
+/// `export module lib.<key>;`, beside the [one include](super::source::SURFACE_INCLUDE) gg writes
+/// there itself.
 ///
-/// Only the module half is asserted here. The asymmetry with a **program** is real and is the
-/// language's rather than gg's — a program's `#include` is left exactly as written, because a
-/// program is not compiled inside a namespace — but nothing in this arm now inspects a program's
-/// includes, so there is no behaviour left to pin it against.
+/// **The fragment is where it belongs, for gg's own line's reason:** names a global module fragment
+/// includes are attached to the global module and reach nobody who imports the module, so a module
+/// that includes `<deque>` does not put `std::deque` in front of the program that binds it. And it
+/// has to leave the namespace at all because `#include` is *textual*: a line left inside
+/// `export namespace lib::<key>` would nest the whole header in that namespace.
+///
+/// Hoisting is a wrap rather than an edit, which is what makes it legal where writing a line the
+/// author did not write would not be — a module is a skill's or a memory's file that gg wraps, where
+/// a program is a model's reply gg does not touch.
+///
+/// **And no line number moves**, which is the rule this arm answers with `#line` everywhere else: the
+/// hoisted line carries a directive naming where its author wrote it, and the `#line 1` in front of
+/// the body is untouched, so the declaration below the include is still reported at the line the
+/// author put it on.
 #[test]
-fn an_include_in_a_module_is_refused_by_name() {
-    let refusal = source::namespaced("#include <vector>\nint one() { return 1; }\n", "csv_tools")
-        .expect_err("a module carrying an include is refused");
-    let rendered = refusal.to_string();
-    assert!(rendered.starts_with("line 1:"), "{rendered}");
-    assert!(rendered.contains("may not `#include`"), "{rendered}");
-    assert!(rendered.contains("Delete the line"), "{rendered}");
+fn an_include_in_a_module_is_hoisted_above_the_module_declaration() {
+    // The include is deliberately not on line 1, so a `#line` that merely counted from the top would
+    // be indistinguishable from one that says where the author wrote it — and `<deque>` deliberately
+    // is not a header gg's own `#include <gg.hpp>` drags in, so the line is load-bearing.
+    let module = "// a helper module\n#include <deque>\nstd::deque<int> ones() { return {1}; }\n";
+    let wrapped = source::namespaced(module, "csv_tools");
 
-    // The line is found wherever it is, however it is spaced — and not when it is text.
     assert!(
-        source::namespaced("int one() { return 1; }\n#  include \"helpers.h\"\n", "m")
-            .expect_err("the second line is still a directive")
-            .to_string()
-            .starts_with("line 2:")
+        wrapped.starts_with("module;\n#include <gg.hpp>\n"),
+        "gg's own line still opens the global module fragment:\n{wrapped}"
+    );
+    let hoisted = wrapped
+        .find("#include <deque>")
+        .unwrap_or_else(|| panic!("the author's include is nowhere in the module:\n{wrapped}"));
+    let declaration = wrapped
+        .find("export module lib.csv_tools;")
+        .expect("the module declaration is written");
+    assert!(
+        hoisted < declaration,
+        "the author's `#include` was not hoisted above the module declaration, so it is not \
+         attached to the global module:\n{wrapped}"
+    );
+    assert_eq!(
+        wrapped.matches("#include <deque>").count(),
+        1,
+        "the include was copied rather than moved, so a copy is still inside `namespace \
+         lib::csv_tools`:\n{wrapped}"
     );
     assert!(
-        source::namespaced("// #include <vector>\nint one() { return 1; }\n", "m").is_ok(),
-        "an include behind a comment is not a directive"
+        wrapped.contains("#line 2 \"module_csv_tools.cppm\"\n#include <deque>"),
+        "a hoisted line must say where its author wrote it — line 2 — so a header this toolchain \
+         does not carry is reported in the author's own coordinates:\n{wrapped}"
+    );
+
+    // The body is the author's own text with the hoisted line's place left empty, under the `#line 1`
+    // that says the author's first line is line 1 — so the declaration the author wrote on line 3 is
+    // still on line 3 of what the compiler reads.
+    let opened = "export namespace lib::csv_tools {\n#line 1 \"module_csv_tools.cppm\"\n";
+    let body = wrapped
+        .split_once(opened)
+        .map(|(_, rest)| rest)
+        .unwrap_or_else(|| panic!("the namespace is opened over a `#line 1`:\n{wrapped}"));
+    assert_eq!(
+        body.lines()
+            .position(|line| line.contains("std::deque<int> ones()")),
+        Some(2),
+        "the author's declaration is not on the line the author wrote it on, which is the whole of \
+         what `#line` is for:\n{wrapped}"
     );
     assert!(
-        source::namespaced(
-            "const char *usage = R\"(#include <vector>)\";\nint one() { return 1; }\n",
-            "m"
-        )
-        .is_ok(),
-        "an include inside a raw string is not a directive"
+        body.starts_with("// a helper module\n"),
+        "everything that is not the include is left exactly where it stood:\n{wrapped}"
     );
+    assert!(
+        wrapped
+            .trim_end()
+            .ends_with("}  // namespace lib::csv_tools")
+    );
+
+    // The line is found wherever it is and however it is spaced — and not when it is text, which is
+    // this arm's own lexer answering rather than a scan for `"#include"`. A line that is not a
+    // directive stays in the body, where its author put it.
+    let spaced = source::namespaced("int one() { return 1; }\n#  include \"helpers.h\"\n", "m");
+    assert!(
+        spaced.find("#  include \"helpers.h\"") < spaced.find("export module lib.m;"),
+        "a differently spaced directive was not recognised:\n{spaced}"
+    );
+    assert!(
+        spaced.contains("#line 2 \"module_m.cppm\"\n#  include \"helpers.h\""),
+        "the hoisted line did not carry its author's line:\n{spaced}"
+    );
+
+    for (text, what) in [
+        (
+            "// #include <deque>\nint one() { return 1; }\n",
+            "a comment",
+        ),
+        (
+            "const char *usage = R\"(#include <deque>)\";\nint one() { return 1; }\n",
+            "a raw string",
+        ),
+    ] {
+        let left = source::namespaced(text, "m");
+        assert!(
+            left.find("#include <deque>") > left.find("export namespace lib::m {"),
+            "an include inside {what} is not a directive and must stay where it was written:\n{left}"
+        );
+    }
 }
 
 /// **A module's namespace is everything it declares at its top level**, in source order.
@@ -350,10 +437,18 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
     let module = cpp().gate_module("gg-isolation-7");
     assert_eq!(
         module,
-        "std::string marker() {\n  return \"gg-isolation-7\";\n}\n"
+        "#include <string>\n\nstd::string marker() {\n  return \"gg-isolation-7\";\n}\n"
     );
     assert_eq!(source::exports(&module), vec!["marker".to_string()]);
-    assert!(source::namespaced(&module, "module").is_ok());
+
+    // It is a module a skill author could have written, include and all: the line goes into the
+    // global module fragment, and what stays inside `namespace lib::module` is the export the gate
+    // reads the marker back out of.
+    let wrapped = source::namespaced(&module, "module");
+    assert!(
+        wrapped.find("#include <string>") < wrapped.find("export module lib.Module;"),
+        "{wrapped}"
+    );
 }
 
 /// **The generated catalogue is this language's**, and every operation gg names is spelled as a
@@ -391,8 +486,9 @@ fn the_generated_catalogue_is_this_languages() {
 /// **This arm declares the libraries a program may reach**, which is what a compile failure quotes back.
 ///
 /// The C++ standard library, grouped exactly as `packages/gg-sandbox-cpp/Sources/prelude.hpp` heads
-/// it — the prelude is the one declaration and both the compile and the catalogue are reflected from
-/// it. It is the one arm whose library set carries no third-party code at all, and the argument for
+/// it. That file is no longer a compile input — a program includes what it uses — and it is still
+/// the one **declaration** of the set: the build's manifest and the catalogue's groups are both read
+/// out of it. It is the one arm whose library set carries no third-party code at all, and the argument for
 /// that is written down in the package's own README: what a C++ author reaches for first *is* the
 /// standard library, at a breadth no other arm's matches.
 #[test]
@@ -406,7 +502,7 @@ fn this_arm_declares_the_libraries_a_program_may_reach() {
     for header in ["<vector>", "<format>", "<ranges>", "<expected>", "<regex>"] {
         assert!(
             named.contains(&header),
-            "`{header}` is in the prelude and the catalogue does not name it: {named:?}"
+            "`{header}` is declared in `prelude.hpp` and the catalogue does not name it: {named:?}"
         );
     }
     // The absences this arm decided on, so a header the catalogue does not offer cannot quietly

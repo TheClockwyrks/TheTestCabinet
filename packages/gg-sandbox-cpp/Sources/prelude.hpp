@@ -1,30 +1,33 @@
-// **The standard library every C++ program gg compiles is compiled against**, and the header this
-// arm precompiles once per machine.
+// **THE LIBRARY SET THIS ARM MAKES AVAILABLE**, declared header by header — and PUT IN FRONT OF
+// NOTHING.
 //
-// A model's reply is compiled verbatim as `main.cpp` and this file is put in front of it with
-// clang's `-include-pch`, so the reply opens with the C++ standard library already declared. It is
-// the one file in this arm that is *both* a compile input and a performance decision, and the two
-// are the same decision:
+// This file is a declaration, not a compile input. A model's reply is compiled verbatim as
+// `main.cpp` with no header of gg's in front of it, so `std::vector` is undeclared until the reply
+// writes `#include <vector>`, exactly as `gg::files::read_file` is undeclared until it writes
+// `#include <gg/files.hpp>`. That is the
+// [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/): everything a program
+// uses, it imports, its language's own standard library included.
 //
-//   * A model writes `#include <vector>` without thinking, and it should work — so the reply is
-//     never edited and an ordinary `#include` is simply a second, redundant read of a header the
-//     preamble already saw. clang de-duplicates it against the PCH for nothing.
-//   * Parsing this set costs the best part of a second every time a C++ program is compiled, and
-//     reading a precompiled copy back costs tens of milliseconds. Measured on this repository's dev
-//     container, aarch64, best of five: a small program is 836 ms without the PCH and 90 ms with it;
-//     the ranges/format/map program in `cpp.compile.rs`'s table is 1581 ms without and 952 ms with.
-//     That is the single largest reducer available to this arm and the reason the header is "always
-//     full" rather than tailored per program — tailoring it would key the PCH on the model's reply,
-//     which is a new PCH per turn and the whole saving gone.
+// WHO READS THIS FILE. Three readers, and they are the whole of its job:
 //
-// WHAT IS IN IT: THE STANDARD LIBRARY, AND NOTHING ELSE. **gg's own surface is deliberately not
-// here**, and that is the [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
-// rather than an omission: every SDK name a program writes is reached through an import that program
-// wrote, so `gg::files::read_file` is undeclared until the reply writes `#include <gg/files.hpp>`.
-// The SDK is still *available* — its headers are on the include path and its bodies are in the
-// `sdk.o` every artifact links, which is packaging — and what it is not is in scope. Measured, best
-// of five on the same machine: carrying the SDK here saved 33 ms of a 952 ms turn, and cost the arm
-// the one line that says where a call came from.
+//   * `build.sh` reads the `#include` lines below into `cpp.toolchain.json`'s `headers` list;
+//   * `tools/signatures.py` reads the `// == Heading ==` groups into the catalogue's `libraries`
+//     section, which is what a compile failure quotes back to a model group by group;
+//   * a reader of this arm, for what the set is and why.
+//
+// One declaration, several readers — the rule every other arm's library manifest follows, and the
+// reason nothing here is restated anywhere else.
+//
+// WHAT USED TO HAPPEN TO IT. This set was precompiled once per machine and named to every compile
+// with `-include-pch`, which is what made a small program 90 ms rather than 836 ms — measured on
+// this repository's dev container, aarch64, best of five; the ranges/format/map program in
+// `cpp.compile.rs`'s table was 952 ms against 1581 ms. It was also the one place in gg where a name
+// reached a model's program through a line the model had not written, so it is gone and the arm pays
+// the parse of whatever the program itself included.
+//
+// WHAT IS IN IT: THE STANDARD LIBRARY, AND NOTHING ELSE. gg's own surface is not on this list
+// because it is not a library a C++ author reaches for: it is declared by the thirteen headers the
+// catalogue states as its modules' own include lines, and a program writes one of those.
 //
 // WHAT DECIDES THE SET BELOW. Two rules, and both are the seam's rather than this file's.
 // Commonly used libraries are available by default in every arm, and for C++ that library is the
@@ -36,15 +39,16 @@
 // `<filesystem>` is off the set for the same reason the Rust arm keeps `std::fs` off its own: the
 // workspace is reached through `gg::files` and `gg::shell`, which are gated, recorded in the run's
 // events and able to put what they read in front of the model, and a directory walk done behind
-// them is none of those things. It is not a compiler problem — `#include <filesystem>` beside this
-// prelude compiles and links on this target, measured — so this is the seam's answer about which
-// route the workspace has, stated once here and reaching a model only as an absence from the set
+// them is none of those things. It is not a compiler problem — a program that writes
+// `#include <filesystem>` compiles and links on this target, measured — so this is the seam's
+// answer about which route the workspace has, stated once here and reaching a model only as an
+// absence from the set
 // this arm's catalogue declares, which gg quotes back on a compile failure rather than in the
 // system prompt: a program that reached for it reads the set beside the diagnostic that made it
 // relevant.
 //
-// WHAT THIS SET IS NOT: AN ALLOWLIST. This file decides what is put IN FRONT of a program, not
-// what a program may reach. The whole of libc++ is on clang's default include path, so a reply
+// WHAT THIS SET IS NOT: AN ALLOWLIST. This file declares what a program is TOLD it may reach, not
+// what it CAN reach. The whole of libc++ is on clang's default include path, so a reply
 // that writes `#include <thread>` or `#include <iostream>` gets exactly that header and compiles.
 // Measured, not assumed: a `std::thread` program compiles, links and throws `system_error: thread
 // constructor failed: Not supported` at run time. Making the list an allowlist would mean

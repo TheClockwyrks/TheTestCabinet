@@ -32,8 +32,9 @@ holds the model to it.
 
 A code skill's or memory's module is a skill author's file rather than a model's
 reply, so the rule above does not reach it. gg may open a namespace, a class or a
-module declaration around it and may write the line that brings gg's surface into
-it, which is what a compiled arm needs to link one at all.
+module declaration around it, may lift the author's own import lines to the
+position that construct requires, and may write the line that brings gg's surface
+into it, which is what a compiled arm needs to link one at all.
 
 What still binds is the location: a module diagnostic is anchored by a
 line-control directive the language honours, by a source map, or by a wrapper

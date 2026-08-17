@@ -4,7 +4,7 @@
 #
 #   cpp.guest.tar.gz     the compile inputs every turn needs on disk — the generated WIT header,
 #                        gg's hand-written SDK as headers plus a prebuilt wasm object, the prelude
-#                        every program is compiled against, gg's shell as both SOURCE and a
+#                        this arm DECLARES its library set in, gg's shell as both SOURCE and a
 #                        prebuilt object, the compiled bindings object, and the component-type
 #                        object that names the world
 #   cpp.adapter.wasm     the pinned `wasi_snapshot_preview1` REACTOR adapter, which turns the
@@ -29,12 +29,12 @@
 # is kept because `cpp.compile.rs` compiles the shell's source alongside the model's program on the
 # turn path.
 #
-# WHAT IS NOT BUILT HERE, deliberately: the **precompiled header**. `Sources/prelude.hpp` ships as
-# source and the PCH is built **once per machine**, by the first compile, into a content-keyed
-# shared toolchain directory. A PCH may only be read by the clang that wrote it and it records the
-# absolute paths of every header it precompiled — so one built in this checkout could not be read by
-# the wasi-sdk in a run image, and putting 28 MB of it in the archive would be shipping something no
-# other machine can use. See `cpp.compile.rs`.
+# WHAT `Sources/prelude.hpp` IS, AND IS NOT. It is the DECLARATION of the library set this arm makes
+# available, and it is compiled by nothing: the `headers` list below is read out of its `#include`
+# lines and the catalogue's `libraries` section out of its `// == Heading ==` groups, and a program
+# reaches `<vector>` by writing `#include <vector>` itself, which is what
+# https://docs.testcabinet.ai/gg/responses-as-code/invariants/ requires. It ships in the archive,
+# because it is the file the header list is read from and gg carries what it declares.
 #
 # THIS SET IS BYTE-REPRODUCIBLE, unlike the Swift arm's: clang stamps no per-invocation nonce into
 # an object, and `-ffile-prefix-map` below removes the one thing that would otherwise record the
@@ -158,17 +158,11 @@ mkdir -p "$STAGE/include/gg"
 cp "$HERE"/Sources/sdk/gg.hpp "$HERE"/Sources/sdk/runtime.hpp "$STAGE/include/"
 cp "$HERE"/Sources/sdk/gg/*.hpp "$STAGE/include/gg/"
 cp "$BINDINGS/sandbox_component_type.o" "$STAGE/sandbox_component_type.o"
+# The library set this arm declares, carried as source rather than compiled: nothing puts it in
+# front of a program, and it is DELIBERATELY not under `include/` — a program that wrote
+# `#include <prelude.hpp>` would be reaching for a file gg ships rather than a library.
 cp "$HERE/Sources/prelude.hpp" "$STAGE/prelude.hpp"
 cp "$HERE/Sources/shell.cpp" "$STAGE/shell.cpp"
-
-echo "==> checking the prelude precompiles"
-# Not decoration: the PCH is what makes this arm affordable, and a header that parses as an
-# ordinary include but cannot be precompiled would only be discovered by the first compile on a
-# fresh machine. It is thrown away — the real one is built per machine, by the compiler that will
-# read it.
-"$CLANGXX" --target="$GG_CPP_TARGET" -std="$GG_CPP_STD" "${EH_FLAGS[@]}" "${HARDENING_FLAGS[@]}" \
-	-x c++-header -O0 -g1 -o "$HERE/.build/prelude.check.pch" "$STAGE/prelude.hpp"
-rm -f "$HERE/.build/prelude.check.pch"
 
 echo "==> cpp.guest.tar.gz"
 # Deterministic: a fixed mtime, a fixed owner and a sorted member list, so re-running this over
@@ -197,9 +191,9 @@ echo "==> cpp.toolchain.json"
 	printf '  "witBindgen": "%s",\n' "$GG_WIT_BINDGEN_VERSION"
 	printf '  "adapter": "%s",\n' "$GG_WASMTIME_ADAPTER_VERSION"
 	printf '  "headers": [\n'
-	# The library set a model may use, read out of the prelude that actually ships it rather than
-	# restated here — the same rule every other arm's library manifest follows, and the one place
-	# a hand-kept second list would let a model be told about a header it has not got.
+	# The library set a model may use, read out of the file that DECLARES it rather than restated
+	# here — the same rule every other arm's library manifest follows, and the one place a
+	# hand-kept second list would let a model be told about a header it has not got.
 	grep -o '^#include <[^>]*>' "$HERE/Sources/prelude.hpp" | sed 's/^#include <//; s/>$//' | sort |
 		awk '{ printf "    \"%s\"%s\n", $0, (NR == n ? "" : ",") }' n="$(grep -c '^#include <' "$HERE/Sources/prelude.hpp")"
 	printf '  ],\n'

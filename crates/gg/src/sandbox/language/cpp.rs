@@ -3,12 +3,11 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`] — the host-side `clang++`, the precompiled prelude that makes it affordable, the
-//!   in-process component encode with the preview1 adapter, what they cost, what they share, and
-//!   the two failures they tell apart;
+//! * [`compile`] — the host-side `clang++`, the in-process component encode with the preview1
+//!   adapter, what they cost, what they share, and the two failures they tell apart;
 //! * [`source`] — the one thing gg reads out of a reply, which is whether it defines `main`, and
-//!   the one thing it writes, which is the namespace a **code module**'s declarations are opened
-//!   inside;
+//!   what it writes around a **code module**: the named module and namespace its declarations are
+//!   opened inside, with the author's own `#include` lines hoisted above them;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of, whose lexer is also the one [`source`] reads a reply with;
 //! * `packages/gg-sandbox-cpp/Sources/sdk/` — the SDK, hand-written and idiomatic, whose `///`
@@ -31,15 +30,17 @@
 //! Nothing gg passes the compiler puts any of it in scope. The header is on the include path and the
 //! bodies are in the `sdk.o` every artifact links, which is
 //! [packaging](https://docs.testcabinet.ai/gg/responses-as-code/invariants/); the declaration is the
-//! model's own `#include`. The [prelude](compile) carries the standard library and stops there, and
-//! there is no using-directive anywhere — so a program that declares its own `namespace files` has
-//! taken a name gg was not using, and `gg::files::` goes on resolving beside it.
+//! model's own `#include`. **The C++ standard library arrives the same way**: nothing is put in
+//! front of a program, so `std::vector` is undeclared until the reply writes `#include <vector>`.
+//! There is no using-directive anywhere either — so a program that declares its own
+//! `namespace files` has taken a name gg was not using, and `gg::files::` goes on resolving beside
+//! it.
 //!
 //! The nesting is what makes the full name a real C++ path rather than a label, which is the whole
 //! point of the surface being modules: it is what a search hit shows, what a documentation view is
-//! opened by, and what lets two modules each declare a `close`. `Sources/prelude.hpp` records what
-//! the standard-library-only prelude costs and the reason `<filesystem>` is off this arm's library
-//! set.
+//! opened by, and what lets two modules each declare a `close`. `Sources/prelude.hpp` is where the
+//! library set a program may reach for is declared — by the file, not in front of the program — and
+//! it records the reason `<filesystem>` is off that set.
 //!
 //! Everything else is spelling, and it is written to read like the standard library it arrives
 //! beside: `snake_case` throughout, `enum class` for a fixed choice, aggregates with public members
@@ -122,15 +123,16 @@
 //! end up in is the artifact of a program that was compiled against it.
 //!
 //! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
-//! scope, and each becomes a header put in front of the model's file, with its declarations opened
+//! scope, and each becomes a named C++ module the program imports, with its declarations opened
 //! inside `namespace lib::<key>` **where they stand**. It is the plainest shape of the three
-//! compiled arms — C++ has a real nested namespace, so nothing has to be moved, re-synthesized or
-//! declared twice — and the one thing that had to be decided is what happens to a `#include` at a
-//! module's top level, which is refused by name. gg writes the one include that declares its own
-//! surface **above** that namespace, which is the wrapper
+//! compiled arms — C++ has a real nested namespace, so nothing has to be re-synthesized or declared
+//! twice — and the one thing that had to be decided is what happens to a `#include` at a module's
+//! top level, which is **hoisted** into the module's global module fragment, where an author's own
+//! headers reach the module and nobody who imports it. gg writes the one include that declares its
+//! own surface into that same fragment, which is the wrapper
 //! [a module is allowed and a program is not](https://docs.testcabinet.ai/gg/responses-as-code/invariants/):
 //! a module is a skill author's file that gg wraps, where a program is a model's reply that gg does
-//! not touch. See [`source`] for the shape, the refusal and the argument.
+//! not touch. See [`source`] for the shape, the hoist and the argument.
 //!
 //! What a model can see of the difference is that `lib::csv_tools::parse` is a **name the compiler
 //! resolves** rather than a property looked up on a value: a key that does not exist is a diagnostic
@@ -233,13 +235,11 @@ impl ProgramLanguage for Cpp {
 
     /// Unpack the embedded guest archive now, so the first code turn does not.
     ///
-    /// The whole of this arm's warm-up that can be done without a compiler: 32 KB decompressed, once
-    /// per machine. The **precompiled prelude** is deliberately not built here — building one means
-    /// running `clang++`, and a compiler is spawned through a [`PrepareContext`] a warm-up does not
-    /// have — so the first program of a process pays about a second more than the rest and every
-    /// process after that on the same machine pays nothing. Idempotent and best effort: a failure
-    /// here is the failure the first compile makes, and there it is classified, counted and reported
-    /// as a [toolchain failure](PrepareFailure::Toolchain).
+    /// The whole of this arm's warm-up, and the whole of what it could be: 32 KB decompressed, once
+    /// per machine. Nothing is compiled ahead of a program, because nothing is put in front of one —
+    /// every header a compile parses is one the program itself included. Idempotent and best effort:
+    /// a failure here is the failure the first compile makes, and there it is classified, counted
+    /// and reported as a [toolchain failure](PrepareFailure::Toolchain).
     fn warm_prepare(&self) {
         compile::warm();
     }
@@ -334,7 +334,8 @@ impl ProgramLanguage for Cpp {
 
     /// [An array of names and a range `for` over it](self::open_docs_views_statement), each
     /// iteration opening one documentation view — inside the `int main` this language has nowhere
-    /// else to put a statement than, under the one `#include` that declares the call.
+    /// else to put a statement than, under the `#include` that declares the call and the ones that
+    /// declare the standard-library types it holds the names in.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(
             &includes(self, &[VIEWS_OPEN_DOCS_VIEW]),
@@ -344,8 +345,8 @@ impl ProgramLanguage for Cpp {
     }
 
     /// [One `int main` holding two arrays and two range `for`s](self::bootstrap_program), under the
-    /// `#include` lines that declare the two calls — every one of them resolved from this
-    /// language's own catalogue.
+    /// `#include` lines that declare the two calls — every one of them resolved from this language's
+    /// own catalogue — and the ones that declare `std::array` and `std::string_view`.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
             &includes(self, &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW]),
@@ -366,10 +367,14 @@ impl ProgramLanguage for Cpp {
     /// itself, as [Rust](super::rust), [Swift](super::swift) and the [JVM](super::jvm) arms do, and
     /// the `name` rides in as a returned **string literal** — which is where the module's one export
     /// hands it back.
+    ///
+    /// It writes its own `#include <string>`, which is what a skill author writes and what gg
+    /// [hoists](self::source::namespaced) into the module's global module fragment: nothing is in
+    /// front of a module either.
     #[cfg(test)]
     fn gate_module(&self, name: &str) -> String {
         format!(
-            "std::string marker() {{\n  return {};\n}}\n",
+            "#include <string>\n\nstd::string marker() {{\n  return {};\n}}\n",
             serde_json::Value::String(name.to_string())
         )
     }
@@ -414,6 +419,26 @@ fn includes(language: &dyn ProgramLanguage, calls: &[crate::sandbox::OperationId
     match lines.is_empty() {
         true => String::new(),
         false => format!("{}\n\n", lines.join("\n")),
+    }
+}
+
+/// **The `#include` lines a program gg synthesized writes for the standard library it uses**, above
+/// the ones [`includes`] resolves for gg's own surface and separated from them by the blank line a
+/// C++ author leaves between the two groups.
+///
+/// gg's own generated programs obey the rule a model's program obeys: nothing is put in front of a
+/// translation unit, so a program that writes `std::array` includes `<array>` itself. It is not
+/// decoration — without these lines every program in this file is *use of undeclared identifier
+/// 'std'*, and one of them is compiled and run before the model's first request.
+///
+/// `<string_view>` only where it is really named. A list with entries deduces its `std::array` from
+/// string literals, where an empty one has to spell the element type out
+/// ([`open_docs_views_statement`] says why) — and a program carrying an include for a type it does
+/// not use is a habit a model reads out of its own transcript.
+fn standard_includes(names_an_empty_list: bool) -> String {
+    match names_an_empty_list {
+        true => "#include <array>\n#include <string_view>\n\n".to_string(),
+        false => "#include <array>\n\n".to_string(),
     }
 }
 
@@ -528,6 +553,10 @@ pub(super) fn open_file_program(
 /// initialiser gives `std::array` nothing to deduce from — *no viable constructor or deduction
 /// guide* — and the `(void)` cast keeps a program that declares an array it never reads from being
 /// a warning about one.
+///
+/// [`standard_includes`] is what declares that `std::array`, above the call's own include line: this
+/// program obeys the rule a model's program obeys, and nothing is in scope of it that a line in it
+/// did not put there.
 pub(super) fn open_docs_views_statement(
     includes: &str,
     open_docs_view: &str,
@@ -547,8 +576,9 @@ pub(super) fn open_docs_views_statement(
         ),
     };
     format!(
-        "{includes}int main() {{\n{listed}  for (const auto &name : functions) {{\n    \
-         {open_docs_view}(name);\n  }}\n  return 0;\n}}\n"
+        "{}{includes}int main() {{\n{listed}  for (const auto &name : functions) {{\n    \
+         {open_docs_view}(name);\n  }}\n  return 0;\n}}\n",
+        standard_includes(names.is_empty())
     )
 }
 
@@ -560,8 +590,13 @@ pub(super) fn open_docs_views_statement(
 ///
 /// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
 /// modules and a dozen calls written out is a shape a model would copy for its own work. The
-/// `std::array`s, the `const auto &` loops and the empty case's explicit element type are what
+/// `std::array`s, the `const auto &` loops, the empty case's explicit element type and the
+/// [standard-library include lines](standard_includes) that declare them are what
 /// [`open_docs_views_statement`] argues for, unchanged.
+///
+/// It is the one program in this file that is compiled and run **before the model's first
+/// request**, so a missing include here is a run that ends on gg's own defect rather than a turn a
+/// model can act on.
 ///
 /// The filters are an aggregate filled in with **designated initialisers**, which is what this
 /// language offers in place of named arguments and what its SDK declares.
@@ -593,10 +628,11 @@ pub(super) fn bootstrap_program(
     let paths = listed("modules", modules);
     let functions = listed("functions", docs);
     format!(
-        "{includes}int main() {{\n{paths}  for (const auto &path : modules) {{\n    \
+        "{}{includes}int main() {{\n{paths}  for (const auto &path : modules) {{\n    \
          {search}(\"\", {{.module = path, .limit = {MAX_SEARCH_LIMIT}}});\n  }}\n\
          \n{functions}  for (const auto &name : functions) {{\n    \
-         {open_docs_view}(name);\n  }}\n  return 0;\n}}\n"
+         {open_docs_view}(name);\n  }}\n  return 0;\n}}\n",
+        standard_includes(modules.is_empty() || docs.is_empty())
     )
 }
 

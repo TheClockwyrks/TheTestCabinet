@@ -5,9 +5,10 @@
 // It is the umbrella a program writes `#include <gg.hpp>` for when it wants all thirteen modules at
 // once; one module's own `#include <gg/files.hpp>` is what a catalogue entry states and what a
 // documentation view quotes. Nothing here is put in front of a program by gg: the
-// [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) require every SDK name
-// a program writes to be reached through a line that program wrote, so the precompiled prelude
-// carries the standard library and stops there, and there is no using-directive anywhere.
+// [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) require every name a
+// program writes to be reached through a line that program wrote — the C++ standard library
+// included, which is why nothing at all is put in front of a translation unit here — and there is no
+// using-directive anywhere.
 //
 // ONE HEADER PER MODULE, and the module is the unit of everything. `gg::files` is a namespace, a
 // header, a translation unit and the prefix of every name the module declares — so

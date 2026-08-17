@@ -5,7 +5,7 @@
 # WHY C, for a C++ arm. `wit-bindgen` has no C++ generator, and this arm does not need one:
 # calling C is what `extern "C"` is for, and it costs a program nothing. The canonical ABI is
 # generated once as C, compiled to a wasm object at build time, and reached from C++ through
-# `Sources/prelude.hpp`. The alternative was hand-writing the lowering, which is a second
+# `Sources/sdk/wire.hpp`. The alternative was hand-writing the lowering, which is a second
 # implementation of a specification `wit-bindgen` already implements — and one that would drift
 # from `crates/gg/wit` on its own schedule.
 #
