@@ -519,22 +519,40 @@ console.log(Object.keys(helpers).sort().join(","));"#,
 }
 
 #[test]
-fn evaluating_a_compiled_program_costs_a_turn_almost_nothing() {
+fn what_a_compiled_program_weighs_and_what_a_turn_pays_for_it() {
     // The half of this arm's cost that is NOT the compiler. A compiled PureScript program is
-    // self-contained JavaScript with no runtime to boot, so what a turn pays inside the guest is an
-    // instantiate and an evaluate — the same thing a JavaScript program pays, which is the whole
-    // argument for sharing the component. Measured on this repository's dev container, idle, as a
-    // whole turn (a store, an instantiate, an evaluate and the reclaim): ~2.7 ms for the PureScript
-    // below, against ~2.1 ms for the JavaScript beside it.
+    // self-contained JavaScript with no runtime to boot: `purs` compiles the program's own code and
+    // the library code it actually used, and `esbuild` tree-shakes the rest away. That is the whole
+    // argument for sharing the ECMAScript guest with the TypeScript and JavaScript arms, and the
+    // regression it is set against is the one the Ruby arm names — Opal's 743 KB runtime prepended
+    // to every program, paid again on every turn.
     //
-    // It is asserted as a RATIO rather than as a bound in milliseconds, and that is not timidity.
-    // An absolute bound here measures the machine: the same 2.7 ms reads as 53 ms beside the rest of
-    // this package's tests, which is a load average rather than a regression, and an earlier draft
-    // of this test failed on exactly that. Both figures inflate together under load, so dividing one
-    // by the other cancels the machine out and leaves the only thing worth asserting — that this arm
-    // pays what the JavaScript arm pays, because it evaluates the same kind of artifact on the same
-    // component. What that catches is a regression of a different order: a runtime that stopped
-    // being tree-shaken out, a library that started initialising at load.
+    // It is asserted BY WEIGHT, and the stopwatch beside it is printed rather than asserted. An
+    // earlier draft did the reverse: it timed a turn on each artifact and asserted their ratio
+    // against a bound of 5, reasoning that dividing one reading by the other cancelled the machine
+    // out. It flaked, for two reasons that compounded.
+    //
+    // The headroom was never there. The ~2.7 ms against ~2.1 ms that draft quoted — a ratio near
+    // 1.3, which a bound of 5 clears four times over — are not this arm's figures at all: they are
+    // the Ruby arm's, as `languages/ruby.md` still quotes them. Measured here, a turn on the
+    // program below costs 9.2 ms against the control's 2.9 ms, because 164 KB of bundle has to be
+    // parsed where the control has 88 bytes. The true ratio is ~3, so the bound stood at 1.5x a
+    // healthy reading rather than 4x.
+    //
+    // And the ratio does not cancel the machine out. That would need both readings to inflate
+    // proportionally, which needs them to be the same size, and they differ by 3x; a scheduler
+    // stall is a fixed number of milliseconds wherever it lands, so it moves the quotient. Summing
+    // the runs rather than taking the minimum then kept every stall rather than discarding it.
+    // Reproduced by loading the machine the way a workspace run does — twenty-four busy loops and
+    // eighteen concurrent copies of this test — and reading the ratio 54 times: it ran 2.53 to
+    // 6.16 and crossed the bound of 5 in four of the 54, one run in thirteen. That is the MINIMUM,
+    // which is the kinder of the two readings; the draft asserted the sum.
+    //
+    // The Rust arm already ruled on this in `what_a_program_costs_and_what_it_weighs` — a shared
+    // machine is the wrong place to fail over a stopwatch — and the weight is the better witness
+    // anyway, because it is hermetic. The bytes below came back identical from repeated compiles,
+    // so what moves them is the toolchain or the SDK changing, which is the thing worth being told
+    // about, and never the load average.
     let purescript = prepare(
         "module Main where\n\
          import Prelude\n\
@@ -546,8 +564,46 @@ fn evaluating_a_compiled_program_costs_a_turn_almost_nothing() {
          main :: Effect Unit\n\
          main = Console.log (show (sum (range 1 100)))\n",
     );
+    // The same answer with `Data.Array` and `Data.Foldable` given up: what separates the two
+    // bundles is exactly the library code the first one used and the second did not.
+    let frugal = prepare(
+        "module Main where\n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
+         \n\
+         main :: Effect Unit\n\
+         main = Console.log \"5050\"\n",
+    );
     let javascript = "let total = 0; for (let n = 1; n <= 100; n += 1) total += n; \
                       console.log(String(total));";
+
+    // A band wide enough that only a change in KIND fails it, in the Rust arm's sense. Measured
+    // here: 164,458 bytes for the program above and 37,564 for the frugal one, against a library
+    // tree that is 1.4 MB unpacked — so a bundle that stopped being tree-shaken at all has nowhere
+    // to land inside the ceiling.
+    for (what, program) in [
+        ("the program", &purescript),
+        ("the frugal program", &frugal),
+    ] {
+        assert!(
+            (8 * 1024..=1024 * 1024).contains(&program.len()),
+            "{what} compiles to {} bytes, outside the documented 8 KiB-1 MiB band — esbuild \
+             stopped tree-shaking, or a runtime is being prepended per program",
+            program.len()
+        );
+    }
+    // And the assertion the band cannot make on its own: that what a program imports really does
+    // decide what it weighs. Prepend a fixed runtime to both and this collapses towards 1, however
+    // the band lands. Measured at 4.4x; asserted at 2x.
+    assert!(
+        frugal.len() * 2 < purescript.len(),
+        "a program using `Data.Array` and `Data.Foldable` weighs {} bytes against {} for one using \
+         neither — too close for the difference to be the library code each used, which is what \
+         tree-shaking having stopped looks like",
+        purescript.len(),
+        frugal.len(),
+    );
 
     // Warm: the first evaluation in a process pays for the engine's lazy work, not for a program.
     for source in [purescript.as_str(), javascript] {
@@ -557,31 +613,33 @@ fn evaluating_a_compiled_program_costs_a_turn_almost_nothing() {
         );
     }
 
-    // Interleaved, so the two measurements share one window of whatever else the machine is doing.
-    let runs = 5;
-    let mut compiled = std::time::Duration::ZERO;
-    let mut plain = std::time::Duration::ZERO;
-    for _ in 0..runs {
+    // Printed rather than asserted, because it is the arm's cost rather than its correctness.
+    // Interleaved so the two share one window of whatever else the machine is doing, and taken as
+    // the MINIMUM rather than the sum, which is the least-contaminated sample rather than the one
+    // carrying every stall — the same reading `ruby.substrate.test.rs` takes. `cargo nextest run
+    // --no-capture` is where these figures come from: 9.2 ms against 2.9 ms idle on this
+    // repository's dev container, and 9.1-10.5 ms against the same control with eighteen copies of
+    // this test running at once.
+    let mut compiled = std::time::Duration::MAX;
+    let mut plain = std::time::Duration::MAX;
+    for _ in 0..5 {
         let started = Instant::now();
-        assert_eq!(
-            logs(&evaluate_js(&purescript, &[], &[], canned_outcome).0),
-            ["5050"]
-        );
-        compiled += started.elapsed();
+        let outcome = evaluate_js(&purescript, &[], &[], canned_outcome).0;
+        compiled = compiled.min(started.elapsed());
+        assert_eq!(logs(&outcome), ["5050"]);
 
         let started = Instant::now();
+        let outcome = evaluate_js(javascript, &[], &[], canned_outcome).0;
+        plain = plain.min(started.elapsed());
         assert_eq!(
-            logs(&evaluate_js(javascript, &[], &[], canned_outcome).0),
-            ["5050"]
+            logs(&outcome),
+            ["5050"],
+            "the control has to be the same turn, not a different one"
         );
-        plain += started.elapsed();
     }
-    assert!(
-        compiled < plain * 5,
-        "a compiled PureScript program costs a turn {:?} against JavaScript's {:?} on the same \
-         component — which is a runtime that stopped being compiled away, not a busy machine",
-        compiled / runs,
-        plain / runs,
+    println!(
+        "a turn on {} bytes of compiled PureScript {compiled:?}; on plain JavaScript {plain:?}",
+        purescript.len(),
     );
 }
 
