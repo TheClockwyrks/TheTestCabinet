@@ -409,11 +409,10 @@ function documented(fn: ToolFn, name: string): ToolFn {
  *
  * Three things follow, and each is deliberate:
  *
- * - **The compile-time surface and the discovery surface differ.** `tsc` already checked this
- *   program against the whole catalogue (see gg's `typescript.check.rs`), so a call to a withheld
- *   function type-checks; `docs.search` still returns only what this agent may call. A program can
- *   therefore compile a call search would never have shown it. That is accepted, on one condition,
- *   which the paragraph below holds.
+ * - **The bound surface and the discovery surface differ.** Every function is bound whatever the run
+ *   enabled; `docs.search` still returns only what this agent may call. A program can therefore
+ *   write a call search would never have shown it. That is accepted, on one condition, which the
+ *   paragraph below holds.
  * - **Every gg function is reached through a qualified name**, never as a bare identifier — so a
  *   call the agent cannot make never *looks* like an ordinary local function. `gg.files.readFile`
  *   and `fs.readFile` are both qualified; nothing here binds `readFile`.

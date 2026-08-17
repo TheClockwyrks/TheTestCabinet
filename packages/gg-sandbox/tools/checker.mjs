@@ -11,8 +11,8 @@
 //   tools/program-globals.d.ts               --this script-->  typescript.globals.d.ts
 //                                            --this script-->  typescript.checker.json
 //
-// all four into `$GG_ARTIFACTS_OUT_DIR`, where `typescript.check.rs` embeds them with `include_str!`
-// exactly as `typescript.rs` embeds the component and the catalogue. Carried rather than fetched,
+// all four into `$GG_ARTIFACTS_OUT_DIR`, where `typescript.compile.rs` embeds them with
+// `include_str!` exactly as `typescript.rs` embeds the catalogue. Carried rather than fetched,
 // for the reason every other guest artifact is: a run container has no npm and may have no network,
 // and a checker resolved from the workspace would be whatever version the model happened to install.
 //

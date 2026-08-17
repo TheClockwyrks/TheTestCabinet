@@ -78,10 +78,10 @@ export const SURFACE = "gg";
  * The **API object** names each module's functions are also reachable under, kept for one reader and
  * no second.
  *
- * That reader is the PureScript, Java and Kotlin arms' compiled bundles, which this same component
- * evaluates and which resolve these as free identifiers. Their SDKs are their own — `Gg.Files`,
- * `Gg.Views` — and the names below are the lowering they were written against, so removing one would
- * break an arm this package does not own.
+ * That reader is the PureScript arm's compiled bundle, which this same component evaluates and which
+ * resolves these as free identifiers. Its SDK is its own — `Gg.Files`, `Gg.Views` — and the names
+ * below are the lowering it was written against, so removing one would break an arm this package
+ * does not own.
  *
  * `session` has **two**, and that is the whole of what the static scope changed here. An ending group
  * used to be chosen per program from the agent's role, so a reviewer's scope carried `review` and no
