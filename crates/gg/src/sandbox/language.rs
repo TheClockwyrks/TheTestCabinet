@@ -1114,8 +1114,20 @@ pub enum PrepareFailure {
 }
 
 /// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param naming the language an
-/// agent writes its programs in. Absent takes [`GgProgramLanguage::default`].
+/// agent writes its programs in. **Required** wherever the capability is switched on: there is no
+/// language an unconfigured agent falls back to.
 pub const PARAM_LANGUAGE: &str = "language";
+
+/// What [`resolve_program_language`] hands back where the answer is not a language the run will
+/// write in: an agent that emits no programs at all, or a launch this same call has just refused.
+///
+/// It is a placeholder rather than a default: no run is ever *driven* in it. A code agent that
+/// named no language is refused before its first turn, and a tool-calling agent's resolved
+/// language is discarded by the surface that asked for it
+/// ([`programLanguage`](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) is absent for an agent
+/// that writes no programs). A concrete variant only because the resolver
+/// [stays total](crate::validate).
+const UNUSED: GgProgramLanguage = GgProgramLanguage::TypeScript;
 
 /// Resolve the [program language](GgProgramLanguage) from the
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's [`language`](PARAM_LANGUAGE)
@@ -1123,7 +1135,8 @@ pub const PARAM_LANGUAGE: &str = "language";
 ///
 /// | `params.language` | Language |
 /// | --- | --- |
-/// | absent / `null` / `"typescript"` | [`TypeScript`](GgProgramLanguage::TypeScript) — the default |
+/// | absent / `null` | **refused** where the capability is on — gg drives no language nobody named |
+/// | `"typescript"` | [`TypeScript`](GgProgramLanguage::TypeScript) — type-checked by `tsc`, erased, evaluated by the ECMAScript guest |
 /// | `"javascript"` | [`JavaScript`](GgProgramLanguage::JavaScript) — the same surface, unchecked |
 /// | `"python"` | [`Python`](GgProgramLanguage::Python) — a committed CPython, evaluating the reply as written |
 /// | `"ruby"` | [`Ruby`](GgProgramLanguage::Ruby) — compiled to JavaScript by the embedded Opal, then evaluated |
@@ -1140,8 +1153,16 @@ pub const PARAM_LANGUAGE: &str = "language";
 /// mismatch, for a sharper version of the reason
 /// [`resolve_assistant_messages`](crate::healing::resolve_assistant_messages) is: reading `"pythn"`
 /// as Python would be bad, but reading it as TypeScript would record the run under a language nobody
-/// chose — and the language is the very axis a cross-language study slices on. The default comes
-/// back anyway to keep the resolver total for the per-turn calls that re-read it.
+/// chose — and the language is the very axis a cross-language study slices on. [`UNUSED`] comes back
+/// anyway to keep the resolver total for the per-turn calls that re-read it.
+///
+/// **An absent language is that same defect, one step earlier**, which is why this param is the one
+/// exception to the [resolver contract](crate::validate)'s "absent means default". Every other param
+/// has a documented default that is a real answer — a ceiling gg picked, a strategy gg picked — and
+/// taking it is what the document asked for. This one has no such answer: any language gg chose
+/// would be a language the study did not, and a sweep whose arms differ in *nothing an operator
+/// wrote* is exactly the experiment these refusals exist to prevent. Absent is therefore refused
+/// wherever the capability is on, and the run is fixed by naming one of the eleven ids.
 ///
 /// The vocabulary a refusal offers back is read off the [registry](all_languages) rather than off
 /// the enum, so an operator is told the languages gg can actually drive rather than the ones it
@@ -1151,21 +1172,23 @@ pub const PARAM_LANGUAGE: &str = "language";
 /// [`resolve_healing`](crate::healing::resolve_healing): responses-as-code is a per-agent
 /// capability, so one run may drive a root in one language and a reviewer in another.
 ///
-/// The value is read whether the capability is switched **on or off**, like every other param in
-/// the set — a disabled capability records the configuration the arm would have used, so the two
-/// arms of one comparison stay symmetric, and a typo skipped because a switch happened to be off is
-/// a typo that surfaces on the launch where it is flipped. It changes nothing about what the run
-/// does: an agent without responses-as-code writes no programs, so the language it resolved to is
-/// never asked for.
+/// A value that **is** written is read whether the capability is switched **on or off**, like every
+/// other param in the set — a disabled capability records the configuration the arm would have used,
+/// so the two arms of one comparison stay symmetric, and a typo skipped because a switch happened to
+/// be off is a typo that surfaces on the launch where it is flipped.
+///
+/// What the switch does decide is whether the param may be **left out**. An agent with the
+/// capability off writes no programs, so there is no language for it to have failed to name — and
+/// the editor writes an off, empty responses-as-code block onto every tool-calling agent it saves,
+/// which is a document saying "this agent is not a code agent" rather than one with a hole in it.
+/// An agent with the capability on writes every one of its turns as a program, and the language
+/// those programs are in is not gg's to pick.
 pub fn resolve_program_language(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) -> GgProgramLanguage {
     let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
-        return GgProgramLanguage::default();
-    };
-    let Some(value) = capability.params.get(PARAM_LANGUAGE) else {
-        return GgProgramLanguage::default();
+        return UNUSED;
     };
 
     let unreadable = |written: String, report: &mut crate::validate::LaunchReport| {
@@ -1175,23 +1198,41 @@ pub fn resolve_program_language(
                 written,
                 format!(
                     "the `{PARAM_LANGUAGE}` param names the language this agent writes its \
-                     programs in; gg cannot drive that one, and writing {} instead would record \
-                     the run under a language nobody chose.",
-                    language(GgProgramLanguage::default()).display_name()
+                     programs in; gg cannot drive that one, and driving the run in one gg picked \
+                     instead would record it under a language nobody chose."
                 ),
             )
             .known(all_languages().map(|language| language.id().id())),
         );
-        GgProgramLanguage::default()
+        UNUSED
     };
 
-    match value {
-        serde_json::Value::Null => GgProgramLanguage::default(),
-        serde_json::Value::String(id) => match GgProgramLanguage::from_id(id.trim()) {
+    let unnamed = |report: &mut crate::validate::LaunchReport| {
+        if capability.enabled {
+            report.report(
+                crate::validate::LaunchDefect::run_level(
+                    crate::validate::param_locus(CAPABILITY_RESPONSES_AS_CODE, PARAM_LANGUAGE),
+                    String::new(),
+                    format!(
+                        "this agent answers every turn with a program, so the `{PARAM_LANGUAGE}` \
+                         param naming the language it writes them in is required; gg has no \
+                         default to fall back to, because a language gg picked is the one thing a \
+                         cross-language study cannot have varying underneath it."
+                    ),
+                )
+                .known(all_languages().map(|language| language.id().id())),
+            );
+        }
+        UNUSED
+    };
+
+    match capability.params.get(PARAM_LANGUAGE) {
+        None | Some(serde_json::Value::Null) => unnamed(report),
+        Some(serde_json::Value::String(id)) => match GgProgramLanguage::from_id(id.trim()) {
             Some(language) => language,
             None => unreadable(id.clone(), report),
         },
-        other => unreadable(other.to_string(), report),
+        Some(other) => unreadable(other.to_string(), report),
     }
 }
 

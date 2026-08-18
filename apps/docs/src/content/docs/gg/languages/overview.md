@@ -17,9 +17,9 @@ against the turn a runtime failure costs. Languages differ in how a failing call
 is composed with the calls around it, which shows up as programs that give up
 early.
 
-The language is a parameter of the capability, resolved per agent. A study
-holds the model, the test case and the rest of the capability set fixed and
-varies this one value.
+The language is a parameter of the capability, required of every agent that
+writes programs and resolved per agent. A study holds the model, the test case
+and the rest of the capability set fixed and varies this one value.
 
 ## The registered arms
 
@@ -28,7 +28,7 @@ SDK, its own segment of the shared prompt templates and its own healing dialect.
 
 | Language | `language` | How a program runs |
 | --- | --- | --- |
-| [TypeScript](/gg/languages/typescript/) | `typescript` | The default. Type-checked by `tsc`, erased to JavaScript, evaluated as an ES module by the ECMAScript guest. |
+| [TypeScript](/gg/languages/typescript/) | `typescript` | Type-checked by `tsc`, erased to JavaScript, evaluated as an ES module by the ECMAScript guest. |
 | [JavaScript](/gg/languages/javascript/) | `javascript` | TypeScript's SDK and signatures with the compiler removed, evaluated as an ES module by the same guest. |
 | [Python](/gg/languages/python/) | `python` | Evaluated as written by a guest carrying CPython 3.14, with no compiler on the turn path. |
 | [Ruby](/gg/languages/ruby/) | `ruby` | Compiled to JavaScript on the host by an embedded Opal, evaluated by a guest carrying Opal's runtime. |
@@ -126,10 +126,15 @@ it. See [compilation](/gg/languages/compilation/).
 ## Configuring and recording the language
 
 The language is the `language` param of the `responses-as-code` capability,
-taking `typescript` when absent and resolved per agent. One run may therefore
-drive its root in one language and a reviewer subagent in another. A value that
-is not a registered id refuses the launch, naming the ids gg registers, so a
-typo never runs an arm the study did not ask for.
+resolved per agent. One run may therefore drive its root in one language and a
+reviewer subagent in another.
+
+gg has no default language, so the param is required wherever the capability is
+switched on. A value that is not a registered id refuses the launch, and so does
+an agent that names none at all; both refusals list the ids gg registers. A
+language gg picked would be a difference between two arms that no configuration
+records, which is the one difference a cross-language study cannot have. An
+agent with the capability off writes no programs and names no language.
 
 The answer is recorded as a scalar in two places, so a
 [query](/gg/analysis/query-language/) slices arms on it with no new vocabulary:

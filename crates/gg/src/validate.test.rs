@@ -295,6 +295,50 @@ fn an_absent_or_empty_params_object_is_accepted() {
     }
 }
 
+/// **The one required param.** Responses-as-code's `language` is the exception to "absent is not
+/// unrecognized", because it is the exception to "every param has a default": there is no language
+/// gg could pick that would not be a difference between two arms of a study that no document
+/// records. So a code agent that names none is refused before it spends a token, and the refusal
+/// offers the eleven ids.
+///
+/// The switch decides whether it may be left out, not whether it is read: a tool-calling agent
+/// writes no programs, and the editor saves it with an off, empty responses-as-code block, which is
+/// a document saying it is not a code agent rather than one with a hole in it.
+#[test]
+fn a_code_agent_that_names_no_language_is_refused() {
+    for params in [json!({}), json!({ crate::sandbox::PARAM_LANGUAGE: null })] {
+        let mut set = minimal();
+        put(
+            &mut set,
+            GgCapabilityConfig {
+                params: params.clone(),
+                ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
+            },
+        );
+        let refused = defects(&set);
+        assert_eq!(refused.len(), 1, "{params} -> {refused:?}");
+        assert_eq!(
+            refused[0].locus,
+            param_locus(CAPABILITY_RESPONSES_AS_CODE, crate::sandbox::PARAM_LANGUAGE),
+            "{params}"
+        );
+        assert!(
+            refused[0].known.contains(&"typescript".to_string()),
+            "{params}: the refusal offers the languages gg can drive"
+        );
+
+        let mut off = minimal();
+        put(
+            &mut off,
+            GgCapabilityConfig {
+                params,
+                ..GgCapabilityConfig::disabled(CAPABILITY_RESPONSES_AS_CODE)
+            },
+        );
+        assert_eq!(defects(&off), Vec::new());
+    }
+}
+
 /// `params` that is not an object at all has no named values in it, so there is nothing gg can read
 /// — and reading it as "no params" would launch the default arm under the configured arm's name.
 #[test]

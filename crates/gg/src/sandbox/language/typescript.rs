@@ -1,4 +1,4 @@
-//! **TypeScript** — gg's default program language and a checked arm.
+//! **TypeScript** — a checked program language.
 //!
 //! A model's reply is a whole TypeScript module. `tsc` reads it, against the SDK's own declarations,
 //! and either rejects it — in which case nothing runs and the model reads the compiler's diagnostics

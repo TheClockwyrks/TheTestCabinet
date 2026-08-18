@@ -1480,11 +1480,6 @@ fn every_program_language_round_trips_through_its_id() {
         );
     }
     assert_eq!(GgProgramLanguage::from_id("brainfuck"), None);
-    assert_eq!(
-        GgProgramLanguage::default(),
-        GgProgramLanguage::TypeScript,
-        "the default is the language every run that names none is driven in"
-    );
 }
 
 /// The ordinary turn: the event is emitted for **every** turn, not only failing ones, because it is

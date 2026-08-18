@@ -1516,7 +1516,15 @@ export function capabilityParams(
       }
     }
     const raw = (draft.params?.[p.key] ?? "").trim();
-    if (!raw) continue;
+    if (!raw) {
+      // An empty control is "take gg's default" for every param but the handful that
+      // have none. For those, gg refuses the launch — so the form refuses the save,
+      // where it is still one click to fix rather than a run that never started.
+      if (p.required) {
+        return { ok: false, error: `${p.label} has no default: pick one.` };
+      }
+      continue;
+    }
     if (p.kind === "agent") {
       out[p.key] = agentName ? agentName(raw) : raw;
       continue;

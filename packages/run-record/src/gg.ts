@@ -2015,6 +2015,11 @@ export type GgHealingStrategy =
  * usual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is
  * not a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the
  * module default on the same grounds.
+ *
+ * No language is the default. An agent with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
+ * switched on names one of these, and a launch that omits it is refused. The enum carries no
+ * `Default` for that reason: a fallback would record a run under a language nobody chose, on the
+ * very axis a study slices its arms by.
  */
 export type GgProgramLanguage =
   | "typescript"

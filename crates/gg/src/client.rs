@@ -2832,9 +2832,8 @@ impl MockClient {
     /// The **responses-as-code** script: a run driven by emitting a program instead of discrete tool
     /// calls, exercising the code path end to end offline.
     ///
-    /// The programs below are **TypeScript** — the default [program
-    /// language](test_cabinet_core::gg::GgProgramLanguage), and the one this mock is written
-    /// against. A second language's offline script would be a second set of programs beside these,
+    /// The programs below are **TypeScript**, the one [program
+    /// language](test_cabinet_core::gg::GgProgramLanguage) this mock is written against. A second language's offline script would be a second set of programs beside these,
     /// which is what makes the language the axis rather than a fact of the mock.
     ///
     /// 1. a first turn whose **whole reply** is a program — it calls `listDir`, then **loops** over

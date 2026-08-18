@@ -191,7 +191,7 @@ the form offers at all:
   reply is a program over the same functions, run in a wasm sandbox, so one turn
   can make dozens of calls, branch on their results, and loop. The capability's
   `language` param picks the [language](/gg/languages/overview/) the program is
-  written in, defaulting to TypeScript.
+  written in, and every RaC agent names one.
 - FSM — a [state machine](/gg/fsms/) over the configuration's other profiles. It
   takes no turns, so it is given no model, no prompt, no roster, and no
   capabilities. Each state runs the profile it names, with that profile's
@@ -322,7 +322,9 @@ mode:
 A launch refuses a capability set carrying any value gg cannot honour exactly as
 written, and names every one of them at once, so a single pass over the
 configuration fixes them all. A value left absent takes the documented default
-for its capability. The check runs at the top of gg's own session frame, inside
+for its capability. The one exception is the RaC `language`, which has no
+default and is required of every agent writing programs. The check runs at the
+top of gg's own session frame, inside
 the run container and before the first turn, so a refusal costs no model spend.
 It lives there and nowhere else on purpose: it is the one place that can call
 gg's own resolvers, and a second copy of the vocabulary anywhere else is exactly

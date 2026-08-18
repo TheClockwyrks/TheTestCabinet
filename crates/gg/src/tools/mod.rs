@@ -1144,11 +1144,28 @@ pub(crate) fn grant(profile: &mut GgAgentConfig, capability: &str) {
 ///
 /// The config **replaces** whatever the profile declared for that capability, because that is what a
 /// caller writing one out means; the calls it offers are granted either way.
+///
+/// One value is filled in rather than replaced: a responses-as-code capability switched on without
+/// a [`language`](crate::sandbox::PARAM_LANGUAGE) gets TypeScript, since the param is required of
+/// every code agent and a launch that omits it is refused. Every fixture's scripted program is
+/// TypeScript, so the alternative is the same line written at each of a few hundred sites; a fixture
+/// whose subject *is* the language names its own and this leaves it alone.
 #[cfg(test)]
 pub(crate) fn grant_configured(
     profile: &mut GgAgentConfig,
     capability: test_cabinet_core::gg::GgCapabilityConfig,
 ) {
+    let mut capability = capability;
+    if capability.id == test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE
+        && capability.enabled
+        && let Some(params) = capability.params.as_object_mut()
+    {
+        params
+            .entry(crate::sandbox::PARAM_LANGUAGE)
+            .or_insert_with(|| {
+                serde_json::json!(test_cabinet_core::gg::GgProgramLanguage::TypeScript.id())
+            });
+    }
     let id = capability.id.clone();
     profile.capabilities.retain(|declared| declared.id != id);
     profile.capabilities.push(capability);

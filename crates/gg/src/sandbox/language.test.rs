@@ -481,17 +481,40 @@ fn every_language_says_how_a_bound_module_is_reached() {
     );
 }
 
-/// **A run that names no language gets the default**, whether the capability is absent, on with no
-/// params, or on with a null one — and none of those is reported as an unreadable setting.
+/// **A code agent that names no language refuses the launch.** There is no default: gg drives no run
+/// in a language nobody wrote down, because the language is the axis a cross-language study slices
+/// on and one gg invented would be a difference between two arms that no document records.
+///
+/// An absent param and a `null` one are the same answer, since neither is a language named.
 #[test]
-fn an_unconfigured_agent_writes_the_default_language() {
-    for profile in [
-        GgAgentConfig::root(),
-        code_agent(true, json!({})),
-        code_agent(true, json!({ "language": null })),
-        code_agent(false, json!({})),
-    ] {
-        assert_eq!(language_of(&profile), GgProgramLanguage::default());
+fn a_code_agent_that_names_no_language_is_refused() {
+    for params in [json!({}), json!({ "language": null })] {
+        let (_, defects) = reported(&code_agent(true, params.clone()));
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(
+            defects[0].locus, "responses-as-code.params.language",
+            "{params}"
+        );
+        assert!(
+            defects[0].found.is_empty(),
+            "{params}: the defect is about a value's absence, so there is nothing to quote back"
+        );
+        assert!(
+            defects[0].known.contains(&"python".to_string()),
+            "{params}: the refusal offers the languages gg can drive"
+        );
+    }
+}
+
+/// **An agent that writes no programs is not asked for a language.** The capability may be missing
+/// altogether, or — which is what the editor writes onto every tool-calling agent it saves — present
+/// and switched off with an empty params block. Neither is a document with a hole in it: both say
+/// this agent is not a code agent, and an agent that answers no turn with a program has no language
+/// to name.
+#[test]
+fn an_agent_without_the_capability_names_no_language() {
+    for profile in [GgAgentConfig::root(), code_agent(false, json!({}))] {
+        language_of(&profile);
     }
 }
 
@@ -502,6 +525,10 @@ fn an_unconfigured_agent_writes_the_default_language() {
 /// stay symmetric, and a typo skipped because a switch happened to be off is a typo that surfaces on
 /// the launch where it is flipped. `language` is the axis a cross-language study slices on, which
 /// makes it the last param that should have been exempt.
+///
+/// What the switch does decide is whether the param may be left out — see
+/// [`an_agent_without_the_capability_names_no_language`]. Written, it is read either way; unwritten,
+/// it is only missing where the agent would have written programs in it.
 #[test]
 fn a_disabled_capabilitys_language_is_still_read() {
     assert_eq!(
@@ -532,24 +559,19 @@ fn a_named_language_is_honoured() {
 /// **A `language` gg cannot read refuses the launch.**
 ///
 /// Falling back silently would record the run under a language nobody chose, which is precisely the
-/// axis a cross-language study slices on — so a wrong spelling, a wrong case, and a value that is
-/// not a string at all are all one answer, and the answer is that the run does not start. The
-/// default still comes back, because the resolver has to stay total for the per-turn calls that
-/// re-read a profile.
+/// axis a cross-language study slices on — so a wrong spelling, a wrong case, an empty string and a
+/// value that is not a string at all are all one answer, and the answer is that the run does not
+/// start.
 #[test]
 fn an_unreadable_language_is_refused() {
     for value in [
         json!({ "language": "brainfuck" }),
         json!({ "language": "TypeScript" }),
+        json!({ "language": "" }),
         json!({ "language": 3 }),
         json!({ "language": ["typescript"] }),
     ] {
-        let (language, defects) = reported(&code_agent(true, value.clone()));
-        assert_eq!(
-            language,
-            GgProgramLanguage::default(),
-            "{value}: the resolver stays total"
-        );
+        let (_, defects) = reported(&code_agent(true, value.clone()));
         assert_eq!(defects.len(), 1, "{value} -> {defects:?}");
         assert_eq!(
             defects[0].locus, "responses-as-code.params.language",

@@ -402,6 +402,10 @@ fn warn_messages(events: &[GgTelemetryEvent]) -> Vec<String> {
 
 /// A capability set with responses-as-code enabled on top of the minimal defaults, optionally with
 /// the given params (for example a low `fuel` ceiling), bound to `model_id`.
+///
+/// The [language](crate::sandbox::PARAM_LANGUAGE) `params` does not name is filled in with
+/// TypeScript by [`grant_configured`](crate::tools::grant_configured), which is where every fixture's
+/// code agent gets it.
 fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model_id);
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);

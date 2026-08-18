@@ -13,8 +13,8 @@ axis of gg — it is what a cross-language A/B study compares arms on — so gg
 registers a *set* of program languages and most of them have a guest of their own.
 A further language is normally a **sibling directory**, not a change here. This one
 is the exception in one direction: every arm whose program becomes JavaScript
-evaluates in `guest/`. `typescript` is the default, `javascript` is that arm with
-the type check removed, and `purescript` compiles to JavaScript on the host. What
+evaluates in `guest/`. `javascript` is the `typescript` arm with the type check
+removed, and `purescript` compiles to JavaScript on the host. What
 every guest shares, and what a new one has to satisfy, is in
 [Another language](#another-language) below and in
 [Program languages](../../apps/docs/src/content/docs/gg/languages/registration.md).

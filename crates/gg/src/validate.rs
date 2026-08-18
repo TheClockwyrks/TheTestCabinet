@@ -12,7 +12,12 @@
 //!
 //! 1. **Absent is not unrecognized.** A value that is absent or `null` takes the capability's
 //!    documented default, and that is correct rather than a fallback. Only a value that is
-//!    *present* and cannot be honoured is refused.
+//!    *present* and cannot be honoured is refused — with one exception, which is a param that has
+//!    no documented default at all: responses-as-code's
+//!    [`language`](crate::sandbox::PARAM_LANGUAGE) is **required** wherever the capability is on,
+//!    because every answer gg could invent for it is a run recorded under a language nobody chose.
+//!    A required param is a deliberate rarity, not a pattern to copy: it is right only where the
+//!    absence of a value cannot be read as a choice.
 //! 2. **Every defect at once.** A refusal names *every* offending value, not the first one — an
 //!    operator fixing a sweep's one shared configuration document wants every typo in one pass, not
 //!    a dozen launches each revealing the next.
@@ -53,7 +58,8 @@
 //!   that nothing arrives — anything that does is a **gg defect**, because the launch pass already
 //!   proved this same document has nothing to report.
 //! - **Absent means default.** An absent or `null` value takes the documented default and reports
-//!   nothing.
+//!   nothing — unless the param is one of the few that is *required*, in which case its absence is
+//!   itself the reported defect and the resolver hands back a placeholder nothing will read.
 //! - **Present and unhonourable means a reported defect.** The resolver still returns *something*
 //!   (the default is as good as anything, since the run is about to be refused) and reports a
 //!   [`LaunchDefect`] naming the locus, the value as written, and the vocabulary it was read

@@ -2,9 +2,9 @@
 title: "TypeScript"
 ---
 
-TypeScript is gg's default program language and a checked arm. A model's reply is
-a whole TypeScript module. `tsc` reads it against the SDK's own declarations and
-either rejects it, in which case nothing runs, or emits the JavaScript the
+TypeScript is a checked arm. A model's reply is a whole TypeScript module. `tsc`
+reads it against the SDK's own declarations and either rejects it, in which case
+nothing runs, or emits the JavaScript the
 [ECMAScript guest](/gg/languages/ecmascript-guest/) evaluates.
 
 ## Preparation

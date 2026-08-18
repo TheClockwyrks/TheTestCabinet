@@ -10,6 +10,7 @@ import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
 } from "@test-cabinet/run-record/gg-system-prompt";
 import {
+  agentSaveError,
   agentStates,
   bindModelSlots,
   blankAgentDraft,
@@ -542,9 +543,59 @@ describe("gg filesystem capabilities", () => {
 // an operator MOVES are ever written, in whichever direction they moved.
 const CODE = "responses-as-code";
 
+// The one param a code agent cannot leave out: gg drives no run in a language nobody
+// named, so a stored `responses-as-code` block without one is a configuration the launch
+// refuses and the form refuses to save. The fixtures below are about some *other* param,
+// and carry this so they are documents that could really have been stored.
+const LANG = "typescript";
+
 function healingOf(s: GgCapabilitySet): unknown {
   return setCaps(s).find((cap) => cap.id === CODE)?.params?.healing;
 }
+
+// The program language: the catalog's one required param, and the only one whose empty
+// field is an error rather than a deferral to gg.
+describe("gg program language", () => {
+  // A code agent the operator never touched still saves a language, because there is no
+  // default behind it: what gg reads is what the configuration says, and a document that
+  // says nothing is one gg refuses.
+  it("seeds a fresh code agent with a language it writes down", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.mode = "rac";
+    expect(
+      setCaps(capabilitySetFromDraft(draft, null)).find(
+        (cap) => cap.id === CODE,
+      )?.params,
+    ).toEqual({ language: LANG });
+  });
+
+  // Reachable by opening a configuration stored before the param was required, or by
+  // picking the placeholder row. The form says so where it can still be fixed, rather
+  // than letting the launch be the first thing that reports it.
+  it("refuses to save a code agent whose language is empty", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.mode = "rac";
+    draft.agents[0]!.capabilities[CODE] = {
+      ...draft.agents[0]!.capabilities[CODE]!,
+      params: { language: "" },
+    };
+    expect(agentSaveError(draft, draft.agents[0]!.id)).toMatch(
+      /Program language has no default/,
+    );
+    expect(draftSaveError(draft)).toMatch(/responses-as-code params/);
+  });
+
+  // The switch decides whether it may be left out, not whether it is read: a tool-calling
+  // agent writes no programs, and its off responses-as-code block is not a hole.
+  it("asks no language of an agent that writes no programs", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.capabilities[CODE] = {
+      ...draft.agents[0]!.capabilities[CODE]!,
+      params: { language: "" },
+    };
+    expect(draftSaveError(draft)).toBeNull();
+  });
+});
 
 // The `healing` toggles draft of the (single) agent, which holds the members moved off
 // their default rather than a raw off-list.
@@ -567,7 +618,7 @@ describe("gg response-healing toggles", () => {
       {
         id: CODE,
         enabled: true,
-        params: { healing: { "strip-prose": false } },
+        params: { language: LANG, healing: { "strip-prose": false } },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
@@ -580,7 +631,7 @@ describe("gg response-healing toggles", () => {
 
   it("reads the `false` master switch as every strategy off", () => {
     const configured = capSet([
-      { id: CODE, enabled: true, params: { healing: false } },
+      { id: CODE, enabled: true, params: { language: LANG, healing: false } },
     ]);
     const draft = draftFromCapabilitySet(configured);
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
@@ -613,7 +664,7 @@ describe("gg response-healing toggles", () => {
       {
         id: CODE,
         enabled: true,
-        params: { healing: { "drop-doubled-response": true } },
+        params: { language: LANG, healing: { "drop-doubled-response": true } },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
@@ -632,7 +683,7 @@ describe("gg response-healing toggles", () => {
       {
         id: CODE,
         enabled: true,
-        params: { healing: { "strip-fences": false } },
+        params: { language: LANG, healing: { "strip-fences": false } },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
@@ -647,7 +698,7 @@ describe("gg response-healing toggles", () => {
     // and means every member off, while `true` means each member at its own default — so
     // it must not arm the one that defaults off.
     const configured = capSet([
-      { id: CODE, enabled: true, params: { healing: true } },
+      { id: CODE, enabled: true, params: { language: LANG, healing: true } },
     ]);
     const draft = draftFromCapabilitySet(configured);
     expect(healingDraft(draft)).toBe("");
@@ -659,7 +710,7 @@ describe("gg response-healing toggles", () => {
       {
         id: CODE,
         enabled: true,
-        params: { healing: { stripProse: false } },
+        params: { language: LANG, healing: { stripProse: false } },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
@@ -776,7 +827,11 @@ describe("gg documentation type toggles", () => {
 
   it("round-trips a default-on type a configuration switches off", () => {
     const configured = capSet([
-      { id: CODE, enabled: true, params: { docViewTypes: { errors: false } } },
+      {
+        id: CODE,
+        enabled: true,
+        params: { language: LANG, docViewTypes: { errors: false } },
+      },
     ]);
     const draft = draftFromCapabilitySet(configured);
     expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("errors");
@@ -791,7 +846,7 @@ describe("gg documentation type toggles", () => {
       {
         id: CODE,
         enabled: true,
-        params: { docViewTypes: { parameters: true } },
+        params: { language: LANG, docViewTypes: { parameters: true } },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
@@ -803,7 +858,11 @@ describe("gg documentation type toggles", () => {
 
   it("reads the `false` master switch as every type withheld", () => {
     const configured = capSet([
-      { id: CODE, enabled: true, params: { docViewTypes: false } },
+      {
+        id: CODE,
+        enabled: true,
+        params: { language: LANG, docViewTypes: false },
+      },
     ]);
     const draft = draftFromCapabilitySet(configured);
     expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
@@ -814,7 +873,11 @@ describe("gg documentation type toggles", () => {
 
   it("reads the `true` shorthand as the defaults, not as every type on", () => {
     const configured = capSet([
-      { id: CODE, enabled: true, params: { docViewTypes: true } },
+      {
+        id: CODE,
+        enabled: true,
+        params: { language: LANG, docViewTypes: true },
+      },
     ]);
     const draft = draftFromCapabilitySet(configured);
     expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("");
@@ -830,14 +893,18 @@ describe("gg documentation type toggles", () => {
             {
               id: CODE,
               enabled: true,
-              params: { docViewTypes: { parameters: true } },
+              params: { language: LANG, docViewTypes: { parameters: true } },
             },
           ],
         }),
         agent({
           name: "Reviewer",
           capabilities: [
-            { id: CODE, enabled: true, params: { docViewTypes: false } },
+            {
+              id: CODE,
+              enabled: true,
+              params: { language: LANG, docViewTypes: false },
+            },
           ],
         }),
       ],
@@ -853,8 +920,8 @@ describe("gg documentation type toggles", () => {
         (a) => a.capabilities.find((cap) => cap.id === CODE)?.params,
       ),
     ).toEqual([
-      { docViewTypes: { parameters: true } },
-      { docViewTypes: { return: false, errors: false } },
+      { language: LANG, docViewTypes: { parameters: true } },
+      { language: LANG, docViewTypes: { return: false, errors: false } },
     ]);
   });
 });
@@ -1880,7 +1947,11 @@ describe("an agent's type", () => {
   it("saves only the selected type's configuration", () => {
     const draft = draftFromCapabilitySet(
       capSet([
-        { id: "responses-as-code", enabled: true, params: { imageViewCap: 4 } },
+        {
+          id: "responses-as-code",
+          enabled: true,
+          params: { language: LANG, imageViewCap: 4 },
+        },
         { id: "program-library", enabled: true, params: { keep: 5 } },
         { id: "shell", enabled: true, params: {} },
       ]),
@@ -1889,6 +1960,7 @@ describe("an agent's type", () => {
     const asCode = capabilitySetFromDraft(draft, null);
     expect(capsOf(asCode, "program-library")?.enabled).toBe(true);
     expect(capsOf(asCode, "responses-as-code")?.params).toEqual({
+      language: LANG,
       imageViewCap: 4,
     });
 

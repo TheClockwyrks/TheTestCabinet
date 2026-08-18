@@ -162,7 +162,7 @@ export const AGENT_MODES: ReadonlyArray<{
     value: "rac",
     label: "RaC",
     purpose:
-      "Responses as code: the model's whole reply is a program over the same functions — TypeScript unless a study configures another language — run in a wasm sandbox. One turn can make dozens of calls, branch on their results, and loop.",
+      "Responses as code: the model's whole reply is a program over the same functions, in one of the eleven languages this agent names, run in a wasm sandbox. One turn can make dozens of calls, branch on their results, and loop.",
   },
   {
     value: "fsm",
@@ -237,7 +237,18 @@ export interface ParamSpec {
   // "e.g." example); an unset field still means "gg's default", so clearing a seeded
   // field is exactly leaving it empty. `toggles` params seed nothing (their default
   // arm is the empty string already).
+  //
+  // On a [required] param it is a starting point rather than a fallback: it is what a
+  // fresh agent is seeded with, and leaving the field empty is an error rather than a
+  // deferral to gg.
   defaultValue?: string;
+  // Whether gg refuses a launch that leaves this param unset — the rare param with no
+  // documented default at all, where an absent value cannot be read as a choice.
+  // Responses-as-code's `language` is the only one: gg drives no run in a language
+  // nobody named, because that language is the axis a cross-language study slices on.
+  // The form reports it where the operator can still fix it, rather than letting the
+  // launch be the first to say so.
+  required?: boolean;
   // The closed set of values a `select` offers, or the independently switchable
   // members a `toggles` param is made of.
   //
@@ -631,7 +642,12 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
 // Which language an agent writes its programs in. Every language offers the *same*
 // capability surface under its own spellings, so this is the one axis a cross-language
 // study varies — and gg records it on the run and on each agent's surface so the arms can
-// be told apart afterwards. Empty is gg's default.
+// be told apart afterwards.
+//
+// It is the catalog's one required param, and the reason is that same axis: gg has no
+// default language, because any language it picked would be a difference between two arms
+// that no document records. A code agent that names none is refused at launch, so the
+// picker seeds a fresh agent with one and the form refuses to save an agent left empty.
 //
 // How each registered language is labelled in the picker: the arms' names, with the one
 // annotation this picker needs and a reader of documentation does not.
@@ -655,17 +671,19 @@ const PROGRAM_LANGUAGE_LABELS: Record<GgProgramLanguage, string> = {
   javascript: "JavaScript (no type check)",
 };
 
-// gg's own default, which is what the empty value resolves to (`GgProgramLanguage::default`).
-const DEFAULT_PROGRAM_LANGUAGE: GgProgramLanguage = "typescript";
+// What a fresh code agent is seeded with. It is a starting point rather than a fallback:
+// it is written into the configuration the moment the agent exists, so the language the
+// run is driven in is one the document names.
+export const SEEDED_PROGRAM_LANGUAGE: GgProgramLanguage = "typescript";
 
+// The empty row is a placeholder, not a choice: it is what a stored configuration
+// carrying no `language` shows, and picking it leaves the form with the error that value
+// earns. Every other row is a language gg can drive.
 export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
   value: "" | GgProgramLanguage;
   label: string;
 }> = [
-  {
-    value: "",
-    label: `${PROGRAM_LANGUAGE_LABELS[DEFAULT_PROGRAM_LANGUAGE]} (default)`,
-  },
+  { value: "", label: "Choose a language…" },
   ...Object.entries(PROGRAM_LANGUAGE_LABELS).map(([value, label]) => ({
     value: value as GgProgramLanguage,
     label,
@@ -673,7 +691,7 @@ export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
 ];
 
 export const PROGRAM_LANGUAGE_HINT =
-  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Python is its own guest, a committed CPython, and its programs are checked by nothing before they run. Ruby is compiled to JavaScript by a committed Opal before it crosses, so its programs are read and refused before they run without their types ever being checked — the one arm that separates compiling a program from typing it. PureScript is compiled and fully type-checked by a real `purs` in the run image, against a library set gg carries, so it is the other end of that axis: a wrong argument shape, a missing case or a missing instance costs a diagnostic rather than a turn. Java is the only arm whose program passes through two compilers — `javac` and then TeaVM — inside a JVM gg keeps warm between programs, so it is both type-checked and the most expensive arm to compile, and a class outside TeaVM's classlib is a located compile error rather than a run-time surprise. Kotlin rides that same road from bytecode onwards and is the A/B against it: the same two compilers, the same guest and the same classlib, so what differs between the pair is the language and its SDK rather than the toolchain — a program here is a Kotlin script, and its surface expresses every optional argument as a default passed by name where Java's needs an overload. Rust and Swift are a different shape rather than a different language: neither ships a guest at all, because their compilers produce the program rather than something that later reads one, so each turn compiles the component it is then evaluated by. Rust's is the cheapest compile of any checked arm and its programs are ~25 KB; Swift's reply is compiled byte for byte, with no wrapper and no line offset, and is the one arm that pays more to instantiate a program than to compile it. C++ is the third of that shape and the cheapest of the three per turn, because the prelude its programs are compiled against is precompiled once per machine — its reply is compiled byte for byte too, it is the only arm whose guest has working exceptions, and it is the only one where undefined behavior can end a program with nothing to say about why. C# is neither shape: Roslyn compiles the reply to an IL assembly on the host in about a third of a second, the bytes cross as base64, and a committed guest holding a Mono IL interpreter and the whole .NET class library loads them — so it is type-checked like a compiled arm, costs one compiler and no engine work per turn like an interpreted one, and has the best error surface of any of them, because an unhandled exception arrives with its type, its message and its managed stack. Empty is gg's default, TypeScript.";
+  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Python is its own guest, a committed CPython, and its programs are checked by nothing before they run. Ruby is compiled to JavaScript by a committed Opal before it crosses, so its programs are read and refused before they run without their types ever being checked — the one arm that separates compiling a program from typing it. PureScript is compiled and fully type-checked by a real `purs` in the run image, against a library set gg carries, so it is the other end of that axis: a wrong argument shape, a missing case or a missing instance costs a diagnostic rather than a turn. Java is the only arm whose program passes through two compilers — `javac` and then TeaVM — inside a JVM gg keeps warm between programs, so it is both type-checked and the most expensive arm to compile, and a class outside TeaVM's classlib is a located compile error rather than a run-time surprise. Kotlin rides that same road from bytecode onwards and is the A/B against it: the same two compilers, the same guest and the same classlib, so what differs between the pair is the language and its SDK rather than the toolchain — a program here is a Kotlin script, and its surface expresses every optional argument as a default passed by name where Java's needs an overload. Rust and Swift are a different shape rather than a different language: neither ships a guest at all, because their compilers produce the program rather than something that later reads one, so each turn compiles the component it is then evaluated by. Rust's is the cheapest compile of any checked arm and its programs are ~25 KB; Swift's reply is compiled byte for byte, with no wrapper and no line offset, and is the one arm that pays more to instantiate a program than to compile it. C++ is the third of that shape and the cheapest of the three per turn, because the prelude its programs are compiled against is precompiled once per machine — its reply is compiled byte for byte too, it is the only arm whose guest has working exceptions, and it is the only one where undefined behavior can end a program with nothing to say about why. C# is neither shape: Roslyn compiles the reply to an IL assembly on the host in about a third of a second, the bytes cross as base64, and a committed guest holding a Mono IL interpreter and the whole .NET class library loads them — so it is type-checked like a compiled arm, costs one compiler and no engine work per turn like an interpreted one, and has the best error surface of any of them, because an unhandled exception arrives with its type, its message and its managed stack. There is no default: gg drives no run in a language nobody chose, so a code agent has to name one and a launch that omits it is refused.";
 
 export const ASSISTANT_MESSAGE_OPTIONS = [
   { value: "", label: "Post-response healing (default)" },
@@ -714,8 +732,7 @@ export const DOC_VIEW_TYPES_OPTIONS: ReadonlyArray<{
   },
 ];
 
-export const DOC_VIEW_TYPES_HINT =
-  `Opening a function's documentation also opens SDK types beside it, as views of their own — each source switched on its own, and what one open places is the union of them. Always exactly one level: a type's own view never drags in a further type. ${TOGGLES_HINT}`;
+export const DOC_VIEW_TYPES_HINT = `Opening a function's documentation also opens SDK types beside it, as views of their own — each source switched on its own, and what one open places is the union of them. Always exactly one level: a type's own view never drags in a further type. ${TOGGLES_HINT}`;
 
 // --- Loop detection ---------------------------------------------------------------
 //
@@ -1308,6 +1325,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Program language",
         kind: "select",
         options: PROGRAM_LANGUAGE_OPTIONS,
+        defaultValue: SEEDED_PROGRAM_LANGUAGE,
+        required: true,
         hint: PROGRAM_LANGUAGE_HINT,
       },
       {

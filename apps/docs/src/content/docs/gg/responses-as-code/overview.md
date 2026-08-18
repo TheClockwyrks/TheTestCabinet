@@ -74,11 +74,12 @@ configuration.
 ## Program language
 
 The language a program is written in is a configuration axis of the same kind as
-the execution mode itself. gg registers eleven: TypeScript (the default),
-JavaScript, Python, Ruby, PureScript, Java, Kotlin, Rust, Swift, C++ and C#.
-Each ships its own idiomatic SDK over the same typed surface, so two arms differ
-in the spelling of a call rather than in which calls exist. Every example in
-this section is TypeScript.
+the execution mode itself. gg registers eleven: TypeScript, JavaScript, Python,
+Ruby, PureScript, Java, Kotlin, Rust, Swift, C++ and C#. Each ships its own
+idiomatic SDK over the same typed surface, so two arms differ in the spelling of
+a call rather than in which calls exist. An agent with this capability on names
+one of the eleven, and a launch that omits it is refused. Every example in this
+section is TypeScript.
 
 See [program languages](/gg/languages/overview/) for the design of that seam and
 for each arm.

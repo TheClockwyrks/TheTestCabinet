@@ -1069,7 +1069,8 @@ pub const CAPABILITY_FORK: &str = "fork";
 /// each of the run's [tools](CAPABILITY_SHELL) is a **typed function** (`readFile(path, { limit })`,
 /// not a generic call by name), executed in a wasmtime **component** sandbox. Which
 /// [language](GgProgramLanguage) that program is written in is the capability's `language` param: a
-/// configuration knob a cross-language study slices its arms on, defaulting to TypeScript. gg
+/// configuration knob a cross-language study slices its arms on, and a **required** one — an
+/// enabled capability that names no language refuses the launch rather than picking one. gg
 /// [heals](GgResponseHealing) the reply, prepares it for that language's guest, and runs it — bridging each
 /// tool call the program makes to the real
 /// [`ToolRegistry`](https://docs.testcabinet.ai/gg/overview/) (so the tool runs in the container and
@@ -4572,15 +4573,17 @@ pub enum GgHealingStrategy {
 /// usual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is
 /// not a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the
 /// module default on the same grounds.
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
-)]
+///
+/// No language is the default. An agent with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
+/// switched on names one of these, and a launch that omits it is refused. The enum carries no
+/// `Default` for that reason: a fallback would record a run under a language nobody chose, on the
+/// very axis a study slices its arms by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GgProgramLanguage {
     /// TypeScript: **type-checked** with the committed `tsc`, then type-stripped to JavaScript and
-    /// evaluated in the committed `componentize-js` guest. The default.
-    #[default]
+    /// evaluated in the committed `componentize-js` guest.
     TypeScript,
     /// JavaScript: the same guest, the same SDK and the same signatures — with **no type check**.
     ///

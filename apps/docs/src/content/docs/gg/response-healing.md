@@ -304,7 +304,8 @@ and session summary record the root agent's resolved set.
 
 ```jsonc
 { "id": "responses-as-code", "enabled": true,
-  "params": { "timeoutSecs": 30, "maxMemoryBytes": 268435456,
+  "params": { "language": "typescript", "timeoutSecs": 30,
+              "maxMemoryBytes": 268435456,
               "healing": { "strip-fences": false, "drop-doubled-response": true } } }
 ```
 

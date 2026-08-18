@@ -1539,7 +1539,7 @@ async fn the_session_summary_carries_the_error_rollup_its_stream_reported() {
     // which is exactly the run the old accounting could say nothing about.
     let mut script = prose_script(2);
     script.push(code_reply(FINISHING_PROGRAM));
-    let set = code_set("mock/primary", serde_json::Value::Null);
+    let set = code_set("mock/primary", json!({}));
     let end = run_with_factory(
         &invocation(dir.path(), set),
         &emitter,
