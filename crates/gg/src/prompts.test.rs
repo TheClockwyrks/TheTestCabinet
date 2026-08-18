@@ -193,8 +193,8 @@ fn tidy_collapses_blank_runs() {
 /// The bare context is a **tool-calling** one, so the three headings the code arm owns outright —
 /// `## Responses as Code`, `## Views` and `## Language Rules` — are absent for a second reason: no
 /// tool-calling reader is told what a program is, how its data comes back, or how a reply of one is
-/// shaped. `## Tasks` is the one heading here that lives in the tool-calling template at all; the
-/// code arm lost its Tasks section entirely, since every sentence in it named a call.
+/// shaped. `## Tasks` is absent for the ordinary reason instead: the capability is off, and a
+/// capability that is off contributes no prompt text in either mode.
 #[test]
 fn a_bare_run_renders_almost_nothing() {
     let prompt = render_system(&bare_system(), None);
@@ -811,13 +811,15 @@ fn the_two_modes_name_calls_in_their_own_form() {
             "code mode leaked free-standing tool `{tool}`:\n{code}"
         );
     }
-    // And what it says instead. Two of the three sentences this used to read are gone with the
-    // ruling that the prompt describes no capability whose functions' own briefs describe it: the
-    // Tasks section said nothing a brief does not and went entirely, and the Subagents and
-    // project-management sections kept only their **rosters** and the behaviour no brief states.
-    // So the presence half is re-anchored on exactly that residue — the sentence that survives
-    // because nothing else says it, and the roster the run configured.
+    // And what it says instead. The sentences this used to read are gone with the ruling that the
+    // prompt describes no capability whose functions' own briefs describe it: the Subagents and
+    // project-management sections kept only their **rosters** and the behaviour no brief states,
+    // and the Tasks section kept only when to reach for a task list. So the presence half is
+    // re-anchored on exactly that residue — the sentences that survive because nothing else says
+    // them, and the rosters the run configured.
     for stated in [
+        // Tasks: when a task list is worth reaching for, which is a judgement no brief makes.
+        "Use your task list to break complex work into steps",
         // Subagents: the roster line, which introduces names that exist only in this run's config.
         "You may delegate work to any of the following agents",
         "`helper`",
@@ -832,14 +834,21 @@ fn the_two_modes_name_calls_in_their_own_form() {
              can say (`{stated}`):\n{code}"
         );
     }
-    // The tasks capability is granted in this context and contributes **nothing** to a code prompt,
-    // which is the ruling rather than an omission: every sentence the old section held named a call
-    // or restated one's brief.
-    assert!(
-        !code.contains("## Tasks"),
-        "code mode grew a Tasks section back; a task list is reached through functions whose own \
-         briefs describe it:\n{code}"
-    );
+    // The Tasks section states when to keep a list and nothing about how: no call is named, and
+    // neither the ceiling nor the dependency rule is restated, because a refusal reports the one
+    // and the functions' own briefs carry the other.
+    for absent in [
+        "add_task",
+        "gg.tasks.addTask",
+        "directed acyclic graph",
+        "At most",
+    ] {
+        assert!(
+            !code.contains(absent),
+            "the code arm's Tasks section grew back a call or a rule its briefs already carry \
+             (`{absent}`):\n{code}"
+        );
+    }
 }
 
 /// **A skill is described by what reading it will actually do, not by what reading *a* skill might
@@ -1779,10 +1788,10 @@ fn the_context_usage_signal_renders() {
 /// (`### The program you are writing`, which stated the reply contract, and the ending) are read by
 /// a model as subordinate to it when they are not.
 ///
-/// **`## Tasks` is absent, and its absence is the ruling.** Every sentence that section held either
-/// named a call or restated the brief of one, so it says nothing the opening turn has not already
-/// put in the window — see [`the_two_modes_name_calls_in_their_own_form`], which pins that a code
-/// prompt does not grow it back while the tool-calling prompt keeps its own.
+/// **`## Tasks` is one sentence long, and that is the ruling.** What it keeps is when a task list is
+/// worth reaching for, which is a judgement no function's brief makes; what it lost is every
+/// sentence that named a call or restated one's brief — see
+/// [`the_two_modes_name_calls_in_their_own_form`], which pins both halves.
 const REQUIRED_SECTIONS: &[&str] = &[
     "## Responses as Code",
     "## Views",
@@ -1793,6 +1802,7 @@ const REQUIRED_SECTIONS: &[&str] = &[
     "## Messages you receive",
     "## Skills",
     "## Memory",
+    "## Tasks",
     "## Subagents",
     "## Project management",
     "## Your assigned issue",
@@ -1808,9 +1818,9 @@ const REQUIRED_SECTIONS: &[&str] = &[
 /// operator prose frames the prompt but must not be able to satisfy an assertion about what gg's
 /// own template says.
 ///
-/// The [`tasks`](SystemContext::tasks) ceiling is set and contributes **nothing** to a code prompt.
-/// It is set anyway, and that is deliberate: a maximal context is the one that would expose a Tasks
-/// section written back into the code arm, which is the edit the ruling refuses.
+/// The [`tasks`](SystemContext::tasks) ceiling is set, and the code arm reads only whether it is
+/// present: the number itself is a tool-calling line, because a code run learns its ceiling from
+/// the refusal that reports the breach.
 ///
 /// Three [`SystemContext`] fields are **not** set, and the omission is not an oversight:
 /// `autoload_specs`, `persistence` and `fences_are_stripped` are read by no template in
@@ -2716,10 +2726,8 @@ fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
                 "{name}: the prompt advertises `{spelling}`, which this run withheld:\n{rendered}"
             );
         }
-        // Every gated section of the code arm, and `## Tasks` — which is gated in the strongest
-        // possible way, by not existing: a code prompt has no Tasks section under any
-        // configuration, so a run that grew one would be a code arm that had started describing a
-        // capability out of the prompt again.
+        // Every gated section of the code arm, `## Tasks` among them: a capability this run
+        // withheld contributes no heading, which is what makes two configurations comparable.
         for section in [
             "## Skills",
             "## Memory",

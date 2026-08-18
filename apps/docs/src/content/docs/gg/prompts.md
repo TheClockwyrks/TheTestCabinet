@@ -208,6 +208,12 @@ the run's [read mode](/gg/filesystem/#read-modes) sets, the window an offset and
 a limit name, and the exit code and merged output a [shell](/gg/shell/) call
 hands back each belong to the documentation of the function that does it.
 
+A capability whose calls a brief already describes contributes only what a brief
+cannot: a roster the run configured, gg's own process, or the judgement of when
+to reach for the capability at all. The [Tasks](/gg/tasks/) section is one
+sentence saying to break complex work into steps and track progress through them,
+and it names no call, no ceiling and no dependency rule.
+
 Where the arm names a [checker](/gg/languages/compilation/), the prompt states
 that the program is compiled before it runs, names the checker, and states that
 a program the checker refuses is not executed. The same gate carries the one
