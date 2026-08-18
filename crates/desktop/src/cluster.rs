@@ -10,7 +10,8 @@
 //!
 //! The bootstrap runs as one straight-line routine on its own OS thread, emitting a
 //! [`ClusterStatus`] on the `cluster://progress` event after every step so the
-//! webview can hold a loading screen until the stack is [`ready`](Phase). The only
+//! webview can hold a loading screen until the stack reports its ready
+//! [`phase`](ClusterStatus::phase). The only
 //! host prerequisite is a running container runtime — Podman or Docker (preferring a
 //! running Podman that can actually run k3s, else a running Docker; see
 //! [`detect_runtime`]); `k3d` and `kubectl` ship with the app as sidecars (falling
@@ -859,7 +860,7 @@ fn port_in_use(port: u16) -> bool {
     std::net::TcpListener::bind(("127.0.0.1", port)).is_err()
 }
 
-/// A best-effort " (held by <command>, pid <n>)" suffix naming the process listening on
+/// A best-effort `" (held by <command>, pid <n>)"` suffix naming the process listening on
 /// `port`, via `lsof`. Empty when `lsof` is unavailable or names nothing — the conflict
 /// is still reported, just without naming the culprit.
 fn port_occupant_hint(port: u16) -> String {
@@ -869,8 +870,8 @@ fn port_occupant_hint(port: u16) -> String {
     parse_lsof_occupant(&String::from_utf8_lossy(&out))
 }
 
-/// Parse `lsof -nP -iTCP:<port> -sTCP:LISTEN` output into a " (held by <command>, pid
-/// <n>)" suffix from the first listener row (COMMAND in column 0, PID in column 1).
+/// Parse `lsof -nP -iTCP:<port> -sTCP:LISTEN` output into a `" (held by <command>, pid
+/// <n>)"` suffix from the first listener row (COMMAND in column 0, PID in column 1).
 /// Empty when there is no data row. `lsof` escapes spaces in the command as `\x20`,
 /// which is unescaped here for readability (e.g. `Code\x20H` → `Code H`).
 fn parse_lsof_occupant(text: &str) -> String {
