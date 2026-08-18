@@ -51,16 +51,22 @@ export function RunsRuntimeProvider({ children }: { children: ReactNode }) {
       ...prev.filter((r) => r.runId !== run.runId),
     ]);
   }, []);
-  const update = useCallback(
-    (runId: string, patch: Partial<InProgressRun>) => {
-      setInProgress((prev) =>
-        prev.map((r) => (r.runId === runId ? { ...r, ...patch } : r)),
-      );
-    },
-    [],
-  );
+  const update = useCallback((runId: string, patch: Partial<InProgressRun>) => {
+    setInProgress((prev) =>
+      prev.map((r) => (r.runId === runId ? { ...r, ...patch } : r)),
+    );
+  }, []);
   const remove = useCallback((runId: string) => {
-    setInProgress((prev) => prev.filter((r) => r.runId !== runId));
+    setInProgress((prev) =>
+      // Returning the same array when the run is not in the list keeps this a true
+      // no-op. A finished run is now announced twice — once as a run-lifecycle
+      // event and once as a completion notification — and without this the second
+      // one would hand React a fresh array identity and re-render every consumer
+      // of the list for nothing.
+      prev.some((r) => r.runId === runId)
+        ? prev.filter((r) => r.runId !== runId)
+        : prev,
+    );
   }, []);
   const requestRefresh = useCallback(() => {
     setRefreshToken((n) => n + 1);

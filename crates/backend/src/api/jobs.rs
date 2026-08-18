@@ -8,7 +8,9 @@
 //! (`POST /jobs/{id}/events|preview|status`, per-job token). The console observes
 //! it entirely through the backend: the live NDJSON stream (`GET /jobs/{id}/live`),
 //! the status (`GET /jobs/{id}`), the active-run list (`GET /jobs/active`), and
-//! the worker-wide completion feed (`GET /notifications`).
+//! the worker-wide console stream (`GET /notifications`) — completion alerts and
+//! run-lifecycle events multiplexed under per-client topics, which is how a console
+//! keeps its in-flight list current without re-reading the active list on a timer.
 //!
 //! The durable job lifecycle is the `job` table; the live event/preview fan-out
 //! is the in-memory [`crate::relay`]. A produced run's record lands in the `run`
@@ -43,14 +45,14 @@ use test_cabinet_core::test_case::TestType;
 // them as `jobs::{LaunchBody, …}`.
 pub use test_cabinet_core::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
-    LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
+    LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamTopicsBody,
 };
 use test_cabinet_entities::job;
 
 use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
 use crate::db::{CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, JobCancelFilter, JobOrigin};
 use crate::error::ApiError;
-use crate::relay::{JobSummary, Notification, StreamItem};
+use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage};
 
 use super::AppState;
 
@@ -87,8 +89,16 @@ pub async fn launch(
     let new = build_new_job(&body, resolve_test_type(&state, &body), &now, &attribution)
         .map_err(ApiError::bad_request)?;
     let id = new.id.clone();
+    let summary = new_job_summary(&new);
 
     state.db.enqueue_job(new).await.map_err(ApiError::from)?;
+
+    // Announce the run *after* it is durably queued, so a console that reacts by
+    // re-reading the active list cannot beat the row into existence.
+    state
+        .relay
+        .notifier()
+        .publish_run(RunEvent::enqueued(&id, summary));
 
     let ack = LaunchAck {
         job_id: id.clone(),
@@ -173,11 +183,29 @@ pub async fn launch_batch(
         }
     }
 
+    // The identities to announce, captured before the insert consumes the jobs.
+    let enqueued: Vec<(String, JobSummary)> = to_insert
+        .iter()
+        .map(|new| (new.id.clone(), new_job_summary(new)))
+        .collect();
+
     state
         .db
         .enqueue_jobs(to_insert)
         .await
         .map_err(ApiError::from)?;
+
+    // One event per accepted run, in queue order — the same order the dispatcher will
+    // claim them in, so a console appends them exactly as the active list would report
+    // them. A batch is not collapsed into a single "some runs were queued" signal: the
+    // console's list is per-run, and a fan-out of a hundred runs is precisely when it
+    // most needs to show them individually rather than send everyone to re-read.
+    for (id, summary) in enqueued {
+        state
+            .relay
+            .notifier()
+            .publish_run(RunEvent::enqueued(&id, summary));
+    }
 
     Ok((StatusCode::ACCEPTED, Json(LaunchBatchAck { jobs: items })).into_response())
 }
@@ -381,9 +409,19 @@ pub async fn cancel(
     };
 
     // Close the live stream so every watcher's monitor ends now; the driver's own
-    // teardown proceeds asynchronously. Deliberately not a `finish_and_notify`: a
-    // canceled run raises no completion alert.
-    state.relay.live(&id).finish();
+    // teardown proceeds asynchronously. Deliberately `finish_run` rather than
+    // `finish_and_notify`: a canceled run raises no completion *alert*, but it has
+    // still left the in-flight set, and a console showing it must drop the row.
+    finish_run(
+        &state,
+        RunEvent::finished(
+            &id,
+            job_summary(&canceled),
+            JobState::Canceled,
+            None,
+            Some(detail),
+        ),
+    );
     Ok(Json(job_status_out(&canceled)))
 }
 
@@ -513,14 +551,16 @@ pub(super) async fn sweep_cancel(
     filter: &JobCancelFilter<'_>,
     detail: &str,
 ) -> Result<u32, ApiError> {
-    let before: Vec<String> = state
+    // Keep the rows, not just their ids: a run that ends here must be announced with
+    // the same identity the console listed it under, and after the sweep it is no
+    // longer in the active set to read it back from.
+    let before: Vec<job::Model> = state
         .db
         .active_jobs()
         .await
         .map_err(ApiError::from)?
         .into_iter()
         .filter(|job| filter.states.contains(&job.state.as_str()))
-        .map(|job| job.id)
         .collect();
 
     let canceled = state
@@ -537,8 +577,20 @@ pub(super) async fn sweep_cancel(
         .into_iter()
         .map(|job| job.id)
         .collect();
-    for id in before.iter().filter(|id| !still_in_flight.contains(*id)) {
-        state.relay.live(id).finish();
+    for job in before
+        .iter()
+        .filter(|job| !still_in_flight.contains(&job.id))
+    {
+        finish_run(
+            state,
+            RunEvent::finished(
+                &job.id,
+                job_summary(job),
+                JobState::Canceled,
+                None,
+                Some(detail),
+            ),
+        );
     }
 
     tracing::info!(canceled, detail, "swept the run queue");
@@ -589,14 +641,30 @@ pub async fn claim(
     _service: ServiceAuth,
 ) -> Result<Response, ApiError> {
     let now = now_rfc3339()?;
-    let Some(job) = state
-        .db
-        .claim_next_job(&now)
-        .await
-        .map_err(ApiError::from)?
-    else {
+    let outcome = state.db.claim_next(&now).await.map_err(ApiError::from)?;
+
+    // Announce the display states this pass reconciled, whether or not it claimed
+    // anything. A pass that claims nothing still moves runs between `queued` and
+    // `pending` as capacity frees up, and those are exactly the transitions an
+    // operator watching a held-back queue is waiting to see.
+    for job in &outcome.reconciled {
+        state.relay.notifier().publish_run(RunEvent::state_changed(
+            &job.id,
+            job_summary(job),
+            JobState::from_db(&job.state),
+        ));
+    }
+
+    let Some(job) = outcome.claimed else {
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
+
+    state.relay.notifier().publish_run(RunEvent::state_changed(
+        &job.id,
+        job_summary(&job),
+        JobState::Dispatched,
+    ));
+
     let request: LaunchBody = serde_json::from_str(&job.request_json)
         .map_err(|e| ApiError::internal(format!("decoding stored launch request: {e}")))?;
     Ok(Json(ClaimedJob {
@@ -684,6 +752,11 @@ pub async fn update_status(
                 .set_job_state(&id, "starting", &now, None, None)
                 .await
                 .map_err(ApiError::from)?;
+            state.relay.notifier().publish_run(RunEvent::state_changed(
+                &id,
+                job_summary(&job),
+                JobState::Starting,
+            ));
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Running => {
@@ -692,6 +765,11 @@ pub async fn update_status(
                 .set_job_state(&id, "running", &now, None, None)
                 .await
                 .map_err(ApiError::from)?;
+            state.relay.notifier().publish_run(RunEvent::state_changed(
+                &id,
+                job_summary(&job),
+                JobState::Running,
+            ));
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Failed => {
@@ -708,6 +786,13 @@ pub async fn update_status(
                 .map_err(ApiError::from)?;
             finish_and_notify(
                 &state,
+                RunEvent::finished(
+                    &id,
+                    job_summary(&job),
+                    JobState::Failed,
+                    record_id.as_deref(),
+                    Some(detail),
+                ),
                 Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
             );
             // A `failed` report carries the driver's classified terminal state on the
@@ -734,6 +819,13 @@ pub async fn update_status(
                 .map_err(ApiError::from)?;
             finish_and_notify(
                 &state,
+                RunEvent::finished(
+                    &id,
+                    job_summary(&job),
+                    JobState::Succeeded,
+                    Some(&record_id),
+                    None,
+                ),
                 Notification::completed(&id, job_summary(&job), &record_id),
             );
             // A clean harness exit is `Completed` (evaluable) or `Catastrophic`
@@ -1020,29 +1112,113 @@ pub async fn verify_token(
 pub async fn notifications(
     State(state): State<AppState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let receiver = state.relay.notifier().subscribe();
-    let stream = stream::unfold(receiver, |mut receiver| async move {
+    let handle = state.relay.notifier().open_stream();
+
+    // The hello frame, sent before anything else: it hands the client the id it
+    // needs to change its own topics. A client cannot subscribe to run events until
+    // it has this, which is why it is the first thing on the wire rather than
+    // something the client has to ask for.
+    let hello = Event::default()
+        .event(STREAM_EVENT_HELLO)
+        .json_data(StreamOpened {
+            stream_id: handle.id.clone(),
+        })
+        .unwrap_or_else(|_| Event::default());
+
+    let tail = stream::unfold(handle, |mut handle| async move {
         loop {
-            match receiver.recv().await {
-                Ok(notification) => {
-                    let event = Event::default()
-                        .json_data(&notification)
-                        .unwrap_or_else(|_| Event::default());
-                    return Some((Ok(event), receiver));
+            match handle.receiver.recv().await {
+                Ok(message) => {
+                    // The topic filter is applied per message, at delivery time, so a
+                    // `PUT /notifications/{id}/topics` that lands mid-stream takes
+                    // effect on the very next message.
+                    if !handle.wants(&message) {
+                        continue;
+                    }
+                    let event = match &message {
+                        StreamMessage::Notification(notification) => Event::default()
+                            .event(STREAM_EVENT_NOTIFICATION)
+                            .json_data(notification.as_ref()),
+                        StreamMessage::Run(run) => Event::default()
+                            .event(STREAM_EVENT_RUN)
+                            .json_data(run.as_ref()),
+                    }
+                    .unwrap_or_else(|_| Event::default());
+                    return Some((Ok(event), handle));
                 }
-                Err(RecvError::Lagged(_)) => continue,
+                // This client fell behind far enough that the channel dropped
+                // messages for it. Tell it so, rather than skipping on in silence:
+                // the stream is live-only, so a dropped message is gone, and a
+                // console that does not know it missed one would show a stale
+                // in-flight list indefinitely with a perfectly healthy connection.
+                // Its recovery is to re-read the authoritative lists.
+                Err(RecvError::Lagged(dropped)) => {
+                    let event = Event::default()
+                        .event(STREAM_EVENT_RESYNC)
+                        .json_data(StreamResync { dropped })
+                        .unwrap_or_else(|_| Event::default());
+                    return Some((Ok(event), handle));
+                }
                 Err(RecvError::Closed) => return None,
             }
         }
     });
+
+    let stream = stream::once(async move { Ok(hello) }).chain(tail);
     Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+/// `PUT /notifications/{stream}/topics` — change which topics an already-connected
+/// stream delivers.
+///
+/// This is the control channel SSE itself does not have. The console opens one
+/// stream when it connects to the backend and keeps it open for the session; when it
+/// navigates onto a page that shows in-flight runs it turns the `runs` topic on, and
+/// when it leaves it turns it back off. The alternative — a second stream opened and
+/// closed per page — would drop the alerts riding the first one every time, and cost
+/// a reconnect on every navigation.
+///
+/// An omitted field leaves that topic unchanged. `404` when no such stream is
+/// connected, which tells a client its `EventSource` has reconnected under a new id
+/// (or the backend restarted) and it must re-apply its topics to the new stream.
+pub async fn set_stream_topics(
+    State(state): State<AppState>,
+    Path(stream_id): Path<String>,
+    Json(body): Json<StreamTopicsBody>,
+) -> Result<StatusCode, ApiError> {
+    if state
+        .relay
+        .notifier()
+        .set_topics(&stream_id, body.notifications, body.runs)
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::not_found(format!(
+            "no connected stream `{stream_id}`"
+        )))
+    }
 }
 
 // --- Helpers ----------------------------------------------------------------
 
-/// Mark a job's live stream finished and publish its completion notification.
-fn finish_and_notify(state: &AppState, notification: Notification) {
-    state.relay.live(&notification.job_id).finish();
+/// Mark a run's live stream finished and announce that it left the in-flight set.
+///
+/// Every terminal transition goes through here, including the ones that raise no
+/// alert (a cancellation). That is the distinction the two functions draw: *ending* a
+/// run is list maintenance and always published, while *alerting* on it is a separate
+/// judgment [`finish_and_notify`] adds on top.
+fn finish_run(state: &AppState, event: RunEvent) {
+    state.relay.live(&event.run_id).finish();
+    state.relay.notifier().publish_run(event);
+}
+
+/// Finish a run (as [`finish_run`]) and additionally raise its completion alert.
+///
+/// The run event is published before the notification so a console applying both
+/// removes the run from its in-flight list before it toasts the completion — the
+/// order a person expects, and the reason the two topics share one channel.
+fn finish_and_notify(state: &AppState, event: RunEvent, notification: Notification) {
+    finish_run(state, event);
     state.relay.notifier().notify(notification);
 }
 
@@ -1073,6 +1249,21 @@ fn job_status_out(job: &job::Model) -> JobStatusOut {
         state: JobState::from_db(&job.state),
         record_id: job.record_id.clone(),
         detail: job.detail.clone(),
+    }
+}
+
+/// The run's display identity, lifted from a job about to be inserted.
+///
+/// The same fields as [`job_summary`], read off the insert shape instead of the
+/// stored row, so an enqueue can announce the run without reading back what it just
+/// wrote.
+fn new_job_summary(new: &crate::db::NewJob) -> JobSummary {
+    JobSummary {
+        test_case_slug: new.test_case_slug.clone(),
+        test_case_version: new.test_case_version.clone(),
+        variant: new.variant.clone(),
+        harness_slug: new.harness_slug.clone(),
+        model_id: new.model_id.clone(),
     }
 }
 
@@ -1247,9 +1438,51 @@ pub struct VerifyTokenBody {
     pub token: String,
 }
 
+/// The SSE `event:` name of the console stream's hello frame, carrying the stream id.
+pub const STREAM_EVENT_HELLO: &str = "stream";
+/// The SSE `event:` name carrying a [`Notification`] (the `notifications` topic).
+pub const STREAM_EVENT_NOTIFICATION: &str = "notification";
+/// The SSE `event:` name carrying a [`RunEvent`] (the `runs` topic).
+pub const STREAM_EVENT_RUN: &str = "run";
+/// The SSE `event:` name telling a client it fell behind and must re-read the
+/// authoritative lists.
+pub const STREAM_EVENT_RESYNC: &str = "resync";
+
+/// The console stream's first frame: the id this client quotes back to
+/// `PUT /notifications/{stream}/topics`.
+///
+/// The id is minted per **connection**, not per client, and deliberately so. An
+/// `EventSource` reconnects on its own after a drop, and the reconnected stream is a
+/// new subscriber with default topics — so the client must be told the new id and
+/// re-apply what it wanted. Handing out a client-chosen or long-lived id would hide
+/// that transition and leave a console silently subscribed to nothing.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct StreamOpened {
+    /// The connected stream's id.
+    pub stream_id: String,
+}
+
+/// The console stream's "you fell behind" frame: this client was lagged and the
+/// named number of messages were dropped for it.
+///
+/// It carries the count only as a diagnostic — a client's response is the same
+/// whatever the number: re-read the active list (and, if it is showing them, the
+/// produced runs). The frame exists because the stream keeps no backlog, so there is
+/// nothing to replay and silence would be indistinguishable from an idle queue.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct StreamResync {
+    /// How many messages were dropped for this client.
+    pub dropped: u64,
+}
+
 // The server output shapes `LaunchAck`, `JobState`, `ActiveJobOut`, and
 // `JobStatusOut` are shared with the queue's Rust clients, so they live in
-// `core::job_api` and are re-exported at the top of this module.
+// `core::job_api` and are re-exported at the top of this module. So are the console
+// stream's `Notification`, `RunEvent`, and `StreamTopicsBody`.
 
 #[cfg(test)]
 #[path = "jobs.test.rs"]

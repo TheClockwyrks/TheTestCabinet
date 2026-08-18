@@ -3642,6 +3642,23 @@ impl JobOrigin {
     }
 }
 
+/// Everything one claim pass changed: the job it handed to the dispatcher, and the
+/// waiting jobs whose display state it reconciled on the way past.
+///
+/// The two are separate because they mean different things to a caller. `claimed` is
+/// the *answer* — the job to dispatch, or `None` when nothing is claimable — while
+/// `reconciled` is a side effect the pass performs on the rest of the queue. A
+/// dispatcher acts on the first and ignores the second; the console stream announces
+/// both, because both changed a row somebody may be looking at.
+#[derive(Debug, Clone, Default)]
+pub struct ClaimOutcome {
+    /// The job moved to `dispatched`, if any was claimable.
+    pub claimed: Option<job::Model>,
+    /// The waiting jobs this pass moved between `queued` and `pending`, each with its
+    /// new state. Empty when every waiting job's display state was already correct.
+    pub reconciled: Vec<job::Model>,
+}
+
 /// Which jobs a bulk cancel reaches: the in-flight states to sweep, optionally narrowed
 /// to one plan/ladder and/or one account.
 ///
@@ -3846,7 +3863,12 @@ impl Db {
     ///
     /// The select-then-updates run in one transaction; SQLite serializes writers
     /// (single-writer WAL), so two dispatchers cannot claim the same job.
-    pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
+    /// Both halves of the pass are reported, because both are state changes a
+    /// console is showing: the claim moves one run to `dispatched`, and the
+    /// reconciliation moves any number of others between `queued` and `pending`.
+    /// Returning only the claim would leave every held-back run's row stale until
+    /// something else re-read the queue.
+    pub async fn claim_next(&self, now: &str) -> Result<ClaimOutcome> {
         use std::collections::{HashMap, HashSet};
 
         let txn = self.conn().begin().await?;
@@ -3894,6 +3916,7 @@ impl Db {
             .await?;
 
         let mut claimed: Option<job::Model> = None;
+        let mut reconciled: Vec<job::Model> = Vec::new();
         for job in waiting {
             let active = active_by_harness
                 .get(&job.harness_slug)
@@ -3925,17 +3948,30 @@ impl Db {
             }
 
             // Not claimed: make its display state match whether its harness has room.
+            // Only a job that actually moved is reported — the common case is a queue
+            // whose display states are already correct, and re-announcing those every
+            // claim pass would be pure noise on the console stream.
             let target = if has_room { "queued" } else { "pending" };
             if job.state != target {
                 let mut active_model = job.into_active_model();
                 active_model.state = Set(target.to_string());
                 active_model.updated_at = Set(now.to_string());
-                active_model.update(&txn).await?;
+                reconciled.push(active_model.update(&txn).await?);
             }
         }
 
         txn.commit().await?;
-        Ok(claimed)
+        Ok(ClaimOutcome {
+            claimed,
+            reconciled,
+        })
+    }
+
+    /// Claim, reporting only what was claimed — the convenience form of
+    /// [`Db::claim_next`] for callers that care which job was picked and not about
+    /// the display states the same pass reconciled around it.
+    pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
+        Ok(self.claim_next(now).await?.claimed)
     }
 
     /// Every stored per-harness config row (harnesses with no overrides are absent).

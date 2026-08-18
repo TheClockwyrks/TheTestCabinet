@@ -14,6 +14,7 @@ import type {
   RunSubscription,
   NotificationSubscription,
 } from "../client";
+import { runPhase } from "../client/runPhase";
 import type {
   AssetKind,
   AssetPreview,
@@ -40,6 +41,7 @@ import type {
   ReviewStats,
   RunEventStreams,
   RunJob,
+  RunLifecycleEvent,
   RunNotification,
   RunPage,
   RunSummaryPage,
@@ -58,7 +60,10 @@ import type {
   RunRecord,
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { BulkCancelOut } from "@test-cabinet/run-record/jobs-api";
+import type {
+  BulkCancelOut,
+  StreamOpened,
+} from "@test-cabinet/run-record/jobs-api";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -94,6 +99,7 @@ import {
   postJson,
   putBytes,
   putJson,
+  putVoid,
 } from "./http";
 import {
   applyScoreExclusions,
@@ -1122,25 +1128,25 @@ function mapJobState(state: string): RunJob["state"] {
   return "running";
 }
 
-// Map a backend job state to the console's coarser in-progress *phase* for the
-// active-run list. `dispatched` (claimed, the driver pod being created) and
-// `starting` (the pod up, running pre-run setup) both read as "starting"; a
-// harness-capped hold reads as "pending", a free-but-unclaimed job as "queued".
-// A terminal job never appears in the active list, so it falls back to "running".
+// The SSE `event:` names on the console stream (`GET /notifications`), matching the
+// backend's `STREAM_EVENT_*` constants. The stream is multiplexed, so every frame is
+// named — there is no unnamed `message` frame and `EventSource.onmessage` never
+// fires on it.
+const STREAM_EVENT_HELLO = "stream";
+const STREAM_EVENT_NOTIFICATION = "notification";
+const STREAM_EVENT_RUN = "run";
+const STREAM_EVENT_RESYNC = "resync";
+
+// The topic-control path for one connected stream.
+const topicsPath = (streamId: string): string =>
+  `/notifications/${encodeURIComponent(streamId)}/topics`;
+
+// The console's in-progress phase for a row of the active-run list. A terminal job
+// never appears in that list, so the shared mapping's `null` is unreachable here;
+// it falls back to "running" rather than dropping a row the backend just told us is
+// in flight.
 function mapActiveState(state: string): InProgressRun["state"] {
-  switch (state) {
-    case "queued":
-      return "queued";
-    case "pending":
-      return "pending";
-    case "dispatched":
-    case "starting":
-      return "starting";
-    case "running":
-      return "running";
-    default:
-      return "running";
-  }
+  return runPhase(state) ?? "running";
 }
 
 // The artifact service's base URL as the execution client consumes it. It is
@@ -1257,6 +1263,20 @@ export function createBackendExec(
   artifacts: ArtifactsUrlSource | string | null,
 ): WorkerClient {
   const backend = createHttpBackend(backendUrl);
+
+  // The console stream's per-connection state, shared by `subscribeToNotifications`
+  // (which learns the id) and `setRunLifecycleEnabled` (which uses it). It lives on
+  // the client rather than inside the subscription because the two are called from
+  // different places at different times: the subscription is opened once for the
+  // session by the notifications layer, while the topic is toggled by whichever page
+  // is currently mounted.
+  //
+  // `streamId` is the id of the stream that is connected *right now*, or null while
+  // disconnected. `runLifecycleWanted` is what the console last asked for, which
+  // outlives any single connection and is re-applied to each new one.
+  let streamId: string | null = null;
+  let runLifecycleWanted = false;
+
   // The artifact service's base URL is itself fetched (`GET /config`), so it has
   // two forms here and they are not interchangeable. `artifactsNow` is the
   // best-known value *this instant*, for the synchronous media resolvers below —
@@ -1415,22 +1435,86 @@ export function createBackendExec(
 
     subscribeToNotifications(handlers: NotificationSubscription): () => void {
       // An EventSource holds one long-lived SSE connection and reconnects on its
-      // own if it drops — exactly what an always-on notifications channel wants.
+      // own if it drops — exactly what an always-on console channel wants.
       const source = new EventSource(joinUrl(backendUrl, "/notifications"));
-      // Fires on the initial connect and on every automatic reconnect. Because the
-      // feed carries no backlog, a completion that fired while the channel was down
-      // is gone; the console reconciles against the active list on each open to
-      // recover it.
-      source.onopen = () => handlers.onOpen?.();
-      source.onmessage = (event) => {
+
+      // The backend mints a fresh stream id per *connection*, so an automatic
+      // reconnect lands on a new stream with default topics. Both facts live here:
+      // the current id (null while disconnected), and what the console last asked
+      // for, which is re-applied to each new stream as its hello frame arrives.
+      // Without that replay a console that was watching in-flight runs would come
+      // back from a blip subscribed to nothing, with no error to notice.
+      const applyTopics = () => {
+        if (!streamId) return;
+        void putVoid(backendUrl, topicsPath(streamId), {
+          runs: runLifecycleWanted,
+        }).catch(() => {
+          // The stream died between the hello frame and this call. Nothing to do:
+          // the EventSource is already reconnecting, and the next hello frame
+          // re-applies the same intent.
+        });
+      };
+
+      source.addEventListener(STREAM_EVENT_HELLO, (event) => {
         try {
-          handlers.onNotification(JSON.parse(event.data) as RunNotification);
+          streamId = (JSON.parse((event as MessageEvent).data) as StreamOpened)
+            .streamId;
+        } catch {
+          return;
+        }
+        applyTopics();
+      });
+
+      source.addEventListener(STREAM_EVENT_NOTIFICATION, (event) => {
+        try {
+          handlers.onNotification(
+            JSON.parse((event as MessageEvent).data) as RunNotification,
+          );
         } catch {
           // A malformed payload shouldn't tear down the channel; drop it.
         }
+      });
+
+      source.addEventListener(STREAM_EVENT_RUN, (event) => {
+        try {
+          handlers.onRunLifecycle?.(
+            JSON.parse((event as MessageEvent).data) as RunLifecycleEvent,
+          );
+        } catch {
+          // As above — one bad frame is not worth the connection.
+        }
+      });
+
+      // The backend dropped messages for this client because it fell behind. The
+      // stream keeps no backlog, so they are gone; the only recovery is to re-read
+      // the authoritative lists.
+      source.addEventListener(STREAM_EVENT_RESYNC, () => handlers.onResync?.());
+
+      // Fires on the initial connect and on every automatic reconnect. Because the
+      // feed carries no backlog, anything published while the channel was down is
+      // gone; the console reconciles against the active list on each open to
+      // recover it.
+      source.onopen = () => handlers.onOpen?.();
+      source.onerror = (event) => {
+        // The stream this id named is gone. Clearing it keeps a topic change made
+        // while disconnected from PUTting against a dead stream; the next hello
+        // frame supplies the new id.
+        streamId = null;
+        handlers.onError?.(event);
       };
-      source.onerror = (event) => handlers.onError?.(event);
-      return () => source.close();
+      return () => {
+        streamId = null;
+        source.close();
+      };
+    },
+
+    async setRunLifecycleEnabled(enabled: boolean): Promise<void> {
+      runLifecycleWanted = enabled;
+      // Record the intent even with no stream open — the console toggles this on
+      // navigation, which can easily happen before the stream connects or during a
+      // reconnect, and the hello-frame handler replays whatever was last wanted.
+      if (!streamId) return;
+      await putVoid(backendUrl, topicsPath(streamId), { runs: enabled });
     },
 
     async listRuns(): Promise<StoredRun[]> {

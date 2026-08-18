@@ -1,0 +1,17 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/stream-topics.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Which of the console stream's topics a subscriber wants, as\n`PUT /notifications/{stream}/topics` carries them.\n\nBoth fields are optional so a caller toggles one topic without having to restate\nthe other — the console flips `runs` on and off as it enters and leaves the pages\nthat show in-flight runs, and never wants that request to disturb its alerts.",
+  "properties": {
+    "notifications": {
+      "description": "Whether to deliver [`Notification`]s (the bell/toast alerts). Defaults to on\nwhen a stream is opened; a console has no reason to turn it off, but it is\nsettable so the topic set is uniform.",
+      "type": ["boolean", "null"]
+    },
+    "runs": {
+      "description": "Whether to deliver [`RunEvent`]s (in-flight list maintenance). Defaults to\n**off**: most of the console shows no in-flight list, and a run's churn is far\nnoisier than its alerts.",
+      "type": ["boolean", "null"]
+    }
+  },
+  "title": "StreamTopicsBody",
+  "type": "object"
+}
