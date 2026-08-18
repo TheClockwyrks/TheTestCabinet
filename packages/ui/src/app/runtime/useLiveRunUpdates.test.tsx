@@ -2,6 +2,7 @@ import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { WorkersProvider } from "../../client/context";
+import { RunsRuntimeProvider, useRunsRuntime } from "./runsRuntime";
 import type { WorkerHandle, WorkersContextValue } from "../../client/context";
 import type { WorkerClient } from "../../client/clients";
 import {
@@ -126,6 +127,50 @@ describe("useLiveRunUpdates", () => {
     view.unmount();
     expect(first.setRunLifecycleEnabled.mock.calls).toEqual([[true], [false]]);
     expect(second.setRunLifecycleEnabled.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("asks for a resync when the topic goes from off to on", () => {
+    // The "fetch on navigate" half of the design. Nothing published while the topic
+    // was off is replayed, so the list this console is holding may be arbitrarily
+    // stale — it must re-read before trusting the events that follow.
+    const { handle } = worker("w1");
+    const value = {
+      workers: [handle],
+      activeId: handle.id,
+      active: handle,
+      setActive: () => {},
+      addWorker: () => {},
+      removeWorker: () => {},
+    } as WorkersContextValue;
+
+    const seen: number[] = [];
+    function Probe() {
+      seen.push(useRunsRuntime().resyncToken);
+      return null;
+    }
+
+    const view = render(
+      <WorkersProvider value={value}>
+        <RunsRuntimeProvider>
+          <Probe />
+          <Consumer key="a" />
+        </RunsRuntimeProvider>
+      </WorkersProvider>,
+    );
+    expect(seen.at(-1)).toBe(1);
+
+    // A second consumer rides the existing subscription, so it must NOT re-fetch:
+    // the topic never went off, and the list is already live.
+    view.rerender(
+      <WorkersProvider value={value}>
+        <RunsRuntimeProvider>
+          <Probe />
+          <Consumer key="a" />
+          <Consumer key="b" />
+        </RunsRuntimeProvider>
+      </WorkersProvider>,
+    );
+    expect(seen.at(-1)).toBe(1);
   });
 
   it("does nothing where no workers provider is mounted", () => {

@@ -729,6 +729,7 @@ Opens the stream. Every frame is a **named** SSE event, so there is no unnamed
 | `notification` | `Notification` | `notifications` |
 | `run` | `RunEvent` | `runs` |
 | `resync` | `{ "dropped": n }` | always |
+| `heartbeat` | *(none)* | always — every 15s while idle |
 
 The **hello frame** (`stream`) arrives first and carries the id the client quotes
 back to change its topics. The id is minted per *connection*, not per client: an
@@ -739,9 +740,17 @@ frame arrives.
 The **`resync` frame** says this client fell behind far enough that the backend
 dropped messages for it. Nothing can be replayed, so the client's recovery is to
 re-read the authoritative lists (`GET /jobs/active`, and the run listing if it is
-showing produced runs). It exists because this is the one way a client can lose
-messages *without* the connection dropping — silence would otherwise be
-indistinguishable from an idle queue.
+showing produced runs). It exists because this is one of the two ways a client can
+stop being current *without* the connection dropping.
+
+The **`heartbeat` frame** covers the other. It carries no payload — its arrival is
+the whole message — and it is why an SSE *comment* keep-alive is not enough here:
+the browser's `EventSource` consumes comments internally and surfaces nothing to
+the page, so a client cannot tell a healthy idle stream from a half-open socket
+that will never deliver anything again. With a heartbeat it can: arm a watchdog,
+rearm it on every frame, and treat an overdue one as a dead connection to tear
+down and reopen. `Sse::keep_alive` still runs alongside it, for the proxies that
+want the comment traffic.
 
 ### Topics
 
@@ -809,19 +818,37 @@ next message. That is the whole point: the alternative — a second stream opene
 and closed per page — would drop the alerts riding the first one on every
 navigation, and cost a reconnect each time.
 
-### Why a client still polls
+### Staying current without polling
 
-An event-driven list is not a self-healing one. Two failure modes survive it, and
-a client should keep a slow reconcile against `GET /jobs/active` as a backstop:
+A client does not poll this queue. It re-reads `GET /jobs/active` only when
+something tells it its own list may be wrong, and lives on the events in between.
+There are four such moments, and between them they cover every way a client can
+fall out of step:
 
-- **The `runs` topic is off some of the time.** Anything published while it was off
-  is not replayed when it comes back on. Reconciling when the topic is enabled
-  covers the common case; the periodic sweep covers the rest.
-- **An `EventSource` can wedge** — errored without reconnecting, so no further
-  hello frame arrives and nothing surfaces the fault to the page.
+| trigger | what it recovers |
+| --- | --- |
+| the `runs` topic goes from off to on | anything published while it was off, which is never replayed |
+| the stream (re)connects | the gap, since the stream keeps no backlog |
+| a `resync` frame | messages the backend dropped for a client that fell behind |
+| the watchdog forces a reopen | a stream that died without saying so |
 
-The third case, a client falling behind on a healthy connection, is *not* left to
-the poll: it reports itself as a `resync` frame and recovers immediately.
+The last two are the ones that make dropping the poll safe, and both are new: a
+lagged client used to be skipped in silence, and a wedged `EventSource` was
+undetectable. A poll was the only thing covering either.
+
+Two client-side details are load-bearing, and a client that omits them will look
+correct in testing and go stale in production:
+
+- **Reopen a stream the browser has abandoned.** After enough failed attempts
+  `EventSource.readyState` settles on `CLOSED` and the browser stops retrying,
+  permanently. Only an explicit reopen recovers it. While `readyState` is
+  `CONNECTING` a retry is already under way and should be left alone — racing it
+  just multiplies connections.
+- **Re-base, then replay.** The active-list snapshot describes the queue as of the
+  moment the request was served. Applying it over a list that live events have
+  since moved forward undoes them — re-adding a run that finished a moment ago, and
+  stranding that row for good with no poll to correct it. Buffer events for the
+  duration of the fetch and apply them on top of the snapshot.
 
 ## Reference rendering
 

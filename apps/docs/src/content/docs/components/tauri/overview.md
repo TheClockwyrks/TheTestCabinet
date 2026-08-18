@@ -48,10 +48,9 @@ no `make`, and no manually-run services — only a container runtime (see
   links to the finished run, and opening it dismisses the alert. Both the alerts
   and the in-flight list are pushed from the backend over the multiplexed
   [console stream](/components/backend/api/#the-console-stream) (SSE); the list
-  advances as each run does, rather than on a timer. A slow reconcile against the
-  active list remains as a backstop for the cases a live stream cannot cover
-  itself — see
-  [why a client still polls](/components/backend/api/#why-a-client-still-polls).
+  advances as each run does, and nothing polls. The active list is re-read only
+  when the stream says it might have missed something — see
+  [staying current without polling](/components/backend/api/#staying-current-without-polling).
 - **Read the specs.** Browse the [specification](/testing/end-to-end/overview/) a
   run was built from, so the produced implementation can be judged against what
   was actually asked for.

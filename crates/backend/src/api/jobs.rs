@@ -1127,7 +1127,19 @@ pub async fn notifications(
 
     let tail = stream::unfold(handle, |mut handle| async move {
         loop {
-            match handle.receiver.recv().await {
+            // Bounded, so an idle stream still emits something a client can see.
+            // `Sse::keep_alive` already writes SSE *comments*, but the browser's
+            // `EventSource` consumes those internally and surfaces nothing to the
+            // page — they keep proxies from timing the connection out and are
+            // useless as a liveness signal. This heartbeat is a real named event,
+            // so a client can arm a watchdog on it and notice a stream that has
+            // gone quiet because it is dead rather than because nothing happened.
+            let received = tokio::time::timeout(STREAM_HEARTBEAT, handle.receiver.recv()).await;
+            let Ok(received) = received else {
+                let event = Event::default().event(STREAM_EVENT_HEARTBEAT);
+                return Some((Ok(event), handle));
+            };
+            match received {
                 Ok(message) => {
                     // The topic filter is applied per message, at delivery time, so a
                     // `PUT /notifications/{id}/topics` that lands mid-stream takes
@@ -1447,6 +1459,19 @@ pub const STREAM_EVENT_RUN: &str = "run";
 /// The SSE `event:` name telling a client it fell behind and must re-read the
 /// authoritative lists.
 pub const STREAM_EVENT_RESYNC: &str = "resync";
+/// The SSE `event:` name of the periodic liveness frame. Payloadless — its arrival
+/// is the whole message.
+pub const STREAM_EVENT_HEARTBEAT: &str = "heartbeat";
+
+/// How long the console stream may stay silent before it emits a heartbeat.
+///
+/// This is what makes a wedged stream detectable *by the client*. A client arms a
+/// watchdog on any frame and tears the connection down when one is overdue, so the
+/// interval sets how fast a dead stream is noticed — and, with the client's
+/// tolerance factor, how long a run's row can be stale in the worst case. Matches
+/// the per-job stream's heartbeat and axum's default keep-alive period, and stays
+/// well under the 60s idle timeouts proxies and WKWebView impose.
+const STREAM_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// The console stream's first frame: the id this client quotes back to
 /// `PUT /notifications/{stream}/topics`.
