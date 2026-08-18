@@ -18,32 +18,29 @@ import { runListAction } from "../runtime/runLifecycle";
 import { NotificationToast } from "./NotificationToast";
 import { NotificationsSidebar } from "./NotificationsSidebar";
 
-// How often the console reconciles its in-progress list against the workers'
-// authoritative active sets.
+// The console does not poll for run state. It re-reads the workers' active lists
+// only when something says its own list may be wrong, and lives on the console
+// stream's run-lifecycle events in between. There are exactly four such moments,
+// and between them they cover every way this console can fall out of step:
 //
-// This used to be the console's *primary* way of learning about in-flight runs, at
-// 15s, because the push feed carried only completions: it announced no enqueue and
-// no phase change, so a run started by a coverage plan, a ladder, another tab or
-// another machine appeared only when a poll happened to find it. The stream now
-// carries the whole lifecycle (`onRunLifecycle`), so this is demoted to a genuine
-// backstop and can be far slower.
-//
-// It is not removed, because two failure modes survive an event-driven list, and
-// neither announces itself:
-//
-//   - The stream is only subscribed to run events while a page that needs them is
-//     mounted. Anything that happens while it is off is not replayed when it comes
-//     back on — the reconcile on enable covers the common case, this covers the rest.
-//   - An `EventSource` can wedge: errored without reconnecting, so `onOpen` never
-//     fires again, with no error surfaced to the page. (The other silent-loss case,
-//     the backend dropping messages for a client that fell behind, *is* signalled —
-//     see `onResync` — and recovers immediately rather than waiting for this.)
-const RECONCILE_INTERVAL_MS = 120_000;
+//   - **On mount and on a resync request** — `useLiveRunUpdates` asks for one on
+//     navigating onto a page that shows in-flight runs, because the run topic is
+//     off the rest of the time and nothing published while it was off is replayed.
+//   - **On every (re)connect** (`onOpen`) — the stream keeps no backlog, so a gap
+//     loses whatever happened during it.
+//   - **On a `resync` frame** — the connection is healthy but the backend dropped
+//     messages for a client that fell behind. It used to skip these in silence,
+//     which is what a periodic poll was really compensating for.
+//   - **On a reopen the transport forces** — an `EventSource` that gave up, or one
+//     that believes it is connected and is not. The backend heartbeats so the
+//     transport can tell the second case from an idle queue; see
+//     `subscribeToNotifications`. That reopen surfaces here as an `onOpen`.
 
 // The console's notification subsystem, mounted once inside the router (so its
 // toasts and sidebar can use <Link>) and only where runs execute. It:
-//   - seeds the in-progress list from each worker's active runs, so a run the
-//     user is watching survives a page reload (the session store is rebuilt);
+//   - re-bases the in-progress list on each worker's active runs whenever that
+//     list may have gone stale (see above), so a run the user is watching survives
+//     a page reload (the session store is rebuilt);
 //   - holds each worker's console stream (SSE) open for the whole session and, per
 //     completion alert, raises a toast, files the notification for the bell, and
 //     prunes the finished run from the in-progress list — globally, so it works
@@ -66,36 +63,17 @@ export function NotificationsLayer() {
   const markReadByRunId = useNotifications((s) => s.markReadByRunId);
 
   // The runtime object is recreated whenever its own state changes; hold the
-  // latest in a ref so the subscription/seed effects don't depend on it (and
-  // re-run, churning subscriptions) every time a run is tracked or removed.
+  // latest in a ref so the subscription and reconcile effects don't depend on it
+  // (and re-run, churning subscriptions) every time a run is tracked or removed.
   const runtimeRef = useRef(runtime);
   runtimeRef.current = runtime;
 
-  // Re-seed and re-subscribe only when the set of workers changes, not on every
-  // render. Read the live worker handles from a ref so the keyed effect still
-  // uses current clients.
+  // Re-subscribe only when the set of workers changes, not on every render. Read
+  // the live worker handles from a ref so the keyed effect still uses current
+  // clients.
   const workersRef = useRef(workers);
   workersRef.current = workers;
   const workerKey = workers.map((w) => w.id).join("|");
-
-  // Seed the in-progress list from each worker's currently-running jobs.
-  useEffect(() => {
-    let cancelled = false;
-    for (const worker of workersRef.current) {
-      worker.client
-        .listActiveRuns()
-        .then((runs) => {
-          if (cancelled) return;
-          for (const run of runs) runtimeRef.current.track(run);
-        })
-        .catch(() => {
-          // A worker that can't enumerate active runs simply seeds none.
-        });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [workerKey]);
 
   // Handle one push: file it, reconcile whatever it changed, and toast.
   const handlePush = useCallback(
@@ -132,11 +110,19 @@ export function NotificationsLayer() {
     [add],
   );
 
-  // Apply one run-lifecycle event to the in-progress list. This is what keeps the
-  // list current between fetches; the reconcile below is only its backstop. What
-  // each event means for the list is decided by `runListAction`; this only applies
-  // the result.
-  const handleRunLifecycle = useCallback((event: RunLifecycleEvent) => {
+  // Events that arrived while a reconcile was in flight, held back until its
+  // snapshot has been applied. Null when no reconcile is running, which is the
+  // normal case — events are applied as they arrive.
+  const bufferedRef = useRef<RunLifecycleEvent[] | null>(null);
+  // Whether a reconcile is running, and whether another was asked for while it
+  // was. Requests that land mid-flight are coalesced into one follow-up rather
+  // than run concurrently, which would have two snapshots racing each other.
+  const reconcilingRef = useRef(false);
+  const reconcileAgainRef = useRef(false);
+
+  // Apply one run-lifecycle event to the in-progress list. What each event means
+  // for the list is decided by `runListAction`; this only applies the result.
+  const applyRunLifecycle = useCallback((event: RunLifecycleEvent) => {
     const runtime = runtimeRef.current;
     const action = runListAction(event, runtime.inProgress);
     switch (action.kind) {
@@ -155,35 +141,69 @@ export function NotificationsLayer() {
     }
   }, []);
 
-  // Reconcile the in-progress list against every worker's active runs and apply the
-  // result: track newly-seen runs, drop finished ones, and re-read produced runs so
+  // This is what keeps the list current; the reconcile below only re-bases it.
+  const handleRunLifecycle = useCallback(
+    (event: RunLifecycleEvent) => {
+      if (bufferedRef.current) {
+        bufferedRef.current.push(event);
+        return;
+      }
+      applyRunLifecycle(event);
+    },
+    [applyRunLifecycle],
+  );
+
+  // Re-base the in-progress list on every worker's authoritative active set: track
+  // newly-seen runs, patch phases, drop finished ones, and re-read produced runs so
   // a recovered completion surfaces. This is exactly what a manual page refresh
-  // does; wiring it to the push channel's (re)connect and to a periodic timer makes
-  // the list self-heal when a completion's live push was missed — the reported bug,
-  // where a whole batch of finished runs sat as "in progress" until a manual reload.
+  // does.
+  //
+  // Events are **buffered for its duration** and replayed on top afterward. The
+  // snapshot describes the queue as of the moment the request was served, so
+  // applying it over a list that live events have since moved forward would undo
+  // them — re-adding a run that finished a moment ago, and leaving that row stranded
+  // for good now that nothing polls to correct it. Buffering makes the two ordered
+  // rather than racing: snapshot first, then everything that happened after it.
   const reconcileActive = useCallback(async () => {
     const workers = workersRef.current;
     if (workers.length === 0) return;
-    const settled = await Promise.allSettled(
-      workers.map((worker) => worker.client.listActiveRuns()),
-    );
-    const results: ActiveRunsResult[] = settled.map((result) =>
-      result.status === "fulfilled"
-        ? { ok: true, runs: result.value }
-        : { ok: false },
-    );
-    const runtime = runtimeRef.current;
-    const { toTrack, toUpdate, toRemove } = reconcileActiveRuns(
-      runtime.inProgress,
-      results,
-    );
-    for (const activeRun of toTrack) runtime.track(activeRun);
-    for (const { runId, state } of toUpdate) runtime.update(runId, { state });
-    for (const runId of toRemove) runtime.remove(runId);
-    // A pruned run has finished; nudge the data source to re-read produced runs so
-    // it reappears as a completed run rather than simply vanishing.
-    if (toRemove.length > 0) runtime.requestRefresh();
-  }, []);
+    if (reconcilingRef.current) {
+      reconcileAgainRef.current = true;
+      return;
+    }
+    reconcilingRef.current = true;
+    bufferedRef.current = [];
+    try {
+      const settled = await Promise.allSettled(
+        workers.map((worker) => worker.client.listActiveRuns()),
+      );
+      const results: ActiveRunsResult[] = settled.map((result) =>
+        result.status === "fulfilled"
+          ? { ok: true, runs: result.value }
+          : { ok: false },
+      );
+      const runtime = runtimeRef.current;
+      const { toTrack, toUpdate, toRemove } = reconcileActiveRuns(
+        runtime.inProgress,
+        results,
+      );
+      for (const activeRun of toTrack) runtime.track(activeRun);
+      for (const { runId, state } of toUpdate) runtime.update(runId, { state });
+      for (const runId of toRemove) runtime.remove(runId);
+      // A pruned run has finished; nudge the data source to re-read produced runs
+      // so it reappears as a completed run rather than simply vanishing.
+      if (toRemove.length > 0) runtime.requestRefresh();
+    } finally {
+      const buffered = bufferedRef.current ?? [];
+      bufferedRef.current = null;
+      reconcilingRef.current = false;
+      for (const event of buffered) applyRunLifecycle(event);
+    }
+    if (reconcileAgainRef.current) {
+      reconcileAgainRef.current = false;
+      void reconcileActive();
+    }
+  }, [applyRunLifecycle]);
 
   useEffect(() => {
     const unsubscribes = workersRef.current.map((worker) =>
@@ -200,9 +220,9 @@ export function NotificationsLayer() {
           void reconcileActive();
         },
         // The connection stayed up but this client fell behind and the backend
-        // dropped messages for it. Same recovery as a reconnect, and the reason the
-        // periodic poll can be slow: the one silent-loss case that is not a
-        // disconnect reports itself.
+        // dropped messages for it. Same recovery as a reconnect — and the reason
+        // there is no longer a timer: the one silent-loss case that is not a
+        // disconnect now reports itself instead of being waited out.
         onResync: () => {
           void reconcileActive();
         },
@@ -213,25 +233,14 @@ export function NotificationsLayer() {
     };
   }, [workerKey, handlePush, handleRunLifecycle, reconcileActive]);
 
-  // A periodic backstop for reconnect-time reconciliation: that only recovers a
-  // missed completion if the channel actually reconnects. If it wedges — an
-  // EventSource stuck after an error, or a push dropped with the connection still
-  // up — polling the active list heals the list within an interval instead of
-  // waiting on a manual refresh.
-  //
-  // It polls unconditionally, and not merely while this session already has a run in
-  // flight. A run this browser never launched is exactly as real: a coverage plan or
-  // ladder top-up enqueues server-side, and so does another tab or another machine
-  // signed into the same cabinet. Gating the poll on a non-empty list left every one
-  // of those invisible until the user happened to launch something by hand — the seed
-  // runs once on mount, so navigating to the Runs page (which never remounts this
-  // layer) showed nothing at all.
+  // Re-base the list whenever something asks for it: `useLiveRunUpdates` does on
+  // navigating onto a page that shows in-flight runs, because nothing published
+  // while the topic was off is replayed. The token starts at 0 and this runs on
+  // mount, which is also what seeds the list for the very first page.
+  const { resyncToken } = runtime;
   useEffect(() => {
-    const timer = setInterval(() => {
-      void reconcileActive();
-    }, RECONCILE_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [reconcileActive]);
+    void reconcileActive();
+  }, [workerKey, resyncToken, reconcileActive]);
 
   // Opening a run dismisses its alert: mark every notification for that run read
   // whenever the location lands on a run's pages (`/runs/:id...`).

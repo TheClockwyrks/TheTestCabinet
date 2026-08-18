@@ -1136,6 +1136,20 @@ const STREAM_EVENT_HELLO = "stream";
 const STREAM_EVENT_NOTIFICATION = "notification";
 const STREAM_EVENT_RUN = "run";
 const STREAM_EVENT_RESYNC = "resync";
+const STREAM_EVENT_HEARTBEAT = "heartbeat";
+
+// How long the console stream may go without a frame before it is treated as dead
+// and reopened. The backend heartbeats every 15s, so this allows three missed
+// beats — loose enough that a slow network or a briefly throttled background tab
+// does not churn the connection, tight enough that a wedged stream is noticed in
+// under a minute rather than never.
+const STREAM_STALE_MS = 50_000;
+
+// Backoff for reopening a stream we tore down ourselves, so a backend that is down
+// or mid-rollout is not hammered. Capped rather than given up on: with no polling
+// left, this connection is the console's only source of run updates.
+const STREAM_REOPEN_BASE_MS = 1_000;
+const STREAM_REOPEN_MAX_MS = 30_000;
 
 // The topic-control path for one connected stream.
 const topicsPath = (streamId: string): string =>
@@ -1434,77 +1448,173 @@ export function createBackendExec(
     },
 
     subscribeToNotifications(handlers: NotificationSubscription): () => void {
-      // An EventSource holds one long-lived SSE connection and reconnects on its
-      // own if it drops — exactly what an always-on console channel wants.
-      const source = new EventSource(joinUrl(backendUrl, "/notifications"));
+      // A supervised `EventSource`. The browser reconnects on its own after an
+      // ordinary drop, which handles most faults — but not all of them, and the
+      // console has no poll left to fall back on, so the two it misses are handled
+      // here:
+      //
+      //   - **It gave up.** After enough failed attempts `readyState` settles on
+      //     CLOSED and the browser stops retrying, permanently, with nothing but an
+      //     `error` event to say so. Reopening is the only recovery.
+      //   - **It thinks it is connected and is not.** A half-open socket — a laptop
+      //     resumed from sleep, a NAT that dropped the flow — delivers no frames and
+      //     raises no error. Nothing in the `EventSource` API reports this, which is
+      //     why the backend emits a periodic `heartbeat` event: any frame at all
+      //     rearms the watchdog below, and an overdue one means the stream is dead
+      //     however healthy it claims to be.
+      let source: EventSource | null = null;
+      let watchdog: ReturnType<typeof setTimeout> | null = null;
+      let retry: ReturnType<typeof setTimeout> | null = null;
+      let attempt = 0;
+      let unsubscribed = false;
 
-      // The backend mints a fresh stream id per *connection*, so an automatic
-      // reconnect lands on a new stream with default topics. Both facts live here:
-      // the current id (null while disconnected), and what the console last asked
-      // for, which is re-applied to each new stream as its hello frame arrives.
-      // Without that replay a console that was watching in-flight runs would come
-      // back from a blip subscribed to nothing, with no error to notice.
+      // The backend mints a fresh stream id per *connection*, so any reconnect —
+      // the browser's or ours — lands on a new stream with default topics. Both
+      // facts live here: the current id (null while disconnected), and what the
+      // console last asked for, which is re-applied to each new stream as its hello
+      // frame arrives. Without that replay a console that was watching in-flight
+      // runs would come back from a blip subscribed to nothing, with no error to
+      // notice.
       const applyTopics = () => {
         if (!streamId) return;
         void putVoid(backendUrl, topicsPath(streamId), {
           runs: runLifecycleWanted,
         }).catch(() => {
           // The stream died between the hello frame and this call. Nothing to do:
-          // the EventSource is already reconnecting, and the next hello frame
-          // re-applies the same intent.
+          // a reconnect is already under way and the next hello frame re-applies
+          // the same intent.
         });
       };
 
-      source.addEventListener(STREAM_EVENT_HELLO, (event) => {
-        try {
-          streamId = (JSON.parse((event as MessageEvent).data) as StreamOpened)
-            .streamId;
-        } catch {
-          return;
-        }
-        applyTopics();
-      });
-
-      source.addEventListener(STREAM_EVENT_NOTIFICATION, (event) => {
-        try {
-          handlers.onNotification(
-            JSON.parse((event as MessageEvent).data) as RunNotification,
-          );
-        } catch {
-          // A malformed payload shouldn't tear down the channel; drop it.
-        }
-      });
-
-      source.addEventListener(STREAM_EVENT_RUN, (event) => {
-        try {
-          handlers.onRunLifecycle?.(
-            JSON.parse((event as MessageEvent).data) as RunLifecycleEvent,
-          );
-        } catch {
-          // As above — one bad frame is not worth the connection.
-        }
-      });
-
-      // The backend dropped messages for this client because it fell behind. The
-      // stream keeps no backlog, so they are gone; the only recovery is to re-read
-      // the authoritative lists.
-      source.addEventListener(STREAM_EVENT_RESYNC, () => handlers.onResync?.());
-
-      // Fires on the initial connect and on every automatic reconnect. Because the
-      // feed carries no backlog, anything published while the channel was down is
-      // gone; the console reconciles against the active list on each open to
-      // recover it.
-      source.onopen = () => handlers.onOpen?.();
-      source.onerror = (event) => {
-        // The stream this id named is gone. Clearing it keeps a topic change made
-        // while disconnected from PUTting against a dead stream; the next hello
-        // frame supplies the new id.
-        streamId = null;
-        handlers.onError?.(event);
+      const clearTimers = () => {
+        if (watchdog !== null) clearTimeout(watchdog);
+        if (retry !== null) clearTimeout(retry);
+        watchdog = null;
+        retry = null;
       };
-      return () => {
+
+      // Rearmed by every frame, whatever kind. Firing means the backend has not
+      // even managed a heartbeat in well over its interval, so the connection is
+      // gone whatever `readyState` says.
+      const armWatchdog = () => {
+        if (watchdog !== null) clearTimeout(watchdog);
+        watchdog = setTimeout(() => reopen(), STREAM_STALE_MS);
+      };
+
+      // Tear the current connection down and open a new one, backing off so a
+      // backend that is down (or rolling) is not hammered. Capped, because the
+      // console is useless until this succeeds — it must keep trying.
+      const reopen = () => {
+        if (unsubscribed) return;
+        clearTimers();
+        source?.close();
+        source = null;
         streamId = null;
-        source.close();
+        const delay = Math.min(
+          STREAM_REOPEN_BASE_MS * 2 ** attempt,
+          STREAM_REOPEN_MAX_MS,
+        );
+        attempt += 1;
+        retry = setTimeout(open, delay);
+      };
+
+      const open = () => {
+        if (unsubscribed) return;
+        const current = new EventSource(joinUrl(backendUrl, "/notifications"));
+        source = current;
+        armWatchdog();
+
+        // Every frame is evidence the stream is alive, so rearm on all of them —
+        // including the heartbeat, which carries nothing else.
+        const onFrame =
+          (handle: (event: MessageEvent) => void) => (event: Event) => {
+            armWatchdog();
+            handle(event as MessageEvent);
+          };
+
+        current.addEventListener(
+          STREAM_EVENT_HELLO,
+          onFrame((event) => {
+            try {
+              streamId = (JSON.parse(event.data) as StreamOpened).streamId;
+            } catch {
+              return;
+            }
+            applyTopics();
+          }),
+        );
+
+        current.addEventListener(
+          STREAM_EVENT_NOTIFICATION,
+          onFrame((event) => {
+            try {
+              handlers.onNotification(
+                JSON.parse(event.data) as RunNotification,
+              );
+            } catch {
+              // A malformed payload shouldn't tear down the channel; drop it.
+            }
+          }),
+        );
+
+        current.addEventListener(
+          STREAM_EVENT_RUN,
+          onFrame((event) => {
+            try {
+              handlers.onRunLifecycle?.(
+                JSON.parse(event.data) as RunLifecycleEvent,
+              );
+            } catch {
+              // As above — one bad frame is not worth the connection.
+            }
+          }),
+        );
+
+        // The backend dropped messages for this client because it fell behind. The
+        // stream keeps no backlog, so they are gone; the only recovery is to
+        // re-read the authoritative lists.
+        current.addEventListener(
+          STREAM_EVENT_RESYNC,
+          onFrame(() => handlers.onResync?.()),
+        );
+
+        current.addEventListener(
+          STREAM_EVENT_HEARTBEAT,
+          onFrame(() => {}),
+        );
+
+        // Fires on connect, whether this was the first attempt, the browser's own
+        // reconnect, or ours. Because the feed carries no backlog, anything
+        // published while the channel was down is gone; the console reconciles
+        // against the active list on each open to recover it.
+        current.onopen = () => {
+          attempt = 0;
+          armWatchdog();
+          handlers.onOpen?.();
+        };
+
+        current.onerror = (event) => {
+          // The stream this id named is gone. Clearing it keeps a topic change
+          // made while disconnected from PUTting against a dead stream; the next
+          // hello frame supplies the new id.
+          streamId = null;
+          handlers.onError?.(event);
+          // CLOSED means the browser has given up for good — it will not retry, so
+          // nothing reopens this but us. CONNECTING means it is already retrying,
+          // and racing it would only multiply connections; the watchdog is the
+          // backstop if that retry never lands.
+          if (current.readyState === EventSource.CLOSED) reopen();
+        };
+      };
+
+      open();
+
+      return () => {
+        unsubscribed = true;
+        clearTimers();
+        streamId = null;
+        source?.close();
+        source = null;
       };
     },
 

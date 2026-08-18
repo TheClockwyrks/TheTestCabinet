@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useOptionalWorkers } from "../../client/context";
 import type { WorkerHandle } from "../../client/context";
+import { useRunsRuntime } from "./runsRuntime";
 
 // How many mounted components currently need live run updates, per worker id.
 //
@@ -35,6 +36,9 @@ export function useLiveRunUpdates(): void {
   // and nothing to subscribe to, which is exactly right — that build shows no
   // in-flight runs at all.
   const workers = useOptionalWorkers()?.workers ?? NO_WORKERS;
+  const { requestResync } = useRunsRuntime();
+  const requestResyncRef = useRef(requestResync);
+  requestResyncRef.current = requestResync;
   // Re-subscribe only when the set of workers changes, not on every render. The
   // handles themselves are read from a ref so the keyed effect still uses current
   // clients (the same pattern the notifications layer uses).
@@ -46,18 +50,27 @@ export function useLiveRunUpdates(): void {
     // Captured once so the cleanup releases exactly the workers it acquired, even
     // if the set changed in between.
     const acquired = workersRef.current;
+    let enabledAny = false;
     for (const worker of acquired) {
       const next = (demand.get(worker.id) ?? 0) + 1;
       demand.set(worker.id, next);
       // First consumer for this worker: ask for the topic. Later ones ride the
       // same subscription.
       if (next === 1) {
+        enabledAny = true;
         void worker.client.setRunLifecycleEnabled(true).catch(() => {
-          // A worker that can't take the request simply keeps polling as its only
-          // source of truth — the reconcile backstop still heals the list.
+          // The topic could not be turned on, so this page will show whatever the
+          // resync below fetched and will not advance. The stream's own reconnect
+          // re-applies the intent; there is nothing useful to do from here.
         });
       }
     }
+    // Re-read the in-flight list whenever the topic goes from off to on. Nothing
+    // published while it was off is replayed, so what this console is holding may
+    // be arbitrarily stale — a run it never saw start, or one that finished
+    // without it. This is the "fetch on navigate" that makes the live events an
+    // *update* stream rather than the only source of truth.
+    if (enabledAny) requestResyncRef.current();
     return () => {
       for (const worker of acquired) {
         const next = (demand.get(worker.id) ?? 1) - 1;
