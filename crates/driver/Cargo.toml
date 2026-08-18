@@ -49,8 +49,17 @@ kube = { version = "4", default-features = false, features = [
 k8s-openapi = { version = "0.28", features = ["latest"] }
 tar = "0.4"
 
-[dev-dependencies]
+# Uploading the produced run tree (`src/artifacts.rs`). The tarball is built into an
+# unnamed `tempfile` on the driver's scratch disk and streamed to the artifact
+# service through `ReaderStream`, rather than assembled in memory: a run tree grows
+# with the case, and the driver holding a whole one at once is what made its memory
+# ceiling unsizeable. `tempfile_in` is load-bearing beyond convenience — the file it
+# returns has no directory entry, so the kernel reclaims it when the fd closes even
+# if the driver dies mid-upload, leaving nothing to garbage-collect.
 tempfile = { workspace = true }
+tokio-util = { workspace = true }
+
+[dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [lints]

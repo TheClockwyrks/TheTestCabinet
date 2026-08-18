@@ -101,9 +101,18 @@ spec:
             - name: state
               mountPath: /state
           resources:
+            # MEMORY REQUEST == LIMIT (see base/dispatcher.yaml for the argument): the
+            # 32Mi request under a 128Mi ceiling let a node seat four of these and
+            # honour one. This sidecar shares the backend's pod, so its overrun is
+            # charged to a pod the deployment cannot afford to lose.
+            #
+            # The ceiling rises from 128Mi to 256Mi at the same time. Staging measured
+            # this container peaking at 82Mi — 64% of the old ceiling, which is not
+            # margin so much as a near miss, and it does a git checkout whose cost
+            # grows with the catalog. 256Mi is ~3x the observed peak.
             requests:
               cpu: 10m
-              memory: 32Mi
+              memory: 256Mi
             limits:
               cpu: 250m
-              memory: 128Mi
+              memory: 256Mi
