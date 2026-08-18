@@ -305,6 +305,46 @@ and will OOM below it. Raise the request and the limit **together**, and only to
 value one node can still seat; a request no node can satisfy is unschedulable
 forever and merely queues.
 
+### The long-lived services
+
+Every container this deployment creates carries a memory limit equal to its request.
+That is what makes the sum of a node's limits knowable, and a knowable sum is the
+whole basis for saying a run pod cannot be killed to satisfy something else's growth.
+One unbounded container anywhere on the node forfeits it.
+
+The shipped values, measured on prod (2026-08-18) by reading each container's cgroup
+high-water mark (`memory.peak`) over its then ~4-day lifetime:
+
+| Container | Prod peak | Ceiling | Why |
+| --- | --- | --- | --- |
+| `backend` | 2.9GiB | `2Gi` | 717Mi anon + 108Mi slab; the rest was reclaimable cache |
+| `lgtm` | 1.8GiB | `4Gi` | unchanged — 2Gi was OOM-killed on 2026-07-20 |
+| `artifacts` | 3.2GiB | `1.5Gi` | the 3.2GiB was the upload it used to buffer; now spooled to disk |
+| `ingest` (sidecar) | 82Mi | `256Mi` | raised from 128Mi — 64% of a ceiling is a near miss, not margin |
+| `arena` | 4Mi | `512Mi` | unchanged — sized for concurrent wasm matches, not for a quiet week |
+| `auth`, `dispatcher`, `web` | ≤8Mi | `256Mi` | ~32x the observed peak; the headroom is nearly free |
+| `publisher` (per-job) | — | `1Gi` | not measured; reasoned from the largest stored tree (176Mi) |
+
+Two things to carry into any re-sizing.
+
+**A peak is not a working set.** `memory.peak` counts page cache, which cgroup v2
+reclaims under limit pressure rather than OOM-killing for. Backend's 2.9GiB peak was
+over a third file cache, and it only reached that figure because the pod had no
+ceiling to make the kernel reclaim any of it. Size against anonymous memory plus slab
+(`memory.stat`), then leave headroom.
+
+**Prod is not staging.** At the same moment staging's backend peaked at 55Mi against
+prod's 2.9GiB. Sizing prod from staging's history would have set a ceiling roughly
+twenty times too low — a deterministic OOM on the control plane. Take the numbers from
+the environment you are sizing.
+
+Read the current figures rather than trusting the table:
+
+```sh
+kubectl -n <ns> exec <pod> -c <container> -- \
+  sh -c 'cat /sys/fs/cgroup/memory.peak; grep -E "^(anon|file|slab) " /sys/fs/cgroup/memory.stat'
+```
+
 ### The driver pod's own ceiling
 
 The driver is a separate pod from the sandbox it drives, and it gets the same

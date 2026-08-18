@@ -57,6 +57,33 @@ spec:
       containers:
         - name: artifacts
           image: REPLACE_REGISTRY/tcab-artifacts:latest # CI publishes ghcr.io/<owner>/tcab-artifacts; pin a :<git-sha> tag
+          resources:
+          # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
+            # ignores limits, so a gap between them is memory promised twice; an
+            # unbounded container is worse still, because it makes the sum of a node's
+            # limits unknowable and so removes the only guarantee that a run pod cannot
+            # be killed to satisfy someone else's growth. See the `TCAB_K8S_RUN_MEMORY_*`
+            # commentary in base/dispatcher.yaml for the full argument.
+            #
+            # Sized from prod, 2026-08-18: each container's cgroup high-water mark
+            # (`memory.peak`) over the pods' then ~4-day lifetime, cross-checked against
+            # the anon/file split in `memory.stat`. Peak totals include reclaimable page
+            # cache, which cgroup v2 evicts under limit pressure rather than OOM-killing
+            # for, so the ceilings below are sized against anonymous memory plus slab
+            # with headroom, not against the cache-inflated peak.
+            #
+            # Prod peak was 3.2Gi — by far the largest here, and almost entirely the
+            # upload it used to buffer whole in memory (a 2Gi cap's worth) plus page
+            # cache from unpacking. That upload now spools to disk (api.rs), leaving
+            # anon memory at 397Mi with the largest of prod's 568 stored trees at
+            # 176Mi. The `tree.tar`/`archive.tar.gz` reads still build their archive
+            # in memory, so the ceiling must cover one of those on top: 1.5Gi is ~2.6x
+            # the worst case that remains, and can come down once those two stream too.
+            requests:
+              cpu: 100m
+              memory: 1536Mi
+            limits:
+              memory: 1536Mi
           ports:
             - containerPort: 8790
           env:

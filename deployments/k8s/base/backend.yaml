@@ -95,9 +95,20 @@ spec:
           # revisit them (rather than the other way round) if a deployment
           # legitimately outgrows them.
           resources:
+            # MEMORY REQUEST == LIMIT. The 768Mi request under a 2Gi ceiling was memory
+            # the scheduler could promise to three pods and honour for one; equalising
+            # them makes a node admit the backend only when the whole ceiling is really
+            # there. See base/dispatcher.yaml for the full argument, and
+            # components/postgres/deployment-backend.yaml for the measured prod figures
+            # behind the 2Gi (it is the variant prod runs; this one is for SQLite
+            # deployments).
+            #
+            # CPU keeps its request/limit gap on purpose: over-limit CPU is throttled,
+            # not killed, so the failure mode is a slower response rather than a lost
+            # control plane.
             requests:
               cpu: 250m
-              memory: 768Mi
+              memory: 2Gi
             limits:
               cpu: "1500m"
               memory: 2Gi

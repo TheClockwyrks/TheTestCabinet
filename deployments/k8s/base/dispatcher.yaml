@@ -35,6 +35,28 @@ spec:
       containers:
         - name: dispatcher
           image: REPLACE_REGISTRY/tcab-dispatcher:latest # CI publishes ghcr.io/<owner>/tcab-dispatcher; pin a :<git-sha> tag
+          resources:
+          # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
+            # ignores limits, so a gap between them is memory promised twice; an
+            # unbounded container is worse still, because it makes the sum of a node's
+            # limits unknowable and so removes the only guarantee that a run pod cannot
+            # be killed to satisfy someone else's growth. See the `TCAB_K8S_RUN_MEMORY_*`
+            # commentary in base/dispatcher.yaml for the full argument.
+            #
+            # Sized from prod, 2026-08-18: each container's cgroup high-water mark
+            # (`memory.peak`) over the pods' then ~4-day lifetime, cross-checked against
+            # the anon/file split in `memory.stat`. Peak totals include reclaimable page
+            # cache, which cgroup v2 evicts under limit pressure rather than OOM-killing
+            # for, so the ceilings below are sized against anonymous memory plus slab
+            # with headroom, not against the cache-inflated peak.
+            #
+            # Prod peak 7Mi. It claims jobs and creates jobs; it never handles a run's
+            # data. 256Mi is ~36x the observed peak.
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 256Mi
           env:
             # The backend the dispatcher claims jobs from and reports driver deaths to.
             - name: TCAB_BACKEND_URL

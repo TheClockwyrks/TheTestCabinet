@@ -56,6 +56,7 @@ fn config() -> Config {
             cpu_limit: None,
             memory_limit: Some(DEFAULT_DRIVER_MEMORY_LIMIT.to_string()),
         },
+        publisher_resources: DriverResources::default(),
         driver_secrets: vec!["tcab-driver-secrets".to_string()],
         driver_subscription_secret: None,
         subscription_dir: "/var/run/tcab/subscription".to_string(),
@@ -623,6 +624,50 @@ fn driver_container_carries_resource_requests() {
         limits["memory"].0, requests["memory"].0,
         "a gap between the driver's memory request and limit is memory the scheduler \
          has promised twice"
+    );
+    assert!(!limits.contains_key("cpu"));
+}
+
+#[test]
+fn publish_container_carries_its_own_resources() {
+    // The publish Job's container used to carry no `resources` at all, which put its
+    // pod in `BestEffort` — first evicted, highest OOM score — and, more importantly,
+    // made the sum of limits on whatever node it landed on unknowable. It is sized
+    // independently of the driver, so this asserts the publisher's own values reach
+    // the Job rather than the driver's leaking into it.
+    let mut config = config();
+    config.publisher_image = Some("ghcr.io/example/tcab-publisher:latest".to_string());
+    config.publisher_resources = DriverResources {
+        cpu_request: Some("100m".to_string()),
+        memory_request: Some("1Gi".to_string()),
+        cpu_limit: None,
+        memory_limit: Some("1Gi".to_string()),
+    };
+    config.driver_resources.memory_request = Some("777Mi".to_string());
+    config.driver_resources.memory_limit = Some("777Mi".to_string());
+
+    let job = build_publish_job(&publish_claim(), &config);
+    let resources = job
+        .spec
+        .as_ref()
+        .unwrap()
+        .template
+        .spec
+        .as_ref()
+        .unwrap()
+        .containers[0]
+        .resources
+        .as_ref()
+        .expect("the publish container carries resources");
+
+    let requests = resources.requests.as_ref().expect("requests");
+    let limits = resources.limits.as_ref().expect("limits");
+    assert_eq!(requests["memory"].0, "1Gi");
+    assert_eq!(limits["memory"].0, "1Gi");
+    assert_eq!(
+        requests["memory"].0, limits["memory"].0,
+        "a gap between the publisher's memory request and limit is memory the \
+         scheduler has promised twice"
     );
     assert!(!limits.contains_key("cpu"));
 }
