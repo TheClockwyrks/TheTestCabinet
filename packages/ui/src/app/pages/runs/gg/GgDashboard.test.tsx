@@ -43,20 +43,21 @@ function gg(
   };
 }
 
-// A two-slot, two-model run's worth of attributed usage deltas and turn timings — enough
+// A two-profile, two-model run's worth of attributed usage deltas and turn timings — enough
 // for the Cost widget to carry a spend split, with the root outspending the reviewer, and
-// for the generation rate to be a blend of two different per-model rates.
+// for the generation rate to be a blend of two different per-model rates. Every attribution
+// names its profile by id; the names those ids read as are the configuration's business.
 const EVENTS: HarnessEvent[] = [
   gg("root", { type: "turn_started", turn: 1 } as GgTelemetryKind),
   gg("root", {
     type: "agent_spawned",
-    slot: "root",
+    profileId: "root",
     modelId: "vendor/big",
     depth: 0,
   } as GgTelemetryKind),
   gg("root", {
     type: "usage",
-    slot: "root",
+    profileId: "root",
     modelId: "vendor/big",
     tokens: {
       uncachedInput: 4000,
@@ -77,7 +78,7 @@ const EVENTS: HarnessEvent[] = [
     "agent-0",
     {
       type: "agent_spawned",
-      slot: "reviewer",
+      profileId: "reviewer",
       modelId: "vendor/small",
       depth: 1,
     } as GgTelemetryKind,
@@ -87,7 +88,7 @@ const EVENTS: HarnessEvent[] = [
     "agent-0",
     {
       type: "usage",
-      slot: "reviewer",
+      profileId: "reviewer",
       modelId: "vendor/small",
       tokens: {
         uncachedInput: 900,
@@ -112,12 +113,21 @@ const EVENTS: HarnessEvent[] = [
   ),
 ];
 
+// Both profiles the fixture's attributions name, so the spend split has a name to read each
+// id as. `id` is what everything joins on; `name` is only ever the prose beside it.
 const CAPABILITY_SET: GgCapabilitySet = {
   agents: [
     {
+      id: "root",
       name: "Root",
       capabilities: [{ id: "shell", enabled: true, params: {} }],
       modelId: "vendor/big",
+    },
+    {
+      id: "reviewer",
+      name: "Reviewer",
+      capabilities: [{ id: "shell", enabled: true, params: {} }],
+      modelId: "vendor/small",
     },
   ],
 };
@@ -141,13 +151,16 @@ function renderDashboard(
   // rendered by saying so here rather than by doctoring the fixture's statuses.
   stillRunning = true,
 ) {
-  const derived = reduceGgEvents(EVENTS);
+  // The configuration goes into the reduction as well as onto the panel, as the live page
+  // wires it: it is what resolves the profile id each attribution names into the name the
+  // agent rows read by.
+  const derived = reduceGgEvents(EVENTS, CAPABILITY_SET);
   return render(
     <GgDashboard
       status={status}
       usage={derived.usage}
       slotUsage={derived.slotUsage}
-      perAgent={reduceGgEventsPerAgent(EVENTS)}
+      perAgent={reduceGgEventsPerAgent(EVENTS, CAPABILITY_SET)}
       agentForest={derived.agentForest}
       capabilitySet={CAPABILITY_SET}
       runtime={deriveGgRuntime(
@@ -356,29 +369,142 @@ describe("the gg Dashboard", () => {
     ).toBeTruthy();
   });
 
-  it("accounts the run's spend inside the Cost widget, per slot and per model", () => {
+  it("accounts the run's spend inside the Cost widget, per agent and per model", () => {
     renderDashboard(STATUS);
     // Cost leads the money row, carrying the total and both spend splits; Tokens and the
     // configuration are their own tiles beside/under it.
     const cost = screen.getByText("Cost").parentElement!;
     expect(within(cost).getByText("$0.0300")).toBeInTheDocument();
-    expect(within(cost).getByText("Per slot")).toBeInTheDocument();
-    // Costliest slot first, each naming the model bound to it (no catalog is mounted
+    expect(within(cost).getByText("Per agent")).toBeInTheDocument();
+    // Costliest profile first, each naming the model bound to it (no catalog is mounted
     // here, so a model reads by its id).
-    expect(
-      within(cost)
-        .getAllByText(/^(root|reviewer)$/)
-        .map((node) => node.textContent),
-    ).toEqual(["root", "reviewer"]);
-    // Per model too, always — this run binds one model per slot, so it lists the same two
-    // rows again, which is a fact about the configuration rather than a reason to withhold
-    // the reading. Each model therefore names itself twice: once as a slot's binding, once
-    // as a per-model row.
+    const profiles = within(cost).getAllByText(/^(Root|Reviewer)$/);
+    expect(profiles.map((node) => node.textContent)).toEqual([
+      "Root",
+      "Reviewer",
+    ]);
+    // Those names are prose over an accounting kept by profile id — which is what the row
+    // carries, and what a reader hovering one is told it is really reading.
+    expect(profiles.map((node) => node.getAttribute("title"))).toEqual([
+      "root",
+      "reviewer",
+    ]);
+    // Per model too, always — this run binds one model per profile, so it lists the same
+    // two rows again, which is a fact about the configuration rather than a reason to
+    // withhold the reading. Each model therefore names itself twice: once as a profile's
+    // binding, once as a per-model row.
     expect(within(cost).getByText("Per model")).toBeInTheDocument();
     expect(within(cost).getAllByText("vendor/big")).toHaveLength(2);
     expect(within(cost).getAllByText("vendor/small")).toHaveLength(2);
   });
+
+  it("keeps two profiles that share a name apart in the spend split", () => {
+    // Nothing makes a name unique, and a within-run A/B is precisely the configuration
+    // that carries two of one: the same reviewer, on two models, so the pair can be
+    // compared. Folded on the name they would read as a single row of doubled figures —
+    // the one reading that answers neither question — so the split is kept by profile id
+    // and the rows that collide say which id each is.
+    const perAgent =
+      within(renderSharedName()).getByText("Per agent").parentElement!;
+    const rows = within(perAgent).getAllByText(/^Reviewer/);
+    expect(rows.map((node) => node.textContent)).toEqual([
+      "Reviewer (reviewer)",
+      "Reviewer (reviewer-2)",
+    ]);
+    expect(rows.map((node) => node.getAttribute("title"))).toEqual([
+      "reviewer",
+      "reviewer-2",
+    ]);
+    // Each keeps its own figures rather than one row carrying the pair's sum.
+    expect(within(perAgent).getByText("$0.0200")).toBeInTheDocument();
+    expect(within(perAgent).getByText("$0.0100")).toBeInTheDocument();
+    // And the root, whose name nothing collides with, is left alone.
+    expect(within(perAgent).getByText("Root")).toBeInTheDocument();
+  });
 });
+
+// A run whose configuration names two of its profiles alike — an A/B of one reviewer over
+// two models — rendered through the Dashboard, returning its Cost card.
+function renderSharedName(): HTMLElement {
+  const events: HarnessEvent[] = [
+    gg("root", {
+      type: "agent_spawned",
+      profileId: "root",
+      modelId: "vendor/big",
+      depth: 0,
+    } as GgTelemetryKind),
+    gg("root", {
+      type: "usage",
+      profileId: "root",
+      modelId: "vendor/big",
+      tokens: { uncachedInput: 4000, cachedInput: null, output: 300 },
+      cost: { comparable: 0.05, actual: 0.05 },
+    } as GgTelemetryKind),
+    ...(
+      [
+        ["agent-0", "reviewer", "vendor/small", 0.02],
+        ["agent-1", "reviewer-2", "vendor/tiny", 0.01],
+      ] as const
+    ).flatMap(([agentId, profileId, modelId, spend]) => [
+      gg(
+        agentId,
+        {
+          type: "agent_spawned",
+          profileId,
+          modelId,
+          depth: 1,
+        } as GgTelemetryKind,
+        "root",
+      ),
+      gg(
+        agentId,
+        {
+          type: "usage",
+          profileId,
+          modelId,
+          tokens: { uncachedInput: 900, cachedInput: null, output: 100 },
+          cost: { comparable: spend, actual: spend },
+        } as GgTelemetryKind,
+        "root",
+      ),
+    ]),
+  ];
+  const set: GgCapabilitySet = {
+    agents: [
+      { id: "root", name: "Root", capabilities: [], modelId: "vendor/big" },
+      {
+        id: "reviewer",
+        name: "Reviewer",
+        capabilities: [],
+        modelId: "vendor/small",
+      },
+      {
+        id: "reviewer-2",
+        name: "Reviewer",
+        capabilities: [],
+        modelId: "vendor/tiny",
+      },
+    ],
+  };
+  const derived = reduceGgEvents(events, set);
+  render(
+    <GgDashboard
+      usage={derived.usage}
+      slotUsage={derived.slotUsage}
+      perAgent={reduceGgEventsPerAgent(events, set)}
+      agentForest={derived.agentForest}
+      capabilitySet={set}
+      runtime={deriveGgRuntime(
+        derived.agentForest,
+        derived.firstTimestamp,
+        Date.parse(TS) + 90_000,
+        true,
+      )}
+      timeoutSeconds={4 * 3600}
+    />,
+  );
+  return screen.getByText("Cost").parentElement!;
+}
 
 // One turn's outcome, as gg publishes it — the event the error row is folded from.
 function outcome(
@@ -400,12 +526,12 @@ function outcome(
 // row rather than about which surface it is on.
 function renderErrors(...outcomes: HarnessEvent[]) {
   const events = [...EVENTS, ...outcomes];
-  const derived = reduceGgEvents(events);
+  const derived = reduceGgEvents(events, CAPABILITY_SET);
   return render(
     <GgDashboard
       usage={derived.usage}
       slotUsage={derived.slotUsage}
-      perAgent={reduceGgEventsPerAgent(events)}
+      perAgent={reduceGgEventsPerAgent(events, CAPABILITY_SET)}
       agentForest={derived.agentForest}
       capabilitySet={CAPABILITY_SET}
       runtime={deriveGgRuntime(

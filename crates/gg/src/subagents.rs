@@ -609,7 +609,7 @@ impl Scheduler {
     ///
     /// A [succession](crate::agent) — an FSM transition, or an `exec` — replaces the running agent
     /// with one under a *different* [profile](test_cabinet_core::gg::GgAgentConfig), and the
-    /// exclusivity key is derived from the profile name. The whole succession is one running slot by
+    /// exclusivity key is derived from the profile id. The whole succession is one running slot by
     /// construction (a transition must not queue behind unrelated work), so the slot is kept and only
     /// the key changes.
     ///

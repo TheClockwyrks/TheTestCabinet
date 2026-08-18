@@ -831,7 +831,7 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// **submitting an issue enqueues it on the shared board**: once every issue it is blocked by
 /// is done, gg **automatically spawns a top-level agent and assigns it the issue** — agents no
 /// longer hand-dispatch issues to subagents. The [agent profile](GgAgentConfig) an issue is
-/// dispatched under is named **when the issue is created** ([`agent`](GgBoardIssue::agent)) and
+/// dispatched under is named **when the issue is created** ([`agent`](GgBoardIssue::agent_id)) and
 /// must be one the creating agent lists with the
 /// [`implementer`](GgSubagentScope::Implementer) scope. An agent may [wait on an issue] until it
 /// reaches a terminal state, and an issue whose assigned agent cannot complete it after its
@@ -856,7 +856,7 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 ///
 /// # Reviewers gate acceptance
 ///
-/// An issue may name [reviewers](GgBoardIssue::reviewers) — profiles the creating agent lists with
+/// An issue may name [reviewers](GgBoardIssue::reviewer_ids) — profiles the creating agent lists with
 /// the [`reviewer`](GgSubagentScope::Reviewer) scope. When the assigned agent marks the issue
 /// complete it moves to [`InReview`](GgIssueStatus::InReview) rather than straight to done: gg runs
 /// each reviewer **in turn** against the diff of the issue's worktree, with any prior round's
@@ -869,7 +869,7 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// The blocked-by DAG and `wait_for_issue` are **core** to the capability — never withheld
 /// away — but two features are optional per agent: **issue creation** (withholding
 /// `create_epic`/`create_issue` leaves an agent read-only access to the board, still able to
-/// wait on and complete issues) and **required [reviewers](GgBoardIssue::reviewers)** (the
+/// wait on and complete issues) and **required [reviewers](GgBoardIssue::reviewer_ids)** (the
 /// `reviewers` param, which makes `create_issue` demand one or more reviewer profiles). The
 /// capability as a whole is opt-in, like compaction and agent-managed context — a configuration
 /// that leaves it off simply never offers the board calls.
@@ -878,18 +878,18 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// [wait on an issue]: https://docs.testcabinet.ai/gg/project-management/
 pub const CAPABILITY_PROJECT_MANAGEMENT: &str = "project-management";
 
-/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability param naming the run's
-/// **merge agent**: the [agent profile](GgAgentConfig) gg dispatches when merging an accepted
-/// issue's worktree back into the main tree hits a **conflict**, so the conflict is resolved and
-/// the merge finished rather than the issue's work being stranded on its branch.
+/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability param holding the
+/// [id](GgAgentConfig::id) of the run's **merge agent**: the profile gg dispatches when merging an
+/// accepted issue's worktree back into the main tree hits a **conflict**, so the conflict is
+/// resolved and the merge finished rather than the issue's work being stranded on its branch.
 ///
-/// It is **required** — a set that enables project management without naming a merge agent is
-/// refused at launch — because concurrent issues make a conflicting merge an ordinary event, not an
-/// edge case, and silently dropping the loser's work would make the board dishonest. The named
+/// It is **required** — a set that enables project management without a merge agent is refused at
+/// launch — because concurrent issues make a conflicting merge an ordinary event, not an edge case,
+/// and silently dropping the loser's work would make the board dishonest. The referenced
 /// profile must exist in the set and must have the [shell](CAPABILITY_SHELL) capability enabled:
 /// resolving a merge means running `git` in the workspace, which is not something an agent without
 /// a shell can do.
-pub const PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: &str = "mergeAgent";
+pub const PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: &str = "mergeAgentId";
 
 /// The stable id of the Phase 4 [subagents] capability: the delegation core — an agent's
 /// ability to **spawn other agents**, work in parallel with them or **block** until they
@@ -962,15 +962,15 @@ pub struct GgFsmState {
     /// names it when it moves. Must be non-empty and unique within the machine; both are launch
     /// failures, because a transition to an ambiguous name has no answer.
     pub name: String,
-    /// The [agent profile](GgAgentConfig) this state runs: its model, its capabilities, its system
-    /// prompt. Must name a profile the set declares, and must not name an FSM shell (a shell cannot
-    /// be a state — it would recurse).
+    /// The [id](GgAgentConfig::id) of the [agent profile](GgAgentConfig) this state runs: its
+    /// model, its capabilities, its system prompt. Must be a profile the set declares, and must
+    /// not be an FSM shell (a shell cannot be a state — it would recurse).
     ///
     /// Defaulted rather than required so a state that omits it is refused by the machine's own
     /// validation — which names the state and says what is missing — instead of by a serde error
     /// about a field the author never knew to write.
     #[serde(default)]
-    pub agent: String,
+    pub agent_id: String,
     /// Where the agent in this state may go. Empty (the default) makes the state terminal.
     #[serde(default)]
     pub transitions: Vec<GgFsmTransition>,
@@ -1255,6 +1255,17 @@ pub const GG_WORKSPACE_DIR: &str = ".gg";
 /// whose root was renamed would fail to launch.
 pub const ROOT_AGENT: &str = "Root";
 
+/// The [id](GgAgentConfig::id) a fresh capability set's **root profile** is seeded with.
+///
+/// This is the one well-known profile id, so a hand-written set and a default one agree on what
+/// the first profile is called. It is still only a starting value: the root is the **first**
+/// profile a set declares, whatever its id.
+///
+/// A different thing from the runtime agent id a session record stamps its entries with, which
+/// identifies one *instance* of a profile within one run — a profile is a template, and a run may
+/// hold many instances of it at once. The two happen to spell the run's first of each `root`.
+pub const ROOT_PROFILE_ID: &str = "root";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -1365,9 +1376,9 @@ impl GgCapabilitySet {
     /// Returns a reference rather than an `Option` because a launch refuses a set that
     /// declares no profiles, so by the time anything runs there is always a first one.
     ///
-    /// The root is identified by **position, never by name**: it is seeded as
-    /// [`ROOT_AGENT`] but an operator may rename it, so looking one up by that name would
-    /// silently fail on a renamed configuration.
+    /// The root is identified by **position**: it is seeded with the id
+    /// [`ROOT_PROFILE_ID`], but an operator may promote a different profile to first, so
+    /// looking one up by that id would silently fail on a reordered configuration.
     ///
     /// # Panics
     ///
@@ -1385,21 +1396,61 @@ impl GgCapabilitySet {
             .expect("a gg capability set always has at least one agent")
     }
 
-    /// The [root agent](Self::root)'s name — what a helper knob or a telemetry slot names when it
-    /// means "whichever profile drives this run".
+    /// The [root agent](Self::root)'s [display name](GgAgentConfig::name) — for prose that has to
+    /// call the profile driving this run something a person recognises.
     ///
-    /// Never a **substitute** for a profile that was asked for by name and is not declared: an
-    /// agent run under the root instead of the profile it was dispatched as is a different agent
-    /// with a different model and different capabilities, recorded under the wrong name. gg reports
-    /// that as its own defect and ends the agent that asked — and the whole session with it, when
-    /// that agent is the run's root — rather than answering it from here.
+    /// For prose only, like [`Self::agent_name`]: a reference to the root is
+    /// [`Self::root_id`].
     pub fn root_name(&self) -> &str {
         &self.root().name
     }
 
-    /// The agent profile with the given `name`, or `None` when this set declares none.
-    pub fn agent(&self, name: &str) -> Option<&GgAgentConfig> {
-        self.agents.iter().find(|a| a.name == name)
+    /// The [root agent](Self::root)'s [id](GgAgentConfig::id) — what a reference means when it
+    /// means "whichever profile drives this run".
+    pub fn root_id(&self) -> &str {
+        &self.root().id
+    }
+
+    /// The agent profile with the given [id](GgAgentConfig::id), or `None` when this set
+    /// declares none.
+    ///
+    /// The only way to resolve a reference. Profile [names](GgAgentConfig::name) are display
+    /// text and may repeat, so there is deliberately no lookup by one.
+    pub fn agent(&self, id: &str) -> Option<&GgAgentConfig> {
+        self.agents.iter().find(|a| a.id == id)
+    }
+
+    /// The [display name](GgAgentConfig::name) of one profile, or its id when this set declares no
+    /// such profile — a dangling reference reads as the id it failed to resolve rather than as
+    /// nothing.
+    ///
+    /// For prose only. Names may repeat, so nothing may resolve one back to a profile; a surface
+    /// that has to *name* a profile unambiguously names its [id](GgAgentConfig::id).
+    pub fn agent_name<'a>(&'a self, id: &'a str) -> &'a str {
+        self.agent(id).map(|a| a.name.as_str()).unwrap_or(id)
+    }
+
+    /// One agent's roster in `scope`, resolved for a **model-facing** surface: the profiles it may
+    /// use, each carrying the [name](GgAgentConfig::name) that makes the menu read as prose.
+    ///
+    /// Every surface that offers a choice of agent goes through this — the `spawn_subagent` and
+    /// `transition_state` menus, `create_issue`'s implementer and reviewer lists — so all of them
+    /// offer the same vocabulary, which is the profile [ids](GgAgentConfig::id). An entry pointing
+    /// at a profile the set does not declare is dropped: a launch refuses such a set, so reaching
+    /// here means it was already reported.
+    pub fn roster(&self, agent: &GgAgentConfig, scope: GgSubagentScope) -> Vec<GgRosterEntry> {
+        agent
+            .subagents
+            .iter()
+            .filter(|entry| entry.has_scope(scope))
+            .filter_map(|entry| {
+                Some(GgRosterEntry {
+                    agent_id: entry.agent_id.clone(),
+                    name: self.agent(&entry.agent_id)?.name.clone(),
+                    description: entry.description.clone(),
+                })
+            })
+            .collect()
     }
 
     /// Whether **any** agent in this set has the capability with `id` enabled.
@@ -1448,9 +1499,10 @@ impl GgCapabilitySet {
         self.root().grants_operation(operation)
     }
 
-    /// The profile that actually **runs** when work is dispatched onto the profile named `name`:
-    /// that profile, or — when it is an [FSM shell](GgAgentConfig::is_fsm_shell) — the agent its
-    /// machine's [entry state](GgAgentConfig::fsm_entry_agent) runs.
+    /// The profile that actually **runs** when work is dispatched onto the profile with
+    /// [id](GgAgentConfig::id) `id`: that profile, or — when it is an
+    /// [FSM shell](GgAgentConfig::is_fsm_shell) — the agent its machine's
+    /// [entry state](GgAgentConfig::fsm_entry_agent) runs.
     ///
     /// This is the profile a dispatch takes its **model** from, because it is the one whose turns
     /// are about to be taken: an agent put to work on a machine *becomes* that machine's entry
@@ -1468,11 +1520,11 @@ impl GgCapabilitySet {
     /// attribution, and attribution is what a run is for.
     pub fn dispatched_agent<'a>(
         &'a self,
-        name: &'a str,
+        id: &'a str,
     ) -> Result<&'a GgAgentConfig, GgDispatchError<'a>> {
         let agent = self
-            .agent(name)
-            .ok_or(GgDispatchError::UndeclaredProfile(name))?;
+            .agent(id)
+            .ok_or(GgDispatchError::UndeclaredProfile(id))?;
         if !agent.is_fsm_shell() {
             return Ok(agent);
         }
@@ -1481,10 +1533,10 @@ impl GgCapabilitySet {
         // must not share a report.
         let entry = agent
             .fsm_entry_agent()
-            .ok_or(GgDispatchError::UnreadableMachine { shell: &agent.name })?;
+            .ok_or(GgDispatchError::UnreadableMachine { shell: &agent.id })?;
         self.agent(entry)
             .ok_or(GgDispatchError::UndeclaredEntryAgent {
-                shell: &agent.name,
+                shell: &agent.id,
                 entry,
             })
     }
@@ -1564,21 +1616,21 @@ impl GgCapabilitySet {
 /// are read, formatted and dropped at the site that asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GgDispatchError<'a> {
-    /// The set declares no profile by this name at all.
+    /// The set declares no profile with this [id](GgAgentConfig::id) at all.
     UndeclaredProfile(&'a str),
     /// `shell` is an [FSM shell](GgAgentConfig::is_fsm_shell) whose machine has no readable
     /// [entry state](GgAgentConfig::fsm_entry_agent) — no states, or a first state naming no
     /// agent — so there is nothing for a dispatch onto it to become.
     UnreadableMachine {
-        /// The shell profile whose machine could not be entered.
+        /// The [id](GgAgentConfig::id) of the shell profile whose machine could not be entered.
         shell: &'a str,
     },
     /// `shell` is an [FSM shell](GgAgentConfig::is_fsm_shell) whose machine enters a state running
     /// the `entry` agent, which the set does not declare.
     UndeclaredEntryAgent {
-        /// The shell profile the dispatch was aimed at.
+        /// The [id](GgAgentConfig::id) of the shell profile the dispatch was aimed at.
         shell: &'a str,
-        /// The entry state's agent — the name that is actually missing.
+        /// The entry state's [`agent_id`](GgFsmState::agent_id) — the id that is actually missing.
         entry: &'a str,
     },
 }
@@ -1606,7 +1658,8 @@ impl fmt::Display for GgDispatchError<'_> {
 /// A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that
 /// makes gg's capabilities configurable independently for each agent in a run.
 ///
-/// Every profile has a unique [`name`](Self::name) (the first is always the
+/// Every profile has a unique [`id`](Self::id) and a [display name](Self::name) that need not be
+/// (the first profile of a default set is [`root`](ROOT_PROFILE_ID), called
 /// [Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and the
 /// [tool](Self::tools) or [operation](Self::operations) allowlist that narrows them, its own model
 /// (pinned via [`model_id`](Self::model_id) or [deferred](Self::model_slot) to a launch-time
@@ -1614,8 +1667,9 @@ impl fmt::Display for GgDispatchError<'_> {
 /// [custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),
 /// and the set of other agents it may spawn as [subagents](Self::subagents).
 ///
-/// An agent is put to work **by name**: `spawn_subagent` and `exec`
-/// all name the target agent, which must appear in the caller's [roster](Self::subagents) with the
+/// An agent is put to work **by id**: `spawn_subagent` and `exec`
+/// all name the target agent's [id](Self::id), which must appear in the caller's
+/// [roster](Self::subagents) with the
 /// [`subagent`](GgSubagentScope::Subagent) scope — as must an [issue](GgBoardIssue)'s implementer
 /// (the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the
 /// [`reviewer`](GgSubagentScope::Reviewer) scope). A profile may list itself, allowing recursion.
@@ -1623,8 +1677,25 @@ impl fmt::Display for GgDispatchError<'_> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentConfig {
-    /// The profile's name, unique within a set. `"Root"` ([`ROOT_AGENT`]) for the
-    /// first profile.
+    /// The profile's **stable identifier**, unique within a set and never rewritten once the
+    /// profile exists. Everything that names this profile names this: a
+    /// [roster entry](GgSubagentRef::agent_id), a machine's [state](GgFsmState::agent_id), the
+    /// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT), an
+    /// [issue](GgBoardIssue::agent_id)'s implementer and reviewers, every telemetry event and
+    /// accounting row the run produces — and the `agent` argument the **model** passes to
+    /// `spawn_subagent`, `exec` and `create_issue`.
+    ///
+    /// The model names profiles by id for the same reason everything else does: a display name
+    /// may repeat, so it cannot say which profile is meant. Ids are therefore minted **readable**
+    /// — a slug taken from the profile's first name, `reviewer` or `reviewer-2`, and left alone
+    /// after that — so a roster in a prompt reads as prose while still naming exactly one thing.
+    /// [`ROOT_PROFILE_ID`] is the first profile of a default set.
+    pub id: String,
+    /// The profile's **display name**: what the console, the run log and a roster's prose call
+    /// this agent. `"Root"` ([`ROOT_AGENT`]) for the first profile of a default set.
+    ///
+    /// Free-form and mutable, and **not** unique: two profiles may carry one name. Nothing
+    /// resolves a reference by reading it, which is what makes renaming a profile free.
     pub name: String,
     /// The capabilities this agent is configured with, each identified by a stable id.
     /// A capability absent from this list is off *and* unconfigured; one present but
@@ -1761,6 +1832,7 @@ impl GgAgentConfig {
     /// short of a call.
     pub fn root() -> Self {
         Self {
+            id: ROOT_PROFILE_ID.to_string(),
             name: ROOT_AGENT.to_string(),
             capabilities: default_capabilities(),
             model_id: String::new(),
@@ -1820,7 +1892,7 @@ impl GgAgentConfig {
         self.is_enabled(CAPABILITY_FSM)
     }
 
-    /// The [agent profile](GgFsmState::agent) this shell's machine **enters first** — the agent an
+    /// The [agent profile](GgFsmState::agent_id) this shell's machine **enters first** — the agent an
     /// instance dispatched onto it is running before its first turn — or `None` when this profile
     /// is not a [shell](Self::is_fsm_shell) or declares no readable entry state.
     ///
@@ -1837,7 +1909,7 @@ impl GgAgentConfig {
             .get(FSM_PARAM_STATES)?
             .as_array()?
             .first()?
-            .get("agent")?
+            .get("agentId")?
             .as_str()?
             .trim();
         (!agent.is_empty()).then_some(agent)
@@ -1896,36 +1968,69 @@ impl GgAgentConfig {
         self.resolved_model_id().is_some()
     }
 
-    /// Whether this agent may use `target` in `scope` — i.e. `target` appears in its
-    /// [roster](Self::subagents) carrying that scope.
-    pub fn allows_scope(&self, target: &str, scope: GgSubagentScope) -> bool {
+    /// Whether this agent may use the profile `target_id` in `scope` — i.e. that profile appears
+    /// in its [roster](Self::subagents) carrying that scope.
+    pub fn allows_scope(&self, target_id: &str, scope: GgSubagentScope) -> bool {
         self.subagents
             .iter()
-            .any(|s| s.agent == target && s.has_scope(scope))
+            .any(|s| s.agent_id == target_id && s.has_scope(scope))
     }
 
-    /// Whether this agent may **spawn** the agent named `target` — the
+    /// Whether this agent may **spawn** the profile `target_id` — the
     /// [`subagent`](GgSubagentScope::Subagent) scope.
-    pub fn can_spawn(&self, target: &str) -> bool {
-        self.allows_scope(target, GgSubagentScope::Subagent)
+    pub fn can_spawn(&self, target_id: &str) -> bool {
+        self.allows_scope(target_id, GgSubagentScope::Subagent)
     }
 
-    /// The names, in declaration order, of the agents this one may use in `scope`.
+    /// The [ids](Self::id), in declaration order, of the profiles this agent may use in `scope`.
     pub fn agents_in_scope(&self, scope: GgSubagentScope) -> Vec<&str> {
         self.subagents
             .iter()
             .filter(|s| s.has_scope(scope))
-            .map(|s| s.agent.as_str())
+            .map(|s| s.agent_id.as_str())
             .collect()
     }
 
-    /// The caller-scoped description for using `target`, or `None` when `target` is
+    /// The caller-scoped description for using the profile `target_id`, or `None` when it is
     /// not in this agent's roster.
-    pub fn subagent_description(&self, target: &str) -> Option<&str> {
+    pub fn subagent_description(&self, target_id: &str) -> Option<&str> {
         self.subagents
             .iter()
-            .find(|s| s.agent == target)
+            .find(|s| s.agent_id == target_id)
             .map(|s| s.description.as_str())
+    }
+}
+
+/// One roster entry as a **model-facing** surface presents it: the target profile's
+/// [id](GgAgentConfig::id) — which is what the model passes back — its
+/// [name](GgAgentConfig::name), and the caller-scoped guidance for using it.
+///
+/// The name is here so a menu reads as prose (`` `reviewer-2` (Careful Reviewer) ``); the id is
+/// the whole of what a call is resolved against. Nothing matches on the name, because two
+/// profiles may share one and a call has to name exactly one thing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GgRosterEntry {
+    /// The [id](GgAgentConfig::id) of the profile this entry points at — the value the model
+    /// passes as `agent`.
+    pub agent_id: String,
+    /// The target's [display name](GgAgentConfig::name), for the menu's prose.
+    pub name: String,
+    /// Caller-scoped guidance on when to use it. May be empty.
+    pub description: String,
+}
+
+impl GgRosterEntry {
+    /// Whether `entries` offers the profile `agent_id` — the check a delegation call is admitted
+    /// by. Trimmed, since that is how the argument arrives.
+    pub fn offers(entries: &[GgRosterEntry], agent_id: &str) -> bool {
+        let wanted = agent_id.trim();
+        entries.iter().any(|entry| entry.agent_id == wanted)
+    }
+
+    /// The profile ids `entries` offers, in roster order — the vocabulary a tool schema
+    /// enumerates.
+    pub fn ids(entries: &[GgRosterEntry]) -> Vec<String> {
+        entries.iter().map(|entry| entry.agent_id.clone()).collect()
     }
 }
 
@@ -1939,13 +2044,14 @@ impl GgAgentConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSubagentRef {
-    /// The name of the target agent this agent may put to work (may be the spawner itself).
-    pub agent: String,
-    /// Caller-scoped guidance on when to use `agent`, surfaced in the spawning
+    /// The [id](GgAgentConfig::id) of the target profile this agent may put to work (may be
+    /// the spawner itself). An id the set does not declare refuses the launch.
+    pub agent_id: String,
+    /// Caller-scoped guidance on when to use the target, surfaced in the spawning
     /// agent's `spawn_subagent` tool description and in the prompt's roster. May be empty.
     #[serde(default)]
     pub description: String,
-    /// **What** this agent may use `agent` for. An entry may carry several scopes — the same
+    /// **What** this agent may use the target for. An entry may carry several scopes — the same
     /// profile is often both a reasonable implementer and a reasonable reviewer — and one that
     /// carries none can be used for nothing, which is how a reference is disabled without deleting
     /// it. An entry that names no scope takes the default,
@@ -1955,19 +2061,20 @@ pub struct GgSubagentRef {
 }
 
 impl GgSubagentRef {
-    /// A roster entry naming `agent` in exactly `scopes`, with no description.
-    pub fn new(agent: impl Into<String>, scopes: &[GgSubagentScope]) -> Self {
+    /// A roster entry pointing at `agent_id` in exactly `scopes`, with no description.
+    pub fn new(agent_id: impl Into<String>, scopes: &[GgSubagentScope]) -> Self {
         Self {
-            agent: agent.into(),
+            agent_id: agent_id.into(),
             description: String::new(),
             scopes: scopes.to_vec(),
         }
     }
 
-    /// A roster entry naming `agent` in **every** scope — spawnable, assignable, and reviewable.
-    /// The permissive shape a set that draws no distinction between the three roles wants.
-    pub fn any(agent: impl Into<String>) -> Self {
-        Self::new(agent, &ALL_SUBAGENT_SCOPES)
+    /// A roster entry pointing at `agent_id` in **every** scope — spawnable, assignable, and
+    /// reviewable. The permissive shape a set that draws no distinction between the three roles
+    /// wants.
+    pub fn any(agent_id: impl Into<String>) -> Self {
+        Self::new(agent_id, &ALL_SUBAGENT_SCOPES)
     }
 
     /// Whether this entry permits its target to be used in `scope`.
@@ -2010,10 +2117,10 @@ pub enum GgSubagentScope {
     /// Reachable only when the [subagents](CAPABILITY_SUBAGENTS) capability (or the workflow
     /// machinery built on it) is on.
     Subagent,
-    /// This target may be named as an [issue](GgBoardIssue::agent)'s **implementer** — the profile
+    /// This target may be named as an [issue](GgBoardIssue::agent_id)'s **implementer** — the profile
     /// gg dispatches to do the issue's work (and re-dispatches for each retry and review round).
     Implementer,
-    /// This target may be named among an [issue](GgBoardIssue::reviewers)'s **reviewers** — the
+    /// This target may be named among an [issue](GgBoardIssue::reviewer_ids)'s **reviewers** — the
     /// profiles that must each approve the finished work before the issue is accepted.
     Reviewer,
 }
@@ -4123,7 +4230,7 @@ pub enum GgIssueStatus {
     /// An agent has been assigned and is working it.
     InProgress,
     /// Its assigned agent called the work complete, and gg is reconciling it: running the issue's
-    /// [reviewers](GgBoardIssue::reviewers) (if any) and merging its worktree back. **Not**
+    /// [reviewers](GgBoardIssue::reviewer_ids) (if any) and merging its worktree back. **Not**
     /// terminal — a review that requests changes sends the issue back to
     /// [`InProgress`](Self::InProgress) — and not done, so dependents stay blocked until the
     /// work is actually accepted and merged.
@@ -4211,18 +4318,19 @@ pub struct GgBoardIssue {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub epic_id: Option<String>,
-    /// The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —
-    /// the profile gg dispatches it under, and re-dispatches for every retry and review round. It
-    /// is named on `create_issue` (not configured on the capability), and must be one the creating
-    /// agent lists with the [`implementer`](GgSubagentScope::Implementer) scope.
-    pub agent: String,
-    /// The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was
-    /// created, drawn from the creating agent's roster entries carrying the
+    /// The [id](GgAgentConfig::id) of the profile the issue was **assigned to** when it was
+    /// created — the profile gg dispatches it under, and re-dispatches for every retry and review
+    /// round. The creating agent names it by [label](GgAgentConfig::name) on `create_issue` (it is
+    /// not configured on the capability) out of its roster entries carrying the
+    /// [`implementer`](GgSubagentScope::Implementer) scope, and gg records which profile that was.
+    pub agent_id: String,
+    /// The [ids](GgAgentConfig::id) of the profiles named as this issue's **reviewers** when it
+    /// was created, drawn from the creating agent's roster entries carrying the
     /// [`reviewer`](GgSubagentScope::Reviewer) scope. When non-empty, completing the issue moves it
     /// to [`InReview`](GgIssueStatus::InReview) and these profiles each review the work in turn;
     /// every one of them must approve before the issue is accepted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub reviewers: Vec<String>,
+    pub reviewer_ids: Vec<String>,
     /// The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)
     /// to implement this issue, when one is assigned (its status is then
     /// [`InProgress`](GgIssueStatus::InProgress)) — the link the console follows from the issue
@@ -4467,7 +4575,7 @@ pub enum GgAgentTransitionKind {
 /// [issue](GgBoardIssue)'s acceptance.
 ///
 /// A review is [requested](Self::Requested) when the issue's assigned agent marks it complete (gg
-/// runs the issue's [reviewers](GgBoardIssue::reviewers) against the diff rather than accepting
+/// runs the issue's [reviewers](GgBoardIssue::reviewer_ids) against the diff rather than accepting
 /// immediately). A reviewer then either [requests changes](Self::ChangesRequested) — carrying the
 /// actionable items the issue's own assigned agent is re-invoked to address, after which the work is
 /// re-reviewed — or [approves](Self::Approved). Once **every** reviewer approves, the issue is
@@ -4497,7 +4605,7 @@ pub enum GgIssueReviewPhase {
 /// [`agent_id`](Self::agent_id) is the reviewer *instance* — derived from the issue and the
 /// implementer whose work it reviewed (`AUTH-1.0i.0r`), so it names the exact review pass and links
 /// to that agent's own timeline — while the [`profile`](Self::profile) is the
-/// [reviewer profile](GgBoardIssue::reviewers) the issue named, which is what says *what kind* of
+/// [reviewer profile](GgBoardIssue::reviewer_ids) the issue named, which is what says *what kind* of
 /// review it was.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -4507,7 +4615,11 @@ pub struct GgReviewer {
     /// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
     /// events carry.
     pub agent_id: String,
-    /// The [agent profile](GgBoardIssue::reviewers) the reviewer ran under.
+    /// The [id](GgAgentConfig::id) of the profile the reviewer ran under — one of the issue's
+    /// [reviewers](GgBoardIssue::reviewer_ids).
+    pub profile_id: String,
+    /// The [display name](GgCapabilitySet::agent_name) that profile carried, so a review reads
+    /// without resolving anything. Display text; nothing joins on it.
     pub profile: String,
 }
 
@@ -5164,11 +5276,12 @@ pub struct GgErrorSummary {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSlotCost {
-    /// The [slot](GgSlotBinding) this rollup accounts for (for example [`PRIMARY_SLOT`] or a
-    /// role slot like `reviewer`).
-    pub slot: String,
-    /// The model id (within the slot) this rollup accounts for. A slot normally resolves to one
-    /// model, but the accounting keys on the model too so a re-pointed slot stays attributable.
+    /// The [id](GgAgentConfig::id) of the agent profile this rollup accounts for. Resolve it
+    /// against the run's set for the [display name](GgCapabilitySet::agent_name) to show.
+    pub profile_id: String,
+    /// The model id (within the profile) this rollup accounts for. A profile normally resolves to
+    /// one model, but the accounting keys on the model too so a re-pointed binding stays
+    /// attributable.
     pub model_id: String,
     /// The tokens accumulated on this slot/model across the run, in the shared [`TokenCounts`]
     /// units.
@@ -5571,14 +5684,14 @@ pub enum GgTelemetryKind {
     /// per-model breakdown derivable from the delta stream alone — the
     /// [`SlotUsage`](Self::SlotUsage) rollups say the same thing, but only once an agent has
     /// finished, which is too late for a run being watched. Summing the deltas of one
-    /// `(slot, model_id)` key reproduces that key's rollup exactly.
+    /// `(profile_id, model_id)` key reproduces that key's rollup exactly.
     Usage {
-        /// The [agent profile](GgAgentConfig) that spent this — the same name
-        /// [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
-        /// [`SlotUsage::slot`](Self::SlotUsage::slot) key on.
-        slot: String,
+        /// The [id](GgAgentConfig::id) of the agent profile that spent this — the same id
+        /// [`AgentSpawned::profile_id`](Self::AgentSpawned::profile_id) and
+        /// [`SlotUsage::profile_id`](Self::SlotUsage::profile_id) key on.
+        profile_id: String,
         /// The concrete model id that spent this — the model the
-        /// [profile](Self::Usage::slot) resolved to for the agent that took the turn.
+        /// [profile](Self::Usage::profile_id) resolved to for the agent that took the turn.
         model_id: String,
         /// The normalized token counts for this accounting.
         tokens: TokenCounts,
@@ -6003,13 +6116,15 @@ pub enum GgTelemetryKind {
     /// `parent_agent_id` and the `slot`/`modelId` together are why gg usage is accounted **per
     /// slot** (see [`SlotUsage`](Self::SlotUsage)) rather than for one model.
     AgentSpawned {
-        /// The [agent profile](GgAgentConfig) name this agent runs under (for example
-        /// [`ROOT_AGENT`], or an operator-named profile). gg usage is accounted per profile
-        /// (see [`SlotUsage`](Self::SlotUsage)); the field keeps its `slot` name for wire
-        /// stability, but it now names the agent profile rather than a role slot.
-        slot: String,
-        /// The concrete model id this agent's [profile](Self::AgentSpawned::slot) is bound to
-        /// — the seam that makes a run span several models, one per profile.
+        /// The [id](GgAgentConfig::id) of the agent profile this agent runs under. gg usage is
+        /// accounted per profile (see [`SlotUsage`](Self::SlotUsage)), and every consumer that
+        /// shows a name resolves it against the run's set
+        /// ([`agent_name`](GgCapabilitySet::agent_name)) rather than reading one off the
+        /// stream — two profiles may carry the same name, so an id is the only thing that
+        /// groups a run's agents correctly.
+        profile_id: String,
+        /// The concrete model id this agent's [profile](Self::AgentSpawned::profile_id) is bound
+        /// to — the seam that makes a run span several models, one per profile.
         model_id: String,
         /// The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
         /// `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
@@ -6177,16 +6292,16 @@ pub enum GgTelemetryKind {
     /// replaces "one figure for one model" now that a run spans several models.
     ///
     /// Because subagents can run on different, possibly cross-provider, slots than the parent,
-    /// usage and cost are accumulated **per slot** (and per model within a slot). This event is
-    /// a rollup the console renders as a per-slot cost breakdown; it is **not** a per-turn delta
+    /// usage and cost are accumulated **per profile** (and per model within a profile). This event is
+    /// a rollup the console renders as a per-profile cost breakdown; it is **not** a per-turn delta
     /// (the incremental [`Usage`](Self::Usage) events are what consumers sum for the run total),
     /// so an ingester must not add `SlotUsage` into the run total or it would double-count. One
-    /// `SlotUsage` is emitted per `(slot, model)` the run touched.
+    /// `SlotUsage` is emitted per `(profile, model)` the run touched.
     SlotUsage {
-        /// The slot this rollup accounts for.
-        slot: String,
-        /// The model id (within the slot) this rollup accounts for. A slot normally resolves to
-        /// one model, but the accounting keys on the model too so a re-pointed slot stays
+        /// The [id](GgAgentConfig::id) of the agent profile this rollup accounts for.
+        profile_id: String,
+        /// The model id (within the profile) this rollup accounts for. A profile normally resolves
+        /// to one model, but the accounting keys on the model too so a re-pointed binding stays
         /// attributable.
         model_id: String,
         /// The tokens accumulated on this slot/model across the run, in the shared
@@ -6270,16 +6385,16 @@ pub enum GgTelemetryKind {
     /// precedes each move on the *outgoing* instance's stream, the pair says both what happened and
     /// what it carried.
     FsmState {
-        /// The machine: the name of the **FSM shell** [profile](GgAgentConfig) whose `states` table
-        /// is being driven. An agent may only ever be inside one, so this names the document the
-        /// state came from.
-        fsm: String,
+        /// The machine: the [id](GgAgentConfig::id) of the **FSM shell** profile whose `states`
+        /// table is being driven. An agent may only ever be inside one, so this identifies the
+        /// document the state came from.
+        fsm_id: String,
         /// The [state](GgFsmState::name) just entered.
         state: String,
-        /// The [agent profile](GgFsmState::agent) that state runs — which is also this agent
-        /// instance's [`slot`](Self::AgentSpawned::slot), so a machine's cost splits per state
-        /// agent in the [per-slot rollup](Self::SlotUsage).
-        agent: String,
+        /// The [profile](GgFsmState::agent_id) that state runs — which is also this agent
+        /// instance's [`profile_id`](Self::AgentSpawned::profile_id), so a machine's cost splits
+        /// per state agent in the [per-profile rollup](Self::SlotUsage).
+        profile_id: String,
         /// The state the machine came from, or `None` for the entry state.
         from: Option<String>,
     },
@@ -6297,8 +6412,8 @@ pub enum GgTelemetryKind {
         kind: GgAgentTransitionKind,
         /// The id of the agent instance that takes over (or, for a `fork`, of the copy).
         to_agent_id: String,
-        /// The [agent profile](GgAgentConfig) the successor runs under.
-        agent: String,
+        /// The [id](GgAgentConfig::id) of the agent profile the successor runs under.
+        profile_id: String,
         /// The [FSM state](GgFsmState::name) the successor stands in once the succession has been
         /// applied, when it stands in one at all.
         ///
@@ -6325,7 +6440,7 @@ pub enum GgTelemetryKind {
     /// An [issue review](https://docs.testcabinet.ai/gg/project-management/) lifecycle transition —
     /// the event that makes the reviewer-gated acceptance of an [issue](GgBoardIssue) observable.
     ///
-    /// Emitted (when the issue named [reviewers](GgBoardIssue::reviewers)) as gg reconciles the
+    /// Emitted (when the issue named [reviewers](GgBoardIssue::reviewer_ids)) as gg reconciles the
     /// issue: once as [`Requested`](GgIssueReviewPhase::Requested) when a review round starts, then
     /// once per [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round (carrying the
     /// reviewer's actionable [`items`](Self::IssueReview::items) the issue's assigned agent is then

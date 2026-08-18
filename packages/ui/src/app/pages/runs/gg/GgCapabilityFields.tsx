@@ -425,7 +425,9 @@ export function CapabilityBody({
                     {/* An agent named by a stored param that no longer exists stays
                         selectable so the value round-trips until re-pointed. Live
                         profiles are offered by id, so renaming one never breaks the
-                        param. */}
+                        param — and the id is shown beside the name because two profiles
+                        may carry one name, which would leave the operator choosing
+                        between two identical labels. */}
                     {draft.params?.[p.key] &&
                       !agents.some((a) => a.id === draft.params?.[p.key]) && (
                         <option value={draft.params[p.key]}>
@@ -434,7 +436,7 @@ export function CapabilityBody({
                       )}
                     {agents.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.name || "unnamed"}
+                        {a.name || "unnamed"} ({a.id})
                       </option>
                     ))}
                   </select>

@@ -48,12 +48,12 @@ export interface GgExplorerNav {
    */
   openModuleKind?: (kind: GgModuleKind) => void;
   /**
-   * Switch to the Agents tab and open one configured agent's row — the run read at the
-   * grain a configuration is actually tuned at. A module's holder is an instance *of*
-   * something, and "is this how the Reviewer profile is meant to be sharing?" is a
-   * question about the profile, not about the instance.
+   * Switch to the Agents tab and open one configured agent's row, by profile ID — the run
+   * read at the grain a configuration is actually tuned at. A module's holder is an
+   * instance *of* something, and "is this how the Reviewer profile is meant to be
+   * sharing?" is a question about the profile, not about the instance.
    */
-  openProfile: (name: string) => void;
+  openProfile: (profileId: string) => void;
   /**
    * Switch to the run-global Project tab — the board itself. A module read-out links here
    * rather than drawing a second board: the board is one thing the whole run shares, and

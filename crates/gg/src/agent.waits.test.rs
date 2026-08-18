@@ -101,8 +101,9 @@ fn wait_results(events: &[GgTelemetryEvent]) -> Vec<(bool, String)> {
         .collect()
 }
 
-/// The second profile these boards dispatch their issues to.
-const IMPLEMENTER: &str = "Coder";
+/// The [id](test_cabinet_core::gg::GgAgentConfig::id) of the second profile these boards dispatch
+/// their issues to — what its roster entry, every issue's `agent`, and its telemetry name it by.
+const IMPLEMENTER: &str = "coder";
 
 /// A board configuration in which the root files work for a separate implementer, with **one**
 /// running slot and **no** retries.
@@ -117,7 +118,10 @@ fn one_slot_board() -> GgCapabilitySet {
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
-            params: json!({ "mergeAgent": ROOT_AGENT, "maxRetries": 0 }),
+            params: json!({
+                PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID,
+                "maxRetries": 0,
+            }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
@@ -126,7 +130,8 @@ fn one_slot_board() -> GgCapabilitySet {
         &[GgSubagentScope::Implementer],
     ));
     set.agents.push(GgAgentConfig {
-        name: IMPLEMENTER.to_string(),
+        id: IMPLEMENTER.to_string(),
+        name: "Coder".to_string(),
         model_id: "mock/coder".to_string(),
         ..GgAgentConfig::root()
     });
@@ -180,7 +185,7 @@ async fn a_fault_releases_an_agent_waiting_on_an_issue_it_did_not_fail() {
     let inv = invocation(dir.path(), one_slot_board());
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -291,7 +296,7 @@ async fn a_fault_releases_a_wait_begun_after_it_was_raised() {
     };
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |b| {
+        .slot(ROOT_PROFILE_ID, move |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![delegate_then_file.clone(), stop_response()],
@@ -354,7 +359,7 @@ async fn a_wait_behind_a_failing_blocker_is_refused_rather_than_left_suspended()
     let inv = invocation(dir.path(), one_slot_board());
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -418,7 +423,7 @@ async fn a_wait_on_an_already_unreachable_issue_is_refused_on_the_call() {
     let inv = invocation(dir.path(), one_slot_board());
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -563,7 +568,7 @@ async fn a_wait_resumed_on_a_revived_issue_is_refused_rather_than_reported_compl
         async move {
             wait_for_issue_by_id(
                 &project,
-                &Agent::root(ROOT_AGENT),
+                &Agent::root(ROOT_PROFILE_ID),
                 &board,
                 &emitter,
                 &awaited,
@@ -694,7 +699,7 @@ async fn a_wait_released_by_a_fault_reports_it_even_when_its_issue_settled_too()
             async move {
                 wait_for_issue_by_id(
                     &project,
-                    &Agent::root(ROOT_AGENT),
+                    &Agent::root(ROOT_PROFILE_ID),
                     &board,
                     &emitter,
                     &awaited,

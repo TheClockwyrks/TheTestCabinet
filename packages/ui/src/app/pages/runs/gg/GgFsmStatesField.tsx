@@ -86,9 +86,9 @@ export function GgFsmStatesField({
         {states.map((state, i) => {
           const entry = i === 0;
           const terminal = state.transitions.length === 0;
-          // A state names an agent by local id, so a rename follows it. A stored id
-          // that matches no profile is kept and shown as missing rather than
-          // repointed at whatever happens to be first.
+          // A state names an agent by profile id, so a rename leaves it pointed where
+          // it was. A stored id that matches no profile is kept and shown as missing
+          // rather than repointed at whatever happens to be first.
           const runs = agents.find((a) => a.id === state.agentId);
           return (
             <div
@@ -129,10 +129,13 @@ export function GgFsmStatesField({
                         : "(pick an agent)"}
                     </option>
                   )}
+                  {/* The id is offered beside the name because the state stores the id
+                      and two profiles may carry one name — a menu of two identical
+                      labels would be a choice the author could not make. */}
                   {agents.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name || "unnamed"}
-                      {a.machine ? " (a machine)" : ""}
+                      {a.name || "unnamed"} ({a.id}
+                      {a.machine ? ", a machine" : ""})
                     </option>
                   ))}
                 </select>
@@ -155,10 +158,7 @@ export function GgFsmStatesField({
                         className={runExec.secondary}
                         aria-label={`Make state ${i + 1} the entry state`}
                         onClick={() =>
-                          onChange([
-                            state,
-                            ...states.filter((_, j) => j !== i),
-                          ])
+                          onChange([state, ...states.filter((_, j) => j !== i)])
                         }
                       >
                         Make entry
@@ -299,8 +299,9 @@ export function GgFsmStatesField({
                             // author adding an edge to a linear process means; anything
                             // else is one click on the target picker.
                             blankTransitionDraft(
-                              targets.find((name) => name !== state.name.trim()) ??
-                                "",
+                              targets.find(
+                                (name) => name !== state.name.trim(),
+                              ) ?? "",
                             ),
                           ],
                         })

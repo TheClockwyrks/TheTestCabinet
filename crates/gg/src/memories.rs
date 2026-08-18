@@ -1909,7 +1909,7 @@ impl MemoriesRuntime {
                 GgModuleOrigin::Created,
             ),
             MemoryScope::Shared => {
-                let (store, id) = ctx.memories.bind(&profile.name, strategy, caps, ctx.ids);
+                let (store, id) = ctx.memories.bind(&profile.id, strategy, caps, ctx.ids);
                 (
                     Self::over(store, id, ctx.ids, true),
                     MemoryAccess::ReadWrite,
@@ -2431,7 +2431,7 @@ impl Module for MemoriesRuntime {
         // very often a different store than the one it was handed — so the id moves with it, and
         // the transition reports two ids rather than pretending the notebook travelled.
         self.origin = if scope == MemoryScope::Shared {
-            let (store, id) = ctx.memories.bind(&profile.name, strategy, caps, ctx.ids);
+            let (store, id) = ctx.memories.bind(&profile.id, strategy, caps, ctx.ids);
             self.store = store;
             self.id = id;
             GgModuleOrigin::Profile

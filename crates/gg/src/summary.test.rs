@@ -10,7 +10,7 @@ use super::*;
 // names: the fold keys on the error *kind*, which is what keeps `errors` the sum of its parts.
 use test_cabinet_core::gg::{
     GgBoardIssue, GgCallFailure, GgCapabilitySet, GgContextSourceUsage, GgLimitKind,
-    GgTurnErrorType, GgTurnOutcome,
+    GgTurnErrorType, GgTurnOutcome, ROOT_PROFILE_ID,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -27,8 +27,8 @@ fn issue(id: &str, status: GgIssueStatus) -> GgBoardIssue {
         status,
         blocked_by: Vec::new(),
         epic_id: None,
-        agent: String::new(),
-        reviewers: Vec::new(),
+        agent_id: String::new(),
+        reviewer_ids: Vec::new(),
         assigned_agent_id: None,
         retries: 0,
     }
@@ -188,7 +188,7 @@ fn records_the_effective_toolset_verbatim() {
     // A stray telemetry event flows through the same tracker; it must not disturb the recorded
     // toolset.
     tracker.observe(&GgTelemetryKind::AgentSpawned {
-        slot: "primary".to_string(),
+        profile_id: ROOT_PROFILE_ID.to_string(),
         model_id: "mock/echo".to_string(),
         depth: 0,
         brief: None,
@@ -221,7 +221,7 @@ fn counts_agents_and_max_depth() {
     let tracker = SessionSummaryTracker::new();
     for depth in [0_u64, 1, 1, 2] {
         tracker.observe(&GgTelemetryKind::AgentSpawned {
-            slot: "primary".to_string(),
+            profile_id: ROOT_PROFILE_ID.to_string(),
             model_id: "mock/echo".to_string(),
             depth,
             brief: None,
@@ -357,12 +357,13 @@ fn counts_distinct_issues_created_and_completed_across_board_snapshots() {
     );
 }
 
-/// Each `SlotUsage` rollup is captured verbatim, in emission order, as a per-slot cost entry.
+/// Each `SlotUsage` rollup is captured verbatim, in emission order, as one cost entry per
+/// `(profile id, model)` the run touched.
 #[test]
 fn captures_per_slot_cost_rollups() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&GgTelemetryKind::SlotUsage {
-        slot: "primary".to_string(),
+        profile_id: ROOT_PROFILE_ID.to_string(),
         model_id: "mock/primary".to_string(),
         tokens: TokenCounts {
             uncached_input: Some(1000),
@@ -376,7 +377,7 @@ fn captures_per_slot_cost_rollups() {
         }),
     });
     tracker.observe(&GgTelemetryKind::SlotUsage {
-        slot: "reviewer".to_string(),
+        profile_id: "reviewer".to_string(),
         model_id: "mock/reviewer".to_string(),
         tokens: TokenCounts {
             uncached_input: Some(300),
@@ -390,14 +391,14 @@ fn captures_per_slot_cost_rollups() {
     let summary = tracker.finalize("model_error");
     assert_eq!(summary.terminal_status, "model_error");
     assert_eq!(summary.slot_costs.len(), 2);
-    assert_eq!(summary.slot_costs[0].slot, "primary");
+    assert_eq!(summary.slot_costs[0].profile_id, ROOT_PROFILE_ID);
     assert_eq!(summary.slot_costs[0].model_id, "mock/primary");
     assert_eq!(summary.slot_costs[0].tokens.output, Some(200));
     assert_eq!(
         summary.slot_costs[0].cost.and_then(|c| c.actual),
         Some(0.05)
     );
-    assert_eq!(summary.slot_costs[1].slot, "reviewer");
+    assert_eq!(summary.slot_costs[1].profile_id, "reviewer");
     assert_eq!(summary.slot_costs[1].cost, None);
 }
 
@@ -477,7 +478,7 @@ fn the_healing_rollup_folds_every_code_execution() {
 fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&GgTelemetryKind::AgentSpawned {
-        slot: "primary".to_string(),
+        profile_id: ROOT_PROFILE_ID.to_string(),
         model_id: "mock/echo".to_string(),
         depth: 0,
         brief: None,

@@ -26,12 +26,12 @@
 //!
 //! ```jsonc
 //! { "id": "fsm", "enabled": true, "params": { "states": [
-//!   { "name": "explore", "agent": "Explorer",
+//!   { "name": "explore", "agentId": "explorer",
 //!     "transitions": [{ "to": "build", "transfer": ["history", "tasks"],
 //!                       "description": "when you have a task list" }] },
-//!   { "name": "build", "agent": "Builder",
+//!   { "name": "build", "agentId": "builder",
 //!     "transitions": [{ "to": "verify", "transfer": ["history", "tasks"] }] },
-//!   { "name": "verify", "agent": "Verifier" }
+//!   { "name": "verify", "agentId": "verifier" }
 //! ] } }
 //! ```
 //!
@@ -82,8 +82,8 @@ use crate::modules::ModuleKind;
 pub struct FsmStateSpec {
     /// The state's name, as a [transition](FsmTransitionSpec::to) addresses it.
     pub name: String,
-    /// The agent profile this state runs.
-    pub agent: String,
+    /// The [id](GgAgentConfig::id) of the agent profile this state runs.
+    pub agent_id: String,
     /// Where the agent in this state may go. Empty makes the state **terminal**: its agent is
     /// offered no transition call at all, so the machine ends when that agent does.
     pub transitions: Vec<FsmTransitionSpec>,
@@ -102,15 +102,16 @@ pub struct FsmTransitionSpec {
     pub description: String,
 }
 
-/// A resolved machine: its shell profile's name, its entry state, and its state table.
+/// A resolved machine: its shell profile's id, its entry state, and its state table.
 ///
 /// Built once per shell profile at [launch](FsmSpec::resolve) and shared by every incarnation the
 /// machine runs, so the table a transition is checked against is the same object the entry state was
 /// read from — a machine cannot be re-parsed differently mid-run.
 #[derive(Debug, PartialEq, Eq)]
 pub struct FsmSpec {
-    /// The **FSM shell** profile this machine was declared on. It is the machine's name everywhere:
-    /// in the transition telemetry, in the launch diagnostics, and in whatever spawned the FSM agent.
+    /// The [id](GgAgentConfig::id) of the **FSM shell** profile this machine was declared on. It
+    /// is how the machine is addressed everywhere: in the transition telemetry, in the launch
+    /// diagnostics, and in whatever spawned the FSM agent.
     pub fsm: String,
     /// The [state](FsmStateSpec::name) the machine starts in — `states[0]`.
     pub entry: String,
@@ -132,12 +133,13 @@ impl FsmSpec {
             .capability(CAPABILITY_FSM)
             .filter(|capability| capability.enabled)?;
         Some(Self::parse(
-            &profile.name,
+            &profile.id,
             capability.params.get(FSM_PARAM_STATES),
         ))
     }
 
-    /// Build a machine named `fsm` from the raw [`states`](FSM_PARAM_STATES) param value.
+    /// Build the machine the shell profile with id `fsm` declares, from the raw
+    /// [`states`](FSM_PARAM_STATES) param value.
     ///
     /// Split out from [`resolve`](Self::resolve) so the parse — the half with all the diagnostics —
     /// is unit-testable against a bare JSON value rather than through a whole capability set.
@@ -153,7 +155,7 @@ impl FsmSpec {
             format!(
                 "the `{fsm}` agent's `{CAPABILITY_FSM}` capability declares a `{FSM_PARAM_STATES}` \
                  gg could not read ({err}); it must be a list of \
-                 `{{ name, agent, transitions: [{{ to, transfer, description }}] }}` objects."
+                 `{{ name, agentId, transitions: [{{ to, transfer, description }}] }}` objects."
             )
         })?;
         if declared.is_empty() {
@@ -184,7 +186,7 @@ impl FsmSpec {
                 name.clone(),
                 FsmStateSpec {
                     name,
-                    agent: state.agent.trim().to_string(),
+                    agent_id: state.agent_id.trim().to_string(),
                     transitions: state.transitions.into_iter().map(transition_spec).collect(),
                 },
             );
@@ -272,7 +274,7 @@ pub struct FsmPosition {
 }
 
 impl FsmPosition {
-    /// The machine's name — the FSM shell profile it was declared on.
+    /// The machine's id — the FSM shell profile it was declared on.
     pub fn fsm(&self) -> &str {
         &self.spec.fsm
     }
@@ -289,9 +291,9 @@ impl FsmPosition {
             .expect("a position always names a declared state")
     }
 
-    /// The [agent profile](GgAgentConfig) this state runs.
-    pub fn agent(&self) -> &str {
-        &self.current().agent
+    /// The [id](GgAgentConfig::id) of the [agent profile](GgAgentConfig) this state runs.
+    pub fn agent_id(&self) -> &str {
+        &self.current().agent_id
     }
 
     /// The edges leading out of this state. Empty in a terminal state.
@@ -372,7 +374,7 @@ pub fn machines(set: &GgCapabilitySet) -> Result<BTreeMap<String, Arc<FsmSpec>>,
         let Some(spec) = FsmSpec::resolve(profile) else {
             continue;
         };
-        machines.insert(profile.name.trim().to_string(), Arc::new(spec?));
+        machines.insert(profile.id.trim().to_string(), Arc::new(spec?));
     }
     Ok(machines)
 }
@@ -393,10 +395,11 @@ pub fn is_shell(profile: &GgAgentConfig) -> bool {
 ///
 /// - an enabled `fsm` capability whose `states` is absent, unparseable, or empty;
 /// - a state with an empty name, or two states with the same name (both from [`FsmSpec::parse`]);
-/// - a state whose `agent` names a profile the set does not declare;
+/// - a state whose `agentId` names a profile the set does not declare;
 /// - a transition whose `to` names a state the machine does not declare;
-/// - an FSM shell named as a state's `agent` — a shell cannot be a state, because entering it would
-///   enter a second machine inside the first with no way to say which one a transition addressed;
+/// - an FSM shell named as a state's `agentId` — a shell cannot be a state, because entering it
+///   would enter a second machine inside the first with no way to say which one a transition
+///   addressed;
 /// - anything else the shell declares, which nothing will read;
 /// - a state unreachable from the entry state.
 ///
@@ -407,14 +410,14 @@ pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchR
         let Some(resolved) = FsmSpec::resolve(profile) else {
             continue;
         };
-        report.for_agent(&profile.name, |report| match resolved {
+        report.for_agent(&profile.id, |report| match resolved {
             Err(err) => report.report(crate::validate::LaunchDefect::run_level(
                 param_locus(FSM_PARAM_STATES),
                 "",
                 err,
             )),
             Ok(spec) => {
-                check_shell_declarations(profile, report);
+                check_shell_declarations(set, profile, report);
                 check_states(set, &spec, report);
             }
         });
@@ -424,30 +427,31 @@ pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchR
 /// Every state of one parsed machine: the profile it runs, where its edges lead, and whether
 /// anything can reach it.
 fn check_states(set: &GgCapabilitySet, spec: &FsmSpec, report: &mut crate::validate::LaunchReport) {
-    let fsm = &spec.fsm;
+    let fsm = named(set, &spec.fsm);
     let reachable = spec.reachable();
     let locus = |state: &str| format!("{}[{state}]", param_locus(FSM_PARAM_STATES));
     for state in spec.states.values() {
-        if state.agent.is_empty() {
+        if state.agent_id.is_empty() {
             report.report(crate::validate::LaunchDefect::run_level(
                 locus(&state.name),
                 "",
                 format!(
-                    "the `{fsm}` machine's `{}` state names no agent; every state runs an agent \
+                    "the {fsm} machine's `{}` state names no agent; every state runs an agent \
                      profile.",
                     state.name
                 ),
             ));
-        } else if let Some(profile) = set.agent(&state.agent) {
+        } else if let Some(profile) = set.agent(&state.agent_id) {
             if is_shell(profile) {
                 report.report(crate::validate::LaunchDefect::run_level(
                     locus(&state.name),
-                    &state.agent,
+                    &state.agent_id,
                     format!(
-                        "the `{fsm}` machine's `{}` state runs the `{}` agent, which is itself an \
-                         FSM shell; a machine cannot be a state of another machine. Name one of \
-                         its states' agents instead.",
-                        state.name, state.agent
+                        "the {fsm} machine's `{}` state runs the {} agent, which is itself an FSM \
+                         shell; a machine cannot be a state of another machine. Name one of its \
+                         states' agents instead.",
+                        state.name,
+                        named(set, &state.agent_id)
                     ),
                 ));
             }
@@ -455,14 +459,14 @@ fn check_states(set: &GgCapabilitySet, spec: &FsmSpec, report: &mut crate::valid
             report.report(
                 crate::validate::LaunchDefect::run_level(
                     locus(&state.name),
-                    &state.agent,
+                    &state.agent_id,
                     format!(
-                        "the `{fsm}` machine's `{}` state runs the `{}` agent, which is not a \
+                        "the {fsm} machine's `{}` state runs the `{}` agent, which is not a \
                          declared agent profile.",
-                        state.name, state.agent
+                        state.name, state.agent_id
                     ),
                 )
-                .known(set.agents.iter().map(|agent| agent.name.as_str())),
+                .known(set.agents.iter().map(|agent| agent.id.as_str())),
             );
         }
         for transition in &state.transitions {
@@ -472,8 +476,8 @@ fn check_states(set: &GgCapabilitySet, spec: &FsmSpec, report: &mut crate::valid
                         locus(&state.name),
                         &transition.to,
                         format!(
-                            "the `{fsm}` machine's `{}` state may transition to `{}`, which is not \
-                             a state it declares.",
+                            "the {fsm} machine's `{}` state may transition to `{}`, which is not a \
+                             state it declares.",
                             state.name, transition.to
                         ),
                     )
@@ -492,7 +496,7 @@ fn check_states(set: &GgCapabilitySet, spec: &FsmSpec, report: &mut crate::valid
                 locus(&state.name),
                 &state.name,
                 format!(
-                    "the `{fsm}` machine's `{}` state is unreachable from the entry state `{}`, so \
+                    "the {fsm} machine's `{}` state is unreachable from the entry state `{}`, so \
                      nothing can ever enter it. Give it an incoming transition, or remove it.",
                     state.name, spec.entry,
                 ),
@@ -522,12 +526,12 @@ fn check_transfer(
     transition: &FsmTransitionSpec,
     report: &mut crate::validate::LaunchReport,
 ) {
-    let Some(profile) = set.agent(&state.agent) else {
+    let Some(profile) = set.agent(&state.agent_id) else {
         // The state's agent is not a declared profile, which is already reported; there is no
         // configuration to read a module set off.
         return;
     };
-    let fsm = &spec.fsm;
+    let fsm = named(set, &spec.fsm);
     for kind in &transition.transfer {
         if crate::modules::would_hold(set, profile, *kind) {
             continue;
@@ -541,10 +545,12 @@ fn check_transfer(
             ),
             kind.to_string(),
             format!(
-                "the `{fsm}` machine's `{}` state transfers the `{kind}` module to `{}`, and the \
-                 `{}` agent it runs holds no such module. The successor would open with an empty \
-                 one under a configuration that says it continues.",
-                state.name, transition.to, state.agent,
+                "the {fsm} machine's `{}` state transfers the `{kind}` module to `{}`, and the {} \
+                 agent it runs holds no such module. The successor would open with an empty one \
+                 under a configuration that says it continues.",
+                state.name,
+                transition.to,
+                named(set, &state.agent_id),
             ),
         ));
     }
@@ -560,14 +566,18 @@ fn check_transfer(
 /// substitutes something else for, it is a value gg discards, and an operator who wrote one believes
 /// the machine's agents inherit it. The console's editor offers a machine none of these fields, so
 /// one reaching here comes from a hand-written set or an older editor.
-fn check_shell_declarations(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
-    let fsm = &profile.name;
+fn check_shell_declarations(
+    set: &GgCapabilitySet,
+    profile: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) {
+    let fsm = named(set, &profile.id);
     let ignored = |locus: &str, what: &str| {
         crate::validate::LaunchDefect::run_level(
             locus,
             "",
             format!(
-                "the `{fsm}` agent is an FSM shell, so the {what} it declares would never be read \
+                "the {fsm} agent is an FSM shell, so the {what} it declares would never be read \
                  — each state runs the agent profile it names, with that profile's configuration. \
                  Remove it, or move it onto the profile a state runs."
             ),
@@ -598,6 +608,16 @@ fn check_shell_declarations(profile: &GgAgentConfig, report: &mut crate::validat
             ));
         }
     }
+}
+
+/// How a diagnostic names one profile: the [id](GgAgentConfig::id) an operator would edit, with the
+/// [display name](GgAgentConfig::name) beside it so a table of slugs still reads as prose.
+///
+/// Only for a profile `set` declares — a dangling reference is named by its bare id instead, since
+/// [`GgCapabilitySet::agent_name`] answers an unknown id with the id itself, and `` `x` (x) `` says
+/// nothing twice.
+fn named(set: &GgCapabilitySet, id: &str) -> String {
+    format!("`{id}` ({})", set.agent_name(id))
 }
 
 /// Where one of the machine's own params sits in the document: `fsm.params.states`.

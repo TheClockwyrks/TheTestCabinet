@@ -7,7 +7,7 @@
 //! against a stubbed runner would prove nothing about the one thing it exists to do.
 
 use super::*;
-use test_cabinet_core::gg::{ALL_HOOK_EVENTS, GgAgentConfig, GgCapabilitySet, ROOT_AGENT};
+use test_cabinet_core::gg::{ALL_HOOK_EVENTS, GgAgentConfig, GgCapabilitySet, ROOT_PROFILE_ID};
 
 /// An agent profile carrying `hooks` and nothing else that matters here — the declaration site for
 /// the eight [agent events](test_cabinet_core::gg::AGENT_HOOK_EVENTS), which is what nearly every
@@ -180,7 +180,7 @@ fn refuses_a_session_event_declared_on_an_agent() {
         GgHookEvent::SessionEnd,
         "#!/bin/sh\ntrue",
     )]);
-    agent.name = "reviewer".to_string();
+    agent.id = "reviewer".to_string();
     let errors = HookRuntime::resolve_agent(&agent, Path::new("/tmp")).unwrap_err();
     assert_eq!(errors.len(), 1);
     assert!(errors[0].contains("session-end"), "{}", errors[0]);
@@ -227,7 +227,7 @@ fn a_hook_gg_cannot_arm_refuses_the_launch() {
         "the refusal lists what gg does ship: {defects:?}"
     );
 
-    assert_eq!(defects[1].agent.as_deref(), Some(ROOT_AGENT));
+    assert_eq!(defects[1].agent.as_deref(), Some(ROOT_PROFILE_ID));
     assert_eq!(defects[1].locus, "hooks[under test]");
     assert!(defects[1].message.contains("session-end"), "{defects:?}");
 }
@@ -331,9 +331,9 @@ fn hooks_gg_can_arm_launch() {
 #[test]
 fn two_profiles_naming_a_hook_alike_do_not_share_a_script_file() {
     let mut implementer = agent_with(vec![script_hook(GgHookEvent::PreShell, "#!/bin/sh\ntrue")]);
-    implementer.name = "implementer".to_string();
+    implementer.id = "implementer".to_string();
     let mut reviewer = agent_with(vec![script_hook(GgHookEvent::PreShell, "#!/bin/sh\nfalse")]);
-    reviewer.name = "reviewer".to_string();
+    reviewer.id = "reviewer".to_string();
 
     let one = HookRuntime::resolve_agent(&implementer, Path::new("/tmp")).unwrap();
     let two = HookRuntime::resolve_agent(&reviewer, Path::new("/tmp")).unwrap();

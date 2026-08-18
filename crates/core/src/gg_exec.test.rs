@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use super::*;
 use crate::event::EventKind;
 use crate::execution::OutputStream;
-use crate::gg::{GgCallFailure, GgCapabilitySet, PRIMARY_SLOT};
+use crate::gg::{GgCallFailure, GgCapabilitySet, ROOT_PROFILE_ID};
 use crate::run_record::HarnessSlug;
 
 /// A real mock-session telemetry stream captured from the `gg` binary (mock provider,
@@ -109,7 +109,7 @@ fn ingest_lifts_the_session_summary_for_the_run_record() {
     assert_eq!(summary.subagent_count, 0);
     assert!(!summary.ran_out_of_context);
     assert_eq!(summary.slot_costs.len(), 1);
-    assert_eq!(summary.slot_costs[0].slot, PRIMARY_SLOT);
+    assert_eq!(summary.slot_costs[0].profile_id, ROOT_PROFILE_ID);
     assert_eq!(summary.slot_costs[0].model_id, "mock/echo");
     assert_eq!(summary.slot_costs[0].tokens.output, Some(240));
 }

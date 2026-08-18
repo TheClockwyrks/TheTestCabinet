@@ -157,8 +157,8 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// | --- | --- |
 /// | `id`, `started`, `finished`, `state`, `published`, `rating`, `score`, `reviewCount` | identity, timing, lifecycle |
 /// | `case`, `caseVersion`, `variant`, `testType` | what was run |
-/// | `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<name>.model` | how it was configured |
-/// | `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<name>.cap.<id>` | the capability set, flattened and **typed** |
+/// | `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<profileId>.model` | how it was configured |
+/// | `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<profileId>.cap.<id>` | the capability set, flattened and **typed** |
 /// | `tool.<name>` | the effective toolset (sparse — true only for offered tools) |
 /// | `status`, `mode`, `limit` | how it ended |
 /// | `summary.<path>` | the **whole** session summary, flattened |
@@ -181,8 +181,8 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// subagent under study, which is the same defect
 /// [`GgCapabilitySet::any_agent_enabled`](crate::gg::GgCapabilitySet::any_agent_enabled)
 /// was introduced to fix. Per-agent detail is not lost either: each
-/// agent's own enablements are written **sparsely** as `agent.<name>.cap.<id>`, so a
-/// per-agent difference is expressible without making every document carry the catalog
+/// agent's own enablements are written **sparsely** as `agent.<profileId>.cap.<id>`, so
+/// a per-agent difference is expressible without making every document carry the catalog
 /// once per profile.
 pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc {
     let mut doc = GgRunDoc::default();
@@ -245,15 +245,21 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
     doc
 }
 
-/// Write the `preset` / `agents` / `agent.<name>.model` / `cap.*` /
-/// `agent.<name>.cap.<id>` namespaces.
+/// Write the `preset` / `agents` / `agent.<profileId>.model` / `cap.*` /
+/// `agent.<profileId>.cap.<id>` namespaces.
+///
+/// The per-agent fields are keyed by the profile's [id](crate::gg::GgAgentConfig::id), not its display
+/// [name](crate::gg::GgAgentConfig::name): the id is unique within a set by construction, where two profiles
+/// may share a name — and two profiles sharing a field key would silently merge into one, so a
+/// query would read one profile's configuration as the other's. The id is minted readable
+/// (`reviewer`, `reviewer-2`), so a query written by hand still says what it means.
 ///
 /// Two populations, deliberately shaped differently. `cap.<id>` is **total** over the
 /// catalog and **run-wide** — the field a comparison of two configurations slices on, so
 /// "configured and off" and "never mentioned" must collapse into one honest `false` rather than an
 /// absence.
-/// `agent.<name>.cap.<id>` is **sparse** and per-agent, like `tool.<name>`: writing the
-/// catalog once per profile would multiply a five-agent document's capability fields by
+/// `agent.<profileId>.cap.<id>` is **sparse** and per-agent, like `tool.<name>`: writing
+/// the catalog once per profile would multiply a five-agent document's capability fields by
 /// five to say `false` a hundred times, and the question it answers ("which profile had
 /// it") only ever needs the ones that did.
 ///
@@ -274,7 +280,7 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
     doc.insert("agents", set.agents.len() as f64);
     for agent in &set.agents {
         if let Some(model) = agent.resolved_model_id() {
-            doc.insert(format!("agent.{}.model", agent.name), model.to_string());
+            doc.insert(format!("agent.{}.model", agent.id), model.to_string());
         }
     }
 
@@ -325,7 +331,7 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
             // `is_enabled` so a profile that declares a capability and disables it
             // answers the same question the run-wide flag did.
             if agent.is_enabled(id) {
-                doc.insert(format!("agent.{}.cap.{id}", agent.name), true);
+                doc.insert(format!("agent.{}.cap.{id}", agent.id), true);
             }
         }
     }

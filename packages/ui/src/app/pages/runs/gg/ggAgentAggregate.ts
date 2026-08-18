@@ -16,10 +16,10 @@
 // with nothing in it, because "the reviewer never ran" is one of the more useful things
 // comparing two configurations can tell you and an absent row says it silently.
 //
-// Instances are grouped by the profile name their `agent_spawned` named (the wire's `slot`,
-// which is the agent profile — see the telemetry contract). The main agent read before its
-// own spawn has arrived falls back to the configuration's first profile, which is the root by
-// definition.
+// Instances are grouped by the profile ID their `agent_spawned` named — never by the profile's
+// name, which is display text a run may carry twice and which would silently fold two arms
+// into one row. The main agent read before its own spawn has arrived falls back to the
+// configuration's first profile, which is the root by definition.
 
 import { useMemo } from "react";
 import type {
@@ -40,11 +40,11 @@ import {
   type GgContextAttribution,
 } from "./ggContextAttribution";
 import { agentModelMs, generatedTokens } from "./ggThroughput";
-// Types only: `ggModules` reads this module's `agentProfileName`, so importing anything
+// Types only: `ggModules` reads this module's `agentProfileId`, so importing anything
 // from it at runtime would close a cycle. A type import erases, and the index itself is
 // handed in by the caller that folded it.
 import type { GgAgentModuleSummary, GgModuleIndex } from "./ggModules";
-import { ROOT_AGENT } from "./ggCatalog";
+import { ROOT_PROFILE_ID, agentProfileName } from "./ggCatalog";
 import { apiCallSpellings } from "./ggSurfaceCalls";
 import {
   ROOT_ID,
@@ -63,8 +63,11 @@ import {
   type UsageTally,
 } from "./useGgRunState";
 
-/** The name instances whose profile the stream never named are grouped under. */
-export const UNNAMED_AGENT = "unnamed";
+/**
+ * The pseudo-profile instances whose profile the stream never identified are grouped under —
+ * a placeholder built from an out-of-order status event, which no configuration declares.
+ */
+export const UNKNOWN_PROFILE_ID = "unknown";
 
 /** One running instance of an agent, as its profile's summary lists it. */
 export interface GgAgentInstance {
@@ -179,12 +182,18 @@ export interface GgAgentSurfaceSummary {
 
 /** Everything one configured agent did, summed across every instance of it. */
 export interface GgAgentSummary {
-  /** The profile's name — the key instances are grouped by. */
+  /** The profile's id — the key instances are grouped by, and what a link here names. */
+  profileId: string;
+  /**
+   * The profile's display name, or its id where the configuration declares no such profile.
+   * Prose only: two rows may carry one name, which is why a surface listing them shows
+   * {@link profileId} beside it.
+   */
   name: string;
   /**
    * Whether the run's configuration declares this profile. False for a profile observed only
    * on the stream (a record whose configuration was not captured, or an agent spawned under
-   * a name the set no longer carries), whose row is therefore an observation rather than a
+   * an id the set no longer carries), whose row is therefore an observation rather than a
    * configured arm.
    */
   declared: boolean;
@@ -472,29 +481,31 @@ export function mergeAgentSurfaces(
 }
 
 /**
- * The profile an instance ran under: the name its spawn carried, or — for the main agent read
- * before its own `agent_spawned` has arrived — the configuration's first profile, which is
- * the root by definition. An instance the stream never named at all (a placeholder built from
- * an out-of-order status event) is grouped under {@link UNNAMED_AGENT} rather than dropped.
+ * The id of the profile an instance ran under: the one its spawn carried, or — for the main
+ * agent read before its own `agent_spawned` has arrived — the configuration's first profile,
+ * which is the root by definition. An instance the stream never identified at all (a
+ * placeholder built from an out-of-order status event) is grouped under
+ * {@link UNKNOWN_PROFILE_ID} rather than dropped.
  */
-export function agentProfileName(
+export function agentProfileId(
   node: AgentTreeNode,
   set: GgCapabilitySet | null,
 ): string {
-  if (node.slot) return node.slot;
-  if (node.id === ROOT_ID) return set?.agents?.[0]?.name ?? ROOT_AGENT;
-  return UNNAMED_AGENT;
+  if (node.profileId) return node.profileId;
+  if (node.id === ROOT_ID) return set?.agents?.[0]?.id ?? ROOT_PROFILE_ID;
+  return UNKNOWN_PROFILE_ID;
 }
 
-// The forest flattened into (node, profile) pairs in tree order — root first, each subagent
-// after its spawner — so a profile's instances list in the order the run introduced them.
+// The forest flattened into (node, profile id) pairs in tree order — root first, each
+// subagent after its spawner — so a profile's instances list in the order the run introduced
+// them.
 function orderedInstances(
   forest: readonly AgentTreeNode[],
   set: GgCapabilitySet | null,
-): Array<{ node: AgentTreeNode; profile: string }> {
-  const ordered: Array<{ node: AgentTreeNode; profile: string }> = [];
+): Array<{ node: AgentTreeNode; profileId: string }> {
+  const ordered: Array<{ node: AgentTreeNode; profileId: string }> = [];
   const walk = (node: AgentTreeNode) => {
-    ordered.push({ node, profile: agentProfileName(node, set) });
+    ordered.push({ node, profileId: agentProfileId(node, set) });
     node.children.forEach(walk);
   };
   forest.forEach(walk);
@@ -528,14 +539,14 @@ export function deriveGgAgentSummaries(
 
   // Every profile worth a row: the declared ones in configuration order, then any the stream
   // introduced that the configuration does not carry.
-  const names: string[] = declared.map((agent) => agent.name);
-  for (const { profile } of instances) {
-    if (!names.includes(profile)) names.push(profile);
+  const profileIds: string[] = declared.map((agent) => agent.id);
+  for (const { profileId } of instances) {
+    if (!profileIds.includes(profileId)) profileIds.push(profileId);
   }
 
-  return names.map((name) => {
-    const config = declared.find((agent) => agent.name === name) ?? null;
-    const mine = instances.filter((entry) => entry.profile === name);
+  return profileIds.map((profileId) => {
+    const config = declared.find((agent) => agent.id === profileId) ?? null;
+    const mine = instances.filter((entry) => entry.profileId === profileId);
 
     const usage = emptyTally();
     const priced: PricedSlot[] = [];
@@ -638,9 +649,10 @@ export function deriveGgAgentSummaries(
     // against the turns those same instances took (see `callsPerResponse`).
     const calls = mergeCallBreakdowns(callParts);
     return {
-      name,
+      profileId,
+      name: agentProfileName(capabilitySet, profileId),
       declared: config != null,
-      root: declared.length > 0 && declared[0]?.name === name,
+      root: declared.length > 0 && declared[0]?.id === profileId,
       configuredModelId: config?.modelId || null,
       modelIds,
       modelName: modelId ? (nameOf(modelId) ?? modelId) : null,
@@ -663,7 +675,7 @@ export function deriveGgAgentSummaries(
       toolCalls,
       callsPerResponse: callsPerResponse(calls, turns),
       context: mergeGgAttributions(contextParts),
-      modules: modules?.byProfile.get(name) ?? [],
+      modules: modules?.byProfile.get(profileId) ?? [],
       surface: mergeAgentSurfaces(surfaceParts),
     };
   });
@@ -676,7 +688,7 @@ export function deriveGgAgentSummaries(
  *
  * The module index is handed in (see {@link useGgModules}) rather than folded here: it is a
  * whole-run traversal three surfaces share, and it is what keeps this module free of a
- * runtime dependency on the one that reads its `agentProfileName`.
+ * runtime dependency on the one that reads its `agentProfileId`.
  */
 export function useGgAgentSummaries(
   capabilitySet: GgCapabilitySet | null,

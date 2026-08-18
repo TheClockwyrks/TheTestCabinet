@@ -54,6 +54,7 @@ launch rather than falling back to gg's own default.
   ],
   "agents": [
     {
+      "id": "implementer",
       "name": "Implementer",
       "hooks": [
         {
@@ -68,6 +69,7 @@ launch rather than falling back to gg's own default.
       ]
     },
     {
+      "id": "reviewer",
       "name": "Reviewer",
       "hooks": []
     }

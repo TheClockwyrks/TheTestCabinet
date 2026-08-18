@@ -243,7 +243,7 @@ async fn a_canceled_session_still_emits_its_summary_and_session_end() {
     let script = vec![looping_response(); 4];
     let client = Arc::new(RecordingClient::new("mock/primary", script));
     let shared = Arc::clone(&client);
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
         Box::new(SharedRecordingClient(Arc::clone(&shared)))
     });
 

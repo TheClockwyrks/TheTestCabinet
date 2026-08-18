@@ -15,11 +15,11 @@ a time, and each opens on the views the previous one left open.
 ## One instance at a time
 
 Every instance of a persistent profile takes its running slot under the
-profile's name, and no two running agents may hold one name at once. Spawning
-three instances creates all three; one runs and the others queue on the
-[scheduler](/gg/subagents/) every other agent waits on. The key is the profile,
-so the cap holds however an instance was dispatched and whichever worktree it
-was dispatched into.
+profile's [id](/gg/configurations/#identity), and no two running agents may hold
+one id at once. Spawning three instances creates all three; one runs and the
+others queue on the [scheduler](/gg/subagents/) every other agent waits on. The
+key is the profile, so the cap holds however an instance was dispatched and
+whichever worktree it was dispatched into.
 
 The cap applies inside the run's global parallelism pool rather than beside it.
 A run whose [`maxParallel`](/gg/execution-limits/) is sixteen can have fifteen
@@ -151,6 +151,7 @@ The capability is per agent, off by default, and takes no params:
 
 ```jsonc
 {
+  "id": "owner",
   "name": "Owner",
   "capabilities": [
     { "id": "agent-persistence", "enabled": true },

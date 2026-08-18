@@ -789,15 +789,41 @@
   text-transform: lowercase;
 }
 
-// The agent-name field row at the top of the per-agent view. Its label is a plain
-// inline span rather than a flex row (the list row's `.agentNameLine` is the one with a
-// gap), so the badge that follows the label text needs its own leading space.
+// The agent-name row at the top of the per-agent view: the editable name, and the
+// profile id beside it. Each field's own label is a plain inline span rather than a flex
+// row (the list row's `.agentNameLine` is the one with a gap), so the badge that follows
+// the label text needs its own leading space.
 .agentHeading {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
   margin: 0 0 t.$space-md;
 
   .rootBadge {
     margin-left: t.$space-sm;
   }
+}
+
+// The read-only profile id. Intrinsic width, so the name input beside it keeps the row's
+// spare space — an id is short and never grows, and a rename is the edit an operator
+// actually came here for.
+.agentIdField {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+// Shown as code because it is an identifier the operator will meet again verbatim — in a
+// roster, in a run's telemetry, in the argument of a call the model made — and because
+// looking like an input is exactly the wrong promise for a value nothing may rewrite. Sat
+// on the row's baseline with the inputs beside it rather than in a box of its own.
+.agentIdValue {
+  display: block;
+  padding: t.$space-xs 0;
+  font-family: var(--ttc-font-mono, monospace);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow-wrap: anywhere;
 }
 
 // The roster lives in its own surface card, like the run limits: it is a table of

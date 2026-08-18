@@ -23,7 +23,7 @@ a query.
 
 The capability set recorded on each run is the dimension an aggregate slices by.
 It is flattened into the run document as `cap.<id>`, `cap.<id>.impl`,
-`cap.<id>.<param>` and the per-agent `agent.<name>.cap.<id>`. `cap.<id>` is a
+`cap.<id>.<param>` and the per-agent `agent.<profileId>.cap.<id>`. `cap.<id>` is a
 run-wide read, true when any agent has the capability on, so an enablement rate
 averaged over it is honest for a run that enabled a capability on one subagent.
 

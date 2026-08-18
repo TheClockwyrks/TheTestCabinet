@@ -201,7 +201,7 @@ out. Four things must survive the rendering.
 
 - Every required section. A copied template can lose a section whole, and a
   heading can survive with nothing under it.
-- Every value the run configured: each roster name and description, the
+- Every value the run configured: each roster entry's id and description, the
   assigned issue's id.
 - The ending call, resolved through that arm's own catalogue rather than written
   down, so the sentence names something the model could type. It is the one

@@ -26,7 +26,7 @@ use crate::client::MockClient;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
     CAPABILITY_PROGRAM_LIBRARY, GgAgentApi, GgCapabilitySet, GgProgramLanguage, GgTelemetryEvent,
-    ROOT_AGENT,
+    ROOT_PROFILE_ID,
 };
 
 use super::{ScriptedFactory, invocation, subagent_set};
@@ -232,7 +232,7 @@ async fn a_subagent_reports_its_own_surface() {
     let mut set = subagent_set(2, 3, &["subagent"]);
     set.agents[1].tools.retain(|name| name != "shell");
     let inv = invocation(dir.path(), set);
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |binding| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |binding| {
         Box::new(MockClient::with_subagent_parent_script(&binding.model_id))
     });
 

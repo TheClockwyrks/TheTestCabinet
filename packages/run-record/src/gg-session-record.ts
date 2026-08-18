@@ -281,7 +281,14 @@ export type GgSessionAgent = {
    */
   agentId: string;
   /**
-   * The name of the [agent profile](crate::gg::GgAgentConfig) it ran under.
+   * The [id](crate::gg::GgAgentConfig::id) of the agent profile it ran under — what joins
+   * this row to the run's capability set, and to every telemetry event the agent emitted.
+   */
+  profileId: string;
+  /**
+   * The [display name](crate::gg::GgCapabilitySet::agent_name) that profile carried at launch,
+   * so a record read on its own still says which agent this was. Display text: two profiles may
+   * share a [name](crate::gg::GgAgentConfig::name), and nothing joins on this.
    */
   profile: string;
   /**

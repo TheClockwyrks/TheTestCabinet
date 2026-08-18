@@ -5,8 +5,8 @@ use serde_json::json;
 use tempfile::TempDir;
 use test_cabinet_core::gg::{
     CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE, CAPABILITY_SHELL,
-    CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, GgAgentConfig, GgCapabilityConfig,
-    SHELL_OUTPUT_OFFLOAD,
+    CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, GgAgentConfig, GgCapabilityConfig, GgRosterEntry,
+    ROOT_PROFILE_ID, SHELL_OUTPUT_OFFLOAD,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -32,6 +32,21 @@ fn skills_modules(library: &Arc<SkillLibrary>) -> CapabilityModules {
     CapabilityModules::inert().with(ModuleHandle::Skills(SkillsRuntime::new(Arc::clone(
         library,
     ))))
+}
+
+/// A resolved delegation [roster](GgRosterEntry) over `ids` — the shape a caller holding the whole
+/// capability set hands the registry.
+///
+/// Each entry's display name is deliberately unlike its id, so a surface that offers a name where
+/// the model can only pass an id fails here rather than passing on a coincidence.
+fn roster(ids: &[&str]) -> Vec<GgRosterEntry> {
+    ids.iter()
+        .map(|id| GgRosterEntry {
+            agent_id: (*id).to_string(),
+            name: format!("The {id} agent"),
+            description: String::new(),
+        })
+        .collect()
 }
 
 /// An agent profile with the given capability configs and no model binding, granted **every tool
@@ -767,8 +782,8 @@ fn fsm_position() -> crate::fsm::FsmPosition {
     let shell = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: serde_json::json!({ FSM_PARAM_STATES: [
-                { "name": "build", "agent": "Builder", "transitions": [{ "to": "verify" }] },
-                { "name": "verify", "agent": "Verifier" },
+                { "name": "build", "agentId": "builder", "transitions": [{ "to": "verify" }] },
+                { "name": "verify", "agentId": "verifier" },
             ] }),
             ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
         }],
@@ -799,6 +814,7 @@ fn the_transition_tool_is_offered_from_the_machine_position() {
         &CapabilityModules::inert(),
         &AgentFacts {
             fsm: Some(&position),
+            ..AgentFacts::default()
         },
     );
     let definition = registry
@@ -838,7 +854,8 @@ fn a_terminal_state_is_offered_no_transition_tool() {
             &profile,
             &CapabilityModules::inert(),
             &AgentFacts {
-                fsm: Some(&terminal)
+                fsm: Some(&terminal),
+                ..AgentFacts::default()
             },
         )
         .offers(TRANSITION_STATE_TOOL),
@@ -854,58 +871,63 @@ fn a_terminal_state_is_offered_no_transition_tool() {
 /// where the next move is `transition_state`'s. `fork` needs the `subagents` capability, which is
 /// what offers the two calls that collect a copy — a copy nobody can wait on or message is a leak
 /// rather than a second worker. Neither is offered without the capability at all.
+///
+/// The roster arrives on the [facts](AgentFacts::spawnable) already resolved to profile ids, so
+/// each case says outright what this agent may become rather than leaving it to be read off a
+/// profile.
 #[test]
 fn the_agent_transition_tools_are_offered_on_their_own_terms() {
-    use test_cabinet_core::gg::{
-        CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_SUBAGENTS, GgSubagentRef, ROOT_AGENT,
-    };
+    use test_cabinet_core::gg::{CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_SUBAGENTS};
 
-    let offered = |set: &GgAgentConfig, position: Option<&crate::fsm::FsmPosition>| {
+    let offered = |set: &GgAgentConfig,
+                   spawnable: &[GgRosterEntry],
+                   position: Option<&crate::fsm::FsmPosition>| {
         let registry = ToolRegistry::from_run(
             set,
             &CapabilityModules::inert(),
-            &AgentFacts { fsm: position },
+            &AgentFacts {
+                fsm: position,
+                spawnable,
+                ..AgentFacts::default()
+            },
         );
         (registry.offers(EXEC_TOOL), registry.offers(FORK_TOOL))
     };
+    let somebody = roster(&[ROOT_PROFILE_ID]);
+    let nobody: &[GgRosterEntry] = &[];
 
     // Both capabilities off: neither call, whatever else is on.
-    let mut off = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)]);
-    off.subagents.push(GgSubagentRef::any(ROOT_AGENT));
-    assert_eq!(offered(&off, None), (false, false));
+    let off = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)]);
+    assert_eq!(offered(&off, &somebody, None), (false, false));
 
     // Both on, but nothing to become and nothing to collect a copy with.
     let bare = set_with(vec![
         GgCapabilityConfig::enabled(CAPABILITY_EXEC),
         GgCapabilityConfig::enabled(CAPABILITY_FORK),
     ]);
-    assert_eq!(offered(&bare, None), (false, false));
+    assert_eq!(offered(&bare, nobody, None), (false, false));
 
     // A roster alone buys `exec`; the delegation capability alone buys `fork`.
-    let mut with_roster = bare.clone();
-    with_roster.subagents.push(GgSubagentRef::any(ROOT_AGENT));
-    assert_eq!(offered(&with_roster, None), (true, false));
+    assert_eq!(offered(&bare, &somebody, None), (true, false));
 
     let mut with_delegation = bare.clone();
     crate::tools::grant(&mut with_delegation, CAPABILITY_SUBAGENTS);
-    assert_eq!(offered(&with_delegation, None), (false, true));
+    assert_eq!(offered(&with_delegation, nobody, None), (false, true));
 
     // **The two are independent capabilities, not one capability with two halves.** Enabling either
     // alone, with everything each needs beside it, offers that call and not the other — which is
     // the arm the split exists to make expressible.
-    let mut exec_only = set_with(vec![
+    let exec_only = set_with(vec![
         GgCapabilityConfig::enabled(CAPABILITY_EXEC),
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
     ]);
-    exec_only.subagents.push(GgSubagentRef::any(ROOT_AGENT));
-    assert_eq!(offered(&exec_only, None), (true, false));
+    assert_eq!(offered(&exec_only, &somebody, None), (true, false));
 
-    let mut fork_only = set_with(vec![
+    let fork_only = set_with(vec![
         GgCapabilityConfig::enabled(CAPABILITY_FORK),
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
     ]);
-    fork_only.subagents.push(GgSubagentRef::any(ROOT_AGENT));
-    assert_eq!(offered(&fork_only, None), (false, true));
+    assert_eq!(offered(&fork_only, &somebody, None), (false, true));
 
     // **And an agent whose only child can be a copy of itself is given the calls that collect
     // one.** The roster is what `spawn_subagent` needs, not what `fork` needs, so gating waiting
@@ -927,11 +949,12 @@ fn the_agent_transition_tools_are_offered_on_their_own_terms() {
 
     // Both, and then the same profile standing in a machine: the copy is still a copy, but where
     // the run goes next has stopped being this agent's decision.
-    let mut both = with_delegation.clone();
-    both.subagents.push(GgSubagentRef::any(ROOT_AGENT));
-    assert_eq!(offered(&both, None), (true, true));
+    assert_eq!(offered(&with_delegation, &somebody, None), (true, true));
     let position = fsm_position();
-    assert_eq!(offered(&both, Some(&position)), (false, true));
+    assert_eq!(
+        offered(&with_delegation, &somebody, Some(&position)),
+        (false, true)
+    );
 }
 
 /// **Every registry a maximal run can produce**: every capability enabled, every store bound, a
@@ -951,7 +974,7 @@ fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
     use test_cabinet_core::gg::{
         CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_MEMORIES,
         CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-        COMPACTION_STRATEGY_SELF_COMPACTION, GgSubagentRef, ROOT_AGENT,
+        COMPACTION_STRATEGY_SELF_COMPACTION,
     };
 
     let dir = TempDir::new().unwrap();
@@ -982,10 +1005,11 @@ fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
         implementation: Some(COMPACTION_STRATEGY_SELF_COMPACTION.to_string()),
         params: serde_json::json!({}),
     });
-    let mut set = set_with(capabilities);
+    let set = set_with(capabilities);
     // A maximal registry offers the delegation tools too, which requires at least one agent this
-    // profile may spawn.
-    set.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    // profile may spawn — and `create_issue` names the profiles it may put to work by id, so the
+    // implementer and reviewer halves of the roster are resolved here as well.
+    let roster = roster(&[ROOT_PROFILE_ID]);
     let position = fsm_position();
     let registries = [
         MemoryStrategy::Scratchpad,
@@ -996,6 +1020,7 @@ fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
     .flat_map(|strategy| {
         let set = &set;
         let library = &library;
+        let roster = &roster;
         [Some(&position), None].into_iter().map(move |fsm| {
             ToolRegistry::from_run(
                 set,
@@ -1007,7 +1032,12 @@ fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
                     .with(ModuleHandle::Tasks(TasksRuntime::new(100)))
                     .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
                     .with(ModuleHandle::Archive(ArchiveRuntime::new())),
-                &AgentFacts { fsm },
+                &AgentFacts {
+                    fsm,
+                    spawnable: roster,
+                    implementers: roster,
+                    reviewers: roster,
+                },
             )
         })
     })

@@ -188,7 +188,7 @@ export function GgRunPanels({
   // configured?"). Each is cleared through its own handler, so consuming one request cannot
   // silently drop another that arrived in the same render.
   const [focusModule, setFocusModule] = useState<GgModuleFocus | null>(null);
-  const [focusProfile, setFocusProfile] = useState<string | null>(null);
+  const [focusProfileId, setFocusProfileId] = useState<string | null>(null);
   // Whether there is a Modules tab to hand anybody through to. Every instance of every run
   // holds a `history` module — the window has no capability behind it — so a module file
   // and a profile's module row both exist in runs this tab is (rightly) not offered for,
@@ -215,9 +215,9 @@ export function GgRunPanels({
             setFocusModule({ kind: "group", moduleKind });
           }
         : undefined,
-      openProfile: (name) => {
+      openProfile: (profileId) => {
         setTab("agents");
-        setFocusProfile(name);
+        setFocusProfileId(profileId);
       },
       openProject: () => setTab("project"),
     }),
@@ -228,7 +228,7 @@ export function GgRunPanels({
     setFocusEntry(null);
   }, []);
   const onModuleFocusHandled = useCallback(() => setFocusModule(null), []);
-  const onProfileFocusHandled = useCallback(() => setFocusProfile(null), []);
+  const onProfileFocusHandled = useCallback(() => setFocusProfileId(null), []);
 
   return (
     <GgExplorerNavContext.Provider value={nav}>
@@ -262,7 +262,7 @@ export function GgRunPanels({
             perAgent={perAgent}
             transitions={transitions}
             moduleSnapshots={moduleSnapshots}
-            focusProfile={focusProfile}
+            focusProfileId={focusProfileId}
             onFocusHandled={onProfileFocusHandled}
           />
         )}

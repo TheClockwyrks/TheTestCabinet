@@ -81,7 +81,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
     CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-    CAPABILITY_WRITE_FILE, GgAgentConfig, GgCallFailure,
+    CAPABILITY_WRITE_FILE, GgAgentConfig, GgCallFailure, GgRosterEntry,
 };
 
 use crate::board::IssuePolicy;
@@ -214,6 +214,17 @@ pub struct AgentFacts<'a> {
     /// decides whether the transition call is offered at all and, when it is, exactly which targets
     /// it may name.
     pub fsm: Option<&'a FsmPosition>,
+    /// The profiles this agent may **spawn**, resolved by the caller from the whole set
+    /// ([`test_cabinet_core::gg::GgCapabilitySet::roster`]). Each carries the id a call names it
+    /// by and the name that makes the menu read as prose.
+    pub spawnable: &'a [GgRosterEntry],
+    /// The profiles this agent may assign a board [issue](crate::board) to — its roster's
+    /// [implementer](test_cabinet_core::gg::GgSubagentScope::Implementer) scope, resolved by the
+    /// caller for the same reason [`spawnable`](Self::spawnable) is.
+    pub implementers: &'a [GgRosterEntry],
+    /// The profiles this agent may name as a board [issue](crate::board)'s reviewers — its roster's
+    /// [reviewer](test_cabinet_core::gg::GgSubagentScope::Reviewer) scope.
+    pub reviewers: &'a [GgRosterEntry],
 }
 
 /// **The gg capability that offers the tool named `name`**, or `None` for a name no capability
@@ -817,7 +828,12 @@ impl ToolRegistry {
             tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
             tools.push(Box::new(board::CreateIssueTool::new(
                 Arc::clone(board),
-                IssuePolicy::resolve(capabilities, &mut crate::validate::LaunchReport::Discarding),
+                IssuePolicy::resolve(
+                    capabilities,
+                    facts.implementers.to_vec(),
+                    facts.reviewers.to_vec(),
+                    &mut crate::validate::LaunchReport::Discarding,
+                ),
             )));
             tools.push(Box::new(board::UpdateIssueTool::new(Arc::clone(board))));
             tools.push(Box::new(board::SetIssueBlockedByTool::new(Arc::clone(
@@ -871,7 +887,7 @@ impl ToolRegistry {
         // offering when there is at least one target it can name (an empty allowlist means this
         // agent delegates to no one), and each tool's description enumerates the allowed agents with
         // their caller-scoped guidance so the model knows who it may spawn and why.
-        let spawnable = &capabilities.subagents;
+        let spawnable = facts.spawnable;
         let can_delegate = !spawnable.is_empty();
         // Whether this profile can produce a child *without* naming one: a
         // [fork](transitions::ForkTool) targets the agent itself, so it needs no roster entry. It
@@ -886,7 +902,7 @@ impl ToolRegistry {
             // the agent tree, which a self-contained tool cannot reach).
             if can_delegate {
                 tools.push(Box::new(subagents::SpawnSubagentTool::new(
-                    spawnable.clone(),
+                    spawnable.to_vec(),
                 )));
             }
             // Waiting and messaging are offered to an agent that can have children **at all** —
@@ -924,7 +940,7 @@ impl ToolRegistry {
         // spawning uses — and is withheld from an agent standing in a machine state, where the
         // run's next move is the machine's decision and `transition_state` is how it is made.
         if capabilities.is_enabled(CAPABILITY_EXEC) && can_delegate && facts.fsm.is_none() {
-            tools.push(Box::new(transitions::ExecTool::new(spawnable.clone())));
+            tools.push(Box::new(transitions::ExecTool::new(spawnable.to_vec())));
         }
         // `fork` needs a way to *collect* the copy rather than a roster: it is a child, and an
         // agent that cannot `wait_for_subagents` on it or `send_message` to it has produced a

@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use super::*;
-use crate::gg::{GgAgentStatus, GgCapabilitySet};
+use crate::gg::{GgAgentStatus, GgCapabilitySet, ROOT_PROFILE_ID};
 use crate::gg_session_journal::GgJournalInterner;
 use crate::gg_session_record::{
     GgClientRole, GgSessionAgentOrigin, GgSessionCommand, GgSessionImage, GgSessionInterner,
@@ -359,11 +359,19 @@ fn a_reported_ceiling_truncation_survives_assembly() {
 
 // --- the provenance lines ---------------------------------------------------
 
-/// One agent row, as the recorder writes it when the agent comes into existence.
-fn agent_line(agent_id: &str, profile: &str, origin: GgSessionAgentOrigin) -> GgJournalLine {
+/// One agent row, as the recorder writes it when the agent comes into existence: the instance's
+/// id, the [id](crate::gg::GgAgentConfig::id) of the profile it ran under, and that profile's
+/// display name.
+fn agent_line(
+    agent_id: &str,
+    profile_id: &str,
+    profile: &str,
+    origin: GgSessionAgentOrigin,
+) -> GgJournalLine {
     GgJournalLine::Agent {
         agent: Box::new(GgSessionAgent {
             agent_id: agent_id.to_string(),
+            profile_id: profile_id.to_string(),
             profile: profile.to_string(),
             origin,
             terminal_status: None,
@@ -375,11 +383,13 @@ fn agent_line(agent_id: &str, profile: &str, origin: GgSessionAgentOrigin) -> Gg
 /// The same row once the agent's loop has ended.
 fn ended_agent_line(
     agent_id: &str,
+    profile_id: &str,
     profile: &str,
     origin: GgSessionAgentOrigin,
     status: GgAgentStatus,
 ) -> GgJournalLine {
-    let GgJournalLine::Agent { mut agent } = agent_line(agent_id, profile, origin) else {
+    let GgJournalLine::Agent { mut agent } = agent_line(agent_id, profile_id, profile, origin)
+    else {
         unreachable!("agent_line writes an agent line")
     };
     agent.terminal_status = Some(status);
@@ -405,9 +415,15 @@ fn seed_line(prompt: &str) -> GgJournalLine {
 fn the_invocation_envelope_and_the_agent_table_survive_assembly() {
     let dir = tempfile::tempdir().expect("scratch");
     let mut lines = vec![header(), seed_line("Build a tiny game.")];
-    lines.push(agent_line("root", "Root", GgSessionAgentOrigin::Root));
+    lines.push(agent_line(
+        "root",
+        ROOT_PROFILE_ID,
+        "Root",
+        GgSessionAgentOrigin::Root,
+    ));
     lines.push(agent_line(
         "agent-0",
+        "worker",
         "Worker",
         GgSessionAgentOrigin::Spawn {
             parent: "root".to_string(),
@@ -456,9 +472,15 @@ fn an_agent_that_recorded_nothing_still_has_its_row() {
     let dir = tempfile::tempdir().expect("scratch");
     // The root records everything in `session()`; the subagent records not one entry.
     let mut lines = vec![header()];
-    lines.push(agent_line("root", "Root", GgSessionAgentOrigin::Root));
+    lines.push(agent_line(
+        "root",
+        ROOT_PROFILE_ID,
+        "Root",
+        GgSessionAgentOrigin::Root,
+    ));
     lines.push(agent_line(
         "agent-0",
+        "worker",
         "Worker",
         GgSessionAgentOrigin::Spawn {
             parent: "root".to_string(),
@@ -501,9 +523,10 @@ fn a_terminal_agent_row_supersedes_the_one_the_agent_was_born_with() {
     let dir = tempfile::tempdir().expect("scratch");
     let lines = vec![
         header(),
-        agent_line("root", "Root", GgSessionAgentOrigin::Root),
+        agent_line("root", ROOT_PROFILE_ID, "Root", GgSessionAgentOrigin::Root),
         agent_line(
             "agent-0",
+            "worker",
             "Worker",
             GgSessionAgentOrigin::Spawn {
                 parent: "root".to_string(),
@@ -512,6 +535,7 @@ fn a_terminal_agent_row_supersedes_the_one_the_agent_was_born_with() {
         ),
         ended_agent_line(
             "root",
+            ROOT_PROFILE_ID,
             "Root",
             GgSessionAgentOrigin::Root,
             GgAgentStatus::Done,

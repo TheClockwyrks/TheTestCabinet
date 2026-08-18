@@ -40,18 +40,35 @@ fn fixture() -> (Arc<Mutex<BoardStore>>, ToolContext, TempDir) {
     )
 }
 
-/// The profile the fixture's filing agent may assign an issue to.
+/// The **id** of the profile the fixture's filing agent may assign an issue to.
 const IMPLEMENTER: &str = "implementer";
 
-/// The profile it may name as a reviewer. Deliberately disjoint from [`IMPLEMENTER`]: the two
-/// scopes are governed independently, and a fixture that reused one name could not tell them apart.
+/// Its display name. Deliberately unlike its id, so a surface that shows one where the other belongs
+/// is visible in the assertion rather than passing on a coincidence.
+const IMPLEMENTER_NAME: &str = "The Implementer";
+
+/// The **id** of the profile it may name as a reviewer. Deliberately disjoint from
+/// [`IMPLEMENTER`]: the two scopes are governed independently, and a fixture that reused one id
+/// could not tell them apart.
 const REVIEWER: &str = "critic";
+
+/// The reviewer's display name.
+const REVIEWER_NAME: &str = "The Critic";
+
+/// One roster entry: the id a call names the profile by, and the display name a menu reads it as.
+fn entry(agent_id: &str, name: &str) -> GgRosterEntry {
+    GgRosterEntry {
+        agent_id: agent_id.to_string(),
+        name: name.to_string(),
+        description: String::new(),
+    }
+}
 
 /// The filing rules the tools are built with: one implementer, one reviewer, reviewers optional.
 fn policy() -> IssuePolicy {
     IssuePolicy {
-        implementers: vec![IMPLEMENTER.to_string()],
-        reviewers: vec![REVIEWER.to_string()],
+        implementers: vec![entry(IMPLEMENTER, IMPLEMENTER_NAME)],
+        reviewers: vec![entry(REVIEWER, REVIEWER_NAME)],
         require_reviewers: false,
     }
 }
@@ -174,8 +191,17 @@ async fn create_issue_only_assigns_to_a_spawnable_agent() {
         .await;
     assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
     assert!(outcome.output.contains("stranger"), "{}", outcome.output);
-    // The refusal names the profiles that *are* assignable, so the next call can succeed.
-    assert!(outcome.output.contains("implementer"), "{}", outcome.output);
+    // The refusal lists the **ids** that are assignable, since an id is what the retry must pass.
+    assert!(
+        outcome.output.contains("`implementer`"),
+        "{}",
+        outcome.output
+    );
+    assert!(
+        !outcome.output.contains(IMPLEMENTER_NAME),
+        "a display name is not something the model can pass: {}",
+        outcome.output
+    );
     assert_eq!(store.lock().unwrap().issue_count(), 0);
 
     // The same rule covers reviewers.
@@ -197,8 +223,53 @@ async fn create_issue_only_assigns_to_a_spawnable_agent() {
     assert!(outcome.output.contains("agent"), "{}", outcome.output);
 }
 
+/// Every model-facing surface of `create_issue` is in the **id** vocabulary: the schema enumerates
+/// ids, the description reads `` `id` (Name) `` so the model can tell two profiles apart, and the
+/// confirmation leads with the id the issue was recorded under.
+#[tokio::test]
+async fn create_issue_offers_ids_and_names_them_in_prose() {
+    let (store, ctx, _dir) = fixture();
+    let tool = CreateIssueTool::new(Arc::clone(&store), policy());
+
+    let definition = tool.definition();
+    assert_eq!(
+        definition.parameters["properties"]["agent"]["enum"],
+        json!([IMPLEMENTER])
+    );
+    assert_eq!(
+        definition.parameters["properties"]["reviewers"]["items"]["enum"],
+        json!([REVIEWER])
+    );
+    assert!(
+        definition
+            .description
+            .contains(&format!("`{IMPLEMENTER}` ({IMPLEMENTER_NAME})")),
+        "{}",
+        definition.description
+    );
+    assert!(
+        definition
+            .description
+            .contains(&format!("`{REVIEWER}` ({REVIEWER_NAME})")),
+        "{}",
+        definition.description
+    );
+
+    let outcome = tool.invoke(issue_args("a"), &ctx).await;
+    assert!(outcome.ok, "{}", outcome.output);
+    assert!(
+        outcome
+            .output
+            .contains(&format!("assigned to `{IMPLEMENTER}` ({IMPLEMENTER_NAME})")),
+        "the id leads, because that is what a later call passes: {}",
+        outcome.output
+    );
+    // What the board stores is the id, which is what dispatch resolves a profile from.
+    assert_eq!(store.lock().unwrap().issues()[0].agent(), IMPLEMENTER);
+}
+
 /// With the reviewers feature on, an issue cannot be filed without naming at least one — and the
-/// names it does give are recorded on the issue.
+/// ids it does give are recorded on the issue.
 #[tokio::test]
 async fn the_reviewers_feature_makes_reviewers_mandatory() {
     let (store, ctx, _dir) = fixture();

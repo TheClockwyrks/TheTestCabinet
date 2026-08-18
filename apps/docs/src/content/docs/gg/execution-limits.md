@@ -182,7 +182,7 @@ written.
 ### `maxCost`
 
 Compared against the run's accumulated cost, which is the USD figure the run's
-closing summary prints and the one that lands in the run record's per-slot
+closing summary prints and the one that lands in the run record's per-profile
 costs. It is checked at each agent's turn boundary, before the next model call,
 exactly as the wall-clock deadline is.
 
@@ -246,7 +246,7 @@ in the loop.
 The channel is a file. The host names a sentinel path in the
 [invocation](/gg/overview/) document (`cancelFile`) and creates that file when
 the run is killed. Signalling the process would throw away the session summary,
-the per-slot rollups and the [session record](/gg/session-record/), which are
+the per-profile rollups and the [session record](/gg/session-record/), which are
 emitted in the session's epilogue and are what the operator killed the run to
 look at.
 
@@ -339,13 +339,13 @@ alone.
 A panicking agent is the one defect that reaches the latch from outside the
 agent, since the frame that reads the latch at a turn boundary is the frame the
 panic unwinds. gg catches it one frame above the agent's loop and finishes what
-the agent owed there: the fault is raised with the panic's message and the
-agent's name, its running slot returns to the scheduler if it was holding one, a
-spawner blocked on it is woken at once, and an issue it was implementing is
-marked failed rather than left claiming work is under way. An agent that panics
-while it is itself suspended returns nothing, because a suspended agent has
-already given its slot up — returning it again would put the run over its own
-parallelism cap and hand a persistent profile to a second instance. The
+the agent owed there: the fault is raised with the panic's message, the agent's
+id and its profile, its running slot returns to the scheduler if it was holding
+one, a spawner blocked on it is woken at once, and an issue it was implementing
+is marked failed rather than left claiming work is under way. An agent that
+panics while it is itself suspended returns nothing, because a suspended agent
+has already given its slot up — returning it again would put the run over its
+own parallelism cap and hand a persistent profile to a second instance. The
 panicked instance is recorded as a failed agent that ended under
 `internal_error`, and its spawner collects no return value from it.
 
@@ -440,9 +440,9 @@ agent that had already finished.
    or deadline breach each observes the same shared figure at its own next
    boundary; under an error breach, which is that agent's own, they run to their
    natural end.
-5. The session tail runs unchanged: slot rollups, the closing log, the
-   [session record](/gg/session-record/), the session summary, the session-ended
-   event.
+5. The session tail runs unchanged: the per-profile rollups, the closing log,
+   the [session record](/gg/session-record/), the session summary, the
+   session-ended event.
 6. The process exits 0. Of the sessions that ran, only two exit non-zero: one
    whose root's credential was refused (`auth_error`) and one
    [a gg defect stopped](#ggs-own-defects) (`internal_error`, wherever in the

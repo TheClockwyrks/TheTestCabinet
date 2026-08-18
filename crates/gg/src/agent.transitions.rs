@@ -49,7 +49,7 @@ use super::*;
 use std::collections::BTreeSet;
 
 use test_cabinet_core::gg::{
-    CAPABILITY_EXEC, CAPABILITY_FORK, GgSubagentRef, GgSubagentScope, GgTelemetryKind,
+    CAPABILITY_EXEC, CAPABILITY_FORK, GgRosterEntry, GgSubagentScope, GgTelemetryKind,
 };
 
 use crate::tools::{EXEC_TOOL, FORK_TOOL};
@@ -95,9 +95,9 @@ pub(super) enum HandoffReason {
     },
     /// The agent replaced itself with another profile of its own choosing.
     Exec {
-        /// The [profile](GgAgentConfig) the predecessor was running, for the successor's note. The
-        /// predecessor's *id* is already on the successor as its `parent_id`; what the note needs
-        /// is the name of the agent whose conversation it is reading.
+        /// The [id](GgAgentConfig::id) of the profile the predecessor was running, for the
+        /// successor's note. The predecessor *instance*'s id is already on the successor as its
+        /// `parent_id`; what the note needs is the profile whose conversation it is reading.
         from: String,
     },
 }
@@ -284,7 +284,7 @@ pub(super) fn handle_transition(
     };
     let next = position.moved_to(transition);
     let target = next.state().to_string();
-    let agent = next.agent().to_string();
+    let agent = next.agent_id().to_string();
     *declared = Some(Handoff {
         profile: agent.clone(),
         plan: TransferPlan::Explicit(transition.transfer.clone()),
@@ -306,7 +306,7 @@ pub(super) fn handle_transition(
 /// Turn an [`exec`](EXEC_TOOL) call into a captured [`Handoff`], or into the model-facing refusal
 /// that says why this agent is not becoming anything.
 ///
-/// The target is validated against the agent's own [roster](GgSubagentRef) with the
+/// The target is validated against the agent's own [roster](GgRosterEntry) with the
 /// [subagent](GgSubagentScope::Subagent) scope — the very allowlist a spawn is checked against,
 /// because putting a profile to work is putting a profile to work and a fourth scope for "may be
 /// exec'd into" would be contract surface earning nothing. Naming **yourself** is legal when your
@@ -317,7 +317,7 @@ pub(super) fn handle_transition(
 /// tool in the first place: inside a process the next move is the process's decision, and an agent
 /// that could walk out of its own machine would leave a run whose record says it was still in one.
 pub(super) fn handle_exec(
-    roster: &[GgSubagentRef],
+    roster: &[GgRosterEntry],
     spawner: &Agent,
     declared_ending: &Option<Ending>,
     declared: &mut Option<Handoff>,
@@ -348,7 +348,7 @@ pub(super) fn handle_exec(
         plan: TransferPlan::Intersection,
         message: succession_message(call, "prompt"),
         reason: HandoffReason::Exec {
-            from: spawner.slot.clone(),
+            from: spawner.profile_id.clone(),
         },
         fsm: None,
     });
@@ -407,7 +407,7 @@ pub(super) fn handle_fork(
     // only ever reads `model_id()`. A substituted factory answers this with an unbound client —
     // right model id, and an error on any completion — so the fork's answer stays true and no live
     // call is possible.
-    let model_id = match profile_binding(&orch.caps, &spawner.slot)
+    let model_id = match profile_binding(&orch.caps, &spawner.profile_id)
         .map_err(|err| err.to_string())
         .and_then(|binding| {
             orch.factory
@@ -424,6 +424,8 @@ pub(super) fn handle_fork(
         }
     };
     let id = orch.next_agent_id();
+    // A fork runs its forker's own profile, so it is named the same way the forker is.
+    let label = orch.caps.agent_name(&spawner.profile_id).to_string();
     declared.push(PendingFork {
         id: id.clone(),
         prompt,
@@ -434,7 +436,7 @@ pub(super) fn handle_fork(
              of this conversation. It starts once this turn's tool results are recorded, so collect \
              it with `wait_for_subagents` (or guide it with `send_message`) on a later turn, not \
              this one.",
-            slot = spawner.slot,
+            slot = label,
         ),
         format!("forked into `{id}`"),
         )
@@ -443,7 +445,7 @@ pub(super) fn handle_fork(
     // console's existing spawn affordances light up with no new case.
     .with_data(ApiData::SubagentSpawned(SubagentHandleData {
         id,
-        slot: spawner.slot.clone(),
+        slot: label.to_string(),
         model_id,
     }))
 }
@@ -487,11 +489,13 @@ pub(super) fn dispatch_forks(
     forks: Vec<PendingFork>,
     turns_taken: usize,
 ) {
+    // A fork runs its forker's own profile, so it is named the same way the forker is.
+    let label = sub.orch.caps.agent_name(&spawner.profile_id).to_string();
     for fork in forks {
         let (modules, cloned) =
             crate::modules::fork_modules(source.context, source.history_id, source.caps, &fork.id);
         let seed = Succession {
-            note: fork_note(spawner, &fork.prompt, turns_taken),
+            note: fork_note(spawner, &label, &fork.prompt, turns_taken),
             modules,
             // A copy is the forker's whole conversation, always: that is what distinguishes it
             // from an ordinary subagent spawned on the same profile.
@@ -503,13 +507,13 @@ pub(super) fn dispatch_forks(
             // that numbering refers to.
             turn_base: turns_taken,
         };
-        let spec =
-            ChildSpec::new(spawner.slot.clone(), fork.prompt.clone()).forked(fork.id.clone(), seed);
+        let spec = ChildSpec::new(spawner.profile_id.clone(), fork.prompt.clone())
+            .forked(fork.id.clone(), seed);
         match dispatch_child(sub, spawner, spec) {
             Ok(child) => emitter.emit(GgTelemetryKind::AgentTransition {
                 kind: GgAgentTransitionKind::Fork,
                 to_agent_id: child.id,
-                agent: spawner.slot.clone(),
+                profile_id: spawner.profile_id.clone(),
                 // A fork is not a machine move, so there is no state to report.
                 state: None,
                 // Everything a fork carries, it carries: nothing is dropped, and nothing has to be
@@ -531,24 +535,23 @@ pub(super) fn dispatch_forks(
 }
 
 /// Resolve and validate the target agent of a succession call against `roster`, returning the
-/// profile name or the model-facing refusal that names the agents this one may reach.
+/// profile id or the model-facing refusal that names the agents this one may reach.
 // The `Err` is a `ToolOutcome` — the model-facing refusal — which is deliberately the same large
 // enum every tool returns; boxing it here alone would just add an unwrap at each call site.
 #[allow(clippy::result_large_err)]
 pub(super) fn resolve_roster_target(
-    roster: &[GgSubagentRef],
+    roster: &[GgRosterEntry],
     args: &Value,
 ) -> Result<String, ToolOutcome> {
     let allowed = || {
-        let names: Vec<String> = roster
+        let ids: Vec<String> = roster
             .iter()
-            .filter(|reference| reference.has_scope(GgSubagentScope::Subagent))
-            .map(|reference| format!("`{}`", reference.agent))
+            .map(|entry| format!("`{}`", entry.agent_id))
             .collect();
-        if names.is_empty() {
+        if ids.is_empty() {
             "none".to_string()
         } else {
-            names.join(", ")
+            ids.join(", ")
         }
     };
     match args
@@ -557,13 +560,7 @@ pub(super) fn resolve_roster_target(
         .map(str::trim)
         .filter(|agent| !agent.is_empty())
     {
-        Some(agent)
-            if roster
-                .iter()
-                .any(|r| r.agent == agent && r.has_scope(GgSubagentScope::Subagent)) =>
-        {
-            Ok(agent.to_string())
-        }
+        Some(agent) if GgRosterEntry::offers(roster, agent) => Ok(agent.to_string()),
         Some(agent) => Err(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
@@ -655,24 +652,27 @@ pub(super) fn drop_unrenderable_docviews(context: &mut ContextModel, docs: &Docs
 pub(super) fn succession_note(
     handoff: &Handoff,
     report: &TransferReport,
-    profile: &str,
+    profile: &GgAgentConfig,
     fsm: Option<&FsmPosition>,
 ) -> String {
+    // Every profile the note names, it names by id — that is the vocabulary the successor would
+    // use in a later `exec` — with the display name beside it so the sentence reads as prose.
+    let successor = format!("`{}` ({})", profile.id, profile.name);
     let mut note = match (&handoff.reason, fsm) {
         (HandoffReason::Fsm { from }, position) => format!(
-            "This process has moved from `{from}` to `{}`. You are now running as the `{profile}` \
+            "This process has moved from `{from}` to `{}`. You are now running as the {successor} \
              agent, continuing the same session.",
-            position.map(FsmPosition::state).unwrap_or(profile),
+            position.map(FsmPosition::state).unwrap_or(&profile.id),
         ),
         (HandoffReason::Exec { from }, Some(position)) => format!(
             "The `{from}` agent has handed this session to the `{}` process, which starts in its \
-             `{}` state. You are now running as the `{profile}` agent, continuing the same session.",
+             `{}` state. You are now running as the {successor} agent, continuing the same session.",
             position.fsm(),
             position.state(),
         ),
         (HandoffReason::Exec { from }, None) => format!(
             "The `{from}` agent has continued this session as you. You are now running as the \
-             `{profile}` agent — its conversation above is yours."
+             {successor} agent — its conversation above is yours."
         ),
     };
     let carried = describe_kinds(&report.carried());
@@ -700,14 +700,14 @@ pub(super) fn succession_note(
 ///
 /// It names the turn because that is the number every item in the inherited window is stamped with:
 /// a copy that later archives "turns 1–20" is naming the same twenty turns its forker would.
-pub(super) fn fork_note(forker: &Agent, prompt: &str, turn: usize) -> String {
+pub(super) fn fork_note(forker: &Agent, label: &str, prompt: &str, turn: usize) -> String {
     format!(
         "You were forked from agent `{id}` (the `{slot}` agent) at turn {turn}. Everything above is \
          that agent's conversation up to the moment it forked you — it is yours now, and it is \
          still running its own copy of it in parallel with you, so do not assume anything you do \
          here is visible to it. Your instructions from here:\n\n{prompt}",
         id = forker.id,
-        slot = forker.slot,
+        slot = label,
     )
 }
 
@@ -759,7 +759,7 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
         .flat_map(|(_, spec)| {
             spec.states
                 .values()
-                .map(|state| state.agent.clone())
+                .map(|state| state.agent_id.clone())
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -781,43 +781,44 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
                 .is_empty()
         {
             report.report(crate::validate::LaunchDefect::on_agent(
-                &profile.name,
+                &profile.id,
                 "subagents",
                 "",
                 format!(
-                    "the `{}` agent enables `{CAPABILITY_EXEC}` but lists no agents it may use, so \
-                     there is nothing for `{EXEC_TOOL}` to become and the call is not offered. Add \
-                     the agents it may continue as to its roster, or switch `{CAPABILITY_EXEC}` \
-                     off.",
-                    profile.name,
+                    "the `{}` ({}) agent enables `{CAPABILITY_EXEC}` but lists no agents it may \
+                     use, so there is nothing for `{EXEC_TOOL}` to become and the call is not \
+                     offered. Add the agents it may continue as to its roster, or switch \
+                     `{CAPABILITY_EXEC}` off.",
+                    profile.id, profile.name,
                 ),
             ));
         }
         if fork && !profile.is_enabled(CAPABILITY_SUBAGENTS) {
             report.report(crate::validate::LaunchDefect::on_agent(
-                &profile.name,
+                &profile.id,
                 locus(CAPABILITY_FORK),
                 "",
                 format!(
-                    "the `{}` agent enables `{CAPABILITY_FORK}` but not `{CAPABILITY_SUBAGENTS}`, \
-                     which is what offers `wait_for_subagents` and `send_message` — so a copy of it \
-                     could never be waited on or messaged, and `{FORK_TOOL}` is not offered. Enable \
-                     `{CAPABILITY_SUBAGENTS}`, or switch `{CAPABILITY_FORK}` off.",
-                    profile.name,
+                    "the `{}` ({}) agent enables `{CAPABILITY_FORK}` but not \
+                     `{CAPABILITY_SUBAGENTS}`, which is what offers `wait_for_subagents` and \
+                     `send_message` — so a copy of it could never be waited on or messaged, and \
+                     `{FORK_TOOL}` is not offered. Enable `{CAPABILITY_SUBAGENTS}`, or switch \
+                     `{CAPABILITY_FORK}` off.",
+                    profile.id, profile.name,
                 ),
             ));
         }
-        if exec && state_agents.contains(profile.name.trim()) {
+        if exec && state_agents.contains(profile.id.trim()) {
             report.report(crate::validate::LaunchDefect::on_agent(
-                &profile.name,
+                &profile.id,
                 locus(CAPABILITY_EXEC),
                 "",
                 format!(
-                    "the `{}` agent enables `{CAPABILITY_EXEC}` and is run as the state of a \
+                    "the `{}` ({}) agent enables `{CAPABILITY_EXEC}` and is run as the state of a \
                      machine, so it is not offered `{EXEC_TOOL}` — inside a machine the next move \
                      is `{TRANSITION_STATE_TOOL}`'s. Switch `{CAPABILITY_EXEC}` off on it, or run \
                      it outside the machine. `{FORK_TOOL}` is unaffected.",
-                    profile.name,
+                    profile.id, profile.name,
                 ),
             ));
         }

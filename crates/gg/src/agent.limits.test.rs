@@ -146,7 +146,7 @@ async fn a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recor
     let inv = invocation(dir.path(), set);
     let client = Arc::new(MockClient::new("mock/primary", prose_script(10)));
     let shared = Arc::clone(&client);
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
         Box::new(SharedMockClient(Arc::clone(&shared)))
     });
 
@@ -948,7 +948,7 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
     };
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -1202,7 +1202,7 @@ async fn every_recognized_shell_output_mode_launches_without_a_warning() {
 fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     // Armed at one error, so the difference between the two halves is a stopped run. The whole
     // setup — not its ceilings alone — because a turn is judged against the *run* it was taken in,
     // which is the value the loop hands the seam and the only thing that can answer for a latch.
@@ -1543,7 +1543,7 @@ async fn the_session_summary_carries_the_error_rollup_its_stream_reported() {
     let end = run_with_factory(
         &invocation(dir.path(), set),
         &emitter,
-        Arc::new(ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+        Arc::new(ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
             Box::new(MockClient::new("mock/primary", script.clone()))
         })),
     )
@@ -1661,8 +1661,8 @@ async fn an_unusable_loop_detection_knob_refuses_the_launch() {
         Box::new(sink.clone()),
     );
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    // Renamed, so the refusal has an agent name to carry that is not the default one.
-    set.agents[0].name = "builder".to_string();
+    // Given its own id, so the refusal has a profile to name that is not the default one.
+    set.agents[0].id = "builder".to_string();
     set.agents[0].loop_detection = GgLoopDetection {
         enabled: true,
         window_words: Some(0),
@@ -1757,12 +1757,13 @@ fn a_profiles_loop_detection_travels_on_its_binding() {
         ..GgLoopDetection::default()
     };
     set.agents.push(GgAgentConfig {
-        name: "quiet".to_string(),
+        id: "quiet".to_string(),
+        name: "Quiet".to_string(),
         model_id: "mock/secondary".to_string(),
         ..GgAgentConfig::root()
     });
 
-    let watched = profile_binding(&set, set.root_name()).expect("the root binds");
+    let watched = profile_binding(&set, set.root_id()).expect("the root binds");
     assert!(watched.loop_detection.is_armed());
     assert_eq!(watched.loop_detection.window_words, Some(64));
 

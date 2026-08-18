@@ -241,7 +241,7 @@ impl HookAgent {
 enum HookOwner<'a> {
     /// The run itself — [`GgCapabilitySet::hooks`].
     Session,
-    /// One agent profile, by name — [`GgAgentConfig::hooks`].
+    /// One agent profile, by [id](GgAgentConfig::id) — [`GgAgentConfig::hooks`].
     Agent(&'a str),
 }
 
@@ -253,14 +253,15 @@ impl HookOwner<'_> {
 
     /// The subdirectory of [`HOOK_SCRIPT_DIR`] this site's scripts are materialized into.
     ///
-    /// Sanitized rather than used raw because a profile name is operator-chosen text and this is a
-    /// path component; `Session` cannot collide with a profile because the slug of a profile named
-    /// "session" is `agent-session`.
+    /// Sanitized rather than used raw because a profile id is only *minted* as a slug — an
+    /// operator may write any non-empty string — and this is a path component; `Session` cannot
+    /// collide with a profile because the slug of a profile whose id is `session` is
+    /// `agent-session`.
     fn dir_slug(self) -> String {
         match self {
             Self::Session => "session".to_string(),
-            Self::Agent(name) => {
-                let slug: String = name
+            Self::Agent(id) => {
+                let slug: String = id
                     .chars()
                     .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
                     .collect();
@@ -334,7 +335,7 @@ impl HookRuntime {
         agent: &GgAgentConfig,
         workspace_dir: &Path,
     ) -> Result<Self, Vec<String>> {
-        Self::resolve(&agent.hooks, HookOwner::Agent(&agent.name), workspace_dir)
+        Self::resolve(&agent.hooks, HookOwner::Agent(&agent.id), workspace_dir)
     }
 
     /// Resolve one declaration site's hooks, or report the configuration errors that stop the run.
@@ -802,8 +803,8 @@ pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchR
     }
     check_actions(&set.hooks, report);
     for profile in &set.agents {
-        report.for_agent(&profile.name, |report| {
-            for (label, message) in problems(&profile.hooks, HookOwner::Agent(&profile.name)) {
+        report.for_agent(&profile.id, |report| {
+            for (label, message) in problems(&profile.hooks, HookOwner::Agent(&profile.id)) {
                 report.report(crate::validate::LaunchDefect::run_level(
                     hook_locus(&label),
                     "",

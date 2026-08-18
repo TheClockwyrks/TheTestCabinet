@@ -87,7 +87,7 @@ boundary, next to the run-wide deadline and cost ceilings and on the same terms
 (see [Execution limits](/gg/execution-limits/#cancellation)). The turn already
 in flight completes, so nothing is abandoned half-applied. The agent ends with
 the terminal status `canceled` and no limit breach. The session then runs its
-ordinary epilogue: the per-slot rollups, the session summary, the
+ordinary epilogue: the per-profile rollups, the session summary, the
 [session-record](/gg/session-record/) sidecar, and the session-ended event.
 
 The engine therefore gets back a normal harness outcome marked canceled,

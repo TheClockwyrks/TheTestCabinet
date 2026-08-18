@@ -15,8 +15,8 @@ use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_SHELL, COMPACTION_STRATEGY_SELF_COMPACTION, FSM_PARAM_STATES,
-    GgAgentConfig, GgCapabilityConfig, GgSubagentRef, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE,
-    SHELL_OUTPUT_OFFLOAD,
+    GgAgentConfig, GgCapabilityConfig, GgRosterEntry, GgSubagentRef, SHELL_OUTPUT_ADAPTIVE,
+    SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD,
 };
 use test_cabinet_core::gg_reference::{GgRunDataStandIn, GgToolReference, GgToolVariant};
 
@@ -407,11 +407,30 @@ impl Default for Configuration {
 /// The definitions a registry built under `configuration` offers.
 pub(crate) fn registry_definitions(configuration: &Configuration) -> Vec<ToolDefinition> {
     let position = configuration.fsm.then(placeholder_position);
+    // The placeholder roster the reference page's synthetic agent is offered: one entry, in every
+    // scope, so every call that names an agent — a delegation, an issue's implementer, its
+    // reviewers — renders with a target rather than with an empty menu.
+    //
+    // Resolved from the same `roster` axis the profile itself is built from ([`agent`]), because
+    // a roster is one of the axes the reference *varies*: a tool offered only to an agent with
+    // somebody to name has to disappear when the axis says there is nobody.
+    let spawnable = if configuration.roster {
+        vec![GgRosterEntry {
+            agent_id: PLACEHOLDER_AGENT.to_string(),
+            name: PLACEHOLDER_AGENT.to_string(),
+            description: String::new(),
+        }]
+    } else {
+        Vec::new()
+    };
     ToolRegistry::from_run(
         &agent(configuration),
         &modules(configuration),
         &AgentFacts {
             fsm: position.as_ref(),
+            spawnable: &spawnable,
+            implementers: &spawnable,
+            reviewers: &spawnable,
         },
     )
     .definitions()
@@ -553,8 +572,8 @@ fn placeholder_position() -> FsmPosition {
         name: process.to_string(),
         capabilities: vec![GgCapabilityConfig {
             params: json!({ FSM_PARAM_STATES: [
-                { "name": state, "agent": PLACEHOLDER_AGENT, "transitions": [{ "to": next }] },
-                { "name": next, "agent": PLACEHOLDER_AGENT },
+                { "name": state, "agentId": PLACEHOLDER_AGENT, "transitions": [{ "to": next }] },
+                { "name": next, "agentId": PLACEHOLDER_AGENT },
             ] }),
             ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
         }],

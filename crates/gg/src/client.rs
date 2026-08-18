@@ -65,7 +65,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{GgLoopDetection, GgPromptCacheTtl, GgSlotBinding, ROOT_AGENT};
+use test_cabinet_core::gg::{GgLoopDetection, GgPromptCacheTtl, GgSlotBinding, ROOT_PROFILE_ID};
 use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -2052,7 +2052,7 @@ impl MockClient {
                     "outOfScope": "Input handling and win detection (separate issues).",
                     "completionCriteria": "The player and goal are visible and redraw at ~60fps.",
                     "epicId": DEFAULT_MOCK_EPIC,
-                    "agent": ROOT_AGENT,
+                    "agent": ROOT_PROFILE_ID,
                 }),
             }],
             finish_reason: FinishReason::ToolCalls,
@@ -2080,7 +2080,7 @@ impl MockClient {
                     "completionCriteria": "Arrow keys move the player smoothly without leaving the canvas.",
                     "blockedBy": [DEFAULT_MOCK_ISSUE_RENDER],
                     "epicId": DEFAULT_MOCK_EPIC,
-                    "agent": ROOT_AGENT,
+                    "agent": ROOT_PROFILE_ID,
                 }),
             }],
             finish_reason: FinishReason::ToolCalls,
@@ -3038,7 +3038,7 @@ pub const MOCK_SUBAGENT_FILE: &str = "subagent-greeting.txt";
 /// returns, so a test can assert the return value reached the parent (via `AgentReturned`).
 pub const MOCK_SUBAGENT_RETURN: &str = "Subagent done: wrote the greeting file.";
 
-/// The agent-profile name the offline issue-review parent names as its issue's reviewer — the
+/// The agent-profile id the offline issue-review parent names as its issue's reviewer — the
 /// `reviewer` roster entry a run driving this mock must declare (bound to a `mock/…-review-reviewer`
 /// model).
 pub const MOCK_REVIEWER_AGENT: &str = "reviewer";
@@ -3188,7 +3188,7 @@ impl ModelClient for MockClient {
                             "outOfScope": "Anything unrelated to the feature.",
                             "completionCriteria": "The feature is implemented and the review fix marker is present.",
                             "epicId": MOCK_ISSUE_REVIEW_PREFIX,
-                            "agent": ROOT_AGENT,
+                            "agent": ROOT_PROFILE_ID,
                             "reviewers": [MOCK_REVIEWER_AGENT],
                         }),
                     ),

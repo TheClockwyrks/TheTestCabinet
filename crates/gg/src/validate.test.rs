@@ -17,7 +17,7 @@ use test_cabinet_core::gg::{
     AUTOLOAD_LOCKED_IMPL, CAPABILITY_READ_FILE, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
     GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgHook, GgHookAction, GgHookEvent,
     GgLoopDetection, GgRunLimits, GgSubagentRef, GgSubagentScope,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_AGENT, SHELL_OUTPUT_ADAPTIVE,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_PROFILE_ID, SHELL_OUTPUT_ADAPTIVE,
 };
 
 use super::*;
@@ -63,10 +63,13 @@ fn refusal_text(set: &GgCapabilitySet) -> String {
 
 /// The operator's line carries all four things they need: whose configuration it is, where in the
 /// document, what was written, and why gg cannot honour it — plus the vocabulary when there is one.
+///
+/// The attribution is the profile's **id**, which is what the operator greps the document for; a
+/// display name may sit on two profiles, so a line carrying one would not say which to fix.
 #[test]
 fn a_defect_reads_as_one_line_naming_the_agent_the_locus_and_the_value() {
     let defect = LaunchDefect::on_agent(
-        "Reviewer",
+        "reviewer-2",
         "capabilities[2].implementation",
         "self-compation",
         "the `compaction` capability names a strategy gg does not offer.",
@@ -74,7 +77,7 @@ fn a_defect_reads_as_one_line_naming_the_agent_the_locus_and_the_value() {
     .known(["self-summarization", "handoff-summarization"]);
     assert_eq!(
         defect.to_string(),
-        "agent `Reviewer`: capabilities[2].implementation = `self-compation` — the `compaction` \
+        "agent `reviewer-2`: capabilities[2].implementation = `self-compation` — the `compaction` \
          capability names a strategy gg does not offer. gg recognizes: `self-summarization`, \
          `handoff-summarization`."
     );
@@ -186,7 +189,7 @@ fn an_unknown_capability_id_is_refused() {
         .push(GgCapabilityConfig::enabled("memorys"));
     let defects = defects(&set);
     assert_eq!(defects.len(), 1, "{defects:?}");
-    assert_eq!(defects[0].agent.as_deref(), Some(ROOT_AGENT));
+    assert_eq!(defects[0].agent.as_deref(), Some(ROOT_PROFILE_ID));
     assert_eq!(defects[0].found, "memorys");
     assert!(defects[0].locus.ends_with(".id"), "{}", defects[0].locus);
     assert_eq!(defects[0].known, GG_CAPABILITY_CATALOG.to_vec());
@@ -434,6 +437,7 @@ fn a_diverging_run_level_param_is_refused() {
         },
     );
     set.agents.push(GgAgentConfig {
+        id: "worker".to_string(),
         name: "worker".to_string(),
         capabilities: vec![GgCapabilityConfig {
             params: json!({ crate::subagents::PARAM_MAX_DEPTH: 5 }),
@@ -458,6 +462,7 @@ fn a_skills_directory_may_differ_per_agent() {
         },
     );
     set.agents.push(GgAgentConfig {
+        id: "worker".to_string(),
         name: "worker".to_string(),
         capabilities: vec![GgCapabilityConfig {
             params: json!({ crate::agent::PARAM_SKILLS_DIR: "docs/skills" }),
@@ -483,6 +488,7 @@ fn a_run_level_param_repeated_unchanged_is_accepted() {
         },
     );
     set.agents.push(GgAgentConfig {
+        id: "worker".to_string(),
         name: "worker".to_string(),
         capabilities: vec![GgCapabilityConfig {
             params: json!({ crate::subagents::PARAM_MAX_DEPTH: 3.0 }),
@@ -545,6 +551,63 @@ fn an_empty_set_reports_the_cause_and_nothing_else() {
 }
 
 // ---------------------------------------------------------------------------
+// Profile ids
+// ---------------------------------------------------------------------------
+
+/// **A repeated profile id is refused.** Every reference — a roster entry, a machine's state, an
+/// issue's implementer, the merge agent — resolves through [`GgCapabilitySet::agent`], which
+/// answers with the first profile carrying the id. A second profile with that id is therefore not a
+/// cosmetic clash: it is a profile nothing in the document can address.
+#[test]
+fn a_repeated_profile_id_is_refused() {
+    let mut set = minimal();
+    set.agents.push(GgAgentConfig {
+        id: set.agents[0].id.clone(),
+        name: "Twin".to_string(),
+        model_id: set.agents[0].model_id.clone(),
+        capabilities: Vec::new(),
+        ..GgAgentConfig::root()
+    });
+    let refusal = refusal_text(&set);
+    assert!(refusal.contains("more than once"), "{refusal}");
+}
+
+/// …and an **empty** id is refused on its own terms: a profile nothing can name.
+#[test]
+fn an_empty_profile_id_is_refused() {
+    let mut set = minimal();
+    set.agents[0].id = "  ".to_string();
+    let refusal = refusal_text(&set);
+    assert!(refusal.contains("agents[0].id"), "{refusal}");
+}
+
+/// **Two profiles may share a name.** A name is display text — what a console list and a roster's
+/// prose call the profile — and nothing resolves a reference by reading one, so a set carrying two
+/// `Reviewer`s launches, and each is still addressed apart by its own id.
+#[test]
+fn two_profiles_may_share_a_name_and_are_addressed_apart_by_id() {
+    let mut set = minimal();
+    set.agents[0].name = "Reviewer".to_string();
+    set.agents[0].subagents = vec![GgSubagentRef::any("reviewer-2")];
+    set.agents.push(GgAgentConfig {
+        id: "reviewer-2".to_string(),
+        name: "Reviewer".to_string(),
+        model_id: set.agents[0].model_id.clone(),
+        capabilities: Vec::new(),
+        ..GgAgentConfig::root()
+    });
+    assert_eq!(defects(&set), Vec::new());
+    assert_eq!(
+        set.agent("reviewer-2").map(|a| a.id.as_str()),
+        Some("reviewer-2")
+    );
+    assert_eq!(
+        set.agent(ROOT_PROFILE_ID).map(|a| a.id.as_str()),
+        Some(ROOT_PROFILE_ID)
+    );
+}
+
+// ---------------------------------------------------------------------------
 // The golden case
 // ---------------------------------------------------------------------------
 
@@ -561,11 +624,12 @@ fn a_merge_agent_gg_would_read_past_is_refused() {
         crate::tools::grant_configured(
             &mut set.agents[0],
             GgCapabilityConfig {
-                params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_AGENT }),
+                params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
                 ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
             },
         );
         set.agents.push(GgAgentConfig {
+            id: "helper".to_string(),
             name: "helper".to_string(),
             model_id: set.agents[0].model_id.clone(),
             capabilities: vec![GgCapabilityConfig {
@@ -587,7 +651,7 @@ fn a_merge_agent_gg_would_read_past_is_refused() {
 #[test]
 fn one_merge_agent_named_on_every_profile_is_accepted() {
     let mut set = minimal();
-    let params = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_AGENT });
+    let params = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID });
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
@@ -597,6 +661,7 @@ fn one_merge_agent_named_on_every_profile_is_accepted() {
     );
     set.agents[0].subagents.push(GgSubagentRef::any("helper"));
     set.agents.push(GgAgentConfig {
+        id: "helper".to_string(),
         name: "helper".to_string(),
         model_id: set.agents[0].model_id.clone(),
         capabilities: vec![GgCapabilityConfig {
@@ -654,6 +719,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // of which gg can honour: an arm it does not offer, a limit that is not a count, a
             // scope that names no instance, an ownership that names neither.
             GgAgentConfig {
+                id: "resolvers".to_string(),
                 name: "resolvers".to_string(),
                 model_id: "mock/c".to_string(),
                 capabilities: vec![
@@ -683,6 +749,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // …and one whose values are each fine on their own and contradict one another: a
             // memory compaction on a profile that has no memories to write.
             GgAgentConfig {
+                id: "contradiction".to_string(),
                 name: "contradiction".to_string(),
                 model_id: "mock/d".to_string(),
                 capabilities: vec![GgCapabilityConfig {
@@ -691,8 +758,9 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 }],
                 ..GgAgentConfig::root()
             },
-            // A profile whose model was never bound, and which is declared twice.
+            // A profile whose model was never bound, and whose id is declared twice.
             GgAgentConfig {
+                id: "worker".to_string(),
                 name: "worker".to_string(),
                 model_id: String::new(),
                 model_slot: Some("critic".to_string()),
@@ -700,6 +768,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "worker".to_string(),
                 name: "worker".to_string(),
                 model_id: "mock/b".to_string(),
                 capabilities: Vec::new(),
@@ -709,13 +778,14 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // state nothing can enter, and which carries a worker's configuration a shell never
             // reads.
             GgAgentConfig {
+                id: "machine".to_string(),
                 name: "machine".to_string(),
                 model_id: "mock/g".to_string(),
                 capabilities: vec![
                     GgCapabilityConfig {
                         params: json!({ "states": [
-                            { "name": "only", "agent": "nobody" },
-                            { "name": "orphan", "agent": "worker" },
+                            { "name": "only", "agentId": "nobody" },
+                            { "name": "orphan", "agentId": "worker" },
                         ] }),
                         ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
                     },
@@ -727,6 +797,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // offered — the misconfiguration a model can never report, because it simply never makes
             // the call.
             GgAgentConfig {
+                id: "delegation".to_string(),
                 name: "delegation".to_string(),
                 model_id: "mock/h".to_string(),
                 capabilities: vec![
@@ -738,6 +809,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // A profile whose allowlists each name a call in the *other* surface's vocabulary: an
             // agent narrowed by accident, which reads exactly like one narrowed on purpose.
             GgAgentConfig {
+                id: "allowlists".to_string(),
                 name: "allowlists".to_string(),
                 model_id: "mock/i".to_string(),
                 tools: vec!["fs.read_file".to_string()],
@@ -750,6 +822,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // with no log line anywhere — and the prompt an agent reasons under *is* the
             // experiment.
             GgAgentConfig {
+                id: "prompt".to_string(),
                 name: "prompt".to_string(),
                 model_id: "mock/j".to_string(),
                 system_prompt_template: Some("Build it. {{#if skills}} unclosed".to_string()),
@@ -762,6 +835,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // bound nothing, a read mode that would have handed the agent *uncapped* reads, and a
             // built-in skill id that switches nothing off.
             GgAgentConfig {
+                id: "code".to_string(),
                 name: "code".to_string(),
                 model_id: "mock/f".to_string(),
                 capabilities: vec![
@@ -808,10 +882,10 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 }],
                 ..GgAgentConfig::root()
             },
-            // A profile whose every declared **ceiling** is one gg cannot bound anything with, plus
-            // a detector knob and an arm of the same shape.
-            // Every value the `code` profile above spelled wrong, spelled right.
+            // Every value the `code` profile above spelled wrong, spelled right — and carrying the
+            // same display name, which is no defect at all: the two are told apart by their ids.
             GgAgentConfig {
+                id: "code-2".to_string(),
                 name: "code".to_string(),
                 model_id: "mock/f".to_string(),
                 capabilities: vec![
@@ -857,6 +931,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             },
             // …and an override that parses, which is all a launch can ask of one.
             GgAgentConfig {
+                id: "prompt-2".to_string(),
                 name: "prompt".to_string(),
                 model_id: "mock/j".to_string(),
                 system_prompt_template: Some(
@@ -866,6 +941,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "ceilings".to_string(),
                 name: "ceilings".to_string(),
                 model_id: "mock/e".to_string(),
                 loop_detection: GgLoopDetection {
@@ -928,7 +1004,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
     for expected in [
         // an unresolved model slot
         "model slot",
-        // a duplicate profile name
+        // a profile id declared twice, which every reference to it would resolve ambiguously
         "more than once",
         // an unknown capability id
         "memorys",
@@ -1056,7 +1132,7 @@ fn the_corrected_configuration_launches() {
     crate::tools::grant_configured(
         &mut root,
         GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_AGENT }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
@@ -1065,6 +1141,7 @@ fn the_corrected_configuration_launches() {
         agents: vec![
             root,
             GgAgentConfig {
+                id: "worker".to_string(),
                 name: "worker".to_string(),
                 model_id: "mock/b".to_string(),
                 capabilities: Vec::new(),
@@ -1073,6 +1150,7 @@ fn the_corrected_configuration_launches() {
             // Every value the golden case above spelled wrong, spelled right — including the arm
             // that needs another capability to be honourable.
             GgAgentConfig {
+                id: "resolvers".to_string(),
                 name: "resolvers".to_string(),
                 model_id: "mock/c".to_string(),
                 capabilities: vec![
@@ -1103,12 +1181,13 @@ fn the_corrected_configuration_launches() {
             // A bare shell — no model, no other capability — driving a machine every state of which
             // is reachable from the entry.
             GgAgentConfig {
+                id: "machine".to_string(),
                 name: "machine".to_string(),
                 model_id: String::new(),
                 capabilities: vec![GgCapabilityConfig {
                     params: json!({ "states": [
-                        { "name": "only", "agent": "worker", "transitions": [{ "to": "done" }] },
-                        { "name": "done", "agent": "worker" },
+                        { "name": "only", "agentId": "worker", "transitions": [{ "to": "done" }] },
+                        { "name": "done", "agentId": "worker" },
                     ] }),
                     ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
                 }],
@@ -1117,6 +1196,7 @@ fn the_corrected_configuration_launches() {
             // Both delegation capabilities with what each of them needs to offer its call, and two
             // allowlist entries each in its own surface's vocabulary.
             GgAgentConfig {
+                id: "delegation".to_string(),
                 name: "delegation".to_string(),
                 model_id: "mock/h".to_string(),
                 subagents: vec![GgSubagentRef::new("worker", &[GgSubagentScope::Subagent])],
@@ -1130,6 +1210,7 @@ fn the_corrected_configuration_launches() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "ceilings".to_string(),
                 name: "ceilings".to_string(),
                 model_id: "mock/e".to_string(),
                 loop_detection: GgLoopDetection {

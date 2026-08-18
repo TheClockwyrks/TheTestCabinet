@@ -318,8 +318,13 @@ export function GgAgentEditor({
       {activeTab === "agent" && (
         <>
           {/* Every agent's name is editable, the root's included: the root is a flag on
-              the configuration, not a name, and renaming one here carries every reference
-              to it (rosters, the merge agent) along. */}
+              the configuration, not a name, and a name is prose — nothing resolves a
+              reference by reading one, so renaming is free and two profiles may share one.
+              The id beside it is the thing references, telemetry and the model itself
+              address this profile by, which is why it is shown rather than hidden: an
+              operator authoring a roster, or reading a run log, has to be able to tell
+              which row a call named. It is minted from the name the profile was created
+              under and never rewritten — so it is shown, and not offered for editing. */}
           <div className={gg.agentHeading}>
             <label className={`${runExec.field} ${gg.slotNameField}`}>
               <span className={runExec.fieldLabel}>
@@ -335,6 +340,13 @@ export function GgAgentEditor({
                 placeholder="e.g. reviewer"
               />
             </label>
+            <div className={`${runExec.field} ${gg.agentIdField}`}>
+              <span className={runExec.fieldLabel}>
+                Profile id
+                <HelpTip text="This profile's stable identifier: what every reference in the configuration holds, what the run's telemetry keys on, and the name the model is shown and passes back when it spawns, dispatches or transitions to this profile. Minted from the name the profile was created under, unique within the configuration, and never rewritten — renaming the profile leaves it, and every reference to it, exactly where they are." />
+              </span>
+              <code className={gg.agentIdValue}>{agent.id}</code>
+            </div>
           </div>
 
           {/* Agent type — how this agent is implemented, and so what the rest of this
@@ -700,8 +712,13 @@ export function GgAgentEditor({
               const on = Boolean(entry);
               return (
                 <div key={target.id} className={gg.subagentRow}>
+                  {/* Named and identified: the name is what this row reads as, the id is
+                      what the entry stores and what this agent's roster offers the model
+                      — and two profiles may carry one name, which would otherwise be two
+                      rows nothing could tell apart. */}
                   <span className={gg.featureName}>
                     {target.name || "unnamed"}
+                    <span className={gg.capId}> {target.id}</span>
                     {target.id === agent.id && (
                       <span className={gg.capId}> (self)</span>
                     )}

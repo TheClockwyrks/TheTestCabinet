@@ -342,7 +342,12 @@ pub struct GgSessionAgent {
     /// The id the recorded run minted for this agent (`"root"` for the root agent).
     /// Every [entry](GgSessionEntry::agent_id) is stamped with it.
     pub agent_id: String,
-    /// The name of the [agent profile](crate::gg::GgAgentConfig) it ran under.
+    /// The [id](crate::gg::GgAgentConfig::id) of the agent profile it ran under — what joins
+    /// this row to the run's capability set, and to every telemetry event the agent emitted.
+    pub profile_id: String,
+    /// The [display name](crate::gg::GgCapabilitySet::agent_name) that profile carried at launch,
+    /// so a record read on its own still says which agent this was. Display text: two profiles may
+    /// share a [name](crate::gg::GgAgentConfig::name), and nothing joins on this.
     pub profile: String,
     /// How the agent came to exist, carrying the keys that explain it. This — not
     /// [`agent_id`](Self::agent_id) — is what identifies an agent across runs, because

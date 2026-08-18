@@ -30,7 +30,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_FSM, CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentModule,
     GgAgentTransitionKind, GgCapabilityConfig, GgCapabilitySet, GgContextSource,
     GgModuleDisposition, GgModuleKind, GgModuleOrigin, GgSlotBinding, GgTelemetryEvent,
-    GgTelemetryKind, GgTransitionModule, ROOT_AGENT,
+    GgTelemetryKind, GgTransitionModule, ROOT_PROFILE_ID,
 };
 
 use super::tests::{ScriptedFactory, invocation};
@@ -39,8 +39,13 @@ use super::tests::{ScriptedFactory, invocation};
 /// [script](MockClient::with_fsm_explore_script) drives that state, and each carrying the task
 /// capability (so a transferred task list has somewhere to land, and a *non*-transferred one is
 /// visibly empty rather than merely absent).
-fn state_agent(name: &str, script: &str) -> GgAgentConfig {
+///
+/// The id and the display name deliberately differ: a state names its agent by
+/// [id](GgAgentConfig::id), and the telemetry every assertion below reads keys on the same, so a
+/// fixture whose two halves matched would hide which of them the run is actually using.
+fn state_agent(id: &str, name: &str, script: &str) -> GgAgentConfig {
     GgAgentConfig {
+        id: id.to_string(),
         name: name.to_string(),
         model_id: format!("mock/{script}"),
         capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_TASKS)],
@@ -61,9 +66,12 @@ fn machine_set(states: serde_json::Value) -> GgCapabilitySet {
         params: json!({ FSM_PARAM_STATES: states }),
         ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
     }];
-    set.agents.push(state_agent("Explorer", "fsm-explore"));
-    set.agents.push(state_agent("Builder", "fsm-build"));
-    set.agents.push(state_agent("Verifier", "fsm-verify"));
+    set.agents
+        .push(state_agent("explorer", "Explorer", "fsm-explore"));
+    set.agents
+        .push(state_agent("builder", "Builder", "fsm-build"));
+    set.agents
+        .push(state_agent("verifier", "Verifier", "fsm-verify"));
     set
 }
 
@@ -73,17 +81,17 @@ fn three_state(transfer: serde_json::Value) -> serde_json::Value {
     json!([
         {
             "name": "explore",
-            "agent": "Explorer",
+            "agentId": "explorer",
             "transitions": [
                 { "to": "build", "transfer": transfer, "description": "when the plan is ready" }
             ]
         },
         {
             "name": "build",
-            "agent": "Builder",
+            "agentId": "builder",
             "transitions": [{ "to": "verify", "transfer": ["history", "tasks"] }]
         },
-        { "name": "verify", "agent": "Verifier" }
+        { "name": "verify", "agentId": "verifier" }
     ])
 }
 
@@ -100,9 +108,9 @@ async fn run_machine(dir: &Path, set: GgCapabilitySet) -> (SessionOutcome, Vec<G
         })
     };
     let factory = ScriptedFactory::new()
-        .slot("Explorer", scripted)
-        .slot("Builder", scripted)
-        .slot("Verifier", scripted);
+        .slot("explorer", scripted)
+        .slot("builder", scripted)
+        .slot("verifier", scripted);
     let outcome = run_with_factory(&invocation(dir, set), &emitter, Arc::new(factory)).await;
     (outcome, sink.events())
 }
@@ -122,25 +130,25 @@ fn tasks_by_agent(events: &[GgTelemetryEvent]) -> HashMap<String, Vec<String>> {
     held
 }
 
-/// Every `FsmState` event in stream order, as `(agent id, state, agent profile, from)`.
+/// Every `FsmState` event in stream order, as `(agent id, state, agent profile id, from)`.
 fn fsm_states(events: &[GgTelemetryEvent]) -> Vec<(String, String, String, Option<String>)> {
     events
         .iter()
         .filter_map(|event| match &event.kind {
             GgTelemetryKind::FsmState {
-                fsm,
+                fsm_id,
                 state,
-                agent,
+                profile_id,
                 from,
             } => {
                 assert_eq!(
-                    fsm, ROOT_AGENT,
-                    "every state belongs to the shell's machine"
+                    fsm_id, ROOT_PROFILE_ID,
+                    "every state belongs to the shell's machine, named by its profile id"
                 );
                 Some((
                     event.agent_id.clone().unwrap_or_default(),
                     state.clone(),
-                    agent.clone(),
+                    profile_id.clone(),
                     from.clone(),
                 ))
             }
@@ -204,19 +212,19 @@ async fn a_machine_runs_through_every_state_as_one_agent() {
             (
                 ROOT_AGENT_ID.to_string(),
                 "explore".to_string(),
-                "Explorer".to_string(),
+                "explorer".to_string(),
                 None
             ),
             (
                 "agent-0".to_string(),
                 "build".to_string(),
-                "Builder".to_string(),
+                "builder".to_string(),
                 Some("explore".to_string())
             ),
             (
                 "agent-1".to_string(),
                 "verify".to_string(),
-                "Verifier".to_string(),
+                "verifier".to_string(),
                 Some("build".to_string())
             ),
         ],
@@ -228,10 +236,12 @@ async fn a_machine_runs_through_every_state_as_one_agent() {
     let spawned: Vec<(String, Option<String>, String, u64)> = events
         .iter()
         .filter_map(|event| match &event.kind {
-            GgTelemetryKind::AgentSpawned { slot, depth, .. } => Some((
+            GgTelemetryKind::AgentSpawned {
+                profile_id, depth, ..
+            } => Some((
                 event.agent_id.clone().unwrap_or_default(),
                 event.parent_agent_id.clone(),
-                slot.clone(),
+                profile_id.clone(),
                 *depth,
             )),
             _ => None,
@@ -240,17 +250,17 @@ async fn a_machine_runs_through_every_state_as_one_agent() {
     assert_eq!(
         spawned,
         vec![
-            (ROOT_AGENT_ID.to_string(), None, "Explorer".to_string(), 0),
+            (ROOT_AGENT_ID.to_string(), None, "explorer".to_string(), 0),
             (
                 "agent-0".to_string(),
                 Some(ROOT_AGENT_ID.to_string()),
-                "Builder".to_string(),
+                "builder".to_string(),
                 0
             ),
             (
                 "agent-1".to_string(),
                 Some("agent-0".to_string()),
-                "Verifier".to_string(),
+                "verifier".to_string(),
                 0
             ),
         ],
@@ -482,7 +492,7 @@ async fn a_structurally_broken_machine_fails_to_launch() {
     // An edge that leads nowhere.
     set.agents[0].capabilities[0].params = json!({
         FSM_PARAM_STATES: [
-            { "name": "explore", "agent": "Explorer", "transitions": [{ "to": "nowhere" }] }
+            { "name": "explore", "agentId": "explorer", "transitions": [{ "to": "nowhere" }] }
         ]
     });
     let (outcome, events) = run_machine(dir.path(), set).await;
@@ -634,7 +644,7 @@ fn a_machine_that_will_not_build_refuses_the_launch() {
         panic!("a machine that will not build has no orchestrator to return");
     };
     assert!(
-        error.contains(ROOT_AGENT) && error.contains(FSM_PARAM_STATES),
+        error.contains(ROOT_PROFILE_ID) && error.contains(FSM_PARAM_STATES),
         "the report names the shell and the param that could not be read: {error}"
     );
 }

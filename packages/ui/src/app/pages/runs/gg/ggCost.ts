@@ -9,12 +9,12 @@
 // A gg run spans several models (one per agent profile), so the pricing is per
 // (profile, model) and summed, never one blanket rate over the run's tokens. gg stamps
 // every `usage` delta with the profile and model that spent it, so that split is exact
-// and available from the run's first turn; the priced units below are those per-(slot,
-// model) tallies.
+// and available from the run's first turn; the priced units below are those
+// per-(profile, model) tallies.
 //
-// The same per-(slot, model) tallies also carry *where* the money went, which this
-// module derives as the two readings of one accounting: per slot (which role spent it)
-// and per model (which model spent it, folded across the slots bound to it). See
+// The same per-(profile, model) tallies also carry *where* the money went, which this
+// module derives as the two readings of one accounting: per profile (which role spent it)
+// and per model (which model spent it, folded across the profiles bound to it). See
 // `deriveGgSpend`.
 //
 // Reasoning tokens are billed at the output rate (the catalog carries no separate
@@ -24,8 +24,10 @@
 
 import { useMemo } from "react";
 import type { TokenMetrics } from "@test-cabinet/run-record";
+import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
 import { useFindModelOptional } from "../../../data/useModels";
 import type { ModelPrices } from "../../../data/models";
+import { agentProfileName } from "./ggCatalog";
 import { slotUsageKey, type SlotUsage } from "./useGgRunState";
 
 // A run's cost broken into the four token classes, in USD. The `total` is their
@@ -61,8 +63,8 @@ export interface PricedSlot {
   modelId: string;
 }
 
-// Price each slot's token classes against its model and sum into a four-class
-// breakdown. Returns null when nothing could be priced (no slot resolved to a
+// Price each unit's token classes against its model and sum into a four-class
+// breakdown. Returns null when nothing could be priced (nothing resolved to a
 // price, or the priced total came to zero) so a caller can fall back to showing the
 // total alone rather than an all-zero split.
 export function deriveGgCostBreakdown(
@@ -105,7 +107,7 @@ export function deriveGgCostBreakdown(
 }
 
 /**
- * The priceable units of a resolved per-`(slot, model)` rollup — every entry's tokens
+ * The priceable units of a resolved per-`(profile, model)` rollup — every entry's tokens
  * paired with the model that produced them, so each is priced at its own model's rate.
  *
  * Works at either grain: one agent's own tallies, or a whole run's.
@@ -129,25 +131,28 @@ export function useGgCostBreakdown(
   }, [findModel, slots]);
 }
 
-// --- Where the money went: per slot, and per model ---------------------------
+// --- Where the money went: per profile, and per model ------------------------
 
 /**
- * One row of a spend breakdown: what a slot — or, folded across slots, a model — spent.
+ * One row of a spend breakdown: what a profile — or, folded across profiles, a model —
+ * spent.
  *
- * A run's cost is accounted per `(slot, model)` pair, and the two questions that pair
- * answers are different ones: *which role* the money went to (is the reviewer slot
- * costing more than the builder?) and *which model* it went to (a run may bind the same
- * model to several slots, so a per-slot read alone never says what one model cost).
+ * A run's cost is accounted per `(profile, model)` pair, and the two questions that pair
+ * answers are different ones: *which role* the money went to (is the reviewer costing more
+ * than the builder?) and *which model* it went to (a run may bind the same model to
+ * several profiles, so a per-profile read alone never says what one model cost).
  */
 export interface SpendRow {
   /**
-   * A stable react key: the pair's {@link slotUsageKey} per slot, the model id per model.
-   * An opaque identity, never parsed back apart.
+   * A stable react key: the pair's {@link slotUsageKey} per profile, the model id per
+   * model. An opaque identity, never parsed back apart.
    */
   key: string;
-  /** The slot this row accounts for; null on a per-model row. */
-  slot: string | null;
-  /** The model that spent it — on a per-slot row, the model bound to that slot. */
+  /** The id of the profile this row accounts for; null on a per-model row. */
+  profileId: string | null;
+  /** That profile's display name; null on the same terms as {@link profileId}. */
+  profile: string | null;
+  /** The model that spent it — on a per-profile row, the model bound to that profile. */
   modelId: string;
   /** The catalog's display name for {@link modelId}, or the id where it is unknown. */
   modelName: string;
@@ -163,19 +168,19 @@ export interface SpendRow {
   derived: boolean;
 }
 
-/** A run's spend, split the two ways a `(slot, model)` accounting can be read. */
+/** A run's spend, split the two ways a `(profile, model)` accounting can be read. */
 export interface GgSpendBreakdown {
-  /** One row per `(slot, model)` the run touched, costliest first. */
-  perSlot: SpendRow[];
+  /** One row per `(profile, model)` the run touched, costliest first. */
+  perProfile: SpendRow[];
   /**
    * The same spend folded onto the models that did it, costliest first. Shorter than
-   * {@link perSlot} exactly when some model is bound to more than one slot — which is
-   * the case this split exists for.
+   * {@link perProfile} exactly when some model is bound to more than one profile — which
+   * is the case this split exists for.
    */
   perModel: SpendRow[];
 }
 
-// Sum a `(slot, model)` rollup's reported token classes into one figure.
+// Sum a `(profile, model)` rollup's reported token classes into one figure.
 function totalTokens(tokens: TokenMetrics): number {
   return (
     (tokens.uncachedInput ?? 0) +
@@ -196,16 +201,20 @@ function bySpendDescending(a: SpendRow, b: SpendRow): number {
 }
 
 /**
- * Split a run's per-`(slot, model)` usage into the per-slot and per-model spend
+ * Split a run's per-`(profile, model)` usage into the per-profile and per-model spend
  * breakdowns, pricing any row the run reported no cost for against the catalog so a
  * harness that reports tokens but not dollars still gets real bars.
+ *
+ * `set` is the run's frozen configuration, which is the only thing that can turn the
+ * profile id a rollup is stamped with into the name a reader knows the arm by.
  */
 export function deriveGgSpend(
   slotUsage: readonly SlotUsage[],
+  set: GgCapabilitySet | null,
   priceOf: ModelPriceLookup,
   nameOf: ModelNameLookup,
 ): GgSpendBreakdown {
-  const perSlot = slotUsage.map((usage): SpendRow => {
+  const perProfile = slotUsage.map((usage): SpendRow => {
     const reported = usage.cost?.comparable ?? null;
     const priced =
       reported == null
@@ -215,8 +224,9 @@ export function deriveGgSpend(
           )?.total ?? null)
         : null;
     return {
-      key: slotUsageKey(usage.slot, usage.modelId),
-      slot: usage.slot,
+      key: slotUsageKey(usage.profileId, usage.modelId),
+      profileId: usage.profileId,
+      profile: agentProfileName(set, usage.profileId),
       modelId: usage.modelId,
       modelName: nameOf(usage.modelId) ?? usage.modelId,
       tokens: totalTokens(usage.tokens),
@@ -228,10 +238,15 @@ export function deriveGgSpend(
   // Fold onto the models, preserving each model's first-seen order before the sort so
   // an unpriced run (every row null) still reads in a stable order.
   const perModel = new Map<string, SpendRow>();
-  for (const row of perSlot) {
+  for (const row of perProfile) {
     const at = perModel.get(row.modelId);
     if (!at) {
-      perModel.set(row.modelId, { ...row, key: row.modelId, slot: null });
+      perModel.set(row.modelId, {
+        ...row,
+        key: row.modelId,
+        profileId: null,
+        profile: null,
+      });
       continue;
     }
     at.tokens += row.tokens;
@@ -240,25 +255,29 @@ export function deriveGgSpend(
   }
 
   return {
-    perSlot: [...perSlot].sort(bySpendDescending),
+    perProfile: [...perProfile].sort(bySpendDescending),
     perModel: [...perModel.values()].sort(bySpendDescending),
   };
 }
 
 /**
- * A run's spend broken down per slot and per model, priced against the loaded model
- * catalog (which also supplies each model's display name). Empty when the run has not
- * yet attributed any usage.
+ * A run's spend broken down per profile and per model, priced against the loaded model
+ * catalog (which also supplies each model's display name) and named against the run's own
+ * configuration. Empty when the run has not yet attributed any usage.
  */
-export function useGgSpend(slotUsage: readonly SlotUsage[]): GgSpendBreakdown {
+export function useGgSpend(
+  slotUsage: readonly SlotUsage[],
+  set: GgCapabilitySet | null,
+): GgSpendBreakdown {
   const findModel = useFindModelOptional();
   return useMemo(
     () =>
       deriveGgSpend(
         slotUsage,
+        set,
         (id) => findModel?.(id)?.prices ?? null,
         (id) => findModel?.(id)?.name ?? null,
       ),
-    [findModel, slotUsage],
+    [findModel, slotUsage, set],
   );
 }

@@ -47,6 +47,7 @@ import {
   GG_TURN_ERROR_TYPE_LABELS,
 } from "@test-cabinet/run-record/gg";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
+import { agentProfileName } from "./ggCatalog";
 import { apiCallSpellings } from "./ggSurfaceCalls";
 
 // --- Public shapes -----------------------------------------------------------
@@ -154,8 +155,8 @@ export interface GgAgentSurface {
 
 // One node of the subagent tree — an agent that joined the run. Its identity
 // (`id`) and its spawner (`parentId`) come from the event envelope's
-// `agentId`/`parentAgentId`, not the payload. `slot`/`modelId`/`depth`/`brief`/
-// `worktree` are filled from the `agent_spawned` event; they are null/absent on a
+// `agentId`/`parentAgentId`, not the payload. `profileId`/`profile`/`modelId`/`depth`/
+// `brief`/`worktree` are filled from the `agent_spawned` event; they are null/absent on a
 // placeholder created from an out-of-order `agent_status`/`agent_returned`/
 // `worktree_merged` that named an agent no spawn had yet introduced. `status`
 // tracks the latest `agent_status` transition (defaulting to "running" on spawn);
@@ -167,10 +168,14 @@ export interface AgentNode {
   id: string;
   // The spawner's id, or null for the root (which has no parent).
   parentId: string | null;
-  // The model slot the agent runs on (e.g. "primary", "reviewer"); null until a
-  // spawn is seen.
-  slot: string | null;
-  // The concrete model id the slot resolved to; null until a spawn is seen.
+  // The id of the agent profile the instance runs under — what every read of this
+  // node joins on. Null until a spawn is seen.
+  profileId: string | null;
+  // That profile's display name, resolved against the run's announced configuration
+  // (the id itself where the configuration declares no such profile). Prose only:
+  // profiles may share a name, so nothing joins on this.
+  profile: string | null;
+  // The concrete model id the profile resolved to; null until a spawn is seen.
   modelId: string | null;
   // Depth in the tree (0 = root); null until a spawn is seen.
   depth: number | null;
@@ -230,15 +235,18 @@ export interface AgentTreeNode extends AgentNode {
   children: AgentTreeNode[];
 }
 
-// --- Per-slot usage (Phase 4, multi-model) -----------------------------------
+// --- Per-profile usage (Phase 4, multi-model) --------------------------------
 
-// The latest usage ROLLUP for one (slot, model) pair, from a `slot_usage` event.
-// A gg run spans several models (one per slot), so usage/cost is accounted per slot
-// rather than as one figure. These are cumulative TOTALS, not deltas — the latest
-// per (slot, model) is that pair's total, so they are never summed across emissions
-// of the same pair (only across distinct pairs, to reach the run's grand total).
+// The latest usage ROLLUP for one (profile, model) pair, from a `slot_usage` event.
+// A gg run spans several models (one per agent profile), so usage/cost is accounted
+// per profile rather than as one figure. These are cumulative TOTALS, not deltas —
+// the latest per (profile, model) is that pair's total, so they are never summed
+// across emissions of the same pair (only across distinct pairs, to reach the run's
+// grand total).
 export interface SlotUsage {
-  slot: string;
+  // The profile the spend is attributed to, by id. Resolve it against the run's set
+  // for the name to show.
+  profileId: string;
   modelId: string;
   tokens: TokenMetrics;
   cost: CostMetrics | null;
@@ -252,12 +260,16 @@ export interface SlotUsage {
 export interface FsmVisit {
   // The agent instance standing in the state — the node in the tree this step is.
   agentId: string;
-  // The machine: the FSM shell profile whose state table is being driven.
+  // The machine: the id of the FSM shell profile whose state table is being driven.
+  fsmId: string;
+  // That shell's display name, for the strip's heading.
   fsm: string;
   // The state entered.
   state: string;
-  // The agent profile that state runs.
-  agent: string;
+  // The id of the agent profile that state runs.
+  profileId: string;
+  // That profile's display name.
+  profile: string;
   // Where it came from; null for the entry state.
   from: string | null;
 }
@@ -275,8 +287,10 @@ export interface AgentTransition {
   kind: GgAgentTransitionKind;
   // The instance that took over.
   toAgentId: string;
-  // The profile the successor runs under.
-  agent: string;
+  // The id of the profile the successor runs under.
+  profileId: string;
+  // That profile's display name.
+  profile: string;
   // The state it entered, for an FSM transition; null otherwise.
   state: string | null;
   // What happened to each module the two instances between them held, in kind order:
@@ -858,7 +872,7 @@ export interface GgRunState {
   // complete from the first turn on. (A stream that carried rollups but no deltas
   // falls back to summing those.)
   usage: UsageTally;
-  // The scope's spend split per (slot, model) — the breakdown behind `usage`, and the
+  // The scope's spend split per (profile, model) — the breakdown behind `usage`, and the
   // only way a run spanning several models can be priced per token class. Summed live
   // from the per-turn `usage` deltas, each of which names the profile and model that
   // spent it, so it reads from the run's first turn rather than only once an agent has
@@ -1053,10 +1067,14 @@ function contextActionLabel(action: GgContextAction): string {
 // operation, which lives on the agent's reported surface, so they are built by
 // `foldFeedRows` in the reducer, which has that state. Neither kind reaches this
 // function.
+//
+// `profileName` renders the profile a succession names — the stream carries its id, and a
+// line an operator reads wants the name that id was given.
 function ggFeedRow(
   gg: GgTelemetryEvent,
   timestamp: string,
   key: string,
+  profileName: (id: string) => string,
 ): FeedRow | null {
   // The emitting agent rides on the event envelope, not the payload; attribute the
   // row to it so the feed can label which agent produced a line once subagents run.
@@ -1147,12 +1165,12 @@ function ggFeedRow(
           gg.kind === "fork"
             ? `Forked a copy of this agent as ${gg.toAgentId}.`
             : gg.kind === "fsm"
-              ? `Transitioned to \`${gg.state ?? "?"}\` (${gg.agent}) as ${gg.toAgentId}.`
+              ? `Transitioned to \`${gg.state ?? "?"}\` (${profileName(gg.profileId)}) as ${gg.toAgentId}.`
               : gg.state
                 ? // An `exec` whose target was a process: gg entered the machine at
                   // its entry state, so the row names the state as well as the agent.
-                  `Continued as \`${gg.agent}\` in \`${gg.state}\` (${gg.toAgentId}).`
-                : `Continued as \`${gg.agent}\` (${gg.toAgentId}).`,
+                  `Continued as \`${profileName(gg.profileId)}\` in \`${gg.state}\` (${gg.toAgentId}).`
+                : `Continued as \`${profileName(gg.profileId)}\` (${gg.toAgentId}).`,
         args: moduleFate(gg.modules),
         tone: "handoff",
       };
@@ -1161,8 +1179,8 @@ function ggFeedRow(
         ...base,
         label: "state",
         detail: gg.from
-          ? `Entered \`${gg.state}\` from \`${gg.from}\`, running ${gg.agent}.`
-          : `Entered \`${gg.state}\`, running ${gg.agent}.`,
+          ? `Entered \`${gg.state}\` from \`${gg.from}\`, running ${profileName(gg.profileId)}.`
+          : `Entered \`${gg.state}\`, running ${profileName(gg.profileId)}.`,
         tone: "handoff",
       };
     case "usage":
@@ -1181,7 +1199,7 @@ function ggFeedRow(
     case "memory_revision":
     case "tasks_state":
     case "board_state":
-    // The Phase-4 agent/usage kinds drive the agent tree and the per-slot usage
+    // The Phase-4 agent/usage kinds drive the agent tree and the per-profile usage
     // read-out — not the feed — so they render no row.
     case "agent_spawned":
     case "agent_status":
@@ -1232,11 +1250,15 @@ function ggFeedRow(
 // ones too would double every line — the feed is gg-native and prefers the typed
 // events. The only non-gg events kept are the orchestrator's own setup/teardown
 // stages, which have no gg equivalent and give useful "spinning up" context.
-function toFeedRow(event: HarnessEvent, index: number): FeedRow | null {
+function toFeedRow(
+  event: HarnessEvent,
+  index: number,
+  profileName: (id: string) => string,
+): FeedRow | null {
   const key = `${index}`;
   switch (event.type) {
     case "gg":
-      return ggFeedRow(event.event, event.timestamp, key);
+      return ggFeedRow(event.event, event.timestamp, key, profileName);
     case "system":
       return {
         key,
@@ -1549,8 +1571,8 @@ const EMPTY_USAGE: UsageTally = {
 export const ROOT_ID = "root";
 
 // Accumulate one set of null-aware token counts (and any cost) into a tally. Used
-// for both the incremental `usage` deltas and the per-(slot, model) `slot_usage`
-// rollups: summing distinct slot rollups reaches the run's grand total, and each
+// for both the incremental `usage` deltas and the per-(profile, model) `slot_usage`
+// rollups: summing distinct rollups reaches the run's grand total, and each
 // class only counts once a figure reports it. Costs stay null until one is seen.
 function addTokens(
   tally: UsageTally,
@@ -1578,16 +1600,16 @@ function addTokens(
   }
 }
 
-// The `Map` key for one (slot, model) pair. NUL separates the two parts because it is the
-// one character neither a slot name nor a model id can contain, so no two legal pairs can
-// collide on it — a separator a part could itself carry (a space, a slash) would fold two
-// distinct pairs into one key. Every fold that rolls usage up per pair shares this, so the
-// live delta rollup, the `slot_usage` rollup, and the spend split are keyed alike.
-export function slotUsageKey(slot: string, modelId: string): string {
-  return `${slot}\u0000${modelId}`;
+// The `Map` key for one (profile, model) pair. NUL separates the two parts because it is
+// the one character neither a profile id nor a model id can contain, so no two legal pairs
+// can collide on it — a separator a part could itself carry (a space, a slash) would fold
+// two distinct pairs into one key. Every fold that rolls usage up per pair shares this, so
+// the live delta rollup, the `slot_usage` rollup, and the spend split are keyed alike.
+export function slotUsageKey(profileId: string, modelId: string): string {
+  return `${profileId}\u0000${modelId}`;
 }
 
-// Accumulate one attributed `usage` delta into its (slot, model) rollup, on the same
+// Accumulate one attributed `usage` delta into its (profile, model) rollup, on the same
 // null-aware terms as `addTokens`: a class stays null until a delta reports it, and the
 // cost stays null until one carries a figure. Summing a key's deltas this way reproduces
 // the `slot_usage` rollup gg emits for that key once the agent ends — which is exactly
@@ -1659,6 +1681,11 @@ function buildAgentForest(agents: Map<string, AgentNode>): AgentTreeNode[] {
 // Fold the whole event log into the derived state in a single pass. Resilient to a
 // capability being OFF: that kind simply never arrives, so its slice stays empty
 // (skills `[]`, memory `null`, tasks `[]`, contextSeries `[]`).
+//
+// `capabilitySet` seeds the configuration the fold resolves profile ids against. gg
+// announces it on the run's opening event, so folding the whole stream needs no seed; a
+// fold over ONE agent's partition does, because that opening event landed on the root's
+// stream (see `reduceGgEventsPerAgent`).
 // The gg session-end statuses that mean an agent actually **failed** — the model was
 // reached and the turn did not work out, the credential was refused, one of the run's
 // hooks broke, or gg walked into its own defect. Every other terminal status
@@ -1675,17 +1702,25 @@ const FAILED_SESSION_STATUSES: ReadonlySet<string> = new Set([
   "internal_error",
 ]);
 
-export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
+export function reduceGgEvents(
+  events: HarnessEvent[],
+  capabilitySet: GgCapabilitySet | null = null,
+): DerivedGgState {
   const feed: FeedRow[] = [];
-  let announcedCapabilitySet: GgCapabilitySet | null = null;
+  let announcedCapabilitySet: GgCapabilitySet | null = capabilitySet;
+  // A profile id as prose, against whatever configuration is known by the time it is
+  // asked — the id itself while none is. Read at call time, so every row after gg's
+  // opening event names profiles the way the operator named them.
+  const profileName = (id: string): string =>
+    agentProfileName(announcedCapabilitySet, id);
   // The tally of the incremental `usage` deltas — the scope's running total.
   const deltaUsage: UsageTally = { ...EMPTY_USAGE };
-  // Those same deltas, split by the (slot, model) each one names — the live per-model
+  // Those same deltas, split by the (profile, model) each one names — the live per-model
   // accounting, in first-seen order. This is what makes a multi-model run priceable
   // *while it runs*: the `slot_usage` rollups below carry the same figures but are only
   // streamed once an agent has ended.
   const deltaSlotUsage = new Map<string, SlotUsage>();
-  // The latest `slot_usage` rollup per (slot, model), in first-seen order — the run-level
+  // The latest `slot_usage` rollup per (profile, model), in first-seen order — the run-level
   // totals gg streams as each agent ends.
   const slotUsageByKey = new Map<string, SlotUsage>();
   // The agent tree, seeded with the root so a single-agent run is a one-node tree.
@@ -1695,7 +1730,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       {
         id: ROOT_ID,
         parentId: null,
-        slot: null,
+        profileId: null,
+        profile: null,
         modelId: null,
         depth: 0,
         status: "running",
@@ -1798,7 +1834,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       node = {
         id,
         parentId: parentId ?? null,
-        slot: null,
+        profileId: null,
+        profile: null,
         modelId: null,
         depth: null,
         status: "running",
@@ -1921,7 +1958,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       }
     }
     // Everything else is a row of its own — or none — decided by the event alone.
-    const row = toFeedRow(event, index);
+    const row = toFeedRow(event, index, profileName);
     if (row) feed.push(row);
   };
 
@@ -2007,11 +2044,11 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         deltaUsage.count += 1;
         addTokens(deltaUsage, gg.tokens, gg.cost);
         {
-          const key = slotUsageKey(gg.slot, gg.modelId);
+          const key = slotUsageKey(gg.profileId, gg.modelId);
           let entry = deltaSlotUsage.get(key);
           if (!entry) {
             entry = {
-              slot: gg.slot,
+              profileId: gg.profileId,
               modelId: gg.modelId,
               tokens: {
                 uncachedInput: null,
@@ -2028,10 +2065,10 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         break;
       }
       case "slot_usage":
-        // A cumulative rollup, NOT a delta: the latest per (slot, model) is that
+        // A cumulative rollup, NOT a delta: the latest per (profile, model) is that
         // pair's total, so overwrite (never accumulate) the pair's entry.
-        slotUsageByKey.set(slotUsageKey(gg.slot, gg.modelId), {
-          slot: gg.slot,
+        slotUsageByKey.set(slotUsageKey(gg.profileId, gg.modelId), {
+          profileId: gg.profileId,
           modelId: gg.modelId,
           tokens: gg.tokens,
           cost: gg.cost ?? null,
@@ -2043,7 +2080,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           event.event.agentId ?? ROOT_ID,
           event.event.parentAgentId,
         );
-        node.slot = gg.slot;
+        node.profileId = gg.profileId;
+        node.profile = profileName(gg.profileId);
         node.modelId = gg.modelId;
         node.depth = gg.depth;
         if (gg.brief != null) node.brief = gg.brief;
@@ -2109,9 +2147,11 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       case "fsm_state":
         fsmPath.push({
           agentId: event.event.agentId ?? ROOT_ID,
-          fsm: gg.fsm,
+          fsmId: gg.fsmId,
+          fsm: profileName(gg.fsmId),
           state: gg.state,
-          agent: gg.agent,
+          profileId: gg.profileId,
+          profile: profileName(gg.profileId),
           from: gg.from ?? null,
         });
         break;
@@ -2121,7 +2161,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           fromAgentId: event.event.agentId ?? ROOT_ID,
           kind: gg.kind,
           toAgentId: gg.toAgentId,
-          agent: gg.agent,
+          profileId: gg.profileId,
+          profile: profileName(gg.profileId),
           state: gg.state ?? null,
           modules: gg.modules,
         });
@@ -2477,7 +2518,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // The header total. The deltas are the ground truth — every turn on every agent emits
   // one — so their tally is the total whenever any arrived. A stream that somehow
   // carried rollups but no deltas falls back to summing the rollups across their
-  // distinct (slot, model) pairs (never across re-emissions of one pair, which are
+  // distinct (profile, model) pairs (never across re-emissions of one pair, which are
   // overwrites). The two count the same tokens, so the header is never both added
   // together; `count` stays the number of delta accountings for reference.
   let usage: UsageTally;
@@ -2555,13 +2596,18 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
 // agent-attributed event has arrived.
 //
 // The one event that is *not* the emitting agent's own fact is `slot_usage`: gg streams
-// the whole run's per-slot rollups on the root's stream once every agent has joined, so
+// the whole run's per-profile rollups on the root's stream once every agent has joined, so
 // attributing them to root would credit root with every subagent's spend — its Tokens
 // and Cost widgets, and its share of the run, would read as the entire session's. They
 // are dropped here; each agent's own spend is summed from the `usage` deltas on its own
 // stream, which name the profile and model that spent them.
+//
+// `capabilitySet` is handed in for the same reason it cannot be discovered here: gg
+// announces the configuration once, on the root's stream, so a subagent's partition would
+// otherwise resolve every profile id to itself and name nothing.
 export function reduceGgEventsPerAgent(
   events: HarnessEvent[],
+  capabilitySet: GgCapabilitySet | null = null,
 ): Map<string, DerivedGgState> {
   const byAgent = new Map<string, HarnessEvent[]>();
   const bucket = (id: string): HarnessEvent[] => {
@@ -2580,7 +2626,8 @@ export function reduceGgEventsPerAgent(
     bucket(id).push(event);
   }
   const perAgent = new Map<string, DerivedGgState>();
-  for (const [id, evts] of byAgent) perAgent.set(id, reduceGgEvents(evts));
+  for (const [id, evts] of byAgent)
+    perAgent.set(id, reduceGgEvents(evts, capabilitySet));
   return perAgent;
 }
 
@@ -2627,11 +2674,17 @@ export function useGgRunState(jobId: string | undefined): GgRunState {
   }, [worker, jobId]);
 
   const derived = useMemo(() => reduceGgEvents(events), [events]);
-  const perAgent = useMemo(() => reduceGgEventsPerAgent(events), [events]);
 
   // What gg announced on the stream: it is known from the run's first event, where the
   // record's copy only lands at the end.
   const capabilitySet = derived.announcedCapabilitySet;
+
+  // Seeded with the announced set so each agent's own fold names profiles the way the
+  // whole-run fold does — the announcement itself landed on the root's partition.
+  const perAgent = useMemo(
+    () => reduceGgEventsPerAgent(events, capabilitySet),
+    [events, capabilitySet],
+  );
 
   return useMemo(
     () => ({

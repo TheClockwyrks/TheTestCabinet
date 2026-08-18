@@ -378,10 +378,12 @@ pub struct ArchiveSearchData {
 pub struct SubagentHandleData {
     /// The child's id — what a later wait or message names it by.
     pub id: String,
-    /// The model slot it was placed on.
+    /// The [id](test_cabinet_core::gg::GgAgentConfig::id) of the agent profile it
+    /// runs under — the same label the spawner named to ask for it. Display text, and the field a
+    /// program reads as `slot`: a handle names its agent for a brief to talk about, and the
+    /// profile it resolved to is the run's business rather than the program's.
     pub slot: String,
-    /// The model actually bound to that slot, which is not always the one that was asked for (a
-    /// slot request is honoured only when multi-model is enabled).
+    /// The model actually bound to that profile.
     pub model_id: String,
 }
 

@@ -283,14 +283,15 @@ export function GgConfigEditor({
     });
   }
   function addAgent() {
-    // A unique default name so the added agent is immediately valid, bound to the first
-    // declared slot (there is nothing else for it to defer to), and with its run-level
-    // agent params pointed at the root.
+    // A default label to rename, an id minted unique against the profiles it joins, bound
+    // to the first declared slot (there is nothing else for it to defer to), and with its
+    // run-level agent params pointed at the root.
     const added = blankAgentDraft(
       unusedAgentName(value.agents),
       [],
       {},
       value.modelSlots[0]?.id ?? "",
+      value.agents,
     );
     const agents = [
       ...value.agents,
@@ -653,7 +654,11 @@ export function GgConfigEditor({
                         )}
                       </span>
                       <span className={gg.capId}>
-                        {agentSummary(agent, modeLabel)}
+                        {/* The profile id leads the summary line: it is what every
+                            reference in this configuration holds and what the model is
+                            shown, and names are prose that may repeat — so it is the half
+                            of the row that tells two profiles apart. */}
+                        {agent.id} · {agentSummary(agent, modeLabel)}
                         {modelSummary ? ` · ${modelSummary}` : ""}
                         {agent.hooks.length
                           ? ` · ${agent.hooks.length} ${agent.hooks.length === 1 ? "hook" : "hooks"}`

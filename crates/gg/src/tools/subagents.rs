@@ -19,26 +19,29 @@
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgSubagentRef;
+use test_cabinet_core::gg::GgRosterEntry;
 
 use super::{Tool, ToolContext, ToolOutcome};
 use crate::model::ToolDefinition;
 
-/// Render an agent's [delegation allowlist](GgSubagentRef) as a sentence for a delegation tool's
-/// description, so the model is told — in both execution modes — exactly which names it may pass as
+/// Render an agent's [resolved roster](GgRosterEntry) as a sentence for a delegation tool's
+/// description, so the model is told — in both execution modes — exactly which ids it may pass as
 /// `agent`, and the caller-scoped guidance for each. Never empty in practice: a delegation tool is
-/// only offered to an agent whose allowlist has at least one entry.
-fn agent_menu(agents: &[GgSubagentRef]) -> String {
+/// only offered to an agent whose roster has at least one entry.
+fn agent_menu(agents: &[GgRosterEntry]) -> String {
     if agents.is_empty() {
         return "(no agents are available to you)".to_string();
     }
     agents
         .iter()
-        .map(|reference| {
-            if reference.description.trim().is_empty() {
-                format!("`{}`", reference.agent)
-            } else {
-                format!("`{}` ({})", reference.agent, reference.description.trim())
+        .map(|entry| {
+            // The id is what the model passes; the name is only here so the menu reads as prose.
+            let name = entry.name.trim();
+            match (name.is_empty(), entry.description.trim()) {
+                (true, "") => format!("`{}`", entry.agent_id),
+                (true, why) => format!("`{}` ({why})", entry.agent_id),
+                (false, "") => format!("`{}` ({name})", entry.agent_id),
+                (false, why) => format!("`{}` ({name}: {why})", entry.agent_id),
             }
         })
         .collect::<Vec<_>>()
@@ -73,16 +76,17 @@ pub(crate) fn handled_by_loop(name: &str) -> ToolOutcome {
 }
 
 /// Declares `spawn_subagent` — schedule a child agent and return immediately. Carries the spawning
-/// agent's [delegation allowlist](GgSubagentRef) so its description names the agents that may be
+/// agent's [resolved roster](GgRosterEntry) so its description names the agents that may be
 /// spawned.
 pub struct SpawnSubagentTool {
-    /// The agents this agent may spawn, listed in its `agent` argument's description.
-    agents: Vec<GgSubagentRef>,
+    /// The profiles this agent may spawn, each with the label the model names it by, listed in
+    /// its `agent` argument's description.
+    agents: Vec<GgRosterEntry>,
 }
 
 impl SpawnSubagentTool {
-    /// Declare `spawn_subagent` for an agent whose allowlist is `agents`.
-    pub fn new(agents: Vec<GgSubagentRef>) -> Self {
+    /// Declare `spawn_subagent` for an agent whose resolved roster is `agents`.
+    pub fn new(agents: Vec<GgRosterEntry>) -> Self {
         Self { agents }
     }
 }
@@ -98,7 +102,7 @@ impl Tool for SpawnSubagentTool {
             SPAWN_SUBAGENT_TOOL,
             format!(
                 "Delegate a scoped piece of work to a child agent that runs in parallel with you. \
-                 Provide an `agent` — the name of the agent to run it as, which configures the \
+                 Provide an `agent` — the id of the agent to run it as, which configures the \
                  subagent's model, tools, and instructions — and a `prompt`, a self-contained brief \
                  telling the subagent exactly what to do and what 'done' means. The agents you may \
                  spawn: {menu}. (Board issues are not dispatched this way: submitting an issue \
@@ -115,9 +119,9 @@ impl Tool for SpawnSubagentTool {
                 "properties": {
                     "agent": {
                         "type": "string",
-                        "description": "The name of the agent to run the subagent as (one of the \
-                                        agents you may spawn). This selects its model, tools, and \
-                                        instructions."
+                        "description": "The id of the agent to run the subagent as, copied exactly \
+                                        from the list of agents you may spawn. This selects its \
+                                        model, tools, and instructions."
                     },
                     "prompt": {
                         "type": "string",

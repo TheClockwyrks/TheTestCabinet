@@ -212,6 +212,7 @@ in the same way.
 
 ```jsonc
 {
+  "id": "implementer",
   "name": "Implementer",
   "modelSlot": "primary",
   "loopDetection": { "enabled": true },

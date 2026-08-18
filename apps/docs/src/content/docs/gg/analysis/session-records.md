@@ -113,8 +113,11 @@ was actually sent.
 ## Agent provenance
 
 The record carries one row per agent, in creation order, not one per turn. A row
-names the agent's id, the profile it ran under, its origin, the status its turn
-loop ended in, and which ceiling stopped it.
+names the agent's id, the [id](/gg/configurations/#identity) of the profile it
+ran under and the name that profile carried at launch, its origin, the status
+its turn loop ended in, and which ceiling stopped it. The id joins the row to
+the run's capability set and to the agent's telemetry, and the name is what lets
+a record read on its own still say which agent this was.
 
 The origin is what identifies an agent across runs, because live subagent ids
 come off a global counter in the order agents reach their spawn. Every origin is

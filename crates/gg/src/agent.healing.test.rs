@@ -375,7 +375,7 @@ async fn an_unreadable_healing_param_refuses_the_launch() {
         dir.path(),
         healing_set(json!({ "healing": { "stripFences": false, "strip-prose": 0 } })),
     );
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |b| {
         Box::new(MockClient::new(
             &b.model_id,
             vec![code_reply(FINISHING_PROGRAM)],

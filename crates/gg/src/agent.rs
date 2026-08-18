@@ -3,7 +3,7 @@
 //! An [`Agent`] is one node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
 //! it carries a stable [`id`](Agent::id), its spawner's id
 //! ([`parent_id`](Agent::parent_id)), its [`depth`](Agent::depth) in the tree, and the model
-//! [`slot`](Agent::slot) it runs on (its live lifecycle is streamed as
+//! [`profile`](Agent::profile_id) it runs on (its live lifecycle is streamed as
 //! [`AgentStatus`](test_cabinet_core::gg::GgTelemetryKind::AgentStatus) telemetry). Its
 //! [turn loop](Agent::drive) is gg's core — the one coarse-grained plug point of the design
 //! (all other modularity comes from [which tools](crate::tools) are offered). The loop drives
@@ -14,7 +14,7 @@
 //!
 //! Every run starts from the **root** agent (id [`ROOT_AGENT_ID`], depth `0`, running under the
 //! set's [root profile](test_cabinet_core::gg::GgCapabilitySet::root)), created from the
-//! invocation, and grows a tree from there: an agent spawns a child **by profile name**, and the
+//! invocation, and grows a tree from there: an agent spawns a child **by profile id**, and the
 //! child is constructed, resourced and driven exactly as the root is. What is per-run rather than
 //! per-agent lives on the [`Orchestrator`] — the [scheduler](Scheduler) that decides which agents
 //! hold a running slot, the [per-profile accounting](SlotAccounting) usage and cost fold into, and
@@ -142,8 +142,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_SUBAGENTS, GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus,
     GgAgentTransitionKind, GgCallFailure, GgCapabilitySet, GgContextAction, GgContextSource,
     GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase, GgLimitBreach,
-    GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding,
-    GgSubagentScope, GgTelemetryKind, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRosterEntry, GgRunLimits,
+    GgSlotBinding, GgSubagentScope, GgTelemetryKind, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -425,7 +425,7 @@ pub const ROOT_AGENT_ID: &str = "root";
 ///
 /// An agent carries its **identity** in the tree — a stable [`id`](Self::id), its spawner's
 /// [`parent_id`](Self::parent_id) (`None` for the root), its [`depth`](Self::depth), and the
-/// model [`slot`](Self::slot) it runs on. The identity is what agent-tagged
+/// [`profile`](Self::profile_id) it runs under. The identity is what agent-tagged
 /// [telemetry](crate::telemetry::Emitter::for_agent) streams, so the console can reconstruct
 /// who-spawned-whom and account usage per slot; its live lifecycle (running → blocked → done/
 /// failed) is streamed as [`AgentStatus`](GgTelemetryKind::AgentStatus) telemetry rather than kept
@@ -445,13 +445,13 @@ pub struct Agent {
     pub parent_id: Option<String>,
     /// The agent's depth in the tree: `0` for the root, `parent.depth + 1` for a child.
     pub depth: usize,
-    /// The [agent profile](GgAgentConfig) name this agent runs under — the key its
+    /// The [id](GgAgentConfig::id) of the agent profile this agent runs under — the key its
     /// capabilities, model binding, and system prompt resolve from. The root runs under the
-    /// set's [root profile](GgCapabilitySet::root), whatever it is named; a spawned child
-    /// under whichever profile its spawner named. Carried under the field name `slot`
-    /// because it is what the [per-profile accounting](SlotAccounting) and the
-    /// `AgentSpawned`/`SlotUsage` telemetry key on.
-    pub slot: String,
+    /// set's [root profile](GgCapabilitySet::root); a spawned child under whichever profile its
+    /// spawner named. It is also what the [per-profile accounting](SlotAccounting) and the
+    /// `AgentSpawned`/`SlotUsage` telemetry key on, so a run's spend splits by profile
+    /// identity rather than by a display name two profiles may share.
+    pub profile_id: String,
     /// Where this instance sits in a [machine](crate::fsm), when one is driving it — the machine
     /// and the state, which together decide the transition call this instance is offered and the
     /// targets that call may name.
@@ -465,21 +465,22 @@ pub struct Agent {
 
 impl Agent {
     /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, running under
-    /// `profile` — the set's [root profile](GgCapabilitySet::root), passed in rather than
-    /// assumed to be called [`ROOT_AGENT`](test_cabinet_core::gg::ROOT_AGENT) so a renamed root still resolves its own model,
-    /// capabilities, and prompt.
+    /// `profile` — the [id](test_cabinet_core::gg::GgAgentConfig::id) of the set's
+    /// [root profile](GgCapabilitySet::root), passed in rather than assumed to be
+    /// [`ROOT_PROFILE_ID`](test_cabinet_core::gg::ROOT_PROFILE_ID) so a set whose first profile is
+    /// some other one still resolves its own model, capabilities, and prompt.
     pub fn root(profile: &str) -> Self {
         Self {
             id: ROOT_AGENT_ID.to_string(),
             parent_id: None,
             depth: 0,
-            slot: profile.to_string(),
+            profile_id: profile.to_string(),
             fsm: None,
         }
     }
 
     /// This agent as it stands at the **entry state** of `machine`: the same instance, now running
-    /// the entry state's [agent profile](crate::fsm::FsmStateSpec::agent) and holding the position
+    /// the entry state's [agent profile](crate::fsm::FsmStateSpec::agent_id) and holding the position
     /// it occupies.
     ///
     /// An [FSM shell](crate::fsm::is_shell) has no turns of its own, so an agent that was going to
@@ -489,7 +490,7 @@ impl Agent {
     fn entering(self, machine: &Arc<FsmSpec>) -> Self {
         let position = machine.entry_position();
         Self {
-            slot: position.agent().to_string(),
+            profile_id: position.agent_id().to_string(),
             fsm: Some(position),
             ..self
         }
@@ -510,7 +511,7 @@ impl Agent {
             id,
             parent_id: Some(self.id.clone()),
             depth: self.depth,
-            slot: profile,
+            profile_id: profile,
             fsm,
         }
     }
@@ -523,7 +524,7 @@ impl Agent {
 /// than as one figure for one model (this is why a gg run cannot be a single point on the
 /// per-model metric graphs; see the [multi-model](https://docs.testcabinet.ai/gg/configurations/#model-slots)
 /// design). Each agent's loop reports its total tagged with the slot it ran on
-/// ([`LoopEnd::slot`]); the orchestrator [`record`](Self::record)s it here, keyed by
+/// ([`LoopEnd::profile_id`]); the orchestrator [`record`](Self::record)s it here, keyed by
 /// `(slot, model)`, and emits one [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup per key.
 #[derive(Default)]
 struct SlotAccounting {
@@ -531,32 +532,38 @@ struct SlotAccounting {
     entries: Vec<SlotAccountEntry>,
 }
 
-/// One `(slot, model)` rollup in the [`SlotAccounting`].
+/// One `(profile, model)` rollup in the [`SlotAccounting`].
 struct SlotAccountEntry {
-    /// The slot this rollup accounts for.
-    slot: String,
-    /// The model id (within the slot) this rollup accounts for.
+    /// The [profile](GgAgentConfig::id) this rollup accounts for.
+    profile_id: String,
+    /// The model id (within the profile) this rollup accounts for.
     model_id: String,
-    /// The tokens accumulated on this slot/model.
+    /// The tokens accumulated on this profile/model.
     tokens: TokenCounts,
-    /// The cost accumulated on this slot/model, when any turn reported one.
+    /// The cost accumulated on this profile/model, when any turn reported one.
     cost: Option<Cost>,
 }
 
 impl SlotAccounting {
-    /// Add one agent's usage/cost to the `(slot, model)` rollup, summing into any existing
-    /// entry (so several agents on the same slot/model accumulate) or starting a new one.
-    fn record(&mut self, slot: &str, model_id: &str, tokens: TokenCounts, cost: Option<Cost>) {
+    /// Add one agent's usage/cost to the `(profile, model)` rollup, summing into any existing
+    /// entry (so several agents on the same profile/model accumulate) or starting a new one.
+    fn record(
+        &mut self,
+        profile_id: &str,
+        model_id: &str,
+        tokens: TokenCounts,
+        cost: Option<Cost>,
+    ) {
         if let Some(entry) = self
             .entries
             .iter_mut()
-            .find(|entry| entry.slot == slot && entry.model_id == model_id)
+            .find(|entry| entry.profile_id == profile_id && entry.model_id == model_id)
         {
             entry.tokens = add_counts(entry.tokens, tokens);
             entry.cost = add_cost(entry.cost, cost);
         } else {
             self.entries.push(SlotAccountEntry {
-                slot: slot.to_string(),
+                profile_id: profile_id.to_string(),
                 model_id: model_id.to_string(),
                 tokens,
                 cost,
@@ -564,13 +571,13 @@ impl SlotAccounting {
         }
     }
 
-    /// One [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup per recorded `(slot, model)`, in
-    /// first-seen order — the per-slot cost breakdown the console renders.
+    /// One [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup per recorded `(profile, model)`, in
+    /// first-seen order — the per-profile cost breakdown the console renders.
     fn slot_usage_events(&self) -> Vec<GgTelemetryKind> {
         self.entries
             .iter()
             .map(|entry| GgTelemetryKind::SlotUsage {
-                slot: entry.slot.clone(),
+                profile_id: entry.profile_id.clone(),
                 model_id: entry.model_id.clone(),
                 tokens: entry.tokens,
                 cost: entry.cost,
@@ -579,14 +586,15 @@ impl SlotAccounting {
     }
 }
 
-/// Build the client [binding](GgSlotBinding) for the [agent profile](GgAgentConfig) named
-/// `profile` in `set`, or an error naming what is wrong. The seam every agent resolves its client
-/// through: the root resolves the [root profile](GgCapabilitySet::root); a spawned child resolves
-/// whichever profile its spawner named.
+/// Build the client [binding](GgSlotBinding) for the [agent profile](GgAgentConfig) whose
+/// [id](GgAgentConfig::id) is `profile` in `set`, or an error naming what is wrong. The seam every
+/// agent resolves its client through: the root resolves the [root profile](GgCapabilitySet::root);
+/// a spawned child resolves whichever profile its spawner named.
 ///
 /// A [`GgSlotBinding`] is still the [factory](ClientFactory)'s input DTO (it keys purely on the
-/// model id); its `slot` field carries the profile name so the resolved model is attributed to the
-/// right profile in telemetry, and its
+/// model id); its `slot` field carries the profile **id** so the resolved model is attributed to
+/// the right profile in telemetry — the display name is not unique, so keying attribution on it
+/// would fold two profiles that happen to share a name into one line of spend. Its
 /// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl) and its
 /// [loop-detection policy](GgAgentConfig::loop_detection) carry this profile's choices through to
 /// the client built for it — the second of which also decides that client's **transport**, since a
@@ -600,19 +608,19 @@ impl SlotAccounting {
 /// names the state's profile: it is the profile whose turns are about to be charged to it.
 ///
 /// The [resolution](GgCapabilitySet::dispatched_agent) is what decides *which* profile this is, and
-/// it never answers with a profile other than the one asked for — a name nothing declares comes
+/// it never answers with a profile other than the one asked for — an id nothing declares comes
 /// back as an error naming it, and is passed straight through here. There is deliberately no second
-/// lookup by name: the agent this returns a binding for is the very agent the resolution handed
-/// back, so the name in the binding and the model in it cannot describe two different profiles.
+/// lookup by id: the agent this returns a binding for is the very agent the resolution handed
+/// back, so the id in the binding and the model in it cannot describe two different profiles.
 fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding, String> {
     let agent = set
         .dispatched_agent(profile)
         .map_err(|err| format!("{err}; there is no model to run"))?;
-    let profile = agent.name.as_str();
+    let profile_id = agent.id.as_str();
     let model_id = agent.resolved_model_id().ok_or_else(|| {
-        format!("the `{profile}` agent profile has no model bound; there is no model to run")
+        format!("the `{profile_id}` agent profile has no model bound; there is no model to run")
     })?;
-    Ok(GgSlotBinding::new(profile, model_id)
+    Ok(GgSlotBinding::new(profile_id, model_id)
         .with_prompt_cache_ttl(agent.prompt_cache_ttl)
         .with_loop_detection(agent.loop_detection))
 }
@@ -715,18 +723,19 @@ fn resolve_agent_client(
         })
 }
 
-/// The [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) `set` names, from the first profile that
+/// The [profile id](GgAgentConfig::id) of the
+/// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) `set` names, from the first profile that
 /// configures one — the board is run-global, so its merge agent is too, and reading the first
-/// declaration keeps a set that names it on a non-Root profile working rather than silently
+/// declaration keeps a set that names it on a non-root profile working rather than silently
 /// ignored.
-pub(crate) fn merge_agent_name(set: &GgCapabilitySet) -> Option<String> {
+pub(crate) fn merge_agent_id(set: &GgCapabilitySet) -> Option<String> {
     set.agents
         .iter()
         .filter_map(|agent| agent.capability(CAPABILITY_PROJECT_MANAGEMENT))
         .filter_map(|cap| cap.params.get(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT))
         .filter_map(Value::as_str)
         .map(str::trim)
-        .find(|name| !name.is_empty())
+        .find(|id| !id.is_empty())
         .map(str::to_string)
 }
 
@@ -864,8 +873,9 @@ pub(crate) async fn run_with_seams(
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::HarnessError;
     }
-    // Whatever the operator called it: the root is the first profile, not a profile named `Root`.
-    let root_profile = set.root_name().to_string();
+    // Wherever the operator put it: the root is the first profile, not the profile whose id is
+    // `root`.
+    let root_profile = set.root_id().to_string();
     let binding = match profile_binding(set, &root_profile) {
         Ok(binding) => binding,
         Err(err) => {
@@ -1166,7 +1176,7 @@ pub(crate) async fn run_with_seams(
         "info",
         format!(
             "root agent `{ROOT_AGENT_ID}` (profile `{root_profile}`) {status}.",
-            root_profile = end.slot,
+            root_profile = end.profile_id,
             status = if end.status.is_failure() {
                 "failed"
             } else {
@@ -1285,7 +1295,7 @@ async fn join_spawned_agents(orch: &Orchestrator) {
                         ),
                         Err(join) => format!("its task never ran the agent to an ending: {join}"),
                     };
-                    orch.fault.in_agent(&task.id, &task.slot, detail);
+                    orch.fault.in_agent(&task.id, &task.profile_id, detail);
                 }
             }
             None => break,
@@ -1426,7 +1436,8 @@ fn record_session_agent(
     };
     recorder.record_agent(GgSessionAgent {
         agent_id: agent.id.clone(),
-        profile: agent.slot.clone(),
+        profile_id: agent.profile_id.clone(),
+        profile: orch.caps.agent_name(&agent.profile_id).to_string(),
         origin: origin.clone(),
         // The same two states the agent-tree telemetry reports, and read from the same predicate,
         // so a record and a stream cannot disagree about how an agent ended.
@@ -1534,9 +1545,9 @@ struct Orchestrator {
     /// from whatever the main tree's `HEAD` has advanced to). `None` when git could not initialize
     /// a baseline, which is also how the rest of the orchestrator tells that isolation is off.
     baseline_commit: Option<String>,
-    /// The [agent profile](GgAgentConfig) gg hands a **conflicted merge** to when an accepted
-    /// [issue](crate::board)'s branch does not apply cleanly — the
-    /// [`mergeAgent`](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) the capability requires. `None` only
+    /// The [id](GgAgentConfig::id) of the agent profile gg hands a **conflicted merge** to when an
+    /// accepted [issue](crate::board)'s branch does not apply cleanly — the
+    /// [`mergeAgentId`](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) the capability requires. `None` only
     /// when project management is off (launch validation refuses a board without one).
     merge_agent: Option<String>,
     /// The **root agent's** code setup: whether its turns are conducted as
@@ -1651,8 +1662,8 @@ struct Orchestrator {
     /// wrapped in a [`RecordingShellRunner`](crate::capture::RecordingShellRunner) rooted at that agent's own workspace — see
     /// [`shell_for`](Self::shell_for).
     shell: Arc<dyn ShellRunner>,
-    /// Each profile's own [skills](CAPABILITY_SKILLS) library, by profile name, for the profiles
-    /// that enable the capability.
+    /// Each profile's own [skills](CAPABILITY_SKILLS) library, by profile
+    /// [id](GgAgentConfig::id), for the profiles that enable the capability.
     ///
     /// A skill library belongs to an agent: a profile names the directory it loads from, and two
     /// profiles naming one directory share the `Arc` this map holds twice. A profile absent from
@@ -1720,9 +1731,10 @@ struct Orchestrator {
     /// The run's own [session hooks](crate::hooks), resolved once at launch. Fired by the root
     /// agent around the session as a whole, never by anybody else.
     session_hooks: Arc<HookRuntime>,
-    /// Each agent profile's own [hooks](crate::hooks), by profile name, resolved once at launch.
+    /// Each agent profile's own [hooks](crate::hooks), by profile
+    /// [id](test_cabinet_core::gg::GgAgentConfig::id), resolved once at launch.
     ///
-    /// Keyed by name rather than carried on the profile because an agent instance is dispatched
+    /// Keyed rather than carried on the profile because an agent instance is dispatched
     /// with its profile and needs its runtime *shared*, not cloned: a profile running a dozen times
     /// at once materializes its scripts to one directory and answers `has(event)` off one map.
     ///
@@ -1871,7 +1883,7 @@ impl Orchestrator {
                 profile,
                 &invocation.workspace_dir,
             ))?;
-            agent_hooks.insert(profile.name.clone(), runtime);
+            agent_hooks.insert(profile.id.clone(), runtime);
         }
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
@@ -1894,10 +1906,10 @@ impl Orchestrator {
                 resolved
                     .warnings
                     .iter()
-                    .map(|warning| format!("agent `{}`: {warning}", agent.name)),
+                    .map(|warning| format!("agent `{}`: {warning}", agent.id)),
             );
-            // The root is the set's **first** agent — identified by position, never by name, since
-            // an operator may rename it.
+            // The root is the set's **first** agent — identified by position, since an operator
+            // may promote a different profile to first.
             if index == 0 {
                 loop_guard = resolved.config;
             }
@@ -1927,7 +1939,7 @@ impl Orchestrator {
             baseline_commit: worktrees.baseline_commit,
             merge_agent: board_owner(set)
                 .is_some()
-                .then(|| merge_agent_name(set))
+                .then(|| merge_agent_id(set))
                 .flatten(),
             code: CodeSetup {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
@@ -1978,9 +1990,9 @@ impl Orchestrator {
         })
     }
 
-    /// The [machine](crate::fsm) the profile named `profile` declares, when it is an
-    /// [FSM shell](crate::fsm::is_shell) — what turns an agent about to run that profile into the
-    /// machine's entry state instead.
+    /// The [machine](crate::fsm) the profile with [id](GgAgentConfig::id) `profile` declares,
+    /// when it is an [FSM shell](crate::fsm::is_shell) — what turns an agent about to run that
+    /// profile into the machine's entry state instead.
     fn machine(&self, profile: &str) -> Option<&Arc<FsmSpec>> {
         self.machines.get(profile)
     }
@@ -1992,7 +2004,7 @@ impl Orchestrator {
     /// one directory and its reviewer at another, and each agent's catalogue is the one its own
     /// profile named.
     fn skills_runtime(&self, profile: &GgAgentConfig) -> SkillsRuntime {
-        match self.skills.get(profile.name.as_str()) {
+        match self.skills.get(profile.id.as_str()) {
             Some(library) => SkillsRuntime::new_in(Arc::clone(library), &self.module_ids),
             None => SkillsRuntime::disabled(),
         }
@@ -2530,7 +2542,7 @@ impl Orchestrator {
             id: agent_id,
             parent_id: None,
             depth: 0,
-            slot,
+            profile_id: slot,
             fsm: None,
         };
         let role = AgentRole::Issue {
@@ -2542,7 +2554,7 @@ impl Orchestrator {
         let orch = Arc::clone(self);
         let spawn_emitter = emitter.clone();
         // The task's own copies of the agent's identity: the `agent` value itself is moved into it.
-        let (task_id, task_slot) = (agent.id.clone(), agent.slot.clone());
+        let (task_id, task_slot) = (agent.id.clone(), agent.profile_id.clone());
         let dispatched_slot = task_slot.clone();
         let task = AgentTask::spawned(&task_id, &task_slot, async move {
             // Every issue works in its own worktree, created on its first dispatch and reused by
@@ -2830,7 +2842,7 @@ async fn wait_for_issue_by_id(
     if let Some(fault) = project.orch.fault.raised() {
         return faulted_wait_result(issue_id, fault);
     }
-    let key = project.orch.exclusive_key(&agent.slot);
+    let key = project.orch.exclusive_key(&agent.profile_id);
     match project
         .orch
         .begin_issue_wait(issue_id, key.as_deref(), &project.hold)
@@ -3005,18 +3017,18 @@ fn status_word(status: IssueStatus) -> &'static str {
 struct AgentTask {
     /// The agent this task is running.
     id: String,
-    /// The [profile](GgAgentConfig) it was dispatched under.
-    slot: String,
+    /// The [profile](GgAgentConfig::id) it was dispatched under.
+    profile_id: String,
     /// The task itself.
     handle: JoinHandle<()>,
 }
 
 impl AgentTask {
-    /// Spawn `run` as the task of the agent `id` running under `slot`.
-    fn spawned(id: &str, slot: &str, run: impl Future<Output = ()> + Send + 'static) -> Self {
+    /// Spawn `run` as the task of the agent `id` running under the profile `profile_id`.
+    fn spawned(id: &str, profile_id: &str, run: impl Future<Output = ()> + Send + 'static) -> Self {
         Self {
             id: id.to_string(),
-            slot: slot.to_string(),
+            profile_id: profile_id.to_string(),
             handle: tokio::spawn(run),
         }
     }
@@ -3203,7 +3215,7 @@ async fn run_agent(
     // tree, one scheduler slot, one return value — and it is done before the teardown below, which
     // resolves the exclusivity key: the slot is then acquired under the state agent's own
     // exclusivity rather than the shell's.
-    let agent = match orch.machine(&agent.slot) {
+    let agent = match orch.machine(&agent.profile_id) {
         Some(machine) => agent.entering(machine),
         None => agent,
     };
@@ -3383,10 +3395,10 @@ async fn drive_agent(
         // resolution below does and one step earlier: the alternative is running this agent under
         // some *other* profile's capabilities, model and execution mode while every event it emits
         // is attributed to the profile it was dispatched as.
-        let Some(profile) = orch.declared_profile(&agent.slot).cloned() else {
+        let Some(profile) = orch.declared_profile(&agent.profile_id).cloned() else {
             let detail = format!(
                 "agent profile `{}` is not declared by this run, so there is nothing to run it as",
-                agent.slot
+                agent.profile_id
             );
             emitter.emit(log(
                 "error",
@@ -3396,14 +3408,14 @@ async fn drive_agent(
                      no reference to an undeclared profile."
                 ),
             ));
-            orch.fault.in_agent(&agent.id, &agent.slot, detail);
+            orch.fault.in_agent(&agent.id, &agent.profile_id, detail);
             break (
                 LoopEnd {
                     status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
                     turns: turns_taken,
                     tokens: TokenCounts::default(),
                     cost: None,
-                    slot: agent.slot.clone(),
+                    profile_id: agent.profile_id.clone(),
                     final_text: None,
                     ending: None,
                     limit: None,
@@ -3426,13 +3438,13 @@ async fn drive_agent(
             "info",
             format!(
                 "agent profile `{}` resolved to model `{model_id}` ({}).",
-                agent.slot,
-                provider_label_for(&orch, &agent.slot),
+                agent.profile_id,
+                provider_label_for(&orch, &agent.profile_id),
             ),
         ));
 
         emitter.emit(GgTelemetryKind::AgentSpawned {
-            slot: agent.slot.clone(),
+            profile_id: agent.profile_id.clone(),
             model_id: model_id.clone(),
             depth: agent.depth as u64,
             brief: brief.clone(),
@@ -3445,9 +3457,9 @@ async fn drive_agent(
         // from, which is the other half of the outgoing instance's `AgentTransition`.
         if let Some(position) = agent.fsm.as_ref() {
             emitter.emit(GgTelemetryKind::FsmState {
-                fsm: position.fsm().to_string(),
+                fsm_id: position.fsm().to_string(),
                 state: position.state().to_string(),
-                agent: agent.slot.clone(),
+                profile_id: agent.profile_id.clone(),
                 from: succession
                     .as_ref()
                     .and_then(|succession| succession.from_state.clone()),
@@ -3520,14 +3532,14 @@ async fn drive_agent(
                              it. This agent's loop ends here, and the run with it."
                         ),
                     ));
-                    orch.fault.in_agent(&agent.id, &agent.slot, &detail);
+                    orch.fault.in_agent(&agent.id, &agent.profile_id, &detail);
                     break (
                         LoopEnd {
                             status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
                             turns: turns_taken,
                             tokens: TokenCounts::default(),
                             cost: None,
-                            slot: agent.slot.clone(),
+                            profile_id: agent.profile_id.clone(),
                             final_text: Some(detail),
                             ending: None,
                             limit: None,
@@ -3567,8 +3579,16 @@ async fn drive_agent(
         // This agent's toolset, model, and prompt all come from **its own profile**, so a run can
         // give different agents different capabilities. The stores it binds are its modules', and
         // the transition call — if it has one — comes from where it stands in its machine.
+        // The roster as the model will be shown it, resolved once against the whole set: a tool
+        // schema can only enumerate labels, and two profiles may share a name.
+        let spawnable = orch.caps.roster(&profile, GgSubagentScope::Subagent);
+        let implementers = orch.caps.roster(&profile, GgSubagentScope::Implementer);
+        let reviewers = orch.caps.roster(&profile, GgSubagentScope::Reviewer);
         let facts = AgentFacts {
             fsm: agent.fsm.as_ref(),
+            spawnable: &spawnable,
+            implementers: &implementers,
+            reviewers: &reviewers,
         };
         let registry = ToolRegistry::from_run(&profile, modules.caps(), &facts);
         // **What this agent was granted on the API surface**, resolved once here and handed to every
@@ -3757,7 +3777,7 @@ async fn drive_agent(
             let detail = format!(
                 "agent `{}` compacts with the `{}` strategy but was spawned holding its memories \
                  read-only, so it has no call that could satisfy one",
-                agent.slot,
+                agent.profile_id,
                 test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY,
             );
             emitter.emit(log(
@@ -3770,14 +3790,14 @@ async fn drive_agent(
                     compaction.strategy.id(),
                 ),
             ));
-            orch.fault.in_agent(&agent.id, &agent.slot, &detail);
+            orch.fault.in_agent(&agent.id, &agent.profile_id, &detail);
             break (
                 LoopEnd {
                     status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
                     turns: turns_taken,
                     tokens: TokenCounts::default(),
                     cost: None,
-                    slot: agent.slot.clone(),
+                    profile_id: agent.profile_id.clone(),
                     final_text: Some(detail),
                     ending: None,
                     limit: None,
@@ -3847,14 +3867,14 @@ async fn drive_agent(
                              handoff one. This agent's loop ends here, and the run with it."
                         ),
                     ));
-                    orch.fault.in_agent(&agent.id, &agent.slot, &detail);
+                    orch.fault.in_agent(&agent.id, &agent.profile_id, &detail);
                     break (
                         LoopEnd {
                             status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
                             turns: turns_taken,
                             tokens: TokenCounts::default(),
                             cost: None,
-                            slot: agent.slot.clone(),
+                            profile_id: agent.profile_id.clone(),
                             final_text: Some(detail),
                             ending: None,
                             limit: None,
@@ -4013,7 +4033,7 @@ async fn drive_agent(
                         // another profile's.
                         runtime: orch
                             .agent_hooks
-                            .get(&profile.name)
+                            .get(&profile.id)
                             .map(Arc::clone)
                             .unwrap_or_default(),
                         session: Arc::clone(&orch.session_hooks),
@@ -4026,6 +4046,7 @@ async fn drive_agent(
                 },
                 &orch.provided_files,
                 &profile,
+                &orch.caps,
                 &mut subagent_context,
                 project,
             )
@@ -4037,7 +4058,7 @@ async fn drive_agent(
         orch.accounting
             .lock()
             .expect("slot accounting lock")
-            .record(&end.slot, &model_id, end.tokens, end.cost);
+            .record(&end.profile_id, &model_id, end.tokens, end.cost);
         turns_taken = end.turns;
 
         let Some(handoff) = end.handoff else {
@@ -4060,10 +4081,10 @@ async fn drive_agent(
         // position, exactly as an agent dispatched onto a shell does. This is the one place the
         // profile a handoff named and the profile its successor actually runs can differ, so every
         // line below reads the resolved pair rather than the handoff.
-        let (successor_slot, successor_fsm) = match orch.machine(&handoff.profile) {
+        let (successor_profile_id, successor_fsm) = match orch.machine(&handoff.profile) {
             Some(machine) => {
                 let position = machine.entry_position();
-                (position.agent().to_string(), Some(position))
+                (position.agent_id().to_string(), Some(position))
             }
             None => (handoff.profile.clone(), handoff.fsm.clone()),
         };
@@ -4074,9 +4095,9 @@ async fn drive_agent(
         // an unresolvable model does (and the run with it, [`STATUS_INTERNAL_ERROR`]), rather than
         // succeeding into whichever profile happens to be the root and recording its turns under
         // the name the handoff asked for.
-        let Some(successor_profile) = orch.declared_profile(&successor_slot).cloned() else {
+        let Some(successor_profile) = orch.declared_profile(&successor_profile_id).cloned() else {
             let detail = format!(
-                "the `{successor_slot}` agent is not declared by this run, so there is nothing to \
+                "the `{successor_profile_id}` agent is not declared by this run, so there is nothing to \
                  succeed into"
             );
             emitter.emit(log(
@@ -4087,7 +4108,7 @@ async fn drive_agent(
                      accepts no reference to an undeclared profile."
                 ),
             ));
-            orch.fault.in_agent(&agent.id, &agent.slot, detail);
+            orch.fault.in_agent(&agent.id, &agent.profile_id, detail);
             break (
                 LoopEnd {
                     status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
@@ -4111,14 +4132,17 @@ async fn drive_agent(
         // The successor's window limit and execution mode, which its modules are re-resolved
         // against: an agent moving from a million-token window onto a 32k one is over its window the
         // instant it arrives, and its first turn's compaction check is what has to see that.
-        let successor_client = match resolve_agent_client(&orch, &successor_slot, &successor_origin)
-        {
+        let successor_client = match resolve_agent_client(
+            &orch,
+            &successor_profile_id,
+            &successor_origin,
+        ) {
             Ok(client) => client,
             Err(unresolved) => {
                 emitter.emit(log(
                     "error",
                     format!(
-                        "the `{successor_slot}` agent could not be resolved to a model ({}); {}.",
+                        "the `{successor_profile_id}` agent could not be resolved to a model ({}); {}.",
                         unresolved.detail,
                         unresolved.consequence()
                     ),
@@ -4130,10 +4154,10 @@ async fn drive_agent(
                 // detail, and is the more useful half of the sentence anyway.
                 if unresolved.status == STATUS_INTERNAL_ERROR {
                     let detail = format!(
-                        "the `{successor_slot}` agent could not be resolved to a model ({})",
+                        "the `{successor_profile_id}` agent could not be resolved to a model ({})",
                         unresolved.detail
                     );
-                    orch.fault.in_agent(&agent.id, &agent.slot, detail);
+                    orch.fault.in_agent(&agent.id, &agent.profile_id, detail);
                 }
                 break (
                     LoopEnd {
@@ -4188,7 +4212,7 @@ async fn drive_agent(
                     ),
                 ));
             }
-            orch.fault.in_agent(&agent.id, &agent.slot, detail);
+            orch.fault.in_agent(&agent.id, &agent.profile_id, detail);
             break (
                 LoopEnd {
                     status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
@@ -4201,7 +4225,7 @@ async fn drive_agent(
         emitter.emit(GgTelemetryKind::AgentTransition {
             kind: handoff.reason.kind(),
             to_agent_id: successor_id.clone(),
-            agent: successor_slot.clone(),
+            profile_id: successor_profile_id.clone(),
             state: successor_fsm
                 .as_ref()
                 .map(|position| position.state().to_string()),
@@ -4211,7 +4235,7 @@ async fn drive_agent(
         // The exclusivity key follows the profile, so a succession into a persistent profile
         // contends for it exactly as a fresh instance would — without giving up the running slot it
         // already holds, unless the key is held by somebody else.
-        let successor_exclusive = orch.exclusive_key(&successor_slot);
+        let successor_exclusive = orch.exclusive_key(&successor_profile_id);
         orch.scheduler
             .rekey(
                 teardown.exclusive(),
@@ -4224,7 +4248,7 @@ async fn drive_agent(
             note: succession_note(
                 &handoff,
                 &report,
-                &successor_profile.name,
+                &successor_profile,
                 successor_fsm.as_ref(),
             ),
             modules: successor_modules,
@@ -4233,7 +4257,7 @@ async fn drive_agent(
             turn_base: turns_taken,
         });
         next_client = successor_client;
-        let successor = agent.succeeding(successor_id, successor_slot, successor_fsm);
+        let successor = agent.succeeding(successor_id, successor_profile_id, successor_fsm);
         origin = successor_origin;
         record_session_agent(&orch, &successor, &origin, None);
         agent = successor;
@@ -4350,8 +4374,8 @@ fn program_languages(agents: &[GgAgentConfig]) -> BTreeSet<GgProgramLanguage> {
 fn hook_sites(orch: &Orchestrator) -> Vec<(String, Arc<HookRuntime>)> {
     let mut sites = vec![("on the run".to_string(), Arc::clone(&orch.session_hooks))];
     sites.extend(orch.caps.agents.iter().filter_map(|profile| {
-        let runtime = orch.agent_hooks.get(&profile.name)?;
-        Some((format!("on agent `{}`", profile.name), Arc::clone(runtime)))
+        let runtime = orch.agent_hooks.get(&profile.id)?;
+        Some((format!("on agent `{}`", profile.id), Arc::clone(runtime)))
     }));
     sites
 }
@@ -4591,7 +4615,7 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
                      parallel — call `wait_for_subagents` to collect its result, or `send_message` \
                      to guide it while it works.",
                     id = child.id,
-                    slot = child.slot,
+                    slot = child.profile_id,
                     model = child.model_id,
                 ),
                 format!("spawned subagent `{}`", child.id),
@@ -4602,7 +4626,7 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
             // program would be told the call succeeded and handed nothing to name the child by.
             .with_data(ApiData::SubagentSpawned(SubagentHandleData {
                 id: child.id,
-                slot: child.slot,
+                slot: child.profile_id.clone(),
                 model_id: child.model_id,
             }))
         }
@@ -4615,9 +4639,9 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
 struct DispatchedChild {
     /// The child's minted id (also the `wait`/`collect` handle in the spawner's children).
     id: String,
-    /// The [agent profile](ChildSpec::profile) the child runs under — the name its spawner asked
-    /// for, echoed back so the tool result and the `spawnSubagent` sidecar agree with the tree.
-    slot: String,
+    /// The [profile](ChildSpec::profile) the child runs under, by id — echoed back so the tool
+    /// result and the `spawnSubagent` sidecar agree with the tree.
+    profile_id: String,
     /// The concrete model the profile's [binding](profile_binding) resolved to.
     model_id: String,
 }
@@ -4701,25 +4725,27 @@ fn resolve_delegation_target(
     spawner: &Agent,
     args: &Value,
 ) -> Result<String, ToolOutcome> {
-    let Some(spawner_profile) = orch.declared_profile(&spawner.slot) else {
+    let Some(spawner_profile) = orch.declared_profile(&spawner.profile_id) else {
         return Err(ToolOutcome::failed(
             ToolFailure::Refused,
             format!(
                 "agent profile `{}` is not declared by this run, so there is no roster to spawn \
                  from. This is a gg defect: launch validation accepts no reference to an \
                  undeclared profile.",
-                spawner.slot
+                spawner.profile_id
             ),
         ));
     };
+    // The roster as the model was shown it: labels, resolved once from the whole set so that two
+    // profiles sharing a name are still two things the model can name apart.
+    let roster = orch.caps.roster(spawner_profile, GgSubagentScope::Subagent);
     let allowed = || {
-        if spawner_profile.subagents.is_empty() {
+        if roster.is_empty() {
             "none".to_string()
         } else {
-            spawner_profile
-                .subagents
+            roster
                 .iter()
-                .map(|reference| format!("`{}`", reference.agent))
+                .map(|entry| format!("`{}`", entry.agent_id))
                 .collect::<Vec<_>>()
                 .join(", ")
         }
@@ -4730,7 +4756,7 @@ fn resolve_delegation_target(
         .map(str::trim)
         .filter(|agent| !agent.is_empty())
     {
-        Some(agent) if spawner_profile.can_spawn(agent) => Ok(agent.to_string()),
+        Some(agent) if GgRosterEntry::offers(&roster, agent) => Ok(agent.to_string()),
         Some(agent) => Err(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
@@ -4773,7 +4799,7 @@ fn dispatch_child(
 ) -> Result<DispatchedChild, DispatchError> {
     let orch = &sub.orch;
     let ChildSpec {
-        profile: slot,
+        profile: profile_id,
         brief,
         issue_id,
         worktree,
@@ -4802,13 +4828,13 @@ fn dispatch_child(
     // model can correct: it is gg having read one configuration two different ways, which ends the
     // run for the reason [`resolve_agent_client`] ends it one seam over. Telling the model its
     // argument was wrong would file gg's defect as the model's and let the run be scored.
-    let binding = profile_binding(&orch.caps, &slot).map_err(|err| {
+    let binding = profile_binding(&orch.caps, &profile_id).map_err(|err| {
         orch.fault.in_agent(
             &spawner.id,
-            &spawner.slot,
-            format!("cannot spawn agent `{slot}`: {err}"),
+            &spawner.profile_id,
+            format!("cannot spawn agent `{profile_id}`: {err}"),
         );
-        DispatchError::new(ToolFailure::Refused, ggs_spawn_defect(&slot, &err))
+        DispatchError::new(ToolFailure::Refused, ggs_spawn_defect(&profile_id, &err))
     })?;
     // Keyed on the spawner and the spawn's position in the spawner's own strictly-ordered turn
     // loop, counted across **all** spawn kinds rather than per profile: a fork runs the forker's
@@ -4837,20 +4863,20 @@ fn dispatch_child(
                 return DispatchError::new(
                     ToolFailure::IoError,
                     format!(
-                        "cannot spawn agent `{slot}` (model `{}`): {err}",
+                        "cannot spawn agent `{profile_id}` (model `{}`): {err}",
                         binding.model_id
                     ),
                 );
             }
             orch.fault.in_agent(
                 &spawner.id,
-                &spawner.slot,
+                &spawner.profile_id,
                 format!(
-                    "cannot spawn agent `{slot}` (model `{}`): {err}",
+                    "cannot spawn agent `{profile_id}` (model `{}`): {err}",
                     binding.model_id
                 ),
             );
-            DispatchError::new(ToolFailure::Refused, ggs_spawn_defect(&slot, &err))
+            DispatchError::new(ToolFailure::Refused, ggs_spawn_defect(&profile_id, &err))
         })?;
     let model_id = client.model_id().to_string();
 
@@ -4867,7 +4893,7 @@ fn dispatch_child(
         id: child_id.clone(),
         parent_id: Some(spawner.id.clone()),
         depth: spawner.depth + 1,
-        slot: slot.clone(),
+        profile_id: profile_id.clone(),
         // A child is not standing in its spawner's machine: it was given a job by the agent in that
         // state, not the state itself. That holds for a fork too — a copy of a state's agent is a
         // second worker, not a second driver of the process. Its own profile may of course be an
@@ -4902,7 +4928,7 @@ fn dispatch_child(
         "a spawn's peeked ordinal and the one it took must agree"
     );
     let orch_for_task = Arc::clone(orch);
-    let task = AgentTask::spawned(&child_id, &slot, async move {
+    let task = AgentTask::spawned(&child_id, &profile_id, async move {
         run_agent(orch_for_task, child, role, client, inbox_rx, origin).await;
     });
     orch.tasks.lock().expect("subagent tasks lock").push(task);
@@ -4916,7 +4942,7 @@ fn dispatch_child(
 
     Ok(DispatchedChild {
         id: child_id,
-        slot,
+        profile_id,
         model_id,
     })
 }
@@ -5461,7 +5487,8 @@ async fn run_issue_review(
             .unwrap_or_else(|| orch.next_agent_id());
         let reviewer = GgReviewer {
             agent_id: agent_id.clone(),
-            profile: profile.clone(),
+            profile_id: profile.clone(),
+            profile: orch.caps.agent_name(&profile).to_string(),
         };
         let review_brief = build_review_brief(
             &brief,
@@ -5687,7 +5714,10 @@ async fn resolve_merge_conflict(
     let brief = build_merge_brief(&worktree.branch, reason);
     emitter.emit(log(
         "info",
-        format!("dispatching the merge agent `{merge_agent}` to resolve issue `{issue_id}`."),
+        format!(
+            "dispatching the merge agent `{merge_agent}` ({}) to resolve issue `{issue_id}`.",
+            orch.caps.agent_name(&merge_agent)
+        ),
     ));
     // The merge agent works in the main tree — that is where the conflicted merge lives — so it is
     // dispatched with no worktree of its own.
@@ -5866,7 +5896,7 @@ fn run_detached_agent<'a>(
             id: agent_id,
             parent_id: None,
             depth: 0,
-            slot: profile.to_string(),
+            profile_id: profile.to_string(),
             fsm: None,
         };
         let role = AgentRole::Sub {
@@ -5891,7 +5921,7 @@ fn run_detached_agent<'a>(
         };
         let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
         let orch_for_task = Arc::clone(orch);
-        let (task_id, task_slot) = (agent.id.clone(), agent.slot.clone());
+        let (task_id, task_slot) = (agent.id.clone(), agent.profile_id.clone());
         let task = AgentTask::spawned(&task_id, &task_slot, async move {
             run_agent(orch_for_task, agent, role, client, inbox_rx, origin).await;
         });
@@ -6113,9 +6143,9 @@ struct LoopEnd {
     tokens: TokenCounts,
     /// Running total of cost across the session, when any turn reported one.
     cost: Option<Cost>,
-    /// The [slot](GgSlotBinding) the agent ran on, so the orchestrator can attribute this
-    /// usage/cost to the right slot in the [per-slot accounting](SlotAccounting).
-    slot: String,
+    /// The [profile](GgAgentConfig::id) the agent ran under, so the orchestrator can attribute
+    /// this usage/cost to the right profile in the [per-profile accounting](SlotAccounting).
+    profile_id: String,
     /// The agent's **final word** — its [return value](AgentReturn) to its spawner and the run's
     /// last text.
     ///
@@ -6177,7 +6207,7 @@ impl LoopEnd {
 
 impl Agent {
     /// Drive this agent's turn loop to completion, returning how it ended and the usage it
-    /// accrued (tagged with the agent's [`slot`](Self::slot) for the
+    /// accrued (tagged with the agent's [`profile`](Self::profile_id) for the
     /// [per-slot accounting](SlotAccounting)).
     ///
     /// Each turn the offered [`registry`](ToolRegistry) definitions are handed to the
@@ -6219,6 +6249,7 @@ impl Agent {
         setup: DriveSetup,
         provided_files: &[PathBuf],
         profile: &GgAgentConfig,
+        set: &GgCapabilitySet,
         subagents: &mut Option<SubagentContext>,
         project: Option<ProjectContext>,
     ) -> LoopEnd {
@@ -6285,11 +6316,17 @@ impl Agent {
         // There is no unresolvable half to worry about here: an allowlist entry gg cannot read
         // refused this launch before the first turn (see `check_allowlists`).
         let granted_capabilities = enabled_capabilities(profile);
+        let spawnable = set.roster(profile, GgSubagentScope::Subagent);
+        let implementers = set.roster(profile, GgSubagentScope::Implementer);
+        let reviewers = set.roster(profile, GgSubagentScope::Reviewer);
         let (granted_operations, _) = crate::sandbox::granted_operations(
             profile,
             caps,
             &AgentFacts {
                 fsm: self.fsm.as_ref(),
+                spawnable: &spawnable,
+                implementers: &implementers,
+                reviewers: &reviewers,
             },
         );
         // The code this agent has loaded by using a code skill or memory, and the on-use scripts a
@@ -6312,8 +6349,12 @@ impl Agent {
         // reviewers are demanded. The native `create_issue` tool carries these already (the registry
         // built it from the same profile); a code turn rebuilds the tool per call, so it needs them
         // too.
-        let issue_policy =
-            IssuePolicy::resolve(profile, &mut crate::validate::LaunchReport::Discarding);
+        let issue_policy = IssuePolicy::resolve(
+            profile,
+            implementers,
+            reviewers,
+            &mut crate::validate::LaunchReport::Discarding,
+        );
         // Whether the pinned board block belongs in *this* agent's window: the run has a board and
         // this agent's own profile carries the capability to author it. The same conjunction gates
         // the prompt's board section (see `system_prompt`), so what an agent is told about the board
@@ -6337,6 +6378,7 @@ impl Agent {
         }
         let system = system_prompt(PromptInputs {
             registry,
+            set,
             skills: caps.skills(),
             memories: caps.memories(),
             tasks: caps.tasks(),
@@ -7037,7 +7079,7 @@ impl Agent {
                         turns: turn + 1,
                         tokens: total_tokens,
                         cost: total_cost,
-                        slot: self.slot.clone(),
+                        profile_id: self.profile_id.clone(),
                         final_text: ended_text(
                             code.enabled,
                             status,
@@ -7077,7 +7119,7 @@ impl Agent {
                 ));
             }
 
-            record_usage(&response, emitter, &self.slot, client.model_id());
+            record_usage(&response, emitter, &self.profile_id, client.model_id());
             total_tokens = add_counts(total_tokens, response.usage);
             total_cost = add_cost(total_cost, response.cost);
             // The same figure, folded into the run-wide total every agent's cost ceiling reads. Fed
@@ -7294,7 +7336,7 @@ impl Agent {
                     doc_view_types: code.doc_view_types,
                     capabilities: &granted_capabilities,
                     operations: &granted_operations,
-                    exec_roster: &profile.subagents,
+                    exec_roster: &set.roster(profile, GgSubagentScope::Subagent),
                 };
                 // The per-turn state (`context`/`skills`/`docs`/`subagents`) is handed to the code
                 // turn **by value** — it is moved into the program's `LoopOperationApi` so the program's
@@ -7347,7 +7389,7 @@ impl Agent {
                                     turns: turn + 1,
                                     tokens: total_tokens,
                                     cost: total_cost,
-                                    slot: self.slot.clone(),
+                                    profile_id: self.profile_id.clone(),
                                     final_text: Some(failure.to_string()),
                                     ending: None,
                                     limit: None,
@@ -7420,7 +7462,7 @@ impl Agent {
                             turns: turn + 1,
                             tokens: total_tokens,
                             cost: total_cost,
-                            slot: self.slot.clone(),
+                            profile_id: self.profile_id.clone(),
                             final_text: Some(ending.final_text()),
                             ending: Some(ending),
                             limit: None,
@@ -7447,14 +7489,14 @@ impl Agent {
                         // strikes a subagent far more often than the root — there are more of them
                         // — and the tree that came back from a run with a hole in it cannot be
                         // compared with one from a run without.
-                        limits.fault.in_agent(&self.id, &self.slot, message);
+                        limits.fault.in_agent(&self.id, &self.profile_id, message);
                         let status = TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &limits);
                         return LoopEnd {
                             status,
                             turns: turn + 1,
                             tokens: total_tokens,
                             cost: total_cost,
-                            slot: self.slot.clone(),
+                            profile_id: self.profile_id.clone(),
                             final_text: ended_text(true, status, last_report.as_deref(), last_text),
                             ending: None,
                             limit: None,
@@ -7641,7 +7683,7 @@ impl Agent {
                                 turns: turn + 1,
                                 tokens: total_tokens,
                                 cost: total_cost,
-                                slot: self.slot.clone(),
+                                profile_id: self.profile_id.clone(),
                                 final_text: None,
                                 ending: None,
                                 limit: None,
@@ -7888,7 +7930,7 @@ impl Agent {
                     // spawn is checked against — which is the one thing the loop has and the tool
                     // does not.
                     handle_exec(
-                        &profile.subagents,
+                        &set.roster(profile, GgSubagentScope::Subagent),
                         self,
                         &declared_ending,
                         &mut declared_handoff,
@@ -8033,7 +8075,7 @@ impl Agent {
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
-                    slot: self.slot.clone(),
+                    profile_id: self.profile_id.clone(),
                     final_text: Some(failure.to_string()),
                     ending: None,
                     limit: None,
@@ -8084,7 +8126,7 @@ impl Agent {
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
-                    slot: self.slot.clone(),
+                    profile_id: self.profile_id.clone(),
                     final_text: Some(ending.final_text()),
                     ending: Some(ending),
                     limit: None,
@@ -8164,7 +8206,7 @@ impl Agent {
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
-                    slot: self.slot.clone(),
+                    profile_id: self.profile_id.clone(),
                     final_text: None,
                     ending: None,
                     limit: None,
@@ -8370,7 +8412,7 @@ impl Agent {
             turns,
             tokens,
             cost,
-            slot: self.slot.clone(),
+            profile_id: self.profile_id.clone(),
             final_text: ended_text(code_mode, status, last_report, last_text),
             ending: None,
             limit: Some(breach),
@@ -8412,7 +8454,7 @@ impl Agent {
             turns,
             tokens,
             cost,
-            slot: self.slot.clone(),
+            profile_id: self.profile_id.clone(),
             final_text: ended_text(code_mode, status, last_report, last_text),
             ending: None,
             limit: None,
@@ -8465,7 +8507,7 @@ impl Agent {
             turns,
             tokens,
             cost,
-            slot: self.slot.clone(),
+            profile_id: self.profile_id.clone(),
             final_text: ended_text(code_mode, status, last_report, last_text),
             ending: None,
             limit: None,
@@ -8966,13 +9008,13 @@ fn setup_broke(
              what it was configured as."
         ),
     ));
-    limits.fault.in_agent(&agent.id, &agent.slot, &detail);
+    limits.fault.in_agent(&agent.id, &agent.profile_id, &detail);
     LoopEnd {
         status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, limits),
         turns,
         tokens: TokenCounts::default(),
         cost: None,
-        slot: agent.slot.clone(),
+        profile_id: agent.profile_id.clone(),
         final_text: Some(detail),
         ending: None,
         limit: None,
@@ -9004,7 +9046,7 @@ fn hook_failed(
         turns,
         tokens: TokenCounts::default(),
         cost: None,
-        slot: agent.slot.clone(),
+        profile_id: agent.profile_id.clone(),
         final_text: Some(failure.to_string()),
         ending: None,
         limit: None,
@@ -9690,7 +9732,7 @@ fn check_window_limits(
     report: &mut crate::validate::LaunchReport,
 ) {
     for profile in &set.agents {
-        report.for_agent(&profile.name, |report| {
+        report.for_agent(&profile.id, |report| {
             let Some(limit) = window_limit(profile, report) else {
                 return;
             };
@@ -9797,7 +9839,7 @@ pub(crate) fn check_workspace(
                              the agent `{}` loads its skills from, and there is no such directory \
                              in the workspace; that agent would open with a library nobody \
                              authored.",
-                            profile.name,
+                            profile.id,
                         ),
                     ));
                     Arc::new(SkillLibrary::empty())
@@ -9948,7 +9990,7 @@ fn resolve_skills(
                 library
             }
         };
-        by_profile.insert(profile.name.clone(), library);
+        by_profile.insert(profile.id.clone(), library);
     }
     by_profile
 }
@@ -9986,7 +10028,7 @@ fn resolve_skills_dir(
                          directory the agent `{}` loads its skills from, and gg cannot read a path \
                          here; loading `{DEFAULT_SKILLS_DIR}` instead would give the agent a set \
                          of skills nobody configured.",
-                        profile.name,
+                        profile.id,
                     ),
                 ));
                 DEFAULT_SKILLS_DIR
@@ -10059,7 +10101,7 @@ fn memories_startup_note(memories: &MemoriesRuntime) -> String {
 /// board-owning profile (a perfectly ordinary shape — the root need not be the agent that files work)
 /// would otherwise offer that profile the board tools while the run around it had no board runtime,
 /// no auto-dispatch, and no worktrees, so every issue it filed would sit on the board forever.
-/// Mirrors how [`merge_agent_name`] reads the same capability's merge-agent param.
+/// Mirrors how [`merge_agent_id`] reads the same capability's merge-agent param.
 fn board_owner(set: &GgCapabilitySet) -> Option<&GgAgentConfig> {
     set.agents
         .iter()
@@ -10262,6 +10304,9 @@ struct PromptInputs<'a> {
     /// may spawn, assign issues to, and name as reviewers (each enumerated in the prompt, scope by
     /// scope, so the model knows exactly which names each call accepts and why).
     profile: &'a GgAgentConfig,
+    /// The whole set, so a roster entry can be resolved to the
+    /// [name](GgAgentConfig::name) that makes its menu read as prose.
+    set: &'a GgCapabilitySet,
     /// Which [ending calls](EndingRole) this agent has, so the prompt's ending section names the
     /// ones it can actually make and no others.
     ending_role: EndingRole,
@@ -10685,15 +10730,24 @@ fn describes(module: &dyn Module) -> bool {
 }
 
 /// The entries of `profile`'s [roster](GgAgentConfig::subagents) that carry `scope`, as the prompt
-/// lists them: the target's name plus the caller-scoped description of when to use it.
-fn roster(profile: &GgAgentConfig, scope: GgSubagentScope) -> Vec<SpawnableAgentView> {
-    profile
-        .subagents
-        .iter()
-        .filter(|reference| reference.has_scope(scope))
-        .map(|reference| SpawnableAgentView {
-            name: reference.agent.clone(),
-            description: reference.description.clone(),
+/// lists them: the target's [id](GgAgentConfig::id) and [name](GgAgentConfig::name), plus the
+/// caller-scoped description of when to use it.
+fn roster(
+    set: &GgCapabilitySet,
+    profile: &GgAgentConfig,
+    scope: GgSubagentScope,
+) -> Vec<SpawnableAgentView> {
+    set.roster(profile, scope)
+        .into_iter()
+        .map(|entry| SpawnableAgentView {
+            // The value a call names its target by, which is the id. The profile's own name goes
+            // in front of the guidance, where it reads as prose rather than as something to copy.
+            name: entry.agent_id,
+            description: match (entry.name.trim(), entry.description.trim()) {
+                ("", why) => why.to_string(),
+                (name, "") => name.to_string(),
+                (name, why) => format!("{name}: {why}"),
+            },
         })
         .collect()
 }
@@ -10721,6 +10775,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
         autoload_specs,
         persistence,
         profile,
+        set,
         ending_role,
         assigned_issue,
         fences_are_stripped,
@@ -10735,9 +10790,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
     // still names implementers and reviewers on the issues it files, which is exactly why the
     // prompt's Subagents section is gated on the *tool* being offered rather than on the roster
     // being non-empty.
-    let spawnable_agents = roster(profile, GgSubagentScope::Subagent);
-    let issue_agents = roster(profile, GgSubagentScope::Implementer);
-    let reviewer_agents = roster(profile, GgSubagentScope::Reviewer);
+    let spawnable_agents = roster(set, profile, GgSubagentScope::Subagent);
+    let issue_agents = roster(set, profile, GgSubagentScope::Implementer);
+    let reviewer_agents = roster(set, profile, GgSubagentScope::Reviewer);
     let offers_spawn = registry.offers(SPAWN_SUBAGENT_TOOL);
 
     // The read cap is only worth stating when `read_file` is actually offered and actually
@@ -10868,11 +10923,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
                         max_epics: caps.max_epics,
                         max_issues: caps.max_issues,
                         max_retries: caps.max_retries,
-                        reviewers_required: IssuePolicy::resolve(
-                            profile,
-                            &mut crate::validate::LaunchReport::Discarding,
-                        )
-                        .require_reviewers,
+                        reviewers_required: crate::board::requires_reviewers(profile),
                         issue_agents,
                         reviewer_agents,
                     }
@@ -11439,12 +11490,12 @@ const IMAGE_STRIPPED_NOTE: &str = "[The image could not be shown: the model runn
 /// [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups. Stamping each delta with its own
 /// `(slot, model)` makes every consumer's breakdown derivable from the first turn on, and summing
 /// the deltas of one key reproduces that key's rollup exactly.
-fn record_usage(response: &ModelResponse, emitter: &Emitter, slot: &str, model_id: &str) {
+fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, model_id: &str) {
     if response.usage == TokenCounts::default() && response.cost.is_none() {
         return;
     }
     emitter.emit(GgTelemetryKind::Usage {
-        slot: slot.to_string(),
+        profile_id: profile_id.to_string(),
         model_id: model_id.to_string(),
         tokens: response.usage,
         cost: response.cost,

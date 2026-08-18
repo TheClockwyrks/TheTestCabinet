@@ -118,9 +118,11 @@ The code template interpolates:
   that using one is described by what it will actually do. The catalog is this
   agent's own: the skills authored under the directory its profile names, joined
   with the built-ins gg generates for its own function families;
-- the agents this one may spawn as subagents, the rosters an issue's agent and
-  reviewers may be named from, and the id of the issue this agent was dispatched
-  to implement;
+- the agents this one may spawn as subagents and the rosters an issue's agent
+  and reviewers may be named from, each entry listing the
+  [profile id](/gg/configurations/#identity) the model writes with that
+  profile's name beside the caller's guidance, and the id of the issue this
+  agent was dispatched to implement;
 - whether this run's model can be shown an image, where the run offers a file
   read.
 

@@ -78,11 +78,6 @@ can be handed to another profile, and any profile can be removed, including the
 root, which passes the flag to whatever is left. A configuration must have at
 least one agent to be saved.
 
-Every reference between the parts of a configuration is held by identity rather
-than by the name shown in the form. That covers a roster entry, a merge agent
-and an agent's model-slot binding, so renaming an agent or a model slot moves
-every reference to it.
-
 Opening an agent switches the editor into that profile's own view, itself
 organized into tabs: Agent, then whichever of Tools, APIs, Roster, Hooks and
 States the profile's type has. That view is saved or discarded on its own. Save
@@ -117,15 +112,39 @@ A roster entry's scopes are `subagent` (spawnable with `spawn_subagent`),
 and `reviewer` (namable among an issue's reviewers). The three are independent:
 a profile trusted to write code is not automatically trusted to review it, and
 an agent with no [subagents](/gg/subagents/) capability still uses its roster to
-staff issues. Every such call names its target by name, and gg refuses one the
-roster does not list in the right scope. A profile may list itself, which allows
-recursion. The `subagent` scope is also the allowlist
+staff issues. Every such call names its target by its [id](#identity), and gg
+refuses one the roster does not list in the right scope. A profile may list
+itself, which allows recursion. The `subagent` scope is also the allowlist
 [`exec`](/gg/fork-and-exec/) is checked against.
 
 Two capabilities backed by a [module](/gg/modules/), project management and
 agent-managed context, carry an `ownership` param deciding whether the agent's
 prompt carries that module or only its tools do. Left alone it is `owned`. The
 other module-backed capabilities always sit in the agent's prompt.
+
+### Identity
+
+Every agent profile carries a stable id, minted when the profile is created and
+never changed afterwards. Everything that names a profile names its id: a roster
+entry, a machine's state, the merge agent, an
+[issue](/gg/project-management/)'s implementer and reviewers, a run's telemetry
+and its per-agent accounting, a configuration's link to a
+[saved agent](/gg/agents/), and the `agent` argument the model passes to
+`spawn_subagent`, `exec` and `create_issue`.
+
+A profile's name is display text. An operator renames a profile freely, and two
+profiles may carry the same name, because nothing resolves a reference by reading
+one.
+
+That is also why the model names a profile by id: two agents called `reviewer`
+are one thing a brief cannot pick between. Ids are minted **readable** for it —
+a slug from the profile's first name, `reviewer` or `reviewer-2`, left alone
+after that — so a roster in a prompt reads as prose while still naming exactly
+one profile. A roster line carries the id the model copies, the profile's current
+name, and the caller's guidance for using it.
+
+A launch is refused when a profile has no id, when two profiles share one, or
+when a reference names a profile the set does not declare. Names are not checked.
 
 ### Granting calls
 

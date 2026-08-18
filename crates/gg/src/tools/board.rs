@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use test_cabinet_core::gg::GgRosterEntry;
 
 use super::{
     ApiData, ArgumentError, BoardNodeData, BoardUsageData, Tool, ToolContext, ToolFailure,
@@ -122,7 +123,7 @@ fn failure_for(err: &BoardError) -> ToolFailure {
     }
 }
 
-/// A list-of-names argument, `noun` naming what one entry is (`"issue id"`, `"agent name"`) so a
+/// A list-of-ids argument, `noun` naming what one entry is (`"issue id"`, `"agent id"`) so a
 /// refusal reads as the field's own contract. When `required`, an absent key is an error;
 /// otherwise it yields an empty list. Every entry must be a string.
 fn name_array(
@@ -153,6 +154,51 @@ fn name_array(
         Some(_) => Err(ArgumentError(format!(
             "argument `{field}` must be an array of {noun}s"
         ))),
+    }
+}
+
+/// Render half of a filing agent's [roster](GgRosterEntry) as a sentence for `create_issue`'s
+/// description, so the model is told exactly which ids it may pass and the caller-scoped guidance
+/// for each.
+///
+/// Deliberately the same shape as the delegation tools' menu: naming an agent to assign an issue to
+/// and naming an agent to spawn are the same act from the model's side, and a model that has learned
+/// one spelling should not have to learn a second.
+fn agent_menu(agents: &[GgRosterEntry]) -> String {
+    if agents.is_empty() {
+        return "(none)".to_string();
+    }
+    agents
+        .iter()
+        .map(|entry| {
+            // The id is what the model passes; the name is only here so the menu reads as prose.
+            let name = entry.name.trim();
+            match (name.is_empty(), entry.description.trim()) {
+                (true, "") => format!("`{}`", entry.agent_id),
+                (true, why) => format!("`{}` ({why})", entry.agent_id),
+                (false, "") => format!("`{}` ({name})", entry.agent_id),
+                (false, why) => format!("`{}` ({name}: {why})", entry.agent_id),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// One profile as a confirmation names it: its id, and — when the roster carries a display name that
+/// says more than the id already does — that name in parentheses after it.
+///
+/// The id leads because it is what the model's next call has to pass; the name never stands alone,
+/// for the same reason.
+fn named(agents: &[GgRosterEntry], agent_id: &str) -> String {
+    let id = agent_id.trim();
+    match agents
+        .iter()
+        .find(|entry| entry.agent_id == id)
+        .map(|entry| entry.name.trim())
+        .filter(|name| !name.is_empty() && *name != id)
+    {
+        Some(name) => format!("`{id}` ({name})"),
+        None => format!("`{id}`"),
     }
 }
 
@@ -272,52 +318,57 @@ impl CreateIssueTool {
 
     /// The `agent`/`reviewers` half of the tool's description — the profiles this agent may
     /// assign the work to, the ones it may name as reviewers, and whether naming reviewers is
-    /// required.
+    /// required. Each is offered as `` `id` (Name: guidance) ``: the id is the value the argument
+    /// takes, and the rest is there so the model can tell one profile from another.
     fn assignment_guidance(&self) -> String {
-        let implementers = self.policy.implementer_list();
-        let reviewer_list = self.policy.reviewer_list();
+        let implementers = agent_menu(&self.policy.implementers);
+        let reviewer_list = agent_menu(&self.policy.reviewers);
         let reviewers = if self.policy.require_reviewers {
             format!(
-                " You must also name one or more `reviewers`, drawn from: {reviewer_list}. Each of \
-                 them reviews the finished work, and all of them must approve it before the issue \
-                 is accepted."
+                " You must also name one or more `reviewers` by id, drawn from: {reviewer_list}. \
+                 Each of them reviews the finished work, and all of them must approve it before the \
+                 issue is accepted."
             )
         } else {
             format!(
-                " You may name one or more `reviewers`, drawn from: {reviewer_list}. Each of them \
-                 reviews the finished work, and all of them must approve it before the issue is \
-                 accepted."
+                " You may name one or more `reviewers` by id, drawn from: {reviewer_list}. Each of \
+                 them reviews the finished work, and all of them must approve it before the issue \
+                 is accepted."
             )
         };
         format!(
-            " Name in `agent` the agent this issue is dispatched to; you may assign to: \
+            " Name in `agent` the id of the agent this issue is dispatched to; you may assign to: \
              {implementers}.{reviewers}"
         )
     }
 
-    /// Refuse a profile this agent may not assign the issue to, naming the ones it may.
-    fn check_implementer(&self, name: &str) -> Option<ToolOutcome> {
-        if self.policy.allows_implementer(name.trim()) {
+    /// Refuse an id this agent may not assign the issue to, listing the ids it may.
+    ///
+    /// The refusal lists ids rather than display names because an id is exactly what the model has
+    /// to pass on the retry — a name would be one more thing for it to resolve, and two profiles may
+    /// share one.
+    fn check_implementer(&self, agent_id: &str) -> Option<ToolOutcome> {
+        if self.policy.allows_implementer(agent_id) {
             return None;
         }
         Some(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "`agent`: unknown agent `{name}`; expected one of: {}",
+                "`agent`: unknown agent `{agent_id}`; expected one of: {}",
                 self.policy.implementer_list()
             ),
         ))
     }
 
-    /// Refuse a profile this agent may not name as a reviewer, naming the ones it may.
-    fn check_reviewer(&self, name: &str) -> Option<ToolOutcome> {
-        if self.policy.allows_reviewer(name.trim()) {
+    /// Refuse an id this agent may not name as a reviewer, listing the ids it may.
+    fn check_reviewer(&self, agent_id: &str) -> Option<ToolOutcome> {
+        if self.policy.allows_reviewer(agent_id) {
             return None;
         }
         Some(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "`reviewers`: unknown agent `{name}`; expected one of: {}",
+                "`reviewers`: unknown agent `{agent_id}`; expected one of: {}",
                 self.policy.reviewer_list()
             ),
         ))
@@ -385,14 +436,18 @@ impl Tool for CreateIssueTool {
                     },
                     "agent": {
                         "type": "string",
-                        "enum": self.policy.implementers,
-                        "description": "The agent to dispatch this issue to."
+                        "enum": GgRosterEntry::ids(&self.policy.implementers),
+                        "description": "The id of the agent to dispatch this issue to, copied \
+                                        exactly from the agents you may assign to."
                     },
                     "reviewers": {
                         "type": "array",
-                        "items": { "type": "string", "enum": self.policy.reviewers },
-                        "description": "The agents that must each approve this issue's work \
-                                        before it is accepted."
+                        "items": {
+                            "type": "string",
+                            "enum": GgRosterEntry::ids(&self.policy.reviewers)
+                        },
+                        "description": "The ids of the agents that must each approve this issue's \
+                                        work before it is accepted."
                     }
                 },
                 "required": required,
@@ -434,7 +489,7 @@ impl Tool for CreateIssueTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let reviewers = match name_array(&args, "reviewers", "agent name", false) {
+        let reviewers = match name_array(&args, "reviewers", "agent id", false) {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
@@ -456,10 +511,12 @@ impl CreateIssueTool {
     /// Create an issue — the **standard, typed** `create_issue` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
     ///
-    /// The assignment rules are enforced here, before the store is touched: `agent` must be one of
-    /// this agent's [implementers](IssuePolicy::implementers), every reviewer one of its
-    /// [reviewers](IssuePolicy::reviewers), and a
-    /// [reviewers-required](IssuePolicy::require_reviewers) agent must name at least one.
+    /// The assignment rules are enforced here, before the store is touched: `agent` must be the id
+    /// of one of this agent's [implementers](IssuePolicy::implementers), every reviewer the id of
+    /// one of its [reviewers](IssuePolicy::reviewers), and a
+    /// [reviewers-required](IssuePolicy::require_reviewers) agent must name at least one. What the
+    /// model passed is what the board stores, so the issue carries the ids dispatch resolves
+    /// profiles from.
     ///
     /// The id the store assigned is both stated in the confirmation and carried structurally on the
     /// [`BoardNode`](ApiData::BoardNode) sidecar, so a program that files an issue can go on to
@@ -508,7 +565,8 @@ impl CreateIssueTool {
         }) {
             Ok(id) => ToolOutcome::ok(
                 format!(
-                    "Created issue `{id}`, assigned to `{agent}`. {}",
+                    "Created issue `{id}`, assigned to {}. {}",
+                    named(&self.policy.implementers, &agent),
                     usage_note(&store)
                 ),
                 format!("created issue `{id}`"),

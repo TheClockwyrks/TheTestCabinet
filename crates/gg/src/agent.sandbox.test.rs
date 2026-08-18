@@ -111,7 +111,7 @@ async fn drive_code_run(
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), set);
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, client);
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, client);
     let outcome = run_with_factory(&inv, &emitter, Arc::new(factory)).await;
     (outcome, sink.events())
 }
@@ -825,7 +825,7 @@ async fn a_program_subagent_still_honours_the_scheduler() {
     for agent in &mut set.agents {
         // The documentation-view type flags are per agent, so the two profiles take opposite
         // arms of them: every type against none at all.
-        let types = if agent.name == ROOT_AGENT {
+        let types = if agent.id == ROOT_PROFILE_ID {
             json!({ "parameters": true })
         } else {
             json!(false)
@@ -840,7 +840,7 @@ async fn a_program_subagent_still_honours_the_scheduler() {
     }
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_responses_as_code_parent_script(
                 &b.model_id,
             ))
@@ -942,7 +942,7 @@ async fn a_bare_program_read_of_a_picture_shows_the_model_nothing() {
 
     let seen = Arc::new(Mutex::new(Vec::<bool>::new()));
     let recorded = Arc::clone(&seen);
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         Box::new(ImageWatchingClient {
             model_id: b.model_id.clone(),
             turn: AtomicUsize::new(0),
@@ -1471,7 +1471,7 @@ async fn drive_counted_code_run(
     let inv = invocation(dir.path(), set);
     let client = Arc::new(MockClient::new("mock/primary", script));
     let shared = Arc::clone(&client);
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
         Box::new(SharedMockClient(Arc::clone(&shared)))
     });
     let outcome = run_with_factory(&inv, &emitter, Arc::new(factory)).await;
@@ -1706,7 +1706,7 @@ async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
     set.limits.max_turns = Some(2);
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -1862,7 +1862,7 @@ async fn a_code_mode_reviewer_declares_its_verdict() {
     // work, then finish — which is what triggers the gating review).
     let primary_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |b| {
+        .slot(ROOT_PROFILE_ID, move |b| {
             let n = primary_counter.fetch_add(1, Ordering::SeqCst);
             let programs = if n == 0 {
                 vec![
@@ -1872,7 +1872,7 @@ async fn a_code_mode_reviewer_declares_its_verdict() {
                          gg.board.createIssue({{ title: \"Add the widget\", \
                          inScope: \"Implement the widget.\", outOfScope: \"Unrelated changes.\", \
                          completionCriteria: \"The widget is fully implemented.\", \
-                         epicId: epic.id, agent: \"{ROOT_AGENT}\", reviewers: [\"reviewer\"] }});"
+                         epicId: epic.id, agent: \"{ROOT_PROFILE_ID}\", reviewers: [\"reviewer\"] }});"
                     )),
                     code_reply(FINISHING_PROGRAM),
                 ]
@@ -1944,14 +1944,14 @@ async fn a_code_mode_issue_agents_worktree_is_merged() {
     }
     let inv = invocation(dir.path(), set);
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let programs = if n == 0 {
             vec![
                 code_reply(&format!(
                     "import * as gg from \"gg\";\ngg.board.createIssue({{ title: \"Write the file\", \
                      inScope: \"Write isolated.txt.\", outOfScope: \"Nothing else.\", \
-                     completionCriteria: \"isolated.txt exists.\", agent: \"{ROOT_AGENT}\" }});"
+                     completionCriteria: \"isolated.txt exists.\", agent: \"{ROOT_PROFILE_ID}\" }});"
                 )),
                 code_reply(FINISHING_PROGRAM),
             ]

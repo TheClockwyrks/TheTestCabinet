@@ -38,7 +38,7 @@ function gg(
 
 function spawn(
   agentId: string,
-  slot: string,
+  profileId: string,
   modelId: string,
   parentAgentId?: string,
 ): HarnessEvent {
@@ -46,7 +46,7 @@ function spawn(
     agentId,
     {
       type: "agent_spawned",
-      slot,
+      profileId,
       modelId,
       depth: parentAgentId == null ? 0 : 1,
     } as GgTelemetryKind,

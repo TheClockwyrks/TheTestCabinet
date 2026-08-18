@@ -41,31 +41,49 @@ export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
   );
 }
 
-// The profile the agent running under `agent` (a slot name from the agent tree) was
-// configured with, falling back to the Root when the name is unknown or not yet seen —
-// an agent whose spawn event has not arrived carries no slot, and the Root is the
-// working guess until it does. Null before gg announces the configuration at all.
+// The profile with `agentId`, falling back to the Root when the run declares no such
+// profile or the id is not yet known — an agent whose spawn event has not arrived carries
+// no profile id, and the Root is the working guess until it does. Null before gg announces
+// the configuration at all.
+//
+// Resolution is by [id](GgAgentConfig::id) and only by id, mirroring
+// `GgCapabilitySet::agent`: two profiles may carry one name, so a lookup by name would
+// silently merge them into whichever came first.
 export function agentProfile(
   set: GgCapabilitySet | null,
-  agent: string | null | undefined,
+  agentId: string | null | undefined,
 ): GgAgentConfig | null {
   if (!set?.agents?.length) return null;
   return (
-    (agent ? set.agents.find((a) => a.name === agent) : undefined) ??
+    (agentId ? set.agents.find((a) => a.id === agentId) : undefined) ??
     set.agents[0]!
   );
 }
 
-// Whether the named agent's OWN profile has the capability on — the per-agent question,
-// and the one every agent-scoped surface (which files its folder offers, which panes its
+// One profile's display name, or the id itself where the run declares no such profile — a
+// dangling reference reads as the id it failed to resolve rather than as nothing. Mirrors
+// `GgCapabilitySet::agent_name`.
+//
+// The single place a profile id becomes prose. For prose only: names may repeat, so a
+// surface that has to name a profile unambiguously names its id (and one that lists
+// profiles side by side shows both).
+export function agentProfileName(
+  set: GgCapabilitySet | null,
+  agentId: string,
+): string {
+  return set?.agents?.find((a) => a.id === agentId)?.name ?? agentId;
+}
+
+// Whether the profile with `agentId` has the capability on — the per-agent question, and
+// the one every agent-scoped surface (which files its folder offers, which panes its
 // Knowledge file splits into, which bands its context graph draws) has to ask.
 export function agentCapabilityOn(
   set: GgCapabilitySet | null,
-  agent: string | null | undefined,
+  agentId: string | null | undefined,
   id: string,
 ): boolean {
   return (
-    agentProfile(set, agent)?.capabilities.some(
+    agentProfile(set, agentId)?.capabilities.some(
       (c) => c.id === id && c.enabled,
     ) ?? false
   );
@@ -86,13 +104,19 @@ export function anyAgentCapabilityOn(
   );
 }
 
-// The name a fresh configuration's root agent is *born* with. It is a starting value,
-// not an invariant: the root is whichever profile the configuration flags as such (the
-// editor tracks it by internal id, and the wire format by position — gg reads the root
-// off `agents[0]`), so it can be renamed to anything and the flag can be moved to
-// another profile. Mirrors `ROOT_AGENT` in `crates/core/src/gg.rs`, which is likewise
-// only the name `GgAgentConfig::root()` seeds.
+// The **display name** a fresh configuration's root agent is *born* with. It is a starting
+// value and nothing more: a profile's name is prose, mutable and not unique, and nothing
+// resolves a reference by reading it. Which profile is the root is a flag the editor holds
+// (and, on the wire, position — gg reads the root off `agents[0]`), so this can be renamed
+// to anything and the role moved to another profile. Mirrors `ROOT_AGENT` in
+// `crates/core/src/gg.rs`.
 export const ROOT_AGENT = "Root";
+
+// The id a fresh configuration's root profile is minted with, and what a reference means
+// when it means "whichever profile drives this run". Mirrors `ROOT_PROFILE_ID` in
+// `crates/core/src/gg.rs`. Unlike the name beside it an id is never rewritten, so this one
+// really does identify the root of a default set.
+export const ROOT_PROFILE_ID = "root";
 
 // The name of the first model slot a fresh configuration declares — the launch input
 // the root agent's model defers to by default. Like the root's name it is only a
@@ -197,10 +221,10 @@ const WORKER_MODES: ReadonlyArray<GgAgentMode> = ["tools", "rac"];
 export interface ParamSpec {
   key: string;
   label: string;
-  // `agent` renders a <select> over the configuration's own agent names (value = the
-  // agent name, coerced to a JSON string param), so a param can point at an agent
-  // profile — how the run-level "which agent runs this?" knobs (issue/reviewer/judge)
-  // are configured. The list of choices is threaded in by the editor.
+  // `agent` renders a <select> over the configuration's own profiles — labelled by name,
+  // valued (and stored, as a JSON string) by [id](GgAgentConfig::id) — so a param can point
+  // at an agent profile: how the run-level "which agent runs this?" knobs
+  // (merge/issue/judge) are configured. The list of choices is threaded in by the editor.
   // A `boolean` param is a **feature switch**, not a value: it renders beside the
   // per-feature sliders (the "Features" box) rather than in the param grid, because what
   // it varies is what an offered call demands rather than a number the call reads.
@@ -894,11 +918,11 @@ export const MODULE_CAPABILITY_IDS: ReadonlyMap<GgModuleKind, string> = new Map(
 // nothing in the monitor did before.
 export function capabilityParam(
   set: GgCapabilitySet | null,
-  agent: string | null | undefined,
+  agentId: string | null | undefined,
   capabilityId: string,
   key: string,
 ): unknown {
-  const capability = agentProfile(set, agent)?.capabilities.find(
+  const capability = agentProfile(set, agentId)?.capabilities.find(
     (c) => c.id === capabilityId,
   );
   if (!capability) return null;
@@ -1715,10 +1739,10 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "How many times gg re-dispatches an issue whose assigned agent ended without finishing — a spent turn ceiling, a breached limit, a model error — before marking the issue failed.",
       },
       {
-        key: "mergeAgent",
+        key: "mergeAgentId",
         label: "Merge agent",
         kind: "agent",
-        defaultValue: ROOT_AGENT,
+        defaultValue: ROOT_PROFILE_ID,
         hint: "Required. Every issue works in its own git worktree, merged back when it is accepted; when that merge conflicts with work another issue landed first, this agent is dispatched into the workspace to resolve it and finish the merge. It must have the Shell capability.",
       },
       {

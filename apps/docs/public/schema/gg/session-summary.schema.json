@@ -222,11 +222,11 @@
           "description": "The cost accumulated on this slot/model, when any turn on it reported one."
         },
         "modelId": {
-          "description": "The model id (within the slot) this rollup accounts for. A slot normally resolves to one\nmodel, but the accounting keys on the model too so a re-pointed slot stays attributable.",
+          "description": "The model id (within the profile) this rollup accounts for. A profile normally resolves to\none model, but the accounting keys on the model too so a re-pointed binding stays\nattributable.",
           "type": "string"
         },
-        "slot": {
-          "description": "The [slot](GgSlotBinding) this rollup accounts for (for example [`PRIMARY_SLOT`] or a\nrole slot like `reviewer`).",
+        "profileId": {
+          "description": "The [id](GgAgentConfig::id) of the agent profile this rollup accounts for. Resolve it\nagainst the run's set for the [display name](GgCapabilitySet::agent_name) to show.",
           "type": "string"
         },
         "tokens": {
@@ -234,7 +234,7 @@
           "description": "The tokens accumulated on this slot/model across the run, in the shared [`TokenCounts`]\nunits."
         }
       },
-      "required": ["slot", "modelId", "tokens"],
+      "required": ["profileId", "modelId", "tokens"],
       "type": "object"
     }
   },

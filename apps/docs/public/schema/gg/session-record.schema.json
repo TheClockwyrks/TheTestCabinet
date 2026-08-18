@@ -105,7 +105,11 @@
           "description": "How the agent came to exist, carrying the keys that explain it. This — not\n[`agent_id`](Self::agent_id) — is what identifies an agent across runs, because\nsubagent ids come off a global counter in the order agents reach their spawn, so two\nconcurrent agents take different ids from one run to the next."
         },
         "profile": {
-          "description": "The name of the [agent profile](crate::gg::GgAgentConfig) it ran under.",
+          "description": "The [display name](crate::gg::GgCapabilitySet::agent_name) that profile carried at launch,\nso a record read on its own still says which agent this was. Display text: two profiles may\nshare a [name](crate::gg::GgAgentConfig::name), and nothing joins on this.",
+          "type": "string"
+        },
+        "profileId": {
+          "description": "The [id](crate::gg::GgAgentConfig::id) of the agent profile it ran under — what joins\nthis row to the run's capability set, and to every telemetry event the agent emitted.",
           "type": "string"
         },
         "terminalStatus": {
@@ -120,7 +124,7 @@
           "description": "The status the agent's turn loop ended in, when it ended. Absent for an agent that\nnever reached an ending — one parked behind the parallelism cap when the run was\nkilled, which is exactly the row a salvaged record is opened for."
         }
       },
-      "required": ["agentId", "profile", "origin"],
+      "required": ["agentId", "profileId", "profile", "origin"],
       "type": "object"
     },
     "GgSessionAgentOrigin": {

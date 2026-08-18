@@ -8,21 +8,22 @@ delegation: `spawn_subagent(agent, prompt)` takes a free-form brief. Staffing a
 scoped work item belongs to the [board](/gg/project-management/), whose issues
 auto-dispatch to dedicated top-level agents.
 
-## Spawning by name
+## Spawning from the roster
 
 Every profile carries a roster of the agent profiles it may put to work, each
-entry scoped to what it may be used for. `spawn_subagent` accepts a name its
-caller's roster lists with the `subagent` scope and refuses any other. The other
-two scopes, `implementer` and `reviewer`, govern [issue
-assignment](/gg/project-management/) and are independent of this capability: an
-agent may have a roster full of implementers and reviewers while being able to
-spawn nothing at all.
+entry scoped to what it may be used for. `spawn_subagent` accepts a [profile
+id](/gg/configurations/#identity) its caller's roster lists with the `subagent`
+scope and refuses any other. The other two scopes, `implementer` and
+`reviewer`, govern [issue assignment](/gg/project-management/) and are
+independent of this capability: an agent may have a roster full of implementers
+and reviewers while being able to spawn nothing at all.
 
-Each roster entry carries a caller-scoped description, surfaced in the spawning
-agent's tool description, so an agent is told when to reach for each target it
-is allowed. A profile may list itself, which is how recursion is permitted.
+Each roster entry carries the target's id, its name and a caller-scoped
+description, surfaced in the spawning agent's tool description, so an agent is
+told which id names each target it is allowed and when to reach for it. A
+profile may list itself, which is how recursion is permitted.
 
-A spawned child runs under the named profile, with that profile's own
+A spawned child runs under the profile that id names, with that profile's own
 capabilities, model and execution mode. It shares its parent's workspace, so
 concurrent children need non-overlapping briefs. Isolated git worktrees belong
 to board [issues](/gg/project-management/), which own the whole
@@ -68,7 +69,7 @@ The grant policy:
 - A slot may be held under an exclusivity key that no two running agents may
   hold at once. This is what caps a [persistent](/gg/agent-persistence/) profile
   at one running instance: every instance takes its slot under the profile's
-  name, so the second queues behind the first inside the global pool. The key is
+  id, so the second queues behind the first inside the global pool. The key is
   held only while the agent runs, so an agent that blocks releases the key with
   its slot and re-takes it when it resumes.
 

@@ -47,6 +47,7 @@ import {
   FSM_CAP_ID,
   RESPONSES_AS_CODE_CAP_ID,
   ROOT_AGENT,
+  ROOT_PROFILE_ID,
   RUN_LIMIT_SPECS,
   capabilitySpec,
   paramApplies,
@@ -57,8 +58,19 @@ import {
 // the defaults the wire type uses. Pins a placeholder model by default so a fixture is
 // launchable (an agent with neither a pinned model nor a model slot is a save error);
 // tests that exercise deferral pass an explicit `modelSlot`, which wins.
+//
+// The profile's id is slugged from its name, as the editor mints one, so a fixture called
+// `reviewer` is the profile every reference below spells `reviewer` — and a fixture may
+// pass an `id` of its own where two profiles are meant to share a name.
 function agent(partial: Partial<GgAgentConfig> = {}): GgAgentConfig {
-  return { name: "Root", capabilities: [], modelId: "mock/x", ...partial };
+  const name = partial.name ?? ROOT_AGENT;
+  return {
+    id: name.toLowerCase(),
+    name,
+    capabilities: [],
+    modelId: "mock/x",
+    ...partial,
+  };
 }
 
 // A capability set as the wire carries it (per-agent now), defaulting to a bare Root.
@@ -141,7 +153,8 @@ describe("gg model slots", () => {
       agents: [],
     } as unknown as GgCapabilitySet);
     expect(draft.agents).toHaveLength(1);
-    expect(draft.agents[0]!.name).toBe("Root");
+    expect(draft.agents[0]!.id).toBe(ROOT_PROFILE_ID);
+    expect(draft.agents[0]!.name).toBe(ROOT_AGENT);
   });
 
   it("round-trips a declared slot through the editor draft", () => {
@@ -199,7 +212,7 @@ describe("gg agents", () => {
           modelSlot: "primary",
           subagents: [
             {
-              agent: "reviewer",
+              agentId: "reviewer",
               description: "for hard reviews",
               scopes: ["subagent"],
             },
@@ -212,10 +225,10 @@ describe("gg agents", () => {
       draftFromCapabilitySet(configured),
       null,
     );
-    expect(back.agents.map((a) => a.name)).toEqual(["Root", "reviewer"]);
+    expect(back.agents.map((a) => a.id)).toEqual([ROOT_PROFILE_ID, "reviewer"]);
     expect(back.agents[0]!.subagents).toEqual([
       {
-        agent: "reviewer",
+        agentId: "reviewer",
         description: "for hard reviews",
         scopes: ["subagent"],
       },
@@ -404,10 +417,17 @@ describe("gg agents", () => {
     draft.agents.push(agentDraft(draft, "reviewer"));
     expect(draftSaveError(draft)).toBeNull();
 
-    // Duplicate names.
-    draft.agents[1]!.name = "Root";
-    expect(draftSaveError(draft)).toContain("unique");
-    draft.agents[1]!.name = "reviewer";
+    // Two profiles under one name is an ordinary configuration: a name is prose, and every
+    // reference in the set holds an id instead.
+    draft.agents[1]!.name = ROOT_AGENT;
+    expect(draftSaveError(draft)).toBeNull();
+
+    // Two profiles under one id is not: every reference to either would name both.
+    // Unreachable from the editor, which mints an id per profile, so only a hand-written
+    // set arrives this way.
+    draft.agents[1]!.id = draft.agents[0]!.id;
+    expect(draftSaveError(draft)).toContain("share an id");
+    draft.agents[1]!.id = "reviewer";
 
     // An empty name.
     draft.agents[1]!.name = "  ";
@@ -438,9 +458,9 @@ describe("gg agents", () => {
     ).toEqual(["reviewer", "conductor"]);
   });
 
-  // Renaming an agent another agent's roster names used to write an unsavable
-  // configuration (the roster still spelled the old name). References are ids now, so a
-  // rename is just a rename.
+  // A roster entry holds the target's id, so renaming the target — even onto a name
+  // another profile already shows — is just a rename, and the entry saves pointing where
+  // it always pointed.
   it("carries a roster reference through a rename of its target", () => {
     const draft = emptyDraft();
     const reviewer = agentDraft(draft, "reviewer");
@@ -454,10 +474,14 @@ describe("gg agents", () => {
     ];
     expect(draftSaveError(draft)).toBeNull();
 
-    reviewer.name = "critic";
+    reviewer.name = ROOT_AGENT;
     expect(draftSaveError(draft)).toBeNull();
     expect(capabilitySetFromDraft(draft, null).agents[0]!.subagents).toEqual([
-      { agent: "critic", description: "for reviews", scopes: ["reviewer"] },
+      {
+        agentId: reviewer.id,
+        description: "for reviews",
+        scopes: ["reviewer"],
+      },
     ]);
   });
 
@@ -508,10 +532,11 @@ describe("gg agents", () => {
 });
 
 // A minimal agent draft for tests that push a second agent onto an existing draft, bound
-// to the same model slot its root is.
+// to the same model slot its root is. The draft it is joining is what its id is minted
+// unique against, exactly as the editor mints one.
 function agentDraft(draft: GgConfigDraft, name: string): GgAgentDraft {
   return {
-    ...blankAgentDraft(name, [], {}, draft.modelSlots[0]!.id),
+    ...blankAgentDraft(name, [], {}, draft.modelSlots[0]!.id, draft.agents),
     subagents: [],
   };
 }
@@ -1442,11 +1467,10 @@ describe("params gated on the selected implementation", () => {
 // --- FSM agents -------------------------------------------------------------------
 //
 // A machine is the only capability param that is a *document*: an ordered list of
-// states, each naming another agent profile and the edges out of it, each edge naming
-// the modules it carries. Three things have to hold for it to be authorable at all —
-// it must survive a round-trip through the wire format (including the name↔local-id
-// translation every cross-reference in this editor goes through), a machine the form
-// cannot represent must reach the verbatim passthrough rather than being rewritten
+// states, each naming another agent profile (by that profile's id) and the edges out of
+// it, each edge naming the modules it carries. Three things have to hold for it to be
+// authorable at all — it must survive a round-trip through the wire format, a machine the
+// form cannot represent must reach the verbatim passthrough rather than being rewritten
 // into a lesser one, and the structural faults gg refuses at launch must be refused
 // here, where they can still be fixed.
 
@@ -1474,7 +1498,7 @@ describe("a state machine", () => {
   const LINEAR = [
     {
       name: "explore",
-      agent: "Explorer",
+      agentId: "explorer",
       transitions: [
         {
           to: "build",
@@ -1483,7 +1507,7 @@ describe("a state machine", () => {
         },
       ],
     },
-    { name: "build", agent: "Builder", transitions: [] },
+    { name: "build", agentId: "builder", transitions: [] },
   ];
 
   function statesOf(s: GgCapabilitySet): unknown {
@@ -1493,26 +1517,27 @@ describe("a state machine", () => {
 
   it("round-trips through the wire format, agent references and all", () => {
     const draft = draftFromCapabilitySet(machineSet(LINEAR));
-    // The state's agent is held as a local id in the draft — that is what makes a
-    // rename carry it — and resolves back to the profile's name on the way out.
+    // The state names the profile's id, which is the same id the wire carries, so nothing
+    // is translated in either direction.
     const rows = agentStates(draft.agents[0]!);
     expect(rows.map((r) => r.name)).toEqual(["explore", "build"]);
     expect(rows[0]!.agentId).toBe(draft.agents[1]!.id);
     expect(statesOf(capabilitySetFromDraft(draft, null))).toEqual(LINEAR);
   });
 
-  it("follows a renamed agent profile rather than orphaning the state", () => {
+  it("keeps a state pointed at a profile that is renamed", () => {
     const draft = draftFromCapabilitySet(machineSet(LINEAR));
     const renamed: GgConfigDraft = {
       ...draft,
       agents: draft.agents.map((a) =>
-        a.name === "Explorer" ? { ...a, name: "Scout" } : a,
+        a.id === "explorer" ? { ...a, name: "Scout" } : a,
       ),
     };
     const states = statesOf(capabilitySetFromDraft(renamed, null)) as Array<{
-      agent: string;
+      agentId: string;
     }>;
-    expect(states[0]!.agent).toBe("Scout");
+    expect(states[0]!.agentId).toBe("explorer");
+    expect(draftSaveError(renamed)).toBeNull();
   });
 
   it("carries a renamed state's inbound edges with it", () => {
@@ -1536,7 +1561,7 @@ describe("a state machine", () => {
       machineSet([
         {
           name: "a",
-          agent: "Explorer",
+          agentId: "explorer",
           transitions: [{ to: "a", transfer: ["history", "moon"] }],
         },
       ]),
@@ -1550,7 +1575,7 @@ describe("a state machine", () => {
     // A state carrying a key no control covers would be silently dropped by a
     // round-trip through the rows, so the whole param goes to the passthrough instead
     // and re-saves byte-identical.
-    const exotic = [{ name: "a", agent: "Explorer", retries: 3 }];
+    const exotic = [{ name: "a", agentId: "explorer", retries: 3 }];
     const round = capabilitySetFromDraft(
       draftFromCapabilitySet(machineSet(exotic)),
       null,
@@ -1563,26 +1588,26 @@ describe("a state machine", () => {
       draftSaveError(draftFromCapabilitySet(machineSet(states)));
 
     expect(machine([])).toMatch(/declares no states/);
-    expect(machine([{ name: "", agent: "Explorer" }])).toMatch(
+    expect(machine([{ name: "", agentId: "explorer" }])).toMatch(
       /state with no name/,
     );
     expect(
       machine([
-        { name: "a", agent: "Explorer" },
-        { name: "a", agent: "Builder" },
+        { name: "a", agentId: "explorer" },
+        { name: "a", agentId: "builder" },
       ]),
     ).toMatch(/more than once/);
-    expect(machine([{ name: "a", agent: "Nobody" }])).toMatch(
+    expect(machine([{ name: "a", agentId: "nobody" }])).toMatch(
       /runs no agent this configuration declares/,
     );
-    expect(machine([{ name: "a", agent: "Feature" }])).toMatch(
+    expect(machine([{ name: "a", agentId: "feature" }])).toMatch(
       /itself a state machine/,
     );
     expect(
       machine([
         {
           name: "a",
-          agent: "Explorer",
+          agentId: "explorer",
           transitions: [{ to: "nowhere", transfer: [] }],
         },
       ]),
@@ -1597,7 +1622,7 @@ describe("a state machine", () => {
         ...LINEAR,
         // Declared, correct, and unreachable — kept, because deleting an author's
         // state to make a warning go away would be worse than saying so.
-        { name: "verify", agent: "Builder", transitions: [] },
+        { name: "verify", agentId: "builder", transitions: [] },
       ]),
     );
     const warnings = fsmStatesWarnings(draft.agents[0]!, draft.agents);
@@ -1640,7 +1665,7 @@ describe("a state machine", () => {
         customInstructions: "be brief",
         promptCacheTtl: "extended",
         subagents: [
-          { agent: "Builder", description: "", scopes: ["subagent"] },
+          { agentId: "builder", description: "", scopes: ["subagent"] },
         ],
       }),
     );
@@ -1891,7 +1916,7 @@ describe("a capability that is on and grants nothing", () => {
               enabled: true,
               params: {
                 states: [
-                  { name: "explore", agent: "Explorer", transitions: [] },
+                  { name: "explore", agentId: "explorer", transitions: [] },
                 ],
               },
             },
@@ -2103,10 +2128,20 @@ describe("a configuration's two hook lists", () => {
   });
 
   it("loads each list back into the place it was stored", () => {
+    // Two profiles under one display name, which is what a row id keyed by the name would
+    // not survive: their hooks would collide on the second profile's first row.
     const stored: GgCapabilitySet = {
       agents: [
         {
-          name: "Root",
+          id: ROOT_PROFILE_ID,
+          name: ROOT_AGENT,
+          capabilities: [],
+          modelId: "",
+          hooks: [AGENT_HOOK],
+        } as unknown as GgAgentConfig,
+        {
+          id: "root-2",
+          name: ROOT_AGENT,
           capabilities: [],
           modelId: "",
           hooks: [AGENT_HOOK],
@@ -2117,9 +2152,9 @@ describe("a configuration's two hook lists", () => {
 
     const draft = draftFromCapabilitySet(stored);
     expect(draft.hooks.map((hook) => hook.event)).toEqual(["session-end"]);
-    expect(draft.agents[0]!.hooks.map((hook) => hook.event)).toEqual([
-      "agent-stop",
-    ]);
+    expect(
+      draft.agents.map((agent) => agent.hooks.map((hook) => hook.event)),
+    ).toEqual([["agent-stop"], ["agent-stop"]]);
     // Every hook's row id is unique across the whole draft: the two lists are rendered in
     // one form, and a shared key would let React reuse a row between them.
     const ids = [

@@ -417,7 +417,8 @@ fn an_agent_is_recorded_when_it_is_born_and_again_when_it_ends() {
     let (dir, recorder) = recorder_in(None);
     let born = GgSessionAgent {
         agent_id: "agent-0".to_string(),
-        profile: "Worker".to_string(),
+        profile_id: "worker".to_string(),
+        profile: "The Worker".to_string(),
         origin: GgSessionAgentOrigin::Spawn {
             parent: "root".to_string(),
             ordinal: 0,
@@ -444,6 +445,10 @@ fn an_agent_is_recorded_when_it_is_born_and_again_when_it_ends() {
             ordinal: 0,
         },
         "and the terminal row repeats the keys the agent is bound by",
+    );
+    assert_eq!(
+        rows[1].profile_id, "worker",
+        "and the profile id that joins the row to the run's capability set",
     );
 }
 

@@ -188,8 +188,8 @@
     "GgBoardIssue": {
       "description": "One [issue](https://docs.testcabinet.ai/gg/project-management/) on the board — a node of the\nblocked-by DAG reported in a [`BoardState`](GgTelemetryKind::BoardState) event.\n\nAn issue is the **heavyweight** counterpart to a [task](GgTaskEntry): rather than just a\ntitle and description it carries structured sections — [`in_scope`](Self::in_scope),\n[`out_of_scope`](Self::out_of_scope), and [`completion_criteria`](Self::completion_criteria)\n— whose explicit scope boundaries and completion criteria are what make an issue **safe to\ndispatch to a subagent** (Phase 4): they tell the subagent exactly what it is and is not\nresponsible for and how it will be judged done. Issues share the [tasks](GgTaskEntry)\nblocked-by relation — a **DAG**, so gg rejects any edge that would introduce a cycle — and\nan issue may be grouped under an [epic](GgBoardEpic) through its\n[`epic_id`](Self::epic_id). The whole board is retained across a [compaction] boundary\nverbatim, like the task list.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
-        "agent": {
-          "description": "The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —\nthe profile gg dispatches it under, and re-dispatches for every retry and review round. It\nis named on `create_issue` (not configured on the capability), and must be one the creating\nagent lists with the [`implementer`](GgSubagentScope::Implementer) scope.",
+        "agentId": {
+          "description": "The [id](GgAgentConfig::id) of the profile the issue was **assigned to** when it was\ncreated — the profile gg dispatches it under, and re-dispatches for every retry and review\nround. The creating agent names it by [label](GgAgentConfig::name) on `create_issue` (it is\nnot configured on the capability) out of its roster entries carrying the\n[`implementer`](GgSubagentScope::Implementer) scope, and gg records which profile that was.",
           "type": "string"
         },
         "assignedAgentId": {
@@ -233,8 +233,8 @@
           "minimum": 0,
           "type": "integer"
         },
-        "reviewers": {
-          "description": "The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was\ncreated, drawn from the creating agent's roster entries carrying the\n[`reviewer`](GgSubagentScope::Reviewer) scope. When non-empty, completing the issue moves it\nto [`InReview`](GgIssueStatus::InReview) and these profiles each review the work in turn;\nevery one of them must approve before the issue is accepted.",
+        "reviewerIds": {
+          "description": "The [ids](GgAgentConfig::id) of the profiles named as this issue's **reviewers** when it\nwas created, drawn from the creating agent's roster entries carrying the\n[`reviewer`](GgSubagentScope::Reviewer) scope. When non-empty, completing the issue moves it\nto [`InReview`](GgIssueStatus::InReview) and these profiles each review the work in turn;\nevery one of them must approve before the issue is accepted.",
           "items": {
             "type": "string"
           },
@@ -257,7 +257,7 @@
         "completionCriteria",
         "status",
         "blockedBy",
-        "agent",
+        "agentId",
         "retries"
       ],
       "type": "object"
@@ -544,7 +544,7 @@
       ]
     },
     "GgIssueReviewPhase": {
-      "description": "The phase of an [issue review](https://docs.testcabinet.ai/gg/project-management/) an\n[`IssueReview`](GgTelemetryKind::IssueReview) event reports — the\nrequested → (changes_requested)* → approved lifecycle that gates an\n[issue](GgBoardIssue)'s acceptance.\n\nA review is [requested](Self::Requested) when the issue's assigned agent marks it complete (gg\nruns the issue's [reviewers](GgBoardIssue::reviewers) against the diff rather than accepting\nimmediately). A reviewer then either [requests changes](Self::ChangesRequested) — carrying the\nactionable items the issue's own assigned agent is re-invoked to address, after which the work is\nre-reviewed — or [approves](Self::Approved). Once **every** reviewer approves, the issue is\nfinally accepted (marked done) and its worktree merged. Because there is **no cycle limit**, a\nsingle issue may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an\n[`Approved`](Self::Approved) (or none, on a clean first pass).",
+      "description": "The phase of an [issue review](https://docs.testcabinet.ai/gg/project-management/) an\n[`IssueReview`](GgTelemetryKind::IssueReview) event reports — the\nrequested → (changes_requested)* → approved lifecycle that gates an\n[issue](GgBoardIssue)'s acceptance.\n\nA review is [requested](Self::Requested) when the issue's assigned agent marks it complete (gg\nruns the issue's [reviewers](GgBoardIssue::reviewer_ids) against the diff rather than accepting\nimmediately). A reviewer then either [requests changes](Self::ChangesRequested) — carrying the\nactionable items the issue's own assigned agent is re-invoked to address, after which the work is\nre-reviewed — or [approves](Self::Approved). Once **every** reviewer approves, the issue is\nfinally accepted (marked done) and its worktree merged. Because there is **no cycle limit**, a\nsingle issue may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an\n[`Approved`](Self::Approved) (or none, on a clean first pass).",
       "oneOf": [
         {
           "const": "requested",
@@ -578,7 +578,7 @@
         },
         {
           "const": "in_review",
-          "description": "Its assigned agent called the work complete, and gg is reconciling it: running the issue's\n[reviewers](GgBoardIssue::reviewers) (if any) and merging its worktree back. **Not**\nterminal — a review that requests changes sends the issue back to\n[`InProgress`](Self::InProgress) — and not done, so dependents stay blocked until the\nwork is actually accepted and merged.",
+          "description": "Its assigned agent called the work complete, and gg is reconciling it: running the issue's\n[reviewers](GgBoardIssue::reviewer_ids) (if any) and merging its worktree back. **Not**\nterminal — a review that requests changes sends the issue back to\n[`InProgress`](Self::InProgress) — and not done, so dependents stay blocked until the\nwork is actually accepted and merged.",
           "type": "string"
         },
         {
@@ -1057,18 +1057,22 @@
       "type": "object"
     },
     "GgReviewer": {
-      "description": "One reviewer that reported a verdict on an [issue review](GgTelemetryKind::IssueReview) — the\nagent gg dispatched, and the profile it ran under.\n\nBoth halves are carried because they answer different questions. The\n[`agent_id`](Self::agent_id) is the reviewer *instance* — derived from the issue and the\nimplementer whose work it reviewed (`AUTH-1.0i.0r`), so it names the exact review pass and links\nto that agent's own timeline — while the [`profile`](Self::profile) is the\n[reviewer profile](GgBoardIssue::reviewers) the issue named, which is what says *what kind* of\nreview it was.",
+      "description": "One reviewer that reported a verdict on an [issue review](GgTelemetryKind::IssueReview) — the\nagent gg dispatched, and the profile it ran under.\n\nBoth halves are carried because they answer different questions. The\n[`agent_id`](Self::agent_id) is the reviewer *instance* — derived from the issue and the\nimplementer whose work it reviewed (`AUTH-1.0i.0r`), so it names the exact review pass and links\nto that agent's own timeline — while the [`profile`](Self::profile) is the\n[reviewer profile](GgBoardIssue::reviewer_ids) the issue named, which is what says *what kind* of\nreview it was.",
       "properties": {
         "agentId": {
           "description": "The id of the agent that conducted this review — the handle its own\n[`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentReturned`](GgTelemetryKind::AgentReturned)\nevents carry.",
           "type": "string"
         },
         "profile": {
-          "description": "The [agent profile](GgBoardIssue::reviewers) the reviewer ran under.",
+          "description": "The [display name](GgCapabilitySet::agent_name) that profile carried, so a review reads\nwithout resolving anything. Display text; nothing joins on it.",
+          "type": "string"
+        },
+        "profileId": {
+          "description": "The [id](GgAgentConfig::id) of the profile the reviewer ran under — one of the issue's\n[reviewers](GgBoardIssue::reviewer_ids).",
           "type": "string"
         }
       },
-      "required": ["agentId", "profile"],
+      "required": ["agentId", "profileId", "profile"],
       "type": "object"
     },
     "GgSkillState": {
@@ -1464,7 +1468,7 @@
       "type": "object"
     },
     {
-      "description": "Token usage (and, when known, cost) accounted since the previous usage event,\n**attributed to the agent profile and model that spent it**.\nReuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is\nreported in the same units as every other run.\n\nA gg run spans several models (one per [agent profile](GgAgentConfig)), so an unattributed\ndelta is unattributable: summed over a multi-model run it says what was spent but not on\nwhat, and no consumer can price it per token class or split it per model. Each delta\ntherefore names the profile and the concrete model that produced it, which makes the *live*\nper-model breakdown derivable from the delta stream alone — the\n[`SlotUsage`](Self::SlotUsage) rollups say the same thing, but only once an agent has\nfinished, which is too late for a run being watched. Summing the deltas of one\n`(slot, model_id)` key reproduces that key's rollup exactly.",
+      "description": "Token usage (and, when known, cost) accounted since the previous usage event,\n**attributed to the agent profile and model that spent it**.\nReuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is\nreported in the same units as every other run.\n\nA gg run spans several models (one per [agent profile](GgAgentConfig)), so an unattributed\ndelta is unattributable: summed over a multi-model run it says what was spent but not on\nwhat, and no consumer can price it per token class or split it per model. Each delta\ntherefore names the profile and the concrete model that produced it, which makes the *live*\nper-model breakdown derivable from the delta stream alone — the\n[`SlotUsage`](Self::SlotUsage) rollups say the same thing, but only once an agent has\nfinished, which is too late for a run being watched. Summing the deltas of one\n`(profile_id, model_id)` key reproduces that key's rollup exactly.",
       "properties": {
         "cost": {
           "anyOf": [
@@ -1478,11 +1482,11 @@
           "description": "The cost of this accounting, when it could be determined."
         },
         "modelId": {
-          "description": "The concrete model id that spent this — the model the\n[profile](Self::Usage::slot) resolved to for the agent that took the turn.",
+          "description": "The concrete model id that spent this — the model the\n[profile](Self::Usage::profile_id) resolved to for the agent that took the turn.",
           "type": "string"
         },
-        "slot": {
-          "description": "The [agent profile](GgAgentConfig) that spent this — the same name\n[`AgentSpawned::slot`](Self::AgentSpawned::slot) and\n[`SlotUsage::slot`](Self::SlotUsage::slot) key on.",
+        "profileId": {
+          "description": "The [id](GgAgentConfig::id) of the agent profile that spent this — the same id\n[`AgentSpawned::profile_id`](Self::AgentSpawned::profile_id) and\n[`SlotUsage::profile_id`](Self::SlotUsage::profile_id) key on.",
           "type": "string"
         },
         "tokens": {
@@ -1494,7 +1498,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "slot", "modelId", "tokens"],
+      "required": ["type", "profileId", "modelId", "tokens"],
       "type": "object"
     },
     {
@@ -2029,11 +2033,11 @@
           "type": "integer"
         },
         "modelId": {
-          "description": "The concrete model id this agent's [profile](Self::AgentSpawned::slot) is bound to\n— the seam that makes a run span several models, one per profile.",
+          "description": "The concrete model id this agent's [profile](Self::AgentSpawned::profile_id) is bound\nto — the seam that makes a run span several models, one per profile.",
           "type": "string"
         },
-        "slot": {
-          "description": "The [agent profile](GgAgentConfig) name this agent runs under (for example\n[`ROOT_AGENT`], or an operator-named profile). gg usage is accounted per profile\n(see [`SlotUsage`](Self::SlotUsage)); the field keeps its `slot` name for wire\nstability, but it now names the agent profile rather than a role slot.",
+        "profileId": {
+          "description": "The [id](GgAgentConfig::id) of the agent profile this agent runs under. gg usage is\naccounted per profile (see [`SlotUsage`](Self::SlotUsage)), and every consumer that\nshows a name resolves it against the run's set\n([`agent_name`](GgCapabilitySet::agent_name)) rather than reading one off the\nstream — two profiles may carry the same name, so an id is the only thing that\ngroups a run's agents correctly.",
           "type": "string"
         },
         "type": {
@@ -2045,7 +2049,7 @@
           "type": ["string", "null"]
         }
       },
-      "required": ["type", "slot", "modelId", "depth", "cwd"],
+      "required": ["type", "profileId", "modelId", "depth", "cwd"],
       "type": "object"
     },
     {
@@ -2111,7 +2115,7 @@
       "type": "object"
     },
     {
-      "description": "A per-[slot](GgSlotBinding) usage/cost rollup for the run so far — the accounting that\nreplaces \"one figure for one model\" now that a run spans several models.\n\nBecause subagents can run on different, possibly cross-provider, slots than the parent,\nusage and cost are accumulated **per slot** (and per model within a slot). This event is\na rollup the console renders as a per-slot cost breakdown; it is **not** a per-turn delta\n(the incremental [`Usage`](Self::Usage) events are what consumers sum for the run total),\nso an ingester must not add `SlotUsage` into the run total or it would double-count. One\n`SlotUsage` is emitted per `(slot, model)` the run touched.",
+      "description": "A per-[slot](GgSlotBinding) usage/cost rollup for the run so far — the accounting that\nreplaces \"one figure for one model\" now that a run spans several models.\n\nBecause subagents can run on different, possibly cross-provider, slots than the parent,\nusage and cost are accumulated **per profile** (and per model within a profile). This event is\na rollup the console renders as a per-profile cost breakdown; it is **not** a per-turn delta\n(the incremental [`Usage`](Self::Usage) events are what consumers sum for the run total),\nso an ingester must not add `SlotUsage` into the run total or it would double-count. One\n`SlotUsage` is emitted per `(profile, model)` the run touched.",
       "properties": {
         "cost": {
           "anyOf": [
@@ -2125,11 +2129,11 @@
           "description": "The cost accumulated on this slot/model, when any turn on it reported one."
         },
         "modelId": {
-          "description": "The model id (within the slot) this rollup accounts for. A slot normally resolves to\none model, but the accounting keys on the model too so a re-pointed slot stays\nattributable.",
+          "description": "The model id (within the profile) this rollup accounts for. A profile normally resolves\nto one model, but the accounting keys on the model too so a re-pointed binding stays\nattributable.",
           "type": "string"
         },
-        "slot": {
-          "description": "The slot this rollup accounts for.",
+        "profileId": {
+          "description": "The [id](GgAgentConfig::id) of the agent profile this rollup accounts for.",
           "type": "string"
         },
         "tokens": {
@@ -2141,7 +2145,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "slot", "modelId", "tokens"],
+      "required": ["type", "profileId", "modelId", "tokens"],
       "type": "object"
     },
     {
@@ -2204,16 +2208,16 @@
     {
       "description": "An [FSM](CAPABILITY_FSM) agent entered a state — the event that makes a machine's path\nthrough its own state table observable.\n\nEmitted once per incarnation, on the **incoming** agent instance's stream: once for the\nentry state (with no [`from`](Self::FsmState::from)) and once for every state the machine\nmoves into thereafter. Together with the [`AgentTransition`](Self::AgentTransition) that\nprecedes each move on the *outgoing* instance's stream, the pair says both what happened and\nwhat it carried.",
       "properties": {
-        "agent": {
-          "description": "The [agent profile](GgFsmState::agent) that state runs — which is also this agent\ninstance's [`slot`](Self::AgentSpawned::slot), so a machine's cost splits per state\nagent in the [per-slot rollup](Self::SlotUsage).",
-          "type": "string"
-        },
         "from": {
           "description": "The state the machine came from, or `None` for the entry state.",
           "type": ["string", "null"]
         },
-        "fsm": {
-          "description": "The machine: the name of the **FSM shell** [profile](GgAgentConfig) whose `states` table\nis being driven. An agent may only ever be inside one, so this names the document the\nstate came from.",
+        "fsmId": {
+          "description": "The machine: the [id](GgAgentConfig::id) of the **FSM shell** profile whose `states`\ntable is being driven. An agent may only ever be inside one, so this identifies the\ndocument the state came from.",
+          "type": "string"
+        },
+        "profileId": {
+          "description": "The [profile](GgFsmState::agent_id) that state runs — which is also this agent\ninstance's [`profile_id`](Self::AgentSpawned::profile_id), so a machine's cost splits\nper state agent in the [per-profile rollup](Self::SlotUsage).",
           "type": "string"
         },
         "state": {
@@ -2225,16 +2229,12 @@
           "type": "string"
         }
       },
-      "required": ["type", "fsm", "state", "agent"],
+      "required": ["type", "fsmId", "state", "profileId"],
       "type": "object"
     },
     {
       "description": "One agent instance was **replaced by** (or cloned into) another: an FSM\n[transition](GgFsmTransition), an `exec`, or a `fork`.\n\nEmitted on the **outgoing** instance's stream, immediately before the successor's\n[`AgentSpawned`](Self::AgentSpawned), so a reader walking one agent's timeline sees where it\nwent rather than watching it stop and an unexplained second agent begin. It carries what\nhappened to each [module](GgModuleKind) — the whole of what a successor did and did not\ninherit — because that is the difference between a handoff and a restart, and it is\notherwise invisible in the record.",
       "properties": {
-        "agent": {
-          "description": "The [agent profile](GgAgentConfig) the successor runs under.",
-          "type": "string"
-        },
         "kind": {
           "$ref": "#/$defs/GgAgentTransitionKind",
           "description": "Which of the three [kinds](GgAgentTransitionKind) of succession this was."
@@ -2245,6 +2245,10 @@
             "$ref": "#/$defs/GgTransitionModule"
           },
           "type": "array"
+        },
+        "profileId": {
+          "description": "The [id](GgAgentConfig::id) of the agent profile the successor runs under.",
+          "type": "string"
         },
         "state": {
           "description": "The [FSM state](GgFsmState::name) the successor stands in once the succession has been\napplied, when it stands in one at all.\n\nSet for every [`fsm`](GgAgentTransitionKind::Fsm) transition, and also for an\n[`exec`](GgAgentTransitionKind::Exec) whose target is an **FSM shell**: gg resolves such\na handoff to the machine's entry state, so the successor genuinely enters a process and\nthe record has to say which state it entered. `None` for an `exec` into an ordinary\nprofile and for a [`fork`](GgAgentTransitionKind::Fork), neither of which moves the\nagent within a machine — a fork of an agent standing in a state is a second worker, not\na second position, and carries no state of its own.",
@@ -2259,11 +2263,11 @@
           "type": "string"
         }
       },
-      "required": ["type", "kind", "toAgentId", "agent", "modules"],
+      "required": ["type", "kind", "toAgentId", "profileId", "modules"],
       "type": "object"
     },
     {
-      "description": "An [issue review](https://docs.testcabinet.ai/gg/project-management/) lifecycle transition —\nthe event that makes the reviewer-gated acceptance of an [issue](GgBoardIssue) observable.\n\nEmitted (when the issue named [reviewers](GgBoardIssue::reviewers)) as gg reconciles the\nissue: once as [`Requested`](GgIssueReviewPhase::Requested) when a review round starts, then\nonce per [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round (carrying the\nreviewer's actionable [`items`](Self::IssueReview::items) the issue's assigned agent is then\nre-invoked to address), and finally once as [`Approved`](GgIssueReviewPhase::Approved) when\nevery reviewer has approved and the issue is accepted. Because there is **no cycle limit**, a\nsingle issue may stream many `ChangesRequested` events before an `Approved` (or go straight\nto `Approved` on a clean first pass).\n\nWhich [issue](GgBoardIssue) is under review rides on the event's own\n[`issue_id`](GgTelemetryEvent::issue_id) (the event is emitted on an issue-scoped stream), the\nsame way an agent's identity rides on [`agent_id`](GgTelemetryEvent::agent_id) — so the\npayload carries only the phase-specific data. The reviewer agents themselves emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents, also scoped to the issue under review. An issue filed without reviewers emits none.",
+      "description": "An [issue review](https://docs.testcabinet.ai/gg/project-management/) lifecycle transition —\nthe event that makes the reviewer-gated acceptance of an [issue](GgBoardIssue) observable.\n\nEmitted (when the issue named [reviewers](GgBoardIssue::reviewer_ids)) as gg reconciles the\nissue: once as [`Requested`](GgIssueReviewPhase::Requested) when a review round starts, then\nonce per [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round (carrying the\nreviewer's actionable [`items`](Self::IssueReview::items) the issue's assigned agent is then\nre-invoked to address), and finally once as [`Approved`](GgIssueReviewPhase::Approved) when\nevery reviewer has approved and the issue is accepted. Because there is **no cycle limit**, a\nsingle issue may stream many `ChangesRequested` events before an `Approved` (or go straight\nto `Approved` on a clean first pass).\n\nWhich [issue](GgBoardIssue) is under review rides on the event's own\n[`issue_id`](GgTelemetryEvent::issue_id) (the event is emitted on an issue-scoped stream), the\nsame way an agent's identity rides on [`agent_id`](GgTelemetryEvent::agent_id) — so the\npayload carries only the phase-specific data. The reviewer agents themselves emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents, also scoped to the issue under review. An issue filed without reviewers emits none.",
       "properties": {
         "approvals": {
           "description": "The reviewers that **approved** the work in this round, in the order they ran: every\nreviewer on an [`Approved`](GgIssueReviewPhase::Approved) phase, and the ones that\napproved *before* the reviewer that ended a\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round. Absent on\n[`Requested`](GgIssueReviewPhase::Requested) (nobody has reported yet), and whenever\nnobody approved.",

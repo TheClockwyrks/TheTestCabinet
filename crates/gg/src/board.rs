@@ -9,8 +9,8 @@
 //! [`Issue`] carries structured sections — a title, an optional description, and the three that
 //! make it dispatchable: **in-scope**, **out-of-scope**, and **completion criteria** — that
 //! tell the agent gg assigns it exactly what it is and is not responsible for and how it will be
-//! judged done. It also names the [agent profile](Issue::agent) gg dispatches it under and the
-//! [profiles](Issue::reviewers) that must approve it. Related issues are grouped under an
+//! judged done. It also carries the [profile id](Issue::agent) gg dispatches it under and the
+//! [ids](Issue::reviewers) of the profiles that must approve it. Related issues are grouped under an
 //! [`Epic`] for organization.
 //!
 //! Any agent may build and revise the board — `create_epic`/`create_issue` to add,
@@ -107,7 +107,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgBoardEpic, GgBoardIssue, GgContextSource,
-    GgIssueStatus, GgModuleOrigin, GgSubagentScope, GgTelemetryKind,
+    GgIssueStatus, GgModuleOrigin, GgRosterEntry, GgTelemetryKind,
 };
 
 use crate::dag::{self, DagNode};
@@ -273,61 +273,71 @@ fn narrow(count: u64) -> usize {
 ///
 /// The board itself is run-global, but who may be *put to work by* it is not: an agent may only
 /// name a profile its own [roster](GgAgentConfig::subagents) lists **for that job** — an
-/// [implementer](GgSubagentScope::Implementer) for the issue's `agent`, a
-/// [reviewer](GgSubagentScope::Reviewer) for each of its `reviewers` — so no agent can conjure
+/// [implementer](test_cabinet_core::gg::GgSubagentScope::Implementer) for the issue's `agent`, a
+/// [reviewer](test_cabinet_core::gg::GgSubagentScope::Reviewer) for each of its `reviewers` — so no agent can conjure
 /// workers it was never given, and a profile trusted to write code is not automatically trusted to
 /// review it. Whether reviewers are *demanded* at all is the capability's
 /// [`reviewers`](PARAM_REVIEWERS) feature, likewise per agent.
 ///
 /// The policy lives with the [tools](crate::tools::board), not the [store](BoardStore): the store
 /// is shared by every agent in the run, so a rule that differs per agent cannot be enforced there.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct IssuePolicy {
     /// The profiles this agent may assign an issue to — its roster entries carrying the
-    /// [implementer](GgSubagentScope::Implementer) scope, in declaration order. Empty means it may
+    /// [implementer](test_cabinet_core::gg::GgSubagentScope::Implementer) scope, in declaration order. Empty means it may
     /// file no issue at all, which is why a configuration that lets an agent create issues without
     /// giving it any implementers is [refused at launch](crate::validate).
-    pub implementers: Vec<String>,
+    pub implementers: Vec<GgRosterEntry>,
     /// The profiles this agent may name as an issue's reviewers — its roster entries carrying the
-    /// [reviewer](GgSubagentScope::Reviewer) scope, in declaration order.
-    pub reviewers: Vec<String>,
+    /// [reviewer](test_cabinet_core::gg::GgSubagentScope::Reviewer) scope, in declaration order.
+    pub reviewers: Vec<GgRosterEntry>,
     /// Whether `create_issue` demands at least one reviewer.
     pub require_reviewers: bool,
 }
 
 impl IssuePolicy {
-    /// The policy for `agent`: the [implementer](GgSubagentScope::Implementer) and
-    /// [reviewer](GgSubagentScope::Reviewer) halves of its [roster](GgAgentConfig::subagents), and
+    /// The policy for `agent`: the [implementer](test_cabinet_core::gg::GgSubagentScope::Implementer) and
+    /// [reviewer](test_cabinet_core::gg::GgSubagentScope::Reviewer) halves of its [roster](GgAgentConfig::subagents), and
     /// whether its project-management configuration switches the [reviewers](PARAM_REVIEWERS)
     /// feature on.
-    pub fn resolve(agent: &GgAgentConfig, report: &mut crate::validate::LaunchReport) -> Self {
+    ///
+    /// The two rosters arrive already resolved
+    /// ([`GgCapabilitySet::roster`](test_cabinet_core::gg::GgCapabilitySet::roster)) rather than
+    /// being read off `agent`, for the same reason the delegation tools' menus are: an entry
+    /// carries its target's display name, and only the whole set can look one up.
+    pub fn resolve(
+        agent: &GgAgentConfig,
+        implementers: Vec<GgRosterEntry>,
+        reviewers: Vec<GgRosterEntry>,
+        report: &mut crate::validate::LaunchReport,
+    ) -> Self {
         Self {
-            implementers: names(agent, GgSubagentScope::Implementer),
-            reviewers: names(agent, GgSubagentScope::Reviewer),
+            implementers,
+            reviewers,
             require_reviewers: resolve_require_reviewers(agent, report),
         }
     }
 
-    /// Whether `name` is a profile this agent may assign an issue to.
-    pub fn allows_implementer(&self, name: &str) -> bool {
-        self.implementers.iter().any(|a| a == name)
+    /// Whether `agent_id` is a profile this agent may assign an issue to.
+    pub fn allows_implementer(&self, agent_id: &str) -> bool {
+        GgRosterEntry::offers(&self.implementers, agent_id)
     }
 
-    /// Whether `name` is a profile this agent may name as an issue's reviewer.
-    pub fn allows_reviewer(&self, name: &str) -> bool {
-        self.reviewers.iter().any(|a| a == name)
+    /// Whether `agent_id` is a profile this agent may name as an issue's reviewer.
+    pub fn allows_reviewer(&self, agent_id: &str) -> bool {
+        GgRosterEntry::offers(&self.reviewers, agent_id)
     }
 
-    /// The assignable implementer profiles as a comma-separated, backticked list for a
-    /// model-facing message, or `"(none)"` when the agent may assign to nobody.
+    /// The assignable implementer **ids** as a comma-separated, backticked list for a model-facing
+    /// refusal, or `"(none)"` when the agent may assign to nobody.
     pub fn implementer_list(&self) -> String {
-        backticked(&self.implementers)
+        backticked_ids(&self.implementers)
     }
 
-    /// The assignable reviewer profiles as a comma-separated, backticked list for a model-facing
-    /// message, or `"(none)"` when the agent may name no reviewer.
+    /// The nameable reviewer **ids** as a comma-separated, backticked list for a model-facing
+    /// refusal, or `"(none)"` when the agent may name no reviewer.
     pub fn reviewer_list(&self) -> String {
-        backticked(&self.reviewers)
+        backticked_ids(&self.reviewers)
     }
 }
 
@@ -400,23 +410,16 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::Launc
     resolve_require_reviewers(profile, report);
 }
 
-/// The names, in declaration order, of the profiles `agent`'s roster lists in `scope`.
-fn names(agent: &GgAgentConfig, scope: GgSubagentScope) -> Vec<String> {
-    agent
-        .agents_in_scope(scope)
-        .into_iter()
-        .map(str::to_string)
-        .collect()
-}
-
-/// `names` as a comma-separated, backticked list, or `"(none)"` when empty.
-fn backticked(names: &[String]) -> String {
-    if names.is_empty() {
+/// The profile **ids** `entries` offers as a comma-separated, backticked list, or `"(none)"` when
+/// empty — what a refusal names, since an id is what the refused call has to pass instead. The
+/// display names are left to the tool's description, which has room to read as prose.
+fn backticked_ids(entries: &[GgRosterEntry]) -> String {
+    if entries.is_empty() {
         return "(none)".to_string();
     }
-    names
+    GgRosterEntry::ids(entries)
         .iter()
-        .map(|a| format!("`{a}`"))
+        .map(|id| format!("`{id}`"))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -580,13 +583,13 @@ pub struct Issue {
     blocked_by: Vec<String>,
     /// The id of the [`Epic`] this issue is grouped under, when any.
     epic_id: Option<String>,
-    /// The [agent profile](GgAgentConfig) this issue is **assigned to** — named by whoever filed
-    /// it, from that agent's [implementers](IssuePolicy::implementers), and the profile the
-    /// [dispatcher](crate::agent) runs it (and each retry and review round) under.
+    /// The [id](GgAgentConfig::id) of the profile this issue is **assigned to** — chosen by
+    /// whoever filed it from that agent's [implementers](IssuePolicy::implementers), and the
+    /// profile the [dispatcher](crate::agent) runs it (and each retry and review round) under.
     agent: String,
-    /// The [agent profiles](GgAgentConfig) that must each approve this issue before it is
-    /// accepted, named at creation from the filing agent's
-    /// [reviewers](IssuePolicy::reviewers). Empty when it was filed without any.
+    /// The [ids](GgAgentConfig::id) of the profiles that must each approve this issue before it is
+    /// accepted, chosen at creation from the filing agent's [reviewers](IssuePolicy::reviewers).
+    /// Empty when it was filed without any.
     reviewers: Vec<String>,
     /// The id of the agent gg [dispatched](crate::agent) to implement this issue, set when the
     /// issue is [assigned](BoardStore::assign_issue) (moving it to
@@ -659,13 +662,13 @@ impl Issue {
         self.epic_id.as_deref()
     }
 
-    /// The [agent profile](GgAgentConfig) this issue is assigned to — what the dispatcher runs it
-    /// under.
+    /// The [id](GgAgentConfig::id) of the profile this issue is assigned to — what the dispatcher
+    /// runs it under.
     pub fn agent(&self) -> &str {
         &self.agent
     }
 
-    /// The [agent profiles](GgAgentConfig) that must each approve this issue, or empty
+    /// The [ids](GgAgentConfig::id) of the profiles that must each approve this issue, or empty
     /// when it was filed without reviewers.
     pub fn reviewers(&self) -> &[String] {
         &self.reviewers
@@ -857,10 +860,10 @@ pub struct NewIssue<'a> {
     pub blocked_by: &'a [String],
     /// The epic to group the issue under, when any.
     pub epic_id: Option<&'a str>,
-    /// The [agent profile](Issue::agent) to dispatch the issue under.
+    /// The [id](GgAgentConfig::id) of the profile to [dispatch](Issue::agent) the issue under.
     pub agent: &'a str,
-    /// The [agent profiles](Issue::reviewers) that must approve it, when the filing agent's
-    /// [policy](IssuePolicy::require_reviewers) demands them.
+    /// The [ids](GgAgentConfig::id) of the profiles that must [approve](Issue::reviewers) it, when
+    /// the filing agent's [policy](IssuePolicy::require_reviewers) demands them.
     pub reviewers: &'a [String],
 }
 
@@ -974,9 +977,9 @@ impl BoardStore {
     /// caller could have referenced, so it cannot close a cycle or block itself: naming a
     /// non-existent blocker is its only DAG failure.
     ///
-    /// The store checks that the [assignee](NewIssue::agent) and each
-    /// [reviewer](NewIssue::reviewers) is *named*; checking that they are profiles the **filing
-    /// agent** may assign to is the [tool](crate::tools::board)'s job, since the store is shared
+    /// The store checks only that the [assignee](NewIssue::agent) and each
+    /// [reviewer](NewIssue::reviewers) is *named*; checking that each id is one the **filing
+    /// agent** may put to work is the [tool](crate::tools::board)'s job, since the store is shared
     /// by every agent in the run and that rule is per agent.
     pub fn create_issue(&mut self, issue: NewIssue<'_>) -> Result<String, BoardError> {
         let title = require_field(issue.title, "title")?;
@@ -1441,8 +1444,8 @@ impl BoardStore {
                 status: issue.status.to_contract(),
                 blocked_by: issue.blocked_by.clone(),
                 epic_id: issue.epic_id.clone(),
-                agent: issue.agent.clone(),
-                reviewers: issue.reviewers.clone(),
+                agent_id: issue.agent.clone(),
+                reviewer_ids: issue.reviewers.clone(),
                 assigned_agent_id: issue.assigned_agent.clone(),
                 retries: issue.retries,
             })
@@ -1523,18 +1526,20 @@ impl BoardStore {
             out_of_scope: issue.out_of_scope.clone(),
             completion_criteria: issue.completion_criteria.clone(),
             agent: issue.agent.clone(),
+            // Ids, not display names: the block is what an agent revising or waiting on this
+            // issue reads, and every call it might make next names a profile by its id.
             reviewers: (!issue.reviewers.is_empty()).then(|| {
                 issue
                     .reviewers
                     .iter()
-                    .map(|name| format!("`{name}`"))
+                    .map(|agent_id| format!("`{agent_id}`"))
                     .collect::<Vec<_>>()
                     .join(", ")
             }),
         }
     }
 
-    /// The [profile](Issue::agent) the issue with id `id` is assigned to, if it exists.
+    /// The [profile id](Issue::agent) the issue with id `id` is assigned to, if it exists.
     fn issue_agent(&self, id: &str) -> Option<&str> {
         self.issues
             .iter()
@@ -1542,7 +1547,7 @@ impl BoardStore {
             .map(Issue::agent)
     }
 
-    /// The [reviewer profiles](Issue::reviewers) of the issue with id `id`, if it exists.
+    /// The [reviewer profile ids](Issue::reviewers) of the issue with id `id`, if it exists.
     fn issue_reviewers(&self, id: &str) -> Option<&[String]> {
         self.issues
             .iter()
@@ -1591,7 +1596,7 @@ fn require_non_empty_when_present(
     }
 }
 
-/// Trim, validate, and deduplicate a list of agent-profile names: every entry must be non-empty,
+/// Trim, validate, and deduplicate a list of agent-profile ids: every entry must be non-empty,
 /// order is preserved, and duplicates are dropped (naming one reviewer twice is one reviewer).
 fn normalize_names(raw: &[String], field: &'static str) -> Result<Vec<String>, BoardError> {
     let mut out: Vec<String> = Vec::new();
@@ -1765,9 +1770,9 @@ impl BoardRuntime {
         self.store.lock().expect("board store lock").issue_brief(id)
     }
 
-    /// The [agent profile](Issue::agent) the issue with id `id` is assigned to — the profile the
-    /// [dispatcher](crate::agent) spawns it under — or `None` when the capability is off, no such
-    /// issue exists, or it was filed without an assignee.
+    /// The [profile id](Issue::agent) the issue with id `id` is assigned to — the id the
+    /// [dispatcher](crate::agent) resolves the profile it spawns it under from — or `None` when the
+    /// capability is off, no such issue exists, or it was filed without an assignee.
     pub fn issue_agent(&self, id: &str) -> Option<String> {
         if !self.enabled {
             return None;
@@ -1780,7 +1785,7 @@ impl BoardRuntime {
             .map(str::to_string)
     }
 
-    /// The [reviewer profiles](Issue::reviewers) of the issue with id `id` — the profiles its
+    /// The [reviewer profile ids](Issue::reviewers) of the issue with id `id` — the profiles its
     /// [review](crate::agent) must be approved by — or an empty list when the
     /// capability is off, no such issue exists, or it was filed without reviewers.
     pub fn issue_reviewers(&self, id: &str) -> Vec<String> {

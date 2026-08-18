@@ -256,7 +256,7 @@ export function contextYMax(
 export function visibleSources(
   set: GgCapabilitySet | null,
   series: readonly ContextSnapshot[],
-  agent?: string | null,
+  agentId?: string | null,
 ): readonly GgContextSource[] {
   return CONTEXT_SOURCES.filter((source) => {
     const needed = SOURCE_CAPABILITIES[source];
@@ -267,7 +267,7 @@ export function visibleSources(
     // The graph is one agent's window, so the capabilities that decide which bands
     // it can hold are that agent's own — a task list enabled only on an implementer
     // fills that agent's window and nobody else's.
-    if (needed.some((id) => agentCapabilityOn(set, agent, id))) return true;
+    if (needed.some((id) => agentCapabilityOn(set, agentId, id))) return true;
     return series.some((snapshot) => sourceTokens(snapshot, source) > 0);
   });
 }
@@ -323,8 +323,8 @@ interface ContextFillGraphProps {
   // there is no reason to show a Skills band to an agent with skills disabled. Null
   // until gg announces it, which shows every source.
   capabilitySet?: GgCapabilitySet | null;
-  // The profile the agent whose window this is runs under, so the bands are filtered
-  // by *its* capabilities rather than the Root's. Absent falls back to the Root.
+  // The ID of the profile the agent whose window this is runs under, so the bands are
+  // filtered by *its* capabilities rather than the Root's. Absent falls back to the Root.
   agent?: string | null;
   // Compaction boundaries to mark on the graph — each drops the window (the
   // sawtooth's fall). Empty when compaction is off or never tripped.

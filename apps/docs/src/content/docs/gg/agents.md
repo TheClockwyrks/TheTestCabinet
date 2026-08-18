@@ -23,8 +23,10 @@ or editing one opens the same per-agent view a configuration opens, alongside:
 - the model slots its bindings defer to, since the configuration that runs the
   agent is what names a slot.
 
-The agent's own name is the library's name for it, and is unique within an
-account. Duplicate seeds a new saved agent from an existing one.
+The agent's own name is the library's name for it. The library assigns each
+saved agent an id of its own, which is what an importing configuration points
+at, so renaming one carries every import along with it. Duplicate seeds a new
+saved agent from an existing one.
 
 ## Importing one
 
@@ -32,10 +34,14 @@ A configuration's Agents tab declares a profile in either of two ways. Add agent
 declares a fresh one inline, which belongs to that configuration alone. Import
 agent picks a saved one, and the resulting profile:
 
-- takes the saved agent's name, made unique within the configuration;
+- mints a [profile id](/gg/configurations/#identity) of its own, derived from
+  the saved agent's;
+- takes the saved agent's name as its display text, suffixed only when another
+  profile in the configuration already shows it, so the operator's list stays
+  legible;
 - declares any model slot its bindings name that the configuration does not
   already have, taking the default recorded with the saved agent;
-- carries the saved agent's references to itself onto the name it arrives under.
+- carries the saved agent's references to itself onto the id it arrives under.
 
 An imported profile is marked as such on the configuration's agent list, beside
 the name of the saved agent it follows. Save to library does the reverse for a

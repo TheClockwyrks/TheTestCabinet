@@ -58,10 +58,10 @@ function at(
   };
 }
 
-const spawn = (slot: string, depth: number) =>
+const spawn = (profileId: string, depth: number) =>
   ({
     type: "agent_spawned",
-    slot,
+    profileId,
     modelId: "vendor/big",
     depth,
   }) as GgTelemetryKind;
@@ -130,9 +130,9 @@ describe("a gg run's runtime", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
-        at(10, "agent-0", spawn("Reviewer", 1), "root"),
-        at(10, "agent-1", spawn("Reviewer", 1), "root"),
+        at(0, "root", spawn("root", 0)),
+        at(10, "agent-0", spawn("reviewer", 1), "root"),
+        at(10, "agent-1", spawn("reviewer", 1), "root"),
         at(
           70,
           "agent-0",
@@ -165,8 +165,8 @@ describe("a gg run's runtime", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
-        at(20, "agent-0", spawn("Reviewer", 1), "root"),
+        at(0, "root", spawn("root", 0)),
+        at(20, "agent-0", spawn("reviewer", 1), "root"),
         at(30, "agent-0", { type: "turn_started" } as GgTelemetryKind, "root"),
       ],
       90,
@@ -186,7 +186,7 @@ describe("a gg run's runtime", () => {
     // after the run finished — a concluded run would report an ever-growing runtime.
     const events = [
       at(0, "root", { type: "session_started" } as GgTelemetryKind),
-      at(0, "root", spawn("Root", 0)),
+      at(0, "root", spawn("root", 0)),
       at(45, "root", {
         type: "session_ended",
         status: "completed",
@@ -205,9 +205,9 @@ describe("a gg run's runtime", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
-        at(10, "agent-0", spawn("Implementer", 1), "root"),
-        at(10, "agent-1", spawn("Implementer", 1), "root"),
+        at(0, "root", spawn("root", 0)),
+        at(10, "agent-0", spawn("implementer", 1), "root"),
+        at(10, "agent-1", spawn("implementer", 1), "root"),
         at(10, "root", blockedOn("subagents `agent-0`, `agent-1`")),
         at(70, "agent-0", returned(), "root"),
         at(70, "agent-1", returned(), "root"),
@@ -230,7 +230,7 @@ describe("a gg run's runtime", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
+        at(0, "root", spawn("root", 0)),
         at(10, "root", blockedOn("issue `AUTH-1`")),
         at(20, "root", resumed()),
         at(40, "root", blockedOn("issue `AUTH-2`")),
@@ -250,8 +250,8 @@ describe("a gg run's runtime", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
-        at(20, "agent-0", spawn("Implementer", 1), "root"),
+        at(0, "root", spawn("root", 0)),
+        at(20, "agent-0", spawn("implementer", 1), "root"),
         at(20, "root", blockedOn("subagent `agent-0`")),
       ],
       90,
@@ -273,7 +273,7 @@ describe("a gg run's runtime", () => {
     // reader had a finished run's page open.
     const events = [
       at(0, "root", { type: "session_started" } as GgTelemetryKind),
-      at(0, "root", spawn("Root", 0)),
+      at(0, "root", spawn("root", 0)),
       at(20, "root", blockedOn("issue `AUTH-1`")),
       at(50, "root", ended()),
     ];
@@ -289,8 +289,8 @@ describe("a gg run's runtime", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
-        at(10, "agent-0", spawn("Reviewer", 1), "root"),
+        at(0, "root", spawn("root", 0)),
+        at(10, "agent-0", spawn("reviewer", 1), "root"),
         at(20, "agent-0", blockedOn("issue `AUTH-1`"), "root"),
         at(50, "agent-0", returned(), "root"),
         at(60, "root", ended()),
@@ -326,10 +326,10 @@ describe("how many agents are working right now", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
-        at(10, "agent-0", spawn("Implementer", 1), "root"),
-        at(10, "agent-1", spawn("Implementer", 1), "root"),
-        at(10, "agent-2", spawn("Implementer", 1), "root"),
+        at(0, "root", spawn("root", 0)),
+        at(10, "agent-0", spawn("implementer", 1), "root"),
+        at(10, "agent-1", spawn("implementer", 1), "root"),
+        at(10, "agent-2", spawn("implementer", 1), "root"),
         at(10, "root", blockedOn("subagents `agent-0`, `agent-1`, `agent-2`")),
         at(40, "agent-0", returned(), "root"),
         at(50, "agent-1", finished("failed"), "root"),
@@ -349,10 +349,10 @@ describe("how many agents are working right now", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
-        at(10, "agent-0", spawn("Lead", 1), "root"),
+        at(0, "root", spawn("root", 0)),
+        at(10, "agent-0", spawn("lead", 1), "root"),
         at(10, "root", blockedOn("subagent `agent-0`")),
-        at(20, "agent-1", spawn("Implementer", 2), "agent-0"),
+        at(20, "agent-1", spawn("implementer", 2), "agent-0"),
         at(20, "agent-0", blockedOn("subagent `agent-1`"), "root"),
       ],
       60,
@@ -394,8 +394,8 @@ describe("how many agents are working right now", () => {
     // wall clock that stopped, which is the exact inversion of the reading it exists for.
     const events = [
       at(0, "root", { type: "session_started" } as GgTelemetryKind),
-      at(0, "root", spawn("Root", 0)),
-      at(10, "agent-0", spawn("Implementer", 1), "root"),
+      at(0, "root", spawn("root", 0)),
+      at(10, "agent-0", spawn("implementer", 1), "root"),
       at(10, "root", blockedOn("subagent `agent-0`")),
     ];
     const finished = runtimeOf(events, 20, false);
@@ -422,8 +422,8 @@ describe("how many agents are working right now", () => {
     const runtime = runtimeOf(
       [
         at(0, "root", { type: "session_started" } as GgTelemetryKind),
-        at(0, "root", spawn("Root", 0)),
-        at(10, "agent-0", spawn("Reviewer", 1), "root"),
+        at(0, "root", spawn("root", 0)),
+        at(10, "agent-0", spawn("reviewer", 1), "root"),
         at(20, "root", blockedOn("subagent `agent-0`")),
         at(60, "root", ended()),
       ],
@@ -472,7 +472,7 @@ describe("the wall clock's origin", () => {
         system(40, "start_container", "completed"),
         system(50, "init_test_case", "completed"),
         at(55, "root", { type: "session_started" } as GgTelemetryKind),
-        at(55, "root", spawn("Root", 0)),
+        at(55, "root", spawn("root", 0)),
       ],
       110,
     );
@@ -509,7 +509,7 @@ describe("the wall clock's origin", () => {
         system(0, "pull_image", "started"),
         system(10, "init_test_case", "completed"),
         at(15, "root", { type: "session_started" } as GgTelemetryKind),
-        at(15, "root", spawn("Root", 0)),
+        at(15, "root", spawn("root", 0)),
         at(70, "root", ended()),
         system(75, "teardown", "completed"),
       ],
@@ -527,8 +527,8 @@ describe("the wall clock's origin", () => {
         system(0, "pull_image", "started"),
         system(20, "init_test_case", "completed"),
         at(25, "root", { type: "session_started" } as GgTelemetryKind),
-        at(25, "root", spawn("Root", 0)),
-        at(30, "agent-0", spawn("Implementer", 1), "root"),
+        at(25, "root", spawn("root", 0)),
+        at(30, "agent-0", spawn("implementer", 1), "root"),
         at(30, "root", blockedOn("subagent `agent-0`")),
         at(60, "agent-0", returned(), "root"),
         at(60, "root", resumed()),
@@ -551,7 +551,7 @@ describe("the wall clock's origin", () => {
     const runtime = runtimeOf(
       [
         at(5, "root", { type: "session_started" } as GgTelemetryKind),
-        at(5, "root", spawn("Root", 0)),
+        at(5, "root", spawn("root", 0)),
       ],
       65,
     );

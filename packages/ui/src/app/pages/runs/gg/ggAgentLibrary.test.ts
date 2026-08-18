@@ -6,7 +6,7 @@
 //
 // 1. An import that has not been touched must record *no* overrides. The overrides are
 //    derived by comparing the profile against the saved agent, so anything the import
-//    path does differently from the library — resolving a name, seeding a param,
+//    path does differently from the library — re-pointing a reference, seeding a param,
 //    declaring a slot — would show up as a field pinned by a configuration nobody edited,
 //    and would then stop following the saved agent forever.
 // 2. A field the configuration has not pinned must follow the saved agent as it stands
@@ -52,7 +52,7 @@ function agentDraft(name: string): GgConfigDraft {
     modelSlotId: slot.id,
   };
   // Its `agent` params name itself, which is what the standalone editor seeds and what
-  // an importing configuration carries onto the profile's new name.
+  // an importing configuration carries onto the id it imports the profile under.
   const agent = seedAgentParams(blank, blank.id);
   return {
     agents: [agent],
@@ -103,6 +103,9 @@ describe("importing a saved agent", () => {
 
     expect(draft.agents).toHaveLength(2);
     const imported = draft.agents.find((a) => a.id === agentId)!;
+    // The id is minted from the saved profile's own, so what the configuration — and the
+    // model it is shown to — names this profile by reads as the agent it came from.
+    expect(agentId).toBe("reviewer");
     expect(imported.name).toBe("reviewer");
     expect(imported.source?.agentId).toBe("saved-1");
     // The one assertion the whole overlay rests on: an untouched import differs from the
@@ -117,7 +120,7 @@ describe("importing a saved agent", () => {
     expect(draft.rootAgentId).not.toBe(agentId);
   });
 
-  it("takes a name no other profile has, carrying its self-references along", () => {
+  it("takes an id of its own, carrying its self-references onto it", () => {
     // The configuration already has an agent called `reviewer`, and the saved agent
     // lists itself in its own roster.
     const withRoster = savedReviewer((draft) => {
@@ -136,10 +139,14 @@ describe("importing a saved agent", () => {
 
     const { draft, agentId } = importSavedAgent(renamed, withRoster);
     const imported = draft.agents.find((a) => a.id === agentId)!;
-    expect(imported.name).toBe("reviewer-2");
-    // The roster entry followed the rename rather than resolving onto the *other*
-    // agent that happened to be called `reviewer`.
+    // The other profile is called `reviewer` too — names collide freely — so what has to
+    // be its own is the id, and the roster entry followed the import onto it rather than
+    // resolving onto whichever profile the name would have matched.
+    expect(imported.id).not.toBe(base.agents[0]!.id);
     expect(imported.subagents.map((s) => s.agentId)).toEqual([agentId]);
+    // The display name is de-duplicated as a courtesy to whoever reads the list, and
+    // nothing turns on it.
+    expect(imported.name).toBe("reviewer-2");
     expect(draftAgentOverrides(draft, agentId)).toEqual([]);
   });
 
@@ -224,8 +231,9 @@ describe("overrides", () => {
   });
 
   it("is not raised by renaming the profile", () => {
-    // The name is what the rest of the configuration refers to this profile by, so it
-    // is always the configuration's — never a field that stops following the library.
+    // A name is the configuration's own display text and no field of the overlay at all:
+    // nothing resolves a reference by reading one, so renaming a profile can never be the
+    // thing that stops it following the library.
     const saved = savedReviewer();
     const { draft, agentId } = importSavedAgent(emptyDraft(), saved);
     const renamed = patchAgent(draft, agentId, { name: "critic" });
@@ -236,6 +244,7 @@ describe("overrides", () => {
 describe("merging", () => {
   it("takes an unpinned field from the saved agent and a pinned one from the configuration", () => {
     const base: GgAgentConfig = {
+      id: "reviewer",
       name: "reviewer",
       capabilities: [],
       modelId: "",
@@ -243,6 +252,7 @@ describe("merging", () => {
       systemPromptTemplate: "pinned here",
     };
     const stored: GgAgentConfig = {
+      id: "reviewer",
       name: "reviewer",
       capabilities: [],
       modelId: "",
@@ -254,23 +264,28 @@ describe("merging", () => {
     expect(merged.systemPromptTemplate).toBe("pinned here");
   });
 
-  it("keeps the configuration's name and carries the saved agent's self-references onto it", () => {
+  it("keeps the configuration's identity and carries the saved agent's self-references onto it", () => {
     const base: GgAgentConfig = {
+      id: "reviewer",
       name: "reviewer",
       capabilities: [],
       modelId: "",
       subagents: [
-        { agent: "reviewer", description: "itself", scopes: ["subagent"] },
+        { agentId: "reviewer", description: "itself", scopes: ["subagent"] },
       ],
     };
     const stored: GgAgentConfig = {
-      name: "reviewer-2",
+      id: "reviewer-2",
+      name: "Second opinion",
       capabilities: [],
       modelId: "",
     };
     const merged = mergeAgentConfig(base, stored, []);
-    expect(merged.name).toBe("reviewer-2");
-    expect(merged.subagents?.[0]?.agent).toBe("reviewer-2");
+    // Both halves of the identity are the configuration's: the id because every other
+    // reference in the set holds it, the name because it is the configuration's own text.
+    expect(merged.id).toBe("reviewer-2");
+    expect(merged.name).toBe("Second opinion");
+    expect(merged.subagents?.[0]?.agentId).toBe("reviewer-2");
   });
 
   it("finds no override between an agent and itself", () => {
@@ -288,7 +303,7 @@ describe("resolving a stored configuration", () => {
       name: "review arm",
       description: "",
       capabilitySet: capabilitySetFromDraft(draft, "review arm"),
-      agentSources: [{ agent: "reviewer", agentId: saved.id, overrides }],
+      agentSources: [{ profileId: "reviewer", agentId: saved.id, overrides }],
       updatedAt: "2026-08-18T00:00:00Z",
     };
   }
@@ -302,7 +317,7 @@ describe("resolving a stored configuration", () => {
     );
 
     const resolved = resolveCapabilitySet(config, [moved]);
-    const reviewer = resolved.agents?.find((a) => a.name === "reviewer");
+    const reviewer = resolved.agents?.find((a) => a.id === "reviewer");
     expect(reviewer?.customInstructions).toBe("Be brief.");
   });
 
@@ -315,7 +330,7 @@ describe("resolving a stored configuration", () => {
     );
 
     const resolved = resolveCapabilitySet(config, [moved]);
-    const reviewer = resolved.agents?.find((a) => a.name === "reviewer");
+    const reviewer = resolved.agents?.find((a) => a.id === "reviewer");
     expect(reviewer?.customInstructions).toBeUndefined();
   });
 
@@ -350,7 +365,7 @@ describe("detaching and reverting", () => {
     const { draft } = importSavedAgent(emptyDraft(), saved);
     const orphaned = attachAgentSources(
       { ...draft, agents: draft.agents.map((a) => ({ ...a, source: null })) },
-      [{ agent: "reviewer", agentId: saved.id, overrides: [] }],
+      [{ profileId: "reviewer", agentId: saved.id, overrides: [] }],
       [],
     );
     expect(agentSourcesFromDraft(orphaned)).toEqual([]);
@@ -366,8 +381,8 @@ describe("detaching and reverting", () => {
 
     const reverted = revertImportedAgent(edited, agentId);
     const agent = reverted.agents.find((a) => a.id === agentId)!;
-    // Same id and same position, so every reference to it survives; the name is the
-    // configuration's, so reverting never renames a profile out from under a roster.
+    // Same id and same position, so every reference to it survives — a roster entry, an
+    // `agent` param, the source itself — and the display name it was given is kept too.
     expect(reverted.agents.map((a) => a.id)).toEqual(
       edited.agents.map((a) => a.id),
     );
@@ -419,7 +434,7 @@ describe("round-tripping a stored configuration", () => {
 
     expect(trip.resaved.capabilitySet).toEqual(trip.stored.capabilitySet);
     expect(trip.resaved.agentSources).toEqual([
-      { agent: "reviewer", agentId: "saved-1", overrides: [] },
+      { profileId: "reviewer", agentId: "saved-1", overrides: [] },
     ]);
   });
 
@@ -435,7 +450,7 @@ describe("round-tripping a stored configuration", () => {
     expect(trip.resaved.capabilitySet).toEqual(trip.stored.capabilitySet);
     expect(trip.resaved.agentSources).toEqual([
       {
-        agent: "reviewer",
+        profileId: "reviewer",
         agentId: "saved-1",
         overrides: ["customInstructions", "promptCacheTtl"],
       },
@@ -446,17 +461,21 @@ describe("round-tripping a stored configuration", () => {
     const saved = savedReviewer();
     const once = importSavedAgent(emptyDraft(), saved);
     const twice = importSavedAgent(once.draft, saved);
+    // Both copies are shown under the one name, which is the case a source keyed by the
+    // displayed text could not survive: one of the two would follow the other's overrides,
+    // and neither the form nor the stored document would say which.
     const draft = patchAgent(twice.draft, twice.agentId, {
+      name: "reviewer",
       customInstructions: "Be brief.",
     });
     const trip = roundTrip(draft, [saved]);
 
     expect(trip.resaved.capabilitySet).toEqual(trip.stored.capabilitySet);
-    // The second copy took a name of its own, and only it pins anything.
+    // The second copy took an id of its own, and only it pins anything.
     expect(trip.resaved.agentSources).toEqual([
-      { agent: "reviewer", agentId: "saved-1", overrides: [] },
+      { profileId: "reviewer", agentId: "saved-1", overrides: [] },
       {
-        agent: "reviewer-2",
+        profileId: "reviewer-2",
         agentId: "saved-1",
         overrides: ["customInstructions"],
       },
@@ -471,8 +490,10 @@ describe("round-tripping a stored configuration", () => {
     });
     const trip = roundTrip(draft, [saved]);
 
+    // Renamed, and still following: the source names the profile's id, which the rename
+    // left where it was.
     expect(trip.resaved.agentSources).toEqual([
-      { agent: "critic", agentId: "saved-1", overrides: [] },
+      { profileId: "reviewer", agentId: "saved-1", overrides: [] },
     ]);
   });
 });

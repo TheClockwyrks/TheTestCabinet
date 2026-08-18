@@ -137,10 +137,7 @@ export function AgentIdentity({
   // issue-derived id, which is exactly what names the work it was dispatched for.
   const isRoot = node.id === ROOT_ID;
   return (
-    <div
-      className={styles.agentRow}
-      data-status={node.status}
-    >
+    <div className={styles.agentRow} data-status={node.status}>
       <div className={styles.agentHead}>
         <span className={styles.agentStatus} data-status={node.status}>
           <span className={styles.agentStatusDot} aria-hidden="true" />
@@ -182,9 +179,13 @@ export function AgentIdentity({
       {/* The agent's name and the model it ran on, on their own line beneath the
           status + instance id — a dot separates the two the way depth · turns is
           joined above. */}
-      {node.slot && (
+      {node.profileId && (
         <div className={styles.agentNameRow}>
-          <span className={styles.agentName}>{node.slot}</span>
+          {/* The profile's name, with the id it is addressed by in the tooltip: two
+              profiles may read alike, and this row has one line for both. */}
+          <span className={styles.agentName} title={node.profileId}>
+            {node.profile ?? node.profileId}
+          </span>
           {node.modelId && (
             <>
               <span className={styles.agentMetaSep} aria-hidden="true">
@@ -265,7 +266,9 @@ export function FsmPathStrip({
         {path.map((visit) => (
           <li key={visit.agentId} className={styles.workflowStage}>
             <span className={styles.workflowStageName}>{visit.state}</span>
-            <span className={styles.workflowStageItems}>{visit.agent}</span>
+            <span className={styles.workflowStageItems} title={visit.profileId}>
+              {visit.profile}
+            </span>
             {(carried.get(visit.agentId)?.length ?? 0) > 0 && (
               <span className={styles.workflowStageItems}>
                 +{carried.get(visit.agentId)!.join(" +")}
@@ -277,4 +280,3 @@ export function FsmPathStrip({
     </section>
   );
 }
-

@@ -20,6 +20,40 @@ fn root_set(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
     }
 }
 
+/// A set whose two non-root profiles carry **one display name** and are told apart only by their
+/// [ids](GgAgentConfig::id) — the shape every id-versus-name rule is asserted against. The root
+/// may spawn one of them and have the other review, so one roster serves both scope reads.
+fn two_reviewers() -> GgCapabilitySet {
+    GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                subagents: vec![
+                    GgSubagentRef {
+                        agent_id: "reviewer".to_string(),
+                        description: "for a second opinion".to_string(),
+                        scopes: vec![GgSubagentScope::Subagent],
+                    },
+                    GgSubagentRef::new("reviewer-2", &[GgSubagentScope::Reviewer]),
+                ],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: "reviewer".to_string(),
+                name: "Careful Reviewer".to_string(),
+                model_id: "anthropic/claude-haiku-4.5".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: "reviewer-2".to_string(),
+                name: "Careful Reviewer".to_string(),
+                model_id: "openai/gpt-5.5".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    }
+}
+
 /// The zeroed [error rollup](GgErrorSummary) every session summary carries, for a fixture whose
 /// subject is something else.
 fn no_errors() -> serde_json::Value {
@@ -87,6 +121,7 @@ fn default_capability_set_needs_no_model_and_binds_no_agent_model() {
 fn a_run_wide_read_asks_every_agent_where_the_root_read_asks_one() {
     let mut set = root_set(vec![]);
     set.agents.push(GgAgentConfig {
+        id: "reviewer".to_string(),
         name: "Reviewer".to_string(),
         capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FSM)],
         ..GgAgentConfig::root()
@@ -116,6 +151,86 @@ fn a_capability_set_without_agents_reads_as_a_root_agent() {
     assert!(set.root().is_enabled(CAPABILITY_SHELL));
 }
 
+/// **Two profiles may carry one name, and only the id tells them apart.**
+///
+/// There is no uniqueness rule on a display name anywhere, and nothing resolves a reference by
+/// reading one — so a set is addressed entirely by [id](GgAgentConfig::id), and the name survives
+/// only where a person or a model reads prose.
+#[test]
+fn two_profiles_may_share_a_name_and_are_still_addressed_apart_by_id() {
+    let set = two_reviewers();
+
+    // The premise: one display name, two profiles.
+    assert_eq!(set.agents[1].name, set.agents[2].name);
+
+    // Lookup is by id, and it resolves each of them to itself.
+    assert_eq!(
+        set.agent("reviewer").map(|a| a.model_id.as_str()),
+        Some("anthropic/claude-haiku-4.5")
+    );
+    assert_eq!(
+        set.agent("reviewer-2").map(|a| a.model_id.as_str()),
+        Some("openai/gpt-5.5")
+    );
+    assert!(
+        set.agent("Careful Reviewer").is_none(),
+        "a display name resolves nothing, because it could not say which profile is meant"
+    );
+    assert_eq!(set.root_id(), ROOT_PROFILE_ID);
+    assert_eq!(set.root_name(), ROOT_AGENT);
+
+    // The name is prose, and a reference that resolves to no profile at all reads back as the id
+    // it failed to resolve rather than as nothing.
+    assert_eq!(set.agent_name("reviewer"), "Careful Reviewer");
+    assert_eq!(set.agent_name("reviewer-2"), "Careful Reviewer");
+    assert_eq!(set.agent_name("ghost"), "ghost");
+}
+
+/// **The vocabulary a model-facing menu offers is ids**, and a call is admitted by the id the
+/// model passed back — never by the name the menu rendered beside it.
+#[test]
+fn a_roster_offers_ids_scoped_to_what_the_target_may_be_used_for() {
+    let set = two_reviewers();
+
+    let spawnable = set.roster(set.root(), GgSubagentScope::Subagent);
+    assert_eq!(GgRosterEntry::ids(&spawnable), vec!["reviewer"]);
+    assert_eq!(
+        spawnable[0].name, "Careful Reviewer",
+        "the name rides along so the menu reads as prose"
+    );
+    assert_eq!(spawnable[0].description, "for a second opinion");
+
+    // Scoping is what each surface asks by, so the reviewer list and the spawn list differ even
+    // though both targets carry the same name.
+    let reviewers = set.roster(set.root(), GgSubagentScope::Reviewer);
+    assert_eq!(GgRosterEntry::ids(&reviewers), vec!["reviewer-2"]);
+
+    assert!(GgRosterEntry::offers(&spawnable, "reviewer"));
+    assert!(
+        GgRosterEntry::offers(&spawnable, "  reviewer  "),
+        "the argument arrives as the model wrote it, so it is trimmed"
+    );
+    assert!(
+        !GgRosterEntry::offers(&spawnable, "Careful Reviewer"),
+        "a display name admits nothing: it names two profiles"
+    );
+    assert!(
+        !GgRosterEntry::offers(&spawnable, "reviewer-2"),
+        "and an id this scope does not offer is refused"
+    );
+
+    // An entry pointing at a profile the set does not declare is dropped rather than offered:
+    // a launch refuses such a set, so a menu built from one must not name it.
+    let mut dangling = set.clone();
+    dangling.agents[0]
+        .subagents
+        .push(GgSubagentRef::any("ghost"));
+    assert_eq!(
+        GgRosterEntry::ids(&dangling.roster(dangling.root(), GgSubagentScope::Subagent)),
+        vec!["reviewer"]
+    );
+}
+
 #[test]
 fn disabled_capability_is_present_but_off() {
     let set = root_set(vec![GgCapabilityConfig::disabled(CAPABILITY_SHELL)]);
@@ -130,6 +245,7 @@ fn capability_set_round_trips_through_json() {
         preset: Some("planning-A".to_string()),
         agents: vec![
             GgAgentConfig {
+                id: ROOT_PROFILE_ID.to_string(),
                 name: ROOT_AGENT.to_string(),
                 capabilities: vec![
                     GgCapabilityConfig::enabled(CAPABILITY_SHELL),
@@ -145,6 +261,7 @@ fn capability_set_round_trips_through_json() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "reviewer".to_string(),
                 name: "reviewer".to_string(),
                 capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)],
                 model_id: "openai/gpt-5.5".to_string(),
@@ -177,6 +294,7 @@ fn the_prompt_cache_lifetime_is_per_agent_and_omitted_at_its_default() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "scout".to_string(),
                 name: "scout".to_string(),
                 model_id: "anthropic/claude-haiku-4.5".to_string(),
                 ..GgAgentConfig::root()
@@ -206,6 +324,7 @@ fn the_prompt_cache_lifetime_is_per_agent_and_omitted_at_its_default() {
 fn a_capability_set_without_a_prompt_cache_lifetime_reads_as_standard() {
     let stored = json!({
         "agents": [{
+            "id": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
             "modelId": "anthropic/claude-opus-4.8",
@@ -321,6 +440,7 @@ fn loop_detection_is_per_agent_and_omitted_when_nothing_was_declared() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "scout".to_string(),
                 name: "scout".to_string(),
                 model_id: "anthropic/claude-haiku-4.5".to_string(),
                 ..GgAgentConfig::root()
@@ -349,6 +469,7 @@ fn loop_detection_is_per_agent_and_omitted_when_nothing_was_declared() {
     // parse, so arming it is always something an operator did on purpose.
     let stored: GgCapabilitySet = serde_json::from_value(json!({
         "agents": [{
+            "id": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
             "modelId": "openai/gpt-5.6",
@@ -467,6 +588,7 @@ fn an_integral_ceiling_reads_the_same_however_it_is_spelled() {
 fn a_capability_set_without_limits_deserializes_to_none_and_re_serializes_without_the_key() {
     let set: GgCapabilitySet = serde_json::from_value(json!({
         "agents": [{
+            "id": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": "shell", "enabled": true }],
             "modelId": "anthropic/claude-opus-4.8",
@@ -580,6 +702,7 @@ fn a_deferred_agent_is_unresolved_until_a_launch_fills_its_model_slot() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "judge".to_string(),
                 name: "judge".to_string(),
                 model_id: "openai/o-fixed".to_string(),
                 ..GgAgentConfig::root()
@@ -628,8 +751,8 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
                 capabilities: vec![GgCapabilityConfig {
                     params: json!({
                         FSM_PARAM_STATES: [
-                            { "name": "explore", "agent": "judge" },
-                            { "name": "build", "agent": ROOT_AGENT },
+                            { "name": "explore", "agentId": "judge" },
+                            { "name": "build", "agentId": "builder" },
                         ],
                     }),
                     ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
@@ -638,7 +761,16 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                name: "judge".to_string(),
+                id: "judge".to_string(),
+                name: "Judge".to_string(),
+                model_id: "openai/o-fixed".to_string(),
+                ..GgAgentConfig::root()
+            },
+            // The same display name as the entry state's profile: only the id says which of the
+            // two a state binds.
+            GgAgentConfig {
+                id: "builder".to_string(),
+                name: "Judge".to_string(),
                 model_id: "openai/o-fixed".to_string(),
                 ..GgAgentConfig::root()
             },
@@ -656,11 +788,11 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
     // this machine runs — and an ordinary profile resolves as itself.
     assert_eq!(set.root().fsm_entry_agent(), Some("judge"));
     assert_eq!(
-        set.dispatched_agent(ROOT_AGENT).map(|a| a.name.as_str()),
+        set.dispatched_agent(ROOT_PROFILE_ID).map(|a| a.id.as_str()),
         Ok("judge")
     );
     assert_eq!(
-        set.dispatched_agent("judge").map(|a| a.name.as_str()),
+        set.dispatched_agent("judge").map(|a| a.id.as_str()),
         Ok("judge")
     );
 }
@@ -676,7 +808,7 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
 fn an_unresolvable_dispatch_names_the_missing_profile() {
     let machine = |entry: &str| GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
-            params: json!({ FSM_PARAM_STATES: [{ "name": "explore", "agent": entry }] }),
+            params: json!({ FSM_PARAM_STATES: [{ "name": "explore", "agentId": entry }] }),
             ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
         }],
         model_id: String::new(),
@@ -690,7 +822,7 @@ fn an_unresolvable_dispatch_names_the_missing_profile() {
         hooks: Vec::new(),
     };
 
-    // A name nothing declares is reported as itself, not as the root.
+    // An id nothing declares is reported as itself, not as the root.
     let plain = GgCapabilitySet::minimal("mock/echo");
     assert_eq!(
         plain.dispatched_agent("ghost"),
@@ -701,15 +833,15 @@ fn an_unresolvable_dispatch_names_the_missing_profile() {
     // it came from for context — not the machine as the thing missing a model.
     let dangling = set_of(machine("judge"));
     assert_eq!(
-        dangling.dispatched_agent(ROOT_AGENT),
+        dangling.dispatched_agent(ROOT_PROFILE_ID),
         Err(GgDispatchError::UndeclaredEntryAgent {
-            shell: ROOT_AGENT,
+            shell: ROOT_PROFILE_ID,
             entry: "judge",
         })
     );
     assert!(
         dangling
-            .dispatched_agent(ROOT_AGENT)
+            .dispatched_agent(ROOT_PROFILE_ID)
             .unwrap_err()
             .to_string()
             .contains("`judge`")
@@ -719,14 +851,16 @@ fn an_unresolvable_dispatch_names_the_missing_profile() {
     // run and record every turn of it against the wrong model, with nothing said anywhere.
     let mut stray = machine("judge");
     stray.model_id = "mock/echo".to_string();
-    assert!(set_of(stray).dispatched_agent(ROOT_AGENT).is_err());
+    assert!(set_of(stray).dispatched_agent(ROOT_PROFILE_ID).is_err());
 
     // A machine with no readable entry state at all is a different fact from one naming an agent
     // that is missing, and reads as one.
     let empty = set_of(machine(""));
     assert_eq!(
-        empty.dispatched_agent(ROOT_AGENT),
-        Err(GgDispatchError::UnreadableMachine { shell: ROOT_AGENT })
+        empty.dispatched_agent(ROOT_PROFILE_ID),
+        Err(GgDispatchError::UnreadableMachine {
+            shell: ROOT_PROFILE_ID
+        })
     );
 }
 
@@ -742,17 +876,20 @@ fn bound_model_ids_lists_each_resolved_model_once() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "subagent".to_string(),
                 name: "subagent".to_string(),
                 model_id: "openai/gpt-5.4-mini".to_string(),
                 ..GgAgentConfig::root()
             },
             // Two agents sharing one model contribute one entry.
             GgAgentConfig {
+                id: "judge".to_string(),
                 name: "judge".to_string(),
                 model_id: "openai/gpt-5.4-mini".to_string(),
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "reviewer".to_string(),
                 name: "reviewer".to_string(),
                 model_id: String::new(),
                 model_slot: Some("critic".to_string()),
@@ -838,6 +975,7 @@ fn a_set_without_model_slots_deserializes_unchanged() {
     // A fully pinned configuration defers nothing to a launch, so it declares no slots at all.
     let set: GgCapabilitySet = serde_json::from_value(json!({
         "agents": [{
+            "id": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": "shell", "enabled": true }],
             "modelId": "anthropic/claude-opus-4.8",
@@ -910,7 +1048,7 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
         parent_agent_id: None,
         issue_id: None,
         kind: GgTelemetryKind::Usage {
-            slot: "primary".to_string(),
+            profile_id: ROOT_PROFILE_ID.to_string(),
             model_id: "anthropic/claude-opus-5".to_string(),
             tokens: TokenCounts {
                 uncached_input: Some(1200),
@@ -925,7 +1063,7 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
         },
     };
     let value = serde_json::to_value(&event).expect("serialize");
-    assert_eq!(value["slot"], json!("primary"));
+    assert_eq!(value["profileId"], json!(ROOT_PROFILE_ID));
     assert_eq!(value["modelId"], json!("anthropic/claude-opus-5"));
     let back: GgTelemetryEvent = serde_json::from_value(value).expect("deserialize");
     assert_eq!(event, back);
@@ -2337,7 +2475,7 @@ fn agent_transition_serializes_per_module_dispositions_with_both_ids() {
     let kind = GgTelemetryKind::AgentTransition {
         kind: GgAgentTransitionKind::Exec,
         to_agent_id: "agent-4".to_string(),
-        agent: "Reviewer".to_string(),
+        profile_id: "reviewer".to_string(),
         state: None,
         modules: vec![
             GgTransitionModule {
@@ -2514,16 +2652,22 @@ fn an_unknown_key_is_refused_by_every_configuration_container() {
     }
 
     refuses::<GgCapabilitySet>("GgCapabilitySet", json!({ "agents": [] }));
-    refuses::<GgAgentConfig>("GgAgentConfig", json!({ "name": ROOT_AGENT }));
+    refuses::<GgAgentConfig>(
+        "GgAgentConfig",
+        json!({ "id": ROOT_PROFILE_ID, "name": ROOT_AGENT }),
+    );
     refuses::<GgCapabilityConfig>(
         "GgCapabilityConfig",
         json!({ "id": CAPABILITY_SHELL, "enabled": true }),
     );
     refuses::<GgLoopDetection>("GgLoopDetection", json!({ "enabled": true }));
-    refuses::<GgFsmState>("GgFsmState", json!({ "name": "build" }));
+    refuses::<GgFsmState>(
+        "GgFsmState",
+        json!({ "name": "build", "agentId": "builder" }),
+    );
     refuses::<GgFsmTransition>("GgFsmTransition", json!({ "to": "review" }));
     refuses::<GgRunLimits>("GgRunLimits", json!({ "maxTurns": 40 }));
-    refuses::<GgSubagentRef>("GgSubagentRef", json!({ "agent": "Reviewer" }));
+    refuses::<GgSubagentRef>("GgSubagentRef", json!({ "agentId": "reviewer" }));
     refuses::<GgModelSlot>("GgModelSlot", json!({ "name": PRIMARY_SLOT }));
     refuses::<GgSlotBinding>(
         "GgSlotBinding",
@@ -2554,6 +2698,7 @@ fn an_unknown_key_nested_in_the_invocation_is_refused() {
         "prompt": "build it",
         "capabilitySet": {
             "agents": [{
+                "id": ROOT_PROFILE_ID,
                 "name": ROOT_AGENT,
                 "modelId": "anthropic/claude-opus-4.8",
                 "capabilities": [{

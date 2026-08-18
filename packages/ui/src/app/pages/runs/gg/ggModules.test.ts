@@ -58,14 +58,14 @@ function gg(
 
 function spawn(
   agentId: string,
-  slot: string,
+  profileId: string,
   parentAgentId?: string,
 ): HarnessEvent {
   return gg(
     agentId,
     {
       type: "agent_spawned",
-      slot,
+      profileId,
       modelId: "acme/one",
       depth: parentAgentId == null ? 0 : 1,
     } as GgTelemetryKind,
@@ -165,7 +165,7 @@ function transition(
       type: "agent_transition",
       kind,
       toAgentId,
-      agent: "Root",
+      profileId: "root",
       modules,
     } as GgTelemetryKind,
     undefined,
@@ -173,11 +173,15 @@ function transition(
   );
 }
 
-/** A capability set declaring `agents`, each with the given capability ids enabled. */
-function set(agents: Array<[string, string[]]>): GgCapabilitySet {
+/**
+ * A capability set declaring `agents`: each an id, the capability ids it enables, and the
+ * display name it reads as — which defaults to the id, since nothing resolves by name.
+ */
+function set(agents: Array<[string, string[], string?]>): GgCapabilitySet {
   return {
-    agents: agents.map(([name, capabilities]) => ({
-      name,
+    agents: agents.map(([id, capabilities, name]) => ({
+      id,
+      name: name ?? id,
       modelId: "acme/one",
       capabilities: capabilities.map((id) => ({
         id,
@@ -197,7 +201,7 @@ function index(events: HarnessEvent[], capabilitySet: GgCapabilitySet | null) {
   return deriveGgModules(
     capabilitySet,
     derived.agentForest,
-    reduceGgEventsPerAgent(events),
+    reduceGgEventsPerAgent(events, capabilitySet),
     derived.transitions,
     derived.moduleSnapshots,
   );
@@ -208,9 +212,9 @@ describe("deriveGgModules", () => {
     // Both instances of the Reviewer profile report the SAME memory instance — a `shared`
     // scope, resolved. This is the case the whole feature exists to make visible.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [held("history", "history-0")]),
-      spawn("agent-0", "Reviewer", "root"),
+      spawn("agent-0", "reviewer", "root"),
       roster(
         "agent-0",
         [
@@ -222,7 +226,7 @@ describe("deriveGgModules", () => {
         ],
         "root",
       ),
-      spawn("agent-1", "Reviewer", "root"),
+      spawn("agent-1", "reviewer", "root"),
       roster(
         "agent-1",
         [
@@ -240,8 +244,8 @@ describe("deriveGgModules", () => {
     const modules = index(
       events,
       set([
-        ["Root", []],
-        ["Reviewer", ["memories"]],
+        ["root", []],
+        ["reviewer", ["memories"], "Reviewer"],
       ]),
     );
 
@@ -249,6 +253,8 @@ describe("deriveGgModules", () => {
     expect(store.holders.map((h) => h.agentId)).toEqual(["agent-0", "agent-1"]);
     expect(isShared(store)).toBe(true);
     expect(store.scopeKind).toBe("agent");
+    // The agent the store belongs to, by id — the display name is what the label reads as.
+    expect(store.profileId).toBe("reviewer");
     expect(store.profile).toBe("Reviewer");
     expect(moduleScopeLabel(store)).toBe("shared by 2 holders of Reviewer");
     expect(coHolders(store, "agent-0").map((h) => h.agentId)).toEqual([
@@ -265,15 +271,15 @@ describe("deriveGgModules", () => {
     // The control for the case above: byte-identical memory snapshots, two ids. Before
     // module identity these two runs were indistinguishable in the record.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [held("history", "history-0")]),
-      spawn("agent-0", "Reviewer", "root"),
+      spawn("agent-0", "reviewer", "root"),
       roster(
         "agent-0",
         [held("history", "history-1"), held("memories", "memories-0")],
         "root",
       ),
-      spawn("agent-1", "Reviewer", "root"),
+      spawn("agent-1", "reviewer", "root"),
       roster(
         "agent-1",
         [held("history", "history-2"), held("memories", "memories-1")],
@@ -286,8 +292,8 @@ describe("deriveGgModules", () => {
     const modules = index(
       events,
       set([
-        ["Root", []],
-        ["Reviewer", ["memories"]],
+        ["root", []],
+        ["reviewer", ["memories"], "Reviewer"],
       ]),
     );
 
@@ -298,7 +304,7 @@ describe("deriveGgModules", () => {
       modules.byKind.find((g) => g.kind === "memories")!.instances,
     ).toHaveLength(2);
     // And the profile fold says so at the grain a configuration is tuned at.
-    const reviewer = modules.byProfile.get("Reviewer")!;
+    const reviewer = modules.byProfile.get("reviewer")!;
     expect(reviewer.find((row) => row.kind === "memories")!.sharing).toBe(
       "instance",
     );
@@ -310,9 +316,9 @@ describe("deriveGgModules", () => {
     // two instances at once — which is the difference between agent-scoped state and an
     // ordinary succession, and the one a holder count cannot make.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [held("history", "history-0")]),
-      spawn("agent-0", "Reviewer", "root"),
+      spawn("agent-0", "reviewer", "root"),
       roster(
         "agent-0",
         [
@@ -321,7 +327,7 @@ describe("deriveGgModules", () => {
         ],
         "root",
       ),
-      spawn("agent-1", "Reviewer", "root"),
+      spawn("agent-1", "reviewer", "root"),
       roster(
         "agent-1",
         [
@@ -330,7 +336,7 @@ describe("deriveGgModules", () => {
         ],
         "root",
       ),
-      spawn("agent-2", "Root"),
+      spawn("agent-2", "root"),
       roster("agent-2", [
         held("history", "history-0", { origin: "transferred" }),
       ]),
@@ -339,8 +345,8 @@ describe("deriveGgModules", () => {
     const modules = index(
       events,
       set([
-        ["Root", []],
-        ["Reviewer", ["memories"]],
+        ["root", []],
+        ["reviewer", ["memories"], "Reviewer"],
       ]),
     );
 
@@ -358,12 +364,12 @@ describe("deriveGgModules", () => {
     // The board is the case: every agent in a run holds the one board, whatever profile it
     // runs. Nothing special-cases it — it lands here because its holders span profiles.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [
         held("history", "history-0"),
         held("board", "board-0", { origin: "run" }),
       ]),
-      spawn("agent-0", "Implementer", "root"),
+      spawn("agent-0", "implementer", "root"),
       roster(
         "agent-0",
         [
@@ -377,8 +383,8 @@ describe("deriveGgModules", () => {
     const modules = index(
       events,
       set([
-        ["Root", ["project-management"]],
-        ["Implementer", ["project-management"]],
+        ["root", ["project-management"]],
+        ["implementer", ["project-management"]],
       ]),
     );
 
@@ -391,7 +397,7 @@ describe("deriveGgModules", () => {
     );
     // At the profile grain that reads as "shared beyond this agent".
     expect(
-      modules.byProfile.get("Root")!.find((row) => row.kind === "board")!
+      modules.byProfile.get("root")!.find((row) => row.kind === "board")!
         .sharing,
     ).toBe("run");
   });
@@ -400,7 +406,7 @@ describe("deriveGgModules", () => {
     // One exec that carries the window, one fork that copies the task list and links the
     // board. Four instances between them, each with its own story.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [
         held("history", "history-0"),
         held("tasks", "tasks-0"),
@@ -441,7 +447,7 @@ describe("deriveGgModules", () => {
         "agent-0",
         {
           type: "agent_spawned",
-          slot: "Verifier",
+          profileId: "verifier",
           modelId: "acme/one",
           depth: 0,
         } as GgTelemetryKind,
@@ -452,7 +458,7 @@ describe("deriveGgModules", () => {
 
     const modules = index(
       events,
-      set([["Root", ["tasks", "project-management"]]]),
+      set([["root", ["tasks", "project-management"]]]),
     );
 
     const history = modules.byId.get("history-0")!;
@@ -482,7 +488,7 @@ describe("deriveGgModules", () => {
 
   it("distinguishes a fork's copied store from its linked one", () => {
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [
         held("history", "history-0"),
         held("tasks", "tasks-0"),
@@ -512,7 +518,7 @@ describe("deriveGgModules", () => {
         "agent-0",
         {
           type: "agent_spawned",
-          slot: "Root",
+          profileId: "root",
           modelId: "acme/one",
           depth: 1,
         } as GgTelemetryKind,
@@ -536,7 +542,7 @@ describe("deriveGgModules", () => {
 
     const modules = index(
       events,
-      set([["Root", ["tasks", "project-management"]]]),
+      set([["root", ["tasks", "project-management"]]]),
     );
 
     // The copy's own list: a second store, with a copied-from pointer back to its origin.
@@ -561,7 +567,7 @@ describe("deriveGgModules", () => {
     // the transition calls "carried" arrives under a DIFFERENT id. That is legal, and it is
     // exactly what two ids on one row are for.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [
         held("history", "history-0"),
         held("memories", "memories-0"),
@@ -578,7 +584,7 @@ describe("deriveGgModules", () => {
         "agent-0",
         {
           type: "agent_spawned",
-          slot: "Reviewer",
+          profileId: "reviewer",
           modelId: "acme/one",
           depth: 0,
         } as GgTelemetryKind,
@@ -604,8 +610,8 @@ describe("deriveGgModules", () => {
     const modules = index(
       events,
       set([
-        ["Root", ["memories"]],
-        ["Reviewer", ["memories"]],
+        ["root", ["memories"]],
+        ["reviewer", ["memories"]],
       ]),
     );
 
@@ -620,7 +626,7 @@ describe("deriveGgModules", () => {
 
   it("attributes a module's cost to the band it occupies, per holder", () => {
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [
         held("history", "history-0"),
         held("memories", "memories-0", { origin: "profile", scope: "shared" }),
@@ -628,7 +634,7 @@ describe("deriveGgModules", () => {
       ]),
       breakdown("root", { memory: 400, history: 1000 }, 2000),
       breakdown("root", { memory: 900, history: 1200 }, 3000),
-      spawn("agent-0", "Root", "root"),
+      spawn("agent-0", "root", "root"),
       roster(
         "agent-0",
         [
@@ -645,7 +651,7 @@ describe("deriveGgModules", () => {
 
     const modules = index(
       events,
-      set([["Root", ["memories", "agent-managed-context"]]]),
+      set([["root", ["memories", "agent-managed-context"]]]),
     );
 
     const store = modules.byId.get("memories-0")!;
@@ -671,9 +677,9 @@ describe("deriveGgModules", () => {
 
   it("folds a profile's instances over the stores they hold", () => {
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [held("history", "history-0")]),
-      spawn("agent-0", "Reviewer", "root"),
+      spawn("agent-0", "reviewer", "root"),
       roster(
         "agent-0",
         [
@@ -682,7 +688,7 @@ describe("deriveGgModules", () => {
         ],
         "root",
       ),
-      spawn("agent-1", "Reviewer", "root"),
+      spawn("agent-1", "reviewer", "root"),
       roster(
         "agent-1",
         [
@@ -691,7 +697,7 @@ describe("deriveGgModules", () => {
         ],
         "root",
       ),
-      spawn("agent-2", "Reviewer", "root"),
+      spawn("agent-2", "reviewer", "root"),
       // The interesting failure: one instance of the profile did NOT bind the shared store.
       roster(
         "agent-2",
@@ -703,12 +709,12 @@ describe("deriveGgModules", () => {
     const modules = index(
       events,
       set([
-        ["Root", []],
-        ["Reviewer", ["memories"]],
+        ["root", []],
+        ["reviewer", ["memories"], "Reviewer"],
       ]),
     );
 
-    const reviewer = modules.byProfile.get("Reviewer")!;
+    const reviewer = modules.byProfile.get("reviewer")!;
     const memories = reviewer.find((row) => row.kind === "memories")!;
     expect(memories.sharing).toBe("mixed");
     // The hold carries the store itself, so a surface reading a profile's row can show its
@@ -732,13 +738,77 @@ describe("deriveGgModules", () => {
       "instance",
     );
     // A declared profile the run never instantiated still gets a row rather than a hole.
-    expect(modules.byProfile.get("Root")).toBeDefined();
+    expect(modules.byProfile.get("root")).toBeDefined();
+  });
+
+  it("keeps two profiles that share a display name apart", () => {
+    // An operator called both reviewer profiles "Reviewer", which is allowed — a name is
+    // prose. Folding on it would merge two arms into one row and, worse, would read the
+    // store they both hold as *the* Reviewer's agent-scoped state, which is the one claim
+    // this surface exists to make honestly. The fold is on the id, so the store's holders
+    // span two profiles and it is the run's.
+    const events = [
+      spawn("root", "root"),
+      roster("root", [held("history", "history-0")]),
+      spawn("agent-0", "reviewer", "root"),
+      roster(
+        "agent-0",
+        [
+          held("history", "history-1"),
+          held("memories", "memories-0", { origin: "profile" }),
+        ],
+        "root",
+      ),
+      spawn("agent-1", "reviewer-2", "root"),
+      roster(
+        "agent-1",
+        [
+          held("history", "history-2"),
+          held("memories", "memories-0", { origin: "profile" }),
+        ],
+        "root",
+      ),
+    ];
+
+    const modules = index(
+      events,
+      set([
+        ["root", [], "Root"],
+        ["reviewer", ["memories"], "Reviewer"],
+        ["reviewer-2", ["memories"], "Reviewer"],
+      ]),
+    );
+
+    expect([...modules.byProfile.keys()]).toEqual([
+      "root",
+      "reviewer",
+      "reviewer-2",
+    ]);
+    const store = modules.byId.get("memories-0")!;
+    expect(store.scopeKind).toBe("run");
+    expect(store.profileId).toBeNull();
+    expect(moduleScopeLabel(store)).toBe("shared by 2 holders across the run");
+    // Each holder says which profile it ran under, and the two ids differ where the two
+    // names do not.
+    expect(store.holders.map((h) => [h.profileId, h.profile])).toEqual([
+      ["reviewer", "Reviewer"],
+      ["reviewer-2", "Reviewer"],
+    ]);
+    // Neither row claims the other's hold: one holding instance each, not two.
+    for (const id of ["reviewer", "reviewer-2"]) {
+      const row = modules.byProfile
+        .get(id)!
+        .find((entry) => entry.kind === "memories")!;
+      expect(row.holdingInstances).toBe(1);
+      expect(row.sharing).toBe("run");
+    }
   });
 
   it("carries the declared configuration beside the observed one", () => {
     const declared = {
       agents: [
         {
+          id: "reviewer",
           name: "Reviewer",
           modelId: "acme/one",
           capabilities: [
@@ -760,18 +830,18 @@ describe("deriveGgModules", () => {
       slots: [],
     } as unknown as GgCapabilitySet;
 
-    expect(declaredModuleConfig(declared, "Reviewer", "archive")).toEqual({
+    expect(declaredModuleConfig(declared, "reviewer", "archive")).toEqual({
       ownership: "unowned",
       scope: null,
     });
     // Absent params read as their defaults, which is what every configuration written
     // before they existed has.
-    expect(declaredModuleConfig(declared, "Reviewer", "board")).toEqual({
+    expect(declaredModuleConfig(declared, "reviewer", "board")).toEqual({
       ownership: "owned",
       scope: null,
     });
     // Memories keeps its scope and has no ownership to declare at all.
-    expect(declaredModuleConfig(declared, "Reviewer", "memories")).toEqual({
+    expect(declaredModuleConfig(declared, "reviewer", "memories")).toEqual({
       ownership: null,
       scope: "inherited",
     });
@@ -786,6 +856,7 @@ describe("deriveGgModules", () => {
     const declared = {
       agents: [
         {
+          id: "root",
           name: "Root",
           modelId: "acme/one",
           capabilities: [
@@ -807,7 +878,7 @@ describe("deriveGgModules", () => {
     } as unknown as GgCapabilitySet;
 
     for (const kind of ["memories", "skills", "tasks"] as const) {
-      expect(declaredModuleConfig(declared, "Root", kind).ownership).toBeNull();
+      expect(declaredModuleConfig(declared, "root", kind).ownership).toBeNull();
     }
   });
 
@@ -818,17 +889,17 @@ describe("deriveGgModules", () => {
     // the module — it is just not a departure from anything this profile asked for.
     const modules = index(
       [
-        spawn("root", "Root"),
+        spawn("root", "root"),
         roster("root", [
           held("history", "history-0"),
           held("memories", "memories-0", { ownership: "unowned" }),
         ]),
       ],
-      set([["Root", ["memories"]]]),
+      set([["root", ["memories"]]]),
     );
 
     const memories = modules.byProfile
-      .get("Root")!
+      .get("root")!
       .find((row) => row.kind === "memories")!;
     expect(memories.declared).toEqual({ ownership: null, scope: "isolated" });
     expect(memories.divergences).toEqual([]);
@@ -840,7 +911,7 @@ describe("deriveGgModules", () => {
     // every state of an FSM run, which is a succession per state — indistinguishable from
     // the agent-scoped sharing the whole feature exists to find.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [held("history", "history-0"), held("tasks", "tasks-0")]),
       transition("root", "agent-0", "exec", [
         {
@@ -860,7 +931,7 @@ describe("deriveGgModules", () => {
         "agent-0",
         {
           type: "agent_spawned",
-          slot: "Root",
+          profileId: "root",
           modelId: "acme/one",
           depth: 0,
         } as GgTelemetryKind,
@@ -881,7 +952,7 @@ describe("deriveGgModules", () => {
       ),
     ];
 
-    const modules = index(events, set([["Root", ["tasks"]]]));
+    const modules = index(events, set([["root", ["tasks"]]]));
 
     for (const id of ["history-0", "tasks-0"]) {
       const store = modules.byId.get(id)!;
@@ -903,13 +974,13 @@ describe("deriveGgModules", () => {
     // reports it whenever a successor's profile does not enable the capability — which says
     // nothing about the run-global board every other instance is still writing.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [
         held("history", "history-0"),
         held("board", "board-0", { origin: "run" }),
         held("memories", "memories-0"),
       ]),
-      spawn("agent-0", "Implementer", "root"),
+      spawn("agent-0", "implementer", "root"),
       roster(
         "agent-0",
         [
@@ -937,7 +1008,7 @@ describe("deriveGgModules", () => {
         "agent-1",
         {
           type: "agent_spawned",
-          slot: "Plain",
+          profileId: "plain",
           modelId: "acme/one",
           depth: 0,
         } as GgTelemetryKind,
@@ -958,9 +1029,9 @@ describe("deriveGgModules", () => {
     const modules = index(
       events,
       set([
-        ["Root", ["project-management", "memories"]],
-        ["Implementer", ["project-management"]],
-        ["Plain", []],
+        ["root", ["project-management", "memories"]],
+        ["implementer", ["project-management"]],
+        ["plain", []],
       ]),
     );
 
@@ -980,7 +1051,7 @@ describe("deriveGgModules", () => {
     // stamp — lands after it. A `created` row would therefore sort behind the `copied` one
     // and the store would read as having been copied before it existed.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [held("tasks", "tasks-0")]),
       transition(
         "root",
@@ -1000,7 +1071,7 @@ describe("deriveGgModules", () => {
         "agent-0",
         {
           type: "agent_spawned",
-          slot: "Root",
+          profileId: "root",
           modelId: "acme/one",
           depth: 1,
         } as GgTelemetryKind,
@@ -1018,7 +1089,7 @@ describe("deriveGgModules", () => {
       ),
     ];
 
-    const modules = index(events, set([["Root", ["tasks"]]]));
+    const modules = index(events, set([["root", ["tasks"]]]));
 
     expect(modules.byId.get("tasks-1")!.lifetime).toEqual([
       expect.objectContaining({
@@ -1036,26 +1107,26 @@ describe("deriveGgModules", () => {
     // and would briefly report a profile as having two stores where its configuration
     // asked for one.
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       roster("root", [
         held("history", "history-0"),
         held("memories", "memories-0", { origin: "profile" }),
       ]),
       // Spawned, roster not yet arrived.
-      spawn("agent-0", "Reviewer", "root"),
+      spawn("agent-0", "reviewer", "root"),
     ];
 
     const modules = index(
       events,
       set([
-        ["Root", ["memories"]],
-        ["Reviewer", ["memories"]],
+        ["root", ["memories"]],
+        ["reviewer", ["memories"]],
       ]),
     );
 
     expect(modules.byAgent.get("agent-0")).toEqual([]);
     expect([...modules.byId.keys()]).toEqual(["history-0", "memories-0"]);
     // And the profile that has not reported yet holds nothing rather than a phantom store.
-    expect(modules.byProfile.get("Reviewer")).toEqual([]);
+    expect(modules.byProfile.get("reviewer")).toEqual([]);
   });
 });

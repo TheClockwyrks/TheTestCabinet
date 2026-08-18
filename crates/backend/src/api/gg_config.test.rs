@@ -16,7 +16,7 @@ fn config_from_input_keeps_its_agent_sources() {
     // set, the console reads these to know which fields still follow the saved agent.
     let input = GgConfigInput {
         agent_sources: vec![GgAgentSource {
-            agent: "reviewer".to_string(),
+            profile_id: "reviewer".to_string(),
             agent_id: "a1".to_string(),
             overrides: vec!["customInstructions".to_string()],
         }],
@@ -24,6 +24,9 @@ fn config_from_input_keeps_its_agent_sources() {
     };
     let config = config_from_input("c1".to_string(), input, "2026-07-24T00:00:00Z").unwrap();
     assert_eq!(config.agent_sources.len(), 1);
+    // Both ends of the reference survive the save: which profile in the set was imported,
+    // and which library entry it follows.
+    assert_eq!(config.agent_sources[0].profile_id, "reviewer");
     assert_eq!(config.agent_sources[0].agent_id, "a1");
     assert_eq!(config.agent_sources[0].overrides, ["customInstructions"]);
 }

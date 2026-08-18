@@ -2,7 +2,7 @@
   "$defs": {
     "GgAgentConfig": {
       "additionalProperties": false,
-      "description": "A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that\nmakes gg's capabilities configurable independently for each agent in a run.\n\nEvery profile has a unique [`name`](Self::name) (the first is always the\n[Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and the\n[tool](Self::tools) or [operation](Self::operations) allowlist that narrows them, its own model\n(pinned via [`model_id`](Self::model_id) or [deferred](Self::model_slot) to a launch-time\n[model slot](GgModelSlot)), an optional\n[custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),\nand the set of other agents it may spawn as [subagents](Self::subagents).\n\nAn agent is put to work **by name**: `spawn_subagent` and `exec`\nall name the target agent, which must appear in the caller's [roster](Self::subagents) with the\n[`subagent`](GgSubagentScope::Subagent) scope — as must an [issue](GgBoardIssue)'s implementer\n(the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the\n[`reviewer`](GgSubagentScope::Reviewer) scope). A profile may list itself, allowing recursion.",
+      "description": "A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that\nmakes gg's capabilities configurable independently for each agent in a run.\n\nEvery profile has a unique [`id`](Self::id) and a [display name](Self::name) that need not be\n(the first profile of a default set is [`root`](ROOT_PROFILE_ID), called\n[Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and the\n[tool](Self::tools) or [operation](Self::operations) allowlist that narrows them, its own model\n(pinned via [`model_id`](Self::model_id) or [deferred](Self::model_slot) to a launch-time\n[model slot](GgModelSlot)), an optional\n[custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),\nand the set of other agents it may spawn as [subagents](Self::subagents).\n\nAn agent is put to work **by id**: `spawn_subagent` and `exec`\nall name the target agent's [id](Self::id), which must appear in the caller's\n[roster](Self::subagents) with the\n[`subagent`](GgSubagentScope::Subagent) scope — as must an [issue](GgBoardIssue)'s implementer\n(the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the\n[`reviewer`](GgSubagentScope::Reviewer) scope). A profile may list itself, allowing recursion.",
       "properties": {
         "capabilities": {
           "default": [],
@@ -23,6 +23,10 @@
           },
           "type": "array"
         },
+        "id": {
+          "description": "The profile's **stable identifier**, unique within a set and never rewritten once the\nprofile exists. Everything that names this profile names this: a\n[roster entry](GgSubagentRef::agent_id), a machine's [state](GgFsmState::agent_id), the\n[merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT), an\n[issue](GgBoardIssue::agent_id)'s implementer and reviewers, every telemetry event and\naccounting row the run produces — and the `agent` argument the **model** passes to\n`spawn_subagent`, `exec` and `create_issue`.\n\nThe model names profiles by id for the same reason everything else does: a display name\nmay repeat, so it cannot say which profile is meant. Ids are therefore minted **readable**\n— a slug taken from the profile's first name, `reviewer` or `reviewer-2`, and left alone\nafter that — so a roster in a prompt reads as prose while still naming exactly one thing.\n[`ROOT_PROFILE_ID`] is the first profile of a default set.",
+          "type": "string"
+        },
         "loopDetection": {
           "$ref": "#/$defs/GgLoopDetection",
           "description": "Whether gg watches this agent's replies for a [generation loop](GgLoopDetection), and with\nwhat knobs. Off unless an operator arms it, because arming it also moves this agent onto the\nstreaming transport — a per-agent choice, made for the profiles whose model is observed to\nloop and left alone for the rest."
@@ -37,7 +41,7 @@
           "type": ["string", "null"]
         },
         "name": {
-          "description": "The profile's name, unique within a set. `\"Root\"` ([`ROOT_AGENT`]) for the\nfirst profile.",
+          "description": "The profile's **display name**: what the console, the run log and a roster's prose call\nthis agent. `\"Root\"` ([`ROOT_AGENT`]) for the first profile of a default set.\n\nFree-form and mutable, and **not** unique: two profiles may carry one name. Nothing\nresolves a reference by reading it, which is what makes renaming a profile free.",
           "type": "string"
         },
         "operations": {
@@ -70,7 +74,7 @@
           "type": "array"
         }
       },
-      "required": ["name"],
+      "required": ["id", "name"],
       "type": "object"
     },
     "GgCapabilityConfig": {
@@ -368,25 +372,25 @@
       "additionalProperties": false,
       "description": "One entry in an [agent's](GgAgentConfig) delegation roster: a target agent this\nagent may put to work, the [scopes](Self::scopes) it may be used in, plus the caller-scoped\n[description](Self::description) that tells the spawning agent when to use it.\n\nThe description is scoped to the `(spawner, target)` pair, so the same target can\ncarry different guidance depending on which agent is allowed to spawn it.",
       "properties": {
-        "agent": {
-          "description": "The name of the target agent this agent may put to work (may be the spawner itself).",
+        "agentId": {
+          "description": "The [id](GgAgentConfig::id) of the target profile this agent may put to work (may be\nthe spawner itself). An id the set does not declare refuses the launch.",
           "type": "string"
         },
         "description": {
           "default": "",
-          "description": "Caller-scoped guidance on when to use `agent`, surfaced in the spawning\nagent's `spawn_subagent` tool description and in the prompt's roster. May be empty.",
+          "description": "Caller-scoped guidance on when to use the target, surfaced in the spawning\nagent's `spawn_subagent` tool description and in the prompt's roster. May be empty.",
           "type": "string"
         },
         "scopes": {
           "default": ["subagent"],
-          "description": "**What** this agent may use `agent` for. An entry may carry several scopes — the same\nprofile is often both a reasonable implementer and a reasonable reviewer — and one that\ncarries none can be used for nothing, which is how a reference is disabled without deleting\nit. An entry that names no scope takes the default,\n[`Subagent`](GgSubagentScope::Subagent) alone.",
+          "description": "**What** this agent may use the target for. An entry may carry several scopes — the same\nprofile is often both a reasonable implementer and a reasonable reviewer — and one that\ncarries none can be used for nothing, which is how a reference is disabled without deleting\nit. An entry that names no scope takes the default,\n[`Subagent`](GgSubagentScope::Subagent) alone.",
           "items": {
             "$ref": "#/$defs/GgSubagentScope"
           },
           "type": "array"
         }
       },
-      "required": ["agent"],
+      "required": ["agentId"],
       "type": "object"
     },
     "GgSubagentScope": {
@@ -399,12 +403,12 @@
         },
         {
           "const": "implementer",
-          "description": "This target may be named as an [issue](GgBoardIssue::agent)'s **implementer** — the profile\ngg dispatches to do the issue's work (and re-dispatches for each retry and review round).",
+          "description": "This target may be named as an [issue](GgBoardIssue::agent_id)'s **implementer** — the profile\ngg dispatches to do the issue's work (and re-dispatches for each retry and review round).",
           "type": "string"
         },
         {
           "const": "reviewer",
-          "description": "This target may be named among an [issue](GgBoardIssue::reviewers)'s **reviewers** — the\nprofiles that must each approve the finished work before the issue is accepted.",
+          "description": "This target may be named among an [issue](GgBoardIssue::reviewer_ids)'s **reviewers** — the\nprofiles that must each approve the finished work before the issue is accepted.",
           "type": "string"
         }
       ]
@@ -460,6 +464,7 @@
               "params": {}
             }
           ],
+          "id": "root",
           "modelId": "",
           "name": "Root",
           "operations": [

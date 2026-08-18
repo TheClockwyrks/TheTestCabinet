@@ -49,8 +49,9 @@ use test_cabinet_core::gg::{
     CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, FSM_PARAM_STATES,
     GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction,
     GgContextSource, GgHook, GgHookAction, GgHookEvent, GgIssueReviewPhase, GgIssueStatus,
-    GgProgramLanguage, GgPromptCacheTtl, GgSessionSummary, GgSlotBinding, GgSubagentRef,
-    GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgTurnErrorType, ROOT_AGENT,
+    GgProgramLanguage, GgPromptCacheTtl, GgRosterEntry, GgSessionSummary, GgSlotBinding,
+    GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgTurnErrorType,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_AGENT, ROOT_PROFILE_ID,
 };
 use test_cabinet_core::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLine};
 use test_cabinet_core::gg_session_record::{
@@ -307,7 +308,7 @@ async fn drive_root(
     code: CodeSetup,
 ) -> LoopEnd {
     let ctx = ToolContext::new(dir);
-    Agent::root(ROOT_AGENT)
+    Agent::root(ROOT_PROFILE_ID)
         .drive(
             client,
             "go",
@@ -336,6 +337,7 @@ async fn drive_root(
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -517,7 +519,7 @@ async fn drive_recorded_code_run(
     let inv = invocation(dir.path(), set);
     let client = RecordingClient::new("mock/primary", script);
     let shared = Arc::clone(&client);
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
         Box::new(SharedRecordingClient(Arc::clone(&shared)))
     });
     let outcome = run_with_factory(&inv, &emitter, Arc::new(factory)).await;
@@ -1065,7 +1067,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let never_stops = MockClient::new("mock/loop", vec![looping_response(); 5]);
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &never_stops,
@@ -1095,6 +1097,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -1123,7 +1126,7 @@ async fn drive_times_out_at_a_passed_deadline() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = MockClient::with_default_script("mock/echo");
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -1153,6 +1156,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -1182,7 +1186,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
     let client = FailingClient {
         mode: FailureMode::Fatal,
     };
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -1212,6 +1216,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -1270,7 +1275,7 @@ async fn drive_hooked(
     ending_role: EndingRole,
 ) -> LoopEnd {
     let ctx = ToolContext::new(dir);
-    Agent::root(ROOT_AGENT)
+    Agent::root(ROOT_PROFILE_ID)
         .drive(
             client,
             "go",
@@ -1299,6 +1304,7 @@ async fn drive_hooked(
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -1531,7 +1537,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
     let client = FailingClient {
         mode: FailureMode::Retryable,
     };
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -1561,6 +1567,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -1587,7 +1594,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
     let client = FailingClient {
         mode: FailureMode::Auth,
     };
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -1617,6 +1624,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -2197,6 +2205,11 @@ struct DisabledRuntimes {
     /// changes the surface with it — see [`with_profile`](Self::with_profile).
     granted_capabilities: Vec<String>,
     granted_operations: Vec<crate::sandbox::OperationId>,
+    /// The set [`profile`](Self::profile) belongs to, so a roster entry can be resolved to the
+    /// display name its menu reads with. Derived from the profile alongside the grant, for the
+    /// same reason: a prompt rendered against a set that does not declare its own agent would
+    /// describe a run that could not launch.
+    set: GgCapabilitySet,
     // No `shell` output policy: the prompt describes nothing about a command's output any more, in
     // either mode, so `PromptInputs` has nothing to borrow one for.
 }
@@ -2215,6 +2228,7 @@ impl DisabledRuntimes {
             profile: GgAgentConfig::root(),
             granted_capabilities: Vec::new(),
             granted_operations: Vec::new(),
+            set: GgCapabilitySet::default(),
         }
         .with_profile(GgAgentConfig::root())
     }
@@ -2237,6 +2251,10 @@ impl DisabledRuntimes {
             .map(|capability| capability.id.clone())
             .collect();
         self.granted_operations = operations;
+        self.set = GgCapabilitySet {
+            agents: vec![profile.clone()],
+            ..GgCapabilitySet::default()
+        };
         self.profile = profile;
         self
     }
@@ -2272,6 +2290,7 @@ impl DisabledRuntimes {
             autoload_specs: None,
             persistence: false,
             profile: &self.profile,
+            set: &self.set,
             ending_role: EndingRole::Standard,
             assigned_issue: None,
             fences_are_stripped: true,
@@ -2540,7 +2559,8 @@ fn resolve_window_limit_reads_the_agents_own_override() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.agents[0].capabilities.push(window_override(42_000));
     set.agents.push(GgAgentConfig {
-        name: "reviewer".to_string(),
+        id: "reviewer".to_string(),
+        name: "Reviewer".to_string(),
         ..GgAgentConfig::root()
     });
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
@@ -2797,7 +2817,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         ],
     );
 
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -2827,6 +2847,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -2994,7 +3015,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         ],
     );
 
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -3024,6 +3045,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -3164,7 +3186,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
         ],
     );
 
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -3194,6 +3216,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -3252,7 +3275,7 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
     let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
     let client = MockClient::new("mock/echo", compaction_script());
 
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -3282,6 +3305,7 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -3453,7 +3477,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         ],
     );
 
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -3483,6 +3507,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -3585,7 +3610,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
         ],
     );
 
-    let end = Agent::root(ROOT_AGENT)
+    let end = Agent::root(ROOT_PROFILE_ID)
         .drive(
             &client,
             "go",
@@ -3614,6 +3639,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -3667,11 +3693,13 @@ fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
-            params: json!({ "mergeAgent": ROOT_AGENT }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
-    set.agents[0].subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    set.agents[0]
+        .subagents
+        .push(GgSubagentRef::any(ROOT_PROFILE_ID));
     set
 }
 
@@ -3897,7 +3925,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
 
     // A small window and a moderate threshold, so the ballooned ephemeral turn crosses it
     // while the pinned prefix alone stays under it.
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -3927,6 +3955,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -4065,7 +4094,7 @@ async fn drive_never_compacts_when_capability_off() {
     let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
     let client = MockClient::new("mock/echo", compaction_script());
 
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -4095,6 +4124,7 @@ async fn drive_never_compacts_when_capability_off() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -4138,7 +4168,7 @@ fn seeded_board() -> BoardRuntime {
                 completion_criteria: "the board renders",
                 blocked_by: &[],
                 epic_id: Some(&epic),
-                agent: ROOT_AGENT,
+                agent: ROOT_PROFILE_ID,
                 reviewers: &[],
             })
             .unwrap();
@@ -4158,7 +4188,7 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
         ToolRegistry::from_run(profile, &skills_modules(&library), &AgentFacts::default());
     let client = MockClient::new("mock/echo", vec![finish_call("f1", "done")]);
 
-    Agent::root(ROOT_AGENT)
+    Agent::root(ROOT_PROFILE_ID)
         .drive(
             &client,
             "go",
@@ -4187,6 +4217,7 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
             },
             &[],
             profile,
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -4216,11 +4247,13 @@ async fn the_board_block_is_withheld_from_an_agent_without_the_capability() {
     crate::tools::grant_configured(
         &mut authoring,
         GgCapabilityConfig {
-            params: json!({ "mergeAgent": ROOT_AGENT }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
-    authoring.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    authoring
+        .subagents
+        .push(GgSubagentRef::any(ROOT_PROFILE_ID));
 
     assert!(
         board_band_driving(&authoring, seeded_board()).await > 0,
@@ -4367,7 +4400,7 @@ async fn drive_manages_context_end_to_end() {
     );
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -4397,6 +4430,7 @@ async fn drive_manages_context_end_to_end() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -4562,7 +4596,7 @@ async fn drive_without_amc_offers_no_context_management() {
     }
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
-    let agent = Agent::root(ROOT_AGENT);
+    let agent = Agent::root(ROOT_PROFILE_ID);
     let end = agent
         .drive(
             &client,
@@ -4592,6 +4626,7 @@ async fn drive_without_amc_offers_no_context_management() {
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet::default(),
             &mut None,
             None,
         )
@@ -4654,14 +4689,14 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
         .iter()
         .filter_map(|e| match &e.kind {
             GgTelemetryKind::AgentSpawned {
-                slot,
+                profile_id,
                 model_id,
                 depth,
                 brief,
                 worktree,
                 cwd,
             } => Some((
-                slot.clone(),
+                profile_id.clone(),
                 model_id.clone(),
                 *depth,
                 brief.clone(),
@@ -4672,8 +4707,8 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
         })
         .collect();
     assert_eq!(spawns.len(), 1, "exactly one AgentSpawned for the root");
-    let (slot, model_id, depth, brief, worktree, cwd) = &spawns[0];
-    assert_eq!(slot, ROOT_AGENT);
+    let (profile_id, model_id, depth, brief, worktree, cwd) = &spawns[0];
+    assert_eq!(profile_id, ROOT_PROFILE_ID);
     assert_eq!(model_id, "mock/echo");
     assert_eq!(*depth, 0);
     assert!(brief.is_none(), "the root carries no delegated brief");
@@ -4709,17 +4744,17 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
         .iter()
         .filter_map(|e| match &e.kind {
             GgTelemetryKind::SlotUsage {
-                slot,
+                profile_id,
                 model_id,
                 tokens,
                 cost,
-            } => Some((slot.clone(), model_id.clone(), *tokens, *cost)),
+            } => Some((profile_id.clone(), model_id.clone(), *tokens, *cost)),
             _ => None,
         })
         .collect();
     assert_eq!(rollups.len(), 1, "one SlotUsage rollup for the one slot");
-    let (slot, model_id, tokens, cost) = &rollups[0];
-    assert_eq!(slot, ROOT_AGENT);
+    let (profile_id, model_id, tokens, cost) = &rollups[0];
+    assert_eq!(profile_id, ROOT_PROFILE_ID);
     assert_eq!(model_id, "mock/echo");
     assert!(
         tokens.total().is_some_and(|t| t > 0),
@@ -4748,7 +4783,10 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
     // from the capability set) to know which model the money went to.
     assert_eq!(
         usage_by_slot_model(&events),
-        HashMap::from([((ROOT_AGENT.to_string(), "mock/echo".to_string()), summed)]),
+        HashMap::from([(
+            (ROOT_PROFILE_ID.to_string(), "mock/echo".to_string()),
+            summed
+        )]),
         "every usage delta is attributed to the profile and model that spent it"
     );
 
@@ -4777,7 +4815,7 @@ async fn run_reports_a_refused_credential_as_a_launch_failure() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-auth".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |_| {
         Box::new(FailingClient {
             mode: FailureMode::Auth,
         })
@@ -4800,40 +4838,50 @@ async fn run_reports_a_refused_credential_as_a_launch_failure() {
     );
 }
 
-/// A configuration whose **root profile was renamed** runs exactly like any other: the root is the
-/// first profile a set declares, not one called [`ROOT_AGENT`], so the run resolves its model,
-/// drives it, and accounts its usage under whatever the operator called it. (Resolving the root by
-/// name instead made every renamed configuration fail at launch with "no `Root` agent profile is
-/// declared".)
+/// A configuration whose root profile carries **its own id and its own display name** runs exactly
+/// like any other: the root is the first profile a set declares, not one whose id is
+/// [`ROOT_PROFILE_ID`], so the run resolves its model, drives it, and accounts its usage under that
+/// id. The display name is along for the ride — nothing the run emits is keyed on it, which is what
+/// makes renaming a profile free.
 #[tokio::test]
-async fn run_drives_a_renamed_root_profile() {
+async fn run_drives_a_root_profile_under_its_own_id() {
     let dir = TempDir::new().unwrap();
     seed_default_skill(dir.path());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-renamed".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0].name = "conductor".to_string();
+    set.agents[0].id = "conductor".to_string();
+    set.agents[0].name = "The Conductor".to_string();
     let inv = invocation(dir.path(), set);
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
     assert!(dir.path().join("index.html").exists());
 
-    // The run's telemetry attributes the root's work to its own profile name, so per-profile
-    // accounting follows the rename rather than reporting a slot nothing declares.
+    // The run's telemetry attributes the root's work to its profile **id**, so per-profile
+    // accounting follows a reference that resolves rather than a name two profiles could share.
     let events = sink.events();
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::AgentSpawned { slot, depth, .. } if slot == "conductor" && *depth == 0
+            GgTelemetryKind::AgentSpawned { profile_id, depth, .. }
+                if profile_id == "conductor" && *depth == 0
         )),
-        "the root is announced under the renamed profile"
+        "the root is announced under its profile id"
     );
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::SlotUsage { slot, .. } if slot == "conductor"
+            GgTelemetryKind::SlotUsage { profile_id, .. } if profile_id == "conductor"
         )),
-        "usage is accounted under the renamed profile"
+        "usage is accounted under its profile id"
+    );
+    assert!(
+        !events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::AgentSpawned { profile_id, .. }
+                | GgTelemetryKind::SlotUsage { profile_id, .. } if profile_id == "The Conductor"
+        )),
+        "and never under the display name, which nothing resolves"
     );
 }
 
@@ -4884,7 +4932,8 @@ fn profile_binding_carries_the_profiles_prompt_cache_lifetime() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                name: "worker".to_string(),
+                id: "worker".to_string(),
+                name: "Worker".to_string(),
                 model_id: "mock/b".to_string(),
                 ..GgAgentConfig::root()
             },
@@ -4892,7 +4941,7 @@ fn profile_binding_carries_the_profiles_prompt_cache_lifetime() {
         ..GgCapabilitySet::default()
     };
 
-    let root = profile_binding(&set, ROOT_AGENT).expect("the root profile resolves");
+    let root = profile_binding(&set, ROOT_PROFILE_ID).expect("the root profile resolves");
     assert_eq!(root.model_id, "mock/a");
     assert_eq!(root.prompt_cache_ttl, GgPromptCacheTtl::Extended);
 
@@ -4903,43 +4952,44 @@ fn profile_binding_carries_the_profiles_prompt_cache_lifetime() {
 
 /// Agent-profile validation rejects the launch-blocking misconfigurations and accepts a good set.
 /// (The old `effective_slot` / `slot_binding` / multi-model-collapse tests were removed with the
-/// slot mechanism they exercised — an agent now runs under a named profile, not a resolved slot.)
+/// slot mechanism they exercised — an agent now runs under a profile it names by id, not a resolved
+/// slot.)
 #[test]
 fn the_launch_refusal_enforces_the_profile_invariants() {
-    // A good set (root bound, unique, resolved) validates.
+    // A good set (root bound, ids unique, references resolved) validates.
     assert!(crate::validate::refusal(&GgCapabilitySet::minimal("mock/echo")).is_ok());
 
-    // The root is the *first* profile, not one called `Root`: a configuration whose root was
-    // renamed is a perfectly good set, and refusing it would make renaming the root unusable.
-    let renamed_root = GgCapabilitySet {
+    // The root is the *first* profile, not one whose id is `root`: a set whose root carries some
+    // other id is a perfectly good set, and refusing it would make the id a reserved word.
+    let own_id_root = GgCapabilitySet {
         agents: vec![GgAgentConfig {
-            name: "conductor".to_string(),
+            id: "conductor".to_string(),
             model_id: "mock/b".to_string(),
             ..GgAgentConfig::root()
         }],
         ..GgCapabilitySet::default()
     };
-    assert!(crate::validate::refusal(&renamed_root).is_ok());
+    assert!(crate::validate::refusal(&own_id_root).is_ok());
 
-    // …and the same with the other profiles a real multi-agent configuration carries, since a
-    // renamed root is only useful alongside the agents it delegates to.
-    let renamed_root_with_roster = GgCapabilitySet {
+    // …and the same with the other profiles a real multi-agent configuration carries, each named
+    // from the root's roster by id.
+    let own_id_root_with_roster = GgCapabilitySet {
         agents: vec![
             GgAgentConfig {
-                name: "conductor".to_string(),
+                id: "conductor".to_string(),
                 model_id: "mock/a".to_string(),
                 subagents: vec![GgSubagentRef::any("reviewer")],
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                name: "reviewer".to_string(),
+                id: "reviewer".to_string(),
                 model_id: "mock/b".to_string(),
                 ..GgAgentConfig::root()
             },
         ],
         ..GgCapabilitySet::default()
     };
-    assert!(crate::validate::refusal(&renamed_root_with_roster).is_ok());
+    assert!(crate::validate::refusal(&own_id_root_with_roster).is_ok());
 
     // No profiles at all: nothing to run.
     let no_agents = GgCapabilitySet {
@@ -4964,7 +5014,8 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
     let err = crate::validate::refusal(&deferred).unwrap_err();
     assert!(err.contains("model slot"), "unexpected reason: {err}");
 
-    // A duplicate agent name is ambiguous.
+    // A duplicate profile **id** is ambiguous: every reference resolves to the first profile that
+    // has it, so the second could never be addressed at all.
     let dup = GgCapabilitySet {
         agents: vec![
             GgAgentConfig {
@@ -4984,6 +5035,21 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
             .contains("more than once")
     );
 
+    // An empty profile id is refused for the same reason: there would be nothing to reference.
+    let unnamed = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            id: String::new(),
+            model_id: "mock/a".to_string(),
+            ..GgAgentConfig::root()
+        }],
+        ..GgCapabilitySet::default()
+    };
+    assert!(
+        crate::validate::refusal(&unnamed)
+            .unwrap_err()
+            .contains("empty id")
+    );
+
     // An empty model id is rejected.
     let empty_model = GgCapabilitySet {
         agents: vec![GgAgentConfig {
@@ -5001,12 +5067,13 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
             GgAgentConfig {
                 model_id: String::new(),
                 capabilities: vec![GgCapabilityConfig {
-                    params: json!({ FSM_PARAM_STATES: [{ "name": "only", "agent": "Worker" }] }),
+                    params: json!({ FSM_PARAM_STATES: [{ "name": "only", "agentId": "worker" }] }),
                     ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
                 }],
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
+                id: "worker".to_string(),
                 name: "Worker".to_string(),
                 model_id: "mock/a".to_string(),
                 ..GgAgentConfig::root()
@@ -5017,8 +5084,8 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
     assert!(crate::validate::refusal(&machine).is_ok());
     // And the client a dispatch onto that machine resolves is the entry state's, not the shell's.
     assert_eq!(
-        profile_binding(&machine, ROOT_AGENT).expect("the machine resolves a model"),
-        GgSlotBinding::new("Worker", "mock/a"),
+        profile_binding(&machine, ROOT_PROFILE_ID).expect("the machine resolves a model"),
+        GgSlotBinding::new("worker", "mock/a"),
     );
 
     // A subagent allowlist naming an agent this set does not declare is rejected.
@@ -5026,7 +5093,7 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
         agents: vec![GgAgentConfig {
             model_id: "mock/a".to_string(),
             subagents: vec![GgSubagentRef {
-                agent: "ghost".to_string(),
+                agent_id: "ghost".to_string(),
                 description: String::new(),
                 scopes: ALL_SUBAGENT_SCOPES.to_vec(),
             }],
@@ -5038,6 +5105,64 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
         crate::validate::refusal(&dangling)
             .unwrap_err()
             .contains("ghost")
+    );
+}
+
+/// **Two profiles may carry the same display name**, and everything still addresses them apart.
+///
+/// A name is display text: it is what a console, a run log and a roster's prose call an agent, and
+/// nothing resolves a reference by reading one — which is what makes renaming a profile free. So a
+/// launch does not read names at all, and the pair below (identically named, differently bound)
+/// launches, resolves, and binds each half to its own model by id.
+#[test]
+fn two_profiles_may_share_a_display_name_and_are_addressed_apart_by_id() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                id: "reviewer".to_string(),
+                name: "Reviewer".to_string(),
+                model_id: "mock/a".to_string(),
+                subagents: vec![GgSubagentRef::any("reviewer-2")],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: "reviewer-2".to_string(),
+                name: "Reviewer".to_string(),
+                model_id: "mock/b".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+
+    assert!(
+        crate::validate::refusal(&set).is_ok(),
+        "a shared name is not a defect; only a shared id is"
+    );
+    assert_eq!(
+        set.agent("reviewer-2").map(|a| a.model_id.as_str()),
+        Some("mock/b"),
+        "an id resolves to its own profile, however many share its name"
+    );
+    assert_eq!(
+        profile_binding(&set, "reviewer-2").expect("the second profile resolves"),
+        GgSlotBinding::new("reviewer-2", "mock/b"),
+        "and the binding it runs on is keyed by that id"
+    );
+    // The model-facing roster is the same story: the entry the root offers points at exactly one of
+    // the two, and what it hands the model back is that profile's id — the name is only the prose
+    // beside it, and here it cannot tell them apart at all.
+    let roster = set.roster(set.root(), GgSubagentScope::Subagent);
+    assert_eq!(
+        GgRosterEntry::ids(&roster),
+        vec!["reviewer-2".to_string()],
+        "the vocabulary a call is admitted by is the id"
+    );
+    assert_eq!(roster[0].name, "Reviewer");
+    assert!(GgRosterEntry::offers(&roster, "reviewer-2"));
+    assert!(
+        !GgRosterEntry::offers(&roster, "Reviewer"),
+        "a display name is not a reference, so it admits nothing"
     );
 }
 
@@ -5057,7 +5182,7 @@ fn an_issue_filer_needs_an_implementer_to_assign_to() {
         crate::tools::grant_configured(
             &mut root,
             GgCapabilityConfig {
-                params: json!({ "mergeAgent": ROOT_AGENT }),
+                params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
                 ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
             },
         );
@@ -5076,7 +5201,10 @@ fn an_issue_filer_needs_an_implementer_to_assign_to() {
     assert!(err.contains("no `implementer`"), "unexpected reason: {err}");
 
     // A spawnable-only roster entry is not an implementer, so it does not satisfy the check.
-    let spawn_only = vec![GgSubagentRef::new(ROOT_AGENT, &[GgSubagentScope::Subagent])];
+    let spawn_only = vec![GgSubagentRef::new(
+        ROOT_PROFILE_ID,
+        &[GgSubagentScope::Subagent],
+    )];
     let err = crate::validate::refusal(&board_agent(&[], spawn_only.clone())).unwrap_err();
     assert!(err.contains("no `implementer`"), "unexpected reason: {err}");
 
@@ -5088,7 +5216,7 @@ fn an_issue_filer_needs_an_implementer_to_assign_to() {
         crate::validate::refusal(&board_agent(
             &[],
             vec![GgSubagentRef::new(
-                ROOT_AGENT,
+                ROOT_PROFILE_ID,
                 &[GgSubagentScope::Implementer]
             )],
         ))
@@ -5116,8 +5244,8 @@ fn slot_accounting_sums_per_slot_and_model() {
 
     let mut acc = SlotAccounting::default();
     // Two records on the same (slot, model) accumulate.
-    acc.record(ROOT_AGENT, "mock/opus", counts(100, 10), cost(0.01));
-    acc.record(ROOT_AGENT, "mock/opus", counts(50, 5), cost(0.02));
+    acc.record(ROOT_PROFILE_ID, "mock/opus", counts(100, 10), cost(0.01));
+    acc.record(ROOT_PROFILE_ID, "mock/opus", counts(50, 5), cost(0.02));
     // A different model on the same slot is its own rollup (a re-pointed slot stays attributable).
     acc.record("subagent", "mock/haiku", counts(30, 3), cost(0.001));
 
@@ -5126,12 +5254,12 @@ fn slot_accounting_sums_per_slot_and_model() {
 
     match &events[0] {
         GgTelemetryKind::SlotUsage {
-            slot,
+            profile_id,
             model_id,
             tokens,
             cost,
         } => {
-            assert_eq!(slot, ROOT_AGENT);
+            assert_eq!(profile_id, ROOT_PROFILE_ID);
             assert_eq!(model_id, "mock/opus");
             assert_eq!(tokens.uncached_input, Some(150));
             assert_eq!(tokens.output, Some(15));
@@ -5142,12 +5270,12 @@ fn slot_accounting_sums_per_slot_and_model() {
     }
     match &events[1] {
         GgTelemetryKind::SlotUsage {
-            slot,
+            profile_id,
             model_id,
             tokens,
             ..
         } => {
-            assert_eq!(slot, "subagent");
+            assert_eq!(profile_id, "subagent");
             assert_eq!(model_id, "mock/haiku");
             assert_eq!(tokens.total(), Some(33));
         }
@@ -5199,24 +5327,27 @@ impl ClientFactory for ScriptedFactory {
     }
 }
 
-/// A capability set with the run's `maxParallel` and a subagents `maxDepth` on the Root, plus one
-/// [agent profile](GgAgentConfig) per named `extra_agent` (model `mock/<name>`, on the Root's
-/// primary `mock/primary`). Every profile may spawn every declared agent (a permissive test
-/// allowlist), and every profile carries the same depth cap so a child can spawn a grandchild.
+/// A capability set with the run's `maxParallel` and a subagents `maxDepth` on the root, plus one
+/// [agent profile](GgAgentConfig) per named `extra_agent` — whose [id](GgAgentConfig::id) is that
+/// name, since that is what every roster entry, spawn call and telemetry row here addresses it by
+/// (model `mock/<id>`, on the root's primary `mock/primary`). Every profile may spawn every
+/// declared agent (a permissive test allowlist), and every profile carries the same depth cap so a
+/// child can spawn a grandchild.
 fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgCapabilitySet {
     let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     subagents.params = json!({ "maxDepth": max_depth });
-    // The delegation allowlist shared by every profile: the Root plus each extra agent.
-    let allowlist: Vec<GgSubagentRef> = std::iter::once(ROOT_AGENT)
+    // The delegation allowlist shared by every profile: the root plus each extra agent, by id.
+    let allowlist: Vec<GgSubagentRef> = std::iter::once(ROOT_PROFILE_ID)
         .chain(extra_agents.iter().copied())
-        .map(|name| GgSubagentRef {
-            agent: name.to_string(),
+        .map(|id| GgSubagentRef {
+            agent_id: id.to_string(),
             description: String::new(),
             scopes: ALL_SUBAGENT_SCOPES.to_vec(),
         })
         .collect();
-    let profile = |name: &str, model: &str| {
+    let profile = |id: &str, name: &str, model: &str| {
         let mut agent = GgAgentConfig {
+            id: id.to_string(),
             name: name.to_string(),
             model_id: model.to_string(),
             subagents: allowlist.clone(),
@@ -5225,9 +5356,9 @@ fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgC
         crate::tools::grant_configured(&mut agent, subagents.clone());
         agent
     };
-    let mut agents = vec![profile(ROOT_AGENT, "mock/primary")];
-    for name in extra_agents {
-        agents.push(profile(name, &format!("mock/{name}")));
+    let mut agents = vec![profile(ROOT_PROFILE_ID, ROOT_AGENT, "mock/primary")];
+    for id in extra_agents {
+        agents.push(profile(id, id, &format!("mock/{id}")));
     }
     GgCapabilitySet {
         agents,
@@ -5246,11 +5377,14 @@ fn agent_spawns(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Spawn
         .iter()
         .filter_map(|e| match &e.kind {
             GgTelemetryKind::AgentSpawned {
-                slot, depth, brief, ..
+                profile_id,
+                depth,
+                brief,
+                ..
             } => Some((
                 e.agent_id.clone(),
                 e.parent_agent_id.clone(),
-                slot.clone(),
+                profile_id.clone(),
                 *depth,
                 brief.clone(),
             )),
@@ -5273,15 +5407,30 @@ fn subagent_tools_are_gated_on_the_capability() {
         );
     }
 
-    // On (and with at least one agent it may spawn): all three offered.
+    // On (and with at least one agent it may spawn): all three offered. The roster is **resolved**
+    // against the set first, which is the only form the registry takes one in: an entry is a
+    // profile id, and what the tool schema enumerates is the ids the set actually declares.
     let mut set = GgCapabilitySet::minimal("mock/echo");
     crate::tools::grant(&mut set.agents[0], CAPABILITY_SUBAGENTS);
     set.agents[0].subagents.push(GgSubagentRef {
-        agent: ROOT_AGENT.to_string(),
+        agent_id: ROOT_PROFILE_ID.to_string(),
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     });
-    let on = ToolRegistry::from_capabilities(set.root());
+    let spawnable = set.roster(set.root(), GgSubagentScope::Subagent);
+    assert_eq!(
+        GgRosterEntry::ids(&spawnable),
+        vec![ROOT_PROFILE_ID.to_string()],
+        "the vocabulary the schema enumerates is the profile id"
+    );
+    let on = ToolRegistry::from_run(
+        set.root(),
+        &crate::modules::CapabilityModules::inert(),
+        &AgentFacts {
+            spawnable: &spawnable,
+            ..AgentFacts::default()
+        },
+    );
     for name in names {
         assert!(
             on.definitions().iter().any(|d| d.name == name),
@@ -5357,7 +5506,7 @@ async fn an_inherited_subagent_curates_its_spawners_memories() {
     let emitter = Emitter::with_sink(Some("run-mem".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), memory_scope_set("inherited"));
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_memory_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -5440,7 +5589,7 @@ async fn an_inherited_store_is_in_the_childs_window_from_its_first_turn() {
     let emitter = Emitter::with_sink(Some("run-mem".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), memory_scope_set("inherited"));
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_memory_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -5500,7 +5649,7 @@ async fn an_isolated_subagent_keeps_its_own_memories() {
     let emitter = Emitter::with_sink(Some("run-mem".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), memory_scope_set("isolated"));
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_memory_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -5536,7 +5685,7 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
     let emitter = Emitter::with_sink(Some("run-sub".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), subagent_set(1, 3, &["subagent"]));
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -5561,13 +5710,15 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
     let spawns = agent_spawns(&events);
     assert_eq!(spawns.len(), 2, "the root and exactly one child");
     assert!(
-        spawns.iter().any(
-            |(id, parent, slot, depth, brief)| id.as_deref() == Some(ROOT_AGENT_ID)
-                && parent.is_none()
-                && slot == ROOT_AGENT
-                && *depth == 0
-                && brief.is_none()
-        ),
+        spawns
+            .iter()
+            .any(
+                |(id, parent, profile_id, depth, brief)| id.as_deref() == Some(ROOT_AGENT_ID)
+                    && parent.is_none()
+                    && profile_id == ROOT_PROFILE_ID
+                    && *depth == 0
+                    && brief.is_none()
+            ),
         "the root spawn is depth 0 on primary with no brief"
     );
     let (child_id, child_parent, child_slot, child_depth, child_brief) = spawns
@@ -5642,9 +5793,11 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
     let rollups: Vec<_> = events
         .iter()
         .filter_map(|e| match &e.kind {
-            GgTelemetryKind::SlotUsage { slot, model_id, .. } => {
-                Some((slot.clone(), model_id.clone()))
-            }
+            GgTelemetryKind::SlotUsage {
+                profile_id,
+                model_id,
+                ..
+            } => Some((profile_id.clone(), model_id.clone())),
             _ => None,
         })
         .collect();
@@ -5656,7 +5809,7 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
     assert!(
         rollups
             .iter()
-            .any(|(slot, model)| slot == ROOT_AGENT && model == "mock/primary")
+            .any(|(profile_id, model)| profile_id == ROOT_PROFILE_ID && model == "mock/primary")
     );
     assert!(
         rollups
@@ -5675,12 +5828,12 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
         .iter()
         .filter_map(|e| match &e.kind {
             GgTelemetryKind::SlotUsage {
-                slot,
+                profile_id,
                 model_id,
                 tokens,
                 ..
             } => Some((
-                (slot.clone(), model_id.clone()),
+                (profile_id.clone(), model_id.clone()),
                 tokens.total().unwrap_or(0),
             )),
             _ => None,
@@ -5728,7 +5881,7 @@ async fn spawn_is_refused_at_the_max_depth() {
         ))
     };
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", move |_| child_tries_to_spawn());
@@ -5805,7 +5958,7 @@ async fn subagents_recurse_within_the_depth_cap() {
     };
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", move |_| child_spawns_grandchild())
@@ -5943,7 +6096,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
     };
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |_| parent_messages_child())
+        .slot(ROOT_PROFILE_ID, move |_| parent_messages_child())
         .slot("subagent", |_| Box::new(InboxProbeClient));
 
     assert_eq!(
@@ -6047,7 +6200,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
     };
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |_| parent())
+        .slot(ROOT_PROFILE_ID, move |_| parent())
         .slot("subagent", |b| {
             Box::new(MockClient::with_subagent_child_script(&b.model_id))
         });
@@ -6112,7 +6265,7 @@ fn issue_review_set(extra_slots: &[&str]) -> GgCapabilitySet {
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
-            params: json!({ "mergeAgent": ROOT_AGENT }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
@@ -6169,7 +6322,7 @@ fn issue_review_root_producer(
                         "outOfScope": "Unrelated changes.",
                         "completionCriteria": "The widget is fully implemented.",
                         "epicId": REVIEW_EPIC_PREFIX,
-                        "agent": ROOT_AGENT,
+                        "agent": ROOT_PROFILE_ID,
                         "reviewers": ["reviewer"],
                     }),
                 ),
@@ -6240,10 +6393,11 @@ fn issue_reviews(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Revi
 }
 
 /// Every `IssueReview` event as `(phase, changes-requesting reviewer, approving reviewers)`, each
-/// reviewer rendered `agentId/profile` — the attribution the console reads to say who asked for what.
+/// reviewer rendered `agentId/profileId` — the reviewer *instance* and the profile it ran, which
+/// together are the attribution a console reduction joins on.
 type Verdicts = (GgIssueReviewPhase, Option<String>, Vec<String>);
 fn review_verdicts(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Verdicts> {
-    let render = |r: &test_cabinet_core::gg::GgReviewer| format!("{}/{}", r.agent_id, r.profile);
+    let render = |r: &test_cabinet_core::gg::GgReviewer| format!("{}/{}", r.agent_id, r.profile_id);
     events
         .iter()
         .filter_map(|e| match &e.kind {
@@ -6300,13 +6454,16 @@ fn last_issue_status(
 fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT);
-    cap.params = json!({ "mergeAgent": ROOT_AGENT });
+    cap.params = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID });
     if let Some(retries) = max_retries {
-        cap.params = json!({ "mergeAgent": ROOT_AGENT, "maxRetries": retries });
+        cap.params = json!({
+            PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID,
+            "maxRetries": retries,
+        });
     }
     crate::tools::grant_configured(&mut set.agents[0], cap);
     set.agents[0].subagents.push(GgSubagentRef {
-        agent: ROOT_AGENT.to_string(),
+        agent_id: ROOT_PROFILE_ID.to_string(),
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     });
@@ -6328,7 +6485,7 @@ fn create_issue_call() -> ModelResponse {
             "inScope": "Implement the widget.",
             "outOfScope": "Nothing else.",
             "completionCriteria": "The widget works.",
-            "agent": ROOT_AGENT,
+            "agent": ROOT_PROFILE_ID,
         }),
     )
 }
@@ -6344,7 +6501,7 @@ async fn submitting_an_issue_auto_dispatches_an_agent_that_completes_it() {
     let inv = invocation(dir.path(), project_set(None));
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             // The root files the issue and finishes — no manual dispatch.
@@ -6403,7 +6560,7 @@ async fn an_uncompleted_issue_is_retried_then_failed() {
     let inv = invocation(dir.path(), project_set(Some(1)));
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         if n == 0 {
             return Box::new(MockClient::new(
@@ -6442,7 +6599,13 @@ async fn an_uncompleted_issue_is_retried_then_failed() {
 // A board split across profiles: one agent files the work, another implements it
 // ---------------------------------------------------------------------------
 
-/// The implementer profile in the [split](split_project_set) board configuration.
+/// The [id](GgAgentConfig::id) of the implementer profile in the
+/// [split](split_project_set) board configuration — what its roster entry, the issue it is
+/// assigned, and its telemetry all name it by.
+const CODER_PROFILE_ID: &str = "coder";
+
+/// That profile's display name, which differs from its id precisely so nothing can quietly resolve
+/// a reference by reading it.
 const CODER_AGENT: &str = "Coder";
 
 /// A **two-profile** project-management set — the shape a real board run has: the Root files and
@@ -6456,15 +6619,16 @@ fn split_project_set() -> GgCapabilitySet {
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
-            params: json!({ "mergeAgent": ROOT_AGENT }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
     set.agents[0].subagents.push(GgSubagentRef::new(
-        CODER_AGENT,
+        CODER_PROFILE_ID,
         &[GgSubagentScope::Implementer],
     ));
     set.agents.push(GgAgentConfig {
+        id: CODER_PROFILE_ID.to_string(),
         name: CODER_AGENT.to_string(),
         model_id: "mock/coder".to_string(),
         ..GgAgentConfig::root()
@@ -6472,8 +6636,8 @@ fn split_project_set() -> GgCapabilitySet {
     set
 }
 
-/// A well-formed `create_issue` call assigned to the [implementer](CODER_AGENT), with no id of its
-/// own (gg assigns [`UNGROUPED_ISSUE_ID`]).
+/// A well-formed `create_issue` call assigned to the [implementer](CODER_PROFILE_ID) **by id**,
+/// with no id of its own (gg assigns [`UNGROUPED_ISSUE_ID`]).
 fn create_issue_for_coder() -> ModelResponse {
     tool_call_response(
         "issue",
@@ -6483,7 +6647,7 @@ fn create_issue_for_coder() -> ModelResponse {
             "inScope": "Implement the widget.",
             "outOfScope": "Nothing else.",
             "completionCriteria": "The widget works.",
-            "agent": CODER_AGENT,
+            "agent": CODER_PROFILE_ID,
         }),
     )
 }
@@ -6503,14 +6667,14 @@ async fn an_implementer_without_the_board_capability_completes_its_issue() {
     let inv = invocation(dir.path(), split_project_set());
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             // The root only files the issue, assigned to the coder.
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![create_issue_for_coder(), stop_response()],
             ))
         })
-        .slot(CODER_AGENT, |b| {
+        .slot(CODER_PROFILE_ID, |b| {
             // The coder does the work and simply finishes — the whole of the hand-back.
             Box::new(MockClient::new(
                 &b.model_id,
@@ -6540,7 +6704,7 @@ async fn an_implementer_without_the_board_capability_completes_its_issue() {
         "the issue is implemented on the first attempt, not retried: {dispatched:?}"
     );
     assert_eq!(
-        dispatched[0].2, CODER_AGENT,
+        dispatched[0].2, CODER_PROFILE_ID,
         "the issue was dispatched under the profile it was assigned to"
     );
     assert!(
@@ -6567,8 +6731,8 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-pm-nonroot".to_string()), Box::new(sink.clone()));
 
-    // The Root delegates; the `Planner` profile owns the board and files the work; the `Coder`
-    // profile implements it.
+    // The root delegates; the `planner` profile owns the board and files the work; the `coder`
+    // profile implements it. Each is spawned, assigned and accounted by its id.
     let mut set = split_project_set();
     let board_cap = set.agents[0]
         .capabilities
@@ -6578,8 +6742,9 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
     crate::tools::grant(&mut set.agents[0], CAPABILITY_SUBAGENTS);
     set.agents[0]
         .subagents
-        .push(GgSubagentRef::new("Planner", &[GgSubagentScope::Subagent]));
+        .push(GgSubagentRef::new("planner", &[GgSubagentScope::Subagent]));
     let mut planner = GgAgentConfig {
+        id: "planner".to_string(),
         name: "Planner".to_string(),
         model_id: "mock/planner".to_string(),
         subagents: roster,
@@ -6590,26 +6755,26 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
     let inv = invocation(dir.path(), set);
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
                     tool_call_response(
                         "spawn",
                         "spawn_subagent",
-                        json!({ "agent": "Planner", "prompt": "plan the work" }),
+                        json!({ "agent": "planner", "prompt": "plan the work" }),
                     ),
                     stop_response(),
                 ],
             ))
         })
-        .slot("Planner", |b| {
+        .slot("planner", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![create_issue_for_coder(), stop_response()],
             ))
         })
-        .slot(CODER_AGENT, |b| {
+        .slot(CODER_PROFILE_ID, |b| {
             Box::new(MockClient::new(&b.model_id, vec![stop_response()]))
         });
 
@@ -6621,7 +6786,7 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
     assert!(
         agent_spawns(&events)
             .iter()
-            .any(|(_, _, slot, _, _)| slot == CODER_AGENT),
+            .any(|(_, _, profile_id, _, _)| profile_id == CODER_PROFILE_ID),
         "the issue the non-root board owner filed was auto-dispatched"
     );
     assert_eq!(
@@ -6642,7 +6807,7 @@ async fn an_agent_can_wait_for_an_issue_until_it_completes() {
     let inv = invocation(dir.path(), project_set(None));
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             // The root files the issue, waits on it, then finishes.
@@ -6703,7 +6868,7 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
     let inv = invocation(dir.path(), code_project_set());
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             // The root files the issue and registers the wait in one program. There is no `finish`,
@@ -6715,7 +6880,7 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
                 code_reply(
                     "import * as gg from \"gg\";\nconst issue = gg.board.createIssue({ title: \"Add the widget\", \
                      inScope: \"Implement the widget.\", outOfScope: \"Nothing else.\", \
-                     completionCriteria: \"The widget works.\", agent: \"Root\" });\n\
+                     completionCriteria: \"The widget works.\", agent: \"root\" });\n\
                      gg.board.waitForIssue(issue.id);",
                 ),
                 code_reply(FINISHING_PROGRAM),
@@ -6782,7 +6947,7 @@ async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(
-            ROOT_AGENT,
+            ROOT_PROFILE_ID,
             issue_review_root_producer(Arc::clone(&root_counter)),
         )
         .slot(
@@ -6878,8 +7043,8 @@ async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
     // brief plus the review's items — not by a separate fix profile.
     let fix_spawns: Vec<_> = spawns
         .iter()
-        .filter(|(_, _, slot, _, brief)| {
-            slot == ROOT_AGENT
+        .filter(|(_, _, profile_id, _, brief)| {
+            profile_id == ROOT_PROFILE_ID
                 && brief
                     .as_deref()
                     .is_some_and(|b| b.contains("## Requested changes"))
@@ -6942,7 +7107,7 @@ async fn issue_agents_are_named_after_the_issue_and_verdicts_name_their_reviewer
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(
-            ROOT_AGENT,
+            ROOT_PROFILE_ID,
             issue_review_root_producer(Arc::clone(&root_counter)),
         )
         .slot(
@@ -6961,9 +7126,9 @@ async fn issue_agents_are_named_after_the_issue_and_verdicts_name_their_reviewer
     // The two implementer passes are numbered attempts at the issue, in order.
     let implementers: Vec<String> = spawns
         .iter()
-        .filter(|(_, parent, slot, _, brief)| {
+        .filter(|(_, parent, profile_id, _, brief)| {
             parent.is_none()
-                && slot == ROOT_AGENT
+                && profile_id == ROOT_PROFILE_ID
                 && brief
                     .as_deref()
                     .is_some_and(|b| b.contains("Add the widget"))
@@ -7025,14 +7190,15 @@ async fn an_issues_reviewers_all_have_to_approve() {
     // Reviewers are mandatory on this run, so an issue cannot be filed without naming them.
     for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
-            cap.params = json!({ "reviewers": true, "mergeAgent": ROOT_AGENT });
+            cap.params =
+                json!({ "reviewers": true, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID });
         }
     }
     let inv = invocation(dir.path(), set);
 
     let root_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |b| {
+        .slot(ROOT_PROFILE_ID, move |b| {
             let n = root_counter.fetch_add(1, Ordering::SeqCst);
             let responses = if n == 0 {
                 vec![
@@ -7044,7 +7210,7 @@ async fn an_issues_reviewers_all_have_to_approve() {
                             "inScope": "Implement the widget.",
                             "outOfScope": "Unrelated changes.",
                             "completionCriteria": "The widget is fully implemented.",
-                            "agent": ROOT_AGENT,
+                            "agent": ROOT_PROFILE_ID,
                             "reviewers": ["critic", "auditor"],
                         }),
                     ),
@@ -7103,7 +7269,7 @@ async fn the_review_loop_has_no_cycle_limit_and_terminates_on_approval() {
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(
-            ROOT_AGENT,
+            ROOT_PROFILE_ID,
             issue_review_root_producer(Arc::clone(&root_counter)),
         )
         .slot(
@@ -7146,7 +7312,7 @@ async fn the_review_loop_has_no_cycle_limit_and_terminates_on_approval() {
     assert_eq!(
         spawns
             .iter()
-            .filter(|(_, _, slot, _, brief)| slot == ROOT_AGENT
+            .filter(|(_, _, profile_id, _, brief)| profile_id == ROOT_PROFILE_ID
                 && brief
                     .as_deref()
                     .is_some_and(|b| b.contains("## Requested changes")))
@@ -7175,7 +7341,7 @@ async fn an_issue_without_reviewers_is_accepted_and_merged_directly() {
     let inv = invocation(dir.path(), issue_review_set(&[]));
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             vec![
@@ -7187,7 +7353,7 @@ async fn an_issue_without_reviewers_is_accepted_and_merged_directly() {
                         "inScope": "Implement the widget.",
                         "outOfScope": "Unrelated changes.",
                         "completionCriteria": "The widget is fully implemented.",
-                        "agent": ROOT_AGENT,
+                        "agent": ROOT_PROFILE_ID,
                     }),
                 ),
                 stop_response(),
@@ -7252,13 +7418,14 @@ async fn a_failed_issues_worktree_is_discarded_unmerged() {
     let mut set = issue_review_set(&[]);
     for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
-            cap.params = json!({ "mergeAgent": ROOT_AGENT, "maxRetries": 0 });
+            cap.params =
+                json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID, "maxRetries": 0 });
         }
     }
     let inv = invocation(dir.path(), set);
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         if n == 0 {
             Box::new(MockClient::new(
@@ -7272,7 +7439,7 @@ async fn a_failed_issues_worktree_is_discarded_unmerged() {
                             "inScope": "Implement the widget.",
                             "outOfScope": "Nothing else.",
                             "completionCriteria": "The widget works.",
-                            "agent": ROOT_AGENT,
+                            "agent": ROOT_PROFILE_ID,
                         }),
                     ),
                     stop_response(),
@@ -7322,7 +7489,7 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
     let mut set = issue_review_set(&["merger"]);
     for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
-            cap.params = json!({ "mergeAgent": "merger" });
+            cap.params = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "merger" });
         }
     }
     let inv = invocation(dir.path(), set);
@@ -7334,7 +7501,7 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
     let issue_ids = ["ISSUE-1", "ISSUE-2"];
     let root_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |b| {
+        .slot(ROOT_PROFILE_ID, move |b| {
             let n = root_counter.fetch_add(1, Ordering::SeqCst);
             let responses = if n == 0 {
                 issue_titles
@@ -7348,7 +7515,7 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
                                 "inScope": "Write shared.txt.",
                                 "outOfScope": "Nothing else.",
                                 "completionCriteria": "shared.txt exists.",
-                                "agent": ROOT_AGENT,
+                                "agent": ROOT_PROFILE_ID,
                             }),
                         )
                     })
@@ -7407,7 +7574,7 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
     assert!(
         agent_spawns(&events)
             .iter()
-            .any(|(_, _, slot, _, _)| slot == "merger"),
+            .any(|(_, _, profile_id, _, _)| profile_id == "merger"),
         "the merge agent was dispatched to resolve the conflict"
     );
     for id in issue_ids {
@@ -7430,7 +7597,9 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
 fn project_management_requires_a_shell_capable_merge_agent() {
     let base = || {
         let mut set = GgCapabilitySet::minimal("mock/primary");
-        set.agents[0].subagents.push(GgSubagentRef::any(ROOT_AGENT));
+        set.agents[0]
+            .subagents
+            .push(GgSubagentRef::any(ROOT_PROFILE_ID));
         set
     };
 
@@ -7440,7 +7609,7 @@ fn project_management_requires_a_shell_capable_merge_agent() {
     let err =
         crate::validate::refusal(&missing).expect_err("a board with no merge agent is refused");
     assert!(
-        err.contains("mergeAgent"),
+        err.contains(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT),
         "the error names the param: {err}"
     );
 
@@ -7449,24 +7618,28 @@ fn project_management_requires_a_shell_capable_merge_agent() {
     crate::tools::grant_configured(
         &mut unknown.agents[0],
         GgCapabilityConfig {
-            params: json!({ "mergeAgent": "nobody" }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "nobody" }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
     let err = crate::validate::refusal(&unknown).expect_err("an undeclared merge agent is refused");
-    assert!(err.contains("nobody"), "the error names the profile: {err}");
+    assert!(
+        err.contains("nobody"),
+        "the error names the id that resolved to nothing: {err}"
+    );
 
     // A declared merge agent without the shell capability.
     let mut shell_less = base();
     crate::tools::grant_configured(
         &mut shell_less.agents[0],
         GgCapabilityConfig {
-            params: json!({ "mergeAgent": "merger" }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "merger" }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
     let mut merger = GgAgentConfig {
-        name: "merger".to_string(),
+        id: "merger".to_string(),
+        name: "Merger".to_string(),
         model_id: "mock/merger".to_string(),
         ..GgAgentConfig::root()
     };
@@ -7498,7 +7671,22 @@ fn issue_assignment_is_governed_by_roster_scopes() {
         GgSubagentRef::new("builder", &[GgSubagentScope::Implementer]),
         GgSubagentRef::new("critic", &[GgSubagentScope::Reviewer]),
     ];
-    let policy = IssuePolicy::resolve(set.root(), &mut crate::validate::LaunchReport::Discarding);
+    // Both targets are declared, because a resolved roster is resolved *against the set*: an entry
+    // pointing at a profile nothing declares is dropped before a policy ever sees it.
+    for (id, name) in [("builder", "Builder"), ("critic", "Critic")] {
+        set.agents.push(GgAgentConfig {
+            id: id.to_string(),
+            name: name.to_string(),
+            model_id: "mock/primary".to_string(),
+            ..GgAgentConfig::root()
+        });
+    }
+    let policy = IssuePolicy::resolve(
+        set.root(),
+        set.roster(set.root(), GgSubagentScope::Implementer),
+        set.roster(set.root(), GgSubagentScope::Reviewer),
+        &mut crate::validate::LaunchReport::Discarding,
+    );
     assert!(policy.allows_implementer("builder"));
     assert!(!policy.allows_implementer("critic"));
     assert!(policy.allows_reviewer("critic"));
@@ -7525,16 +7713,17 @@ fn issue_review_e2e_set() -> GgCapabilitySet {
     crate::tools::grant_configured(
         &mut root,
         GgCapabilityConfig {
-            params: json!({ "mergeAgent": ROOT_AGENT }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
     root.subagents = vec![
-        GgSubagentRef::new(ROOT_AGENT, &[GgSubagentScope::Implementer]),
+        GgSubagentRef::new(ROOT_PROFILE_ID, &[GgSubagentScope::Implementer]),
         GgSubagentRef::new("reviewer", &[GgSubagentScope::Reviewer]),
     ];
     let reviewer = GgAgentConfig {
-        name: "reviewer".to_string(),
+        id: "reviewer".to_string(),
+        name: "Reviewer".to_string(),
         model_id: "mock/demo-review-reviewer".to_string(),
         ..GgAgentConfig::root()
     };
@@ -7621,7 +7810,7 @@ fn usage_by_slot_model(events: &[GgTelemetryEvent]) -> HashMap<(String, String),
     let mut totals: HashMap<(String, String), u64> = HashMap::new();
     for event in events {
         let GgTelemetryKind::Usage {
-            slot,
+            profile_id,
             model_id,
             tokens,
             ..
@@ -7629,7 +7818,9 @@ fn usage_by_slot_model(events: &[GgTelemetryEvent]) -> HashMap<(String, String),
         else {
             continue;
         };
-        *totals.entry((slot.clone(), model_id.clone())).or_default() += tokens.total().unwrap_or(0);
+        *totals
+            .entry((profile_id.clone(), model_id.clone()))
+            .or_default() += tokens.total().unwrap_or(0);
     }
     totals
 }
@@ -7639,9 +7830,11 @@ fn slot_usage_keys(events: &[GgTelemetryEvent]) -> Vec<(String, String)> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
-            GgTelemetryKind::SlotUsage { slot, model_id, .. } => {
-                Some((slot.clone(), model_id.clone()))
-            }
+            GgTelemetryKind::SlotUsage {
+                profile_id,
+                model_id,
+                ..
+            } => Some((profile_id.clone(), model_id.clone())),
             _ => None,
         })
         .collect()
@@ -7713,12 +7906,12 @@ async fn run_emits_a_session_summary_immediately_before_session_ended() {
         summary
             .slot_costs
             .iter()
-            .map(|c| (c.slot.clone(), c.model_id.clone()))
+            .map(|c| (c.profile_id.clone(), c.model_id.clone()))
             .collect::<Vec<_>>(),
         slot_keys
     );
     assert_eq!(summary.slot_costs.len(), 1);
-    assert_eq!(summary.slot_costs[0].slot, ROOT_AGENT);
+    assert_eq!(summary.slot_costs[0].profile_id, ROOT_PROFILE_ID);
     // The effective toolset is recorded on the summary: the exact set of tools the run offered its
     // agent (shell + the filesystem tools among them), so two configurations are comparable on what
     // their agents were actually handed.
@@ -7847,7 +8040,7 @@ async fn session_summary_counts_match_an_issue_review_run_stream() {
         summary
             .slot_costs
             .iter()
-            .map(|c| (c.slot.clone(), c.model_id.clone()))
+            .map(|c| (c.profile_id.clone(), c.model_id.clone()))
             .collect::<Vec<_>>(),
         slot_keys
     );
@@ -7911,7 +8104,7 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
     let set = subagent_set(1, 3, &["subagent"]);
     let inv = invocation(dir.path(), set.clone());
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -7963,7 +8156,15 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
         "keyed on the spawner and the spawn's position in its turn loop — never on the child's \
          own id, which a playback assigns off its own counter",
     );
-    assert_eq!(rows[1].profile, "subagent");
+    assert_eq!(
+        rows[1].profile_id, "subagent",
+        "the row joins on the profile id",
+    );
+    assert_eq!(
+        rows[1].profile,
+        set.agent("subagent").expect("the profile is declared").name,
+        "and carries that profile's display name, for reading",
+    );
     for row in &rows {
         assert_eq!(
             row.terminal_status,
@@ -8002,7 +8203,7 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
 async fn run_with_a_failing_child(dir: &Path, emitter: &Emitter) {
     let inv = invocation(dir, subagent_set(1, 3, &["subagent"]));
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", |_| {
@@ -8406,7 +8607,7 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
     let set = subagent_set(1, 3, &["subagent"]);
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -8657,7 +8858,7 @@ async fn a_provider_refusing_images_does_not_fail_the_run() {
 
     let client = VisionRefusingClient::new("mock/text-only");
     let produced = Arc::clone(&client);
-    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
         Box::new(SharedClient(Arc::clone(&produced)))
     }));
 
@@ -8718,7 +8919,7 @@ async fn the_native_path_still_attaches_pictures_and_caps_none_of_them() {
 
     let seen = Arc::new(Mutex::new(Vec::<usize>::new()));
     let recorded = Arc::clone(&seen);
-    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
         Box::new(ImageReadingClient {
             model_id: b.model_id.clone(),
             turn: AtomicUsize::new(0),
@@ -9081,7 +9282,7 @@ async fn a_vision_refusal_records_the_error_the_retry_and_the_frame_in_that_orde
 
     let client = VisionRefusingClient::new("mock/text-only");
     let produced = Arc::clone(&client);
-    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
         Box::new(SharedClient(Arc::clone(&produced)))
     }));
     let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/text-only"));
@@ -9222,7 +9423,7 @@ async fn every_agent_binds_its_client_under_its_provenance() {
 
     let factory = Arc::new(IdentityWatchingFactory::new(
         ScriptedFactory::new()
-            .slot(ROOT_AGENT, |b| {
+            .slot(ROOT_PROFILE_ID, |b| {
                 Box::new(MockClient::with_subagent_parent_script(&b.model_id))
             })
             .slot("subagent", |b| {
@@ -9241,8 +9442,9 @@ async fn every_agent_binds_its_client_under_its_provenance() {
 
     // The root: bound trivially, on its own turn-loop client.
     assert!(
-        seen.iter().any(|(slot, identity)| slot == ROOT_AGENT
-            && *identity == AgentIdentity::agent(GgSessionAgentOrigin::Root)),
+        seen.iter()
+            .any(|(profile_id, identity)| profile_id == ROOT_PROFILE_ID
+                && *identity == AgentIdentity::agent(GgSessionAgentOrigin::Root)),
         "the root binds as `Root`: {seen:?}"
     );
     // Its handoff summarizer: the **same** origin, under the compaction role. A second origin here

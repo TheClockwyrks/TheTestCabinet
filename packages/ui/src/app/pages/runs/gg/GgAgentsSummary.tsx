@@ -115,12 +115,12 @@ interface GgAgentsSummaryProps {
   /** The latest contents of every module instance, keyed by module id. */
   moduleSnapshots: Map<string, ModuleSnapshot>;
   /**
-   * A configured agent to open, set when another surface links here — a module holder's
-   * profile chip on the Modules tab, which asks "is this how that arm is configured?".
-   * Every row starts closed, so the request is honored by opening that one. A one-shot
-   * request the panel clears through `onFocusHandled` once it has.
+   * The ID of a configured agent to open, set when another surface links here — a module
+   * holder's profile chip on the Modules tab, which asks "is this how that arm is
+   * configured?". Every row starts closed, so the request is honored by opening that one.
+   * A one-shot request the panel clears through `onFocusHandled` once it has.
    */
-  focusProfile?: string | null;
+  focusProfileId?: string | null;
   onFocusHandled?: () => void;
 }
 
@@ -138,7 +138,7 @@ export function GgAgentsSummary({
   perAgent,
   transitions,
   moduleSnapshots,
-  focusProfile,
+  focusProfileId,
   onFocusHandled,
 }: GgAgentsSummaryProps) {
   // The run folded by module instance, so a profile's row can say whether its twelve
@@ -157,17 +157,19 @@ export function GgAgentsSummary({
     perAgent,
     modules,
   );
-  // Which rows are open, by agent name. Everything starts closed — the panel's first job is
-  // the comparison across agents, and a run with five profiles opened by default would bury
-  // it under five screens of detail — so the set holds only what the reader has opened.
+  // Which rows are open, by profile id — never by name, which two profiles may share and
+  // which would then open both rows at once. Everything starts closed — the panel's first
+  // job is the comparison across agents, and a run with five profiles opened by default
+  // would bury it under five screens of detail — so the set holds only what the reader has
+  // opened.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const toggle = (name: string) =>
+  const toggle = (profileId: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(profileId)) next.delete(profileId);
+      else next.add(profileId);
       return next;
     });
 
@@ -176,12 +178,12 @@ export function GgAgentsSummary({
   // question the link was asked with a list. Guarded on the agent being one this panel
   // knows, so a request naming a profile the run never announced is simply ignored.
   useEffect(() => {
-    if (focusProfile == null) return;
-    if (summaries.some((agent) => agent.name === focusProfile)) {
-      setExpanded((prev) => new Set(prev).add(focusProfile));
+    if (focusProfileId == null) return;
+    if (summaries.some((agent) => agent.profileId === focusProfileId)) {
+      setExpanded((prev) => new Set(prev).add(focusProfileId));
     }
     onFocusHandled?.();
-  }, [focusProfile, summaries, onFocusHandled]);
+  }, [focusProfileId, summaries, onFocusHandled]);
 
   if (summaries.length === 0) {
     return (
@@ -202,18 +204,29 @@ export function GgAgentsSummary({
     0,
   );
 
+  // The names this run carries twice. A profile's name is display text and a configuration
+  // may legitimately hold two of one, so those rows carry their ids as well — without them
+  // the list shows one arm's figures twice over with no way to tell which is which.
+  const seen = new Set<string>();
+  const ambiguous = new Set<string>();
+  for (const agent of summaries) {
+    if (seen.has(agent.name)) ambiguous.add(agent.name);
+    seen.add(agent.name);
+  }
+
   return (
     <div className={`${dash.card} ${styles.summary}`}>
       <span className={dash.cardLabel}>Agents · {summaries.length}</span>
       <ul className={styles.agentList}>
         {summaries.map((agent) => (
           <AgentRow
-            key={agent.name}
+            key={agent.profileId}
             agent={agent}
             totalTokens={totalTokens}
             totalCost={totalCost}
-            open={expanded.has(agent.name)}
-            onToggle={() => toggle(agent.name)}
+            showId={ambiguous.has(agent.name)}
+            open={expanded.has(agent.profileId)}
+            onToggle={() => toggle(agent.profileId)}
           />
         ))}
       </ul>
@@ -231,12 +244,15 @@ function AgentRow({
   agent,
   totalTokens,
   totalCost,
+  showId,
   open,
   onToggle,
 }: {
   agent: GgAgentSummary;
   totalTokens: number;
   totalCost: number;
+  /** Whether another row carries this row's name, so this one must also show its id. */
+  showId: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -264,6 +280,14 @@ function AgentRow({
         <span className={styles.rowIdentity}>
           <span className={styles.rowNameLine}>
             <span className={styles.rowName}>{agent.name}</span>
+            {showId && (
+              <span
+                className={dash.capability}
+                title="the profile id everything in this run names this arm by"
+              >
+                {agent.profileId}
+              </span>
+            )}
             {agent.root && <span className={dash.capability}>root</span>}
             {!agent.declared && (
               <span

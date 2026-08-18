@@ -82,10 +82,11 @@ pub struct GgConfig {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentSource {
-    /// The [name](test_cabinet_core::gg::GgAgentConfig::name) the imported profile
-    /// carries in this configuration. Names are unique within a set, so this is what
-    /// ties the source to its agent.
-    pub agent: String,
+    /// The [id](test_cabinet_core::gg::GgAgentConfig::id) the imported profile carries in
+    /// this configuration's capability set — the reference that ties this source to its
+    /// profile. An id is never rewritten, so an operator renaming either side leaves the
+    /// import following what it always followed.
+    pub profile_id: String,
     /// The [id](super::GgSavedAgent::id) of the saved agent it follows. An id
     /// no longer on the account leaves the profile as the ordinary inline agent the
     /// capability set already holds.

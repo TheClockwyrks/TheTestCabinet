@@ -618,13 +618,13 @@ describe("authoring a state machine", () => {
     const row = openMachine(machineDraft(LINEAR));
     const agent = within(row).getByLabelText("State 1 agent");
     expect(
-      within(agent).getByRole("option", { name: "Feature (a machine)" }),
+      within(agent).getByRole("option", { name: "Feature (root, a machine)" }),
     ).toBeDefined();
     fireEvent.change(agent, {
       target: {
         value: (
           within(agent).getByRole("option", {
-            name: "Feature (a machine)",
+            name: "Feature (root, a machine)",
           }) as HTMLOptionElement
         ).value,
       },

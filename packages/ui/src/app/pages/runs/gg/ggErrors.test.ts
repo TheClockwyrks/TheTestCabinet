@@ -257,7 +257,7 @@ function summarize(events: HarnessEvent[], capabilitySet: GgCapabilitySet) {
   return deriveGgAgentSummaries(
     capabilitySet,
     derived.agentForest,
-    reduceGgEventsPerAgent(events),
+    reduceGgEventsPerAgent(events, capabilitySet),
     priceOf,
     nameOf,
     null,
@@ -266,14 +266,14 @@ function summarize(events: HarnessEvent[], capabilitySet: GgCapabilitySet) {
 
 function spawn(
   agentId: string,
-  slot: string,
+  profileId: string,
   parentAgentId?: string,
 ): HarnessEvent {
   return gg(
     agentId,
     {
       type: "agent_spawned",
-      slot,
+      profileId,
       modelId: "vendor/model",
       depth: parentAgentId == null ? 0 : 1,
     } as GgTelemetryKind,
@@ -284,13 +284,18 @@ function spawn(
 describe("a profile's error record", () => {
   const SET: GgCapabilitySet = {
     agents: [
-      { name: "Root", capabilities: [], modelId: "vendor/model" },
-      { name: "reviewer", capabilities: [], modelId: "vendor/model" },
+      { id: "root", name: "Root", capabilities: [], modelId: "vendor/model" },
+      {
+        id: "reviewer",
+        name: "Reviewer",
+        capabilities: [],
+        modelId: "vendor/model",
+      },
     ] as GgAgentConfig[],
   } as GgCapabilitySet;
 
   const EVENTS: HarnessEvent[] = [
-    spawn("root", "Root"),
+    spawn("root", "root"),
     spawn("agent-1", "reviewer", "root"),
     spawn("agent-2", "reviewer", "root"),
     progressed("root", 1),
@@ -301,7 +306,9 @@ describe("a profile's error record", () => {
   ];
 
   it("sums its instances' failures onto the profile", () => {
-    const reviewer = summarize(EVENTS, SET).find((a) => a.name === "reviewer")!;
+    const reviewer = summarize(EVENTS, SET).find(
+      (a) => a.profileId === "reviewer",
+    )!;
     expect(reviewer.errors.turns).toBe(4);
     expect(reviewer.errors.errors).toBe(3);
     expect(reviewer.errors.byKind.transpile).toBe(2);
@@ -311,16 +318,67 @@ describe("a profile's error record", () => {
   it("reports the worst streak one instance reached, not the profile's total", () => {
     // Two reviewers that failed twice and once are not a profile that failed three times
     // running: the ceiling this peak mirrors is enforced per instance.
-    const reviewer = summarize(EVENTS, SET).find((a) => a.name === "reviewer")!;
+    const reviewer = summarize(EVENTS, SET).find(
+      (a) => a.profileId === "reviewer",
+    )!;
     expect(reviewer.errors.maxConsecutive).toBe(2);
   });
 
   it("leaves a profile the run never instantiated with an empty record", () => {
     // Rather than with a clean one: "the reviewer never ran" and "the reviewer never failed"
     // are different claims, and the empty denominator is what tells them apart.
-    const [root, reviewer] = summarize([spawn("root", "Root")], SET);
+    const [root, reviewer] = summarize([spawn("root", "root")], SET);
     expect(root!.errors).toEqual(emptyErrorTally());
     expect(reviewer!.errors).toEqual(emptyErrorTally());
+  });
+
+  it("keeps two profiles that share a display name apart", () => {
+    // Two reviewer profiles an operator called the same thing. The record is per profile,
+    // so the one that failed must not lend its failures to the one that did not: the id
+    // is what tells them apart, and the name says nothing.
+    const twins: GgCapabilitySet = {
+      agents: [
+        { id: "root", name: "Root", capabilities: [], modelId: "vendor/model" },
+        {
+          id: "reviewer",
+          name: "Reviewer",
+          capabilities: [],
+          modelId: "vendor/model",
+        },
+        {
+          id: "reviewer-2",
+          name: "Reviewer",
+          capabilities: [],
+          modelId: "vendor/model",
+        },
+      ] as GgAgentConfig[],
+    } as GgCapabilitySet;
+
+    const summaries = summarize(
+      [
+        spawn("root", "root"),
+        spawn("agent-1", "reviewer", "root"),
+        spawn("agent-2", "reviewer-2", "root"),
+        errored("agent-1", 1, "transpile", 1),
+        progressed("agent-2", 1),
+      ],
+      twins,
+    );
+
+    expect(summaries.map((a) => a.profileId)).toEqual([
+      "root",
+      "reviewer",
+      "reviewer-2",
+    ]);
+    // Both rows read as "Reviewer", and only one of them failed.
+    expect(summaries.map((a) => a.name)).toEqual([
+      "Root",
+      "Reviewer",
+      "Reviewer",
+    ]);
+    expect(summaries[1]!.errors.errors).toBe(1);
+    expect(summaries[2]!.errors.errors).toBe(0);
+    expect(summaries[2]!.errors.turns).toBe(1);
   });
 });
 

@@ -16,11 +16,13 @@ states, the agents they run, and what each transition carries are configuration.
 
 A profile that enables the `fsm` capability is an FSM shell. It takes no turns of
 its own, so it carries no model, no prompt, no roster and no other capabilities.
-Its whole content is the `states` param: an ordered list of states over the run's
-other [agent profiles](/gg/configurations/).
+Its whole content is the `states` param: an ordered list of states, each naming
+the [id](/gg/configurations/#identity) of one of the run's other [agent
+profiles](/gg/configurations/).
 
 ```jsonc
 {
+  "id": "feature",
   "name": "Feature",
   "capabilities": [
     {
@@ -30,7 +32,7 @@ other [agent profiles](/gg/configurations/).
         "states": [
           {
             "name": "explore",
-            "agent": "Explorer",
+            "agentId": "explorer",
             "transitions": [
               { "to": "build", "transfer": ["history", "tasks"],
                 "description": "when you understand the change and have a task list" }
@@ -38,7 +40,7 @@ other [agent profiles](/gg/configurations/).
           },
           {
             "name": "build",
-            "agent": "Builder",
+            "agentId": "builder",
             "transitions": [
               { "to": "verify", "transfer": ["history", "tasks"],
                 "description": "when the change compiles and you are ready to check it" },
@@ -46,7 +48,7 @@ other [agent profiles](/gg/configurations/).
                 "description": "when the change turns out to need more understanding" }
             ]
           },
-          { "name": "verify", "agent": "Verifier", "transitions": [] }
+          { "name": "verify", "agentId": "verifier", "transitions": [] }
         ]
       }
     }
@@ -90,7 +92,7 @@ the turn actually produced.
 Each incarnation gets a fresh agent id, parents to the one before it, and keeps
 the same depth: succession is not delegation, and the depth cap bounds the
 delegation tree. Accounting keys on the state's agent profile, so a machine's
-cost splits per state in the run's per-slot rollup.
+cost splits per state in the run's per-profile rollup.
 
 ## What a transition carries
 
@@ -162,10 +164,10 @@ refusal names every offending declaration at once.
 
 - An enabled `fsm` capability whose `states` is absent, unparseable, or empty.
 - A state with an empty name, or two states with the same name.
-- A state whose `agent` names a profile the set does not declare.
+- A state whose `agentId` names a profile the set does not declare.
 - A transition whose `to` names a state the machine does not declare.
-- An FSM shell named as a state's `agent`. A machine cannot be a state of another
-  machine.
+- An FSM shell named as a state's `agentId`. A machine cannot be a state of
+  another machine.
 - A `transfer` entry naming something that is not a module kind.
 - A `transfer` entry naming a module the outgoing state's own agent does not
   hold. The successor would open with an empty one under a configuration that

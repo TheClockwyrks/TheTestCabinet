@@ -100,23 +100,19 @@ pub fn is_persistent(profile: &GgAgentConfig) -> bool {
 }
 
 /// The [exclusivity key](crate::subagents::ExclusiveKey) an agent running under `profile` holds its
-/// scheduler slot under: the profile's own name when it is [persistent](is_persistent), and `None`
-/// otherwise.
+/// scheduler slot under: the profile's own [id](GgAgentConfig::id) when it is
+/// [persistent](is_persistent), and `None` otherwise.
 ///
-/// The key is the profile name rather than anything about the *instance* — that is the entire point:
+/// The key is the profile rather than anything about the *instance* — that is the entire point:
 /// every instance of the profile contends with every other instance, wherever it was spawned from and
 /// whichever [worktree](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT) it was dispatched into,
 /// and with no other profile.
 ///
-/// Taken off the **resolved** profile rather than a name, so it cannot disagree with the profile the
-/// agent actually runs under. There is no case in which the two could differ by *substitution*: an
-/// agent naming a profile the set does not declare is refused at launch, and one that reached a run
-/// anyway [ends as gg's own defect](test_cabinet_core::gg::GgCapabilitySet::root_name) rather than
-/// being run as the root. What this signature buys is that the key cannot be computed from a name
-/// somebody spelled twice — the caller has already resolved the profile, so the key is the one the
-/// agent really holds.
+/// Taken off the **resolved** profile rather than off the id a caller was holding, so the key cannot
+/// disagree with the profile the agent actually runs under: the caller has already resolved the
+/// profile, so the key is the one the agent really holds.
 pub fn exclusive_key(profile: &GgAgentConfig) -> Option<String> {
-    is_persistent(profile).then(|| profile.name.clone())
+    is_persistent(profile).then(|| profile.id.clone())
 }
 
 /// One persistent profile's **desk**: everything an instance of it had open in its window when it
@@ -162,7 +158,7 @@ impl PersistedDesk {
 }
 
 /// The run-global record of what each **persistent** profile had open when one of its instances last
-/// finished successfully, keyed by profile name.
+/// finished successfully, keyed by profile [id](GgAgentConfig::id).
 ///
 /// One per run, shared (`Arc`) by every agent: the whole point is that a *later* instance reads what an
 /// *earlier* one recorded, so this cannot be per-agent state. A profile with no entry (nothing has
@@ -182,8 +178,8 @@ impl AgentPersistence {
         Arc::new(Self::default())
     }
 
-    /// Record `desk` as what the profile named `agent` has open, replacing whatever it had recorded
-    /// before.
+    /// Record `desk` as what the profile with [id](GgAgentConfig::id) `agent` has open, replacing
+    /// whatever it had recorded before.
     ///
     /// A wholesale replacement rather than a union: the record is meant to be the desk as the last
     /// instance left it, so a view that instance closed (evicted, closed by `view.close`, or
@@ -197,8 +193,8 @@ impl AgentPersistence {
             .insert(agent.to_string(), desk);
     }
 
-    /// The [desk](PersistedDesk) recorded against the profile named `agent` — bare when nothing has
-    /// been recorded for it.
+    /// The [desk](PersistedDesk) recorded against the profile with [id](GgAgentConfig::id)
+    /// `agent` — bare when nothing has been recorded for it.
     pub fn desk(&self, agent: &str) -> PersistedDesk {
         self.desks
             .lock()
@@ -209,14 +205,16 @@ impl AgentPersistence {
     }
 }
 
-/// One agent's persistence setup, resolved from its own profile: whether it is persistent, the profile
-/// name its record is keyed by, and the run-global [record](AgentPersistence) it reads and writes.
+/// One agent's persistence setup, resolved from its own profile: whether it is persistent, the
+/// profile [id](GgAgentConfig::id) its record is keyed by, and the run-global
+/// [record](AgentPersistence) it reads and writes.
 ///
 /// Resolved per agent (persistence is a per-agent capability) and inert when the capability is off — a
 /// non-persistent agent restores nothing and records nothing, so the loop needs no branch of its own.
 #[derive(Clone)]
 pub struct PersistenceSetup {
-    /// The profile name this agent's views are recorded under, `None` when it is not persistent.
+    /// The profile [id](GgAgentConfig::id) this agent's views are recorded under, `None` when it
+    /// is not persistent.
     agent: Option<String>,
     /// The run-global record. Held even when this agent is not persistent (it costs one `Arc` clone)
     /// so the setup is one shape rather than two.
@@ -227,7 +225,7 @@ impl PersistenceSetup {
     /// Resolve the setup for an agent running under `profile`, against the run's `store`.
     pub fn resolve(profile: &GgAgentConfig, store: Arc<AgentPersistence>) -> Self {
         Self {
-            agent: is_persistent(profile).then(|| profile.name.clone()),
+            agent: is_persistent(profile).then(|| profile.id.clone()),
             store,
         }
     }

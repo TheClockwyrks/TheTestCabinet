@@ -225,7 +225,7 @@ export const MODULE_ICONS: Record<
   archive: ArchiveIcon,
 };
 
-// Which files ONE agent's folder offers, given the run's configuration and which
+// Which files ONE agent's folder offers, given the run's configuration and the id of the
 // profile that agent runs under. A file is offered when that agent's *own*
 // capabilities justify it — so a file for a capability it has is always present
 // (showing its own empty state until data arrives) and a file for a capability it
@@ -242,7 +242,7 @@ export const MODULE_ICONS: Record<
 // not as an empty list — until it has.
 export function filesFor(
   set: GgCapabilitySet | null,
-  agent: string | null | undefined,
+  agentId: string | null | undefined,
   surface?: GgAgentSurface,
 ): AgentFileKind[] {
   return FILE_ORDER.filter((file) => {
@@ -250,7 +250,7 @@ export function filesFor(
     const needed = FILE_CAPABILITIES[file];
     if (needed.length === 0) return true;
     if (!set) return false;
-    return needed.some((id) => agentCapabilityOn(set, agent, id));
+    return needed.some((id) => agentCapabilityOn(set, agentId, id));
   });
 }
 
@@ -263,12 +263,12 @@ export function filesFor(
 // second, divergent answer to a question that has one.
 export function entriesFor(
   set: GgCapabilitySet | null,
-  agent: string | null | undefined,
+  agentId: string | null | undefined,
   modules: readonly GgModuleInstance[],
   surface?: GgAgentSurface,
 ): AgentEntry[] {
   return [
-    ...filesFor(set, agent, surface).map(
+    ...filesFor(set, agentId, surface).map(
       (file): AgentEntry => ({ kind: "file", file }),
     ),
     ...modules.map(

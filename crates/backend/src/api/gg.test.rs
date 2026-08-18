@@ -106,7 +106,7 @@ fn into_launch_body_lifts_a_machine_roots_entry_model_and_names_a_missing_one() 
         let mut set = GgCapabilitySet::minimal("mock/shell-leftover");
         set.agents[0].capabilities = vec![test_cabinet_core::gg::GgCapabilityConfig {
             params: serde_json::json!({
-                test_cabinet_core::gg::FSM_PARAM_STATES: [{ "name": "explore", "agent": entry }],
+                test_cabinet_core::gg::FSM_PARAM_STATES: [{ "name": "explore", "agentId": entry }],
             }),
             ..test_cabinet_core::gg::GgCapabilityConfig::enabled(
                 test_cabinet_core::gg::CAPABILITY_FSM,
@@ -114,6 +114,7 @@ fn into_launch_body_lifts_a_machine_roots_entry_model_and_names_a_missing_one() 
         }];
         for worker in workers {
             set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+                id: worker.to_string(),
                 name: worker.to_string(),
                 model_id: "mock/worker".to_string(),
                 ..test_cabinet_core::gg::GgAgentConfig::root()

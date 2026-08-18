@@ -20,8 +20,9 @@ from a prefix of three to six letters, upper-cased, and that prefix is its id.
 An issue carries structured sections: a title, an optional description,
 in-scope, out-of-scope, and completion criteria. Those sections become the brief
 of the agent gg dispatches for it, so they state what that agent is responsible
-for and how its work will be judged done. An issue also names the agent profile
-it is assigned to and, optionally, the reviewers that must approve it.
+for and how its work will be judged done. An issue also carries the
+[id](/gg/configurations/#identity) of the agent profile it is assigned to and,
+optionally, the ids of the reviewers that must approve it.
 
 Issues form a blocked-by DAG. An issue may be blocked by several others, and the
 relation stays acyclic: gg rejects any edge that would introduce a cycle and
@@ -123,15 +124,15 @@ worktree discarded unmerged. Every reconciliation is streamed as a
 
 Issues land in whatever order they finish, so a merge that conflicts with work
 another issue already landed is an ordinary event. Enabling the capability
-requires naming a `mergeAgent`: the agent profile gg dispatches into the main
-workspace, with the conflicted merge left in place, to resolve the conflict and
-finish the merge. It must have the [shell](/gg/shell/) capability, since
-resolving a merge means running `git`. A set that names no merge agent, names
-one that is not declared, or names one without a shell is refused at launch. The
-board is the run's, so it has one merge agent: writing the same name on several
-profiles is fine and is what the editor does, while writing two different names —
-or one gg cannot read as a name at all — refuses the launch rather than letting
-whichever profile comes first decide.
+requires a `mergeAgentId`: the id of the agent profile gg dispatches into the
+main workspace, with the conflicted merge left in place, to resolve the conflict
+and finish the merge. That profile must have the [shell](/gg/shell/) capability,
+since resolving a merge means running `git`. A set that names no merge agent,
+names one that is not declared, or names one without a shell is refused at
+launch. The board is the run's, so it has one merge agent: writing the same id on
+several profiles is fine and is what the editor does, while writing two different
+ids, or a value gg cannot read as an id at all, refuses the launch rather than
+letting whichever profile comes first decide.
 
 The merge counts as resolved only when git agrees it is no longer in progress. A
 merge the agent could not finish is aborted, leaving the main workspace exactly
@@ -140,10 +141,10 @@ as it was, and the issue is marked failed rather than accepted.
 ## Assigning an issue
 
 Which agent works an issue is decided when the issue is filed. `create_issue`
-takes a required `agent` naming the [agent profile](/gg/configurations/) gg
-dispatches it under, and an agent may only name a profile its own roster lists
-with the implementer scope. A call naming anything else is refused, and the
-refusal lists the profiles that are assignable.
+takes a required `agent`, the [id](/gg/configurations/#identity) of the [agent
+profile](/gg/configurations/) gg dispatches it under, and an agent may only name
+a profile its own roster lists with the implementer scope. A call naming anything
+else is refused, and the refusal lists the profiles that are assignable.
 
 Two configurations are therefore rejected at launch: an agent that can create
 issues but lists no implementer on its roster, and an agent that must name
@@ -162,9 +163,10 @@ stating that finishing is the hand-back.
 
 ## Reviewers
 
-An issue may also name `reviewers`, profiles its filer's roster lists with the
-reviewer scope. The implementer and reviewer scopes are governed independently,
-so a profile trusted to write code is not automatically trusted to review it.
+An issue may also name `reviewers`, the ids of profiles its filer's roster lists
+with the reviewer scope. The implementer and reviewer scopes are governed
+independently, so a profile trusted to write code is not automatically trusted to
+review it.
 
 An agent finishing is the claim that the work is done. gg moves the issue to
 `in_review`, and then:
@@ -198,9 +200,9 @@ accepted.
 
 The lifecycle is streamed as `issue_review` telemetry carrying who said what:
 the reviewer that ended a round by requesting changes, with its items, and the
-reviewers that approved during it, each as the agent id and the profile it ran
-under. The console's Project tab renders one `Review N` entry per round under
-the issue.
+reviewers that approved during it, each as the agent id plus the id and name of
+the profile it ran under. The console's Project tab renders one `Review N` entry
+per round under the issue.
 
 An issue that names no reviewers is accepted as soon as its agent finishes, and
 merged just the same.
@@ -258,7 +260,7 @@ Board tools: `create_epic`, `create_issue`, `update_issue`,
 
 | Param | Default | Meaning |
 | --- | --- | --- |
-| `mergeAgent` | required | The shell-capable agent gg dispatches to resolve a conflicted merge of an accepted issue's worktree. |
+| `mergeAgentId` | required | The id of the shell-capable agent gg dispatches to resolve a conflicted merge of an accepted issue's worktree. |
 | `maxEpics` | 50 | Maximum epics on the board. |
 | `maxIssues` | 2000 | Maximum issues on the board. |
 | `maxRetries` | 1 | Re-dispatches of a failed assignment before the issue is marked failed; may be 0 for one attempt only. A review round is not a retry. |

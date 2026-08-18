@@ -25,7 +25,7 @@ use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES,
     CAPABILITY_SUBAGENTS, GgAgentModule, GgCapabilityConfig, GgMemoryScope, GgModuleKind,
     GgModuleOrigin, GgModuleOwnership, GgSubagentRef, GgTelemetryEvent, MEMORY_PARAM_SCOPE,
-    ROOT_AGENT,
+    ROOT_AGENT, ROOT_PROFILE_ID,
 };
 
 use super::{ScriptedFactory, invocation};
@@ -39,16 +39,17 @@ fn inherited_memories_set(child_scope: GgMemoryScope) -> GgCapabilitySet {
     let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     subagents.params = json!({ "maxDepth": 3 });
     let roster = vec![GgSubagentRef {
-        agent: "reader".to_string(),
+        agent_id: "reader".to_string(),
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     }];
-    let profile = |name: &str, model: &str, scope: Option<GgMemoryScope>| {
+    let profile = |id: &str, name: &str, model: &str, scope: Option<GgMemoryScope>| {
         let mut memories = GgCapabilityConfig::enabled(CAPABILITY_MEMORIES);
         if let Some(scope) = scope {
             memories.params = json!({ MEMORY_PARAM_SCOPE: scope.as_str() });
         }
         GgAgentConfig {
+            id: id.to_string(),
             name: name.to_string(),
             model_id: model.to_string(),
             subagents: roster.clone(),
@@ -61,8 +62,8 @@ fn inherited_memories_set(child_scope: GgMemoryScope) -> GgCapabilitySet {
     };
     GgCapabilitySet {
         agents: vec![
-            profile(ROOT_AGENT, "mock/primary", None),
-            profile("reader", "mock/reader", Some(child_scope)),
+            profile(ROOT_PROFILE_ID, ROOT_AGENT, "mock/primary", None),
+            profile("reader", "Reader", "mock/reader", Some(child_scope)),
         ],
         ..GgCapabilitySet::default()
     }
@@ -147,7 +148,7 @@ async fn run_inheritance(dir: &Path, scope: GgMemoryScope) -> Vec<GgTelemetryEve
     // mutates emits no `MemoryState` of its own, so its roster is the only thing that says it is a
     // holder.
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |_| root())
+        .slot(ROOT_PROFILE_ID, move |_| root())
         .slot("reader", |b| {
             Box::new(MockClient::new(&b.model_id, vec![stop_response()]))
         });
@@ -346,7 +347,7 @@ async fn the_root_opens_with_an_empty_archive_snapshot() {
     };
     let inv = invocation(dir.path(), set);
     // One turn, and it archives nothing: the whole point is the snapshot that arrives anyway.
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |b| {
         Box::new(MockClient::new(&b.model_id, vec![stop_response()]))
     });
     assert_eq!(

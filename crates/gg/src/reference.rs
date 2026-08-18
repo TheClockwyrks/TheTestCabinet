@@ -88,9 +88,9 @@ pub(crate) mod conditions;
 #[path = "reference.api.rs"]
 mod api;
 
-/// The placeholder name the reference's one roster entry carries. It stands where a run's own
-/// agent names appear in the delegation tools' descriptions, and it is spelled to be *obviously* a
-/// placeholder — a plausible name (`Implementer`) would read as a promise that gg ships one.
+/// The placeholder id the reference's one roster entry carries. It stands where a run's own
+/// agent ids appear in the delegation tools' descriptions, and it is spelled to be *obviously* a
+/// placeholder — a plausible id (`implementer`) would read as a promise that gg ships one.
 pub(crate) const PLACEHOLDER_AGENT: &str = "<agent>";
 
 /// The placeholder name of the reference's one skill — what `read_skill` enumerates in place of a

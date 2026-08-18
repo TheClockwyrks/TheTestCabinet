@@ -367,7 +367,7 @@ describe("GgConfigEditPage", () => {
       "agent-2",
     ]);
     expect(agents[0].subagents).toEqual([
-      { agent: "agent-2", description: "for reviews", scopes: ["reviewer"] },
+      { agentId: "agent-2", description: "for reviews", scopes: ["reviewer"] },
     ]);
   });
 
@@ -474,8 +474,11 @@ describe("GgConfigEditPage", () => {
     fireEvent.click(save);
     await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
     const { agents } = createGgConfig.mock.calls[0]![0].capabilitySet;
+    // The rename moved the display name and left the reference where it was: the roster
+    // still points at the profile's id, which a rename never touches.
+    expect(agents[1].name).toBe("critic");
     expect(agents[0].subagents).toEqual([
-      { agent: "critic", description: "", scopes: ["reviewer"] },
+      { agentId: "agent-2", description: "", scopes: ["reviewer"] },
     ]);
   });
 
@@ -871,7 +874,7 @@ describe("a configuration that imports a saved agent", () => {
     });
     // And the provenance beside it, pinning nothing.
     expect(input.agentSources).toEqual([
-      { agent: "reviewer", agentId: "saved-1", overrides: [] },
+      { profileId: "reviewer", agentId: "saved-1", overrides: [] },
     ]);
   });
 
@@ -892,7 +895,7 @@ describe("a configuration that imports a saved agent", () => {
     const [input] = createGgConfig.mock.calls[0]!;
     expect(input.agentSources).toEqual([
       {
-        agent: "reviewer",
+        profileId: "reviewer",
         agentId: "saved-1",
         overrides: ["customInstructions"],
       },

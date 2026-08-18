@@ -105,7 +105,7 @@ function gg(kind: GgTelemetryKind): HarnessEvent {
 
 // Wrap a gg payload attributed to a specific agent — the Phase-4 agent identity
 // rides on the event envelope (`agentId`/`parentAgentId`), not the payload — so a
-// stream can spawn subagents, transition them, and roll up their per-slot usage.
+// stream can spawn subagents, transition them, and roll up their per-profile usage.
 function ggFrom(
   agentId: string,
   parentAgentId: string | undefined,
@@ -162,7 +162,7 @@ const ALL_CAPABILITIES = [
 function sessionStarted(
   capabilities: ReadonlyArray<string> = ALL_CAPABILITIES,
 ): HarnessEvent {
-  return sessionStartedWith([{ name: "Root", capabilities }]);
+  return sessionStartedWith([{ id: "root", name: "Root", capabilities }]);
 }
 
 // The same announcement for a **multi-profile** run: gg's capabilities are per-agent,
@@ -171,6 +171,11 @@ function sessionStarted(
 // surface has to read the profile the agent it is showing runs under, so these streams
 // are the ones that catch a surface reading the Root's configuration for everybody.
 //
+// A profile is spelled `id` + `name`: the id is what every telemetry event, roster entry
+// and issue in these streams names it by, and the name is only what a surface prints. They
+// are given separately because they are separate — a set may carry two profiles under one
+// name, and the streams below rely on the ids to keep them apart.
+//
 // A capability is named either bare (`"tasks"`, taking the capability's defaults) or as
 // `[id, params]` — the params are how a configuration says what it *asked* for
 // (`{ ownership: "unowned" }`, `{ scope: "shared" }`), which the module surfaces read as
@@ -178,6 +183,7 @@ function sessionStarted(
 type CapabilitySpec = string | [string, Record<string, unknown>];
 function sessionStartedWith(
   profiles: ReadonlyArray<{
+    id: string;
     name: string;
     capabilities: ReadonlyArray<CapabilitySpec>;
   }>,
@@ -185,7 +191,8 @@ function sessionStartedWith(
   return gg({
     type: "session_started",
     capabilitySet: {
-      agents: profiles.map(({ name, capabilities }) => ({
+      agents: profiles.map(({ id: agentId, name, capabilities }) => ({
+        id: agentId,
         name,
         capabilities: capabilities.map((capability) => {
           const [id, params] = Array.isArray(capability)
@@ -256,6 +263,7 @@ function surface(
 // offer: the allowlist is the grant, so a call left out of it is a call the agent never
 // had — the "never offered" arm of the very distinction the surface file exists to draw.
 function sessionStartedGranting(
+  profileId: string,
   profile: string,
   capabilities: ReadonlyArray<string>,
   tools: string[],
@@ -265,6 +273,7 @@ function sessionStartedGranting(
     capabilitySet: {
       agents: [
         {
+          id: profileId,
           name: profile,
           capabilities: capabilities.map((id) => ({
             id,
@@ -477,7 +486,7 @@ const EVENTS: HarnessEvent[] = [
         status: "done",
         blockedBy: [],
         epicId: "e1",
-        agent: "implementer",
+        agentId: "implementer",
         retries: 0,
       },
       {
@@ -489,8 +498,8 @@ const EVENTS: HarnessEvent[] = [
         status: "in_progress",
         blockedBy: ["i1"],
         epicId: "e1",
-        agent: "implementer",
-        reviewers: ["critic"],
+        agentId: "implementer",
+        reviewerIds: ["critic"],
         retries: 0,
       },
       {
@@ -502,7 +511,7 @@ const EVENTS: HarnessEvent[] = [
         status: "open",
         blockedBy: ["i2"],
         epicId: "e1",
-        agent: "implementer",
+        agentId: "implementer",
         retries: 0,
       },
       {
@@ -513,7 +522,7 @@ const EVENTS: HarnessEvent[] = [
         completionCriteria: "A sound plays on a move.",
         status: "open",
         blockedBy: [],
-        agent: "implementer",
+        agentId: "implementer",
         retries: 0,
       },
     ],
@@ -732,7 +741,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(),
       gg({
         type: "usage",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         tokens: {
           uncachedInput: 800,
@@ -813,14 +822,14 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Reviewer",
+        profileId: "reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
       }),
@@ -954,14 +963,14 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Coder",
+        profileId: "coder",
         modelId: "mock/scripted-builder",
         depth: 1,
       }),
@@ -1051,6 +1060,10 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Blocked")).toBeInTheDocument();
     expect(screen.getByText("Retries")).toBeInTheDocument();
     expect(screen.getByText("Show a win banner.")).toBeInTheDocument();
+    // And who it was filed against: the board records the id of the profile the creating
+    // agent named, so the row reads that id and resolves nothing.
+    expect(screen.getByText("Assigned to")).toBeInTheDocument();
+    expect(screen.getByText("implementer")).toBeInTheDocument();
     // And only that badge: the separate status/readiness chips the header used to carry
     // said the same thing twice.
     expect(screen.queryByText("open")).not.toBeInTheDocument();
@@ -1262,6 +1275,7 @@ describe("GgRunMonitorPage", () => {
     // findings — one is the harness, the other is the model.
     renderMonitor([
       sessionStartedGranting(
+        "root",
         "Root",
         ["shell", "filesystem"],
         ["read_file", "write_file", "grep"],
@@ -1269,7 +1283,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -1317,7 +1331,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -1409,7 +1423,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -1467,7 +1481,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -1507,7 +1521,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -1542,7 +1556,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -1591,7 +1605,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -1599,7 +1613,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 1,
       }),
@@ -1624,14 +1638,18 @@ describe("GgRunMonitorPage", () => {
     // the agent that had the capability.
     renderMonitor([
       sessionStartedWith([
-        { name: "Root", capabilities: ["shell", "project-management"] },
-        { name: "Coder", capabilities: ["shell", "tasks"] },
+        {
+          id: "root",
+          name: "Root",
+          capabilities: ["shell", "project-management"],
+        },
+        { id: "coder", name: "Coder", capabilities: ["shell", "tasks"] },
       ]),
       roster("root", [held("history", "history-0"), held("board", "board-0")]),
       ggFrom("agent-0", undefined, {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Coder",
+        profileId: "coder",
         modelId: "mock/scripted-builder",
         depth: 0,
         brief: "Implement the widget.",
@@ -1681,8 +1699,13 @@ describe("GgRunMonitorPage", () => {
     // is what the folder is keyed on: both reviewers report `memories-1`.
     renderMonitor([
       sessionStartedWith([
-        { name: "Root", capabilities: ["shell", "subagents", "memories"] },
         {
+          id: "root",
+          name: "Root",
+          capabilities: ["shell", "subagents", "memories"],
+        },
+        {
+          id: "reviewer",
           name: "Reviewer",
           capabilities: [["memories", { scope: "shared" }]],
         },
@@ -1694,7 +1717,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Reviewer",
+        profileId: "reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
       }),
@@ -1712,7 +1735,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Reviewer",
+        profileId: "reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
       }),
@@ -1800,6 +1823,7 @@ describe("GgRunMonitorPage", () => {
     renderMonitor([
       sessionStartedWith([
         {
+          id: "root",
           name: "Root",
           capabilities: ["shell", ["tasks", { ownership: "unowned" }]],
         },
@@ -1846,10 +1870,15 @@ describe("GgRunMonitorPage", () => {
     return [
       sessionStartedWith([
         {
+          id: "root",
           name: "Root",
           capabilities: ["shell", "subagents", "memories", "tasks"],
         },
-        { name: "Reviewer", capabilities: [["memories", { scope: "shared" }]] },
+        {
+          id: "reviewer",
+          name: "Reviewer",
+          capabilities: [["memories", { scope: "shared" }]],
+        },
       ]),
       roster("root", [
         held("history", "history-0"),
@@ -1859,7 +1888,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Reviewer",
+        profileId: "reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
       }),
@@ -1877,7 +1906,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Reviewer",
+        profileId: "reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
       }),
@@ -1941,7 +1970,7 @@ describe("GgRunMonitorPage", () => {
         type: "agent_transition",
         kind: "exec",
         toAgentId: "agent-2",
-        agent: "Root",
+        profileId: "root",
         modules: [
           carried("history", "history-0"),
           gone("memories", "memories-0"),
@@ -1951,7 +1980,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-2", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -2139,13 +2168,17 @@ describe("GgRunMonitorPage", () => {
     // nothing about the work it was dispatched for.
     renderMonitor([
       sessionStartedWith([
-        { name: "Root", capabilities: ["shell", "project-management"] },
-        { name: "Coder", capabilities: ["shell", "tasks"] },
+        {
+          id: "root",
+          name: "Root",
+          capabilities: ["shell", "project-management"],
+        },
+        { id: "coder", name: "Coder", capabilities: ["shell", "tasks"] },
       ]),
       ggFrom("WIDGET-1.0i", undefined, {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Coder",
+        profileId: "coder",
         modelId: "mock/scripted-builder",
         depth: 0,
         brief: "Implement the widget.",
@@ -2181,8 +2214,12 @@ describe("GgRunMonitorPage", () => {
     // management on a dedicated board-owning profile still has a board to read.
     renderMonitor([
       sessionStartedWith([
-        { name: "Root", capabilities: ["shell", "subagents"] },
-        { name: "Planner", capabilities: ["shell", "project-management"] },
+        { id: "root", name: "Root", capabilities: ["shell", "subagents"] },
+        {
+          id: "planner",
+          name: "Planner",
+          capabilities: ["shell", "project-management"],
+        },
       ]),
       gg({
         type: "board_state",
@@ -2197,7 +2234,7 @@ describe("GgRunMonitorPage", () => {
             inScope: "The widget.",
             outOfScope: "Nothing else.",
             completionCriteria: "It works.",
-            agent: "Coder",
+            agentId: "coder",
             retries: 0,
           },
         ],
@@ -2219,7 +2256,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "builder",
+        profileId: "builder",
         modelId: "mock/scripted-builder",
         depth: 1,
         brief: "Build the overlay.",
@@ -2248,14 +2285,14 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(),
       gg({
         type: "agent_spawned",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
         cwd: "/work/game",
       }),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
-        slot: "Coder",
+        profileId: "coder",
         modelId: "mock/scripted-builder",
         depth: 1,
         brief: "Implement the widget.",
@@ -2298,7 +2335,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "reviewer",
+        profileId: "reviewer",
         modelId: "claude-haiku-4-8",
         depth: 1,
         brief: "Review the renderer for correctness.",
@@ -2318,7 +2355,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "builder",
+        profileId: "builder",
         modelId: "claude-sonnet-4-8",
         depth: 1,
         brief: "Build the win overlay.",
@@ -2326,10 +2363,10 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-1", "root", { type: "agent_status", status: "running" }),
       ggFrom("root", undefined, { type: "agent_status", status: "blocked" }),
       // The reviewer's spend, attributed to the profile and model that took the turn —
-      // which is what the run's per-slot split is summed from, live.
+      // which is what the run's per-profile split is summed from, live.
       ggFrom("agent-0", "root", {
         type: "usage",
-        slot: "reviewer",
+        profileId: "reviewer",
         modelId: "claude-haiku-4-8",
         tokens: {
           uncachedInput: 1200,
@@ -2342,7 +2379,7 @@ describe("GgRunMonitorPage", () => {
       // And the end-of-agent rollup gg streams beside it, restating the same tokens.
       gg({
         type: "slot_usage",
-        slot: "reviewer",
+        profileId: "reviewer",
         modelId: "claude-haiku-4-8",
         tokens: {
           uncachedInput: 1200,
@@ -2357,16 +2394,16 @@ describe("GgRunMonitorPage", () => {
     // The Dashboard's agent overview lists all three agents.
     expect(screen.getByText("Agents · 3")).toBeInTheDocument();
     // Where the money went is a whole-run cost fact, so it reads inside the Dashboard's
-    // Cost widget: a bar per slot naming the model bound to it, and its cost both as the
-    // widget's total and in its own row — so more than one node carries the figure.
-    // ("reviewer" reads twice now — the per-slot row and the agent overview's slot
-    // chip.)
-    expect(screen.getByText("Per slot")).toBeInTheDocument();
+    // Cost widget: a bar per profile naming the model bound to it, and its cost both as
+    // the widget's total and in its own row — so more than one node carries the figure.
+    // (`reviewer` reads twice now — the per-profile row and the agent overview's profile
+    // chip. The set declares no such profile, so both read as the id itself.)
+    expect(screen.getByText("Per agent")).toBeInTheDocument();
     expect(screen.getAllByText("reviewer").length).toBeGreaterThan(0);
     expect(screen.getAllByText("claude-haiku-4-8").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.0021").length).toBeGreaterThan(1);
-    // And the same money read per model, always — here one model per slot, so it restates
-    // the rows above rather than being withheld for saying nothing new.
+    // And the same money read per model, always — here one model per profile, so it
+    // restates the rows above rather than being withheld for saying nothing new.
     expect(screen.getByText("Per model")).toBeInTheDocument();
 
     openTab("Instances");
@@ -2375,11 +2412,11 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("agent-0")).toBeInTheDocument();
     expect(screen.getByText("agent-1")).toBeInTheDocument();
 
-    // The root's Overview (the default) shows the root itself waiting. (Per-slot usage
+    // The root's Overview (the default) shows the root itself waiting. (Per-profile usage
     // no longer lives here; it reads on the Dashboard above.)
     expect(screen.getByText("waiting")).toBeInTheDocument();
 
-    // The reviewer subagent reads on its own Overview: slot/model, its worktree with
+    // The reviewer subagent reads on its own Overview: profile/model, its worktree with
     // the merged outcome, its returned value, and its done status.
     openFolder("agent agent-0");
     openFile("agent-0 overview");
@@ -2398,15 +2435,24 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("running")).toBeInTheDocument();
   });
 
-  it("splits the running cost per slot and per model mid-run", () => {
-    // Three slots on two models, mid-run: nothing has ended, so no `slot_usage` rollup
+  it("splits the running cost per profile and per model mid-run", () => {
+    // Three profiles on two models, mid-run: nothing has ended, so no `slot_usage` rollup
     // exists — the split comes from the attributed `usage` deltas alone. The same cheap
-    // model is bound to two of the slots, which is what the per-model split is for.
+    // model is bound to two of the profiles, which is what the per-model split is for.
+    //
+    // Those two also carry ONE display name between them, which is legal: a name is
+    // display text and the accounting is keyed on the profile id. Two arms with one name
+    // are what a run splitting a role across a cheap and an expensive binding looks like,
+    // and folding them into a single row would report a cost neither of them spent.
     const events: HarnessEvent[] = [
-      sessionStarted(),
+      sessionStartedWith([
+        { id: "root", name: "Root", capabilities: ALL_CAPABILITIES },
+        { id: "reviewer", name: "Auditor", capabilities: ALL_CAPABILITIES },
+        { id: "summarizer", name: "Auditor", capabilities: ALL_CAPABILITIES },
+      ]),
       ggFrom("root", undefined, {
         type: "usage",
-        slot: "root",
+        profileId: "root",
         modelId: "vendor/big",
         tokens: {
           uncachedInput: 4000,
@@ -2418,7 +2464,7 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-0", "root", {
         type: "usage",
-        slot: "reviewer",
+        profileId: "reviewer",
         modelId: "vendor/small",
         tokens: {
           uncachedInput: 2000,
@@ -2430,7 +2476,7 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-1", "root", {
         type: "usage",
-        slot: "summarizer",
+        profileId: "summarizer",
         modelId: "vendor/small",
         tokens: {
           uncachedInput: 1000,
@@ -2444,19 +2490,27 @@ describe("GgRunMonitorPage", () => {
     renderMonitor(events);
 
     // Both splits read while the run is still going — no session_ended here.
-    expect(screen.getByText("Per slot")).toBeInTheDocument();
+    const perProfile = screen.getByText("Per agent").parentElement!;
     expect(screen.getByText("Per model")).toBeInTheDocument();
-    // A row per slot, each naming the model it was bound to (the catalog is absent in
-    // this bare render, so a model reads by its id).
-    expect(screen.getByText("reviewer")).toBeInTheDocument();
-    expect(screen.getByText("summarizer")).toBeInTheDocument();
-    // The small model is bound to two slots, so it reads on both of their rows and again
-    // as its own per-model row; the big model on one slot and its own row.
+    // A row per profile, each naming the model it was bound to (the catalog is absent in
+    // this bare render, so a model reads by its id). The two profiles named `Auditor`
+    // keep a row apiece, and each states the id it is really accounted under — without
+    // which the list would show one arm's figures twice with no way to tell which.
+    expect(
+      within(perProfile).getByText("Auditor (reviewer)"),
+    ).toBeInTheDocument();
+    expect(
+      within(perProfile).getByText("Auditor (summarizer)"),
+    ).toBeInTheDocument();
+    // The unambiguous row needs no id: a name that names one profile already does.
+    expect(within(perProfile).getByText("Root")).toBeInTheDocument();
+    // The small model is bound to two profiles, so it reads on both of their rows and
+    // again as its own per-model row; the big model on one profile and its own row.
     expect(screen.getAllByText("vendor/small")).toHaveLength(3);
     expect(screen.getAllByText("vendor/big")).toHaveLength(2);
-    // The per-model row sums the two slots the small model served: 0.03 + 0.01.
+    // The per-model row sums the two profiles the small model served: 0.03 + 0.01.
     expect(screen.getByText("$0.0400")).toBeInTheDocument();
-    // …and the headline is every slot summed.
+    // …and the headline is every profile summed.
     expect(screen.getAllByText("$0.0600").length).toBeGreaterThan(0);
   });
 
@@ -2470,7 +2524,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "reviewer",
+        profileId: "reviewer",
         modelId: "claude-haiku-4-8",
         depth: 1,
         brief: "Review the renderer for correctness.",
@@ -2571,13 +2625,13 @@ describe("GgRunMonitorPage", () => {
 
     const events: HarnessEvent[] = [
       sessionStartedWith([
-        { name: "Root", capabilities: ["subagents"] },
-        { name: "reviewer", capabilities: ["filesystem"] },
+        { id: "root", name: "Root", capabilities: ["subagents"] },
+        { id: "reviewer", name: "reviewer", capabilities: ["filesystem"] },
       ]),
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/x",
         depth: 0,
       }),
@@ -2585,7 +2639,7 @@ describe("GgRunMonitorPage", () => {
         ggFrom(id, "root", {
           type: "agent_spawned",
           cwd: "/work",
-          slot: "reviewer",
+          profileId: "reviewer",
           modelId: "mock/x",
           depth: 1,
         }),
@@ -2594,7 +2648,7 @@ describe("GgRunMonitorPage", () => {
         ggFrom(id, "root", { type: "tool_call", name: "read_file", args: {} }),
         ggFrom(id, "root", {
           type: "usage",
-          slot: "reviewer",
+          profileId: "reviewer",
           modelId: "mock/x",
           tokens: {
             uncachedInput: 900 * (index + 1),
@@ -2719,15 +2773,15 @@ describe("GgRunMonitorPage", () => {
     // reader to the surface where N stores are compared.
     renderMonitor([
       sessionStartedWith([
-        { name: "Root", capabilities: ["shell", "subagents"] },
-        { name: "Reviewer", capabilities: ["memories"] },
+        { id: "root", name: "Root", capabilities: ["shell", "subagents"] },
+        { id: "reviewer", name: "Reviewer", capabilities: ["memories"] },
       ]),
       roster("root", [held("history", "history-0")]),
       ...["agent-0", "agent-1"].map((id, index) =>
         ggFrom(id, "root", {
           type: "agent_spawned",
           cwd: "/work",
-          slot: "Reviewer",
+          profileId: "reviewer",
           modelId: "mock/scripted-builder",
           depth: 1,
           brief: `Review ${index}.`,
@@ -2925,14 +2979,14 @@ describe("GgRunMonitorPage", () => {
       ggFrom(id, "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "reviewer",
+        profileId: "reviewer",
         modelId: "mock/x",
         depth: 1,
       }),
       ggFrom(id, "root", { type: "turn_started" }),
       ggFrom(id, "root", {
         type: "usage",
-        slot: "reviewer",
+        profileId: "reviewer",
         modelId: "mock/x",
         tokens: {
           uncachedInput: 1000,
@@ -2950,13 +3004,13 @@ describe("GgRunMonitorPage", () => {
     ];
     renderMonitor([
       sessionStartedWith([
-        { name: "Root", capabilities: ["subagents"] },
-        { name: "reviewer", capabilities: ["filesystem"] },
+        { id: "root", name: "Root", capabilities: ["subagents"] },
+        { id: "reviewer", name: "reviewer", capabilities: ["filesystem"] },
       ]),
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/x",
         depth: 0,
       }),
@@ -2987,7 +3041,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/x",
         depth: 0,
       }),
@@ -3033,7 +3087,7 @@ describe("GgRunMonitorPage", () => {
       completionCriteria: "",
       status,
       blockedBy: [] as string[],
-      agent: "implementer",
+      agentId: "implementer",
       retries: 0,
     });
     const events: HarnessEvent[] = [
@@ -3052,14 +3106,20 @@ describe("GgRunMonitorPage", () => {
       ggIssue("i1", {
         type: "issue_review",
         phase: "changes_requested",
-        reviewer: { agentId: "i1.0i.0r", profile: "critic" },
+        reviewer: {
+          agentId: "i1.0i.0r",
+          profileId: "critic",
+          profile: "Critic",
+        },
         items: ["Handle the empty-input case", "Add a unit test"],
       }),
       ggIssue("i2", { type: "issue_review", phase: "requested" }),
       ggIssue("i2", {
         type: "issue_review",
         phase: "approved",
-        approvals: [{ agentId: "i2.0i.0r", profile: "critic" }],
+        approvals: [
+          { agentId: "i2.0i.0r", profileId: "critic", profile: "Critic" },
+        ],
       }),
       // i3's round is still open: its reviewers have the diff and no verdict has landed.
       ggIssue("i3", { type: "issue_review", phase: "requested" }),
@@ -3071,7 +3131,10 @@ describe("GgRunMonitorPage", () => {
     openFolder("issue i1");
     openFile("i1 review 1");
     expect(screen.getByText("Changes requested by")).toBeInTheDocument();
+    // The reviewer is named by the agent gg dispatched, with the profile it ran under
+    // beside it: the id is the identity, the name is only there so the round reads.
     expect(screen.getByText("i1.0i.0r")).toBeInTheDocument();
+    expect(screen.getByText("(Critic)")).toBeInTheDocument();
     expect(screen.getByText("Handle the empty-input case")).toBeInTheDocument();
     expect(screen.getByText("Add a unit test")).toBeInTheDocument();
     // The second issue's round approved, which is what let it be accepted — and it names
@@ -3113,7 +3176,7 @@ describe("GgRunMonitorPage", () => {
             completionCriteria: "`api.audio()` reports both cues.",
             status: "in_progress",
             blockedBy: [],
-            agent: "implementer",
+            agentId: "implementer",
             retries: 0,
           },
         ],
@@ -3144,17 +3207,17 @@ describe("GgRunMonitorPage", () => {
   it("reads a machine, an exec and a fork as lineage rather than as delegation", () => {
     const events: HarnessEvent[] = [
       sessionStartedWith([
-        { name: "Feature", capabilities: ["fsm"] },
-        { name: "Explorer", capabilities: ["memories"] },
-        { name: "Builder", capabilities: ["tasks", "memories"] },
-        { name: "Verifier", capabilities: ["tasks"] },
+        { id: "feature", name: "Feature", capabilities: ["fsm"] },
+        { id: "explorer", name: "Explorer", capabilities: ["memories"] },
+        { id: "builder", name: "Builder", capabilities: ["tasks", "memories"] },
+        { id: "verifier", name: "Verifier", capabilities: ["tasks"] },
       ]),
       // The machine enters its first state on the root instance.
       gg({
         type: "fsm_state",
-        fsm: "Feature",
+        fsmId: "feature",
         state: "explore",
-        agent: "Explorer",
+        profileId: "explorer",
       }),
       // …then transitions, carrying the conversation and the task list and dropping
       // the board. The handoff lands on the OUTGOING stream, the state on the incoming.
@@ -3162,7 +3225,7 @@ describe("GgRunMonitorPage", () => {
         type: "agent_transition",
         kind: "fsm",
         toAgentId: "agent-1",
-        agent: "Builder",
+        profileId: "builder",
         state: "build",
         modules: [
           carried("history", "history-0"),
@@ -3174,15 +3237,15 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Builder",
+        profileId: "builder",
         modelId: "claude-sonnet-4-8",
         depth: 0,
       }),
       ggFrom("agent-1", "root", {
         type: "fsm_state",
-        fsm: "Feature",
+        fsmId: "feature",
         state: "build",
-        agent: "Builder",
+        profileId: "builder",
         from: "explore",
       }),
       // The build state runs a copy of itself beside it — a fork is a child, not a
@@ -3191,7 +3254,7 @@ describe("GgRunMonitorPage", () => {
         type: "agent_transition",
         kind: "fork",
         toAgentId: "agent-2",
-        agent: "Builder",
+        profileId: "builder",
         modules: [
           copied("history", "history-0", "history-1"),
           copied("memories", "memories-1", "memories-2"),
@@ -3201,7 +3264,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-2", "agent-1", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Builder",
+        profileId: "builder",
         modelId: "claude-sonnet-4-8",
         depth: 1,
         brief: "Take the renderer while I do the input.",
@@ -3211,7 +3274,7 @@ describe("GgRunMonitorPage", () => {
         type: "agent_transition",
         kind: "exec",
         toAgentId: "agent-3",
-        agent: "Verifier",
+        profileId: "verifier",
         modules: [
           carried("history", "history-1"),
           gone("memories", "memories-2"),
@@ -3221,7 +3284,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-3", "agent-2", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Verifier",
+        profileId: "verifier",
         modelId: "claude-haiku-4-8",
         depth: 1,
       }),
@@ -3306,7 +3369,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -3372,7 +3435,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -3401,7 +3464,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -3420,7 +3483,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "worker",
+        profileId: "worker",
         modelId: "mock/scripted-builder",
         depth: 1,
       } as GgTelemetryKind),
@@ -3461,7 +3524,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -3489,13 +3552,13 @@ describe("GgRunMonitorPage", () => {
   it("heads each agent's Overview with the surface it actually called on", () => {
     renderMonitor([
       sessionStartedWith([
-        { name: "Root", capabilities: ["filesystem", "subagents"] },
-        { name: "worker", capabilities: ["filesystem"] },
+        { id: "root", name: "Root", capabilities: ["filesystem", "subagents"] },
+        { id: "worker", name: "worker", capabilities: ["filesystem"] },
       ]),
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -3519,7 +3582,7 @@ describe("GgRunMonitorPage", () => {
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         cwd: "/work",
-        slot: "worker",
+        profileId: "worker",
         modelId: "mock/scripted-builder",
         depth: 1,
       } as GgTelemetryKind),
@@ -3551,7 +3614,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
@@ -3584,7 +3647,7 @@ describe("GgRunMonitorPage", () => {
       gg({
         type: "agent_spawned",
         cwd: "/work",
-        slot: "Root",
+        profileId: "root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),

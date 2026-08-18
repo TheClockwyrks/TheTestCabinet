@@ -34,7 +34,7 @@
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgSubagentRef;
+use test_cabinet_core::gg::GgRosterEntry;
 
 use super::{Tool, ToolContext, ToolOutcome, handled_by_loop};
 use crate::fsm::FsmPosition;
@@ -49,23 +49,26 @@ pub const EXEC_TOOL: &str = "exec";
 /// The `fork` tool name.
 pub const FORK_TOOL: &str = "fork";
 
-/// Render an agent's [roster](GgSubagentRef) as a sentence for the `exec` description, so the model
-/// is told exactly which names it may become and the caller-scoped guidance for each.
+/// Render an agent's [resolved roster](GgRosterEntry) as a sentence for the `exec` description, so the model
+/// is told exactly which ids it may become and the caller-scoped guidance for each.
 ///
 /// Deliberately the same shape as the delegation tools' menu: naming an agent to become and naming
 /// an agent to spawn are the same act from the model's side, and a model that has learned one
 /// spelling should not have to learn a second.
-fn agent_menu(agents: &[GgSubagentRef]) -> String {
+fn agent_menu(agents: &[GgRosterEntry]) -> String {
     if agents.is_empty() {
         return "(no agents are available to you)".to_string();
     }
     agents
         .iter()
-        .map(|reference| {
-            if reference.description.trim().is_empty() {
-                format!("`{}`", reference.agent)
-            } else {
-                format!("`{}` ({})", reference.agent, reference.description.trim())
+        .map(|entry| {
+            // The id is what the model passes; the name is only here so the menu reads as prose.
+            let name = entry.name.trim();
+            match (name.is_empty(), entry.description.trim()) {
+                (true, "") => format!("`{}`", entry.agent_id),
+                (true, why) => format!("`{}` ({why})", entry.agent_id),
+                (false, "") => format!("`{}` ({name})", entry.agent_id),
+                (false, why) => format!("`{}` ({name}: {why})", entry.agent_id),
             }
         })
         .collect::<Vec<_>>()
@@ -142,19 +145,19 @@ impl Tool for TransitionStateTool {
 
 /// Declares `exec` — **become** another agent, in place, carrying everything both profiles hold.
 ///
-/// Carries the agent's [roster](GgSubagentRef) so its description names exactly the profiles it may
+/// Carries the agent's [resolved roster](GgRosterEntry) so its description names exactly the profiles it may
 /// become, for the same reason `spawn_subagent`'s does: the model cannot discover an allowlist by
 /// trial, and a refusal that arrives after the model has committed to a name has already cost a
 /// turn.
 pub struct ExecTool {
     /// The agents this agent may become — its delegation roster, which is also the allowlist an
     /// `exec` target is validated against.
-    agents: Vec<GgSubagentRef>,
+    agents: Vec<GgRosterEntry>,
 }
 
 impl ExecTool {
     /// Declare `exec` for an agent whose roster is `agents`.
-    pub fn new(agents: Vec<GgSubagentRef>) -> Self {
+    pub fn new(agents: Vec<GgRosterEntry>) -> Self {
         Self { agents }
     }
 }

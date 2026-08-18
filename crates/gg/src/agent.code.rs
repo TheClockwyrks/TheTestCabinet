@@ -42,7 +42,6 @@ use std::time::Duration;
 
 use tokio::runtime::Handle;
 
-use test_cabinet_core::gg::GgSubagentRef;
 use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use crate::board::BOARD_MUTATIONS;
@@ -725,7 +724,7 @@ fn record_knowledge_failure(
         return;
     }
     let detail = error.operator_detail().unwrap_or_else(|| error.to_string());
-    fault.in_agent(&spawner.id, &spawner.slot, &detail);
+    fault.in_agent(&spawner.id, &spawner.profile_id, &detail);
     emitter.emit(log("error", detail));
 }
 
@@ -1163,7 +1162,7 @@ pub(super) struct CodeTurn<'a> {
     /// The agents this one may become — its own
     /// [roster](test_cabinet_core::gg::GgAgentConfig::subagents), which is what an `exec` target is
     /// checked against. Empty when it has none, which is also when the call is not bound.
-    pub(super) exec_roster: &'a [GgSubagentRef],
+    pub(super) exec_roster: &'a [GgRosterEntry],
 }
 
 /// The per-turn state a code turn takes **by value** and hands back: the context window, the skills
@@ -1942,7 +1941,7 @@ pub(super) struct LoopOperationApi {
     /// The agents this one may become, for `exec`'s target check. Its own
     /// [roster](test_cabinet_core::gg::GgSubagentRef), which the loop holds and the api does not
     /// otherwise see.
-    exec_roster: Vec<GgSubagentRef>,
+    exec_roster: Vec<GgRosterEntry>,
     /// How many calls this program made while a compaction was in flight.
     pub(super) compaction_calls: u32,
     /// How many of those failed — a refusal included, since a refusal is a call that did not run.

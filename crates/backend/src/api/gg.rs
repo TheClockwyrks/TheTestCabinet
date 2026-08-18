@@ -139,15 +139,15 @@ impl GgRunRequest {
         let root = self.capability_set.root();
         let runner = self
             .capability_set
-            .dispatched_agent(&root.name)
+            .dispatched_agent(&root.id)
             .map_err(|err| format!("the gg capability set cannot be launched: {err}"))?;
         let model = runner
             .resolved_model_id()
             .ok_or_else(|| {
-                if runner.name == root.name {
+                if runner.id == root.id {
                     format!(
                         "the gg capability set must bind a model to its root agent (`{}`)",
-                        root.name
+                        root.id
                     )
                 } else {
                     // The root is a machine, so the agent needing the binding is the one its
@@ -156,7 +156,7 @@ impl GgRunRequest {
                     format!(
                         "the gg capability set must bind a model to the `{}` agent, which its \
                          root agent (`{}`) enters first",
-                        runner.name, root.name
+                        runner.id, root.id
                     )
                 }
             })?

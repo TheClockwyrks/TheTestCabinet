@@ -467,12 +467,12 @@ impl SessionSummaryTracker {
                 }
             }
             GgTelemetryKind::SlotUsage {
-                slot,
+                profile_id,
                 model_id,
                 tokens,
                 cost,
             } => state.slot_costs.push(GgSlotCost {
-                slot: slot.clone(),
+                profile_id: profile_id.clone(),
                 model_id: model_id.clone(),
                 tokens: *tokens,
                 cost: *cost,

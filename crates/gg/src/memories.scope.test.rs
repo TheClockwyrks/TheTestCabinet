@@ -16,7 +16,7 @@ use std::sync::Arc;
 use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
-    GgSubagentRef, GgTelemetryKind, ROOT_AGENT,
+    GgSubagentRef, GgTelemetryKind, ROOT_PROFILE_ID,
 };
 
 use super::*;
@@ -82,11 +82,15 @@ impl World {
     }
 }
 
-/// A profile named `name` whose memories capability is on, organized by `strategy` and scoped by
-/// `scope` — the one configuration every test here varies.
-fn profile(name: &str, strategy: MemoryStrategy, scope: MemoryScope) -> GgAgentConfig {
+/// The profile with [id](GgAgentConfig::id) `id` whose memories capability is on, organized by
+/// `strategy` and scoped by `scope` — the one configuration every test here varies.
+///
+/// Its display name is deliberately unlike its id: a store is bound to the profile **id**, so a
+/// registry that keyed on a name would hand two profiles one notebook.
+fn profile(id: &str, strategy: MemoryStrategy, scope: MemoryScope) -> GgAgentConfig {
     GgAgentConfig {
-        name: name.to_string(),
+        id: id.to_string(),
+        name: format!("The {id} agent"),
         capabilities: vec![GgCapabilityConfig {
             id: CAPABILITY_MEMORIES.to_string(),
             enabled: true,
@@ -99,8 +103,8 @@ fn profile(name: &str, strategy: MemoryStrategy, scope: MemoryScope) -> GgAgentC
 
 /// A scratchpad profile — the strategy most of these tests use, because its notice carries bodies
 /// and its block is the memories themselves.
-fn scratchpad(name: &str, scope: MemoryScope) -> GgAgentConfig {
-    profile(name, MemoryStrategy::Scratchpad, scope)
+fn scratchpad(id: &str, scope: MemoryScope) -> GgAgentConfig {
+    profile(id, MemoryStrategy::Scratchpad, scope)
 }
 
 /// Resolve `profile`'s memories for the agent instance `agent_id`, inheriting nothing.
@@ -174,7 +178,7 @@ fn same_store(a: &MemoriesRuntime, b: &MemoriesRuntime) -> bool {
 #[test]
 fn isolated_gives_every_instance_its_own_store() {
     let world = World::new();
-    let config = scratchpad("Solo", MemoryScope::Isolated);
+    let config = scratchpad("solo", MemoryScope::Isolated);
 
     let root = resolve_alone(&world, &config, "agent-0");
     let second = resolve_alone(&world, &config, "agent-1");
@@ -197,7 +201,7 @@ fn isolated_gives_every_instance_its_own_store() {
 #[test]
 fn shared_binds_one_store_per_profile_across_parallel_instances() {
     let world = World::new();
-    let config = scratchpad("Curator", MemoryScope::Shared);
+    let config = scratchpad("curator", MemoryScope::Shared);
 
     let first = resolve_alone(&world, &config, "agent-0");
     let second = resolve_alone(&world, &config, "agent-1");
@@ -211,7 +215,7 @@ fn shared_binds_one_store_per_profile_across_parallel_instances() {
 
     // A *different* profile scoped the same way gets its own entry: the registry is keyed by
     // profile, which is what "shared" names.
-    let other = resolve_alone(&world, &scratchpad("Other", MemoryScope::Shared), "agent-2");
+    let other = resolve_alone(&world, &scratchpad("other", MemoryScope::Shared), "agent-2");
     assert!(!same_store(&first, &other));
     assert_eq!(other.count(), 0);
 }
@@ -221,7 +225,7 @@ fn shared_binds_one_store_per_profile_across_parallel_instances() {
 #[test]
 fn inherited_binds_the_spawners_instance_only_when_spawned() {
     let world = World::new();
-    let config = scratchpad("Helper", MemoryScope::Inherited);
+    let config = scratchpad("helper", MemoryScope::Inherited);
 
     // No spawner (the root, an issue's implementer, a detached reviewer): its own notebook.
     let top = resolve_alone(&world, &config, "agent-0");
@@ -241,7 +245,7 @@ fn inherited_binds_the_spawners_instance_only_when_spawned() {
 #[test]
 fn inheritance_spans_several_levels() {
     let world = World::new();
-    let config = scratchpad("Helper", MemoryScope::Inherited);
+    let config = scratchpad("helper", MemoryScope::Inherited);
 
     let top = resolve_alone(&world, &config, "agent-0");
     let child = resolve_under(&world, &config, "agent-1", &top);
@@ -258,7 +262,7 @@ fn inheritance_spans_several_levels() {
 #[test]
 fn read_only_restricts_an_inherited_handle_and_nothing_else() {
     let world = World::new();
-    let config = scratchpad("Reader", MemoryScope::ReadOnly);
+    let config = scratchpad("reader", MemoryScope::ReadOnly);
 
     let top = resolve_alone(&world, &config, "agent-0");
     assert!(
@@ -268,7 +272,7 @@ fn read_only_restricts_an_inherited_handle_and_nothing_else() {
 
     let owner = resolve_alone(
         &world,
-        &scratchpad("Owner", MemoryScope::Inherited),
+        &scratchpad("owner", MemoryScope::Inherited),
         "agent-1",
     );
     let reader = resolve_under(&world, &config, "agent-2", &owner);
@@ -283,18 +287,18 @@ fn an_inherited_child_of_a_read_only_holder_regains_write_access() {
     let world = World::new();
     let owner = resolve_alone(
         &world,
-        &scratchpad("Owner", MemoryScope::Inherited),
+        &scratchpad("owner", MemoryScope::Inherited),
         "agent-0",
     );
     let reader = resolve_under(
         &world,
-        &scratchpad("Reader", MemoryScope::ReadOnly),
+        &scratchpad("reader", MemoryScope::ReadOnly),
         "agent-1",
         &owner,
     );
     let writer = resolve_under(
         &world,
-        &scratchpad("Writer", MemoryScope::Inherited),
+        &scratchpad("writer", MemoryScope::Inherited),
         "agent-2",
         &reader,
     );
@@ -314,14 +318,14 @@ fn inheritance_is_refused_across_a_strategy_mismatch() {
     let world = World::new();
     let spawner = resolve_alone(
         &world,
-        &profile("Owner", MemoryStrategy::Scratchpad, MemoryScope::Inherited),
+        &profile("owner", MemoryStrategy::Scratchpad, MemoryScope::Inherited),
         "agent-0",
     );
     write_as(&spawner, "plan", "the plan");
 
     let child = resolve_under(
         &world,
-        &profile("Indexer", MemoryStrategy::Markdown, MemoryScope::Inherited),
+        &profile("indexer", MemoryStrategy::Markdown, MemoryScope::Inherited),
         "agent-1",
         &spawner,
     );
@@ -333,7 +337,7 @@ fn inheritance_is_refused_across_a_strategy_mismatch() {
 /// An absent `scope` takes the documented default — absent is not unrecognized.
 #[test]
 fn an_absent_scope_takes_the_default() {
-    let mut config = scratchpad("Solo", MemoryScope::Isolated);
+    let mut config = scratchpad("solo", MemoryScope::Isolated);
     config.capabilities[0].params = json!({});
     assert_eq!(
         resolve_scope(&config, &mut LaunchReport::Discarding),
@@ -351,7 +355,7 @@ fn an_absent_scope_takes_the_default() {
 /// store two stores that never meet — and the only evidence would be a notebook that stayed empty.
 #[test]
 fn an_unreadable_scope_is_refused() {
-    let mut config = scratchpad("Solo", MemoryScope::Isolated);
+    let mut config = scratchpad("solo", MemoryScope::Isolated);
     for (params, found) in [
         (json!({ "scope": "communal" }), "communal"),
         (json!({ "scope": 3 }), "3"),
@@ -380,31 +384,31 @@ fn an_unreadable_scope_is_refused() {
 #[test]
 fn a_scoping_gg_cannot_honour_refuses_the_launch() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    // The root inherits from nobody but may spawn `Indexer`, which organizes memories differently.
+    // The root inherits from nobody but may spawn `indexer`, which organizes memories differently.
     set.agents[0] = GgAgentConfig {
-        subagents: vec![GgSubagentRef::any("Indexer")],
+        subagents: vec![GgSubagentRef::any("indexer")],
         ..profile(
-            ROOT_AGENT,
+            ROOT_PROFILE_ID,
             MemoryStrategy::Scratchpad,
             MemoryScope::Inherited,
         )
     };
     set.agents.push(profile(
-        "Indexer",
+        "indexer",
         MemoryStrategy::Markdown,
         MemoryScope::Inherited,
     ));
     // A third names a scope gg does not know.
-    let mut typo = scratchpad("Typo", MemoryScope::Isolated);
+    let mut typo = scratchpad("typo", MemoryScope::Isolated);
     typo.capabilities[0].params = json!({ "scope": "communal" });
     set.agents.push(typo);
 
     let refusal = crate::validate::refusal(&set).expect_err("the set is refused");
     for expected in [
-        // the unreadable value, named with the profile that wrote it
-        "Typo", "communal",
+        // the unreadable value, attributed to the id of the profile that wrote it
+        "typo", "communal",
         // the child that could never inherit the store it says it inherits
-        "Indexer", "markdown",
+        "indexer", "markdown",
     ] {
         assert!(
             refusal.contains(expected),
@@ -420,7 +424,7 @@ fn a_scoping_gg_cannot_honour_refuses_the_launch() {
 #[test]
 fn a_scope_on_a_disabled_capability_launches() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    let mut off = profile("Ghost", MemoryStrategy::Scratchpad, MemoryScope::Shared);
+    let mut off = profile("ghost", MemoryStrategy::Scratchpad, MemoryScope::Shared);
     off.capabilities[0].enabled = false;
     set.agents.push(off);
 
@@ -440,10 +444,14 @@ fn a_scope_on_a_disabled_capability_launches() {
 fn an_inheriting_child_that_names_no_strategy_launches() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
     set.agents[0] = GgAgentConfig {
-        subagents: vec![GgSubagentRef::any("Worker")],
-        ..profile(ROOT_AGENT, MemoryStrategy::Markdown, MemoryScope::Isolated)
+        subagents: vec![GgSubagentRef::any("worker")],
+        ..profile(
+            ROOT_PROFILE_ID,
+            MemoryStrategy::Markdown,
+            MemoryScope::Isolated,
+        )
     };
-    let mut child = scratchpad("Worker", MemoryScope::Inherited);
+    let mut child = scratchpad("worker", MemoryScope::Inherited);
     // Exactly what an editor writes for "I did not choose a strategy".
     child.capabilities[0].implementation = None;
     set.agents.push(child);
@@ -464,7 +472,7 @@ fn an_inheriting_child_that_names_no_strategy_launches() {
 #[test]
 fn each_holder_streams_only_the_revisions_it_authored() {
     let world = World::new();
-    let config = scratchpad("Curator", MemoryScope::Shared);
+    let config = scratchpad("curator", MemoryScope::Shared);
     let mut first = resolve_alone(&world, &config, "agent-0");
     let mut second = resolve_alone(&world, &config, "agent-1");
 
@@ -482,7 +490,7 @@ fn each_holder_streams_only_the_revisions_it_authored() {
 #[test]
 fn a_siblings_write_re_emits_the_snapshot_without_claiming_the_revision() {
     let world = World::new();
-    let config = scratchpad("Curator", MemoryScope::Shared);
+    let config = scratchpad("curator", MemoryScope::Shared);
     let mut author = resolve_alone(&world, &config, "agent-0");
     let mut bystander = resolve_alone(&world, &config, "agent-1");
     // Both start current, so the drains below are only about what happens next.
@@ -504,7 +512,7 @@ fn a_siblings_write_re_emits_the_snapshot_without_claiming_the_revision() {
 #[test]
 fn draining_one_holder_leaves_another_holders_cursor_alone() {
     let world = World::new();
-    let config = scratchpad("Curator", MemoryScope::Shared);
+    let config = scratchpad("curator", MemoryScope::Shared);
     let mut first = resolve_alone(&world, &config, "agent-0");
     let mut second = resolve_alone(&world, &config, "agent-1");
 
@@ -523,12 +531,12 @@ fn the_state_snapshot_carries_the_holders_scope_and_access() {
     let world = World::new();
     let owner = resolve_alone(
         &world,
-        &scratchpad("Owner", MemoryScope::Inherited),
+        &scratchpad("owner", MemoryScope::Inherited),
         "agent-0",
     );
     let reader = resolve_under(
         &world,
-        &scratchpad("Reader", MemoryScope::ReadOnly),
+        &scratchpad("reader", MemoryScope::ReadOnly),
         "agent-1",
         &owner,
     );
@@ -538,7 +546,7 @@ fn the_state_snapshot_carries_the_holders_scope_and_access() {
     assert_eq!(
         state_facets(&resolve_alone(
             &world,
-            &scratchpad("Solo", MemoryScope::Isolated),
+            &scratchpad("solo", MemoryScope::Isolated),
             "agent-2"
         )),
         ("isolated".to_string(), true)
@@ -553,7 +561,7 @@ fn an_alias_is_the_same_holder_and_not_a_second_one() {
     let world = World::new();
     let mut holder = resolve_alone(
         &world,
-        &scratchpad("Solo", MemoryScope::Isolated),
+        &scratchpad("solo", MemoryScope::Isolated),
         "agent-0",
     );
     let mut on_thread = holder.alias();
@@ -573,7 +581,7 @@ fn a_fork_diverges_and_re_reports_nothing() {
     let world = World::new();
     let mut original = resolve_alone(
         &world,
-        &scratchpad("Solo", MemoryScope::Isolated),
+        &scratchpad("solo", MemoryScope::Isolated),
         "agent-0",
     );
     write_as(&original, "plan", "the plan");
@@ -601,7 +609,7 @@ fn a_fork_diverges_and_re_reports_nothing() {
 #[test]
 fn a_linked_write_notices_every_other_holder_exactly_once() {
     let world = World::new();
-    let config = profile("Curator", MemoryStrategy::Markdown, MemoryScope::Shared);
+    let config = profile("curator", MemoryStrategy::Markdown, MemoryScope::Shared);
     let mut author = resolve_alone(&world, &config, "agent-0");
     let mut reader = resolve_alone(&world, &config, "agent-1");
 
@@ -639,7 +647,7 @@ fn a_linked_write_notices_every_other_holder_exactly_once() {
 #[test]
 fn the_notice_collapses_a_memorys_writes_into_one_line() {
     let world = World::new();
-    let config = profile("Curator", MemoryStrategy::Markdown, MemoryScope::Shared);
+    let config = profile("curator", MemoryStrategy::Markdown, MemoryScope::Shared);
     let author = resolve_alone(&world, &config, "agent-0");
     let mut reader = resolve_alone(&world, &config, "agent-1");
 
@@ -691,7 +699,7 @@ fn the_notice_collapses_a_memorys_writes_into_one_line() {
 #[test]
 fn the_notice_reports_a_deletion_and_lets_it_win() {
     let world = World::new();
-    let config = profile("Curator", MemoryStrategy::Markdown, MemoryScope::Shared);
+    let config = profile("curator", MemoryStrategy::Markdown, MemoryScope::Shared);
     let author = resolve_alone(&world, &config, "agent-0");
     let mut reader = resolve_alone(&world, &config, "agent-1");
 
@@ -722,7 +730,7 @@ fn the_notice_reports_a_deletion_and_lets_it_win() {
 #[test]
 fn the_scratchpad_notice_carries_bodies_instead_of_a_read_call() {
     let world = World::new();
-    let config = scratchpad("Curator", MemoryScope::Shared);
+    let config = scratchpad("curator", MemoryScope::Shared);
     let author = resolve_alone(&world, &config, "agent-0");
     let mut reader = resolve_alone(&world, &config, "agent-1");
 
@@ -748,7 +756,7 @@ fn the_scratchpad_notice_carries_bodies_instead_of_a_read_call() {
 #[test]
 fn a_new_holder_is_not_told_about_history_it_never_missed() {
     let world = World::new();
-    let config = scratchpad("Curator", MemoryScope::Shared);
+    let config = scratchpad("curator", MemoryScope::Shared);
     let author = resolve_alone(&world, &config, "agent-0");
     write_as(&author, "plan", "the plan");
     write_as(&author, "layout", "the layout");
@@ -767,7 +775,7 @@ fn a_new_holder_is_not_told_about_history_it_never_missed() {
 #[test]
 fn the_pinned_block_is_byte_identical_with_and_without_a_pending_notice() {
     let world = World::new();
-    let config = profile("Curator", MemoryStrategy::Markdown, MemoryScope::Shared);
+    let config = profile("curator", MemoryStrategy::Markdown, MemoryScope::Shared);
     let author = resolve_alone(&world, &config, "agent-0");
     let mut reader = resolve_alone(&world, &config, "agent-1");
     write_as(&author, "plan", "the plan");
@@ -819,7 +827,7 @@ fn the_pinned_block_is_byte_identical_with_and_without_a_pending_notice() {
 #[test]
 fn a_delivered_notice_is_not_re_issued_after_the_block_is_rebuilt() {
     let world = World::new();
-    let config = profile("Curator", MemoryStrategy::Markdown, MemoryScope::Shared);
+    let config = profile("curator", MemoryStrategy::Markdown, MemoryScope::Shared);
     let author = resolve_alone(&world, &config, "agent-0");
     let mut reader = resolve_alone(&world, &config, "agent-1");
 
@@ -852,7 +860,7 @@ fn a_delivered_notice_is_not_re_issued_after_the_block_is_rebuilt() {
 #[test]
 fn the_revision_log_forgets_what_every_holder_has_read_past() {
     let world = World::new();
-    let config = profile("Curator", MemoryStrategy::Markdown, MemoryScope::Shared);
+    let config = profile("curator", MemoryStrategy::Markdown, MemoryScope::Shared);
     let mut author = resolve_alone(&world, &config, "agent-0");
     let mut reader = resolve_alone(&world, &config, "agent-1");
 
@@ -934,7 +942,7 @@ fn a_spawner_is_told_its_isolated_memories_may_still_be_shared() {
     let nothing = InheritedModules::default();
 
     // A profile that can spawn, in a run where somebody inherits.
-    let mut delegating = scratchpad("Lead", MemoryScope::Isolated);
+    let mut delegating = scratchpad("lead", MemoryScope::Isolated);
     crate::tools::grant(&mut delegating, CAPABILITY_SUBAGENTS);
     let lead = MemoriesRuntime::resolve(&delegating, &world.ctx_in_run("agent-0", &nothing, true));
     assert!(
@@ -947,7 +955,7 @@ fn a_spawner_is_told_its_isolated_memories_may_still_be_shared() {
     );
 
     // The same run, for an agent that cannot spawn: nothing can ever take its store.
-    let solitary = scratchpad("Worker", MemoryScope::Isolated);
+    let solitary = scratchpad("worker", MemoryScope::Isolated);
     let worker = MemoriesRuntime::resolve(&solitary, &world.ctx_in_run("agent-1", &nothing, true));
     assert!(!worker.is_linked());
 
@@ -963,23 +971,23 @@ fn a_spawner_is_told_its_isolated_memories_may_still_be_shared() {
 fn a_run_knows_whether_any_profile_inherits_memories() {
     let inheriting = GgCapabilitySet {
         agents: vec![
-            scratchpad("Lead", MemoryScope::Isolated),
-            scratchpad("Worker", MemoryScope::Inherited),
+            scratchpad("lead", MemoryScope::Isolated),
+            scratchpad("worker", MemoryScope::Inherited),
         ],
         ..GgCapabilitySet::default()
     };
     assert!(crate::memories::run_inherits_memories(&inheriting));
 
     let read_only = GgCapabilitySet {
-        agents: vec![scratchpad("Worker", MemoryScope::ReadOnly)],
+        agents: vec![scratchpad("worker", MemoryScope::ReadOnly)],
         ..GgCapabilitySet::default()
     };
     assert!(crate::memories::run_inherits_memories(&read_only));
 
     let nobody = GgCapabilitySet {
         agents: vec![
-            scratchpad("Lead", MemoryScope::Isolated),
-            scratchpad("Notebook", MemoryScope::Shared),
+            scratchpad("lead", MemoryScope::Isolated),
+            scratchpad("notebook", MemoryScope::Shared),
         ],
         ..GgCapabilitySet::default()
     };

@@ -626,7 +626,7 @@ function HoldersSection({ module }: { module: GgModuleInstance }) {
               <button
                 type="button"
                 className={panels.modHolderProfile}
-                onClick={() => nav.openProfile(holder.profile)}
+                onClick={() => nav.openProfile(holder.profileId)}
               >
                 {holder.profile}
               </button>

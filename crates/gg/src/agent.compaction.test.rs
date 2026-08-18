@@ -63,6 +63,10 @@ async fn drive_compaction(
             },
             &[],
             &GgAgentConfig::root(),
+            &GgCapabilitySet {
+                agents: vec![GgAgentConfig::root()],
+                ..GgCapabilitySet::default()
+            },
             &mut None,
             None,
         )

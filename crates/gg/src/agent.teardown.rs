@@ -155,7 +155,7 @@ impl AgentTeardown {
             agent: agent.clone(),
             origin: origin.clone(),
             emitter: None,
-            exclusive: orch.exclusive_key(&agent.slot),
+            exclusive: orch.exclusive_key(&agent.profile_id),
             hold: SlotHold::default(),
             role: teardown_role,
         }
@@ -254,7 +254,7 @@ impl AgentTeardown {
         let detail = format!("its task panicked: {}", panic_message(payload));
         self.orch
             .fault
-            .in_agent(&self.agent.id, &self.agent.slot, &detail);
+            .in_agent(&self.agent.id, &self.agent.profile_id, &detail);
         // Stated against the run whose latch this teardown has just raised, exactly as the loop's
         // own endings are — so the one ending that could safely have hard-coded gg's status is not
         // the one ending that sits outside the [attribution seam](super::attribution).
@@ -267,7 +267,7 @@ impl AgentTeardown {
             turns: 0,
             tokens: TokenCounts::default(),
             cost: None,
-            slot: self.agent.slot.clone(),
+            profile_id: self.agent.profile_id.clone(),
             // The agent's last word, phrased for any of the three roles: this value reaches a
             // spawner only through a return that a panicked agent never makes, so what reads it is
             // the run's own epilogue when the panicked agent was the root. Rendered from the status
@@ -286,7 +286,7 @@ impl AgentTeardown {
                      wind itself down, so the run is ended from outside it — and it is ended as \
                      `{STATUS_INTERNAL_ERROR}`, because a panic in gg's own machinery is our \
                      defect and never the model's.",
-                    self.agent.id, self.agent.slot
+                    self.agent.id, self.agent.profile_id
                 ),
             ));
             if self.orch.multi_agent() {

@@ -27,12 +27,12 @@ model output.
 | --- | --- |
 | `id`, `started`, `finished`, `state`, `published`, `rating`, `score`, `reviewCount` | identity, timing, lifecycle |
 | `case`, `caseVersion`, `variant`, `testType` | what was run |
-| `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<name>.model` | how it was configured |
-| `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<name>.cap.<id>` | the capability set, flattened and typed |
+| `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<profileId>.model` | how it was configured |
+| `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<profileId>.cap.<id>` | the capability set, flattened and typed |
 | `tool.<name>` | the root agent's effective toolset |
 | `status`, `mode`, `limit` | how it ended |
 | `summary.<path>` | the whole session summary, flattened |
-| `model.<id>.tokens`, `model.<id>.cost` | the per-(slot, model) spend rollup |
+| `model.<id>.tokens`, `model.<id>.cost` | the per-(profile, model) spend rollup |
 | `metric.*` | run time, tokens and cost |
 | `code.<path>`, `code.language` | the [code analysis](/gg/analysis/code-analysis/) summary |
 | `has.<block>` | presence markers |
@@ -45,7 +45,10 @@ so `cap.compaction.summaryHeadroom > 0.5` compares numerically.
 enabled. It is total over the union of gg's capability catalog and the ids the
 run's own agents declare, so a capability a run left off stores an explicit
 `false` and `avg(cap.compaction)` is an enablement rate. Per-agent detail is
-written sparsely as `agent.<name>.cap.<id>`, only for the agents that had it.
+written sparsely as `agent.<profileId>.cap.<id>`, only for the agents that had
+it. Both `agent.*` families key on the profile's
+[id](/gg/configurations/#identity), which a rename leaves alone, so one query
+slices the same profile across a whole study.
 
 `code.language` is derived rather than flattened, because the analyzer reports a
 list of languages: it reads `"none"`, the single language's token, or `"mixed"`.

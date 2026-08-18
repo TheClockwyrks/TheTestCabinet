@@ -53,19 +53,25 @@ fn emitter() -> (Emitter, CollectingSink) {
     )
 }
 
-/// A capability set whose named agents are persistent, plus one that is not.
+/// A capability set whose profiles with the given [ids](GgAgentConfig::id) are persistent, plus one
+/// per id in `plain` that is not.
+///
+/// Each display name is deliberately unlike its id, because persistence keys on the id: a record
+/// filed under a name would be a record two profiles could share.
 fn set_with(persistent: &[&str], plain: &[&str]) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/x");
-    for name in persistent {
+    for id in persistent {
         set.agents.push(GgAgentConfig {
-            name: (*name).to_string(),
+            id: (*id).to_string(),
+            name: format!("The {id} agent"),
             capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_AGENT_PERSISTENCE)],
             ..GgAgentConfig::root()
         });
     }
-    for name in plain {
+    for id in plain {
         set.agents.push(GgAgentConfig {
-            name: (*name).to_string(),
+            id: (*id).to_string(),
+            name: format!("The {id} agent"),
             capabilities: Vec::new(),
             ..GgAgentConfig::root()
         });
@@ -102,16 +108,16 @@ fn text(label: &str, body: &str) -> OpenTextView {
 // The exclusivity key
 // ---------------------------------------------------------------------------
 
-/// Only a persistent profile takes a key, and the key is the profile's own name — so every instance
+/// Only a persistent profile takes a key, and the key is the profile's own id — so every instance
 /// of it contends with every other instance and with nothing else.
 #[test]
 fn only_a_persistent_profile_takes_an_exclusivity_key() {
-    let set = set_with(&["Owner"], &["Worker"]);
+    let set = set_with(&["owner"], &["worker"]);
     assert_eq!(
-        exclusive_key(set.agent("Owner").unwrap()),
-        Some("Owner".to_string())
+        exclusive_key(set.agent("owner").unwrap()),
+        Some("owner".to_string())
     );
-    assert_eq!(exclusive_key(set.agent("Worker").unwrap()), None);
+    assert_eq!(exclusive_key(set.agent("worker").unwrap()), None);
     // The root of this set has the default capabilities, which do not include persistence.
     assert_eq!(exclusive_key(set.root()), None);
 }
@@ -122,13 +128,14 @@ fn only_a_persistent_profile_takes_an_exclusivity_key() {
 fn a_disabled_persistence_capability_takes_no_key() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     set.agents.push(GgAgentConfig {
-        name: "Owner".to_string(),
+        id: "owner".to_string(),
+        name: "The owner agent".to_string(),
         capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_AGENT_PERSISTENCE)],
-        subagents: vec![GgSubagentRef::any("Owner")],
+        subagents: vec![GgSubagentRef::any("owner")],
         ..GgAgentConfig::root()
     });
-    assert!(!is_persistent(set.agent("Owner").unwrap()));
-    assert_eq!(exclusive_key(set.agent("Owner").unwrap()), None);
+    assert!(!is_persistent(set.agent("owner").unwrap()));
+    assert_eq!(exclusive_key(set.agent("owner").unwrap()), None);
 }
 
 // ---------------------------------------------------------------------------
@@ -140,12 +147,12 @@ fn a_disabled_persistence_capability_takes_no_key() {
 #[test]
 fn the_record_is_per_profile_and_starts_empty() {
     let store = AgentPersistence::new();
-    assert!(store.desk("Owner").files.is_empty());
+    assert!(store.desk("owner").files.is_empty());
 
-    store.record("Owner", desk(vec![whole("src/main.rs")]));
-    store.record("Reviewer", desk(vec![whole("README.md")]));
-    assert_eq!(store.desk("Owner").files, vec![whole("src/main.rs")]);
-    assert_eq!(store.desk("Reviewer").files, vec![whole("README.md")]);
+    store.record("owner", desk(vec![whole("src/main.rs")]));
+    store.record("reviewer", desk(vec![whole("README.md")]));
+    assert_eq!(store.desk("owner").files, vec![whole("src/main.rs")]);
+    assert_eq!(store.desk("reviewer").files, vec![whole("README.md")]);
 }
 
 /// Recording **replaces** rather than merges: the record is the desk as the last instance left it, so
@@ -153,13 +160,13 @@ fn the_record_is_per_profile_and_starts_empty() {
 #[test]
 fn recording_replaces_the_previous_desk() {
     let store = AgentPersistence::new();
-    store.record("Owner", desk(vec![whole("a.rs"), whole("b.rs")]));
-    store.record("Owner", desk(vec![whole("b.rs")]));
-    assert_eq!(store.desk("Owner").files, vec![whole("b.rs")]);
+    store.record("owner", desk(vec![whole("a.rs"), whole("b.rs")]));
+    store.record("owner", desk(vec![whole("b.rs")]));
+    assert_eq!(store.desk("owner").files, vec![whole("b.rs")]);
 
-    store.record("Owner", PersistedDesk::default());
+    store.record("owner", PersistedDesk::default());
     assert!(
-        store.desk("Owner").files.is_empty(),
+        store.desk("owner").files.is_empty(),
         "an instance that finished with nothing open leaves nothing behind"
     );
 }
@@ -168,7 +175,7 @@ fn recording_replaces_the_previous_desk() {
 /// its own — and a persistent one round-trips its window's views through the shared record.
 #[test]
 fn the_setup_records_only_for_a_persistent_profile() {
-    let set = set_with(&["Owner"], &["Worker"]);
+    let set = set_with(&["owner"], &["worker"]);
     let store = AgentPersistence::new();
 
     let mut window = context();
@@ -180,19 +187,19 @@ fn the_setup_records_only_for_a_persistent_profile() {
         vec![],
     );
 
-    let plain = PersistenceSetup::resolve(set.agent("Worker").unwrap(), Arc::clone(&store));
+    let plain = PersistenceSetup::resolve(set.agent("worker").unwrap(), Arc::clone(&store));
     assert!(!plain.enabled());
     plain.record(&window);
-    assert!(store.desk("Worker").files.is_empty());
+    assert!(store.desk("worker").files.is_empty());
     assert_eq!(plain.restored(), PersistedDesk::default());
 
-    let owner = PersistenceSetup::resolve(set.agent("Owner").unwrap(), Arc::clone(&store));
+    let owner = PersistenceSetup::resolve(set.agent("owner").unwrap(), Arc::clone(&store));
     assert!(owner.enabled());
     owner.record(&window);
     assert_eq!(owner.restored(), desk(vec![whole("src/main.rs")]));
 
     // A *second* instance of the profile — a fresh setup over the same run-global record — sees it.
-    let next = PersistenceSetup::resolve(set.agent("Owner").unwrap(), Arc::clone(&store));
+    let next = PersistenceSetup::resolve(set.agent("owner").unwrap(), Arc::clone(&store));
     assert_eq!(next.restored(), desk(vec![whole("src/main.rs")]));
 }
 

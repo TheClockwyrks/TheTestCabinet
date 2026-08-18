@@ -191,6 +191,7 @@ fn the_request_shape_distinguishes_a_required_tool_call() {
 fn an_agent_row_carries_the_keys_its_binding_needs() {
     let reviewer = GgSessionAgent {
         agent_id: "agent_7".into(),
+        profile_id: "reviewer".into(),
         profile: "Reviewer".into(),
         origin: GgSessionAgentOrigin::Reviewer {
             issue: "ISSUE-2".into(),
@@ -201,6 +202,16 @@ fn an_agent_row_carries_the_keys_its_binding_needs() {
         limit_hit: None,
     };
     let value = serde_json::to_value(&reviewer).expect("serializes");
+    assert_eq!(
+        value["profileId"],
+        json!("reviewer"),
+        "the id is what joins the row to the run's capability set",
+    );
+    assert_eq!(
+        value["profile"],
+        json!("Reviewer"),
+        "the name is for reading"
+    );
     assert_eq!(value["origin"]["type"], json!("reviewer"));
     assert_eq!(value["origin"]["issue"], json!("ISSUE-2"));
     assert_eq!(value["origin"]["round"], json!(1));

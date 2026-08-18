@@ -13,7 +13,7 @@
 // accounting rather than a class-by-class breakdown. gg attributes every accounting to
 // the model that spent it, so the split holds for a run spanning any number of models —
 // and, on the whole-run Dashboard, so does the same widget's account of *where* the money
-// went: bars per slot (each naming the model bound to it) and per model.
+// went: bars per agent profile (each naming the model bound to it) and per model.
 //
 // The Errors widget is the same tally the Dashboard's error row states, folded into one
 // card: an instance's own errored turns, its worst streak, and its ranked types. The
@@ -717,7 +717,7 @@ export function ErrorsWidget({
 
 /**
  * The Cost widget: the scope's total cost, its per-class split, an input-vs-output cost
- * ring, and — where the host supplies one — where the money went, per slot and per
+ * ring, and — where the host supplies one — where the money went, per profile and per
  * model. The total is the run's authoritative `comparable` figure; the class split is
  * derived from catalog prices (`breakdown`) — per (profile, model) and summed, so a run
  * spanning several models splits exactly as a single-model one does — shown scaled to
@@ -727,7 +727,7 @@ export function ErrorsWidget({
  * they are the same money the headline states, read by the role and by the model that
  * spent it, so they belong under the figure they decompose. Both are drawn as the same
  * proportional bars as the per-class split, so all three read in one visual language, and
- * both are always shown — a run that binds one model per slot lists the same rows twice,
+ * both are always shown — a run that binds one model per profile lists the same rows twice,
  * which is a fact about that configuration rather than a reason to withhold the reading.
  */
 export function CostWidget({
@@ -820,21 +820,21 @@ export function CostWidget({
         )
       )}
 
-      {spend && spend.perSlot.length > 0 && (
+      {spend && spend.perProfile.length > 0 && (
         <>
-          {/* Where the money went by role. Every row names the model the slot was
-              bound to: a slot is a role, and what it cost is a fact about the model
+          {/* Where the money went by role. Every row names the model the profile was
+              bound to: a profile is a role, and what it cost is a fact about the model
               behind it, so reading one without the other says nothing about why it
               cost that. */}
           <SpendSection
-            label="Per slot"
-            rows={spend.perSlot}
+            label="Per agent"
+            rows={spend.perProfile}
             total={displayTotal}
           />
-          {/* And by model. Always shown, alongside Per slot, even on the common run that
-              binds one model per slot and whose two lists therefore carry the same rows:
+          {/* And by model. Always shown, alongside Per agent, even on the common run that
+              binds one model per profile and whose two lists therefore carry the same rows:
               which model a run's money went to is a question the widget should answer the
-              same way every time, and a section that comes and goes with the run's slot
+              same way every time, and a section that comes and goes with the run's model
               bindings makes its absence read as "no per-model spend" rather than as "the
               same figures you just read". */}
           <SpendSection
@@ -863,6 +863,16 @@ function SpendSection({
 }) {
   const rowsTotal = rows.reduce((sum, row) => sum + (row.cost ?? 0), 0);
   const scale = total != null && rowsTotal > 0 ? total / rowsTotal : 1;
+  // The profile names this list carries twice. A name is display text a configuration may
+  // hold two of, and two identically-named rows with different figures are unreadable
+  // without the ids they are really accounted under.
+  const seen = new Set<string>();
+  const ambiguous = new Set<string>();
+  for (const row of rows) {
+    if (row.profile == null) continue;
+    if (seen.has(row.profile)) ambiguous.add(row.profile);
+    seen.add(row.profile);
+  }
   return (
     <div className={styles.spendGroup}>
       <span className={styles.spendGroupLabel}>{label}</span>
@@ -873,6 +883,7 @@ function SpendSection({
             row={row}
             scale={scale}
             fraction={rowsTotal > 0 ? (row.cost ?? 0) / rowsTotal : 0}
+            showId={row.profile != null && ambiguous.has(row.profile)}
           />
         ))}
       </ul>
@@ -880,25 +891,36 @@ function SpendSection({
   );
 }
 
-// One slot's (or one model's) row: what it is over the model behind it, a proportional
+// One profile's (or one model's) row: what it is over the model behind it, a proportional
 // bar, and its cost over its token total — so the row reads as a magnitude, a figure,
 // and a binding at once.
 function SpendRowView({
   row,
   scale,
   fraction,
+  showId,
 }: {
   row: SpendRow;
   scale: number;
   fraction: number;
+  /** Whether another row carries this row's profile name, so this one must show its id. */
+  showId: boolean;
 }) {
   return (
     <li className={styles.spendRow}>
       <span className={styles.spendRowIdentity}>
-        <span className={styles.spendRowName}>{row.slot ?? row.modelName}</span>
-        {/* On a per-slot row the model is the binding behind the slot; on a per-model
-            row the name above already *is* the model, so the id is not restated. */}
-        {row.slot != null && (
+        <span
+          className={styles.spendRowName}
+          title={row.profileId ?? undefined}
+        >
+          {showId
+            ? `${row.profile} (${row.profileId})`
+            : (row.profile ?? row.modelName)}
+        </span>
+        {/* On a per-profile row the model is the binding behind the profile; on a
+            per-model row the name above already *is* the model, so the id is not
+            restated. */}
+        {row.profileId != null && (
           <span className={styles.spendRowModel} title={row.modelId}>
             {row.modelName}
           </span>

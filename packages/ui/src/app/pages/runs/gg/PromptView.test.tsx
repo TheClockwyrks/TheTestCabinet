@@ -31,7 +31,8 @@ function gg(kind: GgTelemetryKind): HarnessEvent {
 const ROOT: AgentNode = {
   id: "root",
   parentId: null,
-  slot: "primary",
+  profileId: "root",
+  profile: "Root",
   modelId: "mock/scripted-builder",
   depth: 0,
   status: "running",

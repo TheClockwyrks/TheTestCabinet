@@ -70,7 +70,9 @@ function caps(ids: readonly string[]): GgCapabilitySet {
     enabled: true,
     params: {},
   }));
-  return { agents: [{ name: "Root", capabilities, modelId: "mock/x" }] };
+  return {
+    agents: [{ id: "root", name: "Root", capabilities, modelId: "mock/x" }],
+  };
 }
 
 describe("contextYMax", () => {
@@ -134,28 +136,44 @@ describe("visibleSources", () => {
     expect(visibleSources(null, series)).toHaveLength(SOURCE_ORDER.length);
   });
 
-  it("reads the named agent's own capabilities, not the Root's", () => {
+  it("reads the identified agent's own capabilities, not the Root's", () => {
     // The graph is one agent's window, so the capabilities that decide which bands
     // it can hold are that agent's. A task list enabled only on an implementer fills
     // that agent's window and nobody else's — reading the Root's configuration would
     // hide the band on exactly the agent that has it.
+    //
+    // Which agent that is comes in as a profile ID. The two Coders are here because a
+    // name is display text a configuration may hold two of: only the id separates the
+    // arm that was given a task list from the one that was not.
     const set = {
       agents: [
         {
+          id: "root",
           name: "Root",
           capabilities: [{ id: "shell", enabled: true, params: {} }],
           modelId: "mock/x",
         },
         {
+          id: "coder",
           name: "Coder",
           capabilities: [{ id: "tasks", enabled: true, params: {} }],
           modelId: "mock/x",
         },
+        {
+          id: "coder-2",
+          name: "Coder",
+          capabilities: [{ id: "shell", enabled: true, params: {} }],
+          modelId: "mock/x",
+        },
       ],
     } as GgCapabilitySet;
-    expect(visibleSources(set, series, "Coder")).toContain("task_list");
-    expect(visibleSources(set, series, "Root")).not.toContain("task_list");
-    // An agent whose profile is not (yet) known falls back to the Root's.
+    expect(visibleSources(set, series, "coder")).toContain("task_list");
+    expect(visibleSources(set, series, "coder-2")).not.toContain("task_list");
+    expect(visibleSources(set, series, "root")).not.toContain("task_list");
+    // A name is not an address: handed one, the graph resolves nothing and falls back
+    // to the Root rather than reading whichever Coder came first.
+    expect(visibleSources(set, series, "Coder")).not.toContain("task_list");
+    // An agent whose profile is not (yet) known falls back to the Root's too.
     expect(visibleSources(set, series, null)).not.toContain("task_list");
   });
 });

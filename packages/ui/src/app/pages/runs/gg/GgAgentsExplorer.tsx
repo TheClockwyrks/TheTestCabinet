@@ -260,7 +260,7 @@ export function GgAgentsExplorer({
       selected &&
       entriesFor(
         capabilitySet,
-        selected.slot,
+        selected.profileId,
         modules.byAgent.get(selected.id) ?? [],
         selected.surface,
       ).some((entry) => sameEntry(entry, selection.entry))
@@ -370,7 +370,7 @@ function FolderNode({
   // This agent's own files — read off the profile it runs under, not the run's Root,
   // and off what this very instance reported it was offered — and the module instances
   // it holds, in the contract's kind order.
-  const files = filesFor(ctx.capabilitySet, node.slot, node.surface);
+  const files = filesFor(ctx.capabilitySet, node.profileId, node.surface);
   const held = ctx.modules.byAgent.get(node.id) ?? [];
   // A succession's successor is parented to its predecessor (a fresh id, the same
   // depth) — so it arrives here as a child, and would otherwise read as something this
@@ -439,9 +439,14 @@ function FolderNode({
               main agent
             </span>
           ) : (
-            node.slot && (
-              <span className={cx(panels.fsMeta, panels.fsMetaTrailing)}>
-                {node.slot}
+            node.profileId && (
+              <span
+                className={cx(panels.fsMeta, panels.fsMetaTrailing)}
+                // Two profiles may read alike, so the id the row really joins on rides
+                // in the tooltip rather than crowding a tree already dense with ids.
+                title={node.profileId}
+              >
+                {node.profile ?? node.profileId}
               </span>
             )
           )}
@@ -794,7 +799,7 @@ function FileContent({
             series={state.contextSeries}
             latest={state.latestContext}
             capabilitySet={capabilitySet}
-            agent={node.slot}
+            agent={node.profileId}
             compactions={state.compactions}
           />
         </div>
@@ -877,7 +882,7 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
 // so it hangs off the root agent only; a
 // session-scoped card (status, the agent overview, the configuration) has no place on
 // one agent, so none appears here — those read on the Dashboard, as does the whole
-// run's spend per slot and per model (this agent is one slot on one model, so the same
+// run's spend per profile and per model (this agent is one profile on one model, so the same
 // split here would only restate its own total).
 function OverviewFile({
   node,

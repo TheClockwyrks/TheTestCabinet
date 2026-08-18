@@ -48,7 +48,7 @@ use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_EXEC, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS,
     CAPABILITY_TASKS, GgCapabilityConfig, GgCapabilitySet, GgSubagentRef, GgTelemetryEvent,
-    ROOT_AGENT,
+    ROOT_AGENT, ROOT_PROFILE_ID,
 };
 
 use super::{ScriptedFactory, error_messages, invocation};
@@ -89,22 +89,27 @@ fn orchestrator_with(
         )
         // None of these sets declares a machine, so the one thing building an orchestrator can
         // fail on is not in play here — see `a_machine_that_will_not_build_refuses_the_launch`.
-        .expect("a set with no machines builds an orchestrator"),
+        .expect("every machine in these sets parses, so an orchestrator builds"),
     )
 }
 
-/// Drive one agent under `slot` to its ending, with `client` as its first incarnation's model.
+/// Drive one agent under the profile `profile_id` to its ending, with `client` as its first
+/// incarnation's model.
 ///
 /// The orchestrator is **borrowed** rather than consumed so each test can read the run's
 /// [fault latch](crate::fault) afterwards: how an agent's own loop ended is only half of what these
 /// sites owe, and the half that ends the *run* is recorded there.
-async fn drive_slot(orch: &Arc<Orchestrator>, slot: &str, client: Box<dyn ModelClient>) -> LoopEnd {
+async fn drive_profile(
+    orch: &Arc<Orchestrator>,
+    profile_id: &str,
+    client: Box<dyn ModelClient>,
+) -> LoopEnd {
     let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
     run_agent(
         Arc::clone(orch),
         Agent {
-            slot: slot.to_string(),
-            ..Agent::root(ROOT_AGENT)
+            profile_id: profile_id.to_string(),
+            ..Agent::root(ROOT_PROFILE_ID)
         },
         AgentRole::Root,
         client,
@@ -131,7 +136,7 @@ async fn an_undeclared_incarnation_profile_ends_the_session_with_internal_error(
         &emitter,
     );
 
-    let end = drive_slot(
+    let end = drive_profile(
         &orch,
         "Ghost",
         Box::new(MockClient::new("mock/primary".to_string(), Vec::new())),
@@ -172,14 +177,14 @@ async fn an_undeclared_incarnation_profile_ends_the_session_with_internal_error(
     );
 }
 
-/// The set the `exec` case runs on: a root that may `exec` into `After`, and **no `After`
-/// profile** — the roster reference launch validation exists to reject.
-fn dangling_roster_set() -> GgCapabilitySet {
+/// The base every `exec` case here builds on: a root that may `exec` into the profile `After`,
+/// which this set leaves for the caller to declare (or not).
+fn exec_roster_set() -> GgCapabilitySet {
     let mut root = GgAgentConfig {
         name: ROOT_AGENT.to_string(),
         model_id: "mock/exec-before".to_string(),
         subagents: vec![GgSubagentRef {
-            agent: "After".to_string(),
+            agent_id: "After".to_string(),
             description: String::new(),
             scopes: ALL_SUBAGENT_SCOPES.to_vec(),
         }],
@@ -198,22 +203,46 @@ fn dangling_roster_set() -> GgCapabilitySet {
     }
 }
 
+/// [`exec_roster_set`] with `After` declared as an **FSM shell** whose entry state runs a profile
+/// the set does not declare.
+///
+/// This is how the undeclared-successor site is reached now that a resolved roster is resolved: an
+/// entry pointing at nothing is dropped before the model is offered it, so the target the model
+/// names always resolves. What can still come apart is the hop *after* it — an `exec` onto a shell
+/// enters the machine, and the profile the successor actually runs is the entry state's, which is a
+/// second reference and a second thing launch validation is the only guard on.
+fn undeclared_entry_state_set() -> GgCapabilitySet {
+    let mut set = exec_roster_set();
+    set.agents.push(GgAgentConfig {
+        id: "After".to_string(),
+        name: "The Successor".to_string(),
+        model_id: String::new(),
+        capabilities: vec![GgCapabilityConfig {
+            params: json!({ "states": [{ "name": "only", "agentId": "Ghost" }] }),
+            ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
+        }],
+        ..GgAgentConfig::root()
+    });
+    set
+}
+
 /// A succession into a profile the run does not declare ends the session rather than succeeding
 /// into whichever profile happens to be first.
 ///
-/// The `exec` itself is accepted — its target is on the spawner's roster, which is all a handoff is
-/// checked against — so this is the exact shape the defect takes in the wild: a reference that
-/// looked legal to the model, resolving to nothing.
+/// The `exec` itself is accepted — its target is a declared profile on the spawner's roster, which
+/// is all a handoff is checked against — and the machine that target names then enters a state
+/// whose own profile resolves to nothing. So this is the exact shape the defect takes in the wild:
+/// a reference that looked legal all the way to the point of standing an agent up.
 #[tokio::test]
 async fn an_undeclared_successor_profile_ends_the_session_with_internal_error() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-exec-ghost".to_string()), Box::new(sink.clone()));
-    let orch = orchestrator(dir.path(), dangling_roster_set(), &emitter);
+    let orch = orchestrator(dir.path(), undeclared_entry_state_set(), &emitter);
 
-    let end = drive_slot(
+    let end = drive_profile(
         &orch,
-        ROOT_AGENT,
+        ROOT_PROFILE_ID,
         Box::new(MockClient::with_exec_before_script("mock/exec-before")),
     )
     .await;
@@ -227,7 +256,7 @@ async fn an_undeclared_successor_profile_ends_the_session_with_internal_error() 
     assert!(
         errors
             .iter()
-            .any(|message| message.contains("`After`")
+            .any(|message| message.contains("`Ghost`")
                 && message.contains("not declared by this run")),
         "the diagnostic must name the successor that is missing: {errors:?}"
     );
@@ -236,21 +265,22 @@ async fn an_undeclared_successor_profile_ends_the_session_with_internal_error() 
     assert!(
         orch.fault
             .raised()
-            .is_some_and(|fault| fault.contains("`After`")),
+            .is_some_and(|fault| fault.contains("`Ghost`")),
         "a succession gg cannot resolve ends the run, not only the agent that tried to make it"
     );
 }
 
-/// The `dangling_roster_set` with `After` **declared** and left unbound: the name resolves, and
+/// The [`exec_roster_set`] with `After` **declared** and left unbound: the name resolves, and
 /// there is still no model to run the successor on.
 ///
-/// [`crate::validate::validate_launch`] rejects this set as firmly as it rejects the dangling roster above — a
+/// [`crate::validate::validate_launch`] rejects this set as firmly as it rejects the undeclared state agent above — a
 /// profile that is not an FSM shell must have a model — so an agent reaching it has been handed a
 /// configuration gg promised could not exist.
 fn modelless_successor_set() -> GgCapabilitySet {
-    let mut set = dangling_roster_set();
+    let mut set = exec_roster_set();
     set.agents.push(GgAgentConfig {
-        name: "After".to_string(),
+        id: "After".to_string(),
+        name: "The Successor".to_string(),
         model_id: String::new(),
         ..GgAgentConfig::root()
     });
@@ -284,9 +314,9 @@ async fn a_successor_with_no_model_bound_ends_the_session_with_internal_error() 
     let emitter = Emitter::with_sink(Some("run-exec-unbound".to_string()), Box::new(sink.clone()));
     let orch = orchestrator(dir.path(), modelless_successor_set(), &emitter);
 
-    let end = drive_slot(
+    let end = drive_profile(
         &orch,
-        ROOT_AGENT,
+        ROOT_PROFILE_ID,
         Box::new(MockClient::with_exec_before_script("mock/exec-before")),
     )
     .await;
@@ -321,17 +351,18 @@ async fn a_successor_whose_credential_is_refused_ends_the_session_with_auth_erro
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-exec-keyless".to_string()), Box::new(sink.clone()));
-    let mut set = dangling_roster_set();
+    let mut set = exec_roster_set();
     set.agents.push(GgAgentConfig {
-        name: "After".to_string(),
+        id: "After".to_string(),
+        name: "The Successor".to_string(),
         model_id: "openrouter/live".to_string(),
         ..GgAgentConfig::root()
     });
     let orch = orchestrator_with(dir.path(), set, Arc::new(KeylessFactory), &emitter);
 
-    let end = drive_slot(
+    let end = drive_profile(
         &orch,
-        ROOT_AGENT,
+        ROOT_PROFILE_ID,
         Box::new(MockClient::with_exec_before_script("mock/exec-before")),
     )
     .await;
@@ -347,13 +378,14 @@ async fn a_successor_whose_credential_is_refused_ends_the_session_with_auth_erro
     );
 }
 
-/// The set the two **whole-session** cases below run on: the [dangling roster](dangling_roster_set)
+/// The set the two **whole-session** cases below run on: the [exec roster](exec_roster_set)
 /// with `After` declared and bound to a live model, so nothing about it is a configuration a launch
 /// would refuse.
 fn live_successor_set() -> GgCapabilitySet {
-    let mut set = dangling_roster_set();
+    let mut set = exec_roster_set();
     set.agents.push(GgAgentConfig {
-        name: "After".to_string(),
+        id: "After".to_string(),
+        name: "The Successor".to_string(),
         model_id: "openrouter/live".to_string(),
         ..GgAgentConfig::root()
     });
@@ -374,7 +406,7 @@ struct RefusingFactory {
 
 impl ClientFactory for RefusingFactory {
     fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
-        if binding.slot == ROOT_AGENT {
+        if binding.slot == ROOT_PROFILE_ID {
             return Ok(Box::new(MockClient::with_exec_before_script(
                 &binding.model_id,
             )));
@@ -490,10 +522,10 @@ fn an_undeclared_spawner_profile_fails_the_delegation_call() {
     let orch = orchestrator(dir.path(), set, &emitter);
 
     let spawner = Agent {
-        slot: "Ghost".to_string(),
-        ..Agent::root(ROOT_AGENT)
+        profile_id: "Ghost".to_string(),
+        ..Agent::root(ROOT_PROFILE_ID)
     };
-    let outcome = resolve_delegation_target(&orch, &spawner, &json!({ "agent": ROOT_AGENT }))
+    let outcome = resolve_delegation_target(&orch, &spawner, &json!({ "agent": ROOT_PROFILE_ID }))
         .expect_err("a spawner with no declared profile has no roster to check against");
 
     let rendered = format!("{outcome:?}");
@@ -525,7 +557,7 @@ fn modelless_spawnee_set() -> GgCapabilitySet {
         name: ROOT_AGENT.to_string(),
         model_id: "mock/primary".to_string(),
         subagents: vec![GgSubagentRef {
-            agent: "Unbound".to_string(),
+            agent_id: "Unbound".to_string(),
             description: String::new(),
             scopes: ALL_SUBAGENT_SCOPES.to_vec(),
         }],
@@ -537,7 +569,8 @@ fn modelless_spawnee_set() -> GgCapabilitySet {
         agents: vec![
             root,
             GgAgentConfig {
-                name: "Unbound".to_string(),
+                id: "Unbound".to_string(),
+                name: "The Unbound One".to_string(),
                 model_id: String::new(),
                 ..GgAgentConfig::root()
             },
@@ -546,13 +579,17 @@ fn modelless_spawnee_set() -> GgCapabilitySet {
     }
 }
 
-/// Dispatch one child of `spawner_slot` under the profile `profile`, the way a `spawn_subagent`
+/// Dispatch one child of `spawner_profile_id` under the profile `profile`, the way a `spawn_subagent`
 /// call does, and hand back the refusal.
 ///
 /// Built here rather than driven through a model script because what these cases are about is the
 /// dispatch's own resolution: the call that reaches it has already passed the roster check, which is
 /// precisely why a failure past that point is gg's rather than the model's.
-fn dispatch_refusal(orch: &Arc<Orchestrator>, spawner_slot: &str, profile: &str) -> DispatchError {
+fn dispatch_refusal(
+    orch: &Arc<Orchestrator>,
+    spawner_profile_id: &str,
+    profile: &str,
+) -> DispatchError {
     let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
     let mut sub = SubagentContext {
         orch: Arc::clone(orch),
@@ -560,8 +597,8 @@ fn dispatch_refusal(orch: &Arc<Orchestrator>, spawner_slot: &str, profile: &str)
         inherited: InheritedModules::default(),
     };
     let spawner = Agent {
-        slot: spawner_slot.to_string(),
-        ..Agent::root(ROOT_AGENT)
+        profile_id: spawner_profile_id.to_string(),
+        ..Agent::root(ROOT_PROFILE_ID)
     };
     dispatch_child(&mut sub, &spawner, ChildSpec::new(profile, "Do the thing."))
         .err()
@@ -586,7 +623,7 @@ fn a_spawn_of_an_unbindable_profile_ends_the_run_rather_than_blaming_the_argumen
     );
     let orch = orchestrator(dir.path(), modelless_spawnee_set(), &emitter);
 
-    let refusal = dispatch_refusal(&orch, ROOT_AGENT, "Unbound");
+    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "Unbound");
 
     assert_ne!(
         refusal.failure,
@@ -623,7 +660,7 @@ fn a_spawn_whose_client_cannot_be_built_ends_the_run() {
     set.agents[1].model_id = "mock/secondary".to_string();
     let orch = orchestrator_with(dir.path(), set, Arc::new(BrokenFactory), &emitter);
 
-    let refusal = dispatch_refusal(&orch, ROOT_AGENT, "Unbound");
+    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "Unbound");
 
     assert_eq!(refusal.failure, ToolFailure::Refused);
     assert!(
@@ -652,7 +689,7 @@ fn a_spawn_whose_credential_is_refused_does_not_end_the_run() {
     set.agents[1].model_id = "openrouter/live".to_string();
     let orch = orchestrator_with(dir.path(), set, Arc::new(KeylessFactory), &emitter);
 
-    let refusal = dispatch_refusal(&orch, ROOT_AGENT, "Unbound");
+    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "Unbound");
 
     assert_eq!(
         refusal.failure,
@@ -770,7 +807,7 @@ async fn an_issue_agent_with_no_credential_fails_the_issue_alone() {
     // model binds, so the credential is the only thing left to refuse — the arm the undeclared and
     // unbindable cases above can never reach.
     let orch = orchestrator_with(dir.path(), board_set(), Arc::new(KeylessFactory), &emitter);
-    let issue_id = file_issue(&orch, ROOT_AGENT, &[]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &[]);
 
     orch.spawn_issue_agent(
         "agent-keyless-1".to_string(),
@@ -814,7 +851,7 @@ async fn an_issue_whose_reviewer_is_undeclared_fails_rather_than_merging() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-review-ghost".to_string()), Box::new(sink.clone()));
     let orch = orchestrator(dir.path(), board_set(), &emitter);
-    let issue_id = file_issue(&orch, ROOT_AGENT, &["Auditor".to_string()]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["Auditor".to_string()]);
 
     // The agent working the issue finished: everything from here is gg reconciling the board, which
     // is where the review it demanded either happens or is silently skipped.
@@ -850,12 +887,13 @@ async fn an_issue_whose_reviewer_is_undeclared_fails_rather_than_merging() {
 fn modelless_reviewer_set() -> GgCapabilitySet {
     let mut set = board_set();
     set.agents[0].subagents = vec![GgSubagentRef {
-        agent: "Unbound".to_string(),
+        agent_id: "Unbound".to_string(),
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     }];
     set.agents.push(GgAgentConfig {
-        name: "Unbound".to_string(),
+        id: "Unbound".to_string(),
+        name: "The Unbound One".to_string(),
         model_id: String::new(),
         ..GgAgentConfig::root()
     });
@@ -878,7 +916,7 @@ async fn an_issues_unbindable_reviewer_ends_the_run() {
         Box::new(sink.clone()),
     );
     let orch = orchestrator(dir.path(), modelless_reviewer_set(), &emitter);
-    let issue_id = file_issue(&orch, ROOT_AGENT, &["Unbound".to_string()]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["Unbound".to_string()]);
 
     reconcile_issue(&orch, &issue_id, 0, true, &emitter).await;
 
@@ -922,7 +960,7 @@ async fn an_issues_reviewer_whose_client_cannot_be_built_ends_the_run() {
     // unbindable case above can never reach.
     set.agents[1].model_id = "mock/secondary".to_string();
     let orch = orchestrator_with(dir.path(), set, Arc::new(BrokenFactory), &emitter);
-    let issue_id = file_issue(&orch, ROOT_AGENT, &["Unbound".to_string()]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["Unbound".to_string()]);
 
     reconcile_issue(&orch, &issue_id, 0, true, &emitter).await;
 
@@ -962,7 +1000,7 @@ async fn an_issues_reviewer_with_no_credential_fails_the_issue_alone() {
     let mut set = modelless_reviewer_set();
     set.agents[1].model_id = "openrouter/live".to_string();
     let orch = orchestrator_with(dir.path(), set, Arc::new(KeylessFactory), &emitter);
-    let issue_id = file_issue(&orch, ROOT_AGENT, &["Unbound".to_string()]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["Unbound".to_string()]);
 
     reconcile_issue(&orch, &issue_id, 0, true, &emitter).await;
 
@@ -989,7 +1027,7 @@ async fn an_issue_that_named_no_reviewers_is_accepted_without_review() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-review-none".to_string()), Box::new(sink.clone()));
     let orch = orchestrator(dir.path(), board_set(), &emitter);
-    let issue_id = file_issue(&orch, ROOT_AGENT, &[]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &[]);
 
     reconcile_issue(&orch, &issue_id, 0, true, &emitter).await;
 
@@ -1027,7 +1065,7 @@ struct RefusingBelowRoot {
 
 impl ClientFactory for RefusingBelowRoot {
     fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
-        if binding.slot == ROOT_AGENT {
+        if binding.slot == ROOT_PROFILE_ID {
             return Ok(Box::new(MockClient::new(
                 &binding.model_id,
                 self.script.clone(),
@@ -1089,7 +1127,7 @@ async fn a_session_whose_issue_agent_cannot_be_built_ends_as_gg_s_defect() {
         errors
             .iter()
             .any(|message| message.contains(UNGROUPED_ISSUE_ID)
-                && message.contains(&format!("`{CODER_AGENT}`"))
+                && message.contains(&format!("`{CODER_PROFILE_ID}`"))
                 && message.contains("exits non-zero")),
         "the run-level diagnostic must name the issue and the assignee gg could not stand up: \
          {errors:?}"

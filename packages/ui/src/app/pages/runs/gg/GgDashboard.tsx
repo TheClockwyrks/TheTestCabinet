@@ -61,7 +61,7 @@ export interface GgDashboardStatus {
 interface GgDashboardProps {
   status?: GgDashboardStatus;
   usage: UsageTally;
-  /** The per-(slot, model) usage rollups, used to price the cost split per model. */
+  /** The per-(profile, model) usage rollups, used to price the cost split per model. */
   slotUsage: SlotUsage[];
   /**
    * Each agent's own reduced slice, keyed by agent id (always including the root) —
@@ -149,7 +149,7 @@ export function GgDashboard({
   timeoutSeconds,
   children,
 }: GgDashboardProps) {
-  // The run's spend, per (slot, model) — the split gg's attributed `usage` deltas carry
+  // The run's spend, per (profile, model) — the split gg's attributed `usage` deltas carry
   // from the first turn, so it is available *while the run runs* rather than waiting on
   // the end-of-agent `slot_usage` rollups.
   // Priced per (profile, model) and summed — never at one blanket rate — so a run that
@@ -157,9 +157,9 @@ export function GgDashboard({
   const costBreakdown = useGgCostBreakdown(
     useMemo(() => pricedSlots(slotUsage), [slotUsage]),
   );
-  // And where that money went: per slot (which role spent it, and on which model) and
-  // per model (the same spend folded across the slots one model is bound to).
-  const spend = useGgSpend(slotUsage);
+  // And where that money went: per profile (which role spent it, and on which model) and
+  // per model (the same spend folded across the profiles one model is bound to).
+  const spend = useGgSpend(slotUsage, capabilitySet);
 
   // How fast the run generates: each agent's tokens over the time it spent inside its
   // model calls, folded onto the models that did the generating.
@@ -263,7 +263,8 @@ interface AgentOverviewRowData {
   label: string;
   depth: number;
   status: GgAgentStatus;
-  slot: string | null;
+  /** The display name of the profile the instance ran under; null before its spawn. */
+  profile: string | null;
   /** How many turns this agent took — its own partition of the run's total. */
   turns: number;
   peakTokens: number;
@@ -324,7 +325,7 @@ function buildAgentRows(
       label: node.id === ROOT_ID ? "root" : node.id,
       depth,
       status: node.status,
-      slot: node.slot,
+      profile: node.profile,
       turns: st?.turnCount ?? 0,
       peakTokens: peak?.tokens ?? 0,
       peakFullness: peak?.fullness ?? null,
@@ -408,9 +409,9 @@ function AgentOverviewRow({
         <span className={styles.agentIdentityText}>
           <span className={styles.agentName}>{row.label}</span>
           <span className={styles.agentMetaLine}>
-            {row.slot && (
+            {row.profile && (
               <>
-                <span className={styles.agentSlot}>{row.slot}</span>
+                <span className={styles.agentSlot}>{row.profile}</span>
                 <span className={styles.agentMetaSep} aria-hidden="true">
                   ·
                 </span>
@@ -866,7 +867,7 @@ function ConfigurationCard({ set }: { set: GgCapabilitySet }) {
           .filter((c) => c.enabled)
           .map((c) => c.id);
         return (
-          <div key={agent.name} className={styles.agentConfig}>
+          <div key={agent.id} className={styles.agentConfig}>
             <div className={styles.slots}>
               <span className={styles.slot}>
                 <span className={styles.slotName}>{agent.name}</span>

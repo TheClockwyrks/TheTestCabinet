@@ -7,7 +7,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, COMPACTION_STRATEGY_HANDOFF_COMPACTION,
     COMPACTION_STRATEGY_SELF_COMPACTION, GgAgentConfig, GgCapabilityConfig, GgMemoryScope,
-    GgSubagentRef, ROOT_AGENT,
+    GgSubagentRef, ROOT_PROFILE_ID,
 };
 
 use super::*;
@@ -58,8 +58,8 @@ fn fsm_position() -> crate::fsm::FsmPosition {
     let shell = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: json!({ FSM_PARAM_STATES: [
-                { "name": "build", "agent": "Builder", "transitions": [{ "to": "verify" }] },
-                { "name": "verify", "agent": "Verifier" },
+                { "name": "build", "agentId": "builder", "transitions": [{ "to": "verify" }] },
+                { "name": "verify", "agentId": "verifier" },
             ] }),
             ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
         }],
@@ -99,7 +99,10 @@ fn the_transition_is_granted_from_the_machine_position() {
         granted(
             &profile,
             &modules,
-            &AgentFacts { fsm: Some(&entry) },
+            &AgentFacts {
+                fsm: Some(&entry),
+                ..AgentFacts::default()
+            },
             DELEGATION_TRANSITION_STATE
         ),
         "a state with somewhere to go is granted one, from a profile that names no `fsm` capability \
@@ -116,7 +119,8 @@ fn the_transition_is_granted_from_the_machine_position() {
             &profile,
             &modules,
             &AgentFacts {
-                fsm: Some(&terminal)
+                fsm: Some(&terminal),
+                ..AgentFacts::default()
             },
             DELEGATION_TRANSITION_STATE
         ),
@@ -346,7 +350,7 @@ fn the_delegation_grant_follows_what_makes_each_call_usable() {
         GgCapabilityConfig::enabled(CAPABILITY_EXEC),
         GgCapabilityConfig::enabled(CAPABILITY_FORK),
     ]);
-    rostered.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    rostered.subagents.push(GgSubagentRef::any(ROOT_PROFILE_ID));
     for id in [
         DELEGATION_SPAWN_SUBAGENT,
         DELEGATION_EXEC,
@@ -366,7 +370,8 @@ fn the_delegation_grant_follows_what_makes_each_call_usable() {
             &rostered,
             &modules,
             &AgentFacts {
-                fsm: Some(&position)
+                fsm: Some(&position),
+                ..AgentFacts::default()
             },
             DELEGATION_EXEC
         ),

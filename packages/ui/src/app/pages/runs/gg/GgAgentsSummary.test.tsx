@@ -83,8 +83,15 @@ function held(
   };
 }
 
-function profile(name: string, capabilities: string[]): GgAgentConfig {
+// A configured profile. The `id` is what every reference to it — a spawn's attribution, a
+// module's holder, an open row — is keyed by; the `name` is the prose the panel prints.
+function profile(
+  id: string,
+  name: string,
+  capabilities: string[],
+): GgAgentConfig {
   return {
+    id,
     name,
     modelId: "vendor/small",
     capabilities: capabilities.map((id) => ({ id, enabled: true, params: {} })),
@@ -106,7 +113,7 @@ function runEvents(memoriesId: (instance: string) => string): HarnessEvent[] {
   return [
     gg("root", {
       type: "agent_spawned",
-      slot: "Root",
+      profileId: "root",
       modelId: "vendor/big",
       depth: 0,
     } as GgTelemetryKind),
@@ -120,7 +127,7 @@ function runEvents(memoriesId: (instance: string) => string): HarnessEvent[] {
         id,
         {
           type: "agent_spawned",
-          slot: "reviewer",
+          profileId: "reviewer",
           modelId: "vendor/small",
           depth: 1,
         } as GgTelemetryKind,
@@ -140,7 +147,7 @@ function runEvents(memoriesId: (instance: string) => string): HarnessEvent[] {
       gg(id, { type: "turn_started" } as GgTelemetryKind),
       gg(id, {
         type: "usage",
-        slot: "reviewer",
+        profileId: "reviewer",
         modelId: "vendor/small",
         tokens: {
           uncachedInput: 900,
@@ -292,8 +299,49 @@ const SHARED_CORE_EVENTS: HarnessEvent[] = [
 ];
 
 const CAPABILITIES: GgCapabilitySet = {
-  agents: [profile("Root", ["board"]), profile("reviewer", ["memories"])],
+  agents: [
+    profile("root", "Root", ["board"]),
+    profile("reviewer", "Reviewer", ["memories"]),
+  ],
 } as GgCapabilitySet;
+
+// A configuration that names two of its arms alike, with one instance each. Two profiles
+// under one name is what a within-run A/B of a reviewer against itself looks like, and
+// nothing forbids it: names are prose, and only the ids below tell the two arms apart.
+const SHARED_NAME_CAPABILITIES: GgCapabilitySet = {
+  agents: [
+    profile("root", "Root", ["board"]),
+    profile("reviewer", "Reviewer", ["memories"]),
+    profile("reviewer-2", "Reviewer", ["memories"]),
+  ],
+} as GgCapabilitySet;
+
+const SHARED_NAME_EVENTS: HarnessEvent[] = [
+  gg("root", {
+    type: "agent_spawned",
+    profileId: "root",
+    modelId: "vendor/big",
+    depth: 0,
+  } as GgTelemetryKind),
+  ...(
+    [
+      ["r1", "reviewer"],
+      ["r2", "reviewer-2"],
+    ] as const
+  ).flatMap(([id, profileId]) => [
+    gg(
+      id,
+      {
+        type: "agent_spawned",
+        profileId,
+        modelId: "vendor/small",
+        depth: 1,
+      } as GgTelemetryKind,
+      "root",
+    ),
+    gg(id, { type: "turn_started" } as GgTelemetryKind),
+  ]),
+];
 
 /** A nav channel that records where it was sent, with every destination the panels offer. */
 function stubNav(overrides: Partial<GgExplorerNav> = {}): GgExplorerNav {
@@ -308,19 +356,21 @@ function stubNav(overrides: Partial<GgExplorerNav> = {}): GgExplorerNav {
 }
 
 /**
- * Render the panel over `events` and open the reviewer's row, returning the nav stub and the
- * opened detail region — which is what every case below is about.
+ * The panel over `events`, with every row still closed.
+ *
+ * The configuration goes to the reduction as well as to the panel: it is the only thing
+ * that turns the profile ids the stream attributes work to into the names a reader sees.
  *
  * `nav: null` renders with no provider at all, the state a panel mounted outside the
  * explorers is in.
  */
-function openReviewer(
-  nav: GgExplorerNav | null = stubNav(),
-  events: HarnessEvent[] = EVENTS,
-  capabilitySet: GgCapabilitySet = CAPABILITIES,
+function renderPanel(
+  nav: GgExplorerNav | null,
+  events: HarnessEvent[],
+  capabilitySet: GgCapabilitySet,
 ) {
-  const derived = reduceGgEvents(events);
-  const perAgent = reduceGgEventsPerAgent(events);
+  const derived = reduceGgEvents(events, capabilitySet);
+  const perAgent = reduceGgEventsPerAgent(events, capabilitySet);
   const panel = (
     <GgAgentsSummary
       capabilitySet={capabilitySet}
@@ -335,10 +385,22 @@ function openReviewer(
       {panel}
     </GgExplorerNavContext.Provider>,
   );
-  fireEvent.click(screen.getByText("reviewer").closest("button")!);
+}
+
+/**
+ * Render the panel and open the reviewer's row, returning the nav stub and the opened
+ * detail region — which is what every case below is about.
+ */
+function openReviewer(
+  nav: GgExplorerNav | null = stubNav(),
+  events: HarnessEvent[] = EVENTS,
+  capabilitySet: GgCapabilitySet = CAPABILITIES,
+) {
+  renderPanel(nav, events, capabilitySet);
+  fireEvent.click(screen.getByText("Reviewer").closest("button")!);
   return {
     nav,
-    detail: screen.getByRole("region", { name: "reviewer detail" }),
+    detail: screen.getByRole("region", { name: "Reviewer detail" }),
   };
 }
 
@@ -376,6 +438,44 @@ function sectionOrder(detail: HTMLElement): string[] {
   }
   return seen;
 }
+
+describe("GgAgentsSummary agent list", () => {
+  it("keeps two profiles that share a name in rows of their own", () => {
+    // The panel groups a run's instances by the profile they ran under, and that grouping is
+    // by id. On the name, the two arms of this A/B would fold into one row carrying both
+    // instances and the sum of their figures — the one reading that answers neither of the
+    // questions the A/B was set up to ask.
+    renderPanel(stubNav(), SHARED_NAME_EVENTS, SHARED_NAME_CAPABILITIES);
+    expect(screen.getByText("Agents · 3")).toBeInTheDocument();
+    const rows = screen
+      .getAllByText("Reviewer")
+      .map((node) => node.closest("li")!);
+    expect(rows).toHaveLength(2);
+    // Each says which arm it is, because its name no longer can.
+    expect(within(rows[0]!).getByTitle(/profile id/)).toHaveTextContent(
+      /^reviewer$/,
+    );
+    expect(within(rows[1]!).getByTitle(/profile id/)).toHaveTextContent(
+      /^reviewer-2$/,
+    );
+    // The root's name collides with nothing, so its row is left as prose alone: the id is
+    // shown where it is needed to read the list, not as a second label on every row.
+    expect(
+      within(screen.getByText("Root").closest("li")!).queryByTitle(
+        /profile id/,
+      ),
+    ).toBeNull();
+
+    // And opening one opens THAT one. Rows tracked by name would open both at once, and
+    // the panel would answer a question about one arm with two arms' detail.
+    fireEvent.click(within(rows[0]!).getByRole("button"));
+    const opened = screen.getAllByRole("region", { name: "Reviewer detail" });
+    expect(opened).toHaveLength(1);
+    expect(
+      within(opened[0]!).getByRole("button", { name: /^Open r1 ·/ }),
+    ).toBeInTheDocument();
+  });
+});
 
 describe("GgAgentsSummary detail", () => {
   it("reads figures, tokens, cost, modules, context spend, then the calls made", () => {
@@ -443,7 +543,7 @@ describe("GgAgentsSummary offered surface", () => {
     // was asked for, not what gg resolved.
     const { detail } = openReviewer(stubNav(), TOOL_SURFACE_EVENTS);
     expect(
-      within(detail).getByRole("region", { name: "reviewer tools" }),
+      within(detail).getByRole("region", { name: "Reviewer tools" }),
     ).toBeInTheDocument();
     expect(within(detail).getByText("Tools · 3 offered")).toBeInTheDocument();
     expect(within(detail).queryByText(/^APIs ·/)).toBeNull();
@@ -455,7 +555,7 @@ describe("GgAgentsSummary offered surface", () => {
   it("heads a responses-as-code profile's surface APIs, by module", () => {
     const { detail } = openReviewer(stubNav(), API_SURFACE_EVENTS);
     const section = within(detail).getByRole("region", {
-      name: "reviewer apis",
+      name: "Reviewer apis",
     });
     expect(within(detail).getByText("APIs · 1 module")).toBeInTheDocument();
     expect(within(detail).queryByText(/^Tools · /)).toBeNull();
@@ -495,7 +595,7 @@ describe("GgAgentsSummary offered surface", () => {
     // it was never given.
     const { detail } = openReviewer(stubNav(), TOOL_SURFACE_EVENTS);
     const section = within(detail).getByRole("region", {
-      name: "reviewer tools",
+      name: "Reviewer tools",
     });
     const uncalled = chip(section, "write_file");
     expect(uncalled).toHaveAttribute("data-uncalled");
@@ -522,7 +622,7 @@ describe("GgAgentsSummary offered surface", () => {
     // call — so the union states how much of the profile each entry covers.
     const { detail } = openReviewer(stubNav(), TOOL_SURFACE_EVENTS);
     const section = within(detail).getByRole("region", {
-      name: "reviewer tools",
+      name: "Reviewer tools",
     });
     const partial = chip(section, "transition_state");
     expect(within(partial).getByText("1/2")).toBeInTheDocument();
@@ -543,7 +643,7 @@ describe("GgAgentsSummary offered surface", () => {
     // for is not "unbacked", it is simply a call, counted like any other.
     const { detail } = openReviewer(stubNav(), API_SURFACE_EVENTS);
     const section = within(detail).getByRole("region", {
-      name: "reviewer apis",
+      name: "Reviewer apis",
     });
     const uncalled = chip(section, "watch");
     expect(within(uncalled).getByText("0×")).toBeInTheDocument();
@@ -567,7 +667,7 @@ describe("GgAgentsSummary offered surface", () => {
     // functions the model genuinely never wrote reading as ones it used.
     const { detail } = openReviewer(stubNav(), SHARED_CORE_EVENTS);
     const section = within(detail).getByRole("region", {
-      name: "reviewer apis",
+      name: "Reviewer apis",
     });
 
     const called = chip(section, "openFile");
@@ -590,7 +690,7 @@ describe("GgAgentsSummary offered surface", () => {
     // not mean.
     const { detail } = openReviewer();
     expect(
-      within(detail).queryByRole("region", { name: "reviewer tools" }),
+      within(detail).queryByRole("region", { name: "Reviewer tools" }),
     ).toBeNull();
     expect(within(detail).queryByText(/offered/)).toBeNull();
     // The section that *is* about what it called is still there, under its own heading.
@@ -628,7 +728,7 @@ describe("GgAgentsSummary module rows", () => {
       ["board", "Compare board across instances in Modules"],
     ] as const) {
       const row = within(detail).getByRole("region", {
-        name: `reviewer ${kind}`,
+        name: `Reviewer ${kind}`,
       });
       fireEvent.click(within(row).getByRole("button", { name: label }));
       expect(nav!.openModuleKind).toHaveBeenCalledWith(kind);
@@ -646,7 +746,7 @@ describe("GgAgentsSummary module rows", () => {
     // of it.
     const { nav, detail } = openReviewer();
     const row = within(detail).getByRole("region", {
-      name: "reviewer memories",
+      name: "Reviewer memories",
     });
     for (const text of [
       /every instance's memories is its own/,
@@ -667,10 +767,10 @@ describe("GgAgentsSummary module rows", () => {
     // to click through was the one row that mostly could not be clicked.
     const { nav, detail } = openReviewer(stubNav(), SHARED_EVENTS);
     const row = within(detail).getByRole("region", {
-      name: "reviewer memories",
+      name: "Reviewer memories",
     });
     const scoped = within(row).getByRole("region", {
-      name: "reviewer agent-scoped memories",
+      name: "Reviewer agent-scoped memories",
     });
     for (const target of [scoped, within(scoped).getByText(/^Agent-scoped/)]) {
       (nav!.openModuleKind as ReturnType<typeof vi.fn>).mockClear();
@@ -683,7 +783,7 @@ describe("GgAgentsSummary module rows", () => {
     // A store id opens *that store*, a holder chip opens *that instance* — the two exits the
     // row exists to keep working, and the reason it is not a wrapping `<button>`.
     const { nav, detail } = openReviewer();
-    const row = within(detail).getByRole("region", { name: "reviewer board" });
+    const row = within(detail).getByRole("region", { name: "Reviewer board" });
 
     fireEvent.click(within(row).getByRole("button", { name: "board-1" }));
     expect(nav!.openModule).toHaveBeenCalledWith("board-1");
@@ -699,7 +799,7 @@ describe("GgAgentsSummary module rows", () => {
 
   it("keeps the overlay a tab stop that activates, with nothing nested inside it", () => {
     const { nav, detail } = openReviewer();
-    const row = within(detail).getByRole("region", { name: "reviewer board" });
+    const row = within(detail).getByRole("region", { name: "Reviewer board" });
     const overlay = within(row).getByRole("button", {
       name: "Compare board across instances in Modules",
     });
@@ -741,7 +841,7 @@ describe("GgAgentsSummary module rows", () => {
     // jumped tabs the instant a selection was let go would be a row nobody could copy.
     const { nav, detail } = openReviewer();
     const row = within(detail).getByRole("region", {
-      name: "reviewer memories",
+      name: "Reviewer memories",
     });
     const sentence = within(row).getByText(
       /every instance's memories is its own/,
@@ -768,7 +868,7 @@ describe("GgAgentsSummary module rows", () => {
       stubNav({ openModuleKind: undefined }),
     );
     const row = within(detail).getByRole("region", {
-      name: "reviewer memories",
+      name: "Reviewer memories",
     });
     expect(within(row).queryByRole("button")).toBeNull();
     expect(row).not.toHaveAttribute("data-clickable");
@@ -783,7 +883,7 @@ describe("GgAgentsSummary module rows", () => {
 
   it("renders no overlay at all outside the explorers", () => {
     const { detail } = openReviewer(null);
-    const row = within(detail).getByRole("region", { name: "reviewer board" });
+    const row = within(detail).getByRole("region", { name: "Reviewer board" });
     expect(
       within(row).queryByRole("button", { name: /Compare board/ }),
     ).toBeNull();

@@ -258,17 +258,18 @@ fn terminal_status(events: &[GgTelemetryEvent]) -> Option<String> {
     })
 }
 
-/// `set`'s profile named `profile`, switched to [responses as code](CAPABILITY_RESPONSES_AS_CODE).
+/// `set`'s profile with the id `profile_id`, switched to
+/// [responses as code](CAPABILITY_RESPONSES_AS_CODE).
 ///
 /// Which is how a **non-root** agent is made to reach the sandbox at all: the forced fault is armed
 /// once for a model's first program, so leaving the root on the tool-calling path — where there is
 /// no [bootstrap](crate::bootstrap) and no program — is what makes the child's own bootstrap the one
 /// the seam lets through and the child's first program the one that meets it.
-fn code_mode(set: &mut GgCapabilitySet, profile: &str) {
+fn code_mode(set: &mut GgCapabilitySet, profile_id: &str) {
     let agent = set
         .agents
         .iter_mut()
-        .find(|agent| agent.name == profile)
+        .find(|agent| agent.id == profile_id)
         .expect("the set declares the profile put into code mode");
     crate::tools::grant(agent, CAPABILITY_RESPONSES_AS_CODE);
 }
@@ -290,7 +291,7 @@ async fn a_spawned_childs_host_fault_ends_the_run() {
     let inv = invocation(dir.path(), set);
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         // The child's first reply is a program, and it is the program the armed fault lands on.
@@ -370,7 +371,7 @@ async fn the_root_winds_down_at_its_next_boundary_after_a_childs_fault() {
     let inv = invocation(dir.path(), set);
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -420,18 +421,18 @@ async fn an_issue_agents_host_fault_ends_the_run() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-issue-fault".to_string()), Box::new(sink.clone()));
     let mut set = split_project_set();
-    code_mode(&mut set, CODER_AGENT);
+    code_mode(&mut set, CODER_PROFILE_ID);
     let inv = invocation(dir.path(), set);
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             // The root files the issue and finishes; gg dispatches the implementer.
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![create_issue_for_coder(), stop_response()],
             ))
         })
-        .slot(CODER_AGENT, |b| {
+        .slot(CODER_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -464,7 +465,7 @@ async fn an_issue_agents_host_fault_ends_the_run() {
         errors
             .iter()
             .any(|(agent, message)| agent.as_deref() == Some(ROOT_AGENT_ID)
-            && message.contains(&format!("`{CODER_AGENT}`"))
+            && message.contains(&format!("`{CODER_PROFILE_ID}`"))
             && message.contains("gg's own plumbing")
             // The epilogue's own sentence, which no agent's wind-down line carries: the run-level
             // statement has to be there whether or not the root was still running to make one.
@@ -490,11 +491,11 @@ async fn a_faulted_run_does_not_re_dispatch_the_issue_it_stopped() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-issue-retry".to_string()), Box::new(sink.clone()));
     let mut set = split_project_set();
-    code_mode(&mut set, CODER_AGENT);
+    code_mode(&mut set, CODER_PROFILE_ID);
     let inv = invocation(dir.path(), set);
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![create_issue_for_coder(), stop_response()],
@@ -502,7 +503,7 @@ async fn a_faulted_run_does_not_re_dispatch_the_issue_it_stopped() {
         })
         // Long enough to work the issue twice over, so a second attempt would be a working agent
         // rather than one that ran out of script.
-        .slot(CODER_AGENT, |b| {
+        .slot(CODER_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"); 4],
@@ -521,7 +522,7 @@ async fn a_faulted_run_does_not_re_dispatch_the_issue_it_stopped() {
     let events = sink.events();
     let attempts = agent_spawns(&events)
         .iter()
-        .filter(|(_, _, slot, _, _)| slot == CODER_AGENT)
+        .filter(|(_, _, profile_id, _, _)| profile_id == CODER_PROFILE_ID)
         .count();
     assert_eq!(
         attempts,
@@ -585,7 +586,7 @@ async fn a_faulted_run_claims_no_further_issue() {
             completion_criteria: "The widget works.",
             blocked_by: &[],
             epic_id: None,
-            agent: CODER_AGENT,
+            agent: CODER_PROFILE_ID,
             reviewers: &[],
         })
         .expect("the store files the issue");
@@ -685,7 +686,7 @@ async fn a_panicking_agent_task_ends_the_run_with_internal_error() {
     let inv = invocation(dir.path(), subagent_set(2, 3, &["subagent"]));
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             // Spawn and finish: nothing is ever waiting on the child, which is the shape that used
             // to produce a scored run.
             Box::new(MockClient::new(
@@ -761,7 +762,7 @@ async fn a_parent_blocked_on_a_panicking_child_is_woken() {
     let inv = invocation(dir.path(), subagent_set(1, 3, &["subagent"]));
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", |b| Box::new(PanickingClient::new(&b.model_id)));
@@ -839,7 +840,7 @@ async fn an_agent_waiting_on_a_panicking_issue_agent_is_woken() {
     let inv = invocation(dir.path(), split_project_set());
 
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
+        .slot(ROOT_PROFILE_ID, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -853,7 +854,9 @@ async fn an_agent_waiting_on_a_panicking_issue_agent_is_woken() {
                 ],
             ))
         })
-        .slot(CODER_AGENT, |b| Box::new(PanickingClient::new(&b.model_id)));
+        .slot(CODER_PROFILE_ID, |b| {
+            Box::new(PanickingClient::new(&b.model_id))
+        });
 
     assert_eq!(
         timeout(&inv, &emitter, factory).await,
@@ -930,7 +933,7 @@ async fn an_issue_whose_worktree_checkout_panicked_fails_rather_than_hanging() {
             completion_criteria: "The widget works.",
             blocked_by: &[],
             epic_id: None,
-            agent: CODER_AGENT,
+            agent: CODER_PROFILE_ID,
             reviewers: &[],
         })
         .expect("the store files the issue");
@@ -1041,11 +1044,11 @@ async fn a_task_that_panicked_outside_its_loop_is_caught_by_the_join() {
     );
 }
 
-/// The profile the slot case below runs as: [persistent](CAPABILITY_AGENT_PERSISTENCE), so its
-/// instances hold their running slot under an
-/// [exclusivity key](crate::subagents::ExclusiveKey) and a release of one instance's slot is
-/// visible as a release of the *profile*.
-const PERSISTENT: &str = "Owner";
+/// The [id](test_cabinet_core::gg::GgAgentConfig::id) of the profile the slot case below runs as:
+/// [persistent](CAPABILITY_AGENT_PERSISTENCE), so its instances hold their running slot under an
+/// [exclusivity key](crate::subagents::ExclusiveKey) keyed on that id, and a release of one
+/// instance's slot is visible as a release of the *profile*.
+const PERSISTENT: &str = "owner";
 
 /// A run whose second profile is persistent, capped at two running agents.
 fn persistent_subagent_set() -> GgCapabilitySet {
@@ -1053,7 +1056,7 @@ fn persistent_subagent_set() -> GgCapabilitySet {
     let profile = set
         .agents
         .iter_mut()
-        .find(|agent| agent.name == PERSISTENT)
+        .find(|agent| agent.id == PERSISTENT)
         .expect("the set declares the profile it was built with");
     crate::tools::grant_configured(
         profile,
@@ -1103,7 +1106,7 @@ async fn a_panic_during_a_wait_gives_back_no_slot() {
         id: "agent-0".to_string(),
         parent_id: Some(ROOT_AGENT_ID.to_string()),
         depth: 1,
-        slot: PERSISTENT.to_string(),
+        profile_id: PERSISTENT.to_string(),
         fsm: None,
     };
     let (result_tx, _result_rx) = oneshot::channel();
@@ -1128,7 +1131,7 @@ async fn a_panic_during_a_wait_gives_back_no_slot() {
     assert_eq!(
         teardown.exclusive(),
         Some(PERSISTENT),
-        "a persistent profile's slot is held under its own name, which is what makes the second \
+        "a persistent profile's slot is held under its own id, which is what makes the second \
          release observable"
     );
     orch.scheduler
@@ -1189,7 +1192,7 @@ fn persistent_issue_set() -> GgCapabilitySet {
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_AGENT }),
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
@@ -1262,7 +1265,7 @@ async fn a_panic_during_an_issue_agents_wait_gives_back_no_slot() {
         id: format!("{issue_id}.0i"),
         parent_id: None,
         depth: 0,
-        slot: PERSISTENT.to_string(),
+        profile_id: PERSISTENT.to_string(),
         fsm: None,
     };
     let mut role = AgentRole::Issue {
@@ -1278,7 +1281,7 @@ async fn a_panic_during_an_issue_agents_wait_gives_back_no_slot() {
     assert_eq!(
         teardown.exclusive(),
         Some(PERSISTENT),
-        "a persistent profile's slot is held under its own name, which is what makes the second \
+        "a persistent profile's slot is held under its own id, which is what makes the second \
          release observable"
     );
     orch.scheduler
@@ -1366,7 +1369,7 @@ async fn a_panic_after_an_agent_answered_its_spawner_gives_back_no_slot() {
         id: "agent-0".to_string(),
         parent_id: Some(ROOT_AGENT_ID.to_string()),
         depth: 1,
-        slot: PERSISTENT.to_string(),
+        profile_id: PERSISTENT.to_string(),
         fsm: None,
     };
     let (result_tx, _result_rx) = oneshot::channel();
@@ -1508,7 +1511,7 @@ async fn a_turn_gg_broke_under_is_recorded_as_ggs_rather_than_the_models() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-spawn-defect".to_string()), Box::new(sink.clone()));
     let mut set = subagent_set(2, 3, &["subagent"]);
-    code_mode(&mut set, ROOT_AGENT);
+    code_mode(&mut set, ROOT_PROFILE_ID);
     // The tightest error ceiling there is, so a turn charged to the model would stop the run under
     // `limit_exceeded` — the status this defect used to be able to produce.
     set.limits.max_consecutive_errors = Some(1);

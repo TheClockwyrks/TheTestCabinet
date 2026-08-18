@@ -27,8 +27,8 @@ use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_MEMORIES,
     CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, GgCapabilityConfig, GgContextSource,
-    GgModuleDisposition, GgPromptRef, GgSubagentRef, GgTelemetryEvent, GgTransitionModule,
-    ROOT_AGENT,
+    GgModuleDisposition, GgPromptRef, GgRosterEntry, GgSubagentRef, GgTelemetryEvent,
+    GgTransitionModule, ROOT_AGENT, ROOT_PROFILE_ID,
 };
 
 use super::super::transitions::{HandoffReason, check_launch, fork_note, succession_note};
@@ -55,13 +55,24 @@ fn transition_module(kind: ModuleKind, disposition: GgModuleDisposition) -> GgTr
     }
 }
 
-/// A roster entry admitting `agent` in every scope — the permissive test allowlist, which is also
-/// what an `exec` target is validated against.
-fn roster(agent: &str) -> GgSubagentRef {
+/// A configured roster entry admitting the profile `agent_id` in every scope — the permissive test
+/// allowlist a set is written with.
+fn roster(agent_id: &str) -> GgSubagentRef {
     GgSubagentRef {
-        agent: agent.to_string(),
+        agent_id: agent_id.to_string(),
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
+    }
+}
+
+/// One entry of a **resolved, model-facing** roster: the id an `exec` target is admitted by, and the
+/// display name the menu reads with. The two differ throughout these tests, because the whole point
+/// of resolving a roster is that only the first of them decides anything.
+fn entry(agent_id: &str, name: &str) -> GgRosterEntry {
+    GgRosterEntry {
+        agent_id: agent_id.to_string(),
+        name: name.to_string(),
+        description: String::new(),
     }
 }
 
@@ -85,21 +96,21 @@ fn call(name: &str, arguments: serde_json::Value) -> ToolCall {
 /// problem, and accepting it silently would let a configuration's allowlist mean nothing.
 #[test]
 fn an_exec_naming_an_agent_outside_the_roster_is_refused_with_the_alternatives() {
-    let agent = Agent::root("Before");
+    let agent = Agent::root("before");
     let mut declared = None;
     let outcome = handle_exec(
-        &[roster("After")],
+        &[entry("after", "After")],
         &agent,
         &None,
         &mut declared,
-        &call(EXEC_TOOL, json!({ "agent": "Elsewhere" })),
+        &call(EXEC_TOOL, json!({ "agent": "elsewhere" })),
     );
 
     assert!(!outcome.ok, "an unlisted target is refused");
     assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
     assert!(
-        outcome.output.contains("`After`"),
-        "the refusal names what it may become: {}",
+        outcome.output.contains("`after`"),
+        "the refusal names the id it may become, which is what the call takes: {}",
         outcome.output
     );
     assert!(declared.is_none(), "nothing was captured");
@@ -108,10 +119,10 @@ fn an_exec_naming_an_agent_outside_the_roster_is_refused_with_the_alternatives()
 /// An `exec` with no `agent` at all is the same refusal, because it is the same missing fact.
 #[test]
 fn an_exec_with_no_target_is_refused_with_the_alternatives() {
-    let agent = Agent::root("Before");
+    let agent = Agent::root("before");
     let mut declared = None;
     let outcome = handle_exec(
-        &[roster("After")],
+        &[entry("after", "After")],
         &agent,
         &None,
         &mut declared,
@@ -119,7 +130,7 @@ fn an_exec_with_no_target_is_refused_with_the_alternatives() {
     );
 
     assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
-    assert!(outcome.output.contains("`After`"));
+    assert!(outcome.output.contains("`after`"));
 }
 
 /// **First wins.** A turn makes one succession, and a second declaration is refused rather than
@@ -127,8 +138,8 @@ fn an_exec_with_no_target_is_refused_with_the_alternatives() {
 /// which is exactly why a compaction may be replaced and this may not.
 #[test]
 fn a_second_succession_in_one_turn_is_refused_and_the_first_stands() {
-    let agent = Agent::root("Before");
-    let roster = vec![roster("After"), roster("Other")];
+    let agent = Agent::root("before");
+    let roster = vec![entry("after", "After"), entry("other", "Other")];
     let mut declared = None;
 
     let first = handle_exec(
@@ -136,7 +147,7 @@ fn a_second_succession_in_one_turn_is_refused_and_the_first_stands() {
         &agent,
         &None,
         &mut declared,
-        &call(EXEC_TOOL, json!({ "agent": "After" })),
+        &call(EXEC_TOOL, json!({ "agent": "after" })),
     );
     assert!(first.ok);
 
@@ -145,19 +156,19 @@ fn a_second_succession_in_one_turn_is_refused_and_the_first_stands() {
         &agent,
         &None,
         &mut declared,
-        &call(EXEC_TOOL, json!({ "agent": "Other" })),
+        &call(EXEC_TOOL, json!({ "agent": "other" })),
     );
     assert!(!second.ok);
     assert_eq!(second.failure, Some(ToolFailure::Refused));
     assert!(
-        second.output.contains("`After`"),
+        second.output.contains("`after`"),
         "the refusal names the succession that stands: {}",
         second.output
     );
     assert_eq!(
         declared.map(|handoff| handoff.profile),
-        Some("After".to_string()),
-        "the first declaration is what runs"
+        Some("after".to_string()),
+        "the id the model passed is what was stored, and what runs"
     );
 }
 
@@ -165,17 +176,17 @@ fn a_second_succession_in_one_turn_is_refused_and_the_first_stands() {
 /// there is nothing left to hand on.
 #[test]
 fn an_ending_declared_this_turn_beats_a_later_exec() {
-    let agent = Agent::root("Before");
+    let agent = Agent::root("before");
     let ending =
         Some(Ending::finished("all done".to_string(), crate::completion::FINISH_TOOL).unwrap());
     let mut declared = None;
 
     let outcome = handle_exec(
-        &[roster("After")],
+        &[entry("after", "After")],
         &agent,
         &ending,
         &mut declared,
-        &call(EXEC_TOOL, json!({ "agent": "After" })),
+        &call(EXEC_TOOL, json!({ "agent": "after" })),
     );
 
     assert_eq!(outcome.failure, Some(ToolFailure::Refused));
@@ -197,9 +208,10 @@ fn an_ending_declared_this_turn_beats_a_later_exec() {
 fn exec_is_refused_for_an_agent_standing_in_a_machine() {
     let machine = Arc::new(
         crate::fsm::FsmSpec::resolve(&GgAgentConfig {
+            id: "process".to_string(),
             name: "Process".to_string(),
             capabilities: vec![GgCapabilityConfig {
-                params: json!({ "states": [{ "name": "explore", "agent": "Before" }] }),
+                params: json!({ "states": [{ "name": "explore", "agentId": "before" }] }),
                 ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
             }],
             ..GgAgentConfig::root()
@@ -209,16 +221,16 @@ fn exec_is_refused_for_an_agent_standing_in_a_machine() {
     );
     let agent = Agent {
         fsm: Some(machine.entry_position()),
-        ..Agent::root("Before")
+        ..Agent::root("before")
     };
     let mut declared = None;
 
     let outcome = handle_exec(
-        &[roster("After")],
+        &[entry("after", "After")],
         &agent,
         &None,
         &mut declared,
-        &call(EXEC_TOOL, json!({ "agent": "After" })),
+        &call(EXEC_TOOL, json!({ "agent": "after" })),
     );
 
     assert_eq!(outcome.failure, Some(ToolFailure::Unavailable));
@@ -240,11 +252,11 @@ fn exec_is_refused_for_an_agent_standing_in_a_machine() {
 #[test]
 fn an_exec_note_states_the_inheritance_and_carries_the_predecessors_message() {
     let handoff = Handoff {
-        profile: "After".to_string(),
+        profile: "after".to_string(),
         plan: TransferPlan::Intersection,
         message: Some("the loader is the problem".to_string()),
         reason: HandoffReason::Exec {
-            from: "Before".to_string(),
+            from: "before".to_string(),
         },
         fsm: None,
     };
@@ -257,10 +269,18 @@ fn an_exec_note_states_the_inheritance_and_carries_the_predecessors_message() {
         defects: Vec::new(),
     };
 
-    let note = succession_note(&handoff, &report, "After", None);
+    let successor = GgAgentConfig {
+        id: "after".to_string(),
+        name: "After".to_string(),
+        ..GgAgentConfig::root()
+    };
+    let note = succession_note(&handoff, &report, &successor, None);
 
-    assert!(note.contains("`Before`"), "{note}");
-    assert!(note.contains("`After`"), "{note}");
+    // Every profile the note names, it names by id — that is the vocabulary a later `exec` takes —
+    // with the display name beside it so the sentence reads as prose.
+    assert!(note.contains("`before`"), "{note}");
+    assert!(note.contains("`after`"), "{note}");
+    assert!(note.contains("(After)"), "{note}");
     assert!(note.contains("the conversation"), "{note}");
     assert!(note.contains("the task list did not"), "{note}");
     assert!(note.ends_with("the loader is the problem"), "{note}");
@@ -272,10 +292,10 @@ fn an_exec_note_states_the_inheritance_and_carries_the_predecessors_message() {
 fn a_fork_note_names_its_origin_and_carries_its_instructions() {
     let forker = Agent {
         id: "agent-3".to_string(),
-        ..Agent::root("Builder")
+        ..Agent::root("builder")
     };
 
-    let note = fork_note(&forker, "try the other fix", 24);
+    let note = fork_note(&forker, "Builder", "try the other fix", 24);
 
     assert!(note.contains("`agent-3`"), "{note}");
     assert!(note.contains("`Builder`"), "{note}");
@@ -343,15 +363,16 @@ fn exec_on_a_profile_a_machine_runs_is_refused() {
         &mut set.agents[0],
         GgCapabilityConfig {
             params: serde_json::json!({
-                "states": [{ "name": "only", "agent": "Worker" }],
+                "states": [{ "name": "only", "agentId": "worker" }],
             }),
             ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
         },
     );
     let mut worker = GgAgentConfig {
+        id: "worker".to_string(),
         name: "Worker".to_string(),
         model_id: "mock/primary".to_string(),
-        subagents: vec![roster(ROOT_AGENT)],
+        subagents: vec![roster(ROOT_PROFILE_ID)],
         ..GgAgentConfig::root()
     };
     worker
@@ -360,7 +381,10 @@ fn exec_on_a_profile_a_machine_runs_is_refused() {
     set.agents.push(worker);
 
     let error = refusal(&set).expect_err("a state's agent is not offered `exec`");
-    assert!(error.contains("Worker"), "{error}");
+    assert!(
+        error.contains("worker"),
+        "the defect names the profile id: {error}"
+    );
     assert!(error.contains(EXEC_TOOL), "{error}");
 }
 
@@ -368,7 +392,7 @@ fn exec_on_a_profile_a_machine_runs_is_refused() {
 #[test]
 fn a_capability_that_can_be_offered_is_accepted() {
     let mut set = GgCapabilitySet::minimal("mock/primary");
-    set.agents[0].subagents = vec![roster(ROOT_AGENT)];
+    set.agents[0].subagents = vec![roster(ROOT_PROFILE_ID)];
     set.agents[0].capabilities.extend([
         GgCapabilityConfig::enabled(CAPABILITY_EXEC),
         GgCapabilityConfig::enabled(CAPABILITY_FORK),
@@ -401,7 +425,10 @@ fn exec_set() -> GgCapabilitySet {
     // those capabilities any more.
     crate::tools::grant_all(&mut before);
     let mut after = GgAgentConfig {
-        name: "After".to_string(),
+        // The id the scripted predecessor's `exec` names, with a display name that is not it — so
+        // the roster check, the telemetry and the successor's note are all visibly the id.
+        id: "After".to_string(),
+        name: "The Successor".to_string(),
         model_id: "mock/exec-after".to_string(),
         capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)],
         ..GgAgentConfig::root()
@@ -431,7 +458,7 @@ async fn run_exec(
         })
     };
     let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, scripted)
+        .slot(ROOT_PROFILE_ID, scripted)
         .slot("After", scripted);
     let launched = invocation(dir, set);
     let invocation = match windows {
@@ -466,14 +493,14 @@ async fn an_exec_carries_the_conversation_drops_what_the_successor_lacks_and_sta
             GgTelemetryKind::AgentTransition {
                 kind,
                 to_agent_id,
-                agent,
+                profile_id,
                 modules,
                 ..
             } => Some((
                 *kind,
                 event.agent_id.clone().unwrap_or_default(),
                 to_agent_id.clone(),
-                agent.clone(),
+                profile_id.clone(),
                 kinds_with(modules, GgModuleDisposition::Carried),
                 kinds_with(modules, GgModuleDisposition::Dropped),
                 kinds_with(modules, GgModuleDisposition::Initialized),
@@ -486,7 +513,7 @@ async fn an_exec_carries_the_conversation_drops_what_the_successor_lacks_and_sta
         transition.1, ROOT_AGENT_ID,
         "reported by the outgoing agent"
     );
-    assert_eq!(transition.3, "After", "the profile it became");
+    assert_eq!(transition.3, "After", "the id of the profile it became");
     assert_eq!(
         transition.4,
         vec!["history".to_string()],
@@ -508,10 +535,10 @@ async fn an_exec_carries_the_conversation_drops_what_the_successor_lacks_and_sta
     let spawned = events
         .iter()
         .find_map(|event| match &event.kind {
-            GgTelemetryKind::AgentSpawned { slot, depth, .. }
-                if event.agent_id.as_deref() == Some(successor.as_str()) =>
-            {
-                Some((event.parent_agent_id.clone(), slot.clone(), *depth))
+            GgTelemetryKind::AgentSpawned {
+                profile_id, depth, ..
+            } if event.agent_id.as_deref() == Some(successor.as_str()) => {
+                Some((event.parent_agent_id.clone(), profile_id.clone(), *depth))
             }
             _ => None,
         })
@@ -812,7 +839,7 @@ fn fork_set() -> GgCapabilitySet {
     let mut root = GgAgentConfig {
         name: ROOT_AGENT.to_string(),
         model_id: "mock/fork".to_string(),
-        subagents: vec![roster(ROOT_AGENT)],
+        subagents: vec![roster(ROOT_PROFILE_ID)],
         ..GgAgentConfig::root()
     };
     root.capabilities = vec![
@@ -842,7 +869,7 @@ async fn a_fork_opens_holding_the_state_its_forker_built() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-fork".to_string()), Box::new(sink.clone()));
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |binding: &GgSlotBinding| {
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |binding: &GgSlotBinding| {
         Box::new(MockClient::with_fork_script(&binding.model_id)) as Box<dyn ModelClient>
     });
     let outcome = run_with_factory(
@@ -899,10 +926,13 @@ async fn a_fork_opens_holding_the_state_its_forker_built() {
         .iter()
         .find_map(|event| match &event.kind {
             GgTelemetryKind::AgentSpawned {
-                slot, depth, brief, ..
+                profile_id,
+                depth,
+                brief,
+                ..
             } if event.agent_id.as_deref() == Some(copy.as_str()) => Some((
                 event.parent_agent_id.clone(),
-                slot.clone(),
+                profile_id.clone(),
                 *depth,
                 brief.clone(),
             )),
@@ -913,7 +943,7 @@ async fn a_fork_opens_holding_the_state_its_forker_built() {
         spawned,
         (
             Some(ROOT_AGENT_ID.to_string()),
-            ROOT_AGENT.to_string(),
+            ROOT_PROFILE_ID.to_string(),
             1,
             Some(MOCK_FORK_PROMPT.to_string())
         ),

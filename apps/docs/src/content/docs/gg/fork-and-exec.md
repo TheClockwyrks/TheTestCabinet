@@ -25,10 +25,11 @@ rather than a declared machine.
 }
 ```
 
-The call takes an `agent` and an optional `prompt`, the successor's opening
-message. The target is validated against the agent's own delegation roster, the
-same allowlist `spawn_subagent` is checked against. Naming an agent that is not
-on the roster is a tool refusal listing the ones that are.
+The call takes an `agent`, the [profile id](/gg/configurations/#identity) of the
+profile to become, and an optional `prompt`, the successor's opening message. The
+target is validated against the agent's own delegation roster, the same allowlist
+`spawn_subagent` is checked against. Naming an id that is not on the roster is a
+tool refusal listing the ones that are.
 
 ### What the successor gets
 
@@ -63,8 +64,8 @@ happened.
 
 A fresh id per incarnation gives the successor its own message pool, so its
 telemetry stream re-states every context message it references and is
-self-contained. Per-slot accounting keys on the profile each incarnation actually
-ran, so an exec'd session splits its cost between the agents that spent it.
+self-contained. Accounting keys on the profile each incarnation actually ran, so
+an exec'd session splits its cost between the agents that spent it.
 
 ### Windows of different sizes
 

@@ -43,9 +43,10 @@ import {
   MODULE_CAPABILITY_IDS,
   OWNERSHIP_MODULE_KINDS,
   agentProfile,
+  agentProfileName,
   capabilityParam,
 } from "./ggCatalog";
-import { agentProfileName } from "./ggAgentAggregate";
+import { agentProfileId } from "./ggAgentAggregate";
 import type {
   AgentTransition,
   AgentTreeNode,
@@ -99,7 +100,9 @@ export interface GgModuleCost {
 /** One agent instance's hold on one module instance. */
 export interface GgModuleHolder {
   agentId: string;
-  /** The agent profile that instance runs under. */
+  /** The id of the agent profile that instance runs under — what this row joins on. */
+  profileId: string;
+  /** That profile's display name, for the chips and phrases that name it. */
   profile: string;
   status: GgAgentStatus;
   origin: GgModuleOrigin;
@@ -149,7 +152,9 @@ export interface GgModuleInstance {
    * from the declared scope and never from the raw holder count.
    */
   scopeKind: GgModuleScopeKind;
-  /** The profile it belongs to, when `scopeKind === "agent"`; null otherwise. */
+  /** The id of the profile it belongs to, when `scopeKind === "agent"`; null otherwise. */
+  profileId: string | null;
+  /** That profile's display name; null on the same terms as {@link profileId}. */
   profile: string | null;
   /** Created / carried / copied / linked / dropped, oldest first. */
   lifetime: GgModuleLifetimeEvent[];
@@ -288,7 +293,10 @@ export interface GgModuleIndex {
   byKind: Array<{ kind: GgModuleKind; instances: GgModuleInstance[] }>;
   /** What each agent instance holds, in kind order — the Instances tab's folder. */
   byAgent: Map<string, GgModuleInstance[]>;
-  /** What each agent PROFILE's instances hold, folded — the Agents tab's section. */
+  /**
+   * What each agent PROFILE's instances hold, folded — the Agents tab's section. Keyed by
+   * profile id, so two profiles sharing a name keep their own rows.
+   */
   byProfile: Map<string, GgAgentModuleSummary[]>;
 }
 
@@ -538,7 +546,8 @@ export function deriveGgModules(
   const byAgent = new Map<string, GgModuleInstance[]>();
 
   for (const node of ordered) {
-    const profile = agentProfileName(node, capabilitySet);
+    const profileId = agentProfileId(node, capabilitySet);
+    const profile = agentProfileName(capabilitySet, profileId);
     const state = perAgent.get(node.id);
     // An instance with no roster has simply not opened yet: in a live stream the module
     // `state_events` land before the `agent_modules` that names them, so several renders
@@ -555,6 +564,7 @@ export function deriveGgModules(
           holders: [],
           liveHolders: [],
           scopeKind: "instance",
+          profileId: null,
           profile: null,
           lifetime: [],
           dropped: false,
@@ -565,6 +575,7 @@ export function deriveGgModules(
       }
       const holder: GgModuleHolder = {
         agentId: node.id,
+        profileId,
         profile,
         status: node.status,
         origin: entry.origin,
@@ -589,11 +600,12 @@ export function deriveGgModules(
     // holders it collected: a store handed to a successor has two and was never shared,
     // and every state of an FSM run is a succession. See {@link concurrentHolders}.
     const concurrent = concurrentHolders(module);
-    const profiles = new Set(concurrent.map((holder) => holder.profile));
+    const profiles = new Set(concurrent.map((holder) => holder.profileId));
     if (concurrent.length <= 1) {
       module.scopeKind = module.holders.length > 1 ? "carried" : "instance";
     } else if (profiles.size === 1) {
       module.scopeKind = "agent";
+      module.profileId = concurrent[0]!.profileId;
       module.profile = concurrent[0]!.profile;
     } else {
       module.scopeKind = "run";
@@ -756,19 +768,19 @@ function foldByProfile(
   agentForest: readonly AgentTreeNode[],
   set: GgCapabilitySet | null,
 ): Map<string, GgAgentModuleSummary[]> {
-  // Instances grouped by the profile they ran under, in tree order.
+  // Instances grouped by the id of the profile they ran under, in tree order.
   const instancesByProfile = new Map<string, AgentTreeNode[]>();
   const walk = (node: AgentTreeNode) => {
-    const profile = agentProfileName(node, set);
-    const list = instancesByProfile.get(profile) ?? [];
+    const profileId = agentProfileId(node, set);
+    const list = instancesByProfile.get(profileId) ?? [];
     list.push(node);
-    instancesByProfile.set(profile, list);
+    instancesByProfile.set(profileId, list);
     node.children.forEach(walk);
   };
   agentForest.forEach(walk);
 
   const out = new Map<string, GgAgentModuleSummary[]>();
-  for (const [profile, nodes] of instancesByProfile) {
+  for (const [profileId, nodes] of instancesByProfile) {
     const summaries: GgAgentModuleSummary[] = [];
     for (const kind of MODULE_KIND_ORDER) {
       // Every hold this profile's instances have on this kind, and by whom.
@@ -799,12 +811,12 @@ function foldByProfile(
       const ownerships = new Set(holders.map((holder) => holder.ownership));
       const observedOwnership =
         ownerships.size === 1 ? holders[0]!.ownership : null;
-      const sharing = classifySharing(profile, instances);
+      const sharing = classifySharing(profileId, instances);
       // Only the one shape whose contents can honestly be shown at the profile's grain: one
       // store, held by every instance of the profile that holds this kind, all at once.
       const agentScoped =
         sharing === "agent" ? (instances[0]?.module ?? null) : null;
-      const declared = declaredFor(set, profile, kind);
+      const declared = declaredFor(set, profileId, kind);
       summaries.push({
         kind,
         instances,
@@ -825,12 +837,12 @@ function foldByProfile(
         cost: sumCosts(holders.map((holder) => holder.cost)),
       });
     }
-    out.set(profile, summaries);
+    out.set(profileId, summaries);
   }
   // A declared profile the run never instantiated still gets an (empty) entry, so a surface
   // iterating the configuration finds a row rather than a hole.
   for (const declared of set?.agents ?? []) {
-    if (!out.has(declared.name)) out.set(declared.name, []);
+    if (!out.has(declared.id)) out.set(declared.id, []);
   }
   return out;
 }
@@ -842,7 +854,7 @@ function foldByProfile(
 // calling a succession "agent-scoped" would be the single most misleading thing this surface
 // could say (it would invite a reader to treat one instance's contents as the profile's).
 function classifySharing(
-  profile: string,
+  profileId: string,
   holds: GgAgentModuleHold[],
 ): GgAgentModuleSharing {
   if (holds.length > 1) {
@@ -861,7 +873,7 @@ function classifySharing(
     // it — a store the run's board or another profile's spawner also holds is not this
     // agent's state, it is the run's. Asked of the concurrent holders only: a predecessor of
     // another profile that handed the store on is not in it any more.
-    return concurrent.every((holder) => holder.profile === profile)
+    return concurrent.every((holder) => holder.profileId === profileId)
       ? "agent"
       : "run";
   }
@@ -874,21 +886,21 @@ function classifySharing(
 // Null in two cases, both of which matter: the window, which has no capability behind it (it
 // is not something an agent is given, it is what an agent *is*), and a profile the captured
 // configuration does not declare at all — a run recorded without its configuration, or an
-// agent spawned under a name the set no longer carries. Reading `declaredModuleConfig`'s
+// agent spawned under an id the set no longer carries. Reading `declaredModuleConfig`'s
 // defaults for either would manufacture a declaration nobody made and then report the run
 // diverging from it.
 function declaredFor(
   set: GgCapabilitySet | null,
-  profile: string,
+  profileId: string,
   kind: GgModuleKind,
 ): GgDeclaredModuleConfig | null {
   const capability = MODULE_CAPABILITY_IDS.get(kind);
   if (!capability) return null;
-  const config = agentProfile(set, profile);
+  const config = agentProfile(set, profileId);
   const declares = config?.capabilities.some(
     (entry) => entry.id === capability && entry.enabled,
   );
-  return declares ? declaredModuleConfig(set, profile, kind) : null;
+  return declares ? declaredModuleConfig(set, profileId, kind) : null;
 }
 
 // Where a profile's declaration and its instances' behaviour disagree.
@@ -1017,7 +1029,7 @@ export function useGgModules(
  */
 export function declaredModuleConfig(
   set: GgCapabilitySet | null,
-  profile: string,
+  profileId: string,
   kind: GgModuleKind,
 ): GgDeclaredModuleConfig {
   const capability = MODULE_CAPABILITY_IDS.get(kind);
@@ -1026,7 +1038,7 @@ export function declaredModuleConfig(
   // shared model layer exists to prevent.
   const read = (key: string): string | null => {
     const value = capability
-      ? capabilityParam(set, profile, capability, key)
+      ? capabilityParam(set, profileId, capability, key)
       : null;
     return typeof value === "string" && value.trim() !== ""
       ? value.trim()

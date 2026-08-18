@@ -49,17 +49,17 @@ tile, carrying the run's whole account of its spend with the configuration
 slotted in under the tokens beside it. That account is the total; the split per
 class (input, cached input, reasoning, output), pricing each token against the
 model that produced it rather than at one blanket rate; the input-against-output
-ring; and where the money went, as bars per slot, each naming the model that slot
-was bound to, and bars per model, the same spend folded onto the models that did
-it. Both are always shown. A run that binds one model per slot lists the same
-rows twice, which is a fact about that configuration.
+ring; and where the money went, as bars per profile, each naming the model that
+profile was bound to, and bars per model, the same spend folded onto the models
+that did it. Both are always shown. A run that binds one model per profile lists
+the same rows twice, which is a fact about that configuration.
 
 A run binds one model per [agent profile](/gg/configurations/), so every `usage`
-event names the profile and model that spent it and every split above is derived
-from the delta stream, from the run's first turn. The `slot_usage` rollups, one
-per `(slot, model)` the run touched and all of them emitted once the run's last
-agent has joined, carry the same figures for the durable record; a consumer sums
-the deltas, never both.
+event names the [profile id](/gg/configurations/#identity) and model that spent
+it and every split above is derived from the delta stream, from the run's first
+turn. The `slot_usage` rollups, one per `(profile, model)` the run touched and
+all of them emitted once the run's last agent has joined, carry the same figures
+for the durable record; a consumer sums the deltas, never both.
 
 ## Agents
 
@@ -67,7 +67,8 @@ The run read per configured agent rather than per running one. A configuration
 declares agent [profiles](/gg/configurations/) and the run makes as many
 instances of each as the work calls for, so a profile that spawns twelve
 implementers is one arm of the experiment. This panel groups the instances by the
-profile they ran under and sums them.
+[id](/gg/configurations/#identity) of the profile they ran under and sums them,
+under the name that profile carries.
 
 It is one collapsible row per agent, all closed to begin with. Closed, a row is
 the comparison line: instances, turns, tokens, cost, and peak context, each with

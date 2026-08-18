@@ -19,7 +19,7 @@ use crate::code_analysis::{
 use crate::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_SHELL,
     CAPABILITY_SKILLS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgErrorSummary,
-    GgHealingSummary, GgRunLimits, GgSessionSummary, GgSlotCost,
+    GgHealingSummary, GgRunLimits, GgSessionSummary, GgSlotCost, ROOT_PROFILE_ID,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::run_record::{
@@ -332,7 +332,8 @@ fn capability_set() -> GgCapabilitySet {
         preset: Some("planning-A".to_string()),
         agents: vec![
             GgAgentConfig {
-                name: "root".to_string(),
+                id: ROOT_PROFILE_ID.to_string(),
+                name: "Root".to_string(),
                 model_id: "anthropic/claude-a".to_string(),
                 capabilities: vec![
                     GgCapabilityConfig::enabled(CAPABILITY_SHELL),
@@ -354,7 +355,8 @@ fn capability_set() -> GgCapabilitySet {
             // `the_capability_namespace_reads_every_agent` is where a subagent-only
             // enablement is exercised.
             GgAgentConfig {
-                name: "reviewer".to_string(),
+                id: "reviewer".to_string(),
+                name: "Careful Reviewer".to_string(),
                 model_id: "openai/gpt-x".to_string(),
                 capabilities: Vec::new(),
                 ..GgAgentConfig::root()
@@ -402,7 +404,7 @@ fn session_summary() -> GgSessionSummary {
         issues_completed: 0,
         slot_costs: vec![
             GgSlotCost {
-                slot: "primary".to_string(),
+                profile_id: ROOT_PROFILE_ID.to_string(),
                 model_id: "anthropic/claude-a".to_string(),
                 tokens: TokenCounts {
                     uncached_input: Some(100),
@@ -416,7 +418,7 @@ fn session_summary() -> GgSessionSummary {
                 }),
             },
             GgSlotCost {
-                slot: "reviewer".to_string(),
+                profile_id: "reviewer".to_string(),
                 model_id: "anthropic/claude-a".to_string(),
                 tokens: TokenCounts {
                     uncached_input: Some(10),
@@ -551,6 +553,52 @@ fn the_capability_namespace_reads_every_agent() {
     assert!(
         doc.get("agent.root.cap.memories").is_none(),
         "a capability the root carries but disabled is absent per agent, never false"
+    );
+}
+
+/// **The per-agent namespace is keyed by the profile id**, which is the whole reason the id
+/// exists: two profiles may carry one display name, and two profiles sharing a field key would
+/// merge into one document entry — a query would then read one profile's configuration as the
+/// other's, with nothing in the document to show it happened.
+#[test]
+fn the_per_agent_namespace_keys_on_the_id_so_two_profiles_sharing_a_name_stay_apart() {
+    let mut record = gg_record();
+    let set = record.subject.gg_capability_set.as_mut().expect("set");
+    set.agents.push(GgAgentConfig {
+        id: "reviewer-2".to_string(),
+        // The same display name the `reviewer` profile carries: legal, and the case that used to
+        // be inexpressible.
+        name: "Careful Reviewer".to_string(),
+        model_id: "openai/gpt-y".to_string(),
+        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FSM)],
+        ..GgAgentConfig::root()
+    });
+    assert_eq!(
+        set.agents[1].name, set.agents[2].name,
+        "the premise: two profiles under one name"
+    );
+
+    let doc = build_run_doc(&record, &GgDocLifecycle::default());
+    assert_eq!(
+        doc.get("agent.reviewer.model"),
+        Some(&GgValue::String("openai/gpt-x".to_string()))
+    );
+    assert_eq!(
+        doc.get("agent.reviewer-2.model"),
+        Some(&GgValue::String("openai/gpt-y".to_string())),
+        "each profile keeps its own field, because the key is the id",
+    );
+    assert_eq!(
+        doc.get("agent.reviewer-2.cap.fsm"),
+        Some(&GgValue::Bool(true))
+    );
+    assert!(
+        doc.get("agent.reviewer.cap.fsm").is_none(),
+        "the sibling sharing its name declared no such capability",
+    );
+    assert!(
+        doc.get("agent.Careful Reviewer.model").is_none(),
+        "nothing is keyed by a display name",
     );
 }
 

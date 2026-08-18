@@ -52,8 +52,10 @@ pub struct GgSavedAgent {
     /// configuration points at, so renaming the agent never breaks an import.
     pub id: String,
     /// The profile's name — the agent's own [`name`](GgAgentConfig::name), lifted out so
-    /// the library can be listed and ordered by it. There is deliberately no second
-    /// name: the thing an operator names in the editor is the agent.
+    /// the library can be listed and ordered by it. Display text: two saved agents may
+    /// carry one name, and the [id](Self::id) is what tells them apart. There is
+    /// deliberately no second name: the thing an operator names in the editor is the
+    /// agent.
     pub name: String,
     /// A one-line note on what the agent is for. Empty when unset. The library's own
     /// note — not the caller-scoped description a roster entry carries, which says when
@@ -98,15 +100,13 @@ pub async fn list_agents(
     Ok(Json(agents))
 }
 
-/// `POST /gg/agents` — save an agent. 409 when the account already holds one under that
-/// name.
+/// `POST /gg/agents` — save an agent.
 pub async fn create_agent(
     State(state): State<AppState>,
     user: AuthUser,
     Json(input): Json<GgSavedAgentInput>,
 ) -> Result<Json<GgSavedAgent>, ApiError> {
     let agent = agent_from_input(new_id(), input, &now()?)?;
-    reject_taken_name(&state, &user.0.id, &agent).await?;
     state
         .db
         .insert_gg_agent(&user.0.id, &agent)
@@ -117,7 +117,7 @@ pub async fn create_agent(
 
 /// `PUT /gg/agents/{id}` — update a saved agent in place. Every configuration that
 /// imported it follows the change, except in the fields it overrides. 404 when the id is
-/// not the caller's, 409 when another of the account's agents already holds the name.
+/// not the caller's.
 pub async fn update_agent(
     State(state): State<AppState>,
     user: AuthUser,
@@ -125,7 +125,6 @@ pub async fn update_agent(
     Json(input): Json<GgSavedAgentInput>,
 ) -> Result<Json<GgSavedAgent>, ApiError> {
     let agent = agent_from_input(id, input, &now()?)?;
-    reject_taken_name(&state, &user.0.id, &agent).await?;
     let updated = state
         .db
         .update_gg_agent(&user.0.id, &agent)
@@ -156,38 +155,11 @@ pub async fn delete_agent(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Refuse a name another of the account's agents already holds.
-///
-/// A saved agent is picked by name — in the configuration editor's import list, and in
-/// the badge every profile that follows one carries — so two agents sharing a name are
-/// two the operator cannot tell apart. Names are per account, and a configuration's own
-/// profile names are separate: a profile renamed on import is still following this
-/// agent.
-async fn reject_taken_name(
-    state: &AppState,
-    user_id: &str,
-    agent: &GgSavedAgent,
-) -> Result<(), ApiError> {
-    let taken = state
-        .db
-        .list_gg_agents(user_id)
-        .await
-        .map_err(ApiError::from)?
-        .into_iter()
-        .any(|other| other.id != agent.id && other.name == agent.name);
-    if taken {
-        return Err(ApiError::conflict(format!(
-            "you already have a gg agent called `{}`",
-            agent.name
-        )));
-    }
-    Ok(())
-}
-
-/// Build a stored agent from a create/update body, validating the name (which is the
-/// agent's own) and the description. A binding deferred to a model slot is what a saved
-/// agent normally carries: it is a reusable profile, and which model it runs on is
-/// settled by the configuration that imports it and the launch that fills that slot.
+/// Build a stored agent from a create/update body, checking that the name (which is the
+/// agent's own) is present and short enough to list, and the description likewise. A
+/// binding deferred to a model slot is what a saved agent normally carries: it is a
+/// reusable profile, and which model it runs on is settled by the configuration that
+/// imports it and the launch that fills that slot.
 pub(crate) fn agent_from_input(
     id: String,
     input: GgSavedAgentInput,

@@ -26,6 +26,7 @@ const PAGING_LINE_CAP: usize = 50;
 /// mode).
 fn persistent_profile() -> GgAgentConfig {
     GgAgentConfig {
+        id: "owner".to_string(),
         name: "Owner".to_string(),
         capabilities: vec![
             GgCapabilityConfig::enabled(CAPABILITY_READ_FILE),
@@ -90,7 +91,13 @@ async fn drive_instance_in(
     let registry = ToolRegistry::from_capabilities(profile);
     let client = RecordingClient::new("mock/echo", script);
 
-    let end = Agent::root(&profile.name)
+    // The one-profile set this instance runs against: the root is resolved by id, and a roster or
+    // a record naming this profile resolves against the same declaration the loop reads.
+    let set = GgCapabilitySet {
+        agents: vec![profile.clone()],
+        ..GgCapabilitySet::default()
+    };
+    let end = Agent::root(&profile.id)
         .drive(
             client.as_ref(),
             "go",
@@ -119,6 +126,7 @@ async fn drive_instance_in(
             },
             &[],
             profile,
+            &set,
             &mut None,
             None,
         )
@@ -172,7 +180,7 @@ async fn a_finished_instance_hands_its_open_views_to_the_next_one() {
     .await;
     assert_eq!(first.status, "completed");
     assert_eq!(
-        store.desk("Owner").files,
+        store.desk("owner").files,
         vec![OpenFileView {
             path: "game.js".to_string(),
             region: None,
@@ -241,7 +249,7 @@ async fn an_instance_stopped_by_a_ceiling_leaves_the_record_alone() {
     )
     .await;
     assert_eq!(first.status, "completed");
-    let recorded = store.desk("Owner").files;
+    let recorded = store.desk("owner").files;
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].path, "kept.js");
 
@@ -255,7 +263,7 @@ async fn an_instance_stopped_by_a_ceiling_leaves_the_record_alone() {
     .await;
     assert_eq!(second.status, "exhausted");
     assert_eq!(
-        store.desk("Owner").files,
+        store.desk("owner").files,
         recorded,
         "a stopped instance does not overwrite the last finished one's desk"
     );
@@ -353,7 +361,7 @@ async fn every_page_of_a_paged_file_is_carried_over() {
         },
     ];
     assert_eq!(
-        store.desk("Owner").files,
+        store.desk("owner").files,
         both_windows,
         "both windows are recorded, in the order they were opened"
     );
@@ -384,7 +392,7 @@ async fn every_page_of_a_paged_file_is_carried_over() {
     );
     // And what the second instance records is those same two windows — re-read, re-recorded, byte for
     // byte the same desk — so the pages do not decay over a chain of instances.
-    assert_eq!(store.desk("Owner").files, both_windows);
+    assert_eq!(store.desk("owner").files, both_windows);
 }
 
 /// The desk records the window a read **returned**, not the one it asked for. Under an unlimited read
@@ -412,7 +420,7 @@ async fn an_ignored_offset_records_no_region() {
     .await;
     assert_eq!(end.status, "completed");
     assert_eq!(
-        store.desk("Owner").files,
+        store.desk("owner").files,
         vec![OpenFileView {
             path: "big.rs".to_string(),
             region: None,
@@ -477,7 +485,7 @@ async fn a_persistent_code_mode_instance_hands_its_views_to_the_next_one() {
     .await;
     assert_eq!(first.status, "completed");
 
-    let desk = store.desk("Owner");
+    let desk = store.desk("owner");
     assert_eq!(
         desk.files,
         vec![OpenFileView {
@@ -532,5 +540,5 @@ async fn a_persistent_code_mode_instance_hands_its_views_to_the_next_one() {
     );
 
     // And the second instance re-records the same desk, so it does not decay over a chain.
-    assert_eq!(store.desk("Owner"), desk);
+    assert_eq!(store.desk("owner"), desk);
 }

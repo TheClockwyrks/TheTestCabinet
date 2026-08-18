@@ -2,7 +2,7 @@ use super::*;
 use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig,
-    GgCapabilitySet, GgDispatchError, GgSubagentRef, GgSubagentScope, ROOT_AGENT,
+    GgCapabilitySet, GgDispatchError, GgSubagentRef, GgSubagentScope, ROOT_PROFILE_ID,
 };
 
 /// Every machine defect `set` earns, joined into one refusal — [`check_launch`] read as the launch
@@ -21,10 +21,13 @@ fn refusal(set: &GgCapabilitySet) -> Result<(), String> {
         .join("\n"))
 }
 
-/// An ordinary (non-shell) agent profile bound to the mock model.
-fn agent(name: &str) -> GgAgentConfig {
+/// An ordinary (non-shell) agent profile with the given [id](GgAgentConfig::id), bound to the mock
+/// model. Its display name is deliberately not its id: nothing a machine reads resolves a profile
+/// by name.
+fn agent(id: &str) -> GgAgentConfig {
     GgAgentConfig {
-        name: name.to_string(),
+        id: id.to_string(),
+        name: format!("The {id} agent"),
         model_id: "mock/echo".to_string(),
         ..GgAgentConfig::root()
     }
@@ -39,7 +42,7 @@ fn fsm_capability(states: Value) -> GgCapabilityConfig {
 }
 
 /// A capability set whose root is an FSM shell driving `states`, plus one ordinary profile per
-/// name in `agents`.
+/// [id](GgAgentConfig::id) in `agents`.
 fn machine_set(states: Value, agents: &[&str]) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/echo");
     // A **bare** shell: the machine and nothing else — no model binding, no other capability. This
@@ -48,8 +51,8 @@ fn machine_set(states: Value, agents: &[&str]) -> GgCapabilitySet {
     set.agents[0].capabilities.clear();
     crate::tools::grant_configured(&mut set.agents[0], fsm_capability(states));
     set.agents[0].model_id = String::new();
-    for name in agents {
-        set.agents.push(agent(name));
+    for id in agents {
+        set.agents.push(agent(id));
     }
     set
 }
@@ -60,12 +63,12 @@ fn two_state() -> Value {
     json!([
         {
             "name": "explore",
-            "agent": "Explorer",
+            "agentId": "explorer",
             "transitions": [
                 { "to": "build", "transfer": ["history", "tasks"], "description": "when you have a plan" }
             ]
         },
-        { "name": "build", "agent": "Builder" }
+        { "name": "build", "agentId": "builder" }
     ])
 }
 
@@ -73,15 +76,15 @@ fn two_state() -> Value {
 /// every state's agent and edges come through intact.
 #[test]
 fn a_machine_is_resolved_from_the_states_param() {
-    let set = machine_set(two_state(), &["Explorer", "Builder"]);
+    let set = machine_set(two_state(), &["explorer", "builder"]);
     let spec = FsmSpec::resolve(&set.agents[0])
         .expect("the root declares a machine")
         .expect("it parses");
-    assert_eq!(spec.fsm, "Root");
+    assert_eq!(spec.fsm, ROOT_PROFILE_ID);
     assert_eq!(spec.entry, "explore");
     assert_eq!(spec.states.len(), 2);
     let explore = spec.state("explore").expect("the entry state");
-    assert_eq!(explore.agent, "Explorer");
+    assert_eq!(explore.agent_id, "explorer");
     assert_eq!(
         explore.transitions,
         vec![FsmTransitionSpec {
@@ -132,7 +135,7 @@ fn an_enabled_capability_without_states_is_a_launch_failure() {
     );
     let error = refusal(&set).expect_err("a machine-less FSM agent cannot run");
     assert!(error.contains(FSM_PARAM_STATES), "{error}");
-    assert!(error.contains("Root"), "{error}");
+    assert!(error.contains(ROOT_PROFILE_ID), "{error}");
 }
 
 /// An empty table has nothing to enter.
@@ -156,8 +159,8 @@ fn an_unparseable_states_value_is_a_launch_failure() {
 #[test]
 fn an_unnamed_state_is_a_launch_failure() {
     let set = machine_set(
-        json!([{ "name": "  ", "agent": "Explorer" }]),
-        &["Explorer"],
+        json!([{ "name": "  ", "agentId": "explorer" }]),
+        &["explorer"],
     );
     let error = refusal(&set).expect_err("an unnamed state cannot run");
     assert!(error.contains("empty name"), "{error}");
@@ -168,10 +171,10 @@ fn an_unnamed_state_is_a_launch_failure() {
 fn a_duplicated_state_name_is_a_launch_failure() {
     let set = machine_set(
         json!([
-            { "name": "build", "agent": "Explorer" },
-            { "name": "build", "agent": "Builder" }
+            { "name": "build", "agentId": "explorer" },
+            { "name": "build", "agentId": "builder" }
         ]),
-        &["Explorer", "Builder"],
+        &["explorer", "builder"],
     );
     let error = refusal(&set).expect_err("a duplicated state cannot run");
     assert!(error.contains("more than once"), "{error}");
@@ -189,9 +192,9 @@ fn a_state_with_no_agent_is_a_launch_failure() {
 /// reference that does.
 #[test]
 fn a_state_naming_an_undeclared_agent_is_a_launch_failure() {
-    let set = machine_set(json!([{ "name": "explore", "agent": "Ghost" }]), &[]);
+    let set = machine_set(json!([{ "name": "explore", "agentId": "ghost" }]), &[]);
     let error = refusal(&set).expect_err("an undeclared agent cannot run a state");
-    assert!(error.contains("Ghost"), "{error}");
+    assert!(error.contains("ghost"), "{error}");
     assert!(error.contains("not a declared agent profile"), "{error}");
 }
 
@@ -199,8 +202,8 @@ fn a_state_naming_an_undeclared_agent_is_a_launch_failure() {
 #[test]
 fn a_transition_to_an_undeclared_state_is_a_launch_failure() {
     let set = machine_set(
-        json!([{ "name": "explore", "agent": "Explorer", "transitions": [{ "to": "ship" }] }]),
-        &["Explorer"],
+        json!([{ "name": "explore", "agentId": "explorer", "transitions": [{ "to": "ship" }] }]),
+        &["explorer"],
     );
     let error = refusal(&set).expect_err("a transition to nowhere cannot run");
     assert!(error.contains("ship"), "{error}");
@@ -211,11 +214,14 @@ fn a_transition_to_an_undeclared_state_is_a_launch_failure() {
 /// the first with no way to say which a transition addressed.
 #[test]
 fn a_state_running_another_shell_is_a_launch_failure() {
-    let mut set = machine_set(json!([{ "name": "explore", "agent": "Inner" }]), &["Inner"]);
+    let mut set = machine_set(
+        json!([{ "name": "explore", "agentId": "inner" }]),
+        &["inner"],
+    );
     let inner = set.agents.len() - 1;
     set.agents[inner]
         .capabilities
-        .push(fsm_capability(json!([{ "name": "a", "agent": "Root" }])));
+        .push(fsm_capability(json!([{ "name": "a", "agentId": "root" }])));
     let error = refusal(&set).expect_err("a shell cannot be a state");
     assert!(error.contains("itself an FSM shell"), "{error}");
 }
@@ -223,7 +229,7 @@ fn a_state_running_another_shell_is_a_launch_failure() {
 /// A well-formed machine passes, and so does a set with no machine in it.
 #[test]
 fn a_well_formed_machine_validates() {
-    assert!(refusal(&machine_set(two_state(), &["Explorer", "Builder"])).is_ok());
+    assert!(refusal(&machine_set(two_state(), &["explorer", "builder"])).is_ok());
     assert!(refusal(&GgCapabilitySet::minimal("mock/echo")).is_ok());
 }
 
@@ -234,10 +240,10 @@ fn a_well_formed_machine_validates() {
 fn an_unreachable_state_is_refused() {
     let set = machine_set(
         json!([
-            { "name": "explore", "agent": "Explorer" },
-            { "name": "orphan", "agent": "Builder" }
+            { "name": "explore", "agentId": "explorer" },
+            { "name": "orphan", "agentId": "builder" }
         ]),
-        &["Explorer", "Builder"],
+        &["explorer", "builder"],
     );
     let error = refusal(&set).expect_err("a state nothing can enter is not the machine written");
     assert!(error.contains("orphan"), "{error}");
@@ -259,18 +265,18 @@ fn a_transfer_the_outgoing_state_could_not_make_is_refused() {
         json!([
             {
                 "name": "explore",
-                "agent": "Explorer",
+                "agentId": "explorer",
                 "transitions": [{ "to": "build", "transfer": ["history", "tasks"] }]
             },
-            { "name": "build", "agent": "Builder" }
+            { "name": "build", "agentId": "builder" }
         ]),
-        &["Explorer", "Builder"],
+        &["explorer", "builder"],
     );
     // The state that transfers the task list keeps none.
     let explorer = set
         .agents
         .iter_mut()
-        .find(|agent| agent.name == "Explorer")
+        .find(|agent| agent.id == "explorer")
         .unwrap();
     explorer
         .capabilities
@@ -278,7 +284,7 @@ fn a_transfer_the_outgoing_state_could_not_make_is_refused() {
 
     let error = refusal(&set).expect_err("a transfer of a module the state has not is not the run");
     assert!(error.contains("tasks"), "{error}");
-    assert!(error.contains("Explorer"), "{error}");
+    assert!(error.contains("explorer"), "{error}");
     assert!(error.contains("holds no such module"), "{error}");
 }
 
@@ -290,18 +296,18 @@ fn a_transfer_of_the_runs_board_is_accepted_from_any_state() {
         json!([
             {
                 "name": "explore",
-                "agent": "Explorer",
+                "agentId": "explorer",
                 "transitions": [{ "to": "build", "transfer": ["history", "board"] }]
             },
-            { "name": "build", "agent": "Builder" }
+            { "name": "build", "agentId": "builder" }
         ]),
-        &["Explorer", "Builder"],
+        &["explorer", "builder"],
     );
     // Only the *other* state authors the board; the outgoing one holds it unowned.
     let builder = set
         .agents
         .iter_mut()
-        .find(|agent| agent.name == "Builder")
+        .find(|agent| agent.id == "builder")
         .unwrap();
     crate::tools::grant_configured(
         builder,
@@ -328,12 +334,12 @@ fn an_unknown_transfer_kind_is_refused() {
             json!([
                 {
                     "name": "explore",
-                    "agent": "Explorer",
+                    "agentId": "explorer",
                     "transitions": [{ "to": "build", "transfer": bad }]
                 },
-                { "name": "build", "agent": "Builder" }
+                { "name": "build", "agentId": "builder" }
             ]),
-            &["Explorer", "Builder"],
+            &["explorer", "builder"],
         );
         let error = refusal(&set).expect_err("a transfer gg cannot honour must fail the launch");
         assert!(
@@ -348,12 +354,12 @@ fn an_unknown_transfer_kind_is_refused() {
         json!([
             {
                 "name": "explore",
-                "agent": "Explorer",
+                "agentId": "explorer",
                 "transitions": [{ "to": "build", "transfer": ["history", "tasks", "history"] }]
             },
-            { "name": "build", "agent": "Builder" }
+            { "name": "build", "agentId": "builder" }
         ]),
-        &["Explorer", "Builder"],
+        &["explorer", "builder"],
     );
     assert!(refusal(&set).is_ok());
     let spec = FsmSpec::resolve(&set.agents[0]).unwrap().unwrap();
@@ -368,7 +374,7 @@ fn an_unknown_transfer_kind_is_refused() {
 /// machine's agents have memories.
 #[test]
 fn a_shell_declaring_other_capabilities_is_refused() {
-    let mut set = machine_set(two_state(), &["Explorer", "Builder"]);
+    let mut set = machine_set(two_state(), &["explorer", "builder"]);
     crate::tools::grant(&mut set.agents[0], "memories");
     let error = refusal(&set).expect_err("a shell reads none of its own capabilities");
     assert!(error.contains("memories"), "{error}");
@@ -379,11 +385,11 @@ fn a_shell_declaring_other_capabilities_is_refused() {
 /// deleting them wants the whole list.
 #[test]
 fn a_shell_declaring_a_workers_configuration_is_refused_part_by_part() {
-    let mut set = machine_set(two_state(), &["Explorer", "Builder"]);
+    let mut set = machine_set(two_state(), &["explorer", "builder"]);
     set.agents[0].model_id = "mock/echo".to_string();
     set.agents[0].custom_instructions = Some("be brief".to_string());
     set.agents[0].subagents = vec![GgSubagentRef {
-        agent: "Builder".to_string(),
+        agent_id: "builder".to_string(),
         description: String::new(),
         scopes: vec![GgSubagentScope::Subagent],
     }];
@@ -402,18 +408,18 @@ fn a_shell_declaring_a_workers_configuration_is_refused_part_by_part() {
 /// the agent is about to take. An ordinary profile resolves as itself.
 #[test]
 fn a_dispatch_onto_a_shell_resolves_the_entry_states_agent() {
-    let set = machine_set(two_state(), &["Explorer", "Builder"]);
+    let set = machine_set(two_state(), &["explorer", "builder"]);
     assert_eq!(
-        set.dispatched_agent(ROOT_AGENT).map(|a| a.name.as_str()),
-        Ok("Explorer")
+        set.dispatched_agent(ROOT_PROFILE_ID).map(|a| a.id.as_str()),
+        Ok("explorer")
     );
     assert_eq!(
-        set.dispatched_agent("Builder").map(|a| a.name.as_str()),
-        Ok("Builder")
+        set.dispatched_agent("builder").map(|a| a.id.as_str()),
+        Ok("builder")
     );
 }
 
-/// A machine whose entry agent this set does not declare is **reported by that agent's name**,
+/// A machine whose entry agent this set does not declare is **reported by that agent's id**,
 /// never answered with the shell — which `validate` refuses on the line below, and which is the
 /// same fault seen from the two ends of it.
 ///
@@ -422,16 +428,16 @@ fn a_dispatch_onto_a_shell_resolves_the_entry_states_agent() {
 /// profile in a set that is *meant* to carry no model, so answering with it would send each of them
 /// off to report the only agent whose empty binding is correct.
 #[test]
-fn a_machine_entering_an_undeclared_agent_is_reported_by_that_name() {
-    let set = machine_set(two_state(), &["Builder"]);
+fn a_machine_entering_an_undeclared_agent_is_reported_by_that_id() {
+    let set = machine_set(two_state(), &["builder"]);
     assert_eq!(
-        set.dispatched_agent(ROOT_AGENT),
+        set.dispatched_agent(ROOT_PROFILE_ID),
         Err(GgDispatchError::UndeclaredEntryAgent {
-            shell: ROOT_AGENT,
-            entry: "Explorer",
+            shell: ROOT_PROFILE_ID,
+            entry: "explorer",
         })
     );
-    assert!(refusal(&set).unwrap_err().contains("Explorer"));
+    assert!(refusal(&set).unwrap_err().contains("explorer"));
 }
 
 /// A duplicated transfer entry carries the module once — the transfer is a set, and a repeated
@@ -442,12 +448,12 @@ fn a_repeated_transfer_kind_is_carried_once() {
         json!([
             {
                 "name": "explore",
-                "agent": "Explorer",
+                "agentId": "explorer",
                 "transitions": [{ "to": "build", "transfer": ["tasks", "tasks", "history"] }]
             },
-            { "name": "build", "agent": "Builder" }
+            { "name": "build", "agentId": "builder" }
         ]),
-        &["Explorer", "Builder"],
+        &["explorer", "builder"],
     );
     let spec = FsmSpec::resolve(&set.agents[0]).unwrap().unwrap();
     assert_eq!(
@@ -463,19 +469,19 @@ fn a_repeated_transfer_kind_is_carried_once() {
 /// A position built from the machine's entry runs the entry state's agent and offers its edges.
 #[test]
 fn an_entry_position_names_the_entry_state() {
-    let set = machine_set(two_state(), &["Explorer", "Builder"]);
+    let set = machine_set(two_state(), &["explorer", "builder"]);
     let spec = Arc::new(FsmSpec::resolve(&set.agents[0]).unwrap().unwrap());
     let position = spec.entry_position();
-    assert_eq!(position.fsm(), "Root");
+    assert_eq!(position.fsm(), ROOT_PROFILE_ID);
     assert_eq!(position.state(), "explore");
-    assert_eq!(position.agent(), "Explorer");
+    assert_eq!(position.agent_id(), "explorer");
     assert_eq!(position.outgoing().len(), 1);
 }
 
 /// A declared target resolves to its edge; the successor's position is the target state.
 #[test]
 fn a_declared_target_resolves_and_moves() {
-    let set = machine_set(two_state(), &["Explorer", "Builder"]);
+    let set = machine_set(two_state(), &["explorer", "builder"]);
     let spec = Arc::new(FsmSpec::resolve(&set.agents[0]).unwrap().unwrap());
     let position = spec.entry_position();
     let transition = position.transition_to(" build ").expect("a declared edge");
@@ -485,7 +491,7 @@ fn a_declared_target_resolves_and_moves() {
     );
     let moved = position.moved_to(transition);
     assert_eq!(moved.state(), "build");
-    assert_eq!(moved.agent(), "Builder");
+    assert_eq!(moved.agent_id(), "builder");
     assert!(moved.outgoing().is_empty());
 }
 
@@ -493,7 +499,7 @@ fn a_declared_target_resolves_and_moves() {
 /// whole of the recovery from a mistyped state.
 #[test]
 fn an_undeclared_target_is_refused_with_the_legal_targets() {
-    let set = machine_set(two_state(), &["Explorer", "Builder"]);
+    let set = machine_set(two_state(), &["explorer", "builder"]);
     let spec = Arc::new(FsmSpec::resolve(&set.agents[0]).unwrap().unwrap());
     let refusal = spec
         .entry_position()
@@ -507,7 +513,7 @@ fn an_undeclared_target_is_refused_with_the_legal_targets() {
 /// A terminal state says so, rather than listing an empty menu the model would have to interpret.
 #[test]
 fn a_terminal_state_refuses_every_target() {
-    let set = machine_set(two_state(), &["Explorer", "Builder"]);
+    let set = machine_set(two_state(), &["explorer", "builder"]);
     let spec = Arc::new(FsmSpec::resolve(&set.agents[0]).unwrap().unwrap());
     let position = spec.entry_position();
     let terminal = position.moved_to(position.transition_to("build").unwrap());
@@ -527,11 +533,11 @@ fn a_terminal_state_refuses_every_target() {
 fn a_cyclic_machine_reaches_every_state() {
     let set = machine_set(
         json!([
-            { "name": "explore", "agent": "Explorer", "transitions": [{ "to": "build" }] },
-            { "name": "build", "agent": "Builder", "transitions": [{ "to": "explore" }, { "to": "verify" }] },
-            { "name": "verify", "agent": "Verifier" }
+            { "name": "explore", "agentId": "explorer", "transitions": [{ "to": "build" }] },
+            { "name": "build", "agentId": "builder", "transitions": [{ "to": "explore" }, { "to": "verify" }] },
+            { "name": "verify", "agentId": "verifier" }
         ]),
-        &["Explorer", "Builder", "Verifier"],
+        &["explorer", "builder", "verifier"],
     );
     assert_eq!(
         refusal(&set),

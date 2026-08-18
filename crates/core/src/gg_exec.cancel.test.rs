@@ -17,14 +17,14 @@ use crate::execution::{ContainerSpec, ContainerStart, ExecOutput, OutputSink};
 /// from the recorded `gg_mock_session.ndjson` capture, so the ingest under test parses
 /// exactly what the real binary emits.
 const IN_FLIGHT: &[&str] = &[
-    r#"{"timestamp":"2026-07-30T00:00:02Z","sessionId":"run-1","type":"usage","slot":"primary","modelId":"mock/echo","tokens":{"uncachedInput":100,"cachedInput":null,"output":20,"reasoning":null},"cost":{"comparable":0.01,"actual":0.01}}"#,
-    r#"{"timestamp":"2026-07-30T00:00:03Z","sessionId":"run-1","type":"usage","slot":"primary","modelId":"mock/echo","tokens":{"uncachedInput":100,"cachedInput":null,"output":20,"reasoning":null},"cost":{"comparable":0.01,"actual":0.01}}"#,
+    r#"{"timestamp":"2026-07-30T00:00:02Z","sessionId":"run-1","type":"usage","profileId":"root","modelId":"mock/echo","tokens":{"uncachedInput":100,"cachedInput":null,"output":20,"reasoning":null},"cost":{"comparable":0.01,"actual":0.01}}"#,
+    r#"{"timestamp":"2026-07-30T00:00:03Z","sessionId":"run-1","type":"usage","profileId":"root","modelId":"mock/echo","tokens":{"uncachedInput":100,"cachedInput":null,"output":20,"reasoning":null},"cost":{"comparable":0.01,"actual":0.01}}"#,
 ];
 
 /// The epilogue a *canceled* gg session emits on its way out — the part that exists only
 /// because the host asked it to stop rather than killing it.
 const EPILOGUE: &[&str] = &[
-    r#"{"timestamp":"2026-07-30T00:00:04Z","sessionId":"run-1","type":"session_summary","summary":{"terminalStatus":"canceled","agentsSpawned":1,"subagentCount":0,"maxSubagentDepth":0,"compactions":0,"ranOutOfContext":false,"contextOverflowCount":0,"finalFullness":0.0222,"issueReviews":0,"reviewCycles":0,"issuesReopened":0,"executionMode":"tool_calling","codeExecutions":0,"compileMs":0,"healing":{"healed":0,"applications":0,"stripFences":0,"stripProse":0,"dropDoubledResponse":0,"enabled":[]},"errors":{"turns":2,"errors":0,"maxConsecutive":0,"modelApi":0,"transpile":0,"programFault":0,"sandboxLimit":0,"missingCompletion":0,"loopAborts":0},"issuesCreated":0,"issuesCompleted":0,"slotCosts":[{"slot":"primary","modelId":"mock/echo","tokens":{"uncachedInput":2600,"cachedInput":null,"output":240,"reasoning":null},"cost":{"comparable":0.0063,"actual":0.0063}}],"effectiveTools":["shell","read_file","write_file","edit_file","list_dir"],"limits":{}}}"#,
+    r#"{"timestamp":"2026-07-30T00:00:04Z","sessionId":"run-1","type":"session_summary","summary":{"terminalStatus":"canceled","agentsSpawned":1,"subagentCount":0,"maxSubagentDepth":0,"compactions":0,"ranOutOfContext":false,"contextOverflowCount":0,"finalFullness":0.0222,"issueReviews":0,"reviewCycles":0,"issuesReopened":0,"executionMode":"tool_calling","codeExecutions":0,"compileMs":0,"healing":{"healed":0,"applications":0,"stripFences":0,"stripProse":0,"dropDoubledResponse":0,"enabled":[]},"errors":{"turns":2,"errors":0,"maxConsecutive":0,"modelApi":0,"transpile":0,"programFault":0,"sandboxLimit":0,"missingCompletion":0,"loopAborts":0},"issuesCreated":0,"issuesCompleted":0,"slotCosts":[{"profileId":"root","modelId":"mock/echo","tokens":{"uncachedInput":2600,"cachedInput":null,"output":240,"reasoning":null},"cost":{"comparable":0.0063,"actual":0.0063}}],"effectiveTools":["shell","read_file","write_file","edit_file","list_dir"],"limits":{}}}"#,
     r#"{"timestamp":"2026-07-30T00:00:05Z","sessionId":"run-1","type":"session_ended","status":"canceled"}"#,
 ];
 

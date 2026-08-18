@@ -37,12 +37,12 @@ function gg(
   };
 }
 
-const spawn = (agentId: string, slot: string, parentAgentId?: string) =>
+const spawn = (agentId: string, profileId: string, parentAgentId?: string) =>
   gg(
     agentId,
     {
       type: "agent_spawned",
-      slot,
+      profileId,
       modelId: "vendor/big",
       depth: parentAgentId == null ? 0 : 1,
     } as GgTelemetryKind,
@@ -71,7 +71,7 @@ function surface(
 describe("agent surface reduction", () => {
   it("lands each instance's surface on its own node", () => {
     const events = [
-      spawn("root", "Root"),
+      spawn("root", "root"),
       surface("root", ["read_file", "spawn_agent", "finish"]),
       spawn("agent-1", "reviewer", "root"),
       surface("agent-1", ["read_file", "approve", "request_changes"]),
@@ -113,7 +113,7 @@ describe("agent surface reduction", () => {
     // The wire omits the key entirely for tool calling, so the state layer settles it once
     // rather than leaving every consumer to tell absent from empty.
     const state = reduceGgEvents([
-      spawn("root", "Root"),
+      spawn("root", "root"),
       surface("root", ["shell"]),
     ]);
     expect(state.agents.get("root")?.surface?.apis).toEqual([]);
@@ -121,7 +121,7 @@ describe("agent surface reduction", () => {
 
   it("keeps a responses-as-code agent's modules and each function's own operation", () => {
     const state = reduceGgEvents([
-      spawn("root", "Root"),
+      spawn("root", "root"),
       surface(
         "root",
         ["read_file", "finish"],
@@ -158,7 +158,7 @@ describe("agent surface reduction", () => {
     // hold two agents in two modes, and a reader attributing the documentation band's tokens
     // to a mode needs the mode of the agent that spent them.
     const state = reduceGgEvents([
-      spawn("root", "Root"),
+      spawn("root", "root"),
       surface(
         "root",
         ["read_file"],
@@ -189,7 +189,7 @@ describe("agent surface reduction", () => {
     // program makes has one — the documentation family included — so there is nothing here
     // that has to be counted under something else.
     const state = reduceGgEvents([
-      spawn("root", "Root"),
+      spawn("root", "root"),
       gg("root", {
         type: "api_call",
         operation: "views.open_file",
@@ -219,7 +219,7 @@ describe("agent surface reduction", () => {
     // An instance read before its `agent_surface` arrived. Nothing degrades: the node is
     // exactly what it was, and the absence is what tells a read-out to render nothing.
     const state = reduceGgEvents([
-      spawn("root", "Root"),
+      spawn("root", "root"),
       gg("root", { type: "turn_started" } as GgTelemetryKind),
     ]);
     expect(state.agents.get("root")?.surface).toBeUndefined();

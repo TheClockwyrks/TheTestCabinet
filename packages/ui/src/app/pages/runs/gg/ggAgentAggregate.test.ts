@@ -5,8 +5,8 @@
 // should say "reviewer × 4" with four reviewers' worth of tokens under it — not four rows,
 // and not the implementer's spend leaking in. These also pin the cases that make the
 // grouping non-obvious: the main agent (never spawned, so its profile comes from the
-// configuration), a declared profile the run never used, and a profile the stream shows that
-// the configuration does not carry.
+// configuration), a declared profile the run never used, a profile the stream shows that the
+// configuration does not carry, and two profiles an operator gave the same name.
 
 import { describe, expect, it } from "vitest";
 import type {
@@ -22,7 +22,7 @@ import type {
 import type { HarnessEvent } from "../../../../client/types";
 import type { ModelPrices } from "../../../data/models";
 import type { ModelNameLookup, ModelPriceLookup } from "./ggCost";
-import { deriveGgAgentSummaries, UNNAMED_AGENT } from "./ggAgentAggregate";
+import { deriveGgAgentSummaries, UNKNOWN_PROFILE_ID } from "./ggAgentAggregate";
 import { deriveGgModules } from "./ggModules";
 import { reduceGgEvents, reduceGgEventsPerAgent } from "./useGgRunState";
 
@@ -48,7 +48,7 @@ function gg(
 
 function spawn(
   agentId: string,
-  slot: string,
+  profileId: string,
   modelId: string,
   parentAgentId?: string,
 ): HarnessEvent {
@@ -56,7 +56,7 @@ function spawn(
     agentId,
     {
       type: "agent_spawned",
-      slot,
+      profileId,
       modelId,
       depth: parentAgentId == null ? 0 : 1,
     } as GgTelemetryKind,
@@ -66,13 +66,13 @@ function spawn(
 
 function usage(
   agentId: string,
-  slot: string,
+  profileId: string,
   modelId: string,
   tokens: { input?: number; output?: number },
 ): HarnessEvent {
   return gg(agentId, {
     type: "usage",
-    slot,
+    profileId,
     modelId,
     tokens: {
       uncachedInput: tokens.input ?? null,
@@ -112,12 +112,16 @@ function status(
 // module fold reads as the declared half of what its instances then got.
 type CapabilitySpec = string | [string, Record<string, unknown>];
 
+// A declared profile: its id, and the display name it reads as — which defaults to the id,
+// because nothing resolves a profile by reading its name.
 function profile(
-  name: string,
+  id: string,
   modelId: string,
   caps: CapabilitySpec[],
+  name = id,
 ): GgAgentConfig {
   return {
+    id,
     name,
     modelId,
     capabilities: caps.map((cap) => {
@@ -188,7 +192,7 @@ function summarize(
   capabilitySet: GgCapabilitySet | null,
 ) {
   const derived = reduceGgEvents(events);
-  const perAgent = reduceGgEventsPerAgent(events);
+  const perAgent = reduceGgEventsPerAgent(events, capabilitySet);
   return deriveGgAgentSummaries(
     capabilitySet,
     derived.agentForest,
@@ -211,11 +215,11 @@ function summarize(
 /** The module row of one profile's summary, for the kind the test is about. */
 function moduleRow(
   summaries: ReturnType<typeof summarize>,
-  name: string,
+  profileId: string,
   kind: GgModuleKind,
 ) {
   return summaries
-    .find((summary) => summary.name === name)!
+    .find((summary) => summary.profileId === profileId)!
     .modules.find((row) => row.kind === kind)!;
 }
 
@@ -224,9 +228,9 @@ describe("deriveGgAgentSummaries", () => {
     // One Root and three reviewers. The reviewers' row must carry all three reviewers'
     // spend, and only theirs.
     const events = [
-      spawn("root", "Root", "vendor/big"),
+      spawn("root", "root", "vendor/big"),
       turn("root"),
-      usage("root", "Root", "vendor/big", { input: 1000, output: 100 }),
+      usage("root", "root", "vendor/big", { input: 1000, output: 100 }),
       ...["r1", "r2", "r3"].flatMap((id) => [
         spawn(id, "reviewer", "vendor/small", "root"),
         turn(id),
@@ -239,10 +243,12 @@ describe("deriveGgAgentSummaries", () => {
     const summaries = summarize(
       events,
       set(
-        profile("Root", "vendor/big", ["shell", "subagents"]),
+        profile("root", "vendor/big", ["shell", "subagents"], "Root"),
         profile("reviewer", "vendor/small", ["shell"]),
       ),
     );
+    expect(summaries.map((s) => s.profileId)).toEqual(["root", "reviewer"]);
+    // The names are what the rows read as; the ids are what they are grouped by.
     expect(summaries.map((s) => s.name)).toEqual(["Root", "reviewer"]);
 
     const [root, reviewer] = summaries;
@@ -264,16 +270,65 @@ describe("deriveGgAgentSummaries", () => {
     expect(reviewer!.modelName).toBe("vendor/small");
   });
 
+  it("keeps two profiles that share a display name apart", () => {
+    // A name is prose, so an operator may call two arms the same thing — here a reviewer
+    // on the big model and one on the small. Grouping on the name would fold them into a
+    // single row whose spend, turns and model are two configurations averaged together,
+    // which is precisely the comparison the Agents panel exists to make. The id keeps them
+    // two rows that happen to read alike.
+    const events = [
+      spawn("root", "root", "vendor/big"),
+      spawn("r1", "reviewer", "vendor/big", "root"),
+      turn("r1"),
+      usage("r1", "reviewer", "vendor/big", { input: 1000, output: 100 }),
+      spawn("r2", "reviewer-2", "vendor/small", "root"),
+      turn("r2"),
+      turn("r2"),
+      usage("r2", "reviewer-2", "vendor/small", { input: 200, output: 20 }),
+    ];
+
+    const summaries = summarize(
+      events,
+      set(
+        profile("root", "vendor/big", ["subagents"], "Root"),
+        profile("reviewer", "vendor/big", ["shell"], "Reviewer"),
+        profile("reviewer-2", "vendor/small", ["shell"], "Reviewer"),
+      ),
+    );
+
+    expect(summaries.map((s) => s.profileId)).toEqual([
+      "root",
+      "reviewer",
+      "reviewer-2",
+    ]);
+    expect(summaries.map((s) => s.name)).toEqual([
+      "Root",
+      "Reviewer",
+      "Reviewer",
+    ]);
+
+    const [, first, second] = summaries;
+    expect(first!.instances.map((i) => i.id)).toEqual(["r1"]);
+    expect(second!.instances.map((i) => i.id)).toEqual(["r2"]);
+    expect(first!.turns).toBe(1);
+    expect(second!.turns).toBe(2);
+    expect(first!.usage.totalTokens).toBe(1100);
+    expect(second!.usage.totalTokens).toBe(220);
+    // And each is priced at the model its own profile bound, not at one shared rate.
+    expect(first!.modelIds).toEqual(["vendor/big"]);
+    expect(second!.modelIds).toEqual(["vendor/small"]);
+  });
+
   it("keeps a declared profile the run never instantiated", () => {
     // The point of a declared profile that never ran is that you can see it did not.
     const summaries = summarize(
-      [spawn("root", "Root", "vendor/big"), turn("root")],
+      [spawn("root", "root", "vendor/big"), turn("root")],
       set(
-        profile("Root", "vendor/big", ["shell"]),
+        profile("root", "vendor/big", ["shell"], "Root"),
         profile("critic", "vendor/small", ["shell"]),
       ),
     );
-    const critic = summaries.find((s) => s.name === "critic");
+    const critic = summaries.find((s) => s.profileId === "critic");
     expect(critic?.instances).toEqual([]);
     expect(critic?.declared).toBe(true);
     expect(critic?.turns).toBe(0);
@@ -298,7 +353,7 @@ describe("deriveGgAgentSummaries", () => {
 
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         spawn("a1", "worker", "vendor/small", "root"),
         turn("a1"),
         turn("a1"),
@@ -312,57 +367,64 @@ describe("deriveGgAgentSummaries", () => {
         ]),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("worker", "vendor/small", ["filesystem"]),
       ),
     );
-    const worker = summaries.find((s) => s.name === "worker");
+    const worker = summaries.find((s) => s.profileId === "worker");
     expect(worker!.instances).toHaveLength(4);
     expect(worker!.turns).toBe(5);
     expect(worker!.calls.totalCalls).toBe(4);
     expect(worker!.callsPerResponse).toBeCloseTo(0.8, 12);
 
     // The Root took no turn of its own and called nothing, so it has no rate at all.
-    expect(summaries.find((s) => s.name === "Root")!.callsPerResponse).toBe(
-      null,
-    );
+    expect(
+      summaries.find((s) => s.profileId === "root")!.callsPerResponse,
+    ).toBe(null);
   });
 
   it("lists a profile the stream shows but the configuration does not carry", () => {
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         spawn("a1", "ghost", "vendor/small", "root"),
         turn("a1"),
       ],
-      set(profile("Root", "vendor/big", ["subagents"])),
+      set(profile("root", "vendor/big", ["subagents"], "Root")),
     );
-    const ghost = summaries.find((s) => s.name === "ghost");
+    const ghost = summaries.find((s) => s.profileId === "ghost");
     expect(ghost?.declared).toBe(false);
     expect(ghost?.instances.map((i) => i.id)).toEqual(["a1"]);
+    // A profile the configuration does not declare reads as the id it was spawned under —
+    // there is nothing else to call it.
+    expect(ghost?.name).toBe("ghost");
     // Declared profiles lead; an observed one follows them.
-    expect(summaries.map((s) => s.name)).toEqual(["Root", "ghost"]);
+    expect(summaries.map((s) => s.profileId)).toEqual(["root", "ghost"]);
   });
 
   it("reads the main agent's profile off the configuration when its stream never named one", () => {
     // The root is never spawned on a pre-attribution stream, so its profile is the
     // configuration's first — which is the root by definition, whatever it is called.
     const summaries = summarize(
-      [turn("root"), usage("root", "Main", "vendor/big", { input: 10 })],
-      set(profile("Main", "vendor/big", ["shell"])),
+      [turn("root"), usage("root", "main", "vendor/big", { input: 10 })],
+      set(profile("main", "vendor/big", ["shell"], "Main")),
     );
     expect(summaries).toHaveLength(1);
+    expect(summaries[0]!.profileId).toBe("main");
     expect(summaries[0]!.name).toBe("Main");
     expect(summaries[0]!.instances.map((i) => i.id)).toEqual(["root"]);
   });
 
-  it("groups an instance the stream never named under a single unnamed row", () => {
+  it("groups an instance the stream never identified under a single unknown row", () => {
     // A placeholder built from an out-of-order status event, before (or without) its spawn.
     const summaries = summarize(
-      [spawn("root", "Root", "vendor/big"), status("a7", "running")],
-      set(profile("Root", "vendor/big", ["subagents"])),
+      [spawn("root", "root", "vendor/big"), status("a7", "running")],
+      set(profile("root", "vendor/big", ["subagents"], "Root")),
     );
-    expect(summaries.map((s) => s.name)).toEqual(["Root", UNNAMED_AGENT]);
+    expect(summaries.map((s) => s.profileId)).toEqual([
+      "root",
+      UNKNOWN_PROFILE_ID,
+    ]);
     expect(summaries[1]!.declared).toBe(false);
   });
 
@@ -378,18 +440,18 @@ describe("deriveGgAgentSummaries", () => {
 
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         spawn("a1", "worker", "vendor/small", "root"),
         spawn("a2", "worker", "vendor/small", "root"),
         breakdown("a1", 200, 1000),
         breakdown("a2", 900, 1000),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("worker", "vendor/small", ["shell"]),
       ),
     );
-    const worker = summaries.find((s) => s.name === "worker")!;
+    const worker = summaries.find((s) => s.profileId === "worker")!;
     expect(worker.peakFullness).toBeCloseTo(0.9, 6);
     expect(worker.meanPeakFullness).toBeCloseTo(0.55, 6);
     expect(worker.peakTokens).toBe(900);
@@ -429,7 +491,7 @@ describe("deriveGgAgentSummaries", () => {
 
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         spawn("a1", "worker", "vendor/big", "root"),
         spawn("a2", "worker", "vendor/big", "root"),
         call("a1", "read_file"),
@@ -442,11 +504,11 @@ describe("deriveGgAgentSummaries", () => {
         request("a2", "m2", 500),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("worker", "vendor/big", ["filesystem", "shell"]),
       ),
     );
-    const worker = summaries.find((s) => s.name === "worker")!;
+    const worker = summaries.find((s) => s.profileId === "worker")!;
     expect(worker.calls.calls.map((t) => [t.name, t.calls])).toEqual([
       ["read_file", 2],
       ["shell", 1],
@@ -474,7 +536,7 @@ describe("deriveGgAgentSummaries", () => {
     // contents are the *agent's* — the only shape whose contents can honestly be shown here.
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         roster("root", [held("history", "history-0")]),
         spawn("r1", "reviewer", "vendor/small", "root"),
         roster(
@@ -502,7 +564,7 @@ describe("deriveGgAgentSummaries", () => {
         ),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("reviewer", "vendor/small", [
           ["memories", { scope: "shared" }],
         ]),
@@ -533,7 +595,7 @@ describe("deriveGgAgentSummaries", () => {
     // reviewer's memories" would be lying about the other instance.
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         roster("root", [held("history", "history-0")]),
         spawn("r1", "reviewer", "vendor/small", "root"),
         roster(
@@ -549,7 +611,7 @@ describe("deriveGgAgentSummaries", () => {
         ),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("reviewer", "vendor/small", ["memories"]),
       ),
     );
@@ -576,7 +638,7 @@ describe("deriveGgAgentSummaries", () => {
     // record still reports the scope it asked for. This note is the only place it shows.
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         roster("root", [held("history", "history-0")]),
         spawn("r1", "reviewer", "vendor/small", "root"),
         roster(
@@ -589,7 +651,7 @@ describe("deriveGgAgentSummaries", () => {
         ),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("reviewer", "vendor/small", [
           ["memories", { scope: "inherited" }],
         ]),
@@ -614,7 +676,7 @@ describe("deriveGgAgentSummaries", () => {
     // never say — it would invite a reader to treat one instance's tasks as the agent's.
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         roster("root", [
           held("history", "history-0"),
           held("tasks", "tasks-0"),
@@ -623,7 +685,7 @@ describe("deriveGgAgentSummaries", () => {
           type: "agent_transition",
           kind: "exec",
           toAgentId: "next",
-          agent: "Root",
+          profileId: "root",
           modules: [
             {
               kind: "tasks",
@@ -633,16 +695,16 @@ describe("deriveGgAgentSummaries", () => {
             } satisfies GgTransitionModule,
           ],
         } as GgTelemetryKind),
-        spawn("next", "Root", "vendor/big"),
+        spawn("next", "root", "vendor/big"),
         roster("next", [
           held("history", "history-1"),
           held("tasks", "tasks-0", { origin: "transferred" }),
         ]),
       ],
-      set(profile("Root", "vendor/big", ["tasks"])),
+      set(profile("root", "vendor/big", ["tasks"], "Root")),
     );
 
-    const tasks = moduleRow(summaries, "Root", "tasks");
+    const tasks = moduleRow(summaries, "root", "tasks");
     expect(tasks.sharing).toBe("carried");
     expect(tasks.agentScoped).toBeNull();
     expect(tasks.instances).toHaveLength(1);
@@ -656,10 +718,12 @@ describe("deriveGgAgentSummaries", () => {
     // No capability set: every profile is an observation, and the main agent reads under the
     // name its own spawn gave it.
     const summaries = summarize(
-      [spawn("root", "Root", "vendor/big"), turn("root")],
+      [spawn("root", "root", "vendor/big"), turn("root")],
       null,
     );
-    expect(summaries.map((s) => s.name)).toEqual(["Root"]);
+    expect(summaries.map((s) => s.profileId)).toEqual(["root"]);
+    // Nothing declares the profile, so its row reads as the id its spawn carried.
+    expect(summaries.map((s) => s.name)).toEqual(["root"]);
     expect(summaries[0]!.declared).toBe(false);
     expect(summaries[0]!.root).toBe(false);
     expect(summaries[0]!.capabilities).toEqual([]);
@@ -675,7 +739,7 @@ describe("deriveGgAgentSummaries", () => {
 
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         offered("root", ["spawn_agent", "finish"]),
         spawn("r1", "reviewer", "vendor/small", "root"),
         offered("r1", ["read_file", "exec", "approve"]),
@@ -684,12 +748,12 @@ describe("deriveGgAgentSummaries", () => {
         offered("r2", ["read_file", "approve"]),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("reviewer", "vendor/small", []),
       ),
     );
 
-    const reviewer = summaries.find((s) => s.name === "reviewer")!;
+    const reviewer = summaries.find((s) => s.profileId === "reviewer")!;
     const surface = reviewer.surface!;
     expect(surface.executionMode).toBe("tool_calling");
     expect(surface.reportingInstances).toBe(2);
@@ -709,7 +773,7 @@ describe("deriveGgAgentSummaries", () => {
     // The root's own surface is its own — a profile's union never reaches across profiles.
     expect(
       summaries
-        .find((s) => s.name === "Root")!
+        .find((s) => s.profileId === "root")!
         .surface!.tools.map((t) => t.name),
     ).toEqual(["spawn_agent", "finish"]);
   });
@@ -736,7 +800,7 @@ describe("deriveGgAgentSummaries", () => {
 
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         spawn("w1", "worker", "vendor/small", "root"),
         offered("w1", ["read_file", "write_file"], [files, views]),
         spawn("w2", "worker", "vendor/small", "root"),
@@ -749,12 +813,12 @@ describe("deriveGgAgentSummaries", () => {
         ),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("worker", "vendor/small", ["responses-as-code"]),
       ),
     );
 
-    const surface = summaries.find((s) => s.name === "worker")!.surface!;
+    const surface = summaries.find((s) => s.profileId === "worker")!.surface!;
     expect(surface.executionMode).toBe("responses_as_code");
     expect(surface.apis).toEqual([
       {
@@ -783,7 +847,7 @@ describe("deriveGgAgentSummaries", () => {
     // nothing, and both are calls this profile's programs made.
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         spawn("w1", "worker", "vendor/small", "root"),
         apiCall("w1", "views.open_file"),
         apiCall("w1", "views.current"),
@@ -791,15 +855,17 @@ describe("deriveGgAgentSummaries", () => {
         apiCall("w2", "views.open_file"),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("worker", "vendor/small", ["responses-as-code"]),
       ),
     );
 
-    const worker = summaries.find((s) => s.name === "worker")!;
+    const worker = summaries.find((s) => s.profileId === "worker")!;
     expect(worker.apiCalls.get("views.open_file")).toBe(2);
     expect(worker.apiCalls.get("views.current")).toBe(1);
-    expect(summaries.find((s) => s.name === "Root")!.apiCalls.size).toBe(0);
+    expect(summaries.find((s) => s.profileId === "root")!.apiCalls.size).toBe(
+      0,
+    );
   });
 
   it("leaves a run that never reported a surface with none, and nothing else changed", () => {
@@ -808,12 +874,12 @@ describe("deriveGgAgentSummaries", () => {
     // nothing" — and the rest of the row must fold exactly the same.
     const summaries = summarize(
       [
-        spawn("root", "Root", "vendor/big"),
+        spawn("root", "root", "vendor/big"),
         turn("root"),
-        usage("root", "Root", "vendor/big", { input: 100, output: 20 }),
+        usage("root", "root", "vendor/big", { input: 100, output: 20 }),
       ],
       set(
-        profile("Root", "vendor/big", ["subagents"]),
+        profile("root", "vendor/big", ["subagents"], "Root"),
         profile("reviewer", "vendor/small", []),
       ),
     );

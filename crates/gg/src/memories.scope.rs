@@ -36,8 +36,8 @@ type BoundInstance = (Arc<Mutex<MemoryStore>>, Arc<str>);
 /// neither is told what it wrote itself.
 #[derive(Debug, Default)]
 pub struct MemoryRegistry {
-    /// The store bound to each profile name, with its [module id](crate::modules::ModuleIdMint),
-    /// created lazily.
+    /// The store bound to each profile [id](test_cabinet_core::gg::GgAgentConfig::id), with its
+    /// [module id](crate::modules::ModuleIdMint), created lazily.
     entries: Mutex<BTreeMap<String, BoundInstance>>,
 }
 
@@ -47,9 +47,10 @@ impl MemoryRegistry {
         Self::default()
     }
 
-    /// The store bound to `profile`, and its [module id](crate::modules::Module::instance_id),
-    /// creating both (organized by `strategy`, bounded by `caps`, identified out of `ids`) on the
-    /// first instance that asks.
+    /// The store bound to the profile with [id](test_cabinet_core::gg::GgAgentConfig::id)
+    /// `profile`, and its [module id](crate::modules::Module::instance_id), creating both
+    /// (organized by `strategy`, bounded by `caps`, identified out of `ids`) on the first instance
+    /// that asks.
     ///
     /// A later instance takes the store as it stands, **including the limits the first instance's
     /// profile resolved**: they are one store, so there is one set of limits, and re-pointing them
@@ -197,7 +198,7 @@ pub fn check_scoping(set: &GgCapabilitySet, report: &mut LaunchReport) {
         }
         let strategy = strategy_of(agent);
         for reference in &agent.subagents {
-            let Some(child) = set.agent(&reference.agent) else {
+            let Some(child) = set.agent(&reference.agent_id) else {
                 continue;
             };
             if !child.is_enabled(CAPABILITY_MEMORIES)
@@ -212,20 +213,21 @@ pub fn check_scoping(set: &GgCapabilitySet, report: &mut LaunchReport) {
             let child_strategy = strategy_of(child);
             if child_strategy != strategy {
                 report.report(LaunchDefect::on_agent(
-                    &child.name,
+                    &child.id,
                     crate::validate::implementation_locus(CAPABILITY_MEMORIES),
                     child_strategy.id(),
                     format!(
-                        "`{}` inherits its memories from `{}`, which organizes them as `{}`; a \
-                         store is read by the calls its strategy offers, so gg could only give \
-                         `{}` an instance of its own — which is not the run this configuration \
-                         describes. Organize both the same way, or scope `{}` `{}`.",
+                        "`{child_id}` ({}) inherits its memories from `{}` ({}), which organizes \
+                         them as `{}`; a store is read by the calls its strategy offers, so gg \
+                         could only give `{child_id}` an instance of its own — which is not the \
+                         run this configuration describes. Organize both the same way, or scope \
+                         `{child_id}` `{}`.",
                         child.name,
+                        agent.id,
                         agent.name,
                         strategy.id(),
-                        child.name,
-                        child.name,
                         MemoryScope::default(),
+                        child_id = child.id,
                     ),
                 ));
             }
@@ -264,9 +266,10 @@ pub fn inherited_strategy_conflict(
     let strategy = declared_strategy(profile)?;
     let spawner = ctx.inherited.memories_organized_differently(strategy)?;
     Some(format!(
-        "agent `{}` is scoped `{scope}` and organizes its memories as `{}`, but the agent that \
-         spawned it organizes them as `{}`; a store is read by the calls its own strategy offers, \
-         so there is no handle onto it this agent could be given",
+        "agent `{}` ({}) is scoped `{scope}` and organizes its memories as `{}`, but the agent \
+         that spawned it organizes them as `{}`; a store is read by the calls its own strategy \
+         offers, so there is no handle onto it this agent could be given",
+        profile.id,
         profile.name,
         strategy.id(),
         spawner.id(),

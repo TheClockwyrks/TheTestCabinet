@@ -123,7 +123,7 @@ fn gg_record(id: &str) -> RunRecord {
         issues_created: 2,
         issues_completed: 2,
         slot_costs: vec![GgSlotCost {
-            slot: "primary".to_string(),
+            profile_id: "root".to_string(),
             model_id: "mock/echo".to_string(),
             tokens: TokenCounts {
                 uncached_input: Some(2600),
@@ -4619,7 +4619,7 @@ async fn gg_configs_round_trip_their_agent_sources() {
         description: String::new(),
         capability_set: GgCapabilitySet::minimal("mock/echo"),
         agent_sources: vec![crate::api::GgAgentSource {
-            agent: "Root".to_string(),
+            profile_id: "root".to_string(),
             agent_id: "a1".to_string(),
             overrides: vec!["customInstructions".to_string()],
         }],

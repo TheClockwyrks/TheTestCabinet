@@ -457,18 +457,19 @@ function IssueDetail({
         )}
 
         <dl className={panels.projMeta}>
-          {/* The profile the issue was filed *against* — the agent whoever filed it
-              chose to dispatch it to — as distinct from the agent id gg then spawned
-              under that profile, below. */}
+          {/* The id of the profile the issue was filed *against* — the profile whoever
+              filed it chose to dispatch it to — as distinct from the id of the agent gg
+              then spawned under that profile, below. The board records the profile id
+              rather than a name, so this reads as the id and needs nothing resolved. */}
           <div className={panels.projMetaRow}>
             <dt className={panels.projMetaLabel}>Assigned to</dt>
-            <dd className={panels.projMetaValue}>{issue.agent}</dd>
+            <dd className={panels.projMetaValue}>{issue.agentId}</dd>
           </div>
-          {issue.reviewers && issue.reviewers.length > 0 && (
+          {issue.reviewerIds && issue.reviewerIds.length > 0 && (
             <div className={panels.projMetaRow}>
               <dt className={panels.projMetaLabel}>Reviewers</dt>
               <dd className={panels.projMetaValue}>
-                {issue.reviewers.join(", ")}
+                {issue.reviewerIds.join(", ")}
               </dd>
             </div>
           )}
