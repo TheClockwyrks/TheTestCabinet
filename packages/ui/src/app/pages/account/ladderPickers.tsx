@@ -97,8 +97,13 @@ export function ladderAxisLabel(axis: LadderAxis): string {
 export const DEFAULT_LADDER_AXIS: LadderAxis = "rung";
 
 /**
- * The ordering setting: two mutually exclusive pills over {@link LADDER_AXIS_LABELS},
- * described by what the selected order buys.
+ * The ordering setting: a dropdown over {@link LADDER_AXIS_LABELS}, described by what
+ * the selected order buys.
+ *
+ * A dropdown rather than a pair of pills, because this is one setting with one answer
+ * sitting in a column of other settings — the row's control column should read as a
+ * value ("Rung by rung") the same way the gate's floor does, not as two buttons of
+ * which one happens to be lit.
  *
  * The choice is real and not cosmetic — a top-up emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
@@ -121,27 +126,23 @@ export function LadderAxisPicker({
       modified={value !== DEFAULT_LADDER_AXIS}
       onReset={() => onChange(DEFAULT_LADDER_AXIS)}
     >
-      <div
-        className={styles.settingPills}
-        role="radiogroup"
-        aria-label="Climb order"
-      >
-        {(Object.keys(LADDER_AXIS_LABELS) as LadderAxis[]).map((axis) => (
-          <button
-            key={axis}
-            type="button"
-            role="radio"
-            aria-checked={value === axis}
+      {(id) => (
+        <span className={styles.settingSelect}>
+          <select
+            id={id}
+            className={exec.select}
+            value={value}
             disabled={disabled}
-            className={`${styles.groupPick} ${
-              value === axis ? styles.groupPickOn : ""
-            }`}
-            onClick={() => onChange(axis)}
+            onChange={(e) => onChange(e.target.value as LadderAxis)}
           >
-            {LADDER_AXIS_LABELS[axis]}
-          </button>
-        ))}
-      </div>
+            {(Object.keys(LADDER_AXIS_LABELS) as LadderAxis[]).map((axis) => (
+              <option key={axis} value={axis}>
+                {LADDER_AXIS_LABELS[axis]}
+              </option>
+            ))}
+          </select>
+        </span>
+      )}
     </SettingRow>
   );
 }

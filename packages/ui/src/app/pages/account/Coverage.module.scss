@@ -108,7 +108,8 @@
 }
 
 // A checkbox + label pair (auto-top-up), laid out inline so the label reads as one
-// sentence with its box rather than as a stray caption.
+// sentence with its box rather than as a stray caption. Also used in the plan editor's
+// settings column, which is why the alignment below is a separate class.
 .controlToggle {
   display: inline-flex;
   align-items: center;
@@ -119,14 +120,24 @@
   cursor: pointer;
 }
 
-// The action buttons, pushed to the far right of the control strip and allowed to
-// wrap as a block once the row runs out of width.
+// Starts the control strip's right-hand cluster: this item and everything after it are
+// pushed to the strip's trailing edge, leaving only the "runs in this order" statement
+// on the left. Carried by the auto-top-up toggle, so the setting sits with the buttons
+// that act on the same thing rather than trailing the statement it has nothing to do
+// with. Exactly one item in a strip may carry it — two auto margins split the free
+// space between them instead of collecting it at one end, which is why `.controlActions`
+// no longer sets its own.
+.controlEnd {
+  margin-left: auto;
+}
+
+// The action buttons at the trailing end of the control strip, allowed to wrap as a
+// block once the row runs out of width.
 .controlActions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: t.$space-sm;
-  margin-left: auto;
 }
 
 // The "paused" pill beside a plan's title, in the same warning colour the

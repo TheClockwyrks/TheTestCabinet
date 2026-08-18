@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type {
   CoverageGroup,
@@ -75,13 +75,13 @@ export function LadderEditPage() {
   // fed exactly as one created by any other client.
   const [outerAxis, setOuterAxis] = useState<LadderAxis>("rung");
   const [autoTopUp, setAutoTopUp] = useState(true);
-  // Carried through untouched rather than edited here, exactly as a coverage plan's is:
-  // a new ladder is created **disabled** and enabling it is the dashboard's control,
-  // beside the board that shows what enabling would start. Saving a climb describes the
-  // question; it must never be the gesture that starts paying for the answer.
-  const [paused, setPaused] = useState(true);
   const [bufferTarget, setBufferTarget] = useState<number | null>(null);
   const [accountBuffer, setAccountBuffer] = useState(FALLBACK_BUFFER_TARGET);
+  // Whether the ladder was enabled when this form loaded. Not state, because nothing
+  // here renders or edits it: it is only the fallback for the save's read-back below,
+  // for a transport that cannot re-read a schedule on its own. A ladder being created
+  // has none, and is created disabled.
+  const loadedPaused = useRef(true);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -121,8 +121,8 @@ export function LadderEditPage() {
           );
           setOuterAxis(existing.outerAxis);
           setAutoTopUp(existing.autoTopUp);
-          setPaused(existing.paused);
           setBufferTarget(existing.bufferTarget ?? null);
+          loadedPaused.current = existing.paused;
         }
         setLoading(false);
       })
@@ -170,25 +170,37 @@ export function LadderEditPage() {
 
   async function onSave() {
     if (!token || !savable) return;
-    const input: LadderInput = {
-      name: name.trim(),
-      runsPerCell,
-      gate,
-      comboGroupIds,
-      combos,
-      rungs,
-      schedule: {
-        outerAxis,
-        paused,
-        autoTopUp,
-        // Omitted rather than sent as 0 when there is no override — null means
-        // "inherit my account default", 0 means "never top this ladder up".
-        ...(bufferTarget === null ? {} : { bufferTarget }),
-      },
-    };
     setBusy(true);
     setError(null);
     try {
+      // Whether the ladder is enabled is not a setting of this page — it is the
+      // dashboard's control, beside the board that shows what enabling would start —
+      // but the schedule is written whole, so the flag has to be carried. It is read
+      // back **here**, at save time, rather than held from the load: an edit that
+      // takes ten minutes must not re-assert the state the ladder was in when the
+      // form opened, and so quietly re-enable a ladder its reviewer has since
+      // disabled. A new ladder is always created disabled.
+      const paused =
+        editing && ladderId
+          ? ((await backend?.getLadderSchedule?.(ladderId, token))?.paused ??
+            loadedPaused.current)
+          : true;
+      const input: LadderInput = {
+        name: name.trim(),
+        runsPerCell,
+        gate,
+        comboGroupIds,
+        combos,
+        rungs,
+        schedule: {
+          outerAxis,
+          paused,
+          autoTopUp,
+          // Omitted rather than sent as 0 when there is no override — null means
+          // "inherit my account default", 0 means "never top this ladder up".
+          ...(bufferTarget === null ? {} : { bufferTarget }),
+        },
+      };
       if (editing && ladderId && backend?.updateLadder) {
         await backend.updateLadder(ladderId, input, token);
       } else if (backend?.createLadder) {
