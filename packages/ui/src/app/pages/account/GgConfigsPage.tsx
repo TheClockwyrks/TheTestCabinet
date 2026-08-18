@@ -7,6 +7,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
+import { GgSectionTabs } from "./GgSectionTabs";
 import { savedKey, useGgConfigs } from "../runs/gg/useGgConfigs";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -23,7 +24,11 @@ import styles from "./Coverage.module.scss";
 export function GgConfigsPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
-  const { saved, loading, error, reload } = useGgConfigs();
+  // Both halves: the stored configurations, and the same ones with every imported agent
+  // resolved. The row's summary is of what a run would carry, which is the resolved
+  // form — a configuration following a saved agent that has since changed would
+  // otherwise describe itself by the copy it was last saved with.
+  const { saved, options, loading, error, reload } = useGgConfigs();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -53,9 +58,15 @@ export function GgConfigsPage() {
   );
 
   const renderSaved = (config: GgConfig) => {
-    const on = (config.capabilitySet.agents?.[0]?.capabilities ?? []).filter(
+    const resolved =
+      options.find((option) => option.key === savedKey(config.id))
+        ?.capabilitySet ?? config.capabilitySet;
+    const on = (resolved.agents?.[0]?.capabilities ?? []).filter(
       (c) => c.enabled,
     ).length;
+    // Distinct saved agents, not profiles: importing one agent twice is still one
+    // agent this configuration follows.
+    const shared = new Set(config.agentSources.map((s) => s.agentId)).size;
     return (
       <div key={config.id} className={styles.rowCard}>
         <div className={styles.rowMain}>
@@ -68,6 +79,9 @@ export function GgConfigsPage() {
           <span className={styles.rowSub}>
             {config.description ? `${config.description} · ` : ""}
             {on} capabilities on
+            {shared
+              ? ` · follows ${shared} saved ${shared === 1 ? "agent" : "agents"}`
+              : ""}
           </span>
         </div>
         <span className={styles.rowActions}>
@@ -110,6 +124,7 @@ export function GgConfigsPage() {
         )}
       </div>
       <AccountTabs active="gg" />
+      <GgSectionTabs active="configs" />
 
       {(error || actionError) && (
         <p className={`${exec.notice} ${exec.error}`}>{error ?? actionError}</p>

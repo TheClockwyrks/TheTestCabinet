@@ -52,6 +52,8 @@ mod m20260815_000026_add_job_attribution;
 mod m20260815_000027_add_coverage_plan_scheduling;
 mod m20260815_000028_create_coverage_settings;
 mod m20260815_000029_create_ladder;
+mod m20260818_000030_create_gg_agent;
+mod m20260818_000031_add_gg_config_agent_sources;
 
 pub struct Migrator;
 
@@ -91,6 +93,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260815_000027_add_coverage_plan_scheduling::Migration),
             Box::new(m20260815_000028_create_coverage_settings::Migration),
             Box::new(m20260815_000029_create_ladder::Migration),
+            Box::new(m20260818_000030_create_gg_agent::Migration),
+            Box::new(m20260818_000031_add_gg_config_agent_sources::Migration),
         ]
     }
 }

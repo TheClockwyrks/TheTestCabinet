@@ -14,8 +14,9 @@ account-scoped tooling, rather than being reassembled inside every launch form.
 
 ## Registering one
 
-Account → gg lists the configurations on the signed-in account. Every
-configuration an operator can pick is one that account wrote.
+Account → gg lists the configurations on the signed-in account, in a tab beside
+the account's saved agents. Every configuration an operator can pick is one that
+account wrote.
 
 Creating or editing one opens the capability-set editor, which is organized into
 three tabs:
@@ -64,6 +65,12 @@ and the default profile for issue dispatch and helper agents. More profiles are
 how a study gives different agents different tools, models, prompts or
 execution modes, such as a cheap-and-fast scout, a careful reviewer and a
 code-writing implementer.
+
+A profile is declared either inline, belonging to this configuration alone, or
+imported from a [saved agent](/gg/agents/) authored on its own. An imported
+profile follows the saved agent in every field the configuration does not
+override, and is resolved into an ordinary profile before the configuration is
+stored or launched.
 
 Being the root is a flag rather than a name or a position. A fresh configuration
 starts with one profile called `Root`, it can be renamed to anything, the flag
@@ -299,6 +306,9 @@ Configurations are per-account and private, stored by the backend:
 | `POST /gg/configs`        | Register one.                 |
 | `PUT /gg/configs/{id}`    | Update one in place.          |
 | `DELETE /gg/configs/{id}` | Delete one.                   |
+
+A configuration is stored with every agent written out in full, alongside the
+saved agent each imported profile follows and the fields it overrides.
 
 Deleting a configuration does not disturb runs launched from it: every gg run
 records its own resolved capability set, so the analysis surfaces keep slicing

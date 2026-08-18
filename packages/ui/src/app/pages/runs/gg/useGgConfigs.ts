@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GgCapabilitySet, GgConfig } from "@test-cabinet/run-record/gg";
 import { useAuth } from "../../../../client/auth";
 import { useOptionalBackend } from "../../../../client/context";
+import { attachAgentSources, resolveCapabilitySet } from "./ggAgentLibrary";
 import { type GgConfigDraft, draftFromCapabilitySet } from "./ggConfigDraft";
+import { useGgAgents } from "./useGgAgents";
 
 /**
  * One pickable gg configuration — always one the signed-in account registered.
@@ -16,7 +18,10 @@ export interface GgConfigOption {
   key: string;
   name: string;
   description: string;
-  /** The capability set a run launched from it carries (before the model binds). */
+  /**
+   * The capability set a run launched from it carries (before the model binds), with
+   * every [imported agent](./ggAgentLibrary) resolved against the library as it stands.
+   */
   capabilitySet: GgCapabilitySet;
   /** The same configuration in editable form (what the editor mounts). */
   draft: GgConfigDraft;
@@ -38,6 +43,15 @@ export function savedKey(id: string): string {
  */
 export function useGgConfigs() {
   const { token } = useAuth();
+  // An agent a configuration imported is resolved here rather than stored resolved, so
+  // a configuration follows the saved agent as it stands now in every field it does not
+  // override. gg still sees a set whose agents are whole: the resolution happens before
+  // the option is offered to anything that launches or edits it.
+  const {
+    agents: library,
+    loading: libraryLoading,
+    error: libraryError,
+  } = useGgAgents();
   // Optional, not asserted: the comparison detail page reads this and renders on
   // the static site, which mounts no backend provider. "No backend" is already
   // one of the two ways this resolves to no configurations at all.
@@ -77,14 +91,26 @@ export function useGgConfigs() {
 
   const options = useMemo<GgConfigOption[]>(
     () =>
-      saved.map((config) => ({
-        key: savedKey(config.id),
-        name: config.name,
-        description: config.description,
-        capabilitySet: config.capabilitySet,
-        draft: draftFromCapabilitySet(config.capabilitySet),
-      })),
-    [saved],
+      // Nothing is offered until the library is in hand. A configuration resolved
+      // against an empty library is the copy it was last saved with, which is exactly
+      // what an import exists to stop a launch from carrying.
+      libraryLoading
+        ? []
+        : saved.map((config) => {
+            const capabilitySet = resolveCapabilitySet(config, library);
+            return {
+              key: savedKey(config.id),
+              name: config.name,
+              description: config.description,
+              capabilitySet,
+              draft: attachAgentSources(
+                draftFromCapabilitySet(capabilitySet),
+                config.agentSources,
+                library,
+              ),
+            };
+          }),
+    [saved, library, libraryLoading],
   );
 
   return {
@@ -92,8 +118,11 @@ export function useGgConfigs() {
     options,
     /** The same configurations, as stored. */
     saved,
-    loading,
-    error,
+    loading: loading || libraryLoading,
+    // A library that failed to load is reported as a fault of this hook: a
+    // configuration resolved without it is the copy it was last saved with, and nothing
+    // downstream could tell that from the real thing.
+    error: error ?? libraryError,
     reload,
   };
 }

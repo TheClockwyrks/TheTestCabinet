@@ -4723,9 +4723,17 @@ export type GgConfig = {
    */
   description: string;
   /**
-   * The capability set a run launched from this configuration carries.
+   * The capability set a run launched from this configuration carries. Every agent
+   * is written out in full, whether it was declared inline or imported from a
+   * [saved agent](super::gg_agent): gg is handed a configuration whose agents are
+   * already whole and resolves no reference of its own.
    */
   capabilitySet: GgCapabilitySet;
+  /**
+   * Where each imported agent came from. A profile declared inline has no entry, so
+   * a configuration that imports nothing carries an empty list.
+   */
+  agentSources: Array<GgAgentSource>;
   /**
    * RFC 3339 of when the configuration was last saved.
    */
@@ -4746,9 +4754,102 @@ export type GgConfigInput = {
    */
   description: string;
   /**
-   * The capability set to save.
+   * The capability set to save, with every agent resolved.
    */
   capabilitySet: GgCapabilitySet;
+  /**
+   * Where each imported agent came from.
+   */
+  agentSources: Array<GgAgentSource>;
+};
+
+/**
+ * The provenance of one agent in a configuration: the [saved
+ * agent](super::gg_agent::GgSavedAgent) it was imported from, and the fields this
+ * configuration pins itself.
+ *
+ * This is what makes an import a live reference rather than a copy. A field named in
+ * [`overrides`](Self::overrides) is taken from the configuration's own resolved agent;
+ * every other field is taken from the saved agent as it stands, so editing the saved
+ * agent reshapes each configuration that imported it.
+ */
+export type GgAgentSource = {
+  /**
+   * The [name](test_cabinet_core::gg::GgAgentConfig::name) the imported profile
+   * carries in this configuration. Names are unique within a set, so this is what
+   * ties the source to its agent.
+   */
+  agent: string;
+  /**
+   * The [id](super::gg_agent::GgSavedAgent::id) of the saved agent it follows. An id
+   * no longer on the account leaves the profile as the ordinary inline agent the
+   * capability set already holds.
+   */
+  agentId: string;
+  /**
+   * The agent fields this configuration overrides, each a path into the profile:
+   * `model`, `tools`, `operations`, `customInstructions`, `systemPromptTemplate`,
+   * `promptCacheTtl`, `loopDetection`, `subagents`, `hooks`, or
+   * `capabilities.<capability id>` for one capability.
+   */
+  overrides: Array<string>;
+};
+
+/**
+ * An operator's saved, reusable agent profile: one agent authored on its own, ready to
+ * be imported into any number of gg configurations.
+ */
+export type GgSavedAgent = {
+  /**
+   * The saved agent's opaque id (minted on create). This is what an importing
+   * configuration points at, so renaming the agent never breaks an import.
+   */
+  id: string;
+  /**
+   * The profile's name — the agent's own [`name`](GgAgentConfig::name), lifted out so
+   * the library can be listed and ordered by it. There is deliberately no second
+   * name: the thing an operator names in the editor is the agent.
+   */
+  name: string;
+  /**
+   * A one-line note on what the agent is for. Empty when unset. The library's own
+   * note — not the caller-scoped description a roster entry carries, which says when
+   * *one particular* agent should put this one to work.
+   */
+  description: string;
+  /**
+   * The profile itself, in exactly the form a configuration's agent list holds.
+   */
+  agent: GgAgentConfig;
+  /**
+   * The model slots this agent's bindings defer to. Carried with the agent because a
+   * binding names a slot the *configuration* declares: importing this agent into one
+   * that does not declare a named slot declares it, with the default given here.
+   */
+  modelSlots: Array<GgModelSlot>;
+  /**
+   * RFC 3339 of when the agent was last saved.
+   */
+  updatedAt: string;
+};
+
+/**
+ * The create/update body for a saved agent (the server assigns `id` and `updatedAt`,
+ * and lifts `name` off the agent itself).
+ */
+export type GgSavedAgentInput = {
+  /**
+   * A one-line note on what the agent is for.
+   */
+  description: string;
+  /**
+   * The profile to save. Its `name` becomes the library entry's name.
+   */
+  agent: GgAgentConfig;
+  /**
+   * The model slots this agent's bindings defer to.
+   */
+  modelSlots: Array<GgModelSlot>;
 };
 
 /**

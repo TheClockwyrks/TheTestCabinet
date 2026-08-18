@@ -129,11 +129,10 @@ export const routes = {
   accountGroupEdit: (groupId: string): string =>
     `/account/groups/${groupId}/edit`,
   // The account section's gg tab: the operator's registered gg configurations
-  // (named capability sets) plus the read-only built-ins, and their create/edit
-  // pages. A configuration is what the new-run form launches once `gg` is picked as
-  // the orchestrator. `new` is a static segment so it ranks above `:configId`; the
-  // create page optionally seeds itself from an existing configuration
-  // (`?from=builtin:<name>` / `?from=saved:<id>`) so a built-in can be duplicated.
+  // (named capability sets) and their create/edit pages. A configuration is what the
+  // new-run form launches once `gg` is picked as the orchestrator. `new` is a static
+  // segment so it ranks above `:configId`; the create page optionally seeds itself
+  // from an existing configuration (`?from=saved:<id>`) so one can be duplicated.
   accountGgConfigs: (): string => "/account/gg",
   accountGgConfigNew: (from?: string): string =>
     from
@@ -141,6 +140,17 @@ export const routes = {
       : "/account/gg/new",
   accountGgConfigEdit: (configId: string): string =>
     `/account/gg/${configId}/edit`,
+  // The other half of that tab: the operator's saved gg agents, agent profiles
+  // authored on their own for configurations to import. `agents` is a static segment
+  // under `/account/gg`, so it ranks above `:configId` the same way `new` does, and
+  // its own pages sit under it.
+  accountGgAgents: (): string => "/account/gg/agents",
+  accountGgAgentNew: (from?: string): string =>
+    from
+      ? `/account/gg/agents/new?from=${encodeURIComponent(from)}`
+      : "/account/gg/agents/new",
+  accountGgAgentEdit: (agentId: string): string =>
+    `/account/gg/agents/${agentId}/edit`,
   runs: (): string => "/runs",
   // The publishable-failures worklist (consoles only): produced catastrophic /
   // timed-out runs awaiting publish. The static site never links to it.
@@ -211,7 +221,9 @@ export const routes = {
   // Discover's editor (`?q=` as **text**, `?range=` as the picker token), so a
   // question is composed where the completer and the field sidebar are and saved
   // without a second editor existing anywhere.
-  ggAnalysisSaved: (opts?: { create?: { query: string; range?: string } }): string => {
+  ggAnalysisSaved: (opts?: {
+    create?: { query: string; range?: string };
+  }): string => {
     if (!opts?.create) return "/gg/saved";
     const params = new URLSearchParams({ new: "1" });
     if (opts.create.query) params.set("q", opts.create.query);
@@ -382,6 +394,11 @@ export const routePatterns = {
   accountGgConfigs: "/account/gg",
   accountGgConfigNew: "/account/gg/new",
   accountGgConfigEdit: "/account/gg/:configId/edit",
+  // The saved gg agents, under the same tab. `agents` is static, so it and its
+  // children outrank the dynamic `:configId`.
+  accountGgAgents: "/account/gg/agents",
+  accountGgAgentNew: "/account/gg/agents/new",
+  accountGgAgentEdit: "/account/gg/agents/:agentId/edit",
   runs: "/runs",
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",

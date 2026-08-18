@@ -40,11 +40,11 @@ use super::AppState;
 
 /// The longest a configuration's display name may be. Names are shown in a
 /// dropdown, so a pasted wall of text is rejected rather than truncated.
-const MAX_NAME_LEN: usize = 80;
+pub(crate) const MAX_NAME_LEN: usize = 80;
 
 /// The longest a configuration's description may be — a one-line note, not a
 /// document.
-const MAX_DESCRIPTION_LEN: usize = 280;
+pub(crate) const MAX_DESCRIPTION_LEN: usize = 280;
 
 /// An operator's saved, reusable gg configuration: a named
 /// [capability set](GgCapabilitySet) the new-run form can launch as-is.
@@ -58,10 +58,43 @@ pub struct GgConfig {
     pub name: String,
     /// A one-line note on what the configuration is for. Empty when unset.
     pub description: String,
-    /// The capability set a run launched from this configuration carries.
+    /// The capability set a run launched from this configuration carries. Every agent
+    /// is written out in full, whether it was declared inline or imported from a
+    /// [saved agent](super::GgSavedAgent): gg is handed a configuration whose agents are
+    /// already whole and resolves no reference of its own.
     pub capability_set: GgCapabilitySet,
+    /// Where each imported agent came from. A profile declared inline has no entry, so
+    /// a configuration that imports nothing carries an empty list.
+    pub agent_sources: Vec<GgAgentSource>,
     /// RFC 3339 of when the configuration was last saved.
     pub updated_at: String,
+}
+
+/// The provenance of one agent in a configuration: the [saved
+/// agent](super::GgSavedAgent) it was imported from, and the fields this
+/// configuration pins itself.
+///
+/// This is what makes an import a live reference rather than a copy. A field named in
+/// [`overrides`](Self::overrides) is taken from the configuration's own resolved agent;
+/// every other field is taken from the saved agent as it stands, so editing the saved
+/// agent reshapes each configuration that imported it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgAgentSource {
+    /// The [name](test_cabinet_core::gg::GgAgentConfig::name) the imported profile
+    /// carries in this configuration. Names are unique within a set, so this is what
+    /// ties the source to its agent.
+    pub agent: String,
+    /// The [id](super::GgSavedAgent::id) of the saved agent it follows. An id
+    /// no longer on the account leaves the profile as the ordinary inline agent the
+    /// capability set already holds.
+    pub agent_id: String,
+    /// The agent fields this configuration overrides, each a path into the profile:
+    /// `model`, `tools`, `operations`, `customInstructions`, `systemPromptTemplate`,
+    /// `promptCacheTtl`, `loopDetection`, `subagents`, `hooks`, or
+    /// `capabilities.<capability id>` for one capability.
+    pub overrides: Vec<String>,
 }
 
 /// The create/update body for a gg configuration (the server assigns `id` and
@@ -75,8 +108,11 @@ pub struct GgConfigInput {
     /// A one-line note on what the configuration is for.
     #[serde(default)]
     pub description: String,
-    /// The capability set to save.
+    /// The capability set to save, with every agent resolved.
     pub capability_set: GgCapabilitySet,
+    /// Where each imported agent came from.
+    #[serde(default)]
+    pub agent_sources: Vec<GgAgentSource>,
 }
 
 /// `GET /gg/configs` — every configuration the token account owns, by name.
@@ -146,12 +182,12 @@ pub async fn delete_config(
 }
 
 /// A fresh opaque id for a configuration.
-fn new_id() -> String {
+pub(crate) fn new_id() -> String {
     cuid2::create_id()
 }
 
 /// The current time as an RFC 3339 `updatedAt` string.
-fn now() -> Result<String, ApiError> {
+pub(crate) fn now() -> Result<String, ApiError> {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting updatedAt: {e}")))
@@ -186,6 +222,7 @@ pub(crate) fn config_from_input(
         name,
         description,
         capability_set: input.capability_set,
+        agent_sources: input.agent_sources,
         updated_at: updated_at.to_string(),
     })
 }

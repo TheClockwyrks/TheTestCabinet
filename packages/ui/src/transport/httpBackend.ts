@@ -67,6 +67,8 @@ import type {
 import type {
   GgConfig,
   GgConfigInput,
+  GgSavedAgent,
+  GgSavedAgentInput,
   GgProgramLanguage,
 } from "@test-cabinet/run-record/gg";
 import type {
@@ -945,6 +947,37 @@ export function createHttpBackend(baseUrl: string): BackendClient {
 
     async deleteGgConfig(id: string, token: string): Promise<void> {
       await delVoid(baseUrl, `/gg/configs/${encodeURIComponent(id)}`, token);
+    },
+
+    // The operator's saved gg agents — agent profiles authored on their own, which a
+    // configuration imports and may override locally. Per-account, like the
+    // configurations that import them.
+    async listGgAgents(token: string): Promise<GgSavedAgent[]> {
+      return getJson<GgSavedAgent[]>(baseUrl, "/gg/agents", token);
+    },
+
+    async createGgAgent(
+      input: GgSavedAgentInput,
+      token: string,
+    ): Promise<GgSavedAgent> {
+      return postJson<GgSavedAgent>(baseUrl, "/gg/agents", input, token);
+    },
+
+    async updateGgAgent(
+      id: string,
+      input: GgSavedAgentInput,
+      token: string,
+    ): Promise<GgSavedAgent> {
+      return putJson<GgSavedAgent>(
+        baseUrl,
+        `/gg/agents/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteGgAgent(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/agents/${encodeURIComponent(id)}`, token);
     },
 
     // The gg analysis query surface. The body is the *compiled* query — the client

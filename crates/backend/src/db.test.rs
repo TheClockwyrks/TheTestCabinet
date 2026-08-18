@@ -4547,6 +4547,105 @@ async fn gg_dashboards_round_trip_and_scope_to_account() {
 }
 
 #[tokio::test]
+async fn gg_agents_round_trip_and_scope_to_account() {
+    use test_cabinet_core::gg::{GgAgentConfig, GgModelSlot};
+
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.list_gg_agents("u1").await.unwrap().is_empty());
+
+    let agent = crate::api::GgSavedAgent {
+        id: "a1".to_string(),
+        name: "reviewer".to_string(),
+        description: "reviews what the implementer wrote".to_string(),
+        agent: GgAgentConfig {
+            name: "reviewer".to_string(),
+            model_slot: Some("critic".to_string()),
+            ..GgAgentConfig::root()
+        },
+        model_slots: vec![GgModelSlot {
+            name: "critic".to_string(),
+            default_model_id: Some("mock/echo".to_string()),
+        }],
+        updated_at: "2026-08-18T00:00:00Z".to_string(),
+    };
+    db.insert_gg_agent("u1", &agent).await.unwrap();
+
+    // Both JSON columns are read and written whole, so the profile a configuration
+    // imports is byte-for-byte the profile that was saved.
+    let got = db.get_gg_agent("u1", "a1").await.unwrap().unwrap();
+    assert_eq!(got.agent, agent.agent);
+    assert_eq!(got.model_slots, agent.model_slots);
+    assert_eq!(got.name, "reviewer");
+
+    // The library belongs to the account that wrote it.
+    assert!(db.get_gg_agent("u2", "a1").await.unwrap().is_none());
+    assert!(db.list_gg_agents("u2").await.unwrap().is_empty());
+
+    let mut edited = agent.clone();
+    edited.agent.custom_instructions = Some("Be brief.".to_string());
+    assert!(db.update_gg_agent("u1", &edited).await.unwrap());
+    assert!(!db.update_gg_agent("u2", &edited).await.unwrap());
+    assert_eq!(
+        db.get_gg_agent("u1", "a1")
+            .await
+            .unwrap()
+            .unwrap()
+            .agent
+            .custom_instructions
+            .as_deref(),
+        Some("Be brief.")
+    );
+
+    // Names are unique per account, and the check the handler makes is a scan of this
+    // list — so another account holding the name changes nothing.
+    let mut theirs = agent.clone();
+    theirs.id = "a2".to_string();
+    db.insert_gg_agent("u2", &theirs).await.unwrap();
+    assert_eq!(db.list_gg_agents("u1").await.unwrap().len(), 1);
+
+    assert!(!db.delete_gg_agent("u2", "a1").await.unwrap());
+    assert!(db.delete_gg_agent("u1", "a1").await.unwrap());
+    assert!(db.list_gg_agents("u1").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn gg_configs_round_trip_their_agent_sources() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    let config = crate::api::GgConfig {
+        id: "c1".to_string(),
+        name: "review arm".to_string(),
+        description: String::new(),
+        capability_set: GgCapabilitySet::minimal("mock/echo"),
+        agent_sources: vec![crate::api::GgAgentSource {
+            agent: "Root".to_string(),
+            agent_id: "a1".to_string(),
+            overrides: vec!["customInstructions".to_string()],
+        }],
+        updated_at: "2026-08-18T00:00:00Z".to_string(),
+    };
+    db.insert_gg_config("u1", &config).await.unwrap();
+
+    // The sources sit beside the resolved capability set: gg reads the set, the console
+    // reads these to know which fields still follow the saved agent.
+    let got = db.get_gg_config("u1", "c1").await.unwrap().unwrap();
+    assert_eq!(got.agent_sources, config.agent_sources);
+
+    let mut edited = config.clone();
+    edited.agent_sources.clear();
+    assert!(db.update_gg_config("u1", &edited).await.unwrap());
+    assert!(
+        db.get_gg_config("u1", "c1")
+            .await
+            .unwrap()
+            .unwrap()
+            .agent_sources
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn unreviewed_cell_counts_can_exclude_a_run_whose_build_never_loaded() {
     let db = Db::connect_in_memory().await.unwrap();
     db.push(&record_loaded("loaded", true), &links(), None)

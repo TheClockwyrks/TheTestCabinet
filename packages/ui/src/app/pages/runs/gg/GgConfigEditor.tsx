@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
 import type { Model } from "../../../../client/types";
 import {
   AGENT_MODES,
@@ -10,7 +11,14 @@ import { FieldLabel, HelpTip } from "./GgCapabilityFields";
 import { GgAgentEditor } from "./GgAgentEditor";
 import { GgEditorTabs, type GgEditorTab } from "./GgEditorTabs";
 import { GgHookList } from "./GgHookRows";
+import {
+  draftAgentOverrides,
+  importSavedAgent,
+  overrideLabel,
+  revertImportedAgent,
+} from "./ggAgentLibrary";
 import { ModelCombobox } from "../../../components/ModelCombobox";
+import { routes } from "../../../routes";
 import { familyOf } from "../../../data/families";
 import {
   agentStates,
@@ -57,6 +65,106 @@ function agentSummary(agent: GgAgentDraft, label: string): string {
   return `${label} · ${on} capabilities enabled`;
 }
 
+/**
+ * The note at the top of an imported profile's view: which saved agent it follows, what
+ * this configuration has pinned, and the two ways out.
+ *
+ * The overrides are listed by name rather than counted, because "2 local changes" tells
+ * an operator that something has drifted without telling them what — and the whole point
+ * of the overlay is that the rest of the profile is still following the saved agent.
+ */
+function ImportedAgentNote({
+  agent,
+  overrides,
+  readOnly,
+  busy,
+  onRevert,
+  onDetach,
+  onSaveToLibrary,
+}: {
+  agent: GgAgentDraft;
+  overrides: ReadonlyArray<string>;
+  readOnly: boolean;
+  busy: boolean;
+  onRevert: () => void;
+  onDetach: () => void;
+  onSaveToLibrary: (() => void) | undefined;
+}) {
+  const source = agent.source;
+  // A profile declared inline. Offered the one step that changes that: writing it to
+  // the library, which leaves this configuration following what it just wrote.
+  if (!source) {
+    if (readOnly || !onSaveToLibrary) return null;
+    return (
+      <section className={gg.importedNote}>
+        <p className={gg.importedLead}>
+          Declared in this configuration. Save it to your agent library to reuse
+          it in others; this configuration then follows it wherever it has not
+          pinned a field of its own.
+        </p>
+        <div className={gg.importedActions}>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={onSaveToLibrary}
+            disabled={busy || !agent.name.trim()}
+          >
+            {busy ? "Saving…" : "Save to library"}
+          </button>
+        </div>
+      </section>
+    );
+  }
+  const href = routes.accountGgAgentEdit(source.agentId);
+  if (!source.base) {
+    return (
+      <section className={gg.importedNote}>
+        <p className={gg.importedLead}>
+          Followed the saved agent <code>{source.name}</code>, which is no
+          longer on this account. This profile is the configuration&rsquo;s own,
+          and saving records it as such.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className={gg.importedNote}>
+      <p className={gg.importedLead}>
+        Follows the saved agent{" "}
+        <a href={href}>
+          <code>{source.name}</code>
+        </a>
+        . Every field left alone here takes that agent as it stands; editing one
+        pins it to this configuration and leaves the saved agent as it is.
+      </p>
+      <p className={gg.importedOverrides}>
+        {overrides.length
+          ? `Pinned here: ${overrides.map(overrideLabel).join(", ")}.`
+          : "Nothing pinned here yet."}
+      </p>
+      {!readOnly && (
+        <div className={gg.importedActions}>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={onRevert}
+            disabled={overrides.length === 0}
+          >
+            Revert to the saved agent
+          </button>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={onDetach}
+          >
+            Detach
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** The configuration editor's sections. */
 type ConfigTab = "configuration" | "slots" | "agents";
 
@@ -84,10 +192,35 @@ interface GgConfigEditorProps {
    * the configuration, and Cancel / Save agent to an agent.
    */
   editingAgentId: string | null;
-  /** Open an agent's view (or return to the configuration with `null`). */
-  onEditingAgentChange: (agentId: string | null) => void;
+  /**
+   * Open an agent's view (or return to the configuration with `null`).
+   *
+   * `snapshot` is the draft to treat as what the agent was opened *on*, and is passed
+   * only when opening an agent in the same act that produced it — importing a saved
+   * agent opens the profile it just added, and the draft this callback would otherwise
+   * see is the one from before the import. Without it, Cancel on a fresh import would
+   * restore a configuration that never had it.
+   */
+  onEditingAgentChange: (
+    agentId: string | null,
+    snapshot?: GgConfigDraft,
+  ) => void;
   /** The model catalog backing the pickers (free text is still allowed). */
   models: Model[];
+  /**
+   * The account's [saved agents](./ggAgentLibrary), which the Agents section imports
+   * from. Empty when the operator has saved none, which leaves the section offering
+   * only inline agents.
+   */
+  savedAgents?: GgSavedAgent[];
+  /**
+   * Write the named profile to the account's agent library and leave this configuration
+   * following it. Omitted where there is nothing to write to (a signed-out or read-only
+   * host), which is what hides the control.
+   */
+  onSaveAgentToLibrary?: (agentId: string) => void;
+  /** Whether a library write is in flight, so the control says so. */
+  savingAgent?: boolean;
   /** Render every control disabled. */
   readOnly?: boolean;
 }
@@ -123,9 +256,15 @@ export function GgConfigEditor({
   editingAgentId,
   onEditingAgentChange,
   models,
+  savedAgents = [],
+  onSaveAgentToLibrary,
+  savingAgent = false,
   readOnly = false,
 }: GgConfigEditorProps) {
   const [tab, setTab] = useState<ConfigTab>("configuration");
+  // Which saved agent the import control is pointed at. Held here rather than committed
+  // on change, so picking one from a list is not itself the act of adding it.
+  const [importId, setImportId] = useState("");
 
   // A guard against a stale id (the open agent was removed out from under the view):
   // fall back to the configuration rather than rendering nothing at all.
@@ -184,6 +323,30 @@ export function GgConfigEditor({
     onChange({ ...value, rootAgentId: agentId });
   }
 
+  // --- Imported agents ------------------------------------------------------
+  //
+  // An imported profile follows a saved agent in every field this configuration has not
+  // edited. Which fields those are is derived by comparing the profile against the saved
+  // agent, so the two controls below are the whole vocabulary: revert drops this
+  // configuration's values and takes the saved agent's, and detach keeps the values and
+  // stops following anything.
+  function importAgent() {
+    const saved = savedAgents.find((a) => a.id === importId);
+    if (!saved) return;
+    const imported = importSavedAgent(value, saved);
+    onChange(imported.draft);
+    setImportId("");
+    // Straight into the imported profile: an operator imports an agent in order to place
+    // it in this configuration, and its roster and slot binding are what they came for.
+    onEditingAgentChange(imported.agentId, imported.draft);
+  }
+  function detachAgent(agentId: string) {
+    updateAgent(agentId, { source: null });
+  }
+  function revertAgent(agentId: string) {
+    onChange(revertImportedAgent(value, agentId));
+  }
+
   // --- Model-slot (launch parameter) mutators -------------------------------
   //
   // An agent binds a slot by its internal id, so renaming a declaration carries every
@@ -223,13 +386,28 @@ export function GgConfigEditor({
     // one frame in between rather than crashing on the missing profile.
     if (!openAgent) return null;
     return (
-      <GgAgentEditor
-        config={value}
-        agent={openAgent}
-        onPatch={(patch) => updateAgent(openAgent.id, patch)}
-        models={models}
-        readOnly={readOnly}
-      />
+      <>
+        <ImportedAgentNote
+          agent={openAgent}
+          overrides={draftAgentOverrides(value, openAgent.id)}
+          readOnly={readOnly}
+          busy={savingAgent}
+          onRevert={() => revertAgent(openAgent.id)}
+          onDetach={() => detachAgent(openAgent.id)}
+          onSaveToLibrary={
+            onSaveAgentToLibrary
+              ? () => onSaveAgentToLibrary(openAgent.id)
+              : undefined
+          }
+        />
+        <GgAgentEditor
+          config={value}
+          agent={openAgent}
+          onPatch={(patch) => updateAgent(openAgent.id, patch)}
+          models={models}
+          readOnly={readOnly}
+        />
+      </>
     );
   }
 
@@ -446,6 +624,13 @@ export function GgConfigEditor({
               const modeLabel =
                 AGENT_MODES.find((m) => m.value === agent.mode)?.label ?? "";
               const isRootAgent = agent.id === value.rootAgentId;
+              // What this profile follows, if anything. A profile whose saved agent is
+              // gone says so on the row rather than quietly reading as inline: it is
+              // still whole, but it has stopped following what it was imported from.
+              const source = agent.source;
+              const pinned = source?.base
+                ? draftAgentOverrides(value, agent.id).length
+                : 0;
               return (
                 <div key={agent.id} className={gg.slotBlock}>
                   <div className={gg.agentRow}>
@@ -459,12 +644,22 @@ export function GgConfigEditor({
                         {isRootAgent && (
                           <span className={gg.rootBadge}>root</span>
                         )}
+                        {source && (
+                          <span className={gg.sharedBadge}>
+                            {source.base
+                              ? `follows ${source.name}`
+                              : `followed ${source.name} (gone)`}
+                          </span>
+                        )}
                       </span>
                       <span className={gg.capId}>
                         {agentSummary(agent, modeLabel)}
                         {modelSummary ? ` · ${modelSummary}` : ""}
                         {agent.hooks.length
                           ? ` · ${agent.hooks.length} ${agent.hooks.length === 1 ? "hook" : "hooks"}`
+                          : ""}
+                        {pinned
+                          ? ` · ${pinned} ${pinned === 1 ? "field" : "fields"} pinned here`
                           : ""}
                       </span>
                     </span>
@@ -501,13 +696,50 @@ export function GgConfigEditor({
               );
             })}
             {!readOnly && (
-              <button
-                type="button"
-                className={runExec.secondary}
-                onClick={addAgent}
-              >
-                + Add agent
-              </button>
+              <div className={gg.agentAddRow}>
+                <button
+                  type="button"
+                  className={runExec.secondary}
+                  onClick={addAgent}
+                >
+                  + Add agent
+                </button>
+                {/* Importing a saved agent is the other way to declare a profile: the
+                    configuration then follows that agent wherever it has not pinned a
+                    field of its own. Two controls rather than one picker, so choosing
+                    from a list is not itself the act of adding. */}
+                {savedAgents.length === 0 ? (
+                  <span className={`${runExec.muted} ${gg.agentImport}`}>
+                    Save an{" "}
+                    <a href={routes.accountGgAgents()}>agent to your library</a>{" "}
+                    to import it here.
+                  </span>
+                ) : (
+                  <span className={gg.agentImport}>
+                    <select
+                      className={runExec.select}
+                      value={importId}
+                      aria-label="Saved agent to import"
+                      onChange={(e) => setImportId(e.target.value)}
+                    >
+                      <option value="">a saved agent…</option>
+                      {savedAgents.map((saved) => (
+                        <option key={saved.id} value={saved.id}>
+                          {saved.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={runExec.secondary}
+                      onClick={importAgent}
+                      disabled={!importId}
+                    >
+                      + Import agent
+                    </button>
+                  </span>
+                )}
+              </div>
             )}
           </div>
           {value.agents.length === 0 && (

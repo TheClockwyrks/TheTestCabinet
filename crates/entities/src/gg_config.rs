@@ -2,7 +2,8 @@
 //!
 //! Many rows per account (keyed by the auth-service `user_id`), each with an opaque
 //! `id`, a display name, an optional description, and the whole core
-//! `GgCapabilitySet` as JSON text. gg is
+//! `GgCapabilitySet` as JSON text, plus the provenance of any agent imported from the
+//! [agent library](super::gg_agent). gg is
 //! its own run mode — configured by a capability set rather than the flat
 //! `(harness, model, orchestrator)` tuple — so a saved configuration is what the
 //! new-run form picks in the harness slot once `gg` is chosen as the orchestrator.
@@ -24,9 +25,16 @@ pub struct Model {
     /// A one-line note on what the configuration is for. Empty when unset.
     pub description: String,
     /// The whole capability set as JSON (capabilities, slot bindings, disabled
-    /// tools).
+    /// tools). Every agent is written out in full, exactly as gg reads it: gg
+    /// resolves nothing, so what is stored here is what a run is handed.
     #[sea_orm(column_type = "Text")]
     pub capability_set_json: String,
+    /// Where each of those agents came from, as JSON — the [saved
+    /// agent](super::gg_agent) it was imported from and the fields this configuration
+    /// overrides locally. `None` for a configuration whose agents are all declared
+    /// inline, which is every configuration authored before the agent library existed.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub agent_sources_json: Option<String>,
     /// RFC 3339 of when the configuration was last saved.
     pub updated_at: String,
 }

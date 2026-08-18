@@ -101,6 +101,8 @@ const SAVED_CONFIG = {
   name: "critic-sweep",
   description: "A reviewer arm.",
   updatedAt: "2026-07-23T00:00:00Z",
+  // Every agent is declared inline, so the configuration follows no saved agent.
+  agentSources: [],
   capabilitySet: {
     preset: "critic-sweep",
     modelSlots: [
@@ -145,6 +147,7 @@ const SAVED_GG_CONFIG = {
   name: "minimal",
   description: "the launchable baseline",
   capabilitySet: capabilitySetFromDraft(MINIMAL_DRAFT, "minimal"),
+  agentSources: [],
 };
 
 // A backend serving the dual-family catalog and, by default, the account's one saved gg
@@ -230,9 +233,7 @@ describe("NewRunPage", () => {
     expect(screen.queryByLabelText("Harness")).not.toBeInTheDocument();
     const configs = await screen.findByLabelText("gg configuration");
     expect(configs).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "minimal" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "minimal" })).toBeInTheDocument();
   });
 
   it("launches the picked gg configuration with the model bound to its primary slot", async () => {

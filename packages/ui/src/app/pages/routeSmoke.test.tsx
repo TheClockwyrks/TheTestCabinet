@@ -41,6 +41,7 @@ const PARAM_VALUES: Record<string, string> = {
   ladderId: FIXTURE_IDS.ladderId,
   groupId: FIXTURE_IDS.groupId,
   configId: FIXTURE_IDS.configId,
+  agentId: FIXTURE_IDS.agentId,
   dashboardId: FIXTURE_IDS.dashboardId,
   jobId: FIXTURE_IDS.jobId,
   id: FIXTURE_IDS.comparisonId,

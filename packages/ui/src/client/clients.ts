@@ -47,6 +47,8 @@ import type {
 import type {
   GgConfig,
   GgConfigInput,
+  GgSavedAgent,
+  GgSavedAgentInput,
   GgProgramLanguage,
 } from "@test-cabinet/run-record/gg";
 import type {
@@ -586,6 +588,27 @@ export interface BackendClient {
   ): Promise<GgConfig>;
   /** Delete a configuration (`DELETE /gg/configs/{id}`). */
   deleteGgConfig?(id: string, token: string): Promise<void>;
+
+  // The operator's saved gg **agents** (console-only, Bearer): agent profiles
+  // authored on their own, which a configuration imports and may override locally.
+  // Data only, and gg never sees them — the console resolves an import into the
+  // configuration's own agent list before anything is stored or launched. Optional
+  // for the same reason the configuration calls are.
+  /** The operator's saved gg agents (`GET /gg/agents`). */
+  listGgAgents?(token: string): Promise<GgSavedAgent[]>;
+  /** Save an agent (`POST /gg/agents`), returning it with its new id. */
+  createGgAgent?(
+    input: GgSavedAgentInput,
+    token: string,
+  ): Promise<GgSavedAgent>;
+  /** Update a saved agent in place (`PUT /gg/agents/{id}`). */
+  updateGgAgent?(
+    id: string,
+    input: GgSavedAgentInput,
+    token: string,
+  ): Promise<GgSavedAgent>;
+  /** Delete a saved agent (`DELETE /gg/agents/{id}`). */
+  deleteGgAgent?(id: string, token: string): Promise<void>;
 
   // The gg **analysis** query surface (console-only, Bearer). The corpus is *not*
   // account-scoped — a gg run belongs to the deployment, exactly as the run listings

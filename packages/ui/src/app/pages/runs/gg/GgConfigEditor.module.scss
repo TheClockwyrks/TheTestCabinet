@@ -1046,3 +1046,63 @@
   color: t.$color-bg;
   font-size: t.$font-sm;
 }
+
+// The marker on an imported profile's row: which saved agent it follows. Quieter than
+// the root badge — following a saved agent is provenance, not a role in the run — so it
+// takes the border and muted text a secondary marker does.
+.sharedBadge {
+  flex: 0 0 auto;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  letter-spacing: 0.04em;
+}
+
+// The two ways to declare a profile, on one line: a fresh inline agent, and a saved one
+// imported from the account's library.
+.agentAddRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.agentImport {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The note at the top of an imported profile's view. A panel rather than a paragraph,
+// because it carries the two controls that decide whether this profile keeps following
+// the saved agent at all.
+.importedNote {
+  padding: t.$space-md t.$space-lg;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.importedLead {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.importedOverrides {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.importedActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}

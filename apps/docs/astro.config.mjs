@@ -539,6 +539,8 @@ export default defineConfig({
             "gg/overview",
             // How a capability set is named, saved and launched in the console.
             "gg/configurations",
+            // Agent profiles authored on their own and imported by configurations.
+            "gg/agents",
             // The ceilings a run is bounded by. Beside Configurations rather than
             // under Capabilities: a ceiling applies to every capability and to
             // both execution modes, and is not itself a capability.

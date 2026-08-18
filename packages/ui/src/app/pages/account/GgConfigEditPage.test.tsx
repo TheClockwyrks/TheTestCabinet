@@ -14,6 +14,13 @@ import {
   type BackendContextValue,
 } from "../../../client/context";
 import { GgConfigEditPage } from "./GgConfigEditPage";
+import {
+  blankAgentDraft,
+  blankModelSlot,
+  capabilitySetFromDraft,
+  emptyDraft,
+  seedAgentParams,
+} from "../runs/gg/ggConfigDraft";
 
 // The page's app chrome reads contexts (gallery data, backdrop settings) that are
 // irrelevant to the editor under test. Stub it, mirroring the other page tests, so
@@ -31,13 +38,52 @@ vi.mock("../../../client/auth", () => ({
 }));
 
 const createGgConfig = vi.fn().mockResolvedValue({ id: "c1" });
+const createGgAgent = vi.fn();
+// Whether `GET /gg/agents` answers. A library that fails to load leaves every imported
+// profile looking inline, which is the one state the page must refuse to save from.
+let listGgAgents = vi.fn();
+
+// The account's agent library. A saved agent is the second way to declare a profile,
+// so the picker has something to offer only because an account saved something.
+const SAVED_REVIEWER = (() => {
+  // Built through the editor's own serializer rather than hand-written, because that is
+  // what the library holds: a saved agent is written by this same form, and an agent
+  // assembled some other way would be compared against a shape the editor never emits.
+  const slot = { ...blankModelSlot("critic") };
+  const blank = {
+    ...blankAgentDraft("reviewer"),
+    modelSlotId: slot.id,
+    customInstructions: "From the library.",
+  };
+  const agent = seedAgentParams(blank, blank.id);
+  const set = capabilitySetFromDraft(
+    {
+      agents: [agent],
+      rootAgentId: agent.id,
+      modelSlots: [{ ...slot, defaultModelId: "anthropic/claude-haiku-4.5" }],
+      limits: emptyDraft().limits,
+      hooks: [],
+    },
+    null,
+  );
+  return {
+    id: "saved-1",
+    name: "reviewer",
+    description: "reviews what the implementer wrote",
+    agent: set.agents![0]!,
+    modelSlots: set.modelSlots ?? [],
+    updatedAt: "2026-08-18T00:00:00Z",
+  };
+})();
 
 function backendValue(): BackendContextValue {
   return {
     client: {
       listModels: vi.fn().mockResolvedValue([]),
       listGgConfigs: vi.fn().mockResolvedValue([]),
+      listGgAgents,
       createGgConfig,
+      createGgAgent,
     },
     identity: null,
     status: "ready",
@@ -46,6 +92,28 @@ function backendValue(): BackendContextValue {
     setUrl: () => {},
   } as unknown as BackendContextValue;
 }
+
+beforeEach(() => {
+  listGgAgents = vi.fn().mockResolvedValue([SAVED_REVIEWER]);
+  createGgAgent.mockReset();
+  // The real endpoint stores what it was given and echoes it back, which is what makes
+  // the profile that wrote it an import pinning nothing.
+  createGgAgent.mockImplementation(
+    (input: {
+      description: string;
+      agent: { name: string };
+      modelSlots: unknown[];
+    }) =>
+      Promise.resolve({
+        id: "saved-2",
+        name: input.agent.name,
+        description: input.description,
+        agent: input.agent,
+        modelSlots: input.modelSlots,
+        updatedAt: "2026-08-18T00:00:00Z",
+      }),
+  );
+});
 
 // Standing in for the list of configurations, so a test can tell that leaving the
 // editor actually left it rather than merely closing a dialog.
@@ -757,5 +825,115 @@ describe("going back from the configuration", () => {
       within(dialog).getByRole("button", { name: "Create configuration" }),
     ).toBeDisabled();
     expect(within(dialog).getByText(/at least one agent/i)).toBeInTheDocument();
+  });
+});
+
+// Importing a saved agent into a configuration.
+//
+// The overlay's arithmetic is tested in `ggAgentLibrary.test.ts` and its controls in
+// `GgConfigEditor.test.tsx`. What only the page shows is what actually reaches the
+// account: gg is handed a whole agent, and the provenance rides beside it.
+describe("a configuration that imports a saved agent", () => {
+  beforeEach(() => createGgConfig.mockClear());
+
+  async function importReviewer() {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "review arm" },
+    });
+    openTab("Agents");
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Saved agent to import" }),
+      { target: { value: "saved-1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+    saveAgent();
+  }
+
+  it("saves the agent written out in full, beside where it came from", async () => {
+    await importReviewer();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalled());
+    const [input] = createGgConfig.mock.calls[0]!;
+    const reviewer = input.capabilitySet.agents.find(
+      (a: { name: string }) => a.name === "reviewer",
+    );
+    // Whole, because gg resolves nothing: it reads this set as it stands.
+    expect(reviewer.customInstructions).toBe("From the library.");
+    expect(reviewer.modelSlot).toBe("critic");
+    // The slot the saved agent brought with it is declared, with its default.
+    expect(input.capabilitySet.modelSlots).toContainEqual({
+      name: "critic",
+      defaultModelId: "anthropic/claude-haiku-4.5",
+    });
+    // And the provenance beside it, pinning nothing.
+    expect(input.agentSources).toEqual([
+      { agent: "reviewer", agentId: "saved-1", overrides: [] },
+    ]);
+  });
+
+  it("records the field an edit pins, and leaves the rest following", async () => {
+    await importReviewer();
+    openTab("Agents");
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[1]!);
+    fireEvent.change(
+      screen.getByPlaceholderText(/^Extra instructions for this agent/),
+      { target: { value: "Be brief." } },
+    );
+    saveAgent();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalled());
+    const [input] = createGgConfig.mock.calls[0]!;
+    expect(input.agentSources).toEqual([
+      {
+        agent: "reviewer",
+        agentId: "saved-1",
+        overrides: ["customInstructions"],
+      },
+    ]);
+  });
+});
+
+// Writing a profile to the library, and the one state the page must not save from.
+describe("a configuration and the agent library", () => {
+  beforeEach(() => createGgConfig.mockClear());
+
+  it("writes an inline profile to the library and follows what it wrote", async () => {
+    renderPage();
+    await screen.findByPlaceholderText("e.g. no-compaction");
+    openFirstAgent();
+    fireEvent.click(screen.getByRole("button", { name: "Save to library" }));
+
+    await waitFor(() => expect(createGgAgent).toHaveBeenCalled());
+    const [body] = createGgAgent.mock.calls[0]!;
+    expect(body.agent.name).toBe("Root");
+    // The slot the profile defers to travels with it, so importing it elsewhere asks
+    // for the same launch input.
+    expect(body.modelSlots).toEqual([{ name: "primary" }]);
+    // And the profile now follows the entry it just wrote, pinning nothing.
+    expect(await screen.findByText(/Follows the saved agent/)).toBeVisible();
+    expect(screen.getByText("Nothing pinned here yet.")).toBeVisible();
+  });
+
+  it("refuses to save at all when the library could not be loaded", async () => {
+    listGgAgents = vi.fn().mockRejectedValue(new Error("boom"));
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "review arm" },
+    });
+
+    // Saving here would record every imported profile as inline for good, so the page
+    // says why rather than writing a configuration that has quietly lost its links.
+    expect(
+      screen.getByRole("button", { name: "Create configuration" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/saved agents could not be loaded/)).toBeVisible();
+    expect(createGgConfig).not.toHaveBeenCalled();
   });
 });

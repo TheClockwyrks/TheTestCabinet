@@ -1,0 +1,34 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
+
+// The gg tab's own second strip: which of the account's two gg libraries is being
+// listed. Deliberately quieter than the account tab bar above it — plain pills with no
+// baseline of their own — so the page still reads as one section with two lists rather
+// than as two nested tab bars.
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}
+
+.tab {
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  border-color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}

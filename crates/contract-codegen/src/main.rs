@@ -347,7 +347,8 @@ fn main() -> Result<()> {
         // token/cost types (`TokenMetrics`, `CostMetrics`) owned by the run-record
         // document, so they are imported from `index.ts`. The saved-configuration
         // shapes (`/gg/configs`) live here too: a registered configuration is just a
-        // named capability set, so it belongs beside the set it wraps.
+        // named capability set, so it belongs beside the set it wraps — as do the
+        // saved-agent shapes (`/gg/agents`), which wrap one agent profile out of it.
         TsModule {
             file: GG_MODULE,
             decls: ts_decls![&cfg;
@@ -379,7 +380,8 @@ fn main() -> Result<()> {
                 gg::GgErrorSummary,
                 gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
-                bapi::GgConfig, bapi::GgConfigInput,
+                bapi::GgConfig, bapi::GgConfigInput, bapi::GgAgentSource,
+                bapi::GgSavedAgent, bapi::GgSavedAgentInput,
             ],
         },
         // The gg session record: the content-addressed input log a run's session is

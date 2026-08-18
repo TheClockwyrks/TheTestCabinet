@@ -121,6 +121,36 @@ export interface GgSubagentDraft {
   scopes: GgSubagentScope[];
 }
 
+/**
+ * Where an imported agent profile came from: the [saved agent](GgSavedAgent) it follows,
+ * and that agent as it stands right now.
+ *
+ * An agent carrying one of these is a *reference*, not a copy. Every field the
+ * configuration has not edited is taken from `base` each time the configuration is
+ * read, so editing the saved agent reshapes this profile; the fields it has edited are
+ * pinned here and leave the saved agent untouched. Which fields those are is derived by
+ * comparing this profile against `base` rather than tracked as the operator types, so it
+ * says the same thing after a reload as it does mid-edit.
+ */
+export interface GgAgentSourceDraft {
+  /** The saved agent's opaque id — what the stored configuration points at. */
+  agentId: string;
+  /** Its name in the library, which is the name it was imported under. */
+  name: string;
+  /**
+   * The saved agent's profile as it stands now: the basis every unedited field is taken
+   * from. `null` when the saved agent is no longer on the account, which leaves this
+   * profile as the ordinary inline agent the configuration already holds.
+   */
+  base: GgAgentConfig | null;
+  /**
+   * The model slots the saved agent declares. Carried so that rebuilding this profile
+   * from `base` declares a slot the configuration lacks with the same default a fresh
+   * import would give it.
+   */
+  modelSlots: GgModelSlot[];
+}
+
 // One **agent profile** as the editor holds it: its name, its per-capability drafts
 // (keyed by capability id), its single model binding (deferred to a declared model
 // slot, or pinned here), its two call allowlists, its custom prompt bits, and the
@@ -190,6 +220,10 @@ export interface GgAgentDraft {
   // (session start/end) are not here; they are the configuration's ([GgConfigDraft.hooks]),
   // because they happen once per run rather than for any one agent.
   hooks: GgHookDraft[];
+  // The [saved agent](GgAgentSourceDraft) this profile follows, or `null` for one
+  // declared inline. Detaching an imported profile clears it, which keeps the profile
+  // exactly as it is and stops it following anything.
+  source: GgAgentSourceDraft | null;
 }
 
 // One agent's loop detection as the editor holds it: the switch as a boolean, and one
@@ -534,6 +568,8 @@ export function blankAgentDraft(
     loopDetection: blankLoopDetection(),
     subagents: [],
     hooks: [],
+    // Declared inline. A profile follows a saved agent only by being imported from one.
+    source: null,
   };
 }
 
@@ -648,6 +684,7 @@ function cloneAgentDraft(agent: GgAgentDraft): GgAgentDraft {
     operations: [...agent.operations],
     subagents: agent.subagents.map((s) => ({ ...s })),
     hooks: agent.hooks.map((h) => ({ ...h })),
+    source: agent.source ? { ...agent.source } : null,
   };
 }
 
@@ -1108,7 +1145,7 @@ export function fsmStatesWarnings(
  * resolves the model-slot binding, and the roster and `agent` params are resolved in a
  * second pass ([resolveAgentReferences]) once every profile in the set has an id.
  */
-function agentDraftFromConfig(
+export function agentDraftFromConfig(
   agent: GgAgentConfig,
   slotIdByName: ReadonlyMap<string, string>,
 ): GgAgentDraft {
@@ -1216,6 +1253,10 @@ function agentDraftFromConfig(
     ),
     // Filled in by [resolveAgentReferences], which needs every profile's id.
     subagents: [],
+    // Whether this profile follows a saved agent is recorded on the configuration
+    // rather than in the capability set, so it is attached after the load
+    // ([attachAgentSources]) rather than read off the agent.
+    source: null,
   });
 }
 
@@ -1230,7 +1271,7 @@ function agentDraftFromConfig(
  * missing rather than silently repointing it. A [machine](StateDraft)'s state agents are
  * resolved the same way, for the same reason.
  */
-function resolveAgentReferences(
+export function resolveAgentReferences(
   draft: GgAgentDraft,
   stored: GgAgentConfig,
   idByName: ReadonlyMap<string, string>,
@@ -2265,6 +2306,33 @@ export function capabilitySetFromDraft(
     ...(limits ? { limits } : {}),
     ...(hooks.length ? { hooks } : {}),
   };
+}
+
+/**
+ * One agent draft as the wire contract carries it, with the rest of the configuration
+ * supplying the names its references resolve to.
+ *
+ * This is the form a [saved agent](GgAgentSourceDraft) is stored in, and the form an
+ * imported profile is compared against its saved agent in. `null` when the draft holds
+ * no agent under that id.
+ */
+export function wireAgentFromDraft(
+  draft: GgConfigDraft,
+  agentId: string,
+): GgAgentConfig | null {
+  const agent = draft.agents.find((a) => a.id === agentId);
+  if (!agent) return null;
+  const nameById = new Map(
+    draft.agents.map((a) => [a.id, a.name.trim()] as const),
+  );
+  const slotNameById = new Map(
+    draft.modelSlots.map((s) => [s.id, s.name.trim()] as const),
+  );
+  return agentConfigFromDraft(
+    agent,
+    (id) => nameById.get(id) ?? id,
+    (id) => slotNameById.get(id) ?? id,
+  );
 }
 
 /**

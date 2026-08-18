@@ -6,7 +6,26 @@ fn sample_input(name: &str) -> GgConfigInput {
         name: name.to_string(),
         description: "  the default arm  ".to_string(),
         capability_set: GgCapabilitySet::minimal("mock/echo"),
+        agent_sources: Vec::new(),
     }
+}
+
+#[test]
+fn config_from_input_keeps_its_agent_sources() {
+    // Where an imported agent came from is stored beside the resolved set: gg reads the
+    // set, the console reads these to know which fields still follow the saved agent.
+    let input = GgConfigInput {
+        agent_sources: vec![GgAgentSource {
+            agent: "reviewer".to_string(),
+            agent_id: "a1".to_string(),
+            overrides: vec!["customInstructions".to_string()],
+        }],
+        ..sample_input("review arm")
+    };
+    let config = config_from_input("c1".to_string(), input, "2026-07-24T00:00:00Z").unwrap();
+    assert_eq!(config.agent_sources.len(), 1);
+    assert_eq!(config.agent_sources[0].agent_id, "a1");
+    assert_eq!(config.agent_sources[0].overrides, ["customInstructions"]);
 }
 
 #[test]

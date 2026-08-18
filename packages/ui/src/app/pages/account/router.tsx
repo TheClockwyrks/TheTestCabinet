@@ -14,6 +14,8 @@ import { GroupsPage } from "./GroupsPage";
 import { GroupEditPage } from "./GroupEditPage";
 import { GgConfigsPage } from "./GgConfigsPage";
 import { GgConfigEditPage } from "./GgConfigEditPage";
+import { GgAgentsPage } from "./GgAgentsPage";
+import { GgAgentEditPage } from "./GgAgentEditPage";
 
 // Routes owned by the account section: the signed-in account view (its Profile,
 // Coverage, Ladders, Groups, and gg tabs) plus the sign-in and registration pages,
@@ -84,6 +86,18 @@ export function accountRoutes(canExecute: boolean) {
           <Route
             path={routePatterns.accountGgConfigNew}
             element={<GgConfigEditPage />}
+          />
+          <Route
+            path={routePatterns.accountGgAgents}
+            element={<GgAgentsPage />}
+          />
+          <Route
+            path={routePatterns.accountGgAgentNew}
+            element={<GgAgentEditPage />}
+          />
+          <Route
+            path={routePatterns.accountGgAgentEdit}
+            element={<GgAgentEditPage />}
           />
           <Route
             path={routePatterns.accountGgConfigEdit}

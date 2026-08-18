@@ -36,9 +36,9 @@ use test_cabinet_core::run_record::{
 use test_cabinet_core::test_case::{TestType, version_key};
 use test_cabinet_entities::{
     case_reference_build, case_reference_sheet, comparison, coverage_group, coverage_plan,
-    coverage_settings, gg_config, gg_dashboard, gg_saved_query, harness_config, job, ladder,
-    ladder_climber, ladder_outcome, ladder_rung, model, model_alias, model_price, publish_job,
-    review, review_plan, review_revision, run, run_link, snapshot_state, tournament,
+    coverage_settings, gg_agent, gg_config, gg_dashboard, gg_saved_query, harness_config, job,
+    ladder, ladder_climber, ladder_outcome, ladder_rung, model, model_alias, model_price,
+    publish_job, review, review_plan, review_revision, run, run_link, snapshot_state, tournament,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -2056,6 +2056,7 @@ impl Db {
             name: Set(config.name.clone()),
             description: Set(config.description.clone()),
             capability_set_json: Set(serde_json::to_string(&config.capability_set)?),
+            agent_sources_json: Set(Some(serde_json::to_string(&config.agent_sources)?)),
             updated_at: Set(config.updated_at.clone()),
         }
         .insert(&self.conn())
@@ -2081,6 +2082,10 @@ impl Db {
                 Expr::value(serde_json::to_string(&config.capability_set)?),
             )
             .col_expr(
+                gg_config::Column::AgentSourcesJson,
+                Expr::value(serde_json::to_string(&config.agent_sources)?),
+            )
+            .col_expr(
                 gg_config::Column::UpdatedAt,
                 Expr::value(config.updated_at.clone()),
             )
@@ -2098,6 +2103,102 @@ impl Db {
         let res = gg_config::Entity::delete_many()
             .filter(gg_config::Column::Id.eq(id))
             .filter(gg_config::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Every saved gg agent the account owns, ordered by name.
+    pub async fn list_gg_agents(&self, user_id: &str) -> Result<Vec<crate::api::GgSavedAgent>> {
+        gg_agent::Entity::find()
+            .filter(gg_agent::Column::UserId.eq(user_id))
+            .order_by_asc(gg_agent::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(gg_agent_from_row)
+            .collect()
+    }
+
+    /// One saved gg agent by id, scoped to the owning account (`None` when the id is
+    /// unknown or belongs to someone else).
+    pub async fn get_gg_agent(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::GgSavedAgent>> {
+        let Some(row) = gg_agent::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(gg_agent_from_row(row)?))
+    }
+
+    /// Insert a new saved gg agent (id already minted by the handler).
+    pub async fn insert_gg_agent(
+        &self,
+        user_id: &str,
+        agent: &crate::api::GgSavedAgent,
+    ) -> Result<()> {
+        gg_agent::ActiveModel {
+            id: Set(agent.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(agent.name.clone()),
+            description: Set(agent.description.clone()),
+            agent_json: Set(serde_json::to_string(&agent.agent)?),
+            model_slots_json: Set(serde_json::to_string(&agent.model_slots)?),
+            updated_at: Set(agent.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a saved gg agent in place, scoped to the owning account. Returns whether
+    /// a row matched. Every configuration that imported it follows the change, except
+    /// in the fields it overrides.
+    pub async fn update_gg_agent(
+        &self,
+        user_id: &str,
+        agent: &crate::api::GgSavedAgent,
+    ) -> Result<bool> {
+        let res = gg_agent::Entity::update_many()
+            .col_expr(gg_agent::Column::Name, Expr::value(agent.name.clone()))
+            .col_expr(
+                gg_agent::Column::Description,
+                Expr::value(agent.description.clone()),
+            )
+            .col_expr(
+                gg_agent::Column::AgentJson,
+                Expr::value(serde_json::to_string(&agent.agent)?),
+            )
+            .col_expr(
+                gg_agent::Column::ModelSlotsJson,
+                Expr::value(serde_json::to_string(&agent.model_slots)?),
+            )
+            .col_expr(
+                gg_agent::Column::UpdatedAt,
+                Expr::value(agent.updated_at.clone()),
+            )
+            .filter(gg_agent::Column::Id.eq(agent.id.clone()))
+            .filter(gg_agent::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a saved gg agent, scoped to the owning account. Returns whether a row was
+    /// removed. A configuration that imported it keeps its own resolved copy and stops
+    /// following this one.
+    pub async fn delete_gg_agent(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = gg_agent::Entity::delete_many()
+            .filter(gg_agent::Column::Id.eq(id))
+            .filter(gg_agent::Column::UserId.eq(user_id))
             .exec(&self.conn())
             .await?;
         Ok(res.rows_affected > 0)
@@ -3022,6 +3123,24 @@ fn gg_config_from_row(row: gg_config::Model) -> Result<crate::api::GgConfig> {
         name: row.name,
         description: row.description,
         capability_set: serde_json::from_str(&row.capability_set_json)?,
+        // A configuration whose agents are all declared inline stores no sources at
+        // all, which is the same statement as an empty list.
+        agent_sources: match &row.agent_sources_json {
+            Some(json) => serde_json::from_str(json)?,
+            None => Vec::new(),
+        },
+        updated_at: row.updated_at,
+    })
+}
+
+/// One saved gg agent as the API carries it. Fallible: both JSON columns are parsed.
+fn gg_agent_from_row(row: gg_agent::Model) -> Result<crate::api::GgSavedAgent> {
+    Ok(crate::api::GgSavedAgent {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        agent: serde_json::from_str(&row.agent_json)?,
+        model_slots: serde_json::from_str(&row.model_slots_json)?,
         updated_at: row.updated_at,
     })
 }

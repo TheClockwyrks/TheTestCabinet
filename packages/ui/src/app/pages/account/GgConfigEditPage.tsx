@@ -11,6 +11,13 @@ import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import { routes } from "../../routes";
 import { GgConfigEditor } from "../runs/gg/GgConfigEditor";
 import {
+  agentSourcesFromDraft,
+  attachAgentSources,
+  resolveCapabilitySet,
+  savedAgentFromProfile,
+} from "../runs/gg/ggAgentLibrary";
+import { useGgAgents } from "../runs/gg/useGgAgents";
+import {
   agentSaveError,
   capabilitySetFromDraft,
   draftFromCapabilitySet,
@@ -32,6 +39,9 @@ function snapshotOf(name: string, description: string, draft: GgConfigDraft) {
     name: name.trim(),
     description: description.trim(),
     set: capabilitySetFromDraft(draft, null),
+    // Which profiles follow a saved agent, and what each pins, is part of the
+    // configuration: importing one and immediately detaching it is a change.
+    sources: agentSourcesFromDraft(draft),
   });
 }
 
@@ -60,10 +70,19 @@ export function GgConfigEditPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
   const navigate = useNavigate();
+  // The account's agent library: what the Agents section imports from, and what an
+  // already-imported profile is resolved against on the way in.
+  const {
+    agents: savedAgents,
+    loading: agentsLoading,
+    error: agentsError,
+    reload: reloadAgents,
+  } = useGgAgents();
 
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [savingAgent, setSavingAgent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
@@ -89,6 +108,11 @@ export function GgConfigEditPage() {
       setLoading(false);
       return;
     }
+    // The library has to be in hand before a stored configuration is loaded: an
+    // imported profile is the saved agent with this configuration's overrides on top,
+    // and loading it against an empty library would open the editor on the last
+    // resolved copy and then quietly re-save it as one.
+    if (agentsLoading) return;
     let active = true;
     setLoading(true);
     setError(null);
@@ -125,7 +149,13 @@ export function GgConfigEditPage() {
             seed(
               editing ? found.name : `${found.name} (copy)`,
               found.description,
-              draftFromCapabilitySet(found.capabilitySet),
+              attachAgentSources(
+                draftFromCapabilitySet(
+                  resolveCapabilitySet(found, savedAgents),
+                ),
+                found.agentSources,
+                savedAgents,
+              ),
             );
           }
           setLoading(false);
@@ -145,9 +175,15 @@ export function GgConfigEditPage() {
     return () => {
       active = false;
     };
-  }, [backend, token, editing, configId, from]);
+  }, [backend, token, editing, configId, from, agentsLoading, savedAgents]);
 
-  const structuralError = draftSaveError(draft);
+  // A library that failed to load leaves every imported profile looking inline, and
+  // saving would then record it as inline for good. Refuse to save at all until the
+  // library is in hand, and say why.
+  const libraryError = agentsError
+    ? "Your saved agents could not be loaded, so this configuration cannot be saved without losing which agents it follows. Reload the page."
+    : null;
+  const structuralError = draftSaveError(draft) ?? libraryError;
   const savable = name.trim().length > 0 && structuralError === null && !busy;
   // Only what is wrong with the open agent — a configuration-level complaint about some
   // other agent is not this view's business, and cannot be fixed from it.
@@ -186,8 +222,13 @@ export function GgConfigEditPage() {
 
   // Opening an agent banks the draft so Cancel has something to restore; saving the agent
   // simply keeps the edits already applied and returns to the configuration.
-  function onEditingAgentChange(agentId: string | null) {
-    setAgentSnapshot(agentId ? draft : null);
+  function onEditingAgentChange(
+    agentId: string | null,
+    snapshot?: GgConfigDraft,
+  ) {
+    // The editor supplies the snapshot when opening an agent it produced in the same
+    // act, because this render's `draft` predates it.
+    setAgentSnapshot(agentId ? (snapshot ?? draft) : null);
     setEditingAgentId(agentId);
   }
   function cancelAgent() {
@@ -237,6 +278,48 @@ export function GgConfigEditPage() {
     else navigate(routes.accountGgConfigs());
   }
 
+  // Write the open profile to the account's agent library and leave this configuration
+  // following it. The profile is unchanged by this: what it saves is exactly what it
+  // already is, so the import it becomes pins nothing.
+  async function saveAgentToLibrary(agentId: string) {
+    if (!token || !backend?.createGgAgent) return;
+    const body = savedAgentFromProfile(draft, agentId);
+    if (!body) return;
+    setSavingAgent(true);
+    setError(null);
+    try {
+      const created = await backend.createGgAgent(
+        { description: "", agent: body.agent, modelSlots: body.modelSlots },
+        token,
+      );
+      const linked = (current: GgConfigDraft): GgConfigDraft => ({
+        ...current,
+        agents: current.agents.map((a) =>
+          a.id === agentId
+            ? {
+                ...a,
+                source: {
+                  agentId: created.id,
+                  name: created.name,
+                  base: created.agent,
+                  modelSlots: created.modelSlots,
+                },
+              }
+            : a,
+        ),
+      });
+      setDraft(linked);
+      // The link is not work the agent's Cancel should throw away: the library entry
+      // exists either way, and undoing only the link would leave the two apart.
+      setAgentSnapshot((current) => (current ? linked(current) : current));
+      await reloadAgents();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSavingAgent(false);
+    }
+  }
+
   async function onSave() {
     if (!token || !savable) return;
     const input: GgConfigInput = {
@@ -245,6 +328,9 @@ export function GgConfigEditPage() {
       // A saved configuration records its own name as the `preset` facet, so every
       // run launched from it is sliceable by which configuration produced it.
       capabilitySet: capabilitySetFromDraft(draft, name.trim()),
+      // Stored beside the resolved set: gg reads the set, and this is what says which
+      // fields of which profile still follow a saved agent.
+      agentSources: agentSourcesFromDraft(draft),
     };
     setBusy(true);
     setError(null);
@@ -369,6 +455,11 @@ export function GgConfigEditPage() {
             editingAgentId={editingAgentId}
             onEditingAgentChange={onEditingAgentChange}
             models={models}
+            savedAgents={savedAgents}
+            onSaveAgentToLibrary={
+              backend?.createGgAgent ? saveAgentToLibrary : undefined
+            }
+            savingAgent={savingAgent}
           />
 
           {/* Raised by whichever back control was pressed with work to lose. One

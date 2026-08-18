@@ -14,10 +14,7 @@ import {
 } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { ComparisonEditPage } from "./ComparisonEditPage";
-import {
-  capabilitySetFromDraft,
-  emptyDraft,
-} from "../runs/gg/ggConfigDraft";
+import { capabilitySetFromDraft, emptyDraft } from "../runs/gg/ggConfigDraft";
 
 // The page's app chrome reads contexts (gallery data, backdrop settings) that are
 // irrelevant to the form logic under test.
@@ -81,6 +78,7 @@ const SAVED_GG_CONFIG = {
   name: "minimal",
   description: "the launchable baseline",
   capabilitySet: capabilitySetFromDraft(emptyDraft(), "minimal"),
+  agentSources: [],
 };
 
 function backendValue(

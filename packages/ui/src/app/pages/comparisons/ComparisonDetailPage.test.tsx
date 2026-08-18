@@ -11,10 +11,7 @@ import {
 } from "../../../client/context";
 import type { WorkerClient } from "../../../client/clients";
 import { ComparisonDetailPage } from "./ComparisonDetailPage";
-import {
-  capabilitySetFromDraft,
-  emptyDraft,
-} from "../runs/gg/ggConfigDraft";
+import { capabilitySetFromDraft, emptyDraft } from "../runs/gg/ggConfigDraft";
 
 // The page's app chrome reads contexts (gallery data, backdrop settings) that have
 // nothing to do with the trigger path under test.
@@ -81,7 +78,11 @@ const COMPARISON = {
   },
   arms: [
     {
-      arm: { id: "arm-1", label: "gg minimal", ggConfigId: "saved:cfg-minimal" },
+      arm: {
+        id: "arm-1",
+        label: "gg minimal",
+        ggConfigId: "saved:cfg-minimal",
+      },
       nDesired: 1,
       nObserved: 0,
       diagnostics: { tokens: NO_TOKENS },
@@ -96,6 +97,7 @@ const SAVED_GG_CONFIG = {
   name: "minimal",
   description: "the launchable baseline",
   capabilitySet: capabilitySetFromDraft(emptyDraft(), "minimal"),
+  agentSources: [],
 };
 
 function backendValue(): BackendContextValue {

@@ -41,6 +41,7 @@ export const FIXTURE_IDS = {
   ladderId: "ladder-1",
   groupId: "group-1",
   configId: "config-1",
+  agentId: "agent-1",
   dashboardId: "dashboard-1",
   jobId: "job-1",
   comparisonId: "comparison-1",

@@ -18,12 +18,15 @@
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
 import { GgConfigEditor } from "./GgConfigEditor";
 import { BUILT_IN_SKILL_OPTIONS, type GgAgentMode } from "./ggCatalog";
 import {
   blankAgentDraft,
   blankModelSlot,
+  capabilitySetFromDraft,
   emptyDraft,
+  seedAgentParams,
   statesDraftValue,
   type GgConfigDraft,
 } from "./ggConfigDraft";
@@ -1035,5 +1038,137 @@ describe("the sections that no longer explain themselves", () => {
     expect(screen.getByText("No hooks.")).toBeInTheDocument();
     expect(screen.queryByText(/These fire for/)).toBeNull();
     expect(screen.queryByText(/control arm/)).toBeNull();
+  });
+});
+
+// Importing a saved agent, which is the second way to declare a profile.
+//
+// The overlay's arithmetic is tested in `ggAgentLibrary.test.ts`; what only rendering
+// the form shows is that an operator can see which profiles follow a saved agent, what
+// each has pinned, and how to stop following one — none of which is derivable from the
+// draft alone.
+describe("importing a saved agent", () => {
+  // A saved agent as the library returns it: one profile deferring to a `critic` slot
+  // this configuration does not declare.
+  function savedReviewer(): GgSavedAgent {
+    const slot = { ...blankModelSlot("critic") };
+    const blank = { ...blankAgentDraft("reviewer"), modelSlotId: slot.id };
+    const agent = seedAgentParams(blank, blank.id);
+    const set = capabilitySetFromDraft(
+      {
+        agents: [agent],
+        rootAgentId: agent.id,
+        modelSlots: [slot],
+        limits: emptyDraft().limits,
+        hooks: [],
+      },
+      null,
+    );
+    return {
+      id: "saved-1",
+      name: "reviewer",
+      description: "reviews what the implementer wrote",
+      agent: set.agents![0]!,
+      modelSlots: set.modelSlots ?? [],
+      updatedAt: "2026-08-18T00:00:00Z",
+    };
+  }
+
+  // The editor with its open view under the test's control, so importing (which opens
+  // the imported profile) and returning to the configuration are both reachable.
+  function LibraryHarness({ initial }: { initial: GgConfigDraft }) {
+    const [draft, setDraft] = useState(initial);
+    const [open, setOpen] = useState<string | null>(null);
+    return (
+      <>
+        {/* The page owns the control that returns from an agent to the configuration,
+            so the harness stands in for it. */}
+        <button type="button" onClick={() => setOpen(null)}>
+          close agent
+        </button>
+        <GgConfigEditor
+          value={draft}
+          onChange={setDraft}
+          name="under test"
+          onNameChange={() => {}}
+          description=""
+          onDescriptionChange={() => {}}
+          editingAgentId={open}
+          onEditingAgentChange={setOpen}
+          models={[]}
+          savedAgents={[savedReviewer()]}
+        />
+      </>
+    );
+  }
+
+  function closeAgent() {
+    fireEvent.click(screen.getByRole("button", { name: "close agent" }));
+  }
+
+  function importReviewer() {
+    render(<LibraryHarness initial={emptyDraft()} />);
+    openTab("Agents");
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Saved agent to import" }),
+      { target: { value: "saved-1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+  }
+
+  it("offers no import control when the account has saved no agents", () => {
+    render(<ConfigHarness initial={emptyDraft()} />);
+    openTab("Agents");
+    expect(screen.queryByRole("button", { name: "+ Import agent" })).toBeNull();
+    expect(screen.getByRole("button", { name: "+ Add agent" })).toBeVisible();
+  });
+
+  it("opens the imported profile, saying what it follows and that it pins nothing", () => {
+    importReviewer();
+    expect(screen.getByText(/Follows the saved agent/)).toBeVisible();
+    expect(screen.getByText("Nothing pinned here yet.")).toBeVisible();
+    // Reverting is offered only once there is something to revert.
+    expect(
+      screen.getByRole("button", { name: "Revert to the saved agent" }),
+    ).toBeDisabled();
+  });
+
+  it("names the field an edit pins, and offers to revert it", () => {
+    importReviewer();
+    fireEvent.change(
+      screen.getByPlaceholderText(/^Extra instructions for this agent/),
+      { target: { value: "Be brief." } },
+    );
+    expect(
+      screen.getByText(/Pinned here: Custom instructions\./),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Revert to the saved agent" }),
+    ).toBeEnabled();
+  });
+
+  it("marks the profile as following the saved agent on the configuration's list", () => {
+    // The row has to say what the open view says, or a configuration's provenance is
+    // only visible one profile at a time.
+    importReviewer();
+    closeAgent();
+    openTab("Agents");
+    expect(screen.getByText("follows reviewer")).toBeVisible();
+  });
+
+  it("stops following the saved agent once the profile is detached", () => {
+    importReviewer();
+    fireEvent.click(screen.getByRole("button", { name: "Detach" }));
+    expect(screen.queryByText(/Follows the saved agent/)).toBeNull();
+    closeAgent();
+    openTab("Agents");
+    expect(screen.queryByText("follows reviewer")).toBeNull();
+  });
+
+  it("declares the model slot the imported profile defers to", () => {
+    importReviewer();
+    closeAgent();
+    openTab("Slots");
+    expect(screen.getByDisplayValue("critic")).toBeVisible();
   });
 });

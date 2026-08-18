@@ -27,6 +27,7 @@ mod comparisons;
 mod coverage;
 mod game_jams;
 mod gg;
+mod gg_agent;
 mod gg_config;
 mod gg_query;
 mod gg_reference;
@@ -55,7 +56,8 @@ pub use coverage::{
     TopUpSkipped,
 };
 pub use gg::GgRunRequest;
-pub use gg_config::{GgConfig, GgConfigInput};
+pub use gg_agent::{GgSavedAgent, GgSavedAgentInput};
+pub use gg_config::{GgAgentSource, GgConfig, GgConfigInput};
 pub use gg_query::{GG_QUERY_MAX_BATCH, GG_QUERY_MAX_ROWS, GgQueryBatch, GgQueryBatchResponse};
 pub use gg_view::{
     DASHBOARD_COLUMNS, GgDashboard, GgDashboardInput, GgDashboardPanel, GgSavedQuery,
@@ -349,6 +351,21 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/gg/configs/{id}",
             put(gg_config::update_config).delete(gg_config::delete_config),
+        )
+        // The operator's saved gg **agents** (auth-gated; keyed to the token's
+        // account): agent profiles authored on their own, which a configuration
+        // imports and may override locally. Data only — gg never reads this
+        // surface, because the console resolves an import into the configuration's
+        // own agent list before anything is stored or launched. `/gg/agents` is
+        // static and `/gg/agents/{id}` is its child, so neither collides with
+        // `/gg/runs` or `/gg/configs`.
+        .route(
+            "/gg/agents",
+            get(gg_agent::list_agents).post(gg_agent::create_agent),
+        )
+        .route(
+            "/gg/agents/{id}",
+            put(gg_agent::update_agent).delete(gg_agent::delete_agent),
         )
         // The gg analysis query surface (auth-gated, like the rest of `/gg`, though
         // the corpus itself is deployment-wide rather than per-account): evaluate one
