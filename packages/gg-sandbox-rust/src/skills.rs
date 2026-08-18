@@ -10,14 +10,14 @@ use crate::wire;
 /// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
 pub(crate) const OPERATIONS: &[&str] = &["read_skill"];
 
-
 /// Read a skill by name and hand back its body with the front matter stripped.
 ///
 /// Reading it also pins that body permanently into context, so a skill that has been read stays read.
 ///
-/// A skill may be **code** rather than prose, or as well as it. Code is bound at `lib::<key>` for the
-/// rest of the session and the reply names the key and what it offers. An on-use program runs once
-/// this program has ended, and whatever it shows arrives on the next turn.
+/// A skill may be **code** rather than prose, or as well as it. Its code becomes a crate every later
+/// program this session writes reaches as `<key>::<name>`, and using it opens a documentation view
+/// of each function that crate declares. An on-use program runs once this program has ended, and
+/// whatever it shows arrives on the next turn.
 ///
 /// # Arguments
 ///
@@ -25,8 +25,7 @@ pub(crate) const OPERATIONS: &[&str] = &["read_skill"];
 ///
 /// # Returns
 ///
-/// The skill's body with its front matter stripped, and — for a skill that carries code — the key
-/// the code was bound at and what it offers.
+/// The skill's body with its front matter stripped.
 ///
 /// # Errors
 ///

@@ -4,14 +4,23 @@
 //! # Why there is anything to read at all
 //!
 //! A Python module's namespace *is* its exports. There is no `export` keyword, nothing for gg to
-//! append, and the shim registers `lib.<key>` straight from the names the module body left behind —
-//! so [preparing one](super::super::ProgramLanguage::prepare_module) hands the source across
-//! untouched. What it cannot hand across untouched is the **list**, because that list is
-//! model-facing: the reply that binds a code skill names the key and says what it offers, and a
-//! model that is told nothing spends a turn finding out.
+//! append, and the shim registers the module's submodule of `lib` straight from the names the module
+//! body left behind — so [preparing one](super::super::ProgramLanguage::prepare_module) hands the
+//! source across untouched. What it cannot hand across untouched is the **list**, because that list
+//! is what a use of the module turns into [documentation](crate::docs): one view per declaration,
+//! rendered from the declaration its author wrote and the prose written on it.
 //!
 //! The seam is explicit that the names travel *beside* the source rather than being recovered from
 //! it later, so this is where they are read.
+//!
+//! # The types a declaration writes
+//!
+//! An export also carries the type names its declaration writes in
+//! [return](ModuleExport::returns) and [parameter](ModuleExport::parameters) position, which is what
+//! an agent's `docViewTypes` flags open beside a function's own view. Python writes them as
+//! annotations, so a `def` carries what its author annotated and nothing more: an unannotated one
+//! carries neither list, and a `class` or a constant carries neither either, because the flags are
+//! read off a function alone.
 //!
 //! # What is read, and the one thing that is deliberately not
 //!
@@ -56,13 +65,19 @@ pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
         if name.starts_with('_') || out.iter().any(|seen| seen.name == name) {
             continue;
         }
+        let kind = kind(line);
+        let declaration = head(line);
+        let (returns, parameters) = match kind {
+            ModuleExportKind::Function => annotated_types(&declaration),
+            _ => (Vec::new(), Vec::new()),
+        };
         out.push(ModuleExport {
             name: name.to_string(),
-            kind: kind(line),
-            declaration: head(line),
+            kind,
+            declaration,
             doc: doc(&lines, number),
-            returns: Vec::new(),
-            parameters: Vec::new(),
+            returns,
+            parameters,
         });
     }
     out
@@ -85,23 +100,205 @@ fn kind(line: &str) -> ModuleExportKind {
 /// everything up to and including it. The colon is *kept*, because `def widen(text)` without one is
 /// not a line of Python and the point of quoting a declaration is that a reader can trust it. An
 /// assignment has no body at all: what it binds is what it is, so the whole line is the declaration.
+///
+/// The colon is looked for at the header's own [top level](depths), so a dict, a `lambda` or a
+/// string written as a default value cannot end the header early.
 fn head(line: &str) -> String {
     let line = line.trim_end();
     if !(line.starts_with("def ") || line.starts_with("async ") || line.starts_with("class ")) {
         return line.to_string();
     }
-    // Past the parameter list first, so a default value written as a dict or a lambda cannot end the
-    // header early — then to the colon that opens the body.
-    let mut depth = 0usize;
-    for (at, character) in line.char_indices() {
-        match character {
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            ':' if depth == 0 => return line[..=at].to_string(),
-            _ => {}
+    for (at, character, depth) in depths(line) {
+        if character == ':' && depth == 0 {
+            return line[..=at].to_string();
         }
     }
     line.to_string()
+}
+
+/// The type names `declaration` writes in return position and in parameter position.
+///
+/// Python writes both as **annotations**, and an author annotates or does not: what is read is what
+/// they wrote, so an unannotated `def` answers two empty lists and a partly annotated one answers
+/// the parameters it annotated. Nothing is inferred from a default value or from a body, because a
+/// type gg guessed at would open a documentation view about something the author never named.
+///
+/// The scan is over one line, which is the [declaration](head) as this arm reads it: a signature
+/// wrapped across several lines is read as far as its first line goes, in keeping with the rest of
+/// this scan being a line scan rather than a parser.
+fn annotated_types(declaration: &str) -> (Vec<String>, Vec<String>) {
+    let Some((parameters, after)) = parameter_list(declaration) else {
+        return (Vec::new(), Vec::new());
+    };
+    let returns = return_annotation(after)
+        .map(named_types)
+        .unwrap_or_default();
+    let mut written: Vec<String> = Vec::new();
+    for parameter in split_top_level(parameters, ',') {
+        let Some(annotation) = parameter_annotation(parameter) else {
+            continue;
+        };
+        for name in named_types(annotation) {
+            if !written.contains(&name) {
+                written.push(name);
+            }
+        }
+    }
+    (returns, written)
+}
+
+/// What is between `declaration`'s outermost parentheses, and what follows the closing one.
+///
+/// `None` for a declaration with no parameter list at all, which on this arm is a `def` whose header
+/// ran onto a second line — there is nothing to read rather than something to guess at.
+fn parameter_list(declaration: &str) -> Option<(&str, &str)> {
+    let open =
+        depths(declaration).find(|(_, character, depth)| *character == '(' && *depth == 0)?;
+    let close = depths(declaration)
+        .skip_while(|(at, _, _)| *at <= open.0)
+        .find(|(_, character, depth)| *character == ')' && *depth == 0)?;
+    Some((
+        &declaration[open.0 + 1..close.0],
+        &declaration[close.0 + 1..],
+    ))
+}
+
+/// The annotation `after` writes after `->`, without the colon that opens the body.
+fn return_annotation(after: &str) -> Option<&str> {
+    let annotation = after.split_once("->")?.1.trim();
+    let annotation = annotation.strip_suffix(':').unwrap_or(annotation).trim();
+    (!annotation.is_empty()).then_some(annotation)
+}
+
+/// The annotation one `parameter` of a list writes, if it wrote one.
+///
+/// The default value is cut off first and the annotation read out of what is left, because a colon
+/// is written on both sides of an `=`: `rows: dict[str, int] = {}` annotates `dict[str, int]`, and
+/// the colon of a `lambda` handed in as a default belongs to the default rather than to a
+/// parameter.
+fn parameter_annotation(parameter: &str) -> Option<&str> {
+    let target = split_top_level(parameter, '=').first().copied()?;
+    let annotation = split_top_level(target, ':').get(1).copied()?.trim();
+    (!annotation.is_empty()).then_some(annotation)
+}
+
+/// `text` cut at every `separator` written at its own top level.
+fn split_top_level(text: &str, separator: char) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    for (at, character, depth) in depths(text) {
+        if character == separator && depth == 0 {
+            out.push(&text[start..at]);
+            start = at + character.len_utf8();
+        }
+    }
+    out.push(&text[start..]);
+    out
+}
+
+/// Every character of `text` that is syntax, with the bracket depth it sits **outside** of.
+///
+/// A string's contents are not syntax and are walked over whole, which is what keeps the `)` of a
+/// default value written as `")"` from closing a parameter list and the `:` of an
+/// `Annotated[int, "a:b"]` from opening an annotation. A bracket reports the depth around it rather
+/// than the one inside it, so a list's own `(` and `)` both read as depth 0.
+fn depths(text: &str) -> impl Iterator<Item = (usize, char, usize)> + '_ {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut depth = 0usize;
+    text.char_indices().filter_map(move |(at, character)| {
+        if let Some(open) = quote {
+            match character {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                _ if character == open => quote = None,
+                _ => {}
+            }
+            return None;
+        }
+        match character {
+            '"' | '\'' => {
+                quote = Some(character);
+                None
+            }
+            '(' | '[' | '{' => {
+                depth += 1;
+                Some((at, character, depth - 1))
+            }
+            ')' | ']' | '}' => {
+                depth = depth.saturating_sub(1);
+                Some((at, character, depth))
+            }
+            _ => Some((at, character, depth)),
+        }
+    })
+}
+
+/// Every type name `annotation` names, in the order it names them and without repeats.
+///
+/// An annotation is an expression, so what is read out of it are the names in it: `list[Row]` names
+/// `list` and `Row`, and each is looked up when a view is opened rather than here. A **quoted**
+/// name is a forward reference, which is how Python spells a type declared later in the same file,
+/// so a string shaped like a name is one of the names — and a string shaped like anything else is a
+/// value inside a `Literal` rather than a type.
+///
+/// `None` is left out. It is what a function returning nothing annotates, so reading it as a type
+/// would file every such function under a type nothing declares.
+fn named_types(annotation: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |name: &str| {
+        if name != "None" && !out.iter().any(|seen| seen == name) {
+            out.push(name.to_string());
+        }
+    };
+    let mut rest = annotation;
+    while let Some(character) = rest.chars().next() {
+        if character == '"' || character == '\'' {
+            let (quoted, tail) = quoted_text(rest, character);
+            if let Some(quoted) = quoted.filter(|text| path(text) == Some(*text)) {
+                push(quoted);
+            }
+            rest = tail;
+            continue;
+        }
+        if let Some(named) = path(rest) {
+            push(named);
+            rest = &rest[named.len()..];
+            continue;
+        }
+        rest = &rest[character.len_utf8()..];
+    }
+    out
+}
+
+/// The string `text` opens with, and what follows it. `None` for one that never closed.
+fn quoted_text(text: &str, quote: char) -> (Option<&str>, &str) {
+    let opened = &text[quote.len_utf8()..];
+    let mut escaped = false;
+    for (at, character) in opened.char_indices() {
+        match character {
+            _ if escaped => escaped = false,
+            '\\' => escaped = true,
+            _ if character == quote => {
+                return (Some(&opened[..at]), &opened[at + character.len_utf8()..]);
+            }
+            _ => {}
+        }
+    }
+    (None, "")
+}
+
+/// The dotted name `text` opens with — `Row`, `models.Row` — or `None` when it opens with anything
+/// else.
+fn path(text: &str) -> Option<&str> {
+    let mut end = identifier(text)?.len();
+    while text[end..].starts_with('.') {
+        let Some(segment) = identifier(&text[end + 1..]) else {
+            break;
+        };
+        end += 1 + segment.len();
+    }
+    Some(&text[..end])
 }
 
 /// The documentation written on the declaration at `index` — the `#` comment above it, or, failing

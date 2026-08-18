@@ -25,14 +25,13 @@ pub(crate) const OPERATIONS: &[&str] = &[
     "delete_memory",
 ];
 
-
 /// Record a durable memory that survives a context compaction.
 ///
-/// A memory may also carry **code**. `options.code` is a Rust module whose items are bound at
-/// `lib::<name>` in every later program this session writes, so a helper got right once is never
-/// written again; `options.on_use` is a program gg runs the first time the memory comes into use,
-/// whose views arrive on the next turn. Neither is context: they cost no window, are never shown back,
-/// and count against no body limit.
+/// A memory may also carry **code**. `options.code` is a Rust module every later program this session
+/// writes reaches as `<name>::<item>`, so a helper got right once is never written again;
+/// `options.on_use` is a program gg runs on every use of the memory, whose views arrive on the next
+/// turn. Neither is context: they cost no window, are never shown back, and count against no body
+/// limit.
 ///
 /// # Arguments
 ///
@@ -112,7 +111,7 @@ pub fn update_memory(
 /// * `description` — A one-line description of what the memory holds, which is its line in the index.
 /// * `body` — The memory's initial contents, which stay out of the context window until they are
 ///   read.
-/// * `options` — The code halves, which may be left out. They load on that first read.
+/// * `options` — The code halves, which may be left out. They come into use when the memory is read.
 ///
 /// # Returns
 ///
@@ -142,8 +141,8 @@ pub fn create_memory(
 
 /// Read one memory's full contents by slug, which is the only thing that brings them into context.
 ///
-/// A memory that carries code loads that code on being read: the reply names the `lib::<key>` it is
-/// bound at, and it stays bound for the rest of the session.
+/// A memory that carries code loads that code on being read: reading it opens a documentation view
+/// of each function the code declares, and the code stays reachable for the rest of the session.
 ///
 /// # Arguments
 ///
@@ -311,10 +310,8 @@ impl MemoryHit {
 /// never shown back, and count against no body limit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MemoryOptions<'a> {
-    /// A Rust module whose items are bound at `lib::<name>` in every later program this session
-    /// writes.
+    /// A Rust module every later program this session writes reaches as `<name>::<item>`.
     pub code: Option<&'a str>,
-    /// A program gg runs the first time the memory comes into use, whose views arrive on the next
-    /// turn.
+    /// A program gg runs on every use of the memory, whose views arrive on the next turn.
     pub on_use: Option<&'a str>,
 }

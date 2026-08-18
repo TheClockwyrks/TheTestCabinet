@@ -22,8 +22,9 @@ public final class Skills {
      *
      * <p>The skill is also pinned permanently into the session's context, so it survives a
      * compaction and never has to be read twice. A skill that carries code binds that code at
-     * {@code lib.<name>} for every later program, and a skill that carries an on-use script has it
-     * run once the program ends, with whatever it shows arriving on the next turn.
+     * {@code lib.<name>} for every later program and opens a documentation view of each function
+     * the module declares, and a skill that carries an on-use script has it run on every read, once
+     * the turn's own program has ended, with whatever it shows arriving on the next turn.
      *
      * @param name The skill's name, exactly as the system prompt lists it.
      * @return the skill's body, with its front matter stripped

@@ -131,25 +131,36 @@ impl ProgramLanguage for Kotlin {
         GgProgramLanguage::Kotlin.display_name()
     }
 
-    /// `lib.<key>.<name>` — a path the Kotlin compiler checks, because a code module on this arm is
-    /// **compiled into the program that uses it** rather than loaded beside it.
+    /// `lib.<key>.<name>` — the fully-qualified name, which is one of the two ways a Kotlin program
+    /// reaches anything and is the way it reaches [gg's own SDK](Self::lib_import) without an
+    /// import.
     ///
-    /// That is the shape [Rust](super::rust)'s `lib::<key>::<name>` has and the reason neither arm
-    /// reaches a module by string. The key is a **package** gg compiles the module's own file into,
-    /// so a program writes the call in full or imports the name; see
+    /// The key is a **package** gg compiles the module's own file into; see
     /// [`module_package`](source::module_package) for why a package is what Kotlin has instead of a
     /// generated accessor.
     fn lib_access(&self, key: &str) -> String {
         format!("{}.<name>", source::module_package(key))
     }
 
+    /// `import lib.csvTools.*` — the line a program writes to reach a loaded module, which is the
+    /// line it writes to reach [gg's own SDK](https://docs.testcabinet.ai/gg/languages/kotlin/).
+    ///
+    /// A module is compiled on its own into [`lib.<key>`](source::module_package), and the directory
+    /// of classes that produced goes on the program's classpath the way this arm's SDK jar does. A
+    /// classpath entry declares no name, so what a program has after it is what Kotlin gives it: the
+    /// [fully-qualified call](Self::lib_access), or this import and the simple name. The star is the
+    /// spelling every SDK module's own catalogue entry states — `import gg.files.*` — because what a
+    /// package of top-level functions offers is names rather than a type.
+    fn lib_import(&self, key: &str) -> Option<String> {
+        Some(format!("import {}.*", source::module_package(key)))
+    }
+
     /// The Kotlin compile, the TeaVM translation and the component encode, in this preparation's own
     /// workspace and in a JVM lent to it alone — see [`compile`] for what it costs, what it shares,
     /// and how it tells a program a compiler refused from a compiler that could not run.
     ///
-    /// The modules are **inputs to the compile**, as they are on every compiled arm: a Kotlin code
-    /// module is Kotlin, Kotlin is compiled, and a compiled module is only reachable from the
-    /// artifact it was built into.
+    /// The modules are compiled **before** it, each on its own, and what reaches this compile is the
+    /// classpath entry each of those produced.
     fn prepare_program(
         &self,
         source: &str,
@@ -187,10 +198,10 @@ impl ProgramLanguage for Kotlin {
     /// The Kotlin compiler alone, pointed at the author's own file in a package of gg's naming —
     /// and the names the resulting namespace offers.
     ///
-    /// What comes back is the author's own source rather than an artifact, because there is nothing
-    /// a module can be compiled *into* that a later program could load: the program's own compile is
-    /// where it is built. Running the compiler here anyway is what buys the author a located
-    /// diagnostic at the read rather than one against somebody else's program every turn after it.
+    /// What comes back is the author's own source rather than an artifact, because the key the
+    /// module will be bound at does not exist yet and the key is the package it is compiled into.
+    /// Running the compiler here anyway is what buys the author a located diagnostic at the read
+    /// rather than one taking somebody else's turn for as long as the module stays loaded.
     ///
     /// The names are read from the author's own source by [`source`]'s export scan rather than out
     /// of a compiled artifact, because they are what the skill's author is *told* the namespace

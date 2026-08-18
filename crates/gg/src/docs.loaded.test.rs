@@ -278,7 +278,7 @@ fn an_arm_with_no_import_line_says_the_module_is_in_scope() {
     );
     let body = loaded.body("csvTools::parse").expect("it is documented");
     assert!(body.contains("in scope already"), "{body}");
-    assert!(body.contains("`lib::csvTools::parse`"), "{body}");
+    assert!(body.contains("`csvTools::parse`"), "{body}");
 }
 
 /// **A handle is not a copy.** The knowledge registry writes and the documentation runtime reads,

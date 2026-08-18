@@ -1,4 +1,5 @@
-//! Tests for **what a PureScript code module offers** — the names gg reports for `lib.<key>`.
+//! Tests for **what a PureScript code module offers** — the names gg reports for a loaded module,
+//! and the types each of their declarations writes.
 //!
 //! Two readings, and the tests are grouped by which one is in force: a header with an export list
 //! says exactly what it offers, and a header without one offers everything its top level declares.
@@ -49,8 +50,8 @@ fn an_export_list_may_be_written_over_several_lines() {
     );
 }
 
-/// **A type, a class and a re-exported module are not values**, so they are not names a
-/// `lib.<key>.` chain can reach and are not reported.
+/// **A type, a class and a re-exported module are not values**, so they are not names a qualified
+/// `CsvTools.` call can reach and are not reported.
 ///
 /// `Colour(..)` is the interesting one: `purs` really does export `Red` and `Green` for it, so this
 /// is a deliberate **under**-report. Naming them would take reading the `data` declaration the
@@ -94,8 +95,8 @@ fn a_header_with_no_list_offers_every_top_level_value() {
 /// **What is not a value declaration is not reported**, whatever it looks like.
 ///
 /// `type Alias = Int` is an assignment whose target is a name and is not one; a `data`, a `class`,
-/// an `instance` and an `import` are not; an operator alias is not, because `lib.<key>.<>` is not a
-/// chain a program can write; and an indented line belongs to the declaration above it.
+/// an `instance` and an `import` are not; an operator alias is not, because `CsvTools.<>` is not a
+/// name a program can write; and an indented line belongs to the declaration above it.
 #[test]
 fn a_declaration_that_is_not_a_value_is_not_reported() {
     assert_eq!(
@@ -167,9 +168,9 @@ fn text_that_is_not_code_declares_nothing() {
 
 /// **A module with no header at all still reports what it declares.**
 ///
-/// gg supplies a header when the author left one off, exactly as it does for a program, so a module
-/// written as a bare list of declarations is a module — and reporting nothing for it would tell a
-/// model the skill it just read offers nothing.
+/// `purs` refuses such a file, so nothing gg says about it ever reaches a model. The scan answers
+/// anyway because it is a scan: falling over a shape the compiler has already ruled on would make
+/// the reading depend on the order the two happen in.
 #[test]
 fn a_module_with_no_header_reports_its_declarations() {
     assert_eq!(names("greet :: String\ngreet = \"hi\"\n"), ["greet"]);
@@ -179,8 +180,8 @@ fn a_module_with_no_header_reports_its_declarations() {
 /// rather than falling silent.
 ///
 /// A name gg failed to list is a call a model does not know it has; a name gg listed that is not
-/// there is a `Nothing` from `lib` and one line of a program. The second is the cheaper mistake, so
-/// it is the one made.
+/// there is one call `purs` refuses, with the module's own export list in the diagnostic. The second
+/// is the cheaper mistake, so it is the one made.
 #[test]
 fn an_unlexable_module_is_read_as_code() {
     // An unterminated string: the mask declines, and the scan reads the lines anyway.
@@ -215,8 +216,57 @@ fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
     assert_eq!(exports[1].declaration, "limit :: Int");
     assert_eq!(exports[1].doc, None);
 
-    assert!(exports.iter().all(|export| export.returns.is_empty()));
-    assert!(exports.iter().all(|export| export.parameters.is_empty()));
+    // And the types the signature writes, which is what the agent's `docViewTypes` flags open a
+    // view of: the last arrow's right-hand side is what the call hands back, and everything before
+    // it is what the call takes.
+    assert_eq!(exports[0].parameters, ["String"]);
+    assert_eq!(exports[0].returns, ["String"]);
+
+    // A value takes nothing, so its type is entirely a return.
+    assert_eq!(exports[1].parameters, Vec::<String>::new());
+    assert_eq!(exports[1].returns, ["Int"]);
+}
+
+/// **The types an export writes are read off the signature**, as the names a documentation view is
+/// opened under.
+///
+/// Every proper name in a position is one of them, qualified ones kept whole: `Array` and
+/// `Gg.Files.FileRead` are both entries a search can answer, and a view of each is what a model
+/// reading the function is offered. A type variable is lower-case and is not a name; a record's
+/// labels are lower-case and are not either.
+#[test]
+fn an_export_carries_the_type_names_its_signature_writes() {
+    let exports = exports(
+        "module Helpers where\n\
+         \n\
+         load :: String -> { limit :: Int } -> Effect (Array Gg.Files.FileRead)\n\
+         load path options = pure []\n\
+         \n\
+         pick :: forall a. Show a => Array a -> Maybe a\n\
+         pick xs = Nothing\n\
+         \n\
+         apply2 :: (Int -> String) -> Int -> String\n\
+         apply2 f n = f n\n\
+         \n\
+         loose = 10\n",
+    );
+
+    // Two arguments and a result, the record's labels left out and its field's type kept.
+    assert_eq!(exports[0].parameters, ["String", "Int"]);
+    assert_eq!(exports[0].returns, ["Effect", "Array", "Gg.Files.FileRead"]);
+
+    // The `forall` binder and the constraint are neither position: `a` is a variable and nothing
+    // passes a `Show`.
+    assert_eq!(exports[1].parameters, ["Array"]);
+    assert_eq!(exports[1].returns, ["Maybe"]);
+
+    // A function taken as an argument is one argument, because its arrows are inside brackets.
+    assert_eq!(exports[2].parameters, ["Int", "String"]);
+    assert_eq!(exports[2].returns, ["String"]);
+
+    // A declaration with no signature has nowhere to read a type from, and gg invents none.
+    assert_eq!(exports[3].parameters, Vec::<String>::new());
+    assert_eq!(exports[3].returns, Vec::<String>::new());
 }
 
 /// **A header with an export list documents what it lists**, off the declarations below it.

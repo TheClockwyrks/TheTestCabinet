@@ -294,21 +294,51 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
 
 #[test]
 fn a_refusal_about_a_code_module_names_the_key_and_one_about_nobody_s_file_does_not() {
-    // A code module's own file names the code this session loaded, which is compiled into the
-    // program. The model is told which key to fix or to stop loading, because reporting it to the
-    // operator alone would take every turn from then on with nothing said.
-    let failure = verdict(
-        &Report {
-            internal: None,
-            diagnostics: vec![diagnostic("kotlinc", None, Some("GgModule_helpers.kt"), 3)],
-        },
-        PROGRAM_FILE,
-    )
-    .expect_err("refused");
+    // A code module is compiled in a build of its own, whose file is the module's, so the verdict
+    // that reads it is located in the module's own coordinates. The model is told which key to fix
+    // or to stop loading, because reporting it to the operator alone would take every turn from
+    // then on with nothing said.
+    let failure = about(
+        "helpers",
+        verdict(
+            &Report {
+                internal: None,
+                diagnostics: vec![diagnostic("kotlinc", None, Some("helpers.kt"), 3)],
+            },
+            &source::module_file("helpers"),
+        )
+        .expect_err("refused"),
+    );
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
         panic!("a code module that does not compile is the model's to act on: {failure:?}");
     };
     assert!(rendered.contains("`helpers`"), "{rendered}");
+    assert!(rendered.contains("helpers.kt:3"), "{rendered}");
+
+    // A module refused for what it offers rather than for what it says is the same sentence with
+    // the band the model can act on kept.
+    let refusal = about(
+        "helpers",
+        PrepareFailure::Program(PrepareError::Unsupported(
+            "this module offers nothing".to_string(),
+        )),
+    );
+    assert!(
+        matches!(refusal, PrepareFailure::Program(PrepareError::Unsupported(ref said)) if said
+            .contains("`helpers`")),
+        "{refusal:?}",
+    );
+
+    // A toolchain failure is the operator's whatever compiled when it happened, so no key is said
+    // in front of it.
+    let drift = about(
+        "helpers",
+        PrepareFailure::Toolchain("the JVM would not start".to_string()),
+    );
+    assert!(
+        matches!(drift, PrepareFailure::Toolchain(ref said) if !said.contains("helpers")),
+        "{drift:?}",
+    );
 
     let failure = verdict(
         &Report {

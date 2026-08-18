@@ -4,10 +4,9 @@
 # `require`s.
 #
 # `require "lib"` is the line, and it is the only way a program reaches its own loaded code: nothing
-# below is bound until it runs. Requiring it evaluates each code module the agent read, in the order
-# gg handed them over, and defines a top-level `lib` whose members are the binding keys gg named
-# when it answered each read — so `lib.helpers.double(21)` calls a method the skill's own author
-# wrote.
+# below is bound until it runs. Requiring it evaluates each code module the agent used, in the order
+# gg handed them over, and defines a top-level `lib` whose members are those modules' binding keys —
+# so `lib.helpers.double(21)` calls a method the skill's own author wrote.
 #
 # **It names nothing of gg's surface, deliberately.** `require "lib"` must not be a second way to
 # reach `GG::Files`: a program that calls gg writes `require "gg"` itself, and so does a code module
@@ -37,11 +36,10 @@ _namespaces = Class.new do
   #
   # @param name [Symbol] the key that was reached for
   # @param _args [Array] whatever it was called with
-  # @raise [NoMethodError] always, naming the key and where the real ones came from
+  # @raise [NoMethodError] always, naming the key that was reached for and listing the bound ones
   def method_missing(name, *_args)
     raise NoMethodError,
-          "`lib.#{name}` is not bound this run; the keys gg named when it answered the read " \
-          "are the ones it has"
+          "`lib.#{name}` is not bound this run; #{inspect} names the keys it has"
   end
 
   # @param name [Symbol] the key being asked about

@@ -1210,10 +1210,10 @@ fn java_reaches_every_library_this_arm_says_it_may() {
 
 #[test]
 fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
-    // `Lib.<key>.<name>` is a path rather than a string, because a Java code module is compiled
-    // **into** the program that uses it: there is an `import`-free path for javac to check the two
-    // against, so a key or an export a session does not have is a diagnostic on the turn that wrote
-    // it rather than a failure at run time.
+    // `lib.<key>.<name>` is a path rather than a string, because a Java code module is a class on
+    // the program's own classpath: javac checks the call against the class it was compiled from, so
+    // a key or an export a session does not have is a diagnostic on the turn that wrote it rather
+    // than a failure at run time.
     let prepared = super::compile::compile_module(
         "public static String greet(String who) { return \"hello, \" + who.toUpperCase(); }\n\
          \n\
@@ -1227,8 +1227,8 @@ fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
         name: "helpers".to_string(),
         source: prepared.source,
     }];
-    let body = "Gg.log(Lib.helpers.greet(\"gg\"));\n\
-                Gg.log(String.valueOf(Lib.helpers.add(40, 2)));\n";
+    let body = "Gg.log(lib.helpers.greet(\"gg\"));\n\
+                Gg.log(String.valueOf(lib.helpers.add(40, 2)));\n";
     let (outcome, _log) = evaluate_as(
         &super::substrate::prepare_with(&whole(body), &modules),
         &[],
@@ -1241,7 +1241,7 @@ fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
 
     // An export the module does not have is javac's own diagnostic, at the model's own line.
     let failure = compile_program(
-        &whole("Lib.helpers.absent();\n"),
+        &whole("lib.helpers.absent();\n"),
         &modules,
         &PrepareContext::new(),
     )

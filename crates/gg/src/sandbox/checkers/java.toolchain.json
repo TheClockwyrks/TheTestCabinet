@@ -1,5 +1,5 @@
 {
   "teavm": "0.13.1",
   "jdk": "21.0.12+8",
-  "protocol": 2
+  "protocol": 3
 }

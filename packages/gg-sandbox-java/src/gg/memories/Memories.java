@@ -116,13 +116,13 @@ public final class Memories {
     }
 
     /**
-     * Record an out-of-context memory that also carries code, bound when it is first read.
+     * Record an out-of-context memory that also carries code, bound when it is read.
      *
      * @param name The memory's slug: letters, digits, {@code -}, {@code _} and {@code .}.
      * @param description A one-line description of what the memory holds.
      * @param body The memory's initial contents.
      * @param code The module bound at {@code lib.<name>} once the memory is read, the script gg runs
-     *     on that first read, or both.
+     *     on every read, or both.
      * @return how much of the memory budget is now used
      * @throws ApiError {@link ApiErrorCode#CONFLICT} on a duplicate slug, and
      *     {@link ApiErrorCode#LIMIT_EXCEEDED} when the contents, or the index entry, would breach a
@@ -137,8 +137,10 @@ public final class Memories {
     /**
      * Read one memory's full contents by slug, which is what brings them into the context window.
      *
-     * <p>A memory that carries code has that code loaded by the same read: the reply names the
-     * {@code lib.<key>} it is bound at, and it stays bound for the rest of the session.
+     * <p>A memory that carries code has that code loaded by the same read, and it stays bound for
+     * the rest of the session. The read opens a documentation view of each function the module
+     * declares, which is where its names, its signatures and the line a program writes to reach it
+     * are read.
      *
      * @param name The memory's slug.
      * @return the memory's contents
@@ -288,10 +290,10 @@ public final class Memories {
         }
 
         /**
-         * A memory that runs a script when it first comes into use and carries no module.
+         * A memory that runs a script every time it comes into use and carries no module.
          *
-         * @param script A program gg runs the first time the memory comes into use; whatever it
-         *     shows arrives on the next turn.
+         * @param script A program gg runs on every use of the memory, after the turn's own program
+         *     has ended; whatever it shows arrives on the next turn.
          * @return the code half to hand to a memory write
          */
         public static MemoryCode onUse(String script) {
@@ -303,7 +305,7 @@ public final class Memories {
          *
          * @param source A Java class body whose {@code public static} methods are bound at
          *     {@code lib.<name>}.
-         * @param script A program gg runs the first time the memory comes into use.
+         * @param script A program gg runs on every use of the memory.
          * @return the code half to hand to a memory write
          */
         public static MemoryCode of(String source, String script) {

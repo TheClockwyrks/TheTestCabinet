@@ -14,7 +14,8 @@ namespace Gg;
 /// <para>
 /// A memory may carry <c>code</c>, which is a module in this language bound at
 /// <c>lib.&lt;name&gt;</c> in every later program — a helper written once. It costs no context
-/// window and is never shown back.
+/// window and is never shown back: what a use of it opens is a documentation view of each function
+/// it declares.
 /// </para>
 /// </remarks>
 /// <ggmodule>memories</ggmodule>
@@ -33,8 +34,8 @@ public static partial class Memories
     /// costs no window, is never shown back, and counts against no body limit.
     /// </param>
     /// <param name="onUse">
-    /// A program to run once, the moment this memory first comes into use. It runs after the program
-    /// that loaded the memory has ended, so its views arrive on the next turn.
+    /// A program gg runs on every use of this memory. It runs after the program that loaded the
+    /// memory has ended, so its views arrive on the next turn.
     /// </param>
     /// <returns>how full the memory budget now is.</returns>
     /// <exception cref="ApiException">
@@ -58,7 +59,7 @@ public static partial class Memories
     /// <param name="description">Its new one-line description.</param>
     /// <param name="body">Its new body, in full.</param>
     /// <param name="code">Reusable C# bound at <c>lib.&lt;name&gt;</c>, replacing what it carried.</param>
-    /// <param name="onUse">A program to run once, when this memory next comes into use.</param>
+    /// <param name="onUse">A program gg runs on every use of this memory.</param>
     /// <returns>how full the memory budget now is.</returns>
     /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for a memory not held.</exception>
     /// <ggop>memories.update_memory</ggop>
@@ -78,7 +79,7 @@ public static partial class Memories
     /// <param name="description">A one-line description, which is the part that stays pinned.</param>
     /// <param name="body">The memory itself, which does not.</param>
     /// <param name="code">Reusable C# bound at <c>lib.&lt;name&gt;</c> in every later program.</param>
-    /// <param name="onUse">A program to run once, on the read that first loads this memory.</param>
+    /// <param name="onUse">A program gg runs on every read that loads this memory.</param>
     /// <returns>how full the memory budget now is.</returns>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank field or a name carrying characters a

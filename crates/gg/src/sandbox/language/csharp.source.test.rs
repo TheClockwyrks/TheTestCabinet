@@ -164,6 +164,74 @@ fn a_module_names_every_public_thing_it_offers_and_nothing_else() {
     );
 }
 
+/// **What a declaration writes in return and parameter position**, read off the same line the
+/// export was read off.
+///
+/// They are what an agent's `docViewTypes` flags open beside a function, resolved by simple name
+/// against the module's own exports and gg's catalogue — so every identifier a type position spells
+/// is read, and the built-in keywords, which name nothing a view could open, are not.
+#[test]
+fn a_declaration_says_which_types_it_names_and_where() {
+    let module = wrap_module(
+        concat!(
+            "public static Row Parse(string line, Options options) => new(line);\n",
+            "public static IReadOnlyList<Row> Rows(Source source) => [];\n",
+            "public static string Join(IReadOnlyList<string> parts, string separator = \", \") =>\n",
+            "    string.Join(separator, parts);\n",
+            "public static int Count => 0;\n",
+            "public sealed record Row(string Name, Age age);\n",
+            "public delegate int Score(Row row);\n",
+        ),
+        "Kit",
+    )
+    .expect("a module of typed declarations wraps");
+
+    let named = |name: &str| {
+        let export = module
+            .exports
+            .iter()
+            .find(|export| export.name == name)
+            .unwrap_or_else(|| panic!("`{name}` is one of this module\'s exports"));
+        (export.returns.clone(), export.parameters.clone())
+    };
+
+    assert_eq!(
+        named("Parse"),
+        (vec!["Row".to_string()], vec!["Options".to_string()]),
+        "a method does not say what it takes and hands back"
+    );
+    // Every identifier a type position spells, because either half may be the name that opens.
+    assert_eq!(
+        named("Rows"),
+        (
+            vec!["IReadOnlyList".to_string(), "Row".to_string()],
+            vec!["Source".to_string()]
+        ),
+        "a generic return type was read as one name or as none"
+    );
+    // A default value is text: the `, ` in it is not a parameter separator and the `string` before
+    // it is not a second type.
+    assert_eq!(
+        named("Join"),
+        (Vec::new(), vec!["IReadOnlyList".to_string()]),
+        "a default value was read as a type or as another parameter"
+    );
+    // Nothing to open: the built-in keywords name no declaration a view could be opened on.
+    assert_eq!(named("Count"), (Vec::new(), Vec::new()));
+    // A type names itself, which is not a type it writes — and its positional parameters are read
+    // the way a method's are.
+    assert_eq!(
+        named("Row"),
+        (Vec::new(), vec!["Age".to_string()]),
+        "a record was read as returning itself"
+    );
+    assert_eq!(
+        named("Score"),
+        (Vec::new(), vec!["Row".to_string()]),
+        "a delegate does not say what it is handed"
+    );
+}
+
 #[test]
 fn a_module_that_offers_nothing_is_refused_with_what_to_write() {
     let refusal = wrap_module("static int Add(int a, int b) => a + b;\n", "Maths")

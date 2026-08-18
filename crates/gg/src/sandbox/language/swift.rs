@@ -5,8 +5,8 @@
 //!
 //! * [`compile`] — the host-side `swiftc`, the in-process component encode with the preview1
 //!   adapter, what they cost, what they share, and the two failures they tell apart;
-//! * [`source`] — the one thing gg writes, which is not a wrapper around a program but the
-//!   namespace a **code module**'s declarations are moved into, in place;
+//! * [`source`] — the one word gg writes, which is not a wrapper around a program but the `public`
+//!   a **code module**'s own declarations need to cross a module boundary;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of, whose lexer is also what reads a code module's top level;
 //! * `packages/gg-sandbox-swift/` — the SDK a program calls, the shell it is compiled beside, the
@@ -110,30 +110,28 @@
 //! are `/<compiler-generated>` and there is nothing to symbolicate. Catching what you expect is what
 //! buys the line back. Measured in `swift.surface.test.rs`.
 //!
-//! # And a code module is **linked**, which is why the seam hands a program its modules
+//! # And a code module is **a module**, which is why the seam hands a program its modules
 //!
-//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib.<key>`
-//! for every program the agent writes afterwards. On every interpreted arm that binding is made at
-//! *run time*: the guest is handed each module's prepared source beside the program and evaluates it
-//! first. Swift has no such moment — a module is Swift, Swift links, and the only artifact a module
-//! can end up in is the artifact of a program that was compiled against it.
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s code is available to every program
+//! the agent writes afterwards. On every interpreted arm that is made at *run time*: the guest is
+//! handed each module's prepared source beside the program and evaluates it first. Swift has no such
+//! moment — a module is Swift, Swift links, and the only artifact a module can end up in is the
+//! artifact of a program that was compiled against it.
 //!
 //! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
-//! scope, and each becomes a further file of the program's **own Swift module**, with its top-level
-//! declarations moved into `lib.<key>` by being wrapped where they stand — see [`source`] for the
-//! shape, for what it preserves that the two alternatives would have given up, and for the one
-//! construct it refuses. An `import` is one of the declarations Swift keeps at file scope, so a
-//! module that calls gg's surface writes [`import gg`](SURFACE_IMPORT) exactly as a program does,
-//! and gg writes no line above the author's first. The consequence a model can see is that `lib.csvTools.parse` is a **name
-//! the compiler resolves** rather than a property looked up on a value: a key that does not exist
-//! is a diagnostic on the turn that wrote it, where an interpreted arm finds out when the call is
-//! reached.
+//! scope, and each is built into a **Swift module named for the key it is bound under**, which the
+//! program's own compile resolves through an `-I` and links the object of. That is the mechanism
+//! this arm supplies [its own SDK](SURFACE_MODULE) through, so the line a program writes to reach an
+//! author's module is the line it writes to reach gg's — [`import csvTools`](Swift::lib_import), and
+//! then `csvTools.parse(…)`. A program that writes no such line reaches nothing the module carries.
+//! See [`source`] for the `public` gg writes into a module's own file, which is the whole of what it
+//! writes there.
 //!
 //! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
-//! it is read, only to be checked, and once as part of every program that uses it. Without the first
-//! compile, a module that does not build would take down every program the agent wrote from then on,
-//! with the diagnostic landing against the turn's own program in a file the model never saw. See
-//! [`compile::compile_module`].
+//! it is read, only to be checked, and once as its own module beside every program that uses it.
+//! Without the first compile, a module that does not build would take down every program the agent
+//! wrote from then on, with the diagnostic landing against the turn's own program in a file the model
+//! never saw. See [`compile::compile_module`].
 
 use std::sync::OnceLock;
 
@@ -142,8 +140,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    CodeModule, FileWindow, LIB_ACCESS_NAME, PrepareContext, PrepareFailure, PreparedModule,
+    PreparedProgram, ProgramLanguage, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
@@ -226,12 +224,12 @@ impl ProgramLanguage for Swift {
         compile::warm();
     }
 
-    /// The module's own `swiftc`, asked to type-check rather than to build — and the names its
-    /// namespace offers, read from the author's own source.
+    /// The module's own `swiftc`, asked to type-check rather than to build — and the names it
+    /// offers, read from the author's own source.
     ///
     /// What comes back is **source**, which is what a linked language's module has to be: it is an
-    /// input to the [program compile](compile::compile_program) that binds it, not something a guest
-    /// could load on its own.
+    /// input to the [program compile](compile::compile_program) that builds it, not something a
+    /// guest could load on its own.
     fn prepare_module(
         &self,
         source: &str,
@@ -249,6 +247,27 @@ impl ProgramLanguage for Swift {
     /// this SDK's for every function it binds.
     fn binding_name(&self, name: &str) -> String {
         binding_name(name)
+    }
+
+    /// **`import csvTools`** — the line a program writes to reach a module bound at `csvTools`.
+    ///
+    /// A code module is compiled into a Swift module of its own, named for the key, and the program's
+    /// compile is handed the `-I` that resolves it. That is packaging: it tells the compiler the
+    /// module exists and puts no name in scope, exactly as the `-I` that resolves
+    /// [gg's own](SURFACE_MODULE) does. So the line is the same line, with the module's own name in
+    /// it, and a program that writes none reaches nothing the module carries.
+    fn lib_import(&self, key: &str) -> Option<String> {
+        Some(format!("import {key}"))
+    }
+
+    /// **`csvTools.<name>`** — the module's name and then the export's, which is how Swift reaches
+    /// anything an imported module declares.
+    ///
+    /// The qualified form rather than the bare `parse`, though both resolve: it is what a program
+    /// writes when one of its own declarations shares the name, and quoting the form that always
+    /// works is what a documentation view is for.
+    fn lib_access(&self, key: &str) -> String {
+        format!("{key}{}{LIB_ACCESS_NAME}", self.member_separator())
     }
 
     /// **None.** This arm has no guest component, because the component *is* the program: see this
@@ -355,18 +374,27 @@ impl ProgramLanguage for Swift {
 /// them.
 pub(super) const SURFACE_IMPORT: &str = "import gg";
 
+/// **The Swift module gg's surface is compiled as**, which is the name [that line](SURFACE_IMPORT)
+/// carries.
+///
+/// Named separately from the line because two things read it rather than write it: the compile
+/// [refuses a binding key that would collide with it](compile), since a code module is compiled
+/// under its own key; and `swift.test.rs` holds the two to being one statement.
+pub(super) const SURFACE_MODULE: &str = "gg";
+
 /// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
 ///
 /// camelCase because that is what Swift spells a name in and what this SDK spells every bound
-/// function in, so a program reaching `lib.csvTools.parse(…)` reads like the rest of its own scope.
+/// function in, so a program writing `import csvTools` and then `csvTools.parse(…)` reads like the
+/// rest of its own scope.
 /// Any separator — `-`, `.`, or anything a name should not have had — capitalises the letter after
 /// it and disappears, a name that is nothing but separators becomes `module`, and a leading digit is
 /// prefixed.
 ///
 /// It has to be a valid Swift **identifier** for the same reason the Rust arm's does: on this arm the
-/// key names a nested type the compiler resolves (`lib.<key>`) and the file the module is compiled
-/// under, not a string looked up at run time, so a key Swift could not parse would be a program that
-/// does not compile.
+/// key names the Swift module a program imports and the file that module is compiled from, not a
+/// string looked up at run time, so a key Swift could not parse would be a program that does not
+/// compile.
 ///
 /// Deliberately ASCII-only, though Swift identifiers may be Unicode — including emoji — for the
 /// reason every other arm gives: a name a model has to reproduce exactly is one that should have no

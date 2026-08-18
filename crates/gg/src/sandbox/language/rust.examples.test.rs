@@ -39,7 +39,7 @@
 //! of two or more `::`-separated identifiers followed by `(`. That admits `files::list()`,
 //! `programs::get(turn)` and `Brief::Prompt("…")`, and passes over `unwrap()` (no path),
 //! `#[derive(…)]`, `Result<(), Failure>`, `<object>::<function>(args...)` and
-//! `lib::<key>::<name>(args…)` (segments that are not identifiers), and `std::thread::spawn` (no
+//! `<key>::<name>(args…)` (segments that are not identifiers), and `std::thread::spawn` (no
 //! call). The one thing that rule *would* wrongly admit is a rendered `{{api.….signature}}`, which
 //! is a declaration rather than an expression — so those are subtracted by matching the catalogue's
 //! own signature strings, exactly as [`prompts`](crate::prompts) spells them.

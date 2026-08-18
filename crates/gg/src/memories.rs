@@ -124,8 +124,8 @@ pub const DEFAULT_MAX_LEN_DESCRIPTION: usize = 256;
 /// may carry.
 ///
 /// Deliberately generous against every body limit, and deliberately separate from them: neither is
-/// context. A module is transpiled once and bound at `lib.<key>`; an on-use script runs once and is
-/// never shown to the model at all. Neither ever occupies a token of the window, so bounding them
+/// context. A module is prepared once and supplied to later programs as a library; an on-use script
+/// runs on every use and is never shown to the model at all. Neither ever occupies a token of the window, so bounding them
 /// against a *window* budget would be bounding the wrong thing. What this bounds is the transpiler,
 /// which parses untrusted source on a recursive-descent stack.
 pub const MAX_MEMORY_CODE_CHARS: usize = 32_768;
@@ -532,16 +532,15 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut LaunchReport) {
 /// memory tools' schemas do not offer them, so a native-mode run can neither write one nor be
 /// handed one, and [`Default`] — both absent — is what that path always passes.
 ///
-/// Neither is context. [`code`](Self::code) is transpiled once and bound at `lib.<key>` in every
-/// later program; [`on_use`](Self::on_use) runs once and is never shown to the model at all. So
+/// Neither is context. [`code`](Self::code) is prepared once and supplied to every later program as
+/// a library; [`on_use`](Self::on_use) runs on every use and is never shown to the model at all. So
 /// neither counts against a body limit, and both are bounded on their own by
 /// [`MAX_MEMORY_CODE_CHARS`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MemoryCode {
-    /// A module, in the agent's own program language, whose exports its later programs reach at
-    /// `lib.<key>`.
+    /// A module, in the agent's own program language, which its later programs import.
     pub code: Option<String>,
-    /// A script gg runs once, when the memory first comes into use.
+    /// A script gg runs on every use of the memory.
     pub on_use: Option<String>,
 }
 
@@ -618,8 +617,8 @@ impl Memory {
         &self.body
     }
 
-    /// The reusable module this memory carries, if any — bound at `lib.<key>` once the memory is in
-    /// use.
+    /// The reusable module this memory carries, if any — supplied to later programs as a library
+    /// once the memory is in use.
     pub fn code(&self) -> Option<&str> {
         self.code.code.as_deref()
     }

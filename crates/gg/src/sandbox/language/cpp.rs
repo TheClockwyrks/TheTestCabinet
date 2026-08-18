@@ -116,15 +116,15 @@
 //!
 //! # And a code module is **linked**, which is why the seam hands a program its modules
 //!
-//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib::<key>`
-//! for every program the agent writes afterwards. On every interpreted arm that binding is made at
-//! *run time*: the guest is handed each module's prepared source beside the program and evaluates it
-//! first. C++ has no such moment — a module is C++, C++ links, and the only artifact a module can
-//! end up in is the artifact of a program that was compiled against it.
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is `lib::<key>`, and a
+//! program reaches it by writing [`import lib.<key>;`](ProgramLanguage::lib_import). On every
+//! interpreted arm the module is a value the guest is handed beside the program and evaluates first.
+//! C++ has no such moment — a module is C++, C++ links, and the only artifact a module can end up in
+//! is the artifact of a program that was compiled against it.
 //!
 //! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
-//! scope, and each becomes a named C++ module the program imports, with its declarations opened
-//! inside `namespace lib::<key>` **where they stand**. It is the plainest shape of the three
+//! scope, and each becomes a named C++ module **the program imports itself**, with its declarations
+//! opened inside `namespace lib::<key>` **where they stand**. It is the plainest shape of the three
 //! compiled arms — C++ has a real nested namespace, so nothing has to be re-synthesized or declared
 //! twice — and the one thing that had to be decided is what happens to a `#include` at a module's
 //! top level, which is **hoisted** into the module's global module fragment, where an author's own
@@ -135,8 +135,9 @@
 //! not touch. See [`source`] for the shape, the hoist and the argument.
 //!
 //! What a model can see of the difference is that `lib::csv_tools::parse` is a **name the compiler
-//! resolves** rather than a property looked up on a value: a key that does not exist is a diagnostic
-//! on the turn that wrote it, where an interpreted arm finds out when the call is reached.
+//! resolves** rather than a property looked up on a value: a key that does not exist, and a module
+//! the program forgot to import, are both a diagnostic on the turn that wrote it, where an
+//! interpreted arm finds out when the call is reached.
 //!
 //! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
 //! it is read, only to be checked, and once as part of every program that uses it. Without the first
@@ -256,6 +257,22 @@ impl ProgramLanguage for Cpp {
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
         compile::compile_module(source, context)
+    }
+
+    /// **`import lib.<key>;`** — the line a program writes to reach a code module's namespace, and
+    /// the only thing that puts `lib` in scope.
+    ///
+    /// A module in scope is [precompiled](self::compile::compile_module) into an interface of its own
+    /// and named to the compile with `-fmodule-file=`, which says where the module is and declares
+    /// nothing, exactly as `-I` says where gg's headers are. So this line is the model's to write,
+    /// on the same terms as the `#include <gg/files.hpp>` that reaches gg's surface, and a program
+    /// that omits it earns clang's own *use of undeclared identifier 'lib'*.
+    ///
+    /// It names the [module](source::module_name) rather than the namespace, because that is what an
+    /// import declaration resolves: a key of `module` is imported as `import lib.Module;` and
+    /// written `lib::module::<name>`.
+    fn lib_import(&self, key: &str) -> Option<String> {
+        Some(source::module_import(key))
     }
 
     /// **`.hpp`, and nothing else.**

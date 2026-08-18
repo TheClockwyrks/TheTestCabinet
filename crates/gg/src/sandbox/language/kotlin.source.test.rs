@@ -109,8 +109,9 @@ fn a_module_s_package_is_the_path_a_program_writes() {
     // `lib.<key>.<name>` is what a program writes, so the package a module is compiled into and the
     // access the seam publishes have to be the same string. One derives the other.
     assert_eq!(module_package("csvTools"), "lib.csvTools");
-    assert_eq!(module_file("csvTools"), "GgModule_csvTools.kt");
-    // Two modules are two files, because one compile reads them all at once.
+    // The file is named for the key, so every diagnostic about a module carries in its file
+    // position the one coordinate a model has for code it did not write.
+    assert_eq!(module_file("csvTools"), "csvTools.kt");
     assert_ne!(module_file("a"), module_file("b"));
 }
 
@@ -261,16 +262,55 @@ fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
     assert_eq!(wrapped.exports[1].declaration, "fun add(a: Int, b: Int)");
     assert_eq!(wrapped.exports[1].doc, None);
 
-    assert!(
-        wrapped
-            .exports
-            .iter()
-            .all(|export| export.returns.is_empty())
+    // The types the declaration writes, in the two positions a documentation view asks about.
+    assert_eq!(wrapped.exports[0].returns, ["String"]);
+    assert_eq!(wrapped.exports[0].parameters, ["String"]);
+    // A `fun` that declares no return type returns `Unit`, and the author wrote no name there — so
+    // there is no type for a view to open and none is recorded.
+    assert!(wrapped.exports[1].returns.is_empty());
+    assert_eq!(wrapped.exports[1].parameters, ["Int"]);
+}
+
+/// **The type names an export carries are the ones its own declaration writes**, in return position
+/// and in parameter position, whatever else the declaration is carrying.
+#[test]
+fn an_export_carries_the_types_its_declaration_writes() {
+    let wrapped = wrap_module(
+        "fun rows(\n\
+        \x20   source: kotlin.collections.List<Row>,\n\
+        \x20   limit: Int = 10,\n\
+        \x20   vararg tags: String,\n\
+         ): Map<String, List<Row>> {\n\
+        \x20   return emptyMap()\n\
+         }\n\
+         \n\
+         fun <T : Comparable<T>> Sequence<T>.largest(): T? = null\n\
+         \n\
+         fun report(): Unit {\n\
+         }\n",
+        &module_package("csvTools"),
+    )
+    .expect("wrapped");
+    assert_eq!(
+        export_names(&wrapped.exports),
+        ["rows", "largest", "report"]
     );
-    assert!(
-        wrapped
-            .exports
-            .iter()
-            .all(|export| export.parameters.is_empty())
+
+    // A qualified name is recorded by its last segment, a generic argument is a name of its own,
+    // and a default value is an expression rather than a type.
+    assert_eq!(
+        wrapped.exports[0].parameters,
+        ["List", "Row", "Int", "String"]
     );
+    assert_eq!(wrapped.exports[0].returns, ["Map", "String", "List", "Row"]);
+
+    // An extension function's receiver stands in front of its name rather than in its parameter
+    // list, so what it writes in parameter position is nothing; the nullable return is the name
+    // without its `?`.
+    assert!(wrapped.exports[1].parameters.is_empty());
+    assert_eq!(wrapped.exports[1].returns, ["T"]);
+
+    // `Unit` written out is a name the author wrote, so it is a view that can be opened.
+    assert_eq!(wrapped.exports[2].returns, ["Unit"]);
+    assert!(wrapped.exports[2].parameters.is_empty());
 }

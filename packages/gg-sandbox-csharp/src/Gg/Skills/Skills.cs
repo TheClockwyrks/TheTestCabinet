@@ -12,7 +12,8 @@ public static partial class Skills
     /// <remarks>
     /// The skill is also pinned permanently into the session's context, so it survives a compaction
     /// and never has to be read twice. A skill that carries code binds that code at
-    /// <c>lib.&lt;name&gt;</c> for every later program.
+    /// <c>lib.&lt;name&gt;</c> for every later program, and opens a documentation view of each
+    /// function it declares.
     /// </remarks>
     /// <param name="name">
     /// The skill's name, exactly as the system prompt lists it. An unknown one comes back with the

@@ -48,10 +48,10 @@ fn a_code_skills_module_is_spelled_java() {
 /// **The `lib.<key>` binding is camelCase**, and is a valid Java identifier whatever the author
 /// called their skill.
 ///
-/// This arm reaches a module as `Lib.csvTools.parse(…)`, a path javac checks, so the key is a Java
-/// **identifier** rather than a string: a key Java could not parse would be a program that does not
-/// compile. It is also a name the model types out from memory in every program that uses it, so it
-/// is held to what a Java author would have written.
+/// The key is the name of the class a module is compiled under, so it is a Java **identifier**
+/// rather than a string: a key Java could not parse would be a module that does not compile. It is
+/// also a name the model types out from memory in every program that uses it, so it is held to what
+/// a Java author would have written.
 #[test]
 fn the_binding_name_is_a_camel_case_java_identifier() {
     assert_eq!(java().binding_name("csv-tools"), "csvTools");
@@ -85,6 +85,24 @@ fn the_binding_name_is_a_camel_case_java_identifier() {
             "`{name}` bound at `{key}`"
         );
     }
+}
+
+/// **A loaded module is reached the way this arm's own SDK is: a class on the classpath, and a line
+/// the program writes.**
+///
+/// `import lib.csvTools;` is the same shape the catalogue publishes for gg's own modules
+/// (`import gg.files.Files;`), because it is the same mechanism — a classpath entry declares no
+/// name, and Java resolves a class by its own qualified name or under an import. The access
+/// template is the seam's default, which on this arm reads as a package, a class and a `static`
+/// method, and is what a program writes when it imports nothing.
+#[test]
+fn a_loaded_module_is_a_class_a_program_imports_or_names_in_full() {
+    assert_eq!(java().lib_access("csvTools"), "lib.csvTools.<name>");
+    assert_eq!(java().lib_member("csvTools", "parse"), "lib.csvTools.parse");
+    assert_eq!(
+        java().lib_import("csvTools").as_deref(),
+        Some("import lib.csvTools;")
+    );
 }
 
 /// **The synthesized file view is Java**: positional arguments of an overload, and a semicolon.

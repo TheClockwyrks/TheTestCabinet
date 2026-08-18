@@ -1012,6 +1012,31 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
     );
     assert_eq!(logs(&outcome), ["read_file"]);
 
+    // A submodule is imported directly, which is what a Python author reaches for when one module
+    // is all they want. Every form resolves because `lib` is an ordinary package in `sys.modules`.
+    let outcome = run_with_modules(
+        "from lib.csv_tools import widen\nimport lib.csv_tools as tools\nprint(widen('a', 3), tools.HEADER)",
+        &[(
+            "csv_tools",
+            "HEADER = 'name,size'\n\ndef widen(text, width):\n    return text.ljust(width, '.')\n",
+        )],
+    );
+    assert_eq!(logs(&outcome), ["a.. name,size"]);
+
+    // A module in scope is still not a name. Supplying one puts a package in `sys.modules` and
+    // nothing in the program, so a program that writes no line for it gets CPython's own
+    // `NameError` — the rule `import gg` is under, applied to the agent's own code.
+    let outcome = run_with_modules(
+        "print(lib.csv_tools.HEADER)",
+        &[("csv_tools", "HEADER = 'name,size'\n")],
+    );
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
+    assert!(
+        program_error(&outcome).message.contains("lib"),
+        "{:?}",
+        program_error(&outcome).message
+    );
+
     // No modules, no `lib` — the rule every family obeys: what a run does not offer is not a name.
     let outcome = run("print(lib)");
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);

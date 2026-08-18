@@ -8,7 +8,7 @@
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use crate::sandbox::{CodeModule, FileWindow};
+use crate::sandbox::FileWindow;
 
 use super::*;
 use crate::sandbox::export_names;
@@ -102,12 +102,12 @@ fn a_code_skills_module_is_spelled_rs() {
     assert_eq!(rust().module_file_extension(), "rs");
 }
 
-/// **The `lib::<key>` binding is snake_case**, and is a valid Rust identifier whatever the author
-/// called the skill.
+/// **The binding key is snake_case**, and is a valid Rust identifier whatever the author called the
+/// skill.
 ///
-/// It has to be one for a stronger reason than on any other arm: here the key is a **path segment**
-/// the compiler resolves, not a string a guest looks up, so a key Rust could not parse would be a
-/// program that does not compile.
+/// It has to be one for a stronger reason than on any other arm: here the key is the **crate name**
+/// a program resolves a path from, not a string a guest looks up, so a key Rust could not parse
+/// would be a program that does not compile.
 #[test]
 fn the_binding_name_is_a_snake_case_rust_identifier() {
     let cases = [
@@ -123,6 +123,15 @@ fn the_binding_name_is_a_snake_case_rust_identifier() {
         ("match", "_match"),
         ("crate", "_crate"),
         ("Self", "_self"),
+        // A crate the compile already has. `--extern gg=<module>` beside `--extern gg=<sdk>` leaves
+        // `rustc` choosing between two candidates for one name, and `std` would take the standard
+        // library's place in the extern prelude.
+        ("gg", "_gg"),
+        ("std", "_std"),
+        ("core", "_core"),
+        ("regex", "_regex"),
+        ("serde json", "_serde_json"),
+        ("program", "_program"),
     ];
     for (name, expected) in cases {
         let key = rust().binding_name(name);
@@ -239,67 +248,29 @@ fn the_opening_program_composes_every_call_with_a_question_mark() {
     );
 }
 
-/// **A code module is declared below the program**, so nothing the model wrote moves.
+/// **A code module is reached the way gg's own SDK is**, and gg states no line for either.
 ///
-/// Everything about this arm's diagnostics rests on the model's line *n* being line *n* of the entry
-/// file. An item written above the program would move every one of them, so the modules go below
-/// everything the model wrote — where Rust reads them just as well, because an item is visible to
-/// the whole crate however far down it is declared.
+/// `--extern <key>=…` puts the module's crate in the extern prelude, which makes the name reachable
+/// and puts nothing in the program's own scope — the same packaging `--extern gg=…` is. So the
+/// access is a path rooted at the key itself, there is no `lib` above it, and the line a
+/// documentation view would quote is the one thing this arm has none of.
 #[test]
-fn the_modules_in_scope_are_declared_below_the_program_and_move_nothing() {
-    let modules = [
-        CodeModule {
-            name: "csv_tools".to_string(),
-            source: "use gg::files;\npub fn parse(_row: &str) -> usize { 0 }\n".to_string(),
-        },
-        CodeModule {
-            name: "notes".to_string(),
-            source: "pub fn title() -> &'static str { \"n\" }\n".to_string(),
-        },
-    ];
-    let program = "use gg::views;\n\nfn main() -> Result<(), gg::Failure> {\n    \
-                   views::open_text(\"n\", \"1\")?;\n    Ok(())\n}\n";
-    let wrapped = source::wrap(program, &modules);
-
-    let lines: Vec<&str> = wrapped.lines().collect();
-    for (index, original) in program.lines().enumerate() {
-        assert_eq!(
-            lines[index],
-            original,
-            "the model's line {} moved",
-            index + 1
-        );
-    }
-
-    for module in &modules {
-        assert!(
-            wrapped.contains(&format!(
-                "#[path = \"module_{0}.rs\"] mod __gg_module_{0};",
-                module.name
-            )),
-            "{} was not declared:\n{wrapped}",
-            module.name
-        );
-        assert!(
-            wrapped.contains(&format!(
-                "pub(crate) use super::__gg_module_{0} as {0};",
-                module.name
-            )),
-            "{} was not re-exported into `lib`:\n{wrapped}",
-            module.name
-        );
-    }
-    assert!(wrapped.contains("mod lib {"), "{wrapped}");
-
-    // An agent that has loaded nothing gets exactly the bytes it sent.
-    assert_eq!(source::wrap(program, &[]), program);
+fn a_module_is_reached_by_a_path_rooted_at_its_own_key() {
+    assert_eq!(rust().lib_access("csv_tools"), "csv_tools::<name>");
+    assert_eq!(rust().lib_member("csv_tools", "parse"), "csv_tools::parse");
+    assert_eq!(
+        rust().lib_import("csv_tools"),
+        None,
+        "a crate on `--extern` needs no line, which is exactly how a program reaches gg's own SDK"
+    );
 }
 
-/// **A module's namespace is every public item it declares at its top level**, in source order.
+/// **A module's crate offers every `pub` item it declares at its top level**, in source order.
 ///
 /// Wider than the function lists the interpreted arms report, and deliberately: a Rust module whose
 /// namespace is a `struct` and its `impl` offers that type, and a listing that named only its
-/// functions would be describing something else.
+/// functions would be describing something else. Narrower in one direction, for the reason a module
+/// is a crate: `pub(crate)` reaches the module's own crate and the program is another one.
 #[test]
 fn a_modules_exports_are_its_public_items() {
     let module = "\
@@ -316,7 +287,7 @@ impl Row {
 }
 
 pub const LIMIT: usize = 10;
-pub(crate) fn visible_to_the_program() {}
+pub(crate) fn withheld_from_the_program() {}
 pub async unsafe fn modified() {}
 pub type Alias = usize;
 fn private_is_not_an_export() {}
@@ -327,7 +298,6 @@ pub use std::fmt::Debug;
         vec![
             "Row".to_string(),
             "LIMIT".to_string(),
-            "visible_to_the_program".to_string(),
             "modified".to_string(),
             "Alias".to_string(),
         ]

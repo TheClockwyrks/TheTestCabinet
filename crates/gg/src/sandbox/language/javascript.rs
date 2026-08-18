@@ -115,6 +115,12 @@ impl ProgramLanguage for JavaScript {
 
     /// The author's bytes, handed straight to the guest, with the names its top level exports read
     /// off them.
+    ///
+    /// Every export's [return and parameter types](super::ModuleExport::returns) come back
+    /// **empty** on this arm, and that is the language rather than a gap in the reading: a
+    /// JavaScript declaration writes no type in either position, so there is nothing for the shared
+    /// reader to find. A model here reads what a declaration says and calls it; the annotations are
+    /// [TypeScript's](super::typescript).
     fn prepare_module(
         &self,
         source: &str,

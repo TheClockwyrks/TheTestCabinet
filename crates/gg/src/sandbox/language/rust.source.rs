@@ -3,14 +3,15 @@
 //! A program on this arm is a whole Rust program — the `use` lines it wrote and the `fn main` it
 //! declared — compiled as a **binary crate** under the name below. gg writes no prologue, no
 //! epilogue, no entry point and no import, so `rustc` reads the bytes the model sent and reports
-//! every diagnostic in the model's own coordinates. There is nothing here to subtract.
+//! every diagnostic in the model's own coordinates. There is nothing here to subtract, and nothing
+//! a code module in scope adds: a module is a **crate of its own**, named to the program's compiler
+//! on `--extern`, which is packaging and writes no line into anybody's file.
 //!
-//! What is left in this file is the two names a compile is written under, the declarations that put
-//! a **code module** in scope below the program, and the reading of a module's own exports. Code
-//! modules are the one thing gg still writes into the entry file, and they go *below* the model's
-//! last line — see [`module_declarations`].
+//! What is left in this file is the names a compile is written under, the file and artifact names a
+//! code module's own crate is built under, and the reading of a module's exports out of its author's
+//! source.
 
-use crate::sandbox::{CodeModule, ModuleExport, ModuleExportKind};
+use crate::sandbox::{ModuleExport, ModuleExportKind};
 
 /// The file a program is compiled under, and the one its diagnostics are located in.
 ///
@@ -32,51 +33,17 @@ pub(super) const CRATE_NAME: &str = "program";
 /// The crate a program is compiled against, as `--extern` names it.
 ///
 /// One word, because it is the first word of every Rust program in the study:
-/// `gg::files::read_file`, `use gg::views;`. `--extern` puts it in the **extern prelude**, which is packaging on the same
-/// terms a jar on a classpath is: it makes the crate reachable and puts no name in a program's own
-/// scope. Everything under it is written either in full or under a `use` line the program wrote.
+/// `gg::files::read_file`, `use gg::views;`. `--extern` puts it in the **extern prelude**, which is
+/// packaging on the same terms a jar on a classpath is: it makes the crate reachable and puts no
+/// name in a program's own scope. Everything under it is written either in full or under a `use`
+/// line the program wrote.
 pub(super) const SDK_CRATE: &str = "gg";
-
-/// The entry file for a model's `program`: the model's own bytes, with the code
-/// [modules](CodeModule) in scope declared below them.
-///
-/// Byte-for-byte by construction when the agent has loaded no code modules, and line-preserving
-/// always: the declarations come after everything the model wrote, so the model's line *n* is line
-/// *n* of the file and no column moves at all.
-///
-/// **Below** means below the model's last *line*, not below its last byte, and the difference is the
-/// separator this function adds. A reply need not end in a newline — plenty do not — and
-/// concatenating the first `#[path = …]` onto the end of the model's last line would put a
-/// declaration *inside* it: harmless where that line is code, because Rust is whitespace-
-/// insensitive, and fatal where it is a `//` comment, which swallows the declaration whole and
-/// leaves the `mod lib` re-export below it dangling on a symbol the model has never seen
-/// (`error[E0432]: unresolved import` `super::__gg_module_…`, charged to the model's error budget
-/// over a program it wrote correctly). So a program that does not end in a newline is given one, and
-/// nothing else: it adds a line *after* the model's last, which moves none of them.
-///
-/// It is what keeps the declarations out of the model's coordinates, too. `rustc` locates a
-/// diagnostic they earn on the line they are written on, and
-/// [`Diagnostic::primary`](super::compile) reports a span past the model's last line with no
-/// location rather than a wrong one — which only holds while the declarations are past it.
-pub(super) fn wrap(program: &str, modules: &[CodeModule]) -> String {
-    let declarations = module_declarations(modules);
-    if declarations.is_empty() {
-        // Byte for byte, including a program that ends mid-line: with nothing to declare there is
-        // nothing to separate it from.
-        return program.to_string();
-    }
-    let separator = match program.is_empty() || program.ends_with('\n') {
-        true => "",
-        false => "\n",
-    };
-    format!("{program}{separator}{declarations}")
-}
 
 // ---------------------------------------------------------------------------------------------
 // Code modules
 // ---------------------------------------------------------------------------------------------
 
-/// The file a code module is compiled under, given its binding key — `module_csv_tools.rs`.
+/// The file a code module's crate is compiled from, given its binding key — `module_csv_tools.rs`.
 ///
 /// A fixed name per key inside a workspace that is private per preparation, on the same terms
 /// [`PROGRAM_FILE`] is. The key is already a Rust identifier ([`binding_name`](super::binding_name))
@@ -85,63 +52,30 @@ pub(super) fn module_file(key: &str) -> String {
     format!("module_{key}.rs")
 }
 
-/// The declarations that put every module in scope at `lib::<key>`, written below the program.
+/// The `.rlib` a code module's crate is compiled into, given its binding key.
 ///
-/// Two items per module rather than one, and the shape is forced by `#[path]`'s own resolution
-/// rules: a `#[path]` on a `mod` **inside an inline module block** of a crate root is resolved
-/// relative to a directory named after the inline module, so `mod lib { #[path = "…"] pub mod x; }`
-/// would send `rustc` looking in `lib/`. Declaring each module at the crate root — where `#[path]`
-/// is relative to the file's own directory — and re-exporting it into `lib` puts the file where it
-/// is and the name where a model was told it would be.
-///
-/// `lib` is a module rather than an object because that is what a namespace is in Rust:
-/// `lib::csv_tools::parse(…)` is a path, checked at compile time, and a key that does not exist is a
-/// diagnostic on the turn that wrote it rather than a failure at run time. That is the divergence
-/// from every interpreted arm, where `lib.csvTools` is a property looked up on a value the guest
-/// built — and it is spelling rather than identity: the same modules, bound under the same keys.
-///
-/// Empty for an agent that has loaded nothing, which is what makes [`wrap`] the identity function
-/// on an ordinary program. [Ruling D5](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
-/// is what admits these two items into a file gg otherwise writes nothing into: a code module's
-/// binding is outside the authorship rule.
-fn module_declarations(modules: &[CodeModule]) -> String {
-    if modules.is_empty() {
-        return String::new();
-    }
-    let mut declared = String::new();
-    let mut exported = String::new();
-    for module in modules {
-        declared.push_str(&format!(
-            "#[path = {:?}] mod {MODULE_PREFIX}{};\n",
-            module_file(&module.name),
-            module.name
-        ));
-        exported.push_str(&format!(
-            "    pub(crate) use super::{MODULE_PREFIX}{0} as {0};\n",
-            module.name
-        ));
-    }
-    format!("{declared}#[allow(unused_imports)] mod lib {{\n{exported}}}\n")
+/// `lib<key>.rlib` is what `rustc` would name a library crate itself, and naming it explicitly is
+/// what lets the `--extern <key>=…` that reaches it be written before the compiler has run.
+pub(super) fn module_artifact(key: &str) -> String {
+    format!("lib{key}.rlib")
 }
 
-/// What the crate-root declaration of a code module is named, so that a module called `lib`, or one
-/// called the same thing as an item the model's own program declares at the top level, cannot
-/// collide with it.
-const MODULE_PREFIX: &str = "__gg_module_";
-
-/// The names a code module's namespace offers, in source order — what the reply that binds it tells
-/// the model it may call.
+/// The names a code module's crate offers, in source order — the declarations a program may call
+/// through `<key>::<name>`, and the entries a use of the skill opens a documentation view of.
 ///
 /// Read from the module's **own source** rather than out of anything the compiler produced, for the
-/// reason every other arm reads its own: these are what the skill's author is *told* the namespace
+/// reason every other arm reads its own: these are what the skill's author is *told* the crate
 /// holds, and a second reading of the same fact is a second chance for the two to disagree.
 ///
-/// A public item at the module's top level is one of its names, whatever kind it is — `pub fn`,
-/// `pub struct`, `pub enum`, `pub const`, `pub static`, `pub type`, `pub trait`, `pub mod`, and the
-/// restricted forms (`pub(crate)`, `pub(super)`) that are still visible to the program, since a
-/// module and its program are one crate here. That is wider than the function lists the interpreted
-/// arms report, and it is right: a Rust module whose namespace is a `struct` and its `impl` offers
-/// that type, and a listing that named only its functions would be describing something else.
+/// A `pub` item at the module's top level is one of its names, whatever kind it is — `pub fn`,
+/// `pub struct`, `pub enum`, `pub const`, `pub static`, `pub type`, `pub trait` and `pub mod`. That
+/// is wider than the function lists the interpreted arms report, and it is right: a Rust module
+/// whose namespace is a `struct` and its `impl` offers that type, and a listing that named only its
+/// functions would be describing something else.
+///
+/// A restricted item (`pub(crate)`, `pub(super)`, `pub(in …)`) is **not** one of them. A module is
+/// its own crate, so a restriction to that crate is a restriction against the program, and
+/// advertising one would be offering a call `rustc` refuses.
 ///
 /// The scan is lexical and **unindented-only**, like every other reading in this arm: a `pub fn`
 /// nested inside an `impl` or a `mod` is indented, is not a name the program reaches directly, and
@@ -162,13 +96,15 @@ pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
         // An attribute stands between an item's documentation and the item, and belongs to the item:
         // `#[inline]` under three lines of `///` has not detached them from each other.
         let above = super::super::comments::above(&lines, number, |line| line.starts_with("#["));
+        let declaration = super::super::heads::head(line);
+        let (returns, parameters) = signature_types(&declaration, keyword);
         out.push(ModuleExport {
             name: name.to_string(),
             kind: kind(keyword),
-            declaration: super::super::heads::head(line),
             doc: super::super::comments::line_doc(&lines, above, &["///"]),
-            returns: Vec::new(),
-            parameters: Vec::new(),
+            declaration,
+            returns,
+            parameters,
         });
     }
     out
@@ -187,14 +123,199 @@ fn kind(keyword: &str) -> ModuleExportKind {
     }
 }
 
+/// The type names `declaration` writes in return position and in parameter position — the two lists
+/// a [`docViewTypes`](crate::config) flag opens a view of beside the function's own.
+///
+/// Read for a `fn` and for nothing else, because a documentation view opens the types around a
+/// **function**: the type on a `const` is that constant's own type rather than something it returns,
+/// and reporting it here would put a name in a list whose one reader asks a question about calls.
+///
+/// What is collected is the **last segment of every path** the type writes, so
+/// `Result<Vec<gg::files::FileRead>, ApiError>` reports `Result`, `Vec`, `FileRead` and `ApiError`.
+/// Wider than the outermost name, deliberately: a name that resolves to nothing — a generic
+/// parameter, a primitive, a container the surface does not document — is dropped by the resolver
+/// that reads this, and the one it *can* resolve is the one the model wanted. Narrowing to the
+/// outermost would withhold `FileRead` from every function handing back a `Result` of one, which is
+/// most of them.
+///
+/// Lifetimes and the words a type writes that are not type names (`dyn`, `impl`, `mut`, `as`) are
+/// skipped, and `self` with them: a method's receiver is not a parameter type.
+fn signature_types(declaration: &str, keyword: &str) -> (Vec<String>, Vec<String>) {
+    if keyword != "fn" {
+        return (Vec::new(), Vec::new());
+    }
+    let Some((parameters, rest)) = parameter_list(declaration) else {
+        return (Vec::new(), Vec::new());
+    };
+    let returned = rest
+        .trim_start()
+        .strip_prefix("->")
+        .map(|returned| match returned.find(" where ") {
+            Some(at) => &returned[..at],
+            None => returned,
+        })
+        .unwrap_or("");
+    let mut parameter_types = Vec::new();
+    for parameter in split_parameters(parameters) {
+        // `name: Type` — the type is what follows the first colon at the top level of the
+        // parameter, which is where a `self` receiver and a `_` binding both drop out: neither
+        // writes one.
+        let Some(typed) = after_binding(&parameter) else {
+            continue;
+        };
+        collect_type_names(typed, &mut parameter_types);
+    }
+    let mut returns = Vec::new();
+    collect_type_names(returned, &mut returns);
+    (returns, parameter_types)
+}
+
+/// The text between a declaration's own parentheses, and everything after them.
+///
+/// The opening parenthesis is the first one outside the generic list, because a bound may write one
+/// of its own — `pub fn apply<F: Fn(u8) -> u8>(f: F)` opens its parameters at the second `(` — and
+/// the closing one is depth-counted for the same reason: `pub fn apply(f: fn(u8) -> u8)`.
+fn parameter_list(declaration: &str) -> Option<(&str, &str)> {
+    let open = opening_parenthesis(declaration)?;
+    let mut depth = 0usize;
+    for (at, character) in declaration[open..].char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((
+                        &declaration[open + 1..open + at],
+                        &declaration[open + at + 1..],
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Where a declaration's parameter list opens: the first `(` written outside a generic list.
+///
+/// The `>` of a `->` closes nothing, which is what keeps a bound's own return type from taking the
+/// scan out of the generic list one angle bracket early.
+fn opening_parenthesis(declaration: &str) -> Option<usize> {
+    let mut angle = 0usize;
+    let mut previous = ' ';
+    for (at, character) in declaration.char_indices() {
+        match character {
+            '<' => angle += 1,
+            '>' if previous != '-' => angle = angle.saturating_sub(1),
+            '(' if angle == 0 => return Some(at),
+            _ => {}
+        }
+        previous = character;
+    }
+    None
+}
+
+/// One parameter per element, split on the commas that are the list's own.
+///
+/// A comma inside a generic argument, a tuple or a slice belongs to the type it is written in —
+/// `pub fn merge(rows: Vec<(u8, u8)>, limit: usize)` is two parameters and not three — so every
+/// bracket the language has is counted.
+fn split_parameters(parameters: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for character in parameters.chars() {
+        match character {
+            '(' | '[' | '<' => depth += 1,
+            ')' | ']' | '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                out.push(std::mem::take(&mut current));
+                continue;
+            }
+            _ => {}
+        }
+        current.push(character);
+    }
+    out.push(current);
+    out
+}
+
+/// The type half of `name: Type`, or `None` for a parameter that writes no type.
+///
+/// The colon searched for is the one at the parameter's own top level: a bound written inline
+/// (`f: impl Fn(u8) -> u8`) puts none inside a bracket, but a defaulted const generic could, and
+/// counting brackets costs nothing.
+fn after_binding(parameter: &str) -> Option<&str> {
+    let mut depth = 0usize;
+    for (at, character) in parameter.char_indices() {
+        match character {
+            '(' | '[' | '<' => depth += 1,
+            ')' | ']' | '>' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => return Some(&parameter[at + 1..]),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Every type name `text` writes, appended to `out` in the order they were written, without
+/// repeats.
+///
+/// An identifier followed by `::` is a path segment rather than the name at its end, so it is
+/// dropped and the segment after it is taken. An identifier after a `'` is a lifetime.
+fn collect_type_names(text: &str, out: &mut Vec<String>) {
+    let bytes: Vec<char> = text.chars().collect();
+    let mut at = 0usize;
+    while at < bytes.len() {
+        let character = bytes[at];
+        if character == '\'' {
+            // A lifetime, and the identifier after the quote is its name rather than a type's.
+            at += 1;
+            while at < bytes.len() && (bytes[at].is_alphanumeric() || bytes[at] == '_') {
+                at += 1;
+            }
+            continue;
+        }
+        if !(character.is_alphabetic() || character == '_') {
+            at += 1;
+            continue;
+        }
+        let start = at;
+        while at < bytes.len() && (bytes[at].is_alphanumeric() || bytes[at] == '_') {
+            at += 1;
+        }
+        let word: String = bytes[start..at].iter().collect();
+        let mut after = at;
+        while after < bytes.len() && bytes[after].is_whitespace() {
+            after += 1;
+        }
+        // A path prefix: what the model reaches is the segment this one qualifies.
+        if bytes[after..].starts_with(&[':', ':']) {
+            at = after + 2;
+            continue;
+        }
+        if NOT_A_TYPE_NAME.contains(&word.as_str()) || out.contains(&word) {
+            continue;
+        }
+        out.push(word);
+    }
+}
+
+/// The words a Rust type may write that name no type.
+///
+/// `self` is here because a receiver is not a parameter type, and the three type-position keywords
+/// because `dyn Reader` names `Reader`. `where` never reaches this: a return type is cut at its
+/// clause before the scan starts.
+const NOT_A_TYPE_NAME: [&str; 6] = ["dyn", "impl", "mut", "ref", "self", "as"];
+
 /// The name `line` makes public and the keyword that says what it is, if it makes one.
 fn exported_name(line: &str) -> Option<(&str, &str)> {
     let rest = line.trim().strip_prefix("pub")?;
-    // `pub(crate)`, `pub(super)`, `pub(in …)` — visible to the program, which is in the same crate.
-    let rest = match rest.strip_prefix('(') {
-        Some(inner) => inner.split_once(')')?.1,
-        None => rest,
-    };
+    // A restricted item is visible inside the module's own crate and nowhere else, and the program
+    // is another crate — so `pub(crate) fn` declares nothing a program may write.
+    if rest.starts_with('(') {
+        return None;
+    }
     let mut rest = rest.strip_prefix(char::is_whitespace)?.trim_start();
     // The modifiers a public item may carry between `pub` and the keyword that says what it is,
     // consumed in whatever order they were written (`async unsafe fn`, `unsafe extern fn`).
@@ -224,7 +345,7 @@ fn exported_name(line: &str) -> Option<(&str, &str)> {
     (end > 0).then(|| (&after[..end], keyword))
 }
 
-/// The item keywords whose declaration names something a program may reach through `lib::<key>`.
+/// The item keywords whose declaration names something a program may reach through `<key>::<name>`.
 ///
 /// `impl` is deliberately absent: it declares no name of its own, and the type it is written for is
 /// already listed by its own declaration. `use` is absent for the opposite reason — a `pub use` is a

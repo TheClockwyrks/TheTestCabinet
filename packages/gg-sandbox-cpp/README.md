@@ -207,33 +207,39 @@ Four things are deliberately off the set, and each is a decision rather than an 
 
 ## Code modules
 
-A code skill's or memory's code is bound at **`lib::<key>`**, and on this arm that binding is a
-**link**: the module is compiled into the same artifact as the program that uses it. gg writes two
-lines above the author's first and one below their last, and hands the file to `clang++` with
-`-include`:
+A code skill's or memory's namespace is **`lib::<key>`**, and on this arm reaching it is a **link**:
+the module is compiled into the same artifact as the program that uses it. gg writes the file as a
+named C++ module, precompiles it into an interface of its own, and names that interface to the
+program's compile with `-fmodule-file=`:
 
 ```cpp
-namespace lib::csv_tools {                                             // gg's line
-#line 1 "module_csv_tools.hpp"                                         // gg's line
+module;                                                                // gg's line
+#include <gg.hpp>                                                      // gg's line
+#line 4 "module_csv_tools.cppm"                                        // gg's line
+#include <vector>                                                      // as authored, from line 4
+#line 6 "module_csv_tools.cppm"                                        // gg's line
+export module lib.csv_tools;                                           // gg's line
+export namespace lib::csv_tools {                                      // gg's line
+#line 1 "module_csv_tools.cppm"                                        // gg's line
 std::vector<row> parse(std::string_view text, char delimiter = ',') {  // as authored
 ```
 
-Two things about C++ make this the plainest module shape of the three compiled arms. It has a real
+**The program writes `import lib.csv_tools;` itself**, exactly as it writes the `#include` that
+reaches gg's surface: `-fmodule-file=` says where the module is and declares no name, so a program
+that omits the line earns *use of undeclared identifier 'lib'*. Nothing is put in front of the
+model's file.
+
+Two things about C++ make this the plainest module shape of the compiled arms. It has a real
 **nested namespace**, so nothing is moved or re-synthesized and every default argument, template
 parameter, overload and `struct` survives; and it is the one language here with a **line-control
-directive**, so no line number moves at all. `-include` is what keeps the *program*'s numbering
-intact too — it leaves the primary file alone.
+directive**, so no line number moves at all.
 
-**A `#include` at a module's top level is refused by name**, and that is this half's one refusal.
-`#include` is textual, so one inside a namespace pulls the header into `lib::<key>` — and when the
-header is one the prelude already read, its include guard is already defined and it expands to
-nothing at all, which is worse: the module compiles, and the same line detonates the day somebody
-writes a header the prelude does not carry. Hoisting it out would be gg editing the author's file,
-which this arm has never done to anybody's text. It does not need to: the prelude is in front of a
-module exactly as it is in front of a program, and gg writes `#include <gg.hpp>` above the namespace
-itself, so the refusal says to delete the line and write nothing in its place. That one line is the
-module half's alone. A *program*'s includes are the model's own, because a program is a reply gg
-compiles exactly as sent.
+**An author's `#include` is hoisted into the module's global module fragment**, above the module
+declaration and beside the one gg writes there. `#include` is textual, so a line left inside
+`export namespace lib::<key>` would expand the whole header into that namespace — and the fragment
+is where a name reaches this module and reaches nobody who imports it, which is what keeps a
+module's headers, and gg's surface, out of the program. Each hoisted line carries a `#line` naming
+where its author wrote it.
 
 A code skill or memory spells its code **`skill.hpp`** / `memory.hpp` — one spelling, because
 nothing else in the registry compiles C++ and a language whose modules nothing else can evaluate

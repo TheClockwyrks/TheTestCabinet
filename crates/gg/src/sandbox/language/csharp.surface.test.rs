@@ -1307,10 +1307,9 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 /// that writes none and watching Roslyn refuse it.
 ///
 /// The claim the [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) rest on
-/// for this arm, and the one a reading of the sources cannot settle: gg's SDK is compiled in the
-/// **same compilation** as the program, and what that buys is the library existing rather than any
-/// name being in scope. The difference is invisible in the source and decided by Roslyn, so it is
-/// asked of Roslyn.
+/// for this arm, and the one a reading of the sources cannot settle: gg's SDK is a **referenced
+/// assembly**, and what a reference buys is the library existing rather than any name being in
+/// scope. The difference is invisible in the source and decided by Roslyn, so it is asked of Roslyn.
 ///
 /// Three programs, one call each, differing only in what stands above the call:
 ///

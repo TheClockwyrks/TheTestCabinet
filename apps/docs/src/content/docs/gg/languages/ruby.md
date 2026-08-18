@@ -21,20 +21,45 @@ JavaScript the guest evaluates, and appends a v3 source map with
 `sourcesContent` stripped. The guest decodes that map only when something
 raised, so a located run-time error names the line of Ruby the model wrote.
 
-A code module, the code half of a skill or a memory, is compiled the same way
-with its source wrapped in `Module.new do … end`. The block is evaluated against
-a fresh anonymous `Module`, so what the body defines is what `lib.<key>` offers
-and an author writes no export protocol. The wrapper names nothing of gg's and
-shares the author's first line, so every module diagnostic is already at the
-author's own number and nothing corrects one afterwards.
+## Code modules
 
-The names gg reports for that module are its top-level methods, `def name` and
+A skill's or memory's code is a module when it is spelled `.rb`, and that is the
+arm's only extension. `packages/gg-sandbox-ruby/src/knowledge.rb` is the
+requirable unit `lib`, registered in the guest's require registry and left
+unloaded, which is how gg's own SDK is supplied as well. A program reaches its
+modules by writing `require "lib"` and reaches one export at `lib.<key>.<name>`,
+where the key is the skill's or memory's name in `snake_case` and ASCII-only. A
+program that writes no such line runs no line of anybody's module.
+
+Requiring `lib` evaluates each module the agent has used, in the order gg handed
+them over, and defines a top-level `lib` whose members are the binding keys. It
+names nothing of gg's surface, so it is not a second way to reach `GG::Files`. A
+module whose body raises leaves an empty namespace, and the guest reports the
+raise on its own channel.
+
+A Ruby file has no exports, so a module's source is compiled wrapped in
+`Module.new do … end`. The block is evaluated against a fresh anonymous
+`Module`, what the body defines is what the key offers, and an author writes no
+export protocol. The wrapper names nothing of gg's and shares the author's first
+line, so every module diagnostic is already at the author's own number and
+nothing corrects one afterwards.
+
+Ruby's `require` is process-wide. A module whose own body calls gg writes
+`require "gg"` in it, exactly as a program does, and from that point `GG::`
+resolves for the program too. gg writes no `require` on anybody's behalf, and
+nothing of its surface is loaded before the program's first line.
+
+The names gg reports for a module are its top-level methods, `def name` and
 `def self.name`, in source order, with Ruby's own privacy honoured. A bare
 `private` or `protected` line makes everything below it private, and a
-`private def name` makes that one method private. A constant is not reported,
-because a constant assigned inside a block belongs to the block's lexical scope
-rather than to the module it is evaluated against, so `lib.<key>.LIMIT` does not
-exist however the file is written.
+`private def name` makes that one method private. Each name carries its `def`
+line as the declaration a documentation view quotes, together with the comment
+block written above it. A Ruby declaration writes no types, so the type views an
+agent's `docViewTypes` flags ask for are empty on this arm.
+
+A constant is not reported, because a constant assigned inside a block belongs
+to the block's lexical scope rather than to the module it is evaluated against,
+so `lib.<key>.LIMIT` does not exist however the file is written.
 
 ## Toolchain and build outputs
 
@@ -103,18 +128,6 @@ repository's dev container, a program costs 2.7 ms without the line and 20.4 ms
 with it, against 2.1 ms for a plain JavaScript program on the same component.
 The compile above dominates either figure, at roughly 127 ms for the same
 program.
-
-`packages/gg-sandbox-ruby/src/knowledge.rb` is the `lib` unit. Requiring it
-evaluates each code module the agent read, binds each namespace under the key gg
-named when it answered the read, and defines the top-level `lib`. It names
-nothing of gg's surface, so it is not a second way to reach `GG::Files`, and a
-program that never requires it never runs a line of anybody's skill. A module
-whose body raises leaves an empty namespace and is reported on its own channel.
-
-Ruby's `require` is process-wide. A code module whose own body calls gg writes
-`require "gg"` in it, and from that point `GG::` resolves for the program too.
-gg writes no `require` on anybody's behalf, and nothing of its surface is loaded
-before the program's first line.
 
 `packages/gg-sandbox-ruby/src/library.rb` declares what a program may `require`.
 The build compiles exactly that set, together with whatever those in turn

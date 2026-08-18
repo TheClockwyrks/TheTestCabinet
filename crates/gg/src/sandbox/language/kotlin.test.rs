@@ -51,6 +51,25 @@ fn a_code_skills_module_is_spelled_kt_and_not_kts() {
     assert_eq!(kotlin().module_file_extension(), "kt");
 }
 
+/// **A loaded module is reached the two ways gg's own SDK is**, and the seam publishes both.
+///
+/// This arm's SDK is a set of packages of top-level functions, reached by the fully-qualified name
+/// (`gg.files.readFile(…)`) or by the module's own `import gg.files.*`. A code module is a package
+/// of top-level functions on a classpath entry, so it is reached by exactly those two spellings and
+/// gg composes neither of them into the program.
+#[test]
+fn a_loaded_module_is_reached_the_way_the_sdk_is() {
+    assert_eq!(kotlin().lib_access("csvTools"), "lib.csvTools.<name>");
+    assert_eq!(
+        kotlin().lib_member("csvTools", "parse"),
+        "lib.csvTools.parse"
+    );
+    assert_eq!(
+        kotlin().lib_import("csvTools").as_deref(),
+        Some("import lib.csvTools.*"),
+    );
+}
+
 /// **The `lib.<key>` binding is camelCase**, and is a valid Kotlin identifier whatever the author
 /// called their skill.
 ///

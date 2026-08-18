@@ -27,12 +27,13 @@ only be wrong in the accepting direction.
 `member_separator` is `::`, a code skill's C++ file is a `.hpp`, and `checker()`
 is `"clang++"`, so compile time is recorded on every turn.
 
-Every name a program uses is reached through an `#include` the program wrote,
-gg's surface and the C++ standard library alike. `gg` is undeclared until the
-reply writes `#include <gg/files.hpp>` or the umbrella `#include <gg.hpp>`, and a
-code module in scope does not change that. The SDK's headers are on the compile's
-include path and its bodies are linked into every artifact, which is packaging
-rather than scope.
+Every name a program uses is reached through a line the program wrote, gg's
+surface, the C++ standard library and a code module alike. `gg` is undeclared
+until the reply writes `#include <gg/files.hpp>` or the umbrella
+`#include <gg.hpp>`, and `lib` until it writes `import lib.<key>;`. The SDK's
+headers are on the compile's include path, a module's precompiled interface is
+named to the compile, and the bodies of both are linked into every artifact,
+which is packaging rather than scope.
 
 ## Toolchain and build outputs
 
@@ -110,24 +111,28 @@ catalogue carries those types as that function's `throws` list.
 
 ## Code modules
 
-A code skill's or memory's namespace is bound at `lib::<key>`, and on this arm
-that binding is a link. Each module in scope is written into the preparation's
-workspace as a named C++ module — `export module lib.<key>;` over an
-`export namespace lib::<key>` opened around the author's declarations where they
-stand — precompiled into a module interface of its own, and named to the
-program's compile as `-fmodule-file=lib.<key>=…` and as a link input. The
-`import lib.<key>;` lines are in one generated file put in front of the model's
-own with `-include`, which leaves the primary file's line numbering alone. A
-`#line` directive states what the author's first line is, so no line number moves
-for a module either. Each module is compiled on its own.
+A code skill's or memory's namespace is `lib::<key>`. A program reaches it by
+writing `import lib.<key>;`, and then writes one of its names `lib::<key>::<name>`.
+That line is the model's to write, on the same terms as the `#include` that
+reaches gg's own surface.
+
+Each module in scope is written into the preparation's workspace as a named C++
+module — `export module lib.<key>;` over an `export namespace lib::<key>` opened
+around the author's declarations where they stand — precompiled into a module
+interface of its own, and named to the program's compile as
+`-fmodule-file=lib.<key>=…` and as a link input. Both arguments say where the
+module is and declare no name, so a program that writes no `import` for one earns
+`use of undeclared identifier 'lib'`. Each module is compiled on its own.
+
+`module` and `import` are the two words a module-name component may not be and
+are both reachable keys, so each is escaped in the module name and left alone in
+the namespace. A key of `module` is reached by `import lib.Module;` and written
+`lib::module::<name>`.
 
 The module declaration is what keeps gg's surface out of the program. gg writes
 `#include <gg.hpp>` into the module's global module fragment, whose names are
 attached to the global module and reach nobody who imports the module, so a
-program with a code module in scope reaches `lib::<key>` and reaches gg only
-through a line it wrote. `module` and `import` are the two words a module-name
-component may not be and are both reachable keys, so each is escaped in the
-module name and left alone in the namespace.
+program with a code module in scope reaches gg only through a line it wrote.
 
 An author's `#include` lines are hoisted into that same fragment beside gg's own,
 above `export module lib.<key>;`. The fragment is where they belong for the
@@ -139,6 +144,13 @@ header in that namespace.
 Each hoisted line carries a `#line` stating where its author wrote it, and the
 `#line 1` in front of the body is untouched, so a module's body keeps the
 numbering its author wrote.
+
+Each export of a module carries the type names its declaration writes in return
+position and in parameter position, read off that declaration, which is what the
+type views beside a function's documentation view are opened from. A parameter's
+own name, its default argument, and the `const`, reference and pointer decoration
+around a type are left out, and a template argument is a type name of its own, so
+`std::vector<row>` writes `std::vector` and `row`.
 
 A module is also compiled alone with `-fsyntax-only` when it is read, so a
 module that does not build is reported to its author rather than to every

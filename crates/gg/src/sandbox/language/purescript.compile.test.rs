@@ -17,11 +17,33 @@ fn program(source: &str) -> String {
     }
 }
 
+/// The same, for a turn carrying code modules — which are compiled into the program's own project.
+fn program_with(source: &str, modules: &[CodeModule]) -> String {
+    match compile_program(source, modules, &PrepareContext::new()) {
+        Ok(prepared) => prepared.source,
+        Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
+    }
+}
+
 /// The failure compiling `source` as a program produced, or panic because it compiled.
 fn refusal(source: &str) -> PrepareFailure {
-    match compile_program(source, &[], &PrepareContext::new()) {
+    refusal_with(source, &[])
+}
+
+/// The same, for a turn carrying code modules.
+fn refusal_with(source: &str, modules: &[CodeModule]) -> PrepareFailure {
+    match compile_program(source, modules, &PrepareContext::new()) {
         Ok(_) => panic!("expected this PureScript to be refused, and it compiled"),
         Err(failure) => failure,
+    }
+}
+
+/// One loaded code module, as a turn carries it: the key it was bound at and the author's own
+/// source, unchanged.
+fn module(key: &str, source: &str) -> CodeModule {
+    CodeModule {
+        name: key.to_string(),
+        source: source.to_string(),
     }
 }
 
@@ -271,7 +293,7 @@ fn fifty_call_sites_of_one_mistake_reach_the_model_as_eight_and_a_count() {
     let errors: Vec<String> = (1..=50)
         .map(|line| json_error("UnknownName", line, PROGRAM_FILE))
         .collect();
-    let failure = classify(&json_report(&errors), PROGRAM_FILE).expect_err("refused");
+    let failure = classify(&json_report(&errors), PROGRAM_FILE, &[]).expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
         panic!("fifty diagnostics in the model's own file are its compile error, got {failure:?}");
     };
@@ -301,7 +323,7 @@ fn a_rejection_the_bound_does_not_reach_is_byte_for_byte_what_it_always_was() {
         json_error("UnknownName", 7, PROGRAM_FILE),
         json_error("TypesDoNotUnify", 9, PROGRAM_FILE),
     ];
-    let failure = classify(&json_report(&errors), PROGRAM_FILE).expect_err("refused");
+    let failure = classify(&json_report(&errors), PROGRAM_FILE, &[]).expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
         panic!("expected a compile error, got {failure:?}");
     };
@@ -322,7 +344,7 @@ fn the_band_is_decided_before_anything_is_dropped_for_length() {
         .map(|line| json_error("UnknownName", line, PROGRAM_FILE))
         .collect();
     errors.push(json_error("ErrorParsingModule", 50, PROGRAM_FILE));
-    let failure = classify(&json_report(&errors), PROGRAM_FILE).expect_err("refused");
+    let failure = classify(&json_report(&errors), PROGRAM_FILE, &[]).expect_err("refused");
     assert!(
         matches!(failure, PrepareFailure::Program(PrepareError::Syntax(_))),
         "a parse failure the cap dropped stopped being one: {failure:?}"
@@ -335,7 +357,7 @@ fn the_band_is_decided_before_anything_is_dropped_for_length() {
         .collect();
     assert!(
         matches!(
-            classify(&json_report(&ours), PROGRAM_FILE),
+            classify(&json_report(&ours), PROGRAM_FILE, &[]),
             Err(PrepareFailure::Toolchain(_))
         ),
         "a tree that did not compile is gg's artifact failing, not the model's program"
@@ -343,27 +365,140 @@ fn the_band_is_decided_before_anything_is_dropped_for_length() {
 }
 
 #[test]
-fn a_code_module_compiles_to_a_namespace() {
-    let bundled = compile_module(
-        "module Helpers (greet) where\n\
+fn a_code_module_is_checked_on_its_own_and_compiled_with_the_program_that_imports_it() {
+    const HELPERS: &str = "module Helpers (greet) where\n\
+                           import Prelude\n\
+                           \n\
+                           greet :: String -> String\n\
+                           greet who = \"hello, \" <> who\n";
+
+    // The use that loads it compiles it alone, under gg's own name for it, and keeps nothing: the
+    // whole product is the verdict.
+    check_module(HELPERS, &PrepareContext::new()).expect("purs checks a code module");
+
+    // The program then reaches it the way it reaches any other module — an `import` line the model
+    // wrote, checked by `purs` against the author's own signature.
+    let bundled = program_with(
+        "module Solve where\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
+         import Lib.CsvTools as CsvTools\n\
+         \n\
+         main :: Effect Unit\n\
+         main = Console.log (CsvTools.greet \"gg\")\n",
+        &[module("CsvTools", HELPERS)],
+    );
+    assert!(
+        bundled.contains("hello, "),
+        "the module's own code is in the program's bundle: {bundled}"
+    );
+
+    // A program that does not write the line does not compile, however loaded the module is.
+    let failure = refusal_with(
+        "module Solve where\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
+         \n\
+         main :: Effect Unit\n\
+         main = Console.log (CsvTools.greet \"gg\")\n",
+        &[module("CsvTools", HELPERS)],
+    );
+    let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
+        panic!("expected a compile error, got {failure:?}");
+    };
+    assert!(
+        message.contains("program.purs:8:") && message.contains("UnknownName"),
+        "the compiler's own answer to a name nothing brought into scope: {message}"
+    );
+
+    // And the call is type-checked, which is the whole of what compiling the module beside the
+    // program buys: a wrong argument is a diagnostic rather than a turn.
+    let failure = refusal_with(
+        "module Solve where\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
+         import Lib.CsvTools as CsvTools\n\
+         \n\
+         main :: Effect Unit\n\
+         main = Console.log (CsvTools.greet 7)\n",
+        &[module("CsvTools", HELPERS)],
+    );
+    assert!(
+        matches!(
+            &failure,
+            PrepareFailure::Program(PrepareError::Compile(message))
+                if message.contains("TypesDoNotUnify")
+        ),
+        "{failure:?}"
+    );
+}
+
+#[test]
+fn a_modules_header_is_rewritten_in_place_and_a_diagnostic_stays_on_the_authors_line() {
+    // gg supplies the name and nothing else: the author's export list, their imports and their
+    // declarations are the module, and the name they wrote is replaced inside the line they wrote
+    // it on.
+    assert_eq!(
+        headed("module Helpers (greet) where\ngreet = 1\n", "Lib.CsvTools"),
+        "module Lib.CsvTools (greet) where\ngreet = 1\n"
+    );
+    // A source with no header is handed over as it stands, for `purs` to answer.
+    assert_eq!(headed("greet = 1\n", "Lib.CsvTools"), "greet = 1\n");
+
+    // Which is what the check really reports — at line 1, in the author's own file.
+    let failure =
+        check_module("greet = ((\n", &PrepareContext::new()).expect_err("a broken module");
+    assert!(
+        failure.to_string().contains("module.purs:1:"),
+        "located in the author's own file: {failure}"
+    );
+
+    // And a mistake four lines down is at line four, because the rewrite added no line.
+    let failure = check_module(
+        "module Helpers where\n\
          import Prelude\n\
          \n\
          greet :: String -> String\n\
-         greet who = \"hello, \" <> who\n",
+         greet who = who + 1\n",
         &PrepareContext::new(),
     )
-    .expect("purs compiles a code module");
-
-    // An ES module with the author's own exports, which is what the guest declares at `lib:<key>`
-    // and what a program's `import * as helpers from "lib:helpers"` reaches.
+    .expect_err("a broken module");
     assert!(
-        bundled.contains("export {"),
-        "the module exports what the author exported: {}",
-        &bundled[bundled.len().saturating_sub(200)..]
+        failure.to_string().contains("module.purs:5:"),
+        "at the line the author wrote it on: {failure}"
     );
+}
+
+#[test]
+fn a_program_may_not_take_a_loaded_modules_own_name() {
+    // `purs` would answer this — two modules of one name — but it may report it against either file,
+    // and a diagnostic in a file the model did not write reads as gg's failure. So the model is told
+    // in a sentence naming the key it loaded.
+    let failure = refusal_with(
+        "module Lib.CsvTools where\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         \n\
+         main :: Effect Unit\n\
+         main = pure unit\n",
+        &[module(
+            "CsvTools",
+            "module Helpers where\ngreet :: Int\ngreet = 1\n",
+        )],
+    );
+    let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
+        panic!("expected a compile error, got {failure:?}");
+    };
     assert!(
-        bundled.contains("greet"),
-        "and the namespace has the export"
+        message.contains("Lib.CsvTools") && message.contains("CsvTools"),
+        "it names what collided: {message}"
     );
 }
 

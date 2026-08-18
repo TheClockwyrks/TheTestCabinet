@@ -809,68 +809,57 @@ impl DocsRuntime {
     /// those pages is one [search](Self::search) away for a model that wants it — which is the whole
     /// reason the entries exist rather than only the views.
     ///
-    /// The [type flags](DocViewTypes) are read exactly as they are for an SDK function, off the
-    /// names the declaration writes in [return](crate::sandbox::ModuleExport::returns) and
-    /// [parameter](crate::sandbox::ModuleExport::parameters) position. Both lists are empty on every
-    /// arm today, so the flags place nothing yet; the rule is written here so that an arm learning to
-    /// read a declaration's types starts placing them with nothing changed at this end.
-    /// [`Errors`](DocViewType::Errors) selects nothing on this path at all, and that is a statement
-    /// rather than an omission: a declared failure is read out of a documentation comment written in
-    /// gg's own catalogue vocabulary, which an author's module does not write.
-    ///
-    /// A named type is looked for **in the module itself first** and in the SDK second, because a
-    /// name a declaration writes is most likely the name of something declared beside it — and a
-    /// module's own `Row` must not open gg's. Those two and no third: the SDK half is asked
-    /// [directly](type_declaration) rather than through [`docview_key`](Self::docview_key), whose
-    /// own last resort is the loaded registry as a whole. Going through it would let *another*
-    /// module's `Row` answer for this one's — a page about code the declaration in hand has nothing
-    /// to do with, opened because two authors picked the same word.
+    /// The types beside each of them are [`types_to_open`](Self::types_to_open)'s answer, the same
+    /// one an agent opening that declaration itself gets. A use and a lookup place the same pages
+    /// beside one key, because they ask one function which pages those are.
     pub fn use_views(&self, key: &str, types: DocViewTypes) -> Vec<String> {
+        // Collected under the registry's lock and resolved after it, never inside: resolving reaches
+        // back into the same registry, and the lock is not reentrant.
+        let callables: Vec<String> = self.loaded.read(|entries| {
+            entries
+                .iter()
+                .filter(|entry| entry.module == key && entry.kind == DocKind::Function)
+                .map(|entry| entry.key.clone())
+                .collect()
+        });
         let mut keys: Vec<String> = Vec::new();
         let mut place = |candidate: String| {
             if !keys.contains(&candidate) {
                 keys.push(candidate);
             }
         };
-        // Collected under the registry's lock and resolved after it, never inside: resolving reaches
-        // back into the same registry, and the lock is not reentrant.
-        let mut referenced: Vec<String> = Vec::new();
-        self.loaded.read(|entries| {
-            for entry in entries {
-                if entry.module != key || entry.kind != DocKind::Function {
-                    continue;
-                }
-                place(entry.key.clone());
-                if types.enabled(DocViewType::Return) {
-                    referenced.extend(entry.returns.iter().cloned());
-                }
-                if types.enabled(DocViewType::Parameters) {
-                    referenced.extend(entry.parameters.iter().cloned());
-                }
-            }
-        });
-        for name in referenced {
-            let own = loaded::member_key(self.language, key, &name);
-            let sdk = || {
-                type_declaration(self.language, &name)
-                    .filter(|declaration| self.type_is_reachable(declaration.key()))
-                    .map(|declaration| declaration.key().to_string())
-            };
-            if let Some(resolved) = self.loaded.key_of(&own).or_else(sdk) {
-                place(resolved);
+        for callable in &callables {
+            place(callable.clone());
+        }
+        // The declarations first and the types they name after, so a use lands the pages the model
+        // came for at the head of what it opened and the supporting ones behind them.
+        for callable in &callables {
+            for referenced in self.types_to_open(callable, types) {
+                place(referenced);
             }
         }
         keys
     }
 
-    /// The SDK types to open beside the function called `name`, under `types` — the whole of the
+    /// **The types to open beside the entry called `name`**, under `types` — the whole of the
     /// transitive rule, and **exactly one level deep**.
     ///
-    /// Empty for [`OFF`](DocViewTypes::OFF), for a name that is not a bound function (a type has no
+    /// The single answer to *which pages go beside this key*, asked by
+    /// [a lookup](crate::agent::code) the model made and by [a use](Self::use_views) of the module a
+    /// declaration belongs to. One implementation rather than two, because the two placing different
+    /// pages beside one key would make a model's own `openDocsView` and a use of the skill that
+    /// carries it disagree about what documenting a declaration means.
+    ///
+    /// A bound catalogue function is answered from its signature, on the rules below. A name no such
+    /// function answers to is asked of the [loaded](LoadedDocs) source, which reads the type names an
+    /// author's declaration writes; the two sources are asked in the order
+    /// [`read_any`](Self::read_any) asks them, so gg's own surface cannot be shadowed here either.
+    ///
+    /// Empty for [`OFF`](DocViewTypes::OFF), for a name that is not a callable entry (a type has no
     /// signature to read types out of, which is what makes the rule non-recursive by construction
-    /// rather than by a depth counter), and for a function that names no catalogued type under any
-    /// enabled flag. Names are returned in catalogue order and deduplicated, so the views land in a
-    /// stable order whatever the model asked for.
+    /// rather than by a depth counter), and for a declaration that names no type under any enabled
+    /// flag. Names are returned in the order the source states them and deduplicated, so the views
+    /// land in a stable order whatever the model asked for.
     ///
     /// # The three flags are read independently and unioned
     ///
@@ -916,20 +905,26 @@ impl DocsRuntime {
     /// [`Parameters`](DocViewType::Parameters) asks the mirrored question — does one of this
     /// function's own documented arguments declare it — and the two are asked independently, so a
     /// type in both positions is selected by either flag alone.
-    pub fn types_to_open(&self, name: &str, types: DocViewTypes) -> Vec<&'static str> {
+    pub fn types_to_open(&self, name: &str, types: DocViewTypes) -> Vec<String> {
         if types == DocViewTypes::OFF {
             return Vec::new();
         }
-        let Some(function) = self.function(name) else {
-            return Vec::new();
-        };
-        let mut names: Vec<&'static str> = Vec::new();
-        // The key, never the bare name: what comes back from here is handed straight to
-        // `read_type`, and a name that is indexed under one string and opened under another is a
-        // type this rule would name and that lookup would then miss.
-        let mut place = |key: &'static str| {
-            if !names.contains(&key) {
-                names.push(key);
+        match self.function(name) {
+            Some(function) => self.signature_types(&function, types),
+            None => self.declared_types(name, types),
+        }
+    }
+
+    /// [`types_to_open`](Self::types_to_open) for a bound catalogue function, off the narrowed
+    /// signature set and the failures its documentation declares.
+    fn signature_types(&self, function: &CatalogueFunction, types: DocViewTypes) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        // The key, never the bare name: what comes back from here is handed straight to a render of
+        // that page, and a name that is indexed under one string and opened under another is a type
+        // this rule would name and that lookup would then miss.
+        let mut place = |key: &str| {
+            if !names.iter().any(|placed| placed == key) {
+                names.push(key.to_string());
             }
         };
         if types.enabled(DocViewType::Return) || types.enabled(DocViewType::Parameters) {
@@ -946,13 +941,13 @@ impl DocsRuntime {
                 // function writes down was reached through some *other* type, and is a level the
                 // rule does not reach. See *Why the catalogue's own `types` list cannot be used as
                 // it stands*.
-                if !names_a_signature(&function, &declaration.name) {
+                if !names_a_signature(function, &declaration.name) {
                     continue;
                 }
                 let selected = (types.enabled(DocViewType::Return)
-                    && returned(&function, referenced, &declaration.name))
+                    && returned(function, referenced, &declaration.name))
                     || (types.enabled(DocViewType::Parameters)
-                        && names_a_parameter(&function, &declaration.name));
+                        && names_a_parameter(function, &declaration.name));
                 if selected {
                     place(declaration.key());
                 }
@@ -971,6 +966,63 @@ impl DocsRuntime {
             }
         }
         names
+    }
+
+    /// [`types_to_open`](Self::types_to_open) for a **loaded** declaration: the types it writes in
+    /// [return](crate::sandbox::ModuleExport::returns) and
+    /// [parameter](crate::sandbox::ModuleExport::parameters) position, under the flags that select
+    /// them.
+    ///
+    /// The flags are read exactly as they are for an SDK function, off the names the arm read from
+    /// the declaration — filled by every arm whose declarations write types, and empty on the arms
+    /// whose declarations write none, where the flags place nothing because there is nothing in the
+    /// source to place. [`Errors`](DocViewType::Errors) selects nothing here at all, and that is a
+    /// statement rather than an omission: a declared failure is read out of a documentation comment
+    /// written in gg's own catalogue vocabulary, which an author's module does not write.
+    ///
+    /// A named type is looked for **in the module itself first** and in the SDK second, because a
+    /// name a declaration writes is most likely the name of something declared beside it — and a
+    /// module's own `Row` must not open gg's. Those two and no third: the SDK half is asked
+    /// [directly](type_declaration) rather than through [`docview_key`](Self::docview_key), whose
+    /// own last resort is the loaded registry as a whole. Going through it would let *another*
+    /// module's `Row` answer for this one's — a page about code the declaration in hand has nothing
+    /// to do with, opened because two authors picked the same word.
+    ///
+    /// A key that names a loaded **type** or constant selects nothing, on the rule that makes the
+    /// depth one: only a declaration with a signature has types to read out of it.
+    fn declared_types(&self, name: &str, types: DocViewTypes) -> Vec<String> {
+        // Read out under the registry's lock and resolved after it, never inside: resolving reaches
+        // back into the same registry, and the lock is not reentrant.
+        let Some(Some((module, referenced))) = self.loaded.find(name, |entry| {
+            if entry.kind != DocKind::Function {
+                return None;
+            }
+            let mut referenced: Vec<String> = Vec::new();
+            if types.enabled(DocViewType::Return) {
+                referenced.extend(entry.returns.iter().cloned());
+            }
+            if types.enabled(DocViewType::Parameters) {
+                referenced.extend(entry.parameters.iter().cloned());
+            }
+            Some((entry.module.clone(), referenced))
+        }) else {
+            return Vec::new();
+        };
+        let mut keys: Vec<String> = Vec::new();
+        for named in referenced {
+            let own = loaded::member_key(self.language, &module, &named);
+            let sdk = || {
+                type_declaration(self.language, &named)
+                    .filter(|declaration| self.type_is_reachable(declaration.key()))
+                    .map(|declaration| declaration.key().to_string())
+            };
+            if let Some(resolved) = self.loaded.key_of(&own).or_else(sdk)
+                && !keys.contains(&resolved)
+            {
+                keys.push(resolved);
+            }
+        }
+        keys
     }
 
     /// The bound catalogue function called `name`, or `None` — the lookup [`read`](Self::read) and

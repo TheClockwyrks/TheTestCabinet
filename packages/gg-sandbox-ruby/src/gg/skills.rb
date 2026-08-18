@@ -14,9 +14,10 @@ module GG
     # Reading it also pins that body permanently into context, so a skill that has been read stays
     # read.
     #
-    # A skill may be **code** rather than prose, or as well as it. Code is bound at `lib.<key>` for
-    # the rest of the session and the reply names the key and what it offers. An on-use script runs
-    # once the calling program has ended, and whatever it shows arrives on the next turn.
+    # A skill may be **code** rather than prose, or as well as it. Its code is reached at
+    # `lib.<key>` by a program that writes `require "lib"`, and reading the skill opens a
+    # documentation view of each function the module declares. An on-use script runs on every read,
+    # after the calling program has ended, and whatever it shows arrives on the next turn.
     #
     # @param name [String] The skill's name, as the system prompt lists it.
     # @return [String] the skill's body, with its front matter stripped

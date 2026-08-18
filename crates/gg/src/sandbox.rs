@@ -317,11 +317,14 @@ pub struct ProgramScope<'a> {
     /// configurable, so it is deliberately not written here.
     pub operations: &'a [OperationId],
     /// The already-prepared code the agent has loaded by reading a code [skill](crate::skills) or
-    /// [memory](crate::memories). The guest evaluates each one before the program and binds its
-    /// exports at `lib.<name>`; an empty list binds no `lib` at all.
+    /// [memory](crate::memories). The guest makes each one *reachable* under its key — registered,
+    /// declared, or assembled into a package, as that runtime does it — and a program reaches one by
+    /// writing the [line its arm states](crate::sandbox::ProgramLanguage::lib_import). Supplying a
+    /// module puts no name in the program's scope, so a program that writes no such line reaches
+    /// none of them.
     ///
-    /// The one field here that really is about *scope*: a code module's binding key is a name the
-    /// program would not otherwise have, and a run with no modules has no `lib` identifier at all.
+    /// The one field here that really is about *scope*: it decides which keys a program's own line
+    /// can resolve, and a turn with nothing loaded has nothing for one to resolve to.
     pub modules: &'a [CodeModule],
     /// Which group of ending calls this agent may **declare**: its own
     /// [role](crate::ending::EndingRole), or [none at all](RunEnding::None) for an on-use script.

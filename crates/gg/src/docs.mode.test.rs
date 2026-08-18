@@ -321,7 +321,7 @@ fn a_returned_type_is_placed_by_the_return_flag() {
     assert!(
         !docs
             .types_to_open("readFile", only(&[DocViewType::Parameters]))
-            .contains(&opened_as("FileRead").as_str()),
+            .contains(&opened_as("FileRead")),
         "`FileRead` is what `readFile` hands back, so the `parameters` flag does not place it"
     );
 }
@@ -337,7 +337,7 @@ fn only_the_parameters_flag_opens_a_type_an_argument_names() {
     assert!(
         !docs
             .types_to_open("updateIssue", only(&[DocViewType::Return]))
-            .contains(&opened_as("IssueStatus").as_str()),
+            .contains(&opened_as("IssueStatus")),
         "`IssueStatus` is named by the patch argument, so it is not in the return position"
     );
     assert_eq!(
@@ -381,7 +381,7 @@ fn only_the_errors_flag_opens_a_declared_failure() {
     ] {
         for placed in docs.types_to_open("readFile", withheld) {
             assert!(
-                !declared.iter().any(|failure| failure == placed),
+                !declared.iter().any(|failure| failure == &placed),
                 "{}: `{placed}` is a declared failure, which only the `errors` flag places",
                 withheld.id()
             );
@@ -464,7 +464,7 @@ fn every_arm_selects_only_types_it_declares() {
         for function in crate::sandbox::catalogue_functions(language) {
             for referenced in docs.types_to_open(function.name, all) {
                 assert!(
-                    docs.read_type(referenced).is_some(),
+                    docs.read_type(&referenced).is_some(),
                     "{}: `{}` would open `{referenced}`, which the arm does not declare",
                     language.display_name(),
                     function.name,
@@ -524,7 +524,7 @@ fn every_arm_opens_only_types_its_own_signature_names() {
                 let named = referenced
                     .rsplit(|character: char| !(character.is_alphanumeric() || character == '_'))
                     .next()
-                    .unwrap_or(referenced);
+                    .unwrap_or(&referenced);
                 assert!(
                     written.iter().any(|text| mentions(text, named)),
                     "{}: opening `{}` would place `{referenced}`, which no shape of it names — \

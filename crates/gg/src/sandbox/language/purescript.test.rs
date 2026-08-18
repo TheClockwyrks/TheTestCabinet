@@ -42,38 +42,62 @@ fn a_code_skills_module_is_spelled_purs() {
     assert_eq!(purescript().module_file_extension(), "purs");
 }
 
-/// **The `lib.<key>` binding is camelCase with a lower-case front**, and the front is a rule rather
-/// than a convention.
+/// **The binding key is a proper name**, because the module a program imports is `Lib.<Key>`.
 ///
-/// `lib.<key>` is a record field access, and PureScript will not parse an upper-case label unquoted
-/// — `s.Foo` is `Unexpected token 'Foo'`. So a skill called `CSV-tools` has to bind at a name a
-/// program can actually write, and the leading run comes down whole (`csvTools`) rather than one
-/// character at a time (`cSVTools`), because that is what its author would have written.
+/// PureScript spells a module name as a dotted sequence of proper names, so a key that opened with
+/// anything but an upper-case letter would be a module no program could import. The front comes up
+/// whole word by word, and a name with nothing usable at the front of it is prefixed `Module`.
 #[test]
-fn the_binding_name_is_camel_case_with_a_lower_case_front() {
-    assert_eq!(purescript().binding_name("csv-tools"), "csvTools");
-    assert_eq!(purescript().binding_name("my_helpers.v2"), "myHelpersV2");
-    assert_eq!(purescript().binding_name("CSV-tools"), "csvTools");
-    assert_eq!(purescript().binding_name("Helpers"), "helpers");
-    assert_eq!(purescript().binding_name("HTML"), "html");
-    assert_eq!(purescript().binding_name("9lives"), "_9lives");
-    assert_eq!(purescript().binding_name("--"), "module");
-    assert_eq!(purescript().binding_name(""), "module");
+fn the_binding_name_is_a_proper_name() {
+    assert_eq!(purescript().binding_name("csv-tools"), "CsvTools");
+    assert_eq!(purescript().binding_name("my_helpers.v2"), "MyHelpersV2");
+    assert_eq!(purescript().binding_name("CSV-tools"), "CSVTools");
+    assert_eq!(purescript().binding_name("Helpers"), "Helpers");
+    assert_eq!(purescript().binding_name("HTML"), "HTML");
+    assert_eq!(purescript().binding_name("9lives"), "Module9lives");
+    assert_eq!(purescript().binding_name("--"), "Module");
+    assert_eq!(purescript().binding_name(""), "Module");
 
-    // Whatever the name, the result has to be something PureScript will read as a record label:
-    // lower-case or `_` at the front, and nothing else after it that a label may not carry.
+    // Whatever the name, the result has to be something PureScript will read as the last component
+    // of a module name: upper-case at the front, and nothing after it a name may not carry.
     for name in ["csv-tools", "CSV-tools", "9lives", "--", "Helpers.v2"] {
         let key = purescript().binding_name(name);
         assert!(
-            key.starts_with(|ch: char| ch.is_ascii_lowercase() || ch == '_'),
-            "`{name}` bound at `{key}`, which PureScript will not parse as a label"
+            key.starts_with(|ch: char| ch.is_ascii_uppercase()),
+            "`{name}` keyed as `{key}`, which PureScript will not read as a module name"
         );
         assert!(
             key.chars()
                 .all(|ch| ch.is_ascii_alphanumeric() || ch == '_'),
-            "`{name}` bound at `{key}`"
+            "`{name}` keyed as `{key}`"
         );
     }
+}
+
+/// **A loaded module is reached through a line the program wrote**, and the line is the one
+/// PureScript writes for any other module.
+///
+/// Both halves are what a documentation view of the module quotes, and they are the only place a
+/// model is told either: the import brings `Lib.CsvTools` in under its own alias, and every call to
+/// it is qualified by that alias.
+#[test]
+fn a_loaded_module_is_imported_and_called_by_its_alias() {
+    assert_eq!(
+        purescript().lib_import("CsvTools").as_deref(),
+        Some("import Lib.CsvTools as CsvTools")
+    );
+    assert_eq!(purescript().lib_access("CsvTools"), "CsvTools.<name>");
+    assert_eq!(
+        purescript().lib_member("CsvTools", "parse"),
+        "CsvTools.parse"
+    );
+
+    // The key gg mints is already a proper name, and a key from anywhere else still produces a line
+    // PureScript would parse rather than one it would not.
+    assert_eq!(
+        purescript().lib_import("csvTools").as_deref(),
+        Some("import Lib.CsvTools as CsvTools")
+    );
 }
 
 /// **The synthesized file view is PureScript**: an options record even when there is no window, a

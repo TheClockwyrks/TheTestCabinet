@@ -66,6 +66,49 @@ fn a_module_keeps_its_source_and_names_what_it_defined() {
     assert_eq!(export_names(&prepared.exports), ["HEADER", "widen"]);
 }
 
+/// **A module in scope leaves the program byte-identical**, which is the whole of how one is
+/// supplied on this arm.
+///
+/// `lib` is a package the guest assembles in `sys.modules` before the program runs, so supplying a
+/// module puts nothing in front of the model's bytes and no name in the program's scope. The program
+/// reaches it through the line it writes, exactly as it reaches the SDK.
+#[test]
+fn a_module_in_scope_leaves_the_program_byte_identical() {
+    let modules = [CodeModule {
+        name: "csv_tools".to_string(),
+        source: "def widen(text, width):\n    return text.ljust(width)\n".to_string(),
+    }];
+    for source in [
+        "import gg\nimport lib\n\ngg.views.open_text(\"row\", lib.csv_tools.widen(\"a\", 3))\n",
+        "from lib import csv_tools\n\nprint(csv_tools.widen(\"a\", 3))\n",
+        "print(1)\n",
+    ] {
+        let prepared = python()
+            .prepare_program(source, &modules, &PrepareContext::new())
+            .expect("this arm prepares every reply, because nothing on the host reads it");
+        assert_eq!(prepared.source, source);
+        assert!(prepared.component.is_none());
+    }
+}
+
+/// **`import lib` is the line, and `lib.<key>.<name>` is what writing it makes resolve.**
+///
+/// The line is key-independent because `lib` is one package with a submodule per key, and it is what
+/// the documentation view of the module and of each of its declarations quotes — the one place a
+/// model is told it.
+#[test]
+fn a_loaded_module_is_reached_through_the_line_the_program_writes() {
+    assert_eq!(
+        python().lib_import("csv_tools").as_deref(),
+        Some("import lib")
+    );
+    assert_eq!(python().lib_access("csv_tools"), "lib.csv_tools.<name>");
+    assert_eq!(
+        python().lib_member("csv_tools", "widen"),
+        "lib.csv_tools.widen"
+    );
+}
+
 /// **`.py`, and nothing else.**
 ///
 /// One extension, unlike the ECMAScript pair: nothing else in the registry can evaluate a Python
@@ -89,7 +132,7 @@ fn the_binding_name_is_snake_case() {
     assert_eq!(python().binding_name("9lives"), "_9lives");
     assert_eq!(python().binding_name("--- ---"), "module");
     // Two separators in a row are one underscore: `lib.csv__tools` is not a name a model would
-    // reproduce correctly from a reply that quoted it once.
+    // reproduce correctly from a documentation view that quoted it once.
     assert_eq!(python().binding_name("csv - tools"), "csv_tools");
 }
 

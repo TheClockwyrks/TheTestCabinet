@@ -23,7 +23,6 @@ module Gg.Core
   , attempt
   , apiError
   , apiErrorCode
-  , lib
   ) where
 
 import Prelude
@@ -35,7 +34,6 @@ import Data.Nullable (Nullable, toMaybe)
 import Data.Show.Generic (genericShow)
 import Effect (Effect)
 import Effect.Exception (Error, throwException, try)
-import Gg.Internal.Wire as Gg.Internal.Wire
 
 -- | A gg call that failed, thrown by every function in this SDK.
 -- |
@@ -144,21 +142,3 @@ apiErrorCode = case _ of
   "limit-exceeded" -> LimitExceeded
   "io-error" -> IoError
   _ -> OtherFailure
-
--- | One export of a code module bound at `lib.<key>`, as the type the caller says it is.
--- |
--- | A skill or a memory may carry a PureScript module as well as prose. Reading it binds that
--- | module's exports under a key for the rest of the session, and the reply that answered the read
--- | names the key and what it exports.
--- |
--- | This is the one place in the SDK where the caller states the expected type, because nothing else
--- | can: a code module is compiled separately, so there is no `import` for `purs` to check it
--- | against.
--- |
--- | ```
--- | case Gg.Core.lib "helpers" "slugify" of
--- |   Just slugify -> Gg.Views.openText "slug" (slugify "Some Title" :: String)
--- |   Nothing -> Gg.Views.openText "slug" "the helpers module has no slugify"
--- | ```
-lib :: forall a. String -> String -> Maybe a
-lib = Gg.Internal.Wire.lib

@@ -73,7 +73,7 @@ import org.teavm.vm.TeaVMOptimizationLevel;
 
 public final class GgCompiler {
     /** The protocol version gg checks at the handshake. Bump it when a field changes meaning. */
-    static final int PROTOCOL = 2;
+    static final int PROTOCOL = 3;
 
     /** The bytecode level gg's own generated entry class is compiled to. */
     static final String RELEASE = "21";
@@ -162,37 +162,49 @@ public final class GgCompiler {
     }
 
     /**
-     * One build: `<work>\t<output>\t<mainClass>\t<targetFile>\t<entry>\t<source>[\t<source>…]`.
+     * One build:
+     * `<work>\t<output>\t<classes>\t<classpath>\t<mainClass>\t<targetFile>\t<entry>\t<source>[\t<source>…]`.
      *
-     * <p>Every path is absolute and inside one preparation's own tree. Nothing is remembered
-     * between requests, which is what makes a build a function of its request alone.
+     * <p>The first two paths are absolute and inside one preparation's own tree; every path after
+     * them is relative to {@code work}. Nothing is remembered between requests, which is what makes
+     * a build a function of its request alone.
      *
-     * <p>AN EMPTY {@code targetFile} MEANS THE KOTLIN COMPILER AND NOTHING ELSE. gg checks a code
-     * module that way: a module is compiled into the program that uses it, so there is no artifact
-     * for TeaVM to write here, no entry point for it to root a dependency graph at, and no entry
-     * class to compile — what the check buys is the compiler's located diagnostic at the read that
-     * binds the module, rather than one against somebody else's program on every turn after it.
-     * Empty is the one value the field cannot otherwise take, since a file has a name; {@code entry}
-     * is empty with it.
+     * <p>{@code classes} IS WHERE THE KOTLIN COMPILER WRITES AND {@code classpath} IS WHAT IT READS
+     * BESIDES THE STANDARD LIBRARY AND gg's SDK — a path-separated list, possibly empty, appended
+     * after the entries this daemon was started with so that the SDK jar stays first. A code module
+     * is built into a directory of its own and handed to the program compiled against it that way,
+     * which is how a JVM library reaches any program: as a classpath entry that declares no name.
+     *
+     * <p>AN EMPTY {@code targetFile} MEANS THE KOTLIN COMPILER AND NOTHING ELSE. gg builds a code
+     * module that way: there is no entry point for TeaVM to root a dependency graph at, no entry
+     * class to compile, and the module's classes are the whole of what that build is for. Empty is
+     * the one value the field cannot otherwise take, since a file has a name; {@code entry} is empty
+     * with it.
      */
     static String build(String request) {
         String[] fields = request.split("\t", -1);
-        if (fields.length < 6) {
+        if (fields.length < 8) {
             return Json.failure("internal", "gg sent a request with " + fields.length + " fields");
         }
         Path work = Paths.get(fields[0]);
         Path output = Paths.get(fields[1]);
-        String mainClass = fields[2];
-        String targetFile = fields[3];
-        String entryFile = fields[4];
+        Path classes = work.resolve(fields[2]);
+        List<String> reads = new ArrayList<>(programPath);
+        for (String entry : fields[3].split(File.pathSeparator)) {
+            if (!entry.isEmpty()) {
+                reads.add(work.resolve(entry).toString());
+            }
+        }
+        String mainClass = fields[4];
+        String targetFile = fields[5];
+        String entryFile = fields[6];
         List<File> sources = new ArrayList<>();
-        for (int index = 5; index < fields.length; index++) {
+        for (int index = 7; index < fields.length; index++) {
             sources.add(work.resolve(fields[index]).toFile());
         }
 
         List<Diagnostics.Entry> entries = new ArrayList<>();
         long started = System.nanoTime();
-        Path classes = work.resolve("classes");
         try {
             Files.createDirectories(classes);
             Files.createDirectories(output);
@@ -202,7 +214,7 @@ public final class GgCompiler {
 
         boolean compiled;
         try {
-            compiled = kotlinc(sources, classes, programPath, entries);
+            compiled = kotlinc(sources, classes, reads, entries);
         } catch (Throwable failure) {
             return Json.failure("internal", "kotlinc fell over: " + Diagnostics.render(failure));
         }
@@ -242,7 +254,7 @@ public final class GgCompiler {
         try {
             List<String> path = new ArrayList<>();
             path.add(classes.toString());
-            path.addAll(programPath);
+            path.addAll(reads);
             path.addAll(toolchain);
             if (!javac(List.of(work.resolve(entryFile).toFile()), classes, path, entries)) {
                 // NOT an internal failure: gg's entry class names the model's own `main`, so the
@@ -261,7 +273,7 @@ public final class GgCompiler {
 
         try {
             List<String> path = new ArrayList<>();
-            path.addAll(programPath);
+            path.addAll(reads);
             path.addAll(toolchain);
             teavm(classes, output, path, mainClass, targetFile, sources.get(0).getName(), entries);
         } catch (Throwable failure) {

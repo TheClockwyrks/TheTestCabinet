@@ -313,23 +313,27 @@ pub struct OpenDocview {
     pub body: String,
 }
 
-/// What [`open_docview`](ContextModel::open_docview) did: placed a new view, or found the key
-/// already open and did nothing whatever.
+/// What [`open_docview`](ContextModel::open_docview) did: placed a view, or found the key already
+/// open under this very body and did nothing whatever.
 ///
-/// Two states rather than [`ViewOpened`]'s three flags, because a docview has no third state to be
-/// in. It is never superseded and never replaced in-turn — see
-/// [`open_docview`](ContextModel::open_docview) for why — so `superseded` and `replaced_in_turn`
-/// would both be permanently `false`, which is a shape that invites somebody to make one of them
-/// true.
+/// Two states rather than [`ViewOpened`]'s three, because the third — was the copy this replaced
+/// itself pushed on the current turn — has no reader here. A docview is placed by gg on a model's
+/// behalf as often as by a call the model made, so which of
+/// [`supersede_view`](ContextModel::supersede_view)'s two retirements happened is the window's
+/// business rather than a fact reported back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocviewOpen {
-    /// The key was not open and the view was appended at the tail. Carries what it costs.
+    /// The view was placed: appended at the tail, or at the index a replaced copy vacated.
     Placed {
         /// The estimated tokens the newly placed view occupies.
         tokens: usize,
+        /// Whether a copy under this key was open carrying **different** text and was retired for
+        /// this one. Only a [loaded module](crate::docs::LoadedDocs)'s page can change under a
+        /// fixed key; see [`open_docview`](ContextModel::open_docview).
+        superseded: bool,
     },
-    /// The key was **already** open, so nothing happened at all: the item was not moved, not
-    /// re-emitted and not retagged.
+    /// The key was **already** open under this very body, so nothing happened at all: the item was
+    /// not moved, not re-emitted and not retagged.
     AlreadyOpen,
 }
 
@@ -1697,9 +1701,10 @@ impl ContextModel {
     /// a docview's turn is an accident of when the model happened to look something up: one opened
     /// on turn 3 and still being read on turn 40 would be swept away by an archive of turns 1–10,
     /// with no signal and nothing the model could do about it but discover the gap. Under this
-    /// design [closing](Self::close_docviews) is the only thing that removes a docview, and that has
-    /// to hold against every other removal in the model or "closed and never-opened are the same
-    /// thing" stops being a statement about a set the agent controls.
+    /// design a docview leaves the band only when the agent [closes](Self::close_docviews) it or
+    /// [re-opens](Self::open_docview) its key on a page whose text changed, and that has to hold
+    /// against every other removal in the model or "closed and never-opened are the same thing"
+    /// stops being a statement about a set the agent controls.
     pub fn archive_thread(&mut self, ranges: &[TurnRange]) -> ArchiveResult {
         let mut result = ArchiveResult::default();
         if ranges.is_empty() {
@@ -1793,70 +1798,103 @@ impl ContextModel {
     }
 
     /// Open the [documentation view](ViewKind::Docs) addressed by `key`, or do **nothing at all**
-    /// when one is already open under it.
+    /// when one is already open under it carrying this very body.
     ///
-    /// # Why this does not supersede, where [`open_text_view`](Self::open_text_view) does
+    /// # A re-open of the same page moves nothing
     ///
     /// `openText` names a mutable **intent** — *this should be visible* — so re-stating it replaces
-    /// the copy that was there. A docview names a **constant**: the documentation addressed by one
-    /// key is the same bytes every time it is rendered, because it is a projection of a catalogue
-    /// compiled into the binary through a scope that cannot change while the agent runs. Superseding
-    /// it would remove and re-place identical text at the tail, which breaks the provider's cached
-    /// prefix from that position onward in exchange for no change in what the model reads.
+    /// the copy that was there. A docview names an **entry**, and gg's own entries are constants:
+    /// the documentation addressed by one SDK key is the same bytes every time it is rendered,
+    /// because it is a projection of a catalogue compiled into the binary through a scope that
+    /// cannot change while the agent runs. Removing and re-placing identical text at the tail would
+    /// break the provider's cached prefix from that position onward in exchange for no change in
+    /// what the model reads.
     ///
-    /// So a re-open is a **total no-op**: the view is not moved, not re-emitted, not retagged, and
-    /// its position is not touched. Placement is first-open order, permanently. Anyone reading this
-    /// later and reaching for [`supersede_view`](Self::supersede_view) to make it consistent with
-    /// the other two view kinds should stop here: the inconsistency is the correct one, and the
-    /// assertion that a re-open leaves the rendered prompt byte-identical is in
-    /// `context.docviews.test.rs`.
+    /// So a re-open carrying the body already open is a **total no-op**: the view is not moved, not
+    /// re-emitted, not retagged, and its position is not touched. Placement is first-open order for
+    /// every page whose text stands, which is every page of gg's own surface.
+    ///
+    /// # A page whose text has changed replaces itself
+    ///
+    /// A [loaded module](crate::docs::LoadedDocs)'s page is the one that is not a constant. Its
+    /// text arrived at a turn, a [memory](crate::memories)'s code is the model's to rewrite and a
+    /// skill's is re-read on every use, so the same key renders a different declaration after a
+    /// revision. There the argument above inverts: the model is *not* holding the text this key now
+    /// addresses, and leaving the old copy in place would have it reading the declaration of code
+    /// that no longer exists — a page describing a call that no longer compiles, which is the one
+    /// thing a documentation surface must not do.
+    ///
+    /// So a body that differs [supersedes](Self::supersede_view) the copy under its key, on the
+    /// terms every other view kind is superseded on: a copy already sent is retagged as history in
+    /// place and the new one appended at the tail, and a copy pushed on this turn is replaced where
+    /// it stood. The two cases differ because one of them changes what the model would read and the
+    /// other cannot.
     ///
     /// Two things follow, and they are why [closing](Self::close_docviews) is the capability while
     /// opening is not:
     ///
-    /// - **There are no docview corpses, ever.** A superseding re-open leaves the old copy in place
-    ///   as retagged history — a dead item in a cached prefix that nothing can reclaim. With one
-    ///   open placing a function's view *and* the views of the types in its signature, a model
-    ///   re-opening a handful of functions across a session would accumulate those at several times
-    ///   the rate a single view kind does. Here it accumulates none.
-    /// - **The band is append-only**, so the prompt prefix survives every open for the life of the
-    ///   session, and the one thing that can disturb it is an explicit close.
+    /// - **A corpse costs a revision and nothing else.** A view of gg's own surface, re-opened any
+    ///   number of times across a session, leaves none: with one open placing a function's view
+    ///   *and* the views of the types in its signature, an unconditional supersede would accumulate
+    ///   dead items at several times the rate a single view kind does. What is left behind here is
+    ///   one retagged copy per page an agent's own rewrite made stale.
+    /// - **The band is append-only for as long as the agent's loaded code stands**, so the prompt
+    ///   prefix survives every open of a page that has not changed, and what can disturb it is an
+    ///   explicit close or a use of a module the agent itself revised.
     ///
     /// It heads as `Documentation: {key}` — qualified, unlike a read skill's bare `Documentation`,
     /// because several are open at once and the model has to be able to name the one it means.
     pub fn open_docview(&mut self, key: String, body: String) -> DocviewOpen {
-        if self.docview_is_open(&key) {
+        if self.docview_shows(&key, &body) {
             return DocviewOpen::AlreadyOpen;
         }
+        let superseded = self.supersede_view(GgContextSource::DocsView, &key, None);
         let item = self.view_item(GgContextSource::DocsView, Message::user(body), key, None);
-        let tokens = item.tokens;
-        // Pushed directly rather than through [`place_view`](Self::place_view), whose only extra
-        // behaviour is re-inserting at the index a supersession vacated — and there are no
-        // supersessions on this path by construction.
-        self.items.push(item);
-        DocviewOpen::Placed { tokens }
+        let placed = self.place_view(item, superseded);
+        DocviewOpen::Placed {
+            tokens: placed.tokens,
+            superseded: placed.superseded,
+        }
     }
 
-    /// Whether a [documentation view](GgContextSource::DocsView) is open under `key` right now.
+    /// Whether the [documentation view](GgContextSource::DocsView) open under `key` is showing
+    /// `body` — the question [`open_docview`](Self::open_docview) asks to decide between doing
+    /// nothing and replacing a stale page.
+    ///
+    /// It compares the [body](view_body) rather than the item's message, so the heading the window
+    /// prefixes a view with is not part of the answer: the heading is a function of the key, and a
+    /// page is stale when the documentation under it changed.
+    fn docview_shows(&self, key: &str, body: &str) -> bool {
+        self.docview(key)
+            .is_some_and(|item| view_body(item) == body)
+    }
+
+    /// The live [documentation view](GgContextSource::DocsView) filed under `key`.
+    ///
+    /// At most one item can answer: a superseded copy loses its label on the way to
+    /// [`History`](GgContextSource::History), so a key addresses the page the model is reading now
+    /// and nothing it was reading before.
     ///
     /// A linear scan of the window rather than an index, and deliberately: the whole state behind
-    /// documentation is *which keys are open*, so answering it from the items themselves is the one
-    /// answer that cannot drift from what the model is actually holding. There is nothing here to
-    /// keep coherent and nothing to reset at a turn, a compaction or a succession.
-    pub fn docview_is_open(&self, key: &str) -> bool {
-        self.items.iter().any(|item| {
+    /// documentation is *which keys are open and what each says*, so answering from the items
+    /// themselves is the one answer that cannot drift from what the model is actually holding. There
+    /// is nothing here to keep coherent and nothing to reset at a turn, a compaction or a
+    /// succession.
+    fn docview(&self, key: &str) -> Option<&ContextItem> {
+        self.items.iter().find(|item| {
             item.source == GgContextSource::DocsView && item.label.as_deref() == Some(key)
         })
     }
 
     /// The [documentation views](GgContextSource::DocsView) open in the window, **with their
-    /// bodies**, in first-open order — what survives a [compaction](crate::compaction) boundary and
+    /// bodies**, in window order — what survives a [compaction](crate::compaction) boundary and
     /// what [persistence](crate::persistence) records the keys of.
     ///
-    /// The order is the point as much as the contents. Re-seeding them in the order they were first
-    /// opened is what keeps the property [`open_docview`](Self::open_docview) exists for true across
-    /// a boundary: the band is a growing suffix whose members never move, and a rewrite that
-    /// reordered them would break exactly the prefix the append-only rule protects.
+    /// The order is the point as much as the contents. Re-seeding them in the order the window
+    /// holds them is what keeps the property [`open_docview`](Self::open_docview) exists for true
+    /// across a boundary: the band grows at its tail and a page moves only when its own text
+    /// changed, and a rewrite that reordered them would break exactly the prefix the append-only
+    /// rule protects.
     pub fn open_docviews(&self) -> Vec<OpenDocview> {
         self.items
             .iter()

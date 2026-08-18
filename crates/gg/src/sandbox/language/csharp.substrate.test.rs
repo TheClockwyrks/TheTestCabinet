@@ -8,8 +8,9 @@
 //! All of it. A program starts as an ordinary C# compilation unit, goes through
 //! [`compile_program`](super::compile::compile_program) — the production prepare step, spawning a
 //! real `csc` through the seam's own isolated invocation, in a
-//! [`PrepareContext`](crate::sandbox::PrepareContext) — and what comes back is a base64 IL assembly,
-//! which is handed to the **prebuilt** [`GUEST_COMPONENT`](super::GUEST_COMPONENT): compiled with
+//! [`PrepareContext`](crate::sandbox::PrepareContext) — and what comes back is a manifest of
+//! base64 IL assemblies, handed to the **prebuilt** [`GUEST_COMPONENT`](super::GUEST_COMPONENT):
+//! compiled with
 //! [`compile_bytes`](crate::sandbox::engine::compile_bytes), linked with
 //! [`linker`](crate::sandbox::linker) (the production linker: the whole membrane plus the whole
 //! ambient WASI surface), put in a [`bounded_store`](crate::sandbox::bounded_store) with the
@@ -76,8 +77,8 @@ pub(super) fn prepare(source: &str) -> String {
                 "this arm evaluates its program with the embedded guest, not one per turn"
             );
             assert!(
-                !prepared.source.is_empty(),
-                "the prepared program is the assembly, base64-encoded"
+                prepared.source.contains(compile::PROGRAM_ASSEMBLY),
+                "the prepared program is a manifest naming the assembly the guest runs"
             );
             prepared.source
         }
@@ -681,7 +682,7 @@ public static class Program {
     );
     assert!(
         prepared.len() > 1_000,
-        "the prepared assembly is implausibly small: {} bytes of base64",
+        "the prepared manifest is implausibly small: {} bytes",
         prepared.len()
     );
 }

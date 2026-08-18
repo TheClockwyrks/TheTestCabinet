@@ -8,7 +8,7 @@
 //!   the JavaScript the guest evaluates, what it costs, what it shares, and the two failures it
 //!   tells apart;
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own
-//!   module header for the names its namespace offers;
+//!   module header for the names it offers and the types each of them writes;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the nesting-and-primes lexer;
 //! * `packages/gg-sandbox-purescript/src/Gg/**` — the hand-written SDK, compiled **into** the library
@@ -35,11 +35,12 @@
 //! # What a PureScript program is, here
 //!
 //! A **module**. PureScript has no loose statements, so a program is a module with its own header,
-//! its own `main :: Effect Unit`, and an `import` line for each of gg's capability modules it uses.
-//! Every one of those is the model's: `purs` reads the reply and nothing else, `purs` files the
-//! emitted JavaScript under the header the model wrote, and gg's entry module imports `main` from
-//! there. A reply with no header is `ErrorParsingModule` at line 1 and a program that defines no
-//! `main` is refused with a sentence saying so, both before anything runs.
+//! its own `main :: Effect Unit`, and an `import` line for each of gg's capability modules it uses
+//! and each code module it has loaded. Every one of those is the model's: `purs` reads the reply and
+//! nothing else, `purs` files the emitted JavaScript under the header the model wrote, and gg's
+//! entry module imports `main` from there. A reply with no header is `ErrorParsingModule` at line 1
+//! and a program that defines no `main` is refused with a sentence saying so, both before anything
+//! runs.
 //!
 //! The bytes that **execute** are `purs`'s emission rather than the model's, which is the position
 //! every compiled arm is in. What makes it legitimate is the pair the invariants require: the bytes
@@ -111,8 +112,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    CodeModule, FileWindow, LIB_ACCESS_NAME, PrepareContext, PrepareFailure, PreparedModule,
+    PreparedProgram, ProgramLanguage, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::locate::Locations;
@@ -159,16 +160,21 @@ impl ProgramLanguage for PureScript {
         GgProgramLanguage::PureScript.display_name()
     }
 
-    /// A module is compiled separately from the program that uses it, so there is no import for
-    /// `purs` to check the two against and a program names both halves as strings.
-    /// [`Gg.Core.lib`](https://docs.testcabinet.ai/gg/languages/purescript/) hands back a `Maybe` of
-    /// whatever type the program says it is.
-    ///
-    /// There is therefore no [`lib_import`](ProgramLanguage::lib_import) either: the modules a turn
-    /// carries are imported by [the entry module gg generates](compile), which is the one thing on
-    /// this arm a program cannot write for itself.
+    /// `CsvTools.parse` — a qualified name of the module's own alias, which is what the
+    /// [import line](Self::lib_import) beside it bound.
     fn lib_access(&self, key: &str) -> String {
-        format!("Gg.Core.lib \"{key}\" \"<name>\"")
+        format!("{}.{LIB_ACCESS_NAME}", alias(key))
+    }
+
+    /// `import Lib.CsvTools as CsvTools` — the line a program writes to reach a loaded module, and
+    /// the same kind of line it writes to reach `Gg.Files`.
+    ///
+    /// A code module is [compiled into the program's own `purs` project](compile), under
+    /// [`Lib.<Key>`](module_path()), so nothing about reaching it is this arm's invention: the program
+    /// imports a module, aliases it, and calls a function `purs` type-checked against the author's
+    /// signature.
+    fn lib_import(&self, key: &str) -> Option<String> {
+        Some(format!("import {} as {}", module_path(key), alias(key)))
     }
 
     /// The `purs` compile and the `esbuild` bundle, in this preparation's own hard-linked tree — see
@@ -203,20 +209,28 @@ impl ProgramLanguage for PureScript {
         compile::warm();
     }
 
-    /// The same compile a program gets, pointed at an entry module that re-exports rather than one
-    /// that runs `main` — and the names the resulting namespace offers.
+    /// A `purs` compile of the author's module **on its own**, and the names it offers.
     ///
-    /// There is no wrapper around the author's source and therefore nothing to correct a diagnostic
-    /// for: a code module is an ordinary PureScript module and is compiled as itself. What the
-    /// namespace offers is read here rather than in the guest, because it is what the model is
+    /// What travels on is the author's source rather than anything compiled: a module is a module of
+    /// the [program's own project](compile), written into it under the key the module was bound at,
+    /// so the compile that matters is the one the program's own turn runs. This one exists to answer
+    /// the use that loaded it — a module `purs` refuses is refused here, in the author's own
+    /// coordinates, rather than by the next program that has it in scope.
+    ///
+    /// The guest is handed that source as well, and resolves none of it: the module's JavaScript is
+    /// already inside the bundle of every program that imported it, so nothing in the guest ever
+    /// asks for the module by name.
+    ///
+    /// What the module offers is read here rather than in the guest, because it is what the model is
     /// *told*: see [`modules`].
     fn prepare_module(
         &self,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
+        compile::check_module(source, context)?;
         Ok(PreparedModule {
-            source: compile::compile_module(source, context)?,
+            source: source.to_string(),
             exports: modules::exports(source),
         })
     }
@@ -231,8 +245,8 @@ impl ProgramLanguage for PureScript {
         &["purs"]
     }
 
-    /// [camelCase, lower-cased at the front](self::binding_name) — this SDK's convention, and the one
-    /// PureScript's record labels force.
+    /// [PascalCase](self::binding_name), which is what a PureScript module name is made of: the key
+    /// is the last component of `Lib.<Key>` and the alias every call to the module carries.
     fn binding_name(&self, name: &str) -> String {
         binding_name(name)
     }
@@ -264,18 +278,16 @@ impl ProgramLanguage for PureScript {
     /// Two sources in that map are neither the model's nor a library's, and their frames are struck
     /// rather than reported: [the entry module](compile::ENTRY_FILE) gg generates for the bundler,
     /// and any position in the bundle the composed map resolves nothing for.
-    fn locations(&self, program: &str, modules: &[CodeModule]) -> Option<Locations> {
-        Locations::read(
-            std::iter::once((super::ecmascript::PROGRAM.to_string(), None, program)).chain(
-                modules.iter().map(|module| {
-                    (
-                        format!("{}{}", super::ecmascript::MODULE_SCHEME, module.name),
-                        None,
-                        module.source.as_str(),
-                    )
-                }),
-            ),
-        )
+    ///
+    /// One map covers every frame, code modules included: a module is compiled into the program's
+    /// own project, so its JavaScript is part of the one bundle and its `Lib.<Key>.purs` is one of
+    /// the sources the composition resolves to.
+    fn locations(&self, program: &str, _modules: &[CodeModule]) -> Option<Locations> {
+        Locations::read(std::iter::once((
+            super::ecmascript::PROGRAM.to_string(),
+            None,
+            program,
+        )))
         .map(|locations| locations.hiding([compile::ENTRY_FILE.to_string()]))
     }
 
@@ -330,28 +342,22 @@ impl ProgramLanguage for PureScript {
 // The syntax this arm writes
 // ---------------------------------------------------------------------------------------------
 
-/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`,
-/// `CSV-tools` → `csvTools`.
+/// `csv-tools` → `CsvTools`, `my_helpers.v2` → `MyHelpersV2`, `9lives` → `Module9lives`,
+/// `CSV-tools` → `CSVTools`.
 ///
-/// camelCase because that is what this SDK spells every bound function in, so a program reaching
-/// `lib.csvTools.parse` reads like the rest of its own scope. Any separator — `-`, `_`, `.`, or
-/// anything a name should not have had — joins the next word rather than surviving into an identifier
-/// that would not parse; a name that is nothing but separators becomes `module`, and a leading digit
-/// is prefixed, because the result has to be a valid identifier whatever the author wrote.
+/// The key on this arm is a **proper name**, because [the module a program imports](module_path()) is
+/// `Lib.<Key>` and a PureScript module name is a dotted sequence of proper names. So the key is
+/// PascalCase: any separator — `-`, `_`, `.`, or anything a name should not have had — joins the
+/// next word rather than surviving into an identifier that would not parse, and the front comes up.
+/// A name with nothing usable in it, and one that would open with a digit, are prefixed `Module`,
+/// which is the one word that leaves the result a name PureScript will read.
 ///
-/// The one thing this does that [the ECMAScript arms'](super::typescript::binding_name) does not is
-/// **lower-case the leading run**, and it is a rule rather than a preference: `lib.<key>` is a record
-/// field access, and PureScript will not parse an upper-case label unquoted (`s.Foo` is
-/// `Unexpected token 'Foo'`). A skill called `CSV-tools` therefore binds at `lib.csvTools` rather
-/// than at a name no program could write.
-///
-/// Deliberately ASCII-only, though PureScript identifiers may be Unicode: the key is quoted back to
-/// the model in the reply that binds it and then typed out by the model in every program that uses
-/// it, and a name a model has to reproduce exactly is one that should have no characters it could get
-/// wrong.
+/// Deliberately ASCII-only, though PureScript identifiers may be Unicode: the key is what the model
+/// types in the import line of every program that uses the module, and a name a model has to
+/// reproduce exactly is one that should have no characters it could get wrong.
 pub(super) fn binding_name(name: &str) -> String {
     let mut out = String::new();
-    let mut capitalize = false;
+    let mut capitalize = true;
     for ch in name.chars() {
         if ch.is_ascii_alphanumeric() {
             if capitalize {
@@ -361,29 +367,35 @@ pub(super) fn binding_name(name: &str) -> String {
                 out.push(ch);
             }
         } else {
-            capitalize = !out.is_empty();
+            capitalize = true;
         }
     }
-    if out.is_empty() {
-        return "module".to_string();
+    match out.starts_with(|ch: char| ch.is_ascii_uppercase()) {
+        true => out,
+        false => format!("Module{out}"),
     }
-    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
-        out.insert(0, '_');
-        return out;
+}
+
+/// The module one code module is compiled as, and the one a program imports: `Lib.CsvTools`.
+///
+/// `Lib` is gg's namespace rather than a package anything publishes, which is what keeps a key from
+/// ever colliding with the shipped library set; a program that names one of these itself is
+/// [refused](compile) with a sentence naming the key.
+pub(super) fn module_path(key: &str) -> String {
+    format!("Lib.{}", alias(key))
+}
+
+/// The alias a program binds that module under, and the qualifier every call to it carries.
+///
+/// The key itself, which [`binding_name`] already spells as a proper name. It is written through
+/// this rather than used directly so that a key from anywhere else — the seam's own gates ask for
+/// `lib_access("csvTools")` — still produces a line PureScript would parse.
+fn alias(key: &str) -> String {
+    let mut characters = key.chars();
+    match characters.next() {
+        None => "Module".to_string(),
+        Some(first) => first.to_uppercase().collect::<String>() + characters.as_str(),
     }
-    // The leading run, not just the first character: `CSVTools` reads as `csvTools` rather than as
-    // `cSVTools`, which is what a PureScript author would have written.
-    let leading = out
-        .chars()
-        .take_while(|ch| ch.is_ascii_uppercase())
-        .count()
-        .max(1);
-    let keep = match leading == out.len() || leading == 1 {
-        true => leading,
-        // The last upper-case letter of a run opens the next word — `CSVTools` is `csv` + `Tools`.
-        false => leading - 1,
-    };
-    out[..keep].to_lowercase() + &out[keep..]
 }
 
 /// `void (open_file "src/Main.purs" {})`, or

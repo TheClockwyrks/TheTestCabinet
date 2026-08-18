@@ -275,21 +275,22 @@ interface memories {
         description: string,
         /// The memory body.
         body: string,
-        /// Reusable code, as a module in the agent's own program language: whatever it exports
-        /// is bound at `lib.<name>` in every later program of yours, so a helper you write once
-        /// you never write again.
+        /// Reusable code, as a module in the agent's own program language: every later program of
+        /// yours may import whatever it exports, so a helper you write once you never write again.
+        /// Using the memory opens a documentation view per function the module declares, and each
+        /// states the line a program writes to reach it.
         ///
         /// It is NOT context — it costs you no window and is never shown back to you — so it is
         /// bounded on its own and counts against no body limit. `export` what you want to reach;
         /// a module with no `export` at all exports everything it declares. It may call the same gg
         /// functions your programs can.
         code: option<string>,
-        /// A script to run ONCE, when this memory first comes into use — on the read that loads it,
-        /// or, under the scratchpad strategy, the moment you write it.
+        /// A script to run on EVERY use of this memory — on each read that loads it, or, under the
+        /// scratchpad strategy, the moment you write it.
         ///
-        /// It runs after the program that loaded the memory has ended, so whatever **views** it
-        /// opens reach you on your NEXT turn. It can see the memory's own `code` at `lib.<name>`. It
-        /// cannot end your session.
+        /// It runs after the program that used the memory has ended, so whatever **views** it
+        /// opens reach you on your NEXT turn. It may import the memory's own `code`. It cannot end
+        /// your session.
         on-use: option<string>,
     }
 

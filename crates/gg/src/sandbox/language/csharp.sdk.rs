@@ -1,26 +1,25 @@
-//! **The SDK a C# program is compiled against**, carried as source in gg's own binary.
+//! **The SDK a C# program is compiled against**, carried as source in gg's own binary and compiled
+//! into one assembly by [`sdk_assembly`](super::compile::sdk_assembly).
 //!
-//! # Why it is source rather than an assembly
+//! # Why the sources are carried rather than a built assembly
 //!
-//! Every other arm's SDK is a *built* artifact — a jar on a classpath, a header in a precompiled
-//! prelude, a wasm object linked into the program. This one is twenty-six `.cs` files written into
-//! the preparation's own workspace and handed to `csc` beside `program.cs`, so the model's program
-//! and gg's SDK are **one compilation**. Three things follow, and each of them is why:
+//! Every other arm's SDK is a *built* artifact gg carries — a jar on a classpath, a header in a
+//! precompiled prelude, a wasm object linked into the program. This one is twenty-six `.cs` files
+//! gg carries and Roslyn turns into `Gg.dll` the first time a machine prepares anything. Two things
+//! follow, and each of them is why:
 //!
-//! * **There is no second assembly for the guest to find.** The prebuilt guest holds a Mono
-//!   interpreter and a bundled class library, and it loads exactly one assembly per run — the
-//!   program's. An SDK compiled separately would have to be bundled *into* the 34.9 MB component,
-//!   which would mean rebuilding and re-committing that component every time a doc comment changed.
 //! * **The SDK is reviewable.** What a reviewer reads in the diff is what a model compiles against,
 //!   with no committed binary in between and no reproducible-build gate to keep green.
-//! * **It costs almost nothing.** Roslyn compiles these files and the program together in ~0.4 s
-//!   warm, against ~0.3 s for the program alone — see [`compile`](super::compile) for the numbers.
+//! * **It costs nothing on a turn.** The assembly is content-keyed on these sources and built once
+//!   per machine, so a turn's own compile is the model's program alone — see
+//!   [`compile`](super::compile) for the numbers.
 //!
-//! # One compilation is availability, and nothing more
+//! # A reference is availability, and nothing more
 //!
-//! Compiling the SDK beside the program is how `csc` is told the library exists, which is what an
-//! `--extern`, a classpath entry or an include path is on the other arms. It puts no name in a
-//! program's scope: `namespace Gg` is a namespace like any other, so a program reaches
+//! `-r:Gg.dll` is how `csc` is told the library exists, which is what an `--extern`, a classpath
+//! entry or an include path is on the other arms — and what a code [skill](crate::skills)'s or
+//! [memory](crate::memories)'s module is given, so the two are supplied by one mechanism. It puts no
+//! name in a program's scope: `namespace Gg` is a namespace like any other, so a program reaches
 //! `Gg.Views.OpenText` by writing the whole path and reaches `Views.OpenText` after writing
 //! `using Gg;` of its own. That line is what each module's
 //! [import](crate::sandbox::ModuleDoc::import) states, and a documentation view quotes it.
@@ -32,19 +31,18 @@
 //! equal. A new SDK file that is not embedded would otherwise be a file the reflector documents and
 //! the compiler never sees — a catalogue describing functions a program cannot call.
 //!
-//! # The one thing a model may notice
+//! # What a model cannot reach
 //!
-//! Everything here is in the program's own assembly, so `Gg.Internal` — the `extern` declarations and
-//! the lowering under them — is `internal` *to the model's code too*. It is not model-facing: it is
-//! absent from the catalogue, absent from a module's directory, and documented with `//` rather than
-//! `///` precisely so the reflector cannot pick it up. A program that went looking could call it; it
-//! would reach the same host that checks every call regardless.
+//! `Gg.Internal` — the `extern` declarations and the lowering under them — is `internal` to the SDK's
+//! own assembly, so a program cannot name it at all. It is not model-facing either way: it is absent
+//! from the catalogue, absent from a module's directory, and documented with `//` rather than `///`
+//! precisely so the reflector cannot pick it up.
 
 /// One embedded SDK source: its path under `src/Gg/`, and its text.
 ///
-/// The path is relative and is written into the workspace **as it stands**, so a diagnostic in gg's
-/// own SDK reads `sdk/Files/Files.cs(12,9)` — which is what tells
-/// [`classify`](super::compile) that the fault is gg's rather than the model's.
+/// The path is relative and is written into the SDK's own build tree **as it stands**, so a
+/// diagnostic in gg's own SDK reads `./Files/Files.cs(12,9)` and names the file a reviewer would
+/// open.
 pub(super) struct SdkSource {
     /// Where the file goes, relative to [`SDK_DIRECTORY`].
     pub name: &'static str,
@@ -52,7 +50,8 @@ pub(super) struct SdkSource {
     pub text: &'static str,
 }
 
-/// The directory the SDK is written into, inside the preparation's own workspace.
+/// The directory the SDK's sources and the assembly built from them live in, inside the shared
+/// toolchain directory [`sdk_assembly`](super::compile::sdk_assembly) keys.
 pub(super) const SDK_DIRECTORY: &str = "sdk";
 
 /// Every file of the SDK, in the order `csc` is given them.

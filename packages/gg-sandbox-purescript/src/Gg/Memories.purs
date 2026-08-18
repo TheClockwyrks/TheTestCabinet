@@ -75,11 +75,11 @@ type MemoryHit =
 
 -- | Record a durable memory that survives context compaction.
 -- |
--- | A memory may also carry **code**. `code` is a PureScript module whose exports are bound at
--- | `lib.<name>` in every later program, so a helper got right once is never written again; `onUse`
--- | is a script gg runs the first time the memory comes into use, whose views arrive on the next
--- | turn. Neither is context — they cost no window, are never shown back, and count against no body
--- | limit — and both are bounded on their own.
+-- | A memory may also carry **code**. `code` is a PureScript module every later program may import
+-- | as `Lib.<Key>`, so a helper got right once is never written again; `onUse` is a script gg runs
+-- | on every use of the memory, whose views arrive on the next turn. Neither is context — they cost
+-- | no window, are never shown back, and count against no body limit — and both are bounded on their
+-- | own.
 -- |
 -- | # Operation
 -- |
@@ -93,10 +93,10 @@ type MemoryHit =
 -- | - `memory.description` — A one-line description of what the memory holds. Where the run keeps a
 -- |   memory index this is the memory's line in it.
 -- | - `memory.body` — The memory's contents.
--- | - `memory.code` — A PureScript module whose exports are bound at `lib.<name>` for the rest of the
+-- | - `memory.code` — A PureScript module later programs import as `Lib.<Key>` for the rest of the
 -- |   session. Left out for a memory that is only prose.
--- | - `memory.onUse` — A script gg runs the first time the memory comes into use, whose views arrive
--- |   on the next turn. Left out for a memory that runs nothing.
+-- | - `memory.onUse` — A script gg runs on every use of the memory, whose views arrive on the next
+-- |   turn. Left out for a memory that runs nothing.
 -- |
 -- | # Returns
 -- |
@@ -130,10 +130,10 @@ writeMemory written =
 -- | - `memory.name` — The slug of the memory to replace.
 -- | - `memory.description` — The one-line description to replace the old one with.
 -- | - `memory.body` — The contents to replace the old ones with.
--- | - `memory.code` — A PureScript module whose exports are bound at `lib.<name>`. Leaving it out
+-- | - `memory.code` — A PureScript module later programs import as `Lib.<Key>`. Leaving it out
 -- |   clears the code the memory had.
--- | - `memory.onUse` — A script gg runs the first time the memory comes into use. Leaving it out
--- |   clears the one the memory had.
+-- | - `memory.onUse` — A script gg runs on every use of the memory. Leaving it out clears the one the
+-- |   memory had.
 -- |
 -- | # Returns
 -- |
@@ -153,8 +153,9 @@ updateMemory written =
 -- | Record a new memory whose contents stay out of the context window until they are read.
 -- |
 -- | It takes a slug, a one-line description — required where the run keeps an index, since that is
--- | the memory's line in it — and the initial contents. It may also carry `code`, a module bound at
--- | `lib.<name>` once the memory is read, and `onUse`, a script run on that first read.
+-- | the memory's line in it — and the initial contents. It may also carry `code`, a module later
+-- | programs import as `Lib.<Key>` once the memory is read, and `onUse`, a script run on every
+-- | read.
 -- |
 -- | # Operation
 -- |
@@ -168,9 +169,9 @@ updateMemory written =
 -- | - `memory.description` — A one-line description of what the memory holds, which is its line in
 -- |   the index.
 -- | - `memory.body` — The memory's initial contents.
--- | - `memory.code` — A PureScript module whose exports are bound at `lib.<name>` once the memory is
+-- | - `memory.code` — A PureScript module later programs import as `Lib.<Key>` once the memory is
 -- |   read. Left out for a memory that is only prose.
--- | - `memory.onUse` — A script gg runs on that first read. Left out for a memory that runs nothing.
+-- | - `memory.onUse` — A script gg runs on every read. Left out for a memory that runs nothing.
 -- |
 -- | # Returns
 -- |
@@ -190,8 +191,8 @@ createMemory written =
 
 -- | Read one memory's full contents by slug — the only call that brings them into the context window.
 -- |
--- | A memory that carries code loads that code as it is read: the reply names the `lib.<key>` it is
--- | bound at, and it stays bound for the rest of the session.
+-- | A memory that carries code loads that code as it is read: gg opens a documentation view of each
+-- | function the module declares, and every later program may import it.
 -- |
 -- | # Operation
 -- |
@@ -203,7 +204,8 @@ createMemory written =
 -- |
 -- | # Returns
 -- |
--- | The memory's body, and — where it carried code — the `lib.<key>` its exports are now bound at.
+-- | The memory's body. Where it carried code, that code is loaded as well, and what it declares
+-- | arrives as documentation views rather than in this reply.
 -- |
 -- | # Throws
 -- |
@@ -282,7 +284,8 @@ searchMemories keywords =
 -- |
 -- | # Returns
 -- |
--- | The memory's body, and — where it carried code — the `lib.<key>` its exports are now bound at.
+-- | The memory's body. Where it carried code, that code is loaded as well, and what it declares
+-- | arrives as documentation views rather than in this reply.
 -- |
 -- | # Throws
 -- |

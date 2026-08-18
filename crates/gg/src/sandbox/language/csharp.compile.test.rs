@@ -65,27 +65,23 @@ fn a_rejected_program_is_the_models_and_carries_only_roslyns_own_errors() {
 }
 
 #[test]
-fn a_compile_that_failed_in_ggs_sdk_and_only_warned_about_the_program_is_ggs() {
+fn a_compile_that_failed_while_only_warning_about_the_program_is_never_the_models() {
     // The band consequence of dropping warnings, and it is the safe direction. The compilation
-    // failed inside gg's own SDK; the only thing `csc` had to say about the model's file was an
-    // opinion about a nullable annotation. Counting that opinion as "the model has diagnostics"
-    // would hand a model a warning it cannot act on for a failure that was never its.
+    // failed and the only thing `csc` had to say about the model's file was an opinion about a
+    // nullable annotation. Counting that opinion as "the model has diagnostics" would hand a model a
+    // warning it cannot act on for a failure that was never its.
     let rejected = report(
         false,
         "exited with status 1",
-        &format!(
-            "{SDK_DIRECTORY}/Files/Files.cs(12,5): error CS0246: The type or namespace name 'Nope' \
-             could not be found\n\
-             program.cs(4,9): warning CS8600: Converting null literal or possible null value\n"
-        ),
+        "program.cs(4,9): warning CS8600: Converting null literal or possible null value\n",
         "",
     );
     match verdict(&rejected) {
         Err(PrepareFailure::Toolchain(message)) => assert!(
-            message.contains("gg's own C# SDK did not compile") && message.contains("CS0246"),
-            "the failure does not name gg's own defect: {message}"
+            message.contains("without reporting a diagnostic"),
+            "the failure does not say that nothing was reported: {message}"
         ),
-        other => panic!("a failure in gg's own SDK is not the model's, and got {other:?}"),
+        other => panic!("a failure nobody reported an error for is not the model's: {other:?}"),
     }
 }
 
@@ -142,44 +138,48 @@ fn a_rejection_the_bound_does_not_reach_is_byte_for_byte_what_it_always_was() {
 }
 
 #[test]
-fn the_band_is_decided_before_anything_is_dropped_for_length() {
-    // The invariant a bound must not be able to break: whose failure it is comes off the WHOLE set
-    // of diagnostics. Here gg's own SDK is named once, at the very end, past the point any cap
-    // reaches — and the model still gets its own errors rather than gg's, because the partition ran
-    // before the truncation did.
-    let mut stdout = String::new();
-    for line in 1..=40 {
-        stdout.push_str(&format!(
-            "program.cs({line},9): error CS0103: no such name\n"
-        ));
-    }
-    stdout.push_str(&format!(
-        "{SDK_DIRECTORY}/Files/Files.cs(12,5): error CS0246: gg's own file\n"
-    ));
-    let Err(PrepareFailure::Program(PrepareError::Compile(diagnostic))) =
-        verdict(&report(false, "exited with status 1", &stdout, ""))
-    else {
-        panic!("a program with its own diagnostics is the model's, however deep gg's own are");
-    };
-    assert!(
-        !diagnostic.contains(SDK_DIRECTORY),
-        "gg's own file reached the model: {diagnostic}"
-    );
+fn a_programs_compile_reads_the_models_file_and_nothing_else() {
+    // Why no diagnostic a program's compile produces can be located anywhere but the model's own
+    // file: nothing else is in the invocation. gg's SDK and every code module in scope are `-r:`
+    // references, which is availability and puts no name in the program's scope, so a defect in
+    // gg's own C# earns its diagnostic where the SDK is built rather than in front of a model.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let path = root.path();
+    let references = path.join("ref");
+    std::fs::create_dir_all(&references).expect("a reference directory");
+    std::fs::write(references.join("System.Runtime.dll"), "").expect("a reference assembly");
 
-    // And the other direction: every one of forty errors is in gg's SDK, so it is gg's defect no
-    // matter that only eight of them would ever have been shown.
-    let ours: String = (1..=40)
-        .map(|line| {
-            format!("{SDK_DIRECTORY}/Files/Files.cs({line},5): error CS0246: gg's own file\n")
-        })
-        .collect();
-    assert!(
-        matches!(
-            verdict(&report(false, "exited with status 1", &ours, "")),
-            Err(PrepareFailure::Toolchain(_))
-        ),
-        "forty diagnostics in gg's own SDK are gg's defect whatever the cap would show"
+    let libraries = [
+        path.join(SDK_ASSEMBLY),
+        path.join(module_assembly("CsvTools")),
+    ];
+    let rendered = response_file(
+        path,
+        Target::Exe,
+        path,
+        &libraries,
+        &[path.join(PROGRAM_FILE)],
+        &path.join(PROGRAM_ASSEMBLY),
+    )
+    .expect("the response file renders");
+    let lines: Vec<&str> = rendered.lines().collect();
+
+    let sources: Vec<&&str> = lines.iter().filter(|line| line.ends_with(".cs")).collect();
+    assert_eq!(
+        sources,
+        [&path.join(PROGRAM_FILE).display().to_string().as_str()],
+        "a program's compile was given a source that is not the model's own file"
     );
+    for library in libraries {
+        assert!(
+            lines.contains(&format!("-r:{}", library.display()).as_str()),
+            "gg's own library is not a reference: {rendered}"
+        );
+    }
+    // The module library is named for the binding, so the reference the compiler is given, the
+    // resource the guest registers and the namespace a program writes are one string.
+    assert_eq!(module_assembly("CsvTools"), "lib.CsvTools.dll");
+    assert_eq!(response_name(PROGRAM_ASSEMBLY), "GgProgram.rsp");
 }
 
 #[test]
@@ -290,16 +290,12 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
     // A file that is not an assembly, which a reference pack really does carry.
     std::fs::write(references.join("System.Linq.xml"), "").expect("a documentation file");
 
-    let sdk = [
-        path.join("sdk/Files/Files.cs"),
-        path.join("sdk/ApiException.cs"),
-    ];
     let rendered = response_file(
         path,
         Target::Exe,
         path,
-        &sdk,
-        &[path.join("module_Kit.cs"), path.join("program.cs")],
+        &[path.join(SDK_ASSEMBLY)],
+        &[path.join("program.cs")],
         &path.join("out.dll"),
     )
     .expect("the response file renders");
@@ -330,41 +326,23 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
         .collect();
     assert_eq!(
         named.len(),
-        3,
+        4,
         "the documentation file was passed as a reference: {named:?}"
     );
-    let mut sorted = named.clone();
+    // The reference pack is sorted, so a compile is a function of the directory's contents rather
+    // than of the order a filesystem listed them in. gg's own libraries follow it, in the order
+    // they are supplied.
+    let mut sorted = named[..3].to_vec();
     sorted.sort();
     assert_eq!(
-        named, sorted,
+        named[..3],
+        sorted[..],
         "the reference set is not sorted, so a compile depends on directory order"
     );
-
-    // The SDK's sources are compiled with the program, and BEFORE it: they are what makes gg's
-    // surface reachable without an assembly the guest would have to carry. A compile that lost
-    // them would fail on the model's first `Files.ReadFile` with a diagnostic about the model. The
-    // code modules in scope sit between the two, so one may reach another's class and neither can
-    // move a line of the model's own file.
-    let sources: Vec<String> = lines
-        .iter()
-        .filter(|line| line.ends_with(".cs"))
-        .map(|line| {
-            std::path::Path::new(line)
-                .strip_prefix(path)
-                .expect("every source is inside the workspace")
-                .display()
-                .to_string()
-        })
-        .collect();
     assert_eq!(
-        sources,
-        [
-            "sdk/Files/Files.cs",
-            "sdk/ApiException.cs",
-            "module_Kit.cs",
-            "program.cs",
-        ],
-        "the SDK and the modules are not compiled with the program, in front of it"
+        *named[3],
+        format!("-r:{}", path.join(SDK_ASSEMBLY).display()).as_str(),
+        "gg's own SDK is not the last library named"
     );
 }
 
@@ -380,15 +358,15 @@ fn a_module_is_compiled_as_a_library_because_a_class_body_has_no_entry_point() {
         path,
         Target::Library,
         path,
-        &[path.join("sdk/ApiException.cs")],
+        &[path.join(SDK_ASSEMBLY)],
         &[path.join("module_Kit.cs")],
-        &path.join("out.dll"),
+        &path.join(module_assembly("Kit")),
     )
     .expect("the response file renders");
     let lines: Vec<&str> = rendered.lines().collect();
     assert!(
         lines.contains(&"-target:library") && !lines.contains(&"-target:exe"),
-        "a module's own check demands an entry point it has no reason to have"
+        "a module's library demands an entry point it has no reason to have"
     );
 }
 

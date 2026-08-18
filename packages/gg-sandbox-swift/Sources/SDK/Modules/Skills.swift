@@ -14,9 +14,10 @@ public enum skills {
     /// Reading it also pins that body permanently into context, so a skill that has been read stays
     /// read.
     ///
-    /// A skill may be code rather than prose, or as well as it. Code is bound at `lib.<key>` for the
-    /// rest of the session and the reply names the key and what it offers. An on-use program runs
-    /// once this program has ended, and whatever it shows arrives on the next turn.
+    /// A skill may be code rather than prose, or as well as it. Code is compiled as a module of its
+    /// own, which every later program reaches by writing its `import` line, and using it opens a
+    /// documentation view of each function the module declares. An on-use program runs once this
+    /// program has ended, and whatever it shows arrives on the next turn.
     ///
     /// - Parameter name: The skill's name, as the system prompt lists it.
     /// - Returns: the skill's body, front matter stripped.

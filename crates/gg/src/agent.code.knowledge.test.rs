@@ -301,3 +301,76 @@ fn a_revised_module_documents_what_it_now_offers() {
         "and the declaration it dropped documents nothing"
     );
 }
+
+/// **A use of a revised module replaces the page the window was holding for a declaration whose
+/// code changed.**
+///
+/// This is the half a registry alone cannot deliver. A model that rewrote a memory's code and used
+/// it again would otherwise keep reading the signature it replaced, because the key it is filed
+/// under did not change — and it would go on reading it for the life of the session, since nothing
+/// but a close removes a documentation view.
+///
+/// The declaration the revision left alone is the control: its page is byte-identical, so it does
+/// not move and leaves nothing behind. A revision costs the prompt prefix from the page it changed
+/// and nothing else.
+#[test]
+fn a_use_of_a_revised_module_replaces_the_page_it_changed() {
+    let (mut knowledge, docs) = used_csv_tools();
+    let mut context = window();
+    context.begin_turn(1);
+    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    let widen_at = context
+        .items()
+        .iter()
+        .position(|item| item.label() == Some("csvTools.widen"))
+        .expect("the second declaration's page is in the window");
+
+    knowledge
+        .load(
+            language(GgProgramLanguage::TypeScript),
+            KnowledgeOrigin::Skill,
+            "csv-tools",
+            Some(
+                "\
+/** Split a CSV into rows. */
+export function parse(text: string, strict: boolean): string[] { return text.split(\",\"); }
+export function widen(row: string[]): string { return row.join(\" | \"); }
+export const DELIMITER = \",\";
+",
+            ),
+            None,
+        )
+        .expect("the revision loads");
+
+    context.begin_turn(2);
+    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+
+    assert_eq!(open(&context), ["csvTools.widen", "csvTools.parse"]);
+    let revised = context
+        .open_docviews()
+        .into_iter()
+        .find(|view| view.key == "csvTools.parse")
+        .map(|view| view.body)
+        .expect("the revised declaration is still open under its own key");
+    assert!(
+        revised.contains("export function parse(text: string, strict: boolean): string[]"),
+        "the page carries the declaration the module now offers: {revised}"
+    );
+    assert_eq!(
+        context
+            .items()
+            .iter()
+            .position(|item| item.label() == Some("csvTools.widen")),
+        Some(widen_at),
+        "the declaration the revision left alone did not move"
+    );
+    assert_eq!(
+        context
+            .items()
+            .iter()
+            .filter(|item| item.source() == test_cabinet_core::gg::GgContextSource::History)
+            .count(),
+        1,
+        "and exactly one page was retired: the one whose text changed"
+    );
+}

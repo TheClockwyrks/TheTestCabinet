@@ -706,9 +706,9 @@ fn what_a_program_costs_and_what_it_weighs() {
 /// **A program reaches a code module, and a module that does not build is refused at the read.**
 ///
 /// The whole of what makes a Rust [code skill](crate::skills) work, driven end to end: the module is
-/// prepared on its own — which is where its author's diagnostic comes from — and then *linked into
-/// the program that reads it*, because Rust has no run-time moment at which a namespace could be
-/// bound.
+/// prepared on its own — which is where its author's diagnostic comes from — and then built into a
+/// crate of its own and *linked into the program that reads it*, because Rust has no run-time moment
+/// at which a namespace could be bound.
 ///
 /// It is the one behaviour on this arm that the interpreted arms get for free from their guests, so
 /// it is asserted here rather than trusted.
@@ -722,60 +722,60 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
     assert_eq!(
         export_names(&module.exports),
         vec!["shout".to_string(), "MARK".to_string()],
-        "a module's namespace is every public item it declares, in source order"
+        "a module's crate offers every `pub` item it declares, in source order"
     );
 
     let modules = [CodeModule {
         name: "csv_tools".to_string(),
         source: module.source,
     }];
-    let prepared = crate::sandbox::prepare_program(
-        crate::sandbox::language(GgProgramLanguage::Rust),
-        &format!(
-            "fn main() {{\n    {LOG}(&format!(\"{{}} {{}}\", lib::csv_tools::shout(\"ok\"), \
-             lib::csv_tools::MARK));\n}}\n"
-        ),
-        &modules,
-    )
-    .expect("a program compiles against the modules in its scope");
-    let component = prepared
-        .component
-        .expect("a compiled arm hands back a component");
-    let (outcome, _log) = evaluate(
-        &component,
-        &[],
-        &modules,
-        RunEnding::None,
-        false,
-        canned_outcome,
-    );
-    assert_eq!(logs(&outcome), ["OK 7"]);
+    let run = |program: &str| {
+        let prepared = crate::sandbox::prepare_program(
+            crate::sandbox::language(GgProgramLanguage::Rust),
+            program,
+            &modules,
+        )
+        .expect("a program compiles against the modules in its scope");
+        let (outcome, _log) = evaluate(
+            &prepared
+                .component
+                .expect("a compiled arm hands back a component"),
+            &[],
+            &modules,
+            RunEnding::None,
+            false,
+            canned_outcome,
+        );
+        logs(&outcome).to_vec()
+    };
 
-    // A reply that ends mid-line — no trailing newline, and a `//` comment as its last line — is the
-    // same program to `rustc`, because the declarations gg writes below it are separated from it. It
-    // is here rather than only in `source`'s unit tests because what makes it matter is the compile:
-    // without the separator the comment swallows the first declaration and the model is told
-    // `error[E0432]: unresolved import `super::__gg_module_csv_tools``, over a program it wrote
-    // correctly and about a symbol it has never seen.
-    let prepared = crate::sandbox::prepare_program(
-        crate::sandbox::language(GgProgramLanguage::Rust),
-        &format!(
-            "fn main() {{\n    {LOG}(lib::csv_tools::shout(\"ok\").as_str());\n}}\n// that is all"
-        ),
-        &modules,
-    )
-    .expect("a program that ends on a comment with no trailing newline compiles");
-    let (outcome, _log) = evaluate(
-        &prepared
-            .component
-            .expect("a compiled arm hands back a component"),
-        &[],
-        &modules,
-        RunEnding::None,
-        false,
-        canned_outcome,
+    // The path written in full, with no line above it — which is how a program reaches gg's own SDK,
+    // because a module arrives by the same `--extern`.
+    assert_eq!(
+        run(&format!(
+            "fn main() {{\n    {LOG}(&format!(\"{{}} {{}}\", csv_tools::shout(\"ok\"), \
+             csv_tools::MARK));\n}}\n"
+        )),
+        ["OK 7"]
     );
-    assert_eq!(logs(&outcome), ["OK"]);
+
+    // And under a `use` line the program wrote for itself, which is the program's own choice rather
+    // than something gg requires of it.
+    assert_eq!(
+        run(&format!(
+            "use csv_tools::shout;\n\nfn main() {{\n    {LOG}(shout(\"ok\").as_str());\n}}\n"
+        )),
+        ["OK"]
+    );
+
+    // A reply that ends mid-line — no trailing newline, and a `//` comment as its last line — is
+    // compiled as it stands, because nothing is appended to it.
+    assert_eq!(
+        run(&format!(
+            "fn main() {{\n    {LOG}(csv_tools::shout(\"ok\").as_str());\n}}\n// that is all"
+        )),
+        ["OK"]
+    );
 
     // And a module the compiler refuses is the module author's failure, reported at the read rather
     // than two turns later against somebody else's program.
@@ -791,6 +791,40 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
     assert!(
         rendered.contains("line 2"),
         "a module's diagnostic must land in the module author's own coordinates: {rendered}"
+    );
+}
+
+/// **The file `rustc` reads is the file the model sent, with a code module in scope.**
+///
+/// The half of the authorship invariant a module could break, asserted against the bytes on disk
+/// rather than argued from the source: gg used to declare the modules below the program's last line,
+/// and a preparation that appends anything at all is one whose diagnostics are no longer the model's
+/// own past the point it appended.
+///
+/// Read out of the preparation's own workspace while its context is still alive, which is the only
+/// window there is — the tree is removed when the context drops.
+#[test]
+fn the_bytes_compiled_are_the_bytes_the_model_sent_with_a_module_in_scope() {
+    let modules = [CodeModule {
+        name: "csv_tools".to_string(),
+        source: "pub fn shout(word: &str) -> String {\n    word.to_uppercase()\n}\n".to_string(),
+    }];
+    // Deliberately ending mid-line and on a comment: the shape that a preparation appending to the
+    // program would corrupt rather than merely lengthen.
+    let program =
+        format!("fn main() {{\n    {LOG}(csv_tools::shout(\"ok\").as_str());\n}}\n// that is all");
+
+    let context = crate::sandbox::PrepareContext::new();
+    super::compile::compile_program(&program, &modules, &context)
+        .expect("a program compiles against the module in its scope");
+    let workspace = context
+        .opened_workspace()
+        .expect("a compile opened a workspace to write the program into");
+    let compiled = std::fs::read_to_string(workspace.join("work").join("program.rs"))
+        .expect("the program `rustc` read is still on disk");
+    assert_eq!(
+        compiled, program,
+        "gg wrote something into the model's own program"
     );
 }
 

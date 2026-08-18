@@ -152,17 +152,32 @@ that hop out.
 
 A skill's or memory's code is a module when it is spelled `.py`, and that is the
 arm's only extension. A Python module's namespace is its exports, so the source
-crosses untouched, the guest executes it in a namespace of its own, and the public
-names its body left behind become the module `lib.<key>`, which is `snake_case`
-and ASCII-only. A module's author writes `import gg` exactly as a program does.
+crosses untouched and the guest executes it in a namespace of its own. The public
+names its body left behind are the module bound under its key, which is
+`snake_case` and ASCII-only. A module's author writes `import gg` exactly as a
+program does and reaches the same objects.
 
-`lib` is an ordinary package in the guest's `sys.modules`, so a program reaches a
-module by writing `import lib`, `from lib import notes` or `import lib.notes`, and
-the read that binds the module is where gg states that line. The names that travel
-beside the source are read by a line scan over the dialect's code mask: unindented
-`def`, `async def`, `class` and plain top-level assignments, in source order,
-first spelling wins, skipping names opening with `_`. An imported name is left
-out of that list.
+A module is supplied the way the SDK is: `lib` is a package in the guest's
+`sys.modules`, assembled before the program runs and carrying one submodule per
+key in use. Supplying it declares no name in the program. A program writes
+`import lib` and reaches an export as `lib.<key>.<name>`. A program that wants one
+module writes `from lib import notes` or `import lib.notes`, which resolve as
+they do for any other package. A program that writes none of the three has no
+`lib` at all, which is the rule `import gg` is under.
+
+The names that travel beside the source are read by a line scan over the dialect's
+code mask: unindented `def`, `async def`, `class` and plain top-level assignments,
+in source order, first spelling wins, skipping names opening with `_`. An imported
+name is left out of that list. Each name carries the declaration up to the colon
+that opens its body, together with the `#` comment above it or the docstring
+inside it.
+
+A `def` also carries the type names its own annotations write: what follows `->`
+in return position, and each parameter's annotation in parameter position. A
+quoted forward reference is one of those names and `None` is not, and a `def`
+whose author annotated nothing carries neither list. Those names are what a
+function's [documentation view](/gg/responses-as-code/views/) opens the types of,
+resolved against the module's own declarations first and this arm's SDK second.
 
 ## Healing dialect
 

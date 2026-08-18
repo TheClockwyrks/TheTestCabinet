@@ -122,29 +122,33 @@
 //! CPU** against programs that use milliseconds — so the trade is latency a model waits for against
 //! headroom nothing uses.
 //!
-//! # A code module is a **named C++ module** the program imports
+//! # A code module is a **named C++ module the program imports itself**
 //!
-//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at
-//! `lib::<key>`, and on a compiled arm that binding is a **link** — so the modules in scope are
-//! inputs to the program's own compile. Each is written into the preparation's workspace as a module
-//! interface unit [exporting `namespace lib::<key>`](super::source::namespaced), precompiled by
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is `lib::<key>`, and on
+//! a compiled arm reaching it is a **link** — so the modules in scope are inputs to the program's
+//! own compile. Each is written into the preparation's workspace as a module interface unit
+//! [exporting `namespace lib::<key>`](super::source::namespaced), precompiled by
 //! [`precompile_module`] into a `.pcm`, and named to the program's compile twice: as
 //! `-fmodule-file=lib.<key>=…`, which says where the interface is, and as a link input, which is
 //! where its bodies are.
 //!
-//! **This is what keeps gg's surface out of a program that binds a module.** A module reaches gg
-//! through an `#include` in its own global module fragment, and a global module fragment's names are
-//! attached to the global module rather than exported, so a program that imports the module reaches
-//! `lib::<key>` and earns *use of undeclared identifier 'gg'* for anything of gg's it wrote no line
-//! for. A header put in front of the model's file could not hold that line: `#include` is textual,
-//! and a header carrying gg's surface declares it in whatever translation unit reads it. **An
-//! author's own `#include` lines are [hoisted](super::source::namespaced) into that same fragment**,
-//! which is why they reach no importer either.
+//! **Neither argument declares a name.** The program writes
+//! [`import lib.<key>;`](super::source::module_import) itself, exactly as it writes the `#include`
+//! that reaches gg's own surface, and a program that writes neither earns *use of undeclared
+//! identifier 'lib'* from clang. That is the same packaging `-I` is: the compile is told the module
+//! exists, and what puts a name in scope is the line the model wrote. Nothing at all is put in front
+//! of `main.cpp`, so a diagnostic at line 7 is line 7 with three skills loaded.
 //!
-//! The `import lib.<key>;` lines themselves are in one generated [file](BINDER_FILE) named with
-//! `-include`, which leaves the primary file's line numbering alone — a diagnostic at line 7 is line
-//! 7 with three skills loaded. Each module is compiled on its own, so a module reaches gg, the
-//! headers it included itself, and no other module.
+//! **A module's own text is gg's to wrap**, which is what keeps gg's surface out of the program that
+//! imports it. A module reaches gg through an `#include` in its own global module fragment, and a
+//! global module fragment's names are attached to the global module rather than exported, so a
+//! program that imports the module reaches `lib::<key>` and earns *use of undeclared identifier
+//! 'gg'* for anything of gg's it wrote no line for. **An author's own `#include` lines are
+//! [hoisted](super::source::namespaced) into that same fragment**, which is why they reach no
+//! importer either.
+//!
+//! Each module is compiled on its own, so a module reaches gg, the headers it included itself, and
+//! no other module.
 //!
 //! A module is also compiled **alone** when it is read — [`compile_module`], one `-fsyntax-only`
 //! over the namespaced file as its own module interface unit — which is what buys its author a
@@ -240,14 +244,6 @@ pub(super) const PROGRAM_FILE: &str = "main.cpp";
 
 /// What `clang++` is told to write, in this preparation's own output directory.
 const ARTIFACT_FILE: &str = "program.wasm";
-
-/// The file that names the code modules in a program's scope, one `import lib.<key>;` per module,
-/// put in front of the model's file with `-include`.
-///
-/// It is the other half of the [module wrapper](super::source::namespaced) and carries nothing else:
-/// a module name binds `lib::<key>` and reaches no other name at all, which is why a program with a
-/// code module in scope still has to write its own line for anything of gg's.
-const BINDER_FILE: &str = "bound_modules.hpp";
 
 /// What one code module's precompiled interface is called, given its binding key.
 fn interface_file(key: &str) -> String {
@@ -644,16 +640,12 @@ fn compile(
     // Each code module is compiled into a module interface of its own before the program is, and
     // the program is handed the interfaces rather than the sources. That is what puts gg's surface
     // out of the program's reach: a global module fragment's includes are attached to the global
-    // module and reach nobody who imports it.
-    let mut binder = String::new();
+    // module and reach nobody who imports it. Nothing here writes an `import` for the program — the
+    // model's own reply carries it, or the module's names are undeclared.
     let mut interfaces = Vec::with_capacity(modules.len());
     for module in modules {
         interfaces.push(precompile_module(module, &toolchain, workspace, context)?);
-        binder.push_str(&super::source::module_import(&module.name));
     }
-    workspace
-        .write(BINDER_FILE, &binder)
-        .map_err(PrepareFailure::Toolchain)?;
 
     let artifact = workspace.output().join(ARTIFACT_FILE);
     let report = invoke_clang(
@@ -704,24 +696,15 @@ fn invoke_clang(
         // unit is a whole object rather than a function.
         .arg("-ffunction-sections")
         .arg("-fdata-sections");
-    // Where each code module's precompiled interface is, which is what makes the matching
-    // `import lib.<key>;` resolve. Packaging, on the same terms `-I` above is: it says the module
-    // exists and puts no name in scope.
+    // Where each code module's precompiled interface is, which is what makes an `import lib.<key>;`
+    // the model wrote resolve. Packaging, on the same terms `-I` above is: it says the module exists
+    // and puts no name in scope, so a program that writes no import for it does not compile.
     for (module, interface) in modules.iter().zip(interfaces) {
         command.arg(format!(
             "-fmodule-file={}={}",
             super::source::module_name(&module.name),
             interface.display()
         ));
-    }
-    if !modules.is_empty() {
-        // The one file put in front of the model's own, holding one `import lib.<key>;` per module
-        // in scope. `-include` leaves the primary file's line numbering alone, so a diagnostic at
-        // line 7 is still line 7 with three skills loaded, and an import declaration binds the
-        // module's namespace and nothing else — gg's surface included.
-        command
-            .arg("-include")
-            .arg(workspace.work().join(BINDER_FILE));
     }
     command
         // A **reactor**, not a command: a component's exports are called after `_initialize`, and

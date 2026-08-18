@@ -39,7 +39,7 @@ use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
 
-use super::compile::{self, compile_module, compile_program};
+use super::compile::{self, check_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,
@@ -48,8 +48,8 @@ use crate::sandbox::fake::{
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::SandboxOutcome;
 use crate::sandbox::{
-    CodeModule, PrepareContext, PreparedProgram, ProgramScope, SandboxLimits,
-    capability_operations, run_prepared_program,
+    CodeModule, PrepareContext, PrepareError, PrepareFailure, PreparedProgram, ProgramScope,
+    SandboxLimits, capability_operations, run_prepared_program,
 };
 use crate::tools::ToolOutcome;
 
@@ -440,82 +440,117 @@ fn a_located_failure_names_the_model_s_own_purescript() {
 }
 
 #[test]
-fn a_code_module_is_a_purescript_module_bound_at_lib() {
-    // What a code skill or a code memory written in PureScript is: an ordinary module, compiled the
-    // way a program is, whose exports become the namespace at `lib.<key>`. Its functions are curried
-    // — that is what a PureScript function IS — so a program reaches them the way PureScript reaches
-    // anything.
-    let module = compile_module(
-        "module Helpers (greet, add) where\n\
-         import Prelude\n\
-         \n\
-         greet :: String -> String\n\
-         greet who = \"hello, \" <> who\n\
-         \n\
-         add :: Int -> Int -> Int\n\
-         add left right = left + right\n",
-        &PrepareContext::new(),
-    )
-    .expect("purs compiles a code module");
+fn a_code_module_is_a_purescript_module_the_program_imports() {
+    // What a code skill or a code memory written in PureScript is: an ordinary module, compiled into
+    // the same `purs` project as the program that uses it. Its functions are curried — that is what
+    // a PureScript function IS — so a program reaches them the way PureScript reaches anything.
+    const HELPERS: &str = "module Helpers (greet, add) where\n\
+                           import Prelude\n\
+                           \n\
+                           greet :: String -> String\n\
+                           greet who = \"hello, \" <> who\n\
+                           \n\
+                           add :: Int -> Int -> Int\n\
+                           add left right = left + right\n";
+
+    // The use that loaded it checked it on its own; what travels to the program is the author's
+    // source, under the key it was bound at.
+    check_module(HELPERS, &PrepareContext::new()).expect("purs checks a code module");
     let modules = [CodeModule {
-        name: "helpers".to_string(),
-        source: module,
+        name: "Helpers".to_string(),
+        source: HELPERS.to_string(),
     }];
 
-    // A program reaches into it through the SDK's `lib`, which is the one place in this arm's surface
-    // where the program says what type it expects: a code module is compiled separately, so there is
-    // no `import` for `purs` to check the two against. What the exports really are is ordinary
-    // PureScript — `add` is curried, because that is what a PureScript function IS.
+    // The program writes the import line, names the alias, and `purs` checks every call against the
+    // author's own signature — no annotation, no lookup by string, nothing this arm invented.
     let outcome = run_with(
         &program_of(&[
-            "case Gg.Core.lib \"helpers\" \"greet\" of",
-            "  Just greet -> Console.log (greet \"gg\" :: String)",
-            "  Nothing -> Console.log \"no greet\"",
-            "case Gg.Core.lib \"helpers\" \"add\" of",
-            "  Just add -> Console.log (show (add 40 2 :: Int))",
-            "  Nothing -> Console.log \"no add\"",
-            "case Gg.Core.lib \"helpers\" \"missing\" :: Maybe String of",
-            "  Just _ -> Console.log \"found something that is not there\"",
-            "  Nothing -> Console.log \"nothing under that name\"",
+            "Console.log (Helpers.greet \"gg\")",
+            "Console.log (show (Helpers.add 40 2))",
         ])
         .replace(
             "import Effect (Effect)\n",
-            "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
+            "import Effect (Effect)\n\
+             import Effect.Class.Console as Console\n\
+             import Lib.Helpers as Helpers\n",
         ),
         &[],
         &modules,
         canned_outcome,
     )
     .0;
-    assert_eq!(
-        logs(&outcome),
-        ["hello, gg", "42", "nothing under that name"]
+    assert_eq!(logs(&outcome), ["hello, gg", "42"]);
+
+    // A program that does not write the import line does not compile, however loaded the module is:
+    // the module is a library, and a library is reached through a line the program wrote.
+    let failure = compile_program(
+        &program_of(&["Console.log (Helpers.greet \"gg\")"]).replace(
+            "import Effect (Effect)\n",
+            "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
+        ),
+        &modules,
+        &PrepareContext::new(),
+    )
+    .expect_err("a program that never imported the module");
+    assert!(
+        matches!(
+            &failure,
+            PrepareFailure::Program(PrepareError::Compile(message))
+                if message.contains("UnknownName")
+        ),
+        "{failure:?}"
     );
 
-    // And what the guest declares at `lib:helpers` really is the module's own ES namespace, which
-    // is what the entry module gg generates imports and hands to the SDK: the same three answers,
-    // read from JavaScript rather than from PureScript.
-    let outcome = evaluate_js(
-        r#"import * as helpers from "lib:helpers";
-
-console.log(helpers.greet("gg"));
-console.log(String(helpers.add(40)(2)));
-console.log(Object.keys(helpers).sort().join(","));"#,
-        &[],
-        &modules,
-        canned_outcome,
-    )
-    .0;
-    assert_eq!(logs(&outcome), ["hello, gg", "42", "add,greet"]);
-
     // A module whose PureScript does not compile is refused by the prepare step, with the author's
-    // own coordinates — it never reaches the guest at all.
-    let failure = compile_module("module Helpers where\ngreet = ((\n", &PrepareContext::new())
+    // own coordinates — it never reaches a program at all.
+    let failure = check_module("module Helpers where\ngreet = ((\n", &PrepareContext::new())
         .expect_err("a broken module is refused");
     assert!(
         failure.to_string().contains("module.purs:"),
         "located in the author's own file: {failure}"
     );
+}
+
+/// **The prepared program is the model's bytes**, module in scope or not.
+///
+/// The [authorship rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) is about the
+/// program rather than only about the compile: a turn carrying a code module compiles the same text
+/// it would have compiled without one, and what the module cost the program is the one `import` line
+/// the model wrote for it.
+#[test]
+fn a_module_in_scope_changes_nothing_about_the_program_gg_compiles() {
+    const HELPERS: &str = "module Helpers (greet) where\n\
+                           import Prelude\n\
+                           \n\
+                           greet :: String -> String\n\
+                           greet who = \"hello, \" <> who\n";
+    let source = "module Main where\n\
+                  \n\
+                  import Prelude\n\
+                  import Effect (Effect)\n\
+                  import Effect.Class.Console as Console\n\
+                  import Lib.Helpers as Helpers\n\
+                  \n\
+                  main :: Effect Unit\n\
+                  main = Console.log (Helpers.greet \"gg\")\n";
+    let modules = [CodeModule {
+        name: "Helpers".to_string(),
+        source: HELPERS.to_string(),
+    }];
+
+    // What the seam handed the arm is what the arm wrote into the file `purs` read: the source is
+    // never edited, prefixed or appended to.
+    let context = PrepareContext::new();
+    compile_program(source, &modules, &context).expect("it compiles");
+    let compiled = std::fs::read_to_string(
+        context
+            .workspace()
+            .expect("the preparation took a workspace")
+            .work()
+            .join(compile::PROGRAM_FILE),
+    )
+    .expect("the program gg compiled");
+    assert_eq!(compiled, source, "gg compiled bytes the model did not send");
 }
 
 #[test]

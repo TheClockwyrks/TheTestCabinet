@@ -430,55 +430,129 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
     );
 }
 
-/// **Every language says how a program reaches the code a skill or memory bound**, in a form that
+/// **Every language says how a program reaches the code a skill or memory loaded**, in a form that
 /// arm's own compiler would accept.
 ///
-/// This is the one fact about the surface an arm's own catalogue cannot state: `lib` binds no
-/// catalogued function, so the [documentation view](crate::docs) a use of the module opens is the
-/// only place a model is told, and that view's line is built from here. A form quoted in a syntax
+/// This is the one fact about the surface an arm's own catalogue cannot state: a loaded module binds
+/// no catalogued function, so the [documentation view](crate::docs) a use of the module opens is the
+/// only place a model is told, and that view's lines are built from here. A form quoted in a syntax
 /// the arm does not have is a binding the model has not been given.
 ///
-/// Asserted as containment for every arm, plus the exact text of the two that reach a module by
-/// **string** rather than by path, because those two are the ones a `member_separator` would get
-/// wrong and get wrong silently — and of the two compiled arms whose path is checked by their own
-/// compiler, since a path that stopped compiling is the same silence.
+/// Two halves, and the first is what every arm — the fixture included — owes whatever its module
+/// system is:
+///
+/// * the [access](ProgramLanguage::lib_access) names the key and leaves the placeholder for a name;
+/// * an arm that states an [import line](ProgramLanguage::lib_import) states **one** line, and that
+///   line either names the key or is the same for every key. A line that changes with the key and
+///   does not say the key is a line that brings in some other module.
+///
+/// The second half is the exact text, arm by arm. A module is supplied the way each arm supplies its
+/// own SDK, so these are that arm's own module system spoken out loud — an `import`, a `using`, a
+/// `require`, or nothing at all where the supply is already the program's prelude — and a change to
+/// one is a change to what every model on that arm is told to write. Pinned rather than derived,
+/// because a derivation would be the implementation restating itself, and pinned for **every**
+/// registered arm, so that a new arm cannot be registered without saying its line.
 #[test]
 fn every_language_says_how_a_bound_module_is_reached() {
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
         let access = language.lib_access("csvTools");
-        // Both halves of the view's line, because both are what the model reads: on an arm whose
-        // module system resolves a specifier, `lib` is the scheme in the import line and the access
-        // is the namespace that line bound. Asserting the access alone would have made such an arm
-        // state its scheme nowhere.
-        let quoted = format!(
-            "{} {access}",
-            language.lib_import("csvTools").unwrap_or_default()
-        );
-        for part in ["lib", "csvTools", "<name>"] {
+        for part in ["csvTools", "<name>"] {
             assert!(
-                quoted.to_lowercase().contains(&part.to_lowercase()),
-                "{}: `{quoted}` does not name `{part}`",
+                access.to_lowercase().contains(&part.to_lowercase()),
+                "{}: `{access}` does not name `{part}`",
                 language.display_name()
             );
         }
+        let Some(line) = language.lib_import("csvTools") else {
+            continue;
+        };
+        assert!(
+            !line.trim().is_empty() && !line.contains('\n'),
+            "{}: `{line}` is not one line a program writes",
+            language.display_name()
+        );
+        assert!(
+            language.lib_import("otherThing").as_deref() == Some(line.as_str())
+                || line.to_lowercase().contains("csvtools"),
+            "{}: `{line}` changes with the key and does not name it, so it brings in some other \
+             module",
+            language.display_name()
+        );
     }
 
+    // The exact text, for every registered arm. `None` is an answer and is pinned like any other:
+    // Rust's module arrives on `--extern`, so the crate is in the program's own extern prelude and
+    // there is no line above the call.
+    let pinned: &[(GgProgramLanguage, Option<&str>, &str)] = &[
+        (
+            GgProgramLanguage::TypeScript,
+            Some("import * as csvTools from \"lib:csvTools\";"),
+            "csvTools.<name>",
+        ),
+        (
+            GgProgramLanguage::JavaScript,
+            Some("import * as csvTools from \"lib:csvTools\";"),
+            "csvTools.<name>",
+        ),
+        (
+            GgProgramLanguage::Python,
+            Some("import lib"),
+            "lib.csvTools.<name>",
+        ),
+        (
+            GgProgramLanguage::Ruby,
+            Some("require \"lib\""),
+            "lib.csvTools.<name>",
+        ),
+        (
+            GgProgramLanguage::PureScript,
+            Some("import Lib.CsvTools as CsvTools"),
+            "CsvTools.<name>",
+        ),
+        (
+            GgProgramLanguage::Java,
+            Some("import lib.csvTools;"),
+            "lib.csvTools.<name>",
+        ),
+        (
+            GgProgramLanguage::Kotlin,
+            Some("import lib.csvTools.*"),
+            "lib.csvTools.<name>",
+        ),
+        (GgProgramLanguage::Rust, None, "csvTools::<name>"),
+        (
+            GgProgramLanguage::Swift,
+            Some("import csvTools"),
+            "csvTools.<name>",
+        ),
+        (
+            GgProgramLanguage::Cpp,
+            Some("import lib.csvTools;"),
+            "lib::csvTools::<name>",
+        ),
+        (
+            GgProgramLanguage::CSharp,
+            Some("using lib;"),
+            "lib.csvTools.<name>",
+        ),
+    ];
     assert_eq!(
-        language(GgProgramLanguage::Rust).lib_access("csvTools"),
-        "lib::csvTools::<name>"
+        pinned.len(),
+        GgProgramLanguage::COUNT,
+        "an arm is registered whose line to reach a loaded module nothing pins"
     );
-    assert_eq!(
-        language(GgProgramLanguage::Java).lib_access("csvTools"),
-        "Lib.csvTools.<name>"
-    );
-    assert_eq!(
-        language(GgProgramLanguage::Kotlin).lib_access("csvTools"),
-        "lib.csvTools.<name>"
-    );
-    assert_eq!(
-        language(GgProgramLanguage::PureScript).lib_access("csvTools"),
-        "Gg.Core.lib \"csvTools\" \"<name>\""
-    );
+    for (arm, import, access) in pinned {
+        assert_eq!(
+            language(*arm).lib_import("csvTools").as_deref(),
+            *import,
+            "{arm:?} states another line to reach a loaded module"
+        );
+        assert_eq!(
+            language(*arm).lib_access("csvTools"),
+            *access,
+            "{arm:?} reaches a loaded module's export another way"
+        );
+    }
 }
 
 /// **Every arm spells one *named* export**, with the placeholder really gone.

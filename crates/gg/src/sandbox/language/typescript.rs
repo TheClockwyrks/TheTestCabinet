@@ -141,6 +141,11 @@ impl ProgramLanguage for TypeScript {
     /// [skill](crate::skills) or [memory](crate::memories) is source somebody wrote too, and a
     /// module that does not type-check would otherwise be imported by a program whose every call
     /// into it fails later, in a turn that has nothing to do with the one that wrote it.
+    ///
+    /// Each export carries the type names its own declaration writes in return and in parameter
+    /// position, read off the author's annotations rather than off `tsc`'s emission, which has
+    /// erased them. Those names are what an agent's `docViewTypes` flags open views of beside the
+    /// function.
     fn prepare_module(
         &self,
         source: &str,

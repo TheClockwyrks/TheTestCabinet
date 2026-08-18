@@ -5,7 +5,8 @@
 //!
 //! * [`compile`] — the host-side `csc`, what it costs, what it refuses, and the two failures it
 //!   tells apart;
-//! * [`sdk`] — the SDK's sources, carried in gg's binary and compiled with the program;
+//! * [`sdk`] — the SDK's sources, carried in gg's binary and compiled into the one assembly every
+//!   program references;
 //! * [`source`] — what gg writes around a **code module**, and the lexer that lets it look at C#
 //!   without parsing it;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
@@ -23,8 +24,9 @@
 //! # The strategy, in one paragraph
 //!
 //! **Roslyn on the host, a Mono IL interpreter in the guest.** A model's reply is compiled to an IL
-//! assembly by `csc` in ~0.3 s, base64-encoded into the world's existing `program` string, and
-//! loaded by a prebuilt component that carries the whole .NET runtime. It is **neither of the two
+//! assembly by `csc` in ~0.3 s, sent base64-encoded over the world's existing `program` string with
+//! the libraries it references, and loaded by a prebuilt component that carries the whole .NET
+//! runtime. It is **neither of the two
 //! shapes this seam had**: an interpreted arm ([Python](super::python), [Ruby](super::ruby)) sends
 //! source to a prebuilt runtime, and a compiled arm ([Rust](super::rust), [Swift](super::swift),
 //! [C++](super::cpp)) sends a component and bakes nothing. This sends an *assembly* to a prebuilt
@@ -63,9 +65,9 @@
 //! four ways a C# program can begin run here, **top-level statements first**, which is what a
 //! program written to do one thing looks like in this decade.
 //!
-//! What the program is compiled *against* is gg's SDK, in the same compilation (see [`sdk`]), and
-//! that is the whole of what gg does for it: `csc` is told the library exists, exactly as an
-//! `--extern` or a classpath entry tells another arm's compiler. Nothing is in the program's scope
+//! What the program is compiled *against* is gg's SDK and the code modules in its scope, each a
+//! referenced assembly (see [`sdk`]), and that is the whole of what gg does for it: `csc` is told the
+//! library exists, exactly as an `--extern` or a classpath entry tells another arm's compiler. Nothing is in the program's scope
 //! until the program has put it there. `Gg.Views.OpenText` is the whole path and needs no line;
 //! `Views.OpenText` needs `using Gg;`, which the model writes, and which every module's catalogue
 //! entry states so a documentation view can quote it. The BCL is reached the same way, so a program
@@ -96,9 +98,8 @@
 //! `PascalCase` methods, optional arguments a call names, real `enum`s, nullable reference types,
 //! `record`s for results and a thrown `ApiException` for the error arm — plus a twelfth,
 //! class-less `core` module holding the three types every other module's signatures name. It is
-//! compiled **with** the model's program rather than referenced as a built assembly, which is what
-//! makes gg's surface reachable without the prebuilt guest having to carry it — see [`sdk`] for
-//! the argument and the cost (~70 ms on a ~210 ms compile).
+//! compiled from sources gg carries into one assembly, once per machine, and **referenced** by every
+//! program and every code module — see [`sdk`] for the argument and what it costs.
 //!
 //! Every name in it is spelled the way C# spells it, and nothing about the shape is gg's: a module
 //! is `System.Math`'s idiom, a result type is nested in the module that produces it, and a program
@@ -136,10 +137,10 @@
 //!
 //! `lib.<key>` is therefore a **`static class`** in `namespace lib`, and a module is that class's
 //! body — which is the shape a C# author already writes when they write a file of helpers, and the
-//! answer [Java](super::java)'s arm reached for the same reason. It compiles in the **same
-//! invocation** as the program and the SDK, so there is no second assembly for the prebuilt guest
-//! to find, and `#line` keeps every diagnostic in the author's own coordinates. See [`source`] for
-//! the wrap, the `using` hoist and the two refusals.
+//! answer [Java](super::java)'s arm reached for the same reason. It is compiled into `lib.<key>.dll`
+//! and named to the program's compile with `-r:`, which is exactly how gg's own SDK is supplied, and
+//! `#line` keeps every diagnostic in the author's own coordinates. See [`source`] for the wrap, the
+//! `using` hoist and the two refusals, and [`compile`] for the reference.
 //!
 //! # Why there is nothing to warm
 //!
@@ -238,9 +239,9 @@ impl ProgramLanguage for CSharp {
         GgProgramLanguage::CSharp.display_name()
     }
 
-    /// One `csc` over the model's file, this arm's SDK and the code modules in scope — see
-    /// [`compile`] for what it costs, what it refuses, and how it tells a program Roslyn rejected
-    /// from a Roslyn that could not run.
+    /// One `csc` over the model's file alone, against gg's SDK and the code modules in scope as
+    /// referenced libraries — see [`compile`] for what it costs, what it refuses, and how it tells a
+    /// program Roslyn rejected from a Roslyn that could not run.
     fn prepare_program(
         &self,
         source: &str,
@@ -266,9 +267,10 @@ impl ProgramLanguage for CSharp {
     /// The module's own `csc`, run over the class body gg wrapped it in — and the names that class
     /// offers, read from the author's own source.
     ///
-    /// What comes back is **source**, which is what a compiled arm's module has to be: it is an
-    /// input to the [program compile](compile::compile_program) that binds it, not something the
-    /// prebuilt guest could load on its own — that guest loads exactly one assembly per run.
+    /// What comes back is **source**, because the library a program references is built for the key
+    /// the seam binds when the module is loaded, and a module's own preparation is handed none. What
+    /// this compile buys is the author's diagnostic, in their own coordinates, on the call that read
+    /// the module.
     fn prepare_module(
         &self,
         source: &str,
@@ -292,6 +294,22 @@ impl ProgramLanguage for CSharp {
     /// a class called `csv_tools` is a thing no C# author would write beside `Enumerable`.
     fn binding_name(&self, name: &str) -> String {
         source::binding_name(name)
+    }
+
+    /// **`using lib;`** — the same line, and the same kind of line, as the [`using Gg;`](SURFACE_IMPORT)
+    /// that reaches gg's own surface.
+    ///
+    /// A module is supplied as a referenced assembly, exactly as the SDK is, and a reference
+    /// declares no name. So a program reaches `lib.CsvTools.Slugify` by writing the whole path, and
+    /// reaches `CsvTools.Slugify` after writing this line — which is the pair this arm's catalogue
+    /// already states for every one of gg's own modules.
+    ///
+    /// One line for every module bound, rather than a line each, because that is what C# is: the
+    /// modules are types in one namespace and a `using` of a namespace brings all of them. The key
+    /// is therefore not in it, and the [access](Self::lib_access) spelling — the seam's default path
+    /// — is what names the module.
+    fn lib_import(&self, _key: &str) -> Option<String> {
+        Some(format!("using {};", source::NAMESPACE))
     }
 
     /// **The prebuilt guest**, which is where this arm departs from every other one that runs a
@@ -373,28 +391,43 @@ impl ProgramLanguage for CSharp {
         )
     }
 
-    /// **The assembly, with its transport encoding taken back off.**
+    /// **Every assembly the artifact carries, with its transport encoding taken back off.**
     ///
     /// The only arm that answers this at all, and the only one that reaches the
     /// [source](super::PreparedProgram::source) half rather than a component — because on this arm
-    /// that field does not hold source. It holds an IL assembly, base64-encoded because the wire's
-    /// `program` is a string, so a gate looking for a marker inside the artifact would be looking at
-    /// an alphabet the marker cannot survive, and would report every well-isolated C# preparation as
-    /// one whose output does not carry its own input.
+    /// that field does not hold source. It holds a manifest of named IL assemblies, each
+    /// base64-encoded because the wire's `program` is a string, so a gate looking for a marker inside
+    /// the artifact would be looking at an alphabet the marker cannot survive, and would report every
+    /// well-isolated C# preparation as one whose output does not carry its own input.
     ///
     /// Decoding hides **nothing**, which is the whole of what the seam asks: it shows the gate more
     /// of the artifact rather than less, and every check downstream of it is a search for a marker
-    /// that a hidden byte could be sitting in. What comes back is the assembly `csc` wrote, whole.
+    /// that a hidden byte could be sitting in. What comes back is every assembly `csc` wrote, whole
+    /// and in the order the manifest names them.
     ///
-    /// An input that is not valid base64 is handed back untouched rather than being silently
+    /// An input this cannot read as a manifest is handed back untouched rather than being silently
     /// replaced by an empty artifact — a preparation that produced something this could not decode
     /// is a failure the gate should see whole.
     #[cfg(test)]
     fn isolation_readable(&self, artifact: Vec<u8>) -> Vec<u8> {
         use base64::Engine as _;
-        base64::engine::general_purpose::STANDARD
-            .decode(&artifact)
-            .unwrap_or(artifact)
+        let Ok(text) = std::str::from_utf8(&artifact) else {
+            return artifact;
+        };
+        let mut decoded = Vec::new();
+        // Two lines per assembly: the name it is registered under, then its IL. The names are gg's
+        // own and carry no marker, so what the gate searches is the IL and the whole of it.
+        let mut lines = text.lines();
+        while let (Some(_), Some(payload)) = (lines.next(), lines.next()) {
+            match base64::engine::general_purpose::STANDARD.decode(payload) {
+                Ok(bytes) => decoded.extend(bytes),
+                Err(_) => return artifact,
+            }
+        }
+        match decoded.is_empty() {
+            true => artifact,
+            false => decoded,
+        }
     }
 
     /// **The marker as written, and the marker as an assembly stores it** — which is UTF-16.
@@ -405,7 +438,7 @@ impl ProgramLanguage for CSharp {
     /// toolchain rather than assumed — the ASCII bytes are not in the assembly at all.
     ///
     /// The ASCII form is kept beside it rather than replaced, because it costs nothing and it is
-    /// what a *module*'s artifact carries: a module on this arm is handed back as the author's own
+    /// what a *module*'s artifact carries: a module's own preparation hands back the author's own
     /// source.
     ///
     /// Both forms are derived from the marker character by character, so a form belonging to one
@@ -428,7 +461,7 @@ impl ProgramLanguage for CSharp {
 
 /// **The one line a C# program writes to reach gg's surface by its short name.**
 ///
-/// `namespace Gg` is an ordinary namespace in the program's own compilation, so a program either
+/// `namespace Gg` is an ordinary namespace in a library the program references, so a program either
 /// writes the whole path — `Gg.Views.OpenFile` — or writes this once and then writes `Views.OpenFile`.
 /// It is the line every module of this arm's catalogue states as its
 /// [import](crate::sandbox::ModuleDoc::import), which a documentation view quotes and which
@@ -594,8 +627,8 @@ mod examples;
 #[path = "csharp.surface.test.rs"]
 mod surface;
 
-/// **Code modules**, driven end to end: a code skill's C# compiles on its own, and a program reaches
-/// its declarations at `lib.<key>` through the real compiler and the real guest.
+/// **Code modules**, driven end to end: a code skill's C# compiles into its own library, and a
+/// program reaches its declarations at `lib.<key>` through the real compiler and the real guest.
 #[cfg(test)]
 #[path = "csharp.modules.test.rs"]
 mod modules;

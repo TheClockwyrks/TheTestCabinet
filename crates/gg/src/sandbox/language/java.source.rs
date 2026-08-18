@@ -26,9 +26,15 @@
 //! The names a compile is written under, and the **code module** wrapper. A code module is
 //! [outside the authorship rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/): its
 //! author writes a class *body*, because a namespace of functions is what `lib.<key>` binds and a
-//! Java function is a method of a class. [`wrap_module`] is what puts that body in a class, and it
-//! adds **no line at all** — the class header shares the author's own first line, so the module's
-//! line *n* is line *n* of the file and no diagnostic is moved by anything.
+//! Java function is a method of a class. [`wrap_module`] is what puts that body in a `public` class
+//! of package [`MODULE_PACKAGE`], and it adds **no line at all** — the package declaration and the
+//! class header share the author's own first line, so the module's line *n* is line *n* of the file
+//! and no diagnostic is moved by anything.
+//!
+//! What that class is *reached* by is nowhere in this file, because it is nothing gg writes: the
+//! module is compiled on its own and its classes are handed to the program's compile as a
+//! **classpath entry**, which is how this arm's own SDK jar reaches a program. The program writes
+//! `lib.csvTools.parse(…)` or its own `import lib.csvTools;`, and gg writes neither.
 //!
 //! # Why a lexer rather than a regular expression
 //!
@@ -51,66 +57,21 @@ use super::super::{ModuleExport, ModuleExportKind, PrepareError, PrepareFailure}
 /// The class a program declares, and the one gg's entry class calls `main` on.
 pub(super) const PROGRAM_CLASS: &str = "Program";
 
-/// The class a program reaches its code modules through — `Lib.csvTools.parse(…)`.
-pub(super) const LIB_CLASS: &str = "Lib";
+/// The package every code module is compiled into, and the first segment of the name a program
+/// writes to reach one: `lib.csvTools.parse(…)`.
+///
+/// A package rather than a class holding them all, because a package is what a **classpath entry**
+/// can carry. Each module is compiled on its own into a directory of class files, and that directory
+/// is handed to the program's compile the way this arm's SDK jar is: it declares no name, and the
+/// program reaches the class in full or under an `import` line it wrote itself.
+///
+/// The class in it is named by the module's own binding key, so `lib.csvTools` is the whole of what
+/// a program has to know and the key it was given is the name it types.
+pub(super) const MODULE_PACKAGE: &str = "lib";
 
 /// The class a code module is **checked** under at the read that binds it, before any program has
 /// named a key for it.
 pub(super) const MODULE_CHECK_CLASS: &str = "Module";
-
-/// The class one code module's body becomes in a program's own compile, given its binding key.
-///
-/// Prefixed rather than named after the key alone, because it is a top-level class in the same
-/// (unnamed) package as the model's own program and a bare `csvTools` would be a name the model
-/// could collide with. What a program writes is `Lib.<key>`, which is [`LIB_CLASS`]'s nested class
-/// of that name — see [`lib_class`].
-pub(super) fn module_class(key: &str) -> String {
-    format!("{MODULE_PREFIX}{key}")
-}
-
-/// What every code module's generated class name begins with, and what
-/// [`module_key_of`] reads one back off.
-const MODULE_PREFIX: &str = "GgModule_";
-
-/// The file one code module's wrapped body is compiled from.
-pub(super) fn module_file(key: &str) -> String {
-    format!("{}.java", module_class(key))
-}
-
-/// The binding key whose module a diagnostic's file names, when it names one.
-///
-/// The inverse of [`module_file`], and it is what lets [`verdict`](super::compile::verdict) tell a
-/// diagnostic about a *module* from one about a file nobody named. Without it a module that failed
-/// only in a program's compile was reported to the operator as toolchain drift, and the model whose
-/// turn it took was told nothing at all.
-pub(super) fn module_key_of(file: &str) -> Option<&str> {
-    file.strip_prefix(MODULE_PREFIX)?.strip_suffix(".java")
-}
-
-/// The class gg generates so that every module in scope is reached at `Lib.<key>`.
-///
-/// One nested class per module, each **extending** that module's own class, because Java has no way
-/// to alias a type: a `static` method and a nested type are both inherited members, so
-/// `Lib.csvTools.parse(…)` and `Lib.csvTools.Row` resolve to the module's own declarations, checked
-/// by javac at the call site. That is the same shape [Rust](super::super::rust)'s `lib::<key>::…`
-/// has, and the reason neither arm reaches a module by string: a code module is compiled *into* the
-/// program here, so there is an `import`-free path for the compiler to check the two against.
-///
-/// Empty for an agent that has loaded nothing, in which case no file is written at all.
-pub(super) fn lib_class(keys: &[&str]) -> String {
-    let nested: String = keys
-        .iter()
-        .map(|key| {
-            format!(
-                "    public static final class {key} extends {} {{\n    }}\n",
-                module_class(key)
-            )
-        })
-        .collect();
-    format!(
-        "public final class {LIB_CLASS} {{\n    private {LIB_CLASS}() {{\n    }}\n\n{nested}}}\n"
-    )
-}
 
 /// A code module's body, wrapped into a compilation unit javac will read, and the names its
 /// namespace offers.
@@ -128,14 +89,16 @@ pub(super) struct Wrapped {
 /// Its `public static` methods become the namespace and everything else is the module's own
 /// business, which is the visibility rule a Java author already writes.
 ///
-/// **Nothing gg writes here takes a line.** The imports the author wrote are lifted to the front of
-/// the file and blanked where they stood, and the class header goes on the front of the author's own
-/// first line, so the file has exactly as many lines as the module did and every one of them is
-/// where its author put it. There is no offset for any diagnostic to be moved back by, which is what
+/// **Nothing gg writes here takes a line.** The package declaration and the imports the author wrote
+/// are lifted to the front of the file — each import blanked where it stood — and the class header
+/// goes on the front of the author's own first line, so the file has exactly as many lines as the
+/// module did and every one of them is where its author put it. There is no offset for any
+/// diagnostic to be moved back by, which is what
 /// [rule D11](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks of a location.
 ///
-/// The class is **not** `final`: [`lib_class`] declares one nested class per module extending it,
-/// which is how a program reaches it at `Lib.<key>`.
+/// The class is `public` because a program in another package reaches it, and `final` because
+/// nothing extends it: what a program is handed is a directory of compiled classes on its own
+/// classpath, and a name it writes itself.
 pub(super) fn wrap_module(source: &str, class: &str) -> Result<Wrapped, PrepareFailure> {
     let (body, imports) = hoist(source)?;
     refuse_wrapper_name(&body, class)?;
@@ -148,12 +111,12 @@ pub(super) fn wrap_module(source: &str, class: &str) -> Result<Wrapped, PrepareF
                 .to_string(),
         )));
     }
-    let mut header = String::new();
+    let mut header = format!("package {MODULE_PACKAGE}; ");
     for line in &imports {
         header.push_str(line);
         header.push(' ');
     }
-    header.push_str(&format!("public class {class} {{ "));
+    header.push_str(&format!("public final class {class} {{ "));
     Ok(Wrapped {
         source: format!("{header}{}}}\n", terminated(&body)),
         exports,
@@ -165,8 +128,8 @@ pub(super) fn wrap_module(source: &str, class: &str) -> Result<Wrapped, PrepareF
 /// # Why this is a refusal and not a curiosity
 ///
 /// A module body is compiled **twice under two different class names**: under
-/// [`MODULE_CHECK_CLASS`] at the read that binds it, before any key exists, and under
-/// [`module_class`] in every program that uses it. Every declaration Java has means the same thing
+/// [`MODULE_CHECK_CLASS`] at the read that binds it, before any key exists, and under its **binding
+/// key** in every program that uses it. Every declaration Java has means the same thing
 /// under both names except one — a *constructor*, which is a method with no return type whose name
 /// is the class's. So `Module() { }` is a constructor at the read and
 /// `invalid method declaration; return type required` in a program, and it was the read that said
@@ -192,10 +155,9 @@ fn refuse_wrapper_name(body: &str, class: &str) -> Result<(), PrepareFailure> {
                 && !after.is_some_and(is_identifier_byte);
             if bounded && code.get(at).copied().unwrap_or(false) {
                 return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
-                    "line {}: gg names the class a code module's body is compiled into, and it is \
-                     named `{class}` only while this read checks it. Take `{class}` out — a \
-                     module's own declarations reach each other by name, and a constructor is \
-                     never called.",
+                    "line {}: gg names the class a code module's body is compiled into, and this \
+                     compile names it `{class}`. Take `{class}` out — a module's own declarations \
+                     reach each other by name, and a constructor is never called.",
                     number + 1,
                 ))));
             }
@@ -290,9 +252,11 @@ fn keyword<'a>(line: &'a str, word: &str) -> Option<&'a str> {
 /// reaches `=`, `;` or a body — so a `public static final int LIMIT = 3;` is a field and is not one,
 /// and a constructor (whose name is the class's) is not a member a namespace can offer.
 ///
-/// A **reading** rather than a rewriting: nothing is inserted, because the module is compiled into
-/// the program that uses it and a program reaches an export by naming it. What this produces is the
-/// list the module's author is *told* the namespace holds.
+/// A **reading** rather than a rewriting: nothing is inserted, because a program reaches an export
+/// by naming it. What this produces is the list the module's author is *told* the namespace holds.
+///
+/// The type names each declaration writes are read off the same span, in return position and in
+/// parameter position, which is what an agent's `docViewTypes` flags open beside the function.
 fn exports(body: &str) -> Vec<ModuleExport> {
     let lines: Vec<&str> = body.lines().collect();
     Lexer::new(body)
@@ -300,9 +264,17 @@ fn exports(body: &str) -> Vec<ModuleExport> {
         .iter()
         .filter_map(|declaration| {
             let name = declaration.exported_method()?;
-            let written = body.get(declaration.start..declaration.end)?.trim();
+            let span = body.get(declaration.start..declaration.end)?;
+            let written = span.trim();
             // The line its first token stands on, which is where its documentation is written above.
             let line = body[..declaration.start].matches('\n').count();
+            // Where the method's name stands in the quoted declaration, which is the span with
+            // whatever the trim took off the front of it discounted.
+            let leading = span.len() - span.trim_start().len();
+            let signature = Signature::read(
+                written,
+                (declaration.name_at - declaration.start).saturating_sub(leading),
+            );
             Some(ModuleExport {
                 name,
                 // Every name here is a `public static` method: a field is not one and neither is a
@@ -311,11 +283,205 @@ fn exports(body: &str) -> Vec<ModuleExport> {
                 declaration: written.to_string(),
                 doc: super::super::comments::block_doc(&lines, line)
                     .or_else(|| super::super::comments::line_doc(&lines, line, &["///", "//"])),
-                returns: Vec::new(),
-                parameters: Vec::new(),
+                returns: signature.returns,
+                parameters: signature.parameters,
             })
         })
         .collect()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The types a declaration writes
+// ---------------------------------------------------------------------------------------------
+
+/// The type names one method declaration writes, in the two positions a documentation view asks
+/// about.
+///
+/// Java writes a type in both positions, so this arm answers both — an arm whose declarations carry
+/// no types is the one that leaves them empty. What is recorded is what the author *wrote*, reduced
+/// to identifiers: `java.util.List<Row>` is `List` and `Row`, because both are names a view can be
+/// opened under and neither is a name the author has to have qualified the same way twice.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Signature {
+    /// The names written in return position.
+    returns: Vec<String>,
+    /// The names written in parameter position, in source order.
+    parameters: Vec<String>,
+}
+
+impl Signature {
+    /// Read `declaration`, whose method name starts at `name_at`.
+    ///
+    /// Everything before the name is modifiers, annotations, type parameters and the return type;
+    /// everything inside the parentheses that open at the name is the parameter list. Both are
+    /// found by position rather than by searching for a keyword, because the scan that produced the
+    /// declaration already knows where its name is and a second reading could disagree with the
+    /// first.
+    fn read(declaration: &str, name_at: usize) -> Self {
+        let Some(before) = declaration.get(..name_at) else {
+            return Self::default();
+        };
+        let mut signature = Self {
+            returns: named(returned(before)),
+            parameters: Vec::new(),
+        };
+        let Some(open) = declaration[name_at..].find('(').map(|at| at + name_at) else {
+            return signature;
+        };
+        // `get` rather than an index: a declaration whose parameter list never closes is a module
+        // javac is about to refuse, and reading it must not take the turn down before it can.
+        let list = declaration
+            .get(open + 1..enclosed(declaration, open))
+            .unwrap_or_default();
+        for parameter in split_parameters(list) {
+            for name in named(declared_type(parameter)) {
+                if !signature.parameters.contains(&name) {
+                    signature.parameters.push(name);
+                }
+            }
+        }
+        signature
+    }
+}
+
+/// The return type of a declaration, given everything written in front of the method's name.
+///
+/// Annotations, modifiers and a `<T>` type-parameter block are consumed in the order Java writes
+/// them; what is left is the type. A declaration with nothing left is a constructor, which the
+/// export scan does not reach.
+fn returned(before: &str) -> &str {
+    let mut rest = before.trim_start();
+    loop {
+        if let Some(after) = rest.strip_prefix('@') {
+            let after = after.trim_start_matches(is_type_char).trim_start();
+            rest = match after.starts_with('(') {
+                true => after[closing(after, '(', ')')..].trim_start(),
+                false => after,
+            };
+            continue;
+        }
+        if rest.starts_with('<') {
+            rest = rest[closing(rest, '<', '>')..].trim_start();
+            continue;
+        }
+        let word = rest.split(char::is_whitespace).next().unwrap_or("");
+        if !word.is_empty() && MODIFIERS.contains(&word) {
+            rest = rest[word.len()..].trim_start();
+            continue;
+        }
+        return rest.trim_end();
+    }
+}
+
+/// Whether a character may stand in a written type name — an identifier's own characters and the
+/// `.` that qualifies one.
+fn is_type_char(character: char) -> bool {
+    character.is_alphanumeric() || character == '_' || character == '$' || character == '.'
+}
+
+/// Every modifier Java writes in front of a method's return type. `default` is here for the
+/// declaration shapes a module body may not use but may still be scanned for; the rest are the ones
+/// an export carries.
+const MODIFIERS: [&str; 10] = [
+    "public",
+    "protected",
+    "private",
+    "static",
+    "final",
+    "abstract",
+    "native",
+    "synchronized",
+    "strictfp",
+    "default",
+];
+
+/// One parameter's declared type: everything before the name it binds.
+///
+/// The name is the last identifier, so `T... values` is `T...` and `java.util.List<Row> rows` is
+/// `java.util.List<Row>`. An annotation or a `final` in front of it is dropped by the same reading
+/// that drops a modifier from a return type, since [`named`] keeps only identifiers and neither is
+/// a type.
+fn declared_type(parameter: &str) -> &str {
+    let parameter = parameter.trim();
+    match parameter.rfind(|ch: char| ch.is_whitespace()) {
+        Some(at) => parameter[..at].trim(),
+        None => parameter,
+    }
+}
+
+/// A parameter list split at the commas that separate parameters, ignoring the ones inside a
+/// generic argument list or a nested annotation.
+fn split_parameters(list: &str) -> Vec<&str> {
+    let mut parameters = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (at, character) in list.char_indices() {
+        match character {
+            '<' | '(' | '[' => depth += 1,
+            '>' | ')' | ']' => depth -= 1,
+            ',' if depth == 0 => {
+                parameters.push(&list[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    parameters.push(&list[start..]);
+    parameters
+        .into_iter()
+        .filter(|parameter| !parameter.trim().is_empty())
+        .collect()
+}
+
+/// The identifiers a type expression names, each reduced to the last segment of its qualified name
+/// and listed once.
+///
+/// `java.util.Map<String, java.util.List<Row>>` is `Map`, `String`, `List` and `Row`. The wildcard
+/// keywords are dropped because they name nothing; a type variable and a primitive are kept,
+/// because they are names the declaration writes and resolving one is the documentation surface's
+/// business rather than this scan's.
+fn named(written: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for word in written.split(|character: char| !is_type_char(character)) {
+        // The last segment that is a name at all, so `java.util.List` is `List` and the trailing
+        // dots of a varargs `T...` are not read as a segment of their own.
+        let Some(name) = word.split('.').rfind(|part| !part.is_empty()) else {
+            continue;
+        };
+        if matches!(name, "extends" | "super" | "final")
+            || name.starts_with(|character: char| character.is_ascii_digit())
+        {
+            continue;
+        }
+        if !names.iter().any(|seen| seen == name) {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+/// Where the run opened by `open` at the start of `text` closes, as a byte offset past its closer.
+///
+/// Nesting is counted, so `<Map<String, Row>>` closes at its own last `>`. An unbalanced run closes
+/// at the end of the text, which is a declaration javac will refuse anyway.
+fn closing(text: &str, open: char, close: char) -> usize {
+    let mut depth = 0i32;
+    for (at, character) in text.char_indices() {
+        if character == open {
+            depth += 1;
+        } else if character == close {
+            depth -= 1;
+            if depth == 0 {
+                return at + character.len_utf8();
+            }
+        }
+    }
+    text.len()
+}
+
+/// Where the parameter list opening at `open` in `declaration` closes, as the offset of its `)`.
+fn enclosed(declaration: &str, open: usize) -> usize {
+    open + closing(&declaration[open..], '(', ')').saturating_sub(1)
 }
 
 /// One member declaration found at the top level of a class body.
@@ -326,6 +492,9 @@ struct Declaration {
     /// Whether an identifier was immediately followed by `(` — which is what makes it a method
     /// rather than a field.
     call: Option<String>,
+    /// Where that identifier begins, so the [signature reading](Signature::read) can tell the
+    /// return type in front of it from the parameter list behind it without searching for either.
+    name_at: usize,
     /// Where it begins: the first byte of its first token, which is its annotation's `@` where it
     /// carries one, so that the documentation above it is found above the whole declaration.
     start: usize,
@@ -432,6 +601,7 @@ impl<'a> Lexer<'a> {
                     current.get_or_insert(Declaration {
                         tokens: Vec::new(),
                         call: None,
+                        name_at: at,
                         start: at,
                         end: at,
                     });
@@ -448,6 +618,7 @@ impl<'a> Lexer<'a> {
                     let declaration = current.get_or_insert(Declaration {
                         tokens: Vec::new(),
                         call: None,
+                        name_at: at,
                         start: at,
                         end: at,
                     });
@@ -455,6 +626,7 @@ impl<'a> Lexer<'a> {
                     // before it are modifiers, annotations and the return type.
                     if declaration.call.is_none() && self.bytes.get(end) == Some(&b'(') {
                         declaration.call = Some(word.to_string());
+                        declaration.name_at = at;
                     }
                     declaration.tokens.push(word.to_string());
                     at = end;

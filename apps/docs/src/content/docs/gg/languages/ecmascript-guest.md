@@ -34,6 +34,12 @@ top-level `await`.
 `gg:<family>` and the SDK's own copy of that family are one module instance, so
 `error instanceof ApiError` holds for an error the SDK threw.
 
+A `lib:<name>` module is one the loader was handed for this turn, declared as its
+own module and evaluated by whichever program imports it. Every specifier in the
+table resolves the same way: the loader answers it, the program writes the
+`import` line, and a program that writes no line for a name reads that name's own
+`ReferenceError`.
+
 The SDK's own files and the membrane interfaces beneath them resolve only for an
 importer inside the SDK. A program that names one is told which specifier to
 write instead.

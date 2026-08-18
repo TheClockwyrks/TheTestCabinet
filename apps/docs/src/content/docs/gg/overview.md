@@ -293,9 +293,9 @@ the console is [Configurations](/gg/configurations/).
   it can fetch one back, patch it, and hand it over to be run again.
 - Close documentation (`docview-close`) — let an agent take a [documentation
   view](/gg/responses-as-code/views/) back out of its own window. Off by
-  default. It is its own capability because closing is the one thing that can
-  disturb a prompt prefix the append-only documentation band otherwise keeps
-  intact for a whole session.
+  default. It is its own capability because closing takes back a page the agent
+  still holds, and it disturbs a prompt prefix the documentation band otherwise
+  keeps intact for a whole session.
 
 ### Observability
 

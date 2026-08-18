@@ -26,9 +26,9 @@ import gg.internal.ggTexts
  * Record a durable memory that survives context compaction.
  *
  * A memory's code costs no window, is never shown back, and counts against no body limit: a module is
- * compiled into every later program this session writes and reached at `lib.<key>.<name>`, so a
- * helper got right once is never written again, and an on-use script runs the first time the memory comes into use with its
- * views arriving on the next turn.
+ * bound at `lib.<key>` for every later program this session writes, so a helper got right once is
+ * never written again, and an on-use script runs on every use of the memory with its views arriving
+ * on the next turn.
  *
  * @ggop memories.write_memory
  * @param name The memory's slug: letters, digits, `-`, `_` and `.`. Every other memory call takes it,
@@ -38,8 +38,8 @@ import gg.internal.ggTexts
  * @param body The memory's contents.
  * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`
  *   from every later program this session writes.
- * @param onUse A program gg runs the first time the memory comes into use, whose views arrive on the
- *   next turn.
+ * @param onUse A program gg runs on every use of the memory, after the turn's own program has
+ *   ended, whose views arrive on the next turn.
  * @return how much of the memory budget is now used
  * @throws ApiError `CONFLICT` on a duplicate name, and `LIMIT_EXCEEDED` when the body would breach
  *   the run's caps.
@@ -63,8 +63,8 @@ public fun writeMemory(
  * @param body The contents to replace the old ones with.
  * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`,
  *   replacing whatever module the memory carried.
- * @param onUse A program gg runs the first time the memory comes into use, replacing whatever script
- *   the memory carried.
+ * @param onUse A program gg runs on every use of the memory, replacing whatever script the memory
+ *   carried.
  * @return how much of the memory budget is now used
  * @throws ApiError `NOT_FOUND` when no memory has that name.
  */
@@ -89,7 +89,7 @@ public fun updateMemory(
  *   read.
  * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`
  *   once the memory is read.
- * @param onUse A program gg runs on that first read, whose views arrive on the next turn.
+ * @param onUse A program gg runs on every use of the memory, whose views arrive on the next turn.
  * @return how much of the memory budget is now used
  * @throws ApiError `CONFLICT` on a duplicate slug, and `LIMIT_EXCEEDED` when the contents, or the
  *   index entry, would breach a limit.
@@ -105,8 +105,9 @@ public fun createMemory(
 /**
  * Read one memory's full contents by slug, which is what brings them into the context window.
  *
- * A memory that carries code is also loaded by the read: the reply names the `lib.<key>` it is reached
- * through, and it stays bound for the rest of the session.
+ * A memory that carries code is also loaded by the read, and it stays bound for the rest of the
+ * session. The read opens a documentation view of each function the module declares, which is where
+ * its names, its signatures and the line a program writes to reach it are read.
  *
  * @ggop memories.read_memory
  * @param name The memory's slug.

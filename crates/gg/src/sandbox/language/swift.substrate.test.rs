@@ -26,8 +26,9 @@
 //! **verbatim**, so every diagnostic and every located trap carries the model's own line; that a
 //! Swift runtime failure — which cannot be caught by anything inside the guest — still reaches the
 //! model with what it was and where; that what a program writes to stderr on purpose reaches it
-//! too; that a **code module** compiles into the same artifact and is reached at `lib.<key>` with
-//! its author's argument labels; and the two bands `swiftc` produces between them.
+//! too; that a **code module** compiles into a Swift module of its own, reached through the line the
+//! program wrote and with its author's argument labels intact; and the two bands `swiftc` produces
+//! between them.
 //!
 //! Isolation is **not** here, in any form. The seam's own gate drives this arm's program and module
 //! steps sixteen ways along with every other language's, and it needs nothing from this arm to do
@@ -545,11 +546,12 @@ gg.log(Greeter().shout())
 }
 
 #[test]
-fn a_code_module_is_reachable_at_lib_with_its_argument_labels_intact() {
-    // The claim the module shape was chosen for, put through the real compiler: a skill's code is
-    // reached at `lib.<key>`, and the call site writes the labels its author declared. A shape that
-    // bound each export as a value would compile this program's `parse("a,b", delimiter: ",")` as
-    // an error about an extra argument label, which is exactly the quiet degradation being avoided.
+fn a_code_module_is_reached_through_the_line_the_program_wrote() {
+    // The claim the module shape was chosen for, put through the real compiler: a skill's code is a
+    // Swift module of its own, the program reaches it by writing its `import`, and the call site
+    // writes the labels its author declared. A shape that bound each export as a value through a
+    // forwarder would compile this program's `parse("a,b", delimiter: ",")` as an error about an
+    // extra argument label, which is exactly the quiet degradation being avoided.
     let module = CodeModule {
         name: "csvTools".to_string(),
         source: "import Foundation
@@ -565,7 +567,7 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
         .to_string(),
     };
     let component = match compile_program(
-        "import gg\n\ngg.log(lib.csvTools.parse(\"a,b\", delimiter: \",\").cells.joined(separator: \"|\"))\n",
+        "import gg\nimport csvTools\n\ngg.log(csvTools.parse(\"a,b\", delimiter: \",\").cells.joined(separator: \"|\"))\n",
         std::slice::from_ref(&module),
         &PrepareContext::new(),
     ) {
@@ -576,16 +578,79 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
     };
     let outcome = evaluate(&component, &[], RunEnding::None, false, canned_outcome).0;
     assert_eq!(logs(&outcome), ["a|b"]);
+
+    // And the same program without the line that reaches it, which is the compiler saying that
+    // supplying a module declares no name — at the model's own line, since nothing gg wrote stands
+    // above it.
+    match compile_program(
+        "import gg\n\ngg.log(csvTools.parse(\"a,b\").cells.joined(separator: \"|\"))\n",
+        std::slice::from_ref(&module),
+        &PrepareContext::new(),
+    ) {
+        Err(PrepareFailure::Program(error)) => {
+            let rendered = error.to_string();
+            assert!(
+                rendered.contains("main.swift:3:") && rendered.contains("'csvTools'"),
+                "a program naming a module it never imported was refused for another reason, or at \
+                 the wrong line: {rendered}"
+            );
+        }
+        other => panic!("a program that writes no import line reaches nothing: {other:?}"),
+    }
+}
+
+#[test]
+fn a_program_with_a_module_in_scope_is_still_compiled_verbatim() {
+    // The invariant, with the one thing that could have broken it in scope: the bytes `swiftc` reads
+    // as the program are the bytes the model sent, and the only other file of the compile is the
+    // module's own. gg writes no declaration beside the program, no entry module and no import for
+    // it — which is what makes the `import` above the model's own line rather than a formality.
+    let module = CodeModule {
+        name: "notes".to_string(),
+        source: "public func title() -> String { \"NOTES\" }\n".to_string(),
+    };
+    let program = "import gg\nimport notes\n\ngg.log(notes.title())\n";
+    let context = PrepareContext::new();
+    let prepared = compile_program(program, std::slice::from_ref(&module), &context)
+        .expect("a program that reads a code module compiles");
+
+    let root = context
+        .opened_workspace()
+        .expect("the compile opened a workspace")
+        .join("work");
+    let mut written: Vec<String> = std::fs::read_dir(&root)
+        .expect("the workspace is readable")
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    written.sort();
+    assert_eq!(written, ["main.swift", "module_notes.swift"]);
+    assert_eq!(
+        std::fs::read_to_string(root.join("main.swift")).expect("the program was written"),
+        program,
+        "the bytes compiled are the bytes the model sent"
+    );
+
+    let outcome = evaluate(
+        &prepared
+            .component
+            .expect("a compiled arm hands back the component it built"),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(logs(&outcome), ["NOTES"]);
 }
 
 /// **A code module reaches gg's surface through its own import line**, which is the same line a
 /// program writes and is written by the module's author rather than by gg.
 ///
-/// A Swift `import` is file-scoped, so nothing the program wrote reaches the module's file and
-/// nothing gg's shell wrote reaches either. What makes the arrangement work without a line of gg's
-/// is that `import` is one of the declarations Swift keeps at file scope, so the namespacing wrap
-/// steps over it and the author's first line is still line 1 — asserted here by making the module's
-/// call fail at run time and reading which line the model is sent to.
+/// A module is a module of its own here, so nothing the program wrote reaches the module's file and
+/// nothing gg's shell wrote reaches it either. gg writes no line above the author's first, so the
+/// author's first line is still line 1 — asserted here by reading which line a diagnostic in the
+/// module is sent to.
 #[test]
 fn a_code_module_writes_the_same_import_line_a_program_does() {
     let module = CodeModule {
@@ -599,7 +664,7 @@ public func show(_ path: String) throws {
         .to_string(),
     };
     let component = match compile_program(
-        "import gg\n\ntry lib.notes.show(\"notes.md\")\n",
+        "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
         std::slice::from_ref(&module),
         &PrepareContext::new(),
     ) {
@@ -635,7 +700,7 @@ public func show(_ path: String) throws {
             .to_string(),
     };
     match compile_program(
-        "import gg\n\ntry lib.notes.show(\"notes.md\")\n",
+        "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
         std::slice::from_ref(&bare),
         &PrepareContext::new(),
     ) {

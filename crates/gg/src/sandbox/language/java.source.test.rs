@@ -53,7 +53,7 @@ fn an_import_is_hoisted_onto_the_first_line_and_blanked_where_it_stood() {
     )
     .expect("wraps");
     let lines: Vec<&str> = wrapped.source.lines().collect();
-    assert!(lines[0].starts_with("import java.nio.charset.StandardCharsets; "));
+    assert!(lines[0].starts_with("package lib; import java.nio.charset.StandardCharsets; "));
     assert!(lines[0].contains("import java.util.concurrent.atomic.AtomicInteger; "));
     // The two import lines are blanked where they stood and line 4 is still line 4.
     assert_eq!(lines[1], "");
@@ -100,7 +100,9 @@ fn something_that_merely_looks_like_an_import_is_left_alone() {
     .expect("wraps");
     assert!(body(&wrapped).contains("import java.util.List;"));
     assert!(
-        !wrapped.source.starts_with("import java.util.List;"),
+        !wrapped
+            .source
+            .starts_with("package lib; import java.util.List;"),
         "it did not reach the header: {}",
         wrapped.source
     );
@@ -171,23 +173,28 @@ fn a_body_that_names_the_class_gg_wraps_it_in_is_refused_at_the_read() {
     assert_eq!(export_names(&wrapped.exports), ["only", "other"]);
 }
 
-/// **`Lib` reaches each module by inheritance**, which is what Java has instead of a type alias.
+/// **A module is a `public` class of package `lib` named by its binding key**, which is the whole of
+/// what makes `lib.csvTools.parse(…)` a name javac resolves — and the whole of what gg does to make
+/// it one.
+///
+/// The class is what a program is handed as a **classpath entry**, so it is `public` (a program in
+/// another package names it) and `final` (nothing extends it). gg writes nothing into the program:
+/// the name above is either written in full or brought in by the program's own
+/// `import lib.csvTools;`.
 #[test]
-fn lib_binds_one_nested_class_per_module_extending_that_modules_own() {
-    let generated = lib_class(&["csvTools", "helpers"]);
+fn a_module_is_a_public_class_of_package_lib_named_by_its_key() {
+    let wrapped =
+        wrap_module("public static int one() { return 1; }\n", "csvTools").expect("wraps");
     assert!(
-        generated.contains("public static final class csvTools extends GgModule_csvTools {"),
-        "{generated}"
+        wrapped
+            .source
+            .starts_with("package lib; public final class csvTools { "),
+        "{}",
+        wrapped.source
     );
-    assert!(
-        generated.contains("public static final class helpers extends GgModule_helpers {"),
-        "{generated}"
-    );
-    assert!(
-        generated.contains(&format!("private {LIB_CLASS}()")),
-        "nothing constructs it: {generated}"
-    );
-    assert_eq!(module_file("csvTools"), "GgModule_csvTools.java");
+    assert_eq!(MODULE_PACKAGE, "lib");
+    // And the header still shares the author's first line, so nothing moved.
+    assert_eq!(wrapped.source.lines().count(), 2, "{}", wrapped.source);
 }
 
 #[test]
@@ -228,7 +235,9 @@ fn a_module_that_is_not_ascii_is_read_rather_than_crashed_on() {
     .expect("wraps");
     // The import was still hoisted out of the body, which is the reading that had to survive.
     assert!(
-        wrapped.source.starts_with("import java.util.List; "),
+        wrapped
+            .source
+            .starts_with("package lib; import java.util.List; "),
         "{}",
         wrapped.source
     );
@@ -257,7 +266,9 @@ fn a_module_that_is_not_ascii_is_read_rather_than_crashed_on() {
     )
     .expect("wraps");
     assert!(
-        !wrapped.source.starts_with("import java.nio.file.Paths;"),
+        !wrapped
+            .source
+            .contains("import java.nio.file.Paths; public"),
         "an import inside a text block was hoisted: {}",
         wrapped.source
     );
@@ -319,16 +330,67 @@ fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
     );
     assert_eq!(wrapped.exports[1].doc, None);
 
-    assert!(
-        wrapped
-            .exports
-            .iter()
-            .all(|export| export.returns.is_empty())
+    // And the types each declaration writes, which is what an agent's `docViewTypes` flags open
+    // beside the function.
+    assert_eq!(wrapped.exports[0].returns, ["String"]);
+    assert_eq!(wrapped.exports[0].parameters, ["String"]);
+    assert_eq!(wrapped.exports[1].returns, ["int"]);
+    assert_eq!(wrapped.exports[1].parameters, ["int"]);
+}
+
+/// **The type names an export writes are read off the declaration**, in return position and in
+/// parameter position.
+///
+/// Java writes a type in both, so this arm answers both. What is recorded is what the author wrote,
+/// reduced to the identifiers a documentation view can be opened under: a qualified name is its last
+/// segment, a generic argument is a name of its own, and the annotations, modifiers and type
+/// parameters in front of a return type are none of them types.
+#[test]
+fn an_export_records_the_types_its_declaration_writes() {
+    let wrapped = wrap_module(
+        "@SafeVarargs\n\
+         public static <T> java.util.Map<String, java.util.List<T>> index(T... values) { \
+         return java.util.Map.of(); }\n\
+         public static void nothing(final Row row, int[] counts) { }\n\
+         public static Row first(java.util.List<? extends Row> rows) { return rows.get(0); }\n\
+         static final class Row { }\n",
+        MODULE_CHECK_CLASS,
+    )
+    .expect("wraps");
+    assert_eq!(
+        export_names(&wrapped.exports),
+        ["index", "nothing", "first"]
     );
-    assert!(
-        wrapped
-            .exports
-            .iter()
-            .all(|export| export.parameters.is_empty())
-    );
+
+    // The `<T>` type-parameter block and the `@SafeVarargs` in front of the return type are not the
+    // return type; the generic arguments inside it are names of their own.
+    assert_eq!(wrapped.exports[0].returns, ["Map", "String", "List", "T"]);
+    // A varargs parameter is the type it repeats.
+    assert_eq!(wrapped.exports[0].parameters, ["T"]);
+
+    assert_eq!(wrapped.exports[1].returns, ["void"]);
+    // `final` is not a type, and an array is the type it holds.
+    assert_eq!(wrapped.exports[1].parameters, ["Row", "int"]);
+
+    assert_eq!(wrapped.exports[2].returns, ["Row"]);
+    // A wildcard bound names the type it is bounded by and nothing else.
+    assert_eq!(wrapped.exports[2].parameters, ["List", "Row"]);
+
+    // A declaration javac is about to refuse is read rather than crashed on: the scan runs before
+    // any compiler does, so a parameter list that never closes must not take the turn down.
+    let wrapped = wrap_module(
+        "public static int broken(;\npublic static int one() { return 1; }\n",
+        MODULE_CHECK_CLASS,
+    )
+    .expect("wraps; javac is what refuses it");
+    assert!(wrapped.exports[0].parameters.is_empty());
+
+    // A method taking nothing writes no parameter type at all.
+    let wrapped = wrap_module(
+        "public static String label() { return \"\"; }\n",
+        MODULE_CHECK_CLASS,
+    )
+    .expect("wraps");
+    assert_eq!(wrapped.exports[0].returns, ["String"]);
+    assert!(wrapped.exports[0].parameters.is_empty());
 }

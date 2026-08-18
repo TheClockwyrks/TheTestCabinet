@@ -55,8 +55,9 @@
 //!    at the head of that band, where they are part of the prefix a provider caches rather than
 //!    something that shifts every other documentation view down.
 //! 3. **A persistent agent's restore is idempotent against it.** [`restore_docviews`](crate::persistence::restore_docviews)
-//!    re-opens the keys the last instance held, and a re-open of an open key is a no-op — so running
-//!    the bootstrap first means the restored set folds into it rather than duplicating it.
+//!    re-opens the keys the last instance held, and a re-open of an open key under the page already
+//!    there is a no-op — so running the bootstrap first means the restored set folds into it rather
+//!    than duplicating it.
 //!
 //! **The two documentation views** survive the two boundaries the way every documentation view
 //! does, and for the same reason: a docview's body is a pure function of its key, so a
@@ -604,28 +605,32 @@ impl OperationApi for BootstrapApi {
                 ),
             });
         };
-        let types = self.docs.types_to_open(&name, self.doc_view_types);
+        // Under the resolved key and through the one renderer every documentation view is placed
+        // through, so the opening turn opens exactly the pages an agent's own lookup would.
+        let types = self.docs.types_to_open(&key, self.doc_view_types);
         let mut opened = Vec::new();
-        if let DocviewOpen::Placed { tokens } = self.context.open_docview(key.clone(), read) {
+        if let DocviewOpen::Placed { tokens, superseded } =
+            self.context.open_docview(key.clone(), read)
+        {
             opened.push(SandboxViewOpened {
                 kind: ViewKind::Docs,
                 selector: key,
                 tokens: tokens as u64,
-                superseded: false,
+                superseded,
             });
         }
         for referenced in types {
-            let Some(body) = self.docs.read_type(referenced) else {
+            let Some(body) = self.docs.read_any(&referenced) else {
                 continue;
             };
-            if let DocviewOpen::Placed { tokens } =
-                self.context.open_docview(referenced.to_string(), body)
+            if let DocviewOpen::Placed { tokens, superseded } =
+                self.context.open_docview(referenced.clone(), body)
             {
                 opened.push(SandboxViewOpened {
                     kind: ViewKind::Docs,
-                    selector: referenced.to_string(),
+                    selector: referenced,
                     tokens: tokens as u64,
-                    superseded: false,
+                    superseded,
                 });
             }
         }

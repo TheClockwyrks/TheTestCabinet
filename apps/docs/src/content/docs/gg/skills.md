@@ -129,6 +129,11 @@ whole of what gg says about a module: the use itself adds no message.
 The views belong to the instance that loaded the module. An instance that starts
 with nothing loaded holds none of them, and using the skill again opens them.
 
+Using a revised module opens the views of what it now offers, and a page whose
+text has changed replaces the copy that was open. A model that rewrote the code a
+[memory](/gg/memories/) carries therefore reads the declaration it wrote, not the
+one it replaced.
+
 ### An on-use script
 
 An on-use script is how a skill shows the agent something rather than telling it.

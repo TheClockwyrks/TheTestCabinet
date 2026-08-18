@@ -7,22 +7,25 @@
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::{Did, Half, UNCONVERTED, audit, classify, maps_back};
+use super::{Did, Half, Loaded, UNCONVERTED, audit, classify, maps_back};
+use crate::sandbox::language::compile::PrepareContext;
 
 /// **Every registered arm compiles the bytes it was handed, or says in [`UNCONVERTED`] what it does
 /// instead.**
 ///
-/// The gate. It drives each arm's program step and module step through that arm's real preparation —
-/// its real compiler, where it has one — and reports every arm whose verdict and row disagree, in
-/// either direction.
+/// The gate. It drives each arm's module step and each arm's program step — the second one twice,
+/// once with a module in scope — through that arm's real preparation, its real compiler where it has
+/// one, and reports every arm whose verdict and row disagree, in either direction.
 #[test]
 fn every_registered_arm_compiles_the_bytes_it_was_handed_or_records_what_it_does_instead() {
-    let failures = audit();
+    let audit = audit();
     assert!(
-        failures.is_empty(),
-        "{} of the twenty-two preparation steps fail the authorship gate:\n\n{}",
-        failures.len(),
-        failures
+        audit.failures.is_empty(),
+        "{} of the {} preparation steps fail the authorship gate:\n\n{}",
+        audit.failures.len(),
+        audit.drives,
+        audit
+            .failures
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
@@ -135,6 +138,43 @@ fn a_text_that_shares_no_line_of_the_source_is_not_a_version_of_it() {
         )
         .is_none(),
         "an unrelated file was read as a version of the model's program"
+    );
+}
+
+/// **A file the module in scope explains better is not read as the program**, and a file carrying the
+/// program **whole** is never given away however much of the module it also carries.
+///
+/// The [loaded drive](super::Scope::Loaded) hands an arm two sources, and both come out of gg's own
+/// generators — so on the arms that take the seam's default module the two share a header, an import
+/// preamble and a loop, and the module's own file clears [`is_version_of`](super::is_version_of)
+/// against a program it is not a version of. That is measured, not hypothetical: PureScript's module
+/// file was read as its opening program the first time this drive ran.
+///
+/// The second half is the one that matters more, because it is the failure this drive exists to
+/// catch: an arm that answers a module in scope by writing the module's declarations in front of the
+/// reply produces a text that carries *both* whole, and an attribution that handed it to the module
+/// would report the injection as a program kept.
+#[test]
+fn a_file_the_module_explains_better_is_not_read_as_the_program() {
+    let program = "module Main where\n\nimport Data.Foldable (for_)\nimport Effect (Effect)\n\n                   modules :: Array String\nmodules =\n  [ \"gg.docs\" ]\n\n                   main :: Effect Unit\nmain = for_ modules openDocsView\n";
+    let module = "module Main where\n\nimport Data.Foldable (for_)\nimport Effect (Effect)\n\n                  marker :: String\nmarker = \"gg-authorship-marker\"\n";
+    let loaded = Loaded {
+        preparation: PrepareContext::new(),
+        texts: vec![module.to_string(), module.replace("Main", "Lib.Module")],
+        bound: Vec::new(),
+    };
+
+    assert!(
+        loaded.owns(program, &module.replace("Main", "Lib.Module")),
+        "the module's own file, filed under the name a program imports it by, is the module's"
+    );
+    assert!(
+        !loaded.owns(program, program),
+        "the program's own file is the program's, however much of its preamble the module repeats"
+    );
+    assert!(
+        !loaded.owns(program, &format!("{module}\n{program}")),
+        "a text carrying the program whole is the program's, whatever else was written in front of it"
     );
 }
 

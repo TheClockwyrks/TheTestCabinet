@@ -8,8 +8,10 @@ execution mode, whatever language that agent writes in. The pages under
 required here. Two gates hold every registered arm to it: `authorship.rs`
 compares what a preparation produced with the bytes it was handed, and `g8.rs`
 drives five failure shapes through each arm and records what the model reads.
-Each gate pins the cells its arms do not satisfy, so closing one is a visible
-edit and losing one is a failure.
+`authorship.rs` prepares each arm's program twice, once with a code module in
+scope, because supplying a module is the point at which an arm has reason to
+write into a program. Each gate pins the cells its arms do not satisfy, so
+closing one is a visible edit and losing one is a failure.
 
 A fenced program on these pages is a whole program of the arm its fence names,
 and `docs.rs` compiles every one of them through that arm's own preparation. A

@@ -116,8 +116,8 @@ fn a_failure_with_no_diagnostic_is_not_blamed_on_the_model() {
 
 /// **A diagnostic outside the model's own file is still shown, and still not given a line.**
 ///
-/// A `rustc` error whose only span is inside the library set, or inside a code module linked beside
-/// the program, is somebody else's file. Withholding it would leave the model with "your program
+/// A `rustc` error whose only span is inside the library set, or inside the crate a code module was
+/// built into, is somebody else's file. Withholding it would leave the model with "your program
 /// did not compile" and nothing else; inventing a line for it would point at whichever of the
 /// model's lines shares the number.
 #[test]

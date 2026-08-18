@@ -47,25 +47,6 @@ export const callImpl =
     return fn.apply(family, args);
   };
 
-// The code modules this turn was given, by the key each is bound at.
-//
-// A program cannot import one: `Gg.Core.lib` names a module and an export as strings, because a code
-// module is compiled separately and there is no import for `purs` to check the two against. So the
-// entry module gg generates imports each of them by its `lib:<key>` specifier and hands the set over
-// here before it calls the program's `main`.
-let libraries = {};
-
-export const registerLib = (modules) => () => {
-  libraries = modules;
-};
-
-export const libImpl = (key) => (name) => {
-  const module_ = libraries[key];
-  if (module_ === undefined || module_ === null) return null;
-  const value = module_[name];
-  return value === undefined ? null : value;
-};
-
 export const lowerImpl = (converters) => (record) => {
   const lowered = {};
   // `Object.keys` rather than `for … in`: only the fields the PureScript record really carries, so

@@ -268,13 +268,14 @@ file said at that moment, and each one appends. `gg.views.openFile`,
 an intent replaces it. A program that loops over changed files and re-opens each
 one therefore leaves one view per file rather than one per iteration.
 
-`gg.views.openDocsView` is the exception. Re-opening something already open does
-nothing at all: the view is not moved, not re-emitted and not retagged, and its
-placement is first-open order for the life of the session. The documentation for
-one key is the same bytes every time, so moving the item to the tail would
-rewrite the middle of the prompt in exchange for text the model already has. The
-documentation band is therefore append-only, and only an explicit close disturbs
-it.
+`gg.views.openDocsView` is the exception. Re-opening a key under the body already
+open does nothing at all: the view is not moved, not re-emitted and not retagged.
+The documentation gg's own surface renders for one key is the same bytes every
+time, so moving the item to the tail would rewrite the middle of the prompt in
+exchange for text the model already has. A page whose text has changed, which
+only a revised [loaded module](/gg/skills/) produces, supersedes the copy that
+was open on the rules below. The documentation band is otherwise append-only, and
+placement is first-open order.
 
 Superseding still honours append-only. A copy already sent on an earlier turn
 stays where it sits and is retagged as ordinary history with its selector

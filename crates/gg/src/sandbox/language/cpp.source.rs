@@ -11,12 +11,11 @@
 //!
 //! # A code module is a named C++ module exporting a namespace of the author's own file
 //!
-//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib::<key>`
-//! for every program the agent writes afterwards, and on a compiled arm that binding is a **link**:
-//! the module has to be built into the same artifact as the program that uses it. C++ has both a
-//! real nested namespace and a real module system, so [`namespaced`] declares `export module
-//! lib.<key>;`, opens `export namespace lib::<key> {` above the author's first line and closes it
-//! below their last, and nothing in between is touched:
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is `lib::<key>`, and on
+//! a compiled arm reaching it is a **link**: the module has to be built into the same artifact as
+//! the program that uses it. C++ has both a real nested namespace and a real module system, so
+//! [`namespaced`] declares `export module lib.<key>;`, opens `export namespace lib::<key> {` above
+//! the author's first line and closes it below their last, and nothing in between is touched:
 //!
 //! ```text
 //! module;                                       // gg's line
@@ -32,8 +31,13 @@
 //!
 //! **The module declaration is what keeps gg's surface out of the program.** Names a global module
 //! fragment includes are attached to the global module and reach nobody who imports this one, so a
-//! program that binds a code module reaches `lib::<key>` and reaches gg's surface only through a
+//! program with a code module in scope reaches `lib::<key>` and reaches gg's surface only through a
 //! line it wrote itself.
+//!
+//! **The program's own line is [`module_import`]**, which it writes exactly as it writes the
+//! `#include` that reaches gg's surface. Nothing is written in front of `main.cpp`: the compile is
+//! told where the interface is and declares no name, so a program that omits the import earns
+//! *use of undeclared identifier 'lib'*.
 //!
 //! **`#line` is why no line number moves**, and it is the reason this arm needs no offset
 //! arithmetic anywhere: C++ is the one language here with a line-control directive, so gg says what
@@ -139,9 +143,19 @@ pub(super) fn module_name(key: &str) -> String {
     }
 }
 
-/// The line that brings one code module's namespace into a translation unit — `import lib.csv_tools;`.
+/// **The line a program writes to reach one code module's namespace** — `import lib.csv_tools;`.
+///
+/// The model's own line, in the model's own reply: nothing is written in front of `main.cpp`, and
+/// the [compile](super::compile::compile_program) that names the module's interface with
+/// `-fmodule-file=` declares no name, so a program that omits this line earns *use of undeclared
+/// identifier 'lib'*. It is [what this arm answers `lib_import` with](crate::sandbox::ProgramLanguage::lib_import), which
+/// is where a model reads it: the documentation view of the module and of each of its declarations.
+///
+/// The [module name](module_name) rather than the namespace, because that is what an import
+/// declaration resolves — so a key of `module` is imported as `import lib.Module;` and written
+/// `lib::module::<name>`.
 pub(super) fn module_import(key: &str) -> String {
-    format!("import {};\n", module_name(key))
+    format!("import {};", module_name(key))
 }
 
 /// What a code module's file name begins with — which is also how a diagnostic located in one is
@@ -341,14 +355,16 @@ pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
         if names.iter().any(|seen| seen.name == name) {
             continue;
         }
+        let declaration = super::super::heads::head(line.trim_end());
+        let (returns, parameters) = signature_types(&declaration, kind);
         names.push(ModuleExport {
             name: name.to_string(),
             kind,
-            declaration: super::super::heads::head(line.trim_end()),
+            declaration,
             doc: super::super::comments::block_doc(&lines, number)
                 .or_else(|| super::super::comments::line_doc(&lines, number, &["///", "//"])),
-            returns: Vec::new(),
-            parameters: Vec::new(),
+            returns,
+            parameters,
         });
     }
     names
@@ -403,6 +419,253 @@ fn declared_name(line: &str) -> Option<(&str, ModuleExportKind)> {
         _ => ModuleExportKind::Value,
     };
     last_identifier(&line[..end]).map(|name| (name, kind))
+}
+
+/// **The type names one declaration writes in return position and in parameter position** — the two
+/// lists an [export](ModuleExport) carries, and what the type views beside a function's
+/// documentation view are opened from.
+///
+/// Only a function writes those two positions, so a `struct`, a `using` alias, a `namespace` and a
+/// constant answer with nothing: a variable's type is not a return type, and reporting it as one
+/// would put gg's reading of a declaration in front of the author's own.
+///
+/// **Every type name the position writes is one of them**, template arguments included and in source
+/// order, because the name a model wants a view of is as often inside a container as it is the
+/// container — `std::vector<row>` writes `std::vector` and `row`, and it is `row` that this module
+/// declares. What is dropped is everything that is not a type name: the decoration around a type
+/// (`const`, `&`, `*`), a parameter's own name, its default argument, and the specifiers a
+/// declaration may open with.
+///
+/// It reads the declaration [`exports`] already quoted, so a signature written across several lines
+/// is read as far as its first — and a position this scan cannot take apart contributes nothing,
+/// which is the direction every reading in this module is wrong in.
+fn signature_types(declaration: &str, kind: ModuleExportKind) -> (Vec<String>, Vec<String>) {
+    if kind != ModuleExportKind::Function {
+        return (Vec::new(), Vec::new());
+    }
+    // A default argument may be a string or a character literal carrying a `,`, a `(` or a `=`, and
+    // every reading below is structural — so the literals go first, exactly as they do everywhere
+    // else in this module.
+    let text = without_literals(declaration);
+    let Some((open, close)) = parameter_list(&text) else {
+        return (Vec::new(), Vec::new());
+    };
+    // A trailing return type is the return type; the `auto` in front of the declarator is the syntax
+    // that announces one rather than a type of its own.
+    let returns = match text[close + 1..].trim_start().strip_prefix("->") {
+        Some(trailing) => type_names(trailing),
+        None => type_names(without_declarator(&text[..open])),
+    };
+    let mut parameters = Vec::new();
+    for parameter in split_outside_brackets(&text[open + 1..close]) {
+        parameters.extend(type_names(without_parameter_name(parameter)));
+    }
+    (deduplicated(returns), deduplicated(parameters))
+}
+
+/// `text` with every byte a literal or a comment replaced by a space, so a structural reading of it
+/// cannot be fooled by what an author wrote inside one.
+///
+/// The same [mask](code_mask) the rest of this module reads, applied rather than consulted: nothing
+/// below maps an index back to the original text, so blanking is simpler than carrying a mask
+/// beside every slice.
+fn without_literals(text: &str) -> String {
+    let code = code_mask(text);
+    text.char_indices()
+        .map(|(at, character)| match code.get(at) {
+            Some(true) => character,
+            _ => ' ',
+        })
+        .collect()
+}
+
+/// Where the declaration's parameter list opens and closes — the first `(` and the `)` that matches
+/// it.
+fn parameter_list(text: &str) -> Option<(usize, usize)> {
+    let open = text.find('(')?;
+    let mut depth = 0usize;
+    for (at, byte) in text.bytes().enumerate().skip(open) {
+        match byte {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((open, at));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// `text` split on the commas that are the parameter list's own, which is those outside every
+/// bracket a parameter may carry: a template argument list, a nested parameter list, an array bound
+/// and a braced default argument all hold commas that separate nothing here.
+fn split_outside_brackets(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (at, byte) in text.bytes().enumerate() {
+        match byte {
+            b'(' | b'[' | b'{' | b'<' => depth += 1,
+            b')' | b']' | b'}' | b'>' => depth = depth.saturating_sub(1),
+            b',' if depth == 0 => {
+                parts.push(&text[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&text[start..]);
+    parts
+        .into_iter()
+        .filter(|part| !part.trim().is_empty())
+        .collect()
+}
+
+/// What stands in front of a function's parameter list without the declarator's own name — the
+/// return type, and whatever specifiers the author opened the declaration with.
+fn without_declarator(text: &str) -> &str {
+    let text = text.trim_end();
+    text[..identifier_start(text)].trim_end()
+}
+
+/// One parameter without the parts of it that are not its type: its default argument, its array
+/// bound, and its own name.
+///
+/// **A trailing identifier is the parameter's name only when a type stands in front of it.** An
+/// unnamed parameter is all type, so `std::string_view` keeps its last component, `std::vector<row>`
+/// ends in a bracket and loses nothing, and `unsigned int` keeps the word that is its type rather
+/// than losing it to a name it never had.
+fn without_parameter_name(parameter: &str) -> &str {
+    let parameter = parameter
+        .split_once('=')
+        .map_or(parameter, |(declarator, _)| declarator);
+    let parameter = parameter
+        .split_once('[')
+        .map_or(parameter, |(declarator, _)| declarator);
+    let text = parameter.trim();
+    let start = identifier_start(text);
+    let trailing = &text[start..];
+    if start == 0 || trailing.is_empty() || text[..start].ends_with(':') || fundamental(trailing) {
+        return text;
+    }
+    text[..start].trim_end()
+}
+
+/// Where the identifier `text` ends with begins, or its own length when it ends with anything else.
+///
+/// By character rather than by byte, because a C++ identifier may carry one this reading does not
+/// recognise and a slice through the middle of one is a panic on the turn path.
+fn identifier_start(text: &str) -> usize {
+    text.char_indices()
+        .rev()
+        .find(|(_, character)| !is_identifier_char(*character))
+        .map_or(0, |(at, character)| at + character.len_utf8())
+}
+
+/// Every type name `text` writes, in source order — an identifier and the `::`-qualified name it
+/// opens, at every depth of a template argument list.
+fn type_names(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut names = Vec::new();
+    let mut at = 0usize;
+    while at < bytes.len() {
+        if !is_identifier_start(bytes[at]) {
+            at += 1;
+            continue;
+        }
+        let start = at;
+        loop {
+            while at < bytes.len() && is_identifier_char(bytes[at] as char) {
+                at += 1;
+            }
+            let qualified = bytes.get(at) == Some(&b':')
+                && bytes.get(at + 1) == Some(&b':')
+                && bytes.get(at + 2).copied().is_some_and(is_identifier_start);
+            if !qualified {
+                break;
+            }
+            at += 2;
+        }
+        let name = &text[start..at];
+        if !NOT_A_TYPE.contains(&name) {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+/// `names` with every repeat after the first dropped, order kept — one view per type, opened where
+/// the declaration first named it.
+fn deduplicated(names: Vec<String>) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::with_capacity(names.len());
+    for name in names {
+        if !kept.contains(&name) {
+            kept.push(name);
+        }
+    }
+    kept
+}
+
+/// The words a declaration writes beside its types that name none of them.
+///
+/// Specifiers, the two elaborations of a tag name, and the words that stand where a type would be
+/// without being one. `void` is not here: a declaration that writes it has written a type name, and
+/// what a reader does with a type nothing declares is drop it.
+const NOT_A_TYPE: [&str; 25] = [
+    "const",
+    "volatile",
+    "constexpr",
+    "consteval",
+    "constinit",
+    "static",
+    "inline",
+    "extern",
+    "export",
+    "virtual",
+    "explicit",
+    "friend",
+    "mutable",
+    "typename",
+    "class",
+    "struct",
+    "enum",
+    "union",
+    "auto",
+    "decltype",
+    "template",
+    "operator",
+    "noexcept",
+    "requires",
+    "thread_local",
+];
+
+/// Whether `word` is one of the language's own type names, which an unnamed parameter may be all of.
+fn fundamental(word: &str) -> bool {
+    matches!(
+        word,
+        "void"
+            | "bool"
+            | "char"
+            | "char8_t"
+            | "char16_t"
+            | "char32_t"
+            | "wchar_t"
+            | "short"
+            | "int"
+            | "long"
+            | "float"
+            | "double"
+            | "signed"
+            | "unsigned"
+    )
+}
+
+/// Whether `byte` may open an identifier.
+fn is_identifier_start(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || byte == b'_'
 }
 
 /// The rest of `text` when it opens with `word` at an identifier boundary.

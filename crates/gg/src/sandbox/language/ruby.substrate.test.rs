@@ -782,7 +782,7 @@ end
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
 
     // And with the line but no modules, the name is there and every key is refused by the object
-    // that says where the real ones came from.
+    // that lists the keys this run really bound.
     let outcome = run("require \"lib\"\nputs lib.anything\n");
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
@@ -2185,9 +2185,14 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     assert_eq!(logs(&outcome), ["contents of notes.md"]);
     assert_eq!(log.names(), ["read_file"]);
 
-    // And the other two lines, each reaching exactly what it names.
+    // And the other two lines, each reaching exactly what it names — the module's own line read
+    // off the arm rather than typed here, so what is proven is that the line gg quotes in the
+    // documentation view of a loaded module is the line that reaches it.
+    let lib_import = ruby()
+        .lib_import("helpers")
+        .expect("this arm states the line a program writes to reach a loaded module");
     let (outcome, _log) = run_with(
-        "require \"lib\"\nputs lib.helpers.double(21)\n",
+        &format!("{lib_import}\nputs lib.helpers.double(21)\n"),
         &[],
         std::slice::from_ref(&module),
         canned_outcome,

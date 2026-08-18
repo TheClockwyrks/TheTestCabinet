@@ -113,7 +113,7 @@ export interface MemoryWrite {
   body: string;
 
   /**
-   * A module whose exports are bound at `lib.<name>` for the rest of the session.
+   * A module every later program may import.
    *
    * It is written in the same language a program is. A helper got right once is then never written
    * again. Omit it, or pass an empty string, for a memory that is only prose. It occupies no context
@@ -122,7 +122,7 @@ export interface MemoryWrite {
   code?: string;
 
   /**
-   * A script gg runs the first time the memory comes into use.
+   * A script gg runs every time the memory comes into use.
    *
    * Whatever it shows arrives on the next turn. Omit it, or pass an empty string, for a memory that
    * runs nothing.
@@ -136,8 +136,7 @@ export interface MemoryWrite {
  * The two code fields are `option<string>` on the WIT, which crosses as a field that must be
  * *present* and may be `undefined` — so they are spelled explicitly here rather than left off the
  * object a program handed in. A blank string is normalised to absent: a model that clears its code by
- * writing `""` means "no code", and storing an empty module would bind an empty `lib` entry saying
- * nothing.
+ * writing `""` means "no code", and storing an empty module would offer one with nothing in it.
  *
  * @internal
  */
@@ -157,10 +156,9 @@ function written(memory: MemoryWrite): raw.MemoryInput {
  * Record a durable memory that survives a compaction.
  *
  * A memory may carry **code** as well as prose. `code` is a module in the same language a program is,
- * whose exports are bound at `lib.<name>` in every later program, so a helper got right once is never
- * written again; `onUse` is a script gg runs the first time the memory comes into use, whose views
- * arrive on the next turn. Neither is context: they occupy no window, are never shown back, and count
- * against no body limit.
+ * importable by every later program, so a helper got right once is never written again; `onUse` is a
+ * script gg runs every time the memory comes into use, whose views arrive on the next turn. Neither
+ * is context: they occupy no window, are never shown back, and count against no body limit.
  *
  * @ggop memories.write_memory
  * @param memory The memory to record. Its name must not already be taken.
@@ -208,8 +206,8 @@ export function createMemory(memory: MemoryWrite): MemoryUsage {
 /**
  * Read one memory's full contents by slug, which is the only thing that brings them into context.
  *
- * A memory carrying code loads that code as it is read: the reply names the `lib.<key>` it is bound
- * at, and it stays bound for the rest of the session.
+ * A memory carrying code loads that code as it is read: its module is importable by every later
+ * program, and a documentation view opens for each function the module declares.
  *
  * @ggop memories.read_memory
  * @param name The memory's slug.

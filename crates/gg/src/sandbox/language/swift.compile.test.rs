@@ -238,6 +238,47 @@ fn the_band_is_decided_before_anything_is_dropped_for_length() {
 }
 
 #[test]
+fn a_diagnostic_in_a_code_module_is_the_models_wherever_the_compiler_located_it() {
+    // A program's own compile reads its code modules as built modules rather than as source, so a
+    // location the compiler recovers from one's recorded source information carries the absolute
+    // path that module was compiled under. It is still a file the model can act on — by not calling
+    // that skill's code — where every other absolute path in a `swiftc` run here is gg's own.
+    let stderr = "/gg/work/module_notes.swift:2:5: error: cannot find 'views' in scope\n";
+    match classify(&report(false, stderr)) {
+        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
+            assert!(rendered.contains("module_notes.swift:2:5"), "{rendered}");
+        }
+        other => panic!("a diagnostic in a code module is the model's: {other:?}"),
+    }
+}
+
+#[test]
+fn a_binding_key_that_names_a_module_every_compile_supplies_is_refused() {
+    // A code module is compiled under its own key, so a key that is already a module name would put
+    // two modules of one name in a single link. The refusal names the collision; the alternative is
+    // a duplicate-symbol failure from the linker that names nobody.
+    for key in [
+        super::super::SURFACE_MODULE,
+        PROGRAM_MODULE,
+        SHELL_MODULE,
+        "Foundation",
+    ] {
+        match refuse_a_supplied_name(key) {
+            Err(PrepareFailure::Program(PrepareError::Unsupported(message))) => {
+                assert!(
+                    message.contains(key),
+                    "the refusal did not name it: {message}"
+                );
+            }
+            other => {
+                panic!("`{key}` is a module every program here is compiled against: {other:?}")
+            }
+        }
+    }
+    assert!(refuse_a_supplied_name("csvTools").is_ok());
+}
+
+#[test]
 fn a_compile_that_said_nothing_at_all_is_a_success() {
     assert!(classify(&report(true, "")).is_ok());
 }

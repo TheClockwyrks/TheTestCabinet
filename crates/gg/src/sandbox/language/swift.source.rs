@@ -1,6 +1,5 @@
-//! **What gg puts around a code module's Swift**, and the one file it generates beside a program —
-//! which is the whole of what this arm writes, because a **program** is written around by nothing at
-//! all.
+//! **What gg puts around a code module's Swift**, which is one word on the lines that need it —
+//! because a **program** is written around by nothing at all.
 //!
 //! # A program is not here, and that is the point
 //!
@@ -12,61 +11,55 @@
 //! bare statements together. See [`compile`](super::compile) for how gg's shell reaches the entry
 //! point Swift lowers such a file into.
 //!
-//! # A code module is a **file of the program's own module**, namespaced in place
+//! # A code module is a **Swift module of its own**
 //!
-//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib.<key>`
-//! for every program the agent writes afterwards, and on a compiled arm that binding is a **link**:
-//! the module has to be built into the same artifact as the program that uses it. Rust says that with
-//! a `mod`. Swift has no nested module, so the namespace is a **caseless `enum`** — the language's
-//! own way of spelling one — and each of a module's top-level declarations is moved into it by being
-//! wrapped, *where it stands*, in an `extension` of it:
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s file is compiled by
+//! [`compile_module`](super::compile::compile_module) into a Swift module named for the key it is
+//! bound under, and the program's compile is handed the `-I` that resolves it and the object it
+//! compiled to. That is the mechanism this arm supplies its own SDK through, so the line a program
+//! writes to reach an author's module is the line it writes to reach gg's:
 //!
-//! ```text
-//! public func parse(_ text: String, delimiter: Character = ",") -> [Row] {   // as authored
-//! extension lib.csvTools { public static func parse(_ text: String, …) -> [Row] {   // as compiled
+//! ```swift
+//! import csvTools
+//!
+//! print(csvTools.parse("a,b", delimiter: ",").cells.count)
 //! ```
 //!
-//! Two things follow, and both are the reason this shape was chosen over the two alternatives.
+//! Supplying a module declares no name. A program that writes no import line reaches nothing the
+//! module carries, and `swiftc` says so at the line that named it.
 //!
-//! **Every line number is preserved.** The wrap is a prefix on the declaration's first line and a
-//! suffix on its last, so a diagnostic in a module's own file is at the author's own line. Only two
-//! columns per declaration move.
+//! # The one word gg writes
+//!
+//! A Swift declaration is `internal` by default, which is invisible across a module boundary — so
+//! [`module_source`] writes `public` in front of a top-level declaration whose author wrote no
+//! access level. Three properties follow, and they are why it is written *there* rather than
+//! anywhere else.
+//!
+//! **Every line number is preserved.** The word goes in front of the declaration's own modifiers, on
+//! the line they stand on, so a diagnostic in a module's file is at the author's own line and only
+//! the columns of that one line move.
 //!
 //! **The declaration keeps everything a Swift declaration has.** Argument labels, default parameter
 //! values, generic parameters, `where` clauses, `throws`, overloads: all of it survives, because
-//! nothing is re-synthesized — the author's own text is what the compiler reads. The alternative
-//! shape, compiling each module as its own Swift module and binding its exports into `lib` through
-//! forwarders, was rejected for exactly this: a function bound as a value (`static let parse =
-//! csvTools.parse`) **loses its argument labels**, which on the arm whose SDK is built around them is
-//! the one thing that must not be quietly given up. It cannot bind an overload or a generic at all.
+//! nothing is re-synthesized — the author's own declaration is what the compiler reads and what a
+//! program calls. The shape that would have given those up is *forwarders* — binding each export as
+//! a value (`static let parse = csvTools.parse`) inside a namespace of gg's — which loses argument
+//! labels and cannot bind an overload or a generic at all. Nothing here forwards.
 //!
-//! What it costs is stated rather than hidden. A module's `import`, `extension`, `protocol` and
-//! operator declarations **cannot** live inside a type, so they stay at file scope — which here is the
-//! program's own module, so a `protocol` two code modules both declare is a redeclaration the turn's
-//! compile reports. That is the narrowest of the three prices, and the two rejected shapes each paid a
-//! wider one.
+//! **What the author wrote is left alone.** A `private` or `fileprivate` declaration stays inside
+//! the module, an `internal` one means what it says, and a member of a type or of an `extension`
+//! carries the access its author gave it, exactly as in any Swift library. gg supplies a level where
+//! there was none rather than overriding one.
 //!
-//! Staying at file scope is also what makes a module's own `import gg` work, and what makes it
-//! **necessary**: a Swift `import` reaches the file that wrote it and no other file of the module,
-//! so a code module that calls gg's surface writes the line its program writes. gg puts no import
-//! above a module's first line — which is what keeps a module diagnostic at the author's own line
-//! with no directive and no offset.
-//!
-//! # What refuses, and why it is the only refusal
-//!
-//! A `#if` at a module's top level. Its lines are not a declaration, they bracket declarations that
-//! *are*, and a bracket whose halves land in two different `extension` bodies is a file that does not
-//! parse — so it is refused by name rather than mis-wrapped. It is also the one construct with
-//! nothing to lose: this arm compiles for exactly one target, so a module with a `#if` in it has a
-//! branch that is never taken.
+//! An `import` is a file-scoped declaration in Swift, so a module that calls gg's surface writes
+//! `import gg` exactly as a program does, and gg puts no line above the author's first.
 
-use std::fmt::Write as _;
-
-use crate::sandbox::{ModuleExport, ModuleExportKind, PrepareError};
+use crate::healing::CodeMask;
+use crate::sandbox::{ModuleExport, ModuleExportKind};
 
 use super::healing::{code_mask, declaration_keyword, identifier};
 
-/// The file a code module is compiled under, given its binding key — `module_csvTools.swift`.
+/// The file a code module is compiled from, given its binding key — `module_csvTools.swift`.
 ///
 /// A fixed name per key inside a workspace that is private per preparation, on the same terms
 /// [`PROGRAM_FILE`](super::compile::PROGRAM_FILE) is. The key is already a Swift identifier
@@ -75,150 +68,106 @@ pub(super) fn module_file(key: &str) -> String {
     format!("{MODULE_FILE_PREFIX}{key}.swift")
 }
 
-/// What a code module's file name begins with — which is also how a diagnostic located in one is told
-/// from a diagnostic located in gg's own generated file.
+/// What a code module's file name begins with — which is also how a diagnostic located in one is
+/// told from a diagnostic located in gg's own inputs.
 pub(super) const MODULE_FILE_PREFIX: &str = "module_";
 
-/// The file that declares the `lib` namespace and one caseless `enum` inside it per module in scope.
-///
-/// gg's own, and named absolutely on the command line for that reason: a diagnostic in it is gg's
-/// arrangement failing rather than the model's program, and the compile's
-/// [classification](super::compile) reads exactly that distinction off the path.
-pub(super) const LIB_FILE: &str = "gg-lib.swift";
-
-/// The key a module is namespaced under while it is being **checked on its own**, before any program
-/// has asked for it.
+/// The Swift module name a code module is **checked under**, before any program has asked for it.
 ///
 /// A module's own preparation is handed no key — the seam binds one when the module is loaded, not
-/// when it is read — so the check compiles it under a fixed one. Which key it is changes nothing it
-/// could catch: the wrap is the same shape for every key, and a name that resolves under one resolves
-/// under all of them.
-pub(super) const CHECK_KEY: &str = "module";
+/// when it is read — so the check compiles it under a fixed one. Which name it is changes nothing it
+/// could catch: the file is the same bytes either way, and a declaration that type-checks under one
+/// module name type-checks under all of them.
+pub(super) const CHECK_MODULE: &str = "module";
 
-/// The `lib` namespace and the caseless `enum` each module's declarations are moved into.
+/// A code module's own file: the author's source with `public` written in front of each top-level
+/// declaration that carries no access level of its own.
 ///
-/// One file rather than a declaration per module file, because `lib` itself is declared once and an
-/// `enum` nested in it cannot be added by an `extension` from the same module — and because a module
-/// that failed to prepare must still leave the keys of the ones that did.
-///
-/// `public` throughout, though a program and its modules are one Swift module and `internal` would
-/// reach: a module's author writes `public func`, and a `public` member of an `internal` type is a
-/// declaration Swift will warn about. Making the namespace public makes the author's own spelling the
-/// correct one.
-///
-/// Empty for an agent that has loaded nothing, so an ordinary program's compile is exactly what it
-/// was before code modules existed.
-pub(super) fn lib_declarations(keys: impl Iterator<Item = impl AsRef<str>>) -> String {
-    let mut inner = String::new();
-    for key in keys {
-        let _ = writeln!(inner, "    public enum {} {{}}", key.as_ref());
-    }
-    match inner.is_empty() {
-        true => String::new(),
-        false => format!("public enum lib {{\n{inner}}}\n"),
-    }
-}
-
-/// A code module's own file: the author's source with each of its top-level declarations moved into
-/// `lib.<key>`, in place.
-///
-/// This is what a program's compile writes beside the entry file, and it is **source rather than an
-/// artifact** — which is what a linked language's module has to be. A module cannot be compiled into
-/// anything reachable on its own: Swift links, so the only artifact a module can end up in is the
-/// artifact of a program that was built against it. What the module's own preparation buys is the
-/// *check* — the author gets `swiftc`'s diagnostic at the read, at the module's own lines, rather
-/// than a program that stops compiling for reasons in somebody else's file.
-pub(super) fn namespaced(source: &str, key: &str) -> Result<String, PrepareError> {
-    let Some(items) = declarations(source)? else {
+/// The key is not needed and not taken. The file gg compiles as `csvTools` is byte for byte the file
+/// it checked when the module was read, which is what makes that check a check of this.
+pub(super) fn module_source(source: &str) -> String {
+    let Some(items) = declarations(source) else {
         // The source did not lex, which means an unterminated string or comment, which means
         // `swiftc` is about to say so at the author's own line. Handing it over untouched is what
-        // lets it: a namespace guessed at from a reading already known to be wrong would put gg's
-        // own braces in front of the compiler's account of the real fault.
-        return Ok(source.to_string());
+        // lets it: an access level guessed at from a reading already known to be wrong would put
+        // gg's own word in front of the compiler's account of the real fault.
+        return source.to_string();
     };
     let lines: Vec<&str> = source.lines().collect();
-    let mut opens = vec![false; lines.len()];
-    let mut closes = vec![false; lines.len()];
-    let mut statics = vec![false; lines.len()];
+    let mut public_at: Vec<Option<usize>> = vec![None; lines.len()];
     for item in &items {
-        let Some(namespaced) = item.namespaced.as_ref() else {
-            continue;
-        };
-        opens[item.first] = true;
-        closes[item.last] = true;
-        if namespaced.needs_static {
-            statics[namespaced.keyword_line] = true;
+        if item.access.is_none() {
+            public_at[item.keyword_line] = Some(item.public_at);
         }
     }
 
-    let mut out = String::with_capacity(source.len() + items.len() * 32);
-    for (number, line) in lines.iter().enumerate() {
-        let mut rendered = (*line).to_string();
-        if statics[number] {
-            rendered = with_static(&rendered);
+    let mut out = String::with_capacity(source.len() + items.len() * 8);
+    for (line, at) in lines.iter().zip(public_at) {
+        match at {
+            Some(at) => {
+                out.push_str(&line[..at]);
+                out.push_str("public ");
+                out.push_str(&line[at..]);
+            }
+            None => out.push_str(line),
         }
-        if opens[number] {
-            rendered = format!("extension lib.{key} {{ {}", rendered.trim_start());
-        }
-        if closes[number] {
-            rendered.push_str(" }");
-        }
-        out.push_str(&rendered);
         out.push('\n');
     }
     // A source with no trailing newline is given one rather than losing its last line: `lines()`
     // drops the distinction and nothing downstream depends on it.
-    Ok(out)
+    out
 }
 
-/// The names a code module's namespace offers, in source order — what the reply that binds it tells
-/// the model it may call.
+/// The names a code module offers, in source order — the entries a use of it opens a documentation
+/// view of.
 ///
 /// Read from the module's **own source** rather than out of anything the compiler produced, for the
-/// reason every other arm reads its own: these are what the skill's author is *told* the namespace
+/// reason every other arm reads its own: these are what the skill's author is *told* the module
 /// holds, and a second reading of the same fact is a second chance for the two to disagree.
 ///
-/// Every top-level declaration that is moved into the namespace is one of its names, whatever kind it
-/// is — `func`, `struct`, `enum`, `class`, `actor`, `typealias`, `let`, `var` — which is wider than
-/// the function lists the interpreted arms report and is right for the same reason Rust's is: a Swift
-/// module whose namespace is a `struct` and its methods offers that type, and a listing that named
+/// Every top-level declaration a program can reach is one of them, whatever kind it is — `func`,
+/// `struct`, `enum`, `class`, `actor`, `protocol`, `typealias`, `let`, `var` — which is wider than
+/// the function lists the interpreted arms report and is right for the same reason Rust's is: a
+/// module whose surface is a `struct` and its methods offers that type, and a listing that named
 /// only its functions would be describing something else.
 ///
-/// What is **not** listed is what a program could not reach: a `private` or `fileprivate` declaration
-/// is invisible outside the module's own file, and an `extension`, `protocol` or operator stays at
-/// file scope and is reached without the namespace at all.
+/// What is **not** listed is what a program could not reach across the module boundary: a
+/// declaration its author marked `private`, `fileprivate`, `internal` or `package`, and an
+/// `import`, an `extension` or an operator, which name nothing a program imports the module for.
 pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
-    let Ok(Some(items)) = declarations(source) else {
+    let Some(items) = declarations(source) else {
         return Vec::new();
     };
     let lines: Vec<&str> = source.lines().collect();
     let mut out: Vec<ModuleExport> = Vec::new();
     for item in items {
-        let Some(namespaced) = item.namespaced else {
+        if !item.reachable() {
             continue;
-        };
-        let Some(name) = namespaced.name.filter(|_| namespaced.exported) else {
+        }
+        let Some(name) = item.name else {
             continue;
         };
         if out.iter().any(|seen| seen.name == name) {
             continue;
         }
+        let declaration = super::super::heads::head(
+            lines
+                .get(item.keyword_line)
+                .copied()
+                .unwrap_or_default()
+                .trim(),
+        );
+        let (returns, parameters) = types(&declaration, item.keyword);
         out.push(ModuleExport {
             name,
-            kind: kind(namespaced.keyword),
-            declaration: super::super::heads::head(
-                lines
-                    .get(namespaced.keyword_line)
-                    .copied()
-                    .unwrap_or_default()
-                    .trim(),
-            ),
+            kind: kind(item.keyword),
             // Above the item's **first** line rather than above its keyword: an attribute written on
             // a line of its own stands between the two, and the documentation is above both.
             doc: super::super::comments::block_doc(&lines, item.first)
                 .or_else(|| super::super::comments::line_doc(&lines, item.first, &["///", "//"])),
-            returns: Vec::new(),
-            parameters: Vec::new(),
+            declaration,
+            returns,
+            parameters,
         });
     }
     out
@@ -233,46 +182,33 @@ fn kind(keyword: &str) -> ModuleExportKind {
     }
 }
 
-/// The key a module is checked under on its own, and the `lib` declaration that check needs.
-pub(super) fn check_files(source: &str) -> Result<(String, String), PrepareError> {
-    Ok((
-        namespaced(source, CHECK_KEY)?,
-        lib_declarations(std::iter::once(CHECK_KEY)),
-    ))
-}
-
 // ---------------------------------------------------------------------------------------------
 // Reading a module's top level
 // ---------------------------------------------------------------------------------------------
 
-/// One top-level declaration of a code module: the lines it spans, and what gg does with it.
+/// One top-level declaration of a code module that gg has something to say about.
 struct Item {
-    /// The 0-based line it starts on.
+    /// The 0-based line it starts on — the attribute above it, where one is written on its own line,
+    /// since that is where its documentation is written above.
     first: usize,
-    /// The 0-based line it ends on — the last line before the next declaration that is neither blank
-    /// nor a comment, so a doc comment written above the next declaration is not swallowed by this
-    /// one's namespace.
-    last: usize,
-    /// How it is namespaced, or `None` for a declaration that must stay at file scope.
-    namespaced: Option<Namespaced>,
-}
-
-/// What a declaration that goes into `lib.<key>` needs doing to it.
-#[derive(Clone)]
-struct Namespaced {
-    /// The line its declaration keyword stands on — not always [`Item::first`], because an attribute
-    /// may be written on a line of its own above it.
+    /// The 0-based line its declaration keyword and modifiers stand on.
     keyword_line: usize,
+    /// The byte offset in that line where `public` goes: in front of the modifiers, and behind any
+    /// attribute written on the same line.
+    public_at: usize,
     /// The keyword itself, which is what says whether a program calls this, names it, or reads it.
     keyword: &'static str,
-    /// Whether a `static` has to be inserted: a `func`, `var` or `let` becomes a **type** member and
-    /// an instance member of a caseless `enum` is unreachable, having no instances to be a member of.
-    needs_static: bool,
     /// The name it declares, when it declares one gg can read.
     name: Option<String>,
-    /// Whether a program may reach it — false for `private` and `fileprivate`, which are visible only
-    /// inside the module's own file.
-    exported: bool,
+    /// The access level its author wrote, and `None` where they wrote none and gg supplies `public`.
+    access: Option<&'static str>,
+}
+
+impl Item {
+    /// Whether a program that imports the module can reach it.
+    fn reachable(&self) -> bool {
+        matches!(self.access, None | Some("public") | Some("open"))
+    }
 }
 
 /// Every top-level declaration `source` makes, in order — or `None` when the source did not lex.
@@ -280,44 +216,33 @@ struct Namespaced {
 /// "Top level" is read as *brace depth zero in code context*, which is what the seam's own lexer
 /// already answers: [`code_mask`] is the same reading response healing makes of a reply, so a
 /// module and a program are read by one lexer rather than two.
-fn declarations(source: &str) -> Result<Option<Vec<Item>>, PrepareError> {
-    let Some(mask) = code_mask(source) else {
-        return Ok(None);
-    };
-    let mut starts: Vec<(usize, Option<Namespaced>)> = Vec::new();
-    let mut substantial: Vec<bool> = Vec::new();
+fn declarations(source: &str) -> Option<Vec<Item>> {
+    let mask = code_mask(source)?;
+    let mut items: Vec<Item> = Vec::new();
     let mut depth = 0usize;
     let mut offset = 0usize;
-    // An attribute written on a line of its own — `@discardableResult` above `public func …` — opens
-    // the declaration below it, and the wrap has to start at the attribute or it would be detached
-    // from what it decorates. So the line is remembered rather than treated as a declaration of its
-    // own, and whatever declaration comes next claims it.
+    // An attribute written on a line of its own — `@discardableResult` above `public func …` —
+    // belongs to the declaration below it, and its documentation is written above the attribute. So
+    // the line is remembered rather than treated as a declaration of its own, and whatever
+    // declaration comes next claims it.
     let mut attribute: Option<usize> = None;
     // `split_inclusive` rather than `lines`, because the offsets below index a mask built over the
     // source's own bytes: a line's terminator is part of what precedes the next one, and a `\r\n`
     // ending would put every offset after the first one out by a byte if the newline were assumed.
-    // The item count is the same either way, which is what lets the line *numbers* here be the ones
-    // `namespaced` writes by.
+    // The line count is the same either way, which is what lets the line *numbers* here be the ones
+    // `module_source` writes by.
     for (number, raw) in source.split_inclusive('\n').enumerate() {
         let line = raw.trim_end_matches(['\n', '\r']);
         let indent = line.len() - line.trim_start().len();
         let trimmed = line.trim_start();
-        let at_top = depth == 0 && mask.is_code(offset + indent);
-        if at_top && let Some(directive) = conditional_directive(trimmed) {
-            return Err(PrepareError::Unsupported(format!(
-                "line {}: this code module writes `{directive}` at its top level, and gg cannot bind \
-                 a module that does. Its declarations are moved into `lib.<key>` where they stand, \
-                 and a compiler directive brackets declarations rather than being one — so its two \
-                 halves would land in two different scopes. Delete the conditional: this sandbox \
-                 compiles for one target, so only one of its branches was ever going to be taken.",
-                number + 1
-            )));
-        }
-        if at_top {
-            match opens_a_declaration(trimmed, number) {
+        if depth == 0 && mask.is_code(offset + indent) {
+            match opens_a_declaration(trimmed, number, indent) {
                 Some(Opening::Attribute) => attribute = attribute.or(Some(number)),
-                Some(Opening::Declaration(namespaced)) => {
-                    starts.push((attribute.take().unwrap_or(number), namespaced));
+                Some(Opening::Declaration(item)) => {
+                    let first = attribute.take().unwrap_or(number);
+                    if let Some(item) = item {
+                        items.push(Item { first, ..item });
+                    }
                 }
                 // A line that opens nothing continues whatever came before it — and, if an attribute
                 // was waiting, ends the run rather than letting it reach a declaration further down.
@@ -325,7 +250,6 @@ fn declarations(source: &str) -> Result<Option<Vec<Item>>, PrepareError> {
                 None => {}
             }
         }
-        substantial.push(!trimmed.is_empty() && !trimmed.starts_with("//"));
         for (index, byte) in line.bytes().enumerate() {
             if !mask.is_code(offset + index) {
                 continue;
@@ -338,89 +262,147 @@ fn declarations(source: &str) -> Result<Option<Vec<Item>>, PrepareError> {
         }
         offset += raw.len();
     }
-
-    let mut items = Vec::with_capacity(starts.len());
-    for (index, (first, namespaced)) in starts.iter().enumerate() {
-        let bound = starts
-            .get(index + 1)
-            .map(|(next, _)| *next)
-            .unwrap_or(substantial.len());
-        // Back off over the blank and comment lines that belong to whatever comes next, so a doc
-        // comment written above the following declaration stays outside this one's namespace.
-        let mut last = bound.saturating_sub(1);
-        while last > *first && !substantial[last] {
-            last -= 1;
-        }
-        items.push(Item {
-            first: *first,
-            last,
-            namespaced: namespaced.clone(),
-        });
-    }
-    Ok(Some(items))
-}
-
-/// The compiler directive `line` opens, if it opens one.
-///
-/// Every `#` directive that has a *bracketing* half is refused, and the ones that do not (`#warning`,
-/// `#error`) are not — those are single declarations and go through the ordinary path, at file scope,
-/// where they mean exactly what their author wrote.
-fn conditional_directive(line: &str) -> Option<&'static str> {
-    ["#if", "#elseif", "#else", "#endif", "#sourceLocation"]
-        .into_iter()
-        .find(|directive| {
-            line.strip_prefix(directive)
-                .is_some_and(|rest| !rest.starts_with(|c: char| c.is_alphanumeric()))
-        })
+    Some(items)
 }
 
 /// What a top-level line opens.
 enum Opening {
-    /// An attribute on a line of its own, which decorates whatever declaration comes next.
+    /// An attribute run that fills the line, which decorates whatever declaration comes next.
     Attribute,
-    /// A declaration: `Some` for one that moves into the namespace, `None` for one Swift admits only
-    /// at file scope.
-    Declaration(Option<Namespaced>),
+    /// A declaration — `None` for one gg [leaves exactly as written](LEFT_AS_WRITTEN), which still
+    /// ends the attribute run above it and still continues onto the lines below it.
+    Declaration(Option<Item>),
 }
 
-/// Whether `line` opens a top-level declaration, and how it is namespaced if it does.
+/// Whether `line` — trimmed, and standing `indent` bytes into the line it was trimmed from — opens a
+/// top-level declaration, and what gg does with it if it does.
 ///
 /// `None` is a line that opens nothing and therefore continues whatever came before it.
-fn opens_a_declaration(line: &str, number: usize) -> Option<Opening> {
-    if line.starts_with('@') {
-        return Some(Opening::Attribute);
+fn opens_a_declaration(line: &str, number: usize, indent: usize) -> Option<Opening> {
+    let after_attributes = skip_attributes(line);
+    if after_attributes.is_empty() {
+        // A line of nothing but attributes decorates the declaration below it. An empty line opens
+        // nothing at all, and must not be read as one that does.
+        return line.starts_with('@').then_some(Opening::Attribute);
     }
-    if FILE_SCOPE_KEYWORDS
+    if LEFT_AS_WRITTEN
         .iter()
-        .any(|keyword| opens_with(line, keyword))
+        .any(|keyword| opens_with(after_attributes, keyword))
     {
         return Some(Opening::Declaration(None));
     }
-    let (keyword, after) = declaration_keyword(line)?;
-    let needs_static = matches!(keyword, "func" | "var" | "let");
-    let name = identifier(after.trim_start()).map(|(name, _)| name.to_string());
-    let exported =
-        !opens_with_modifier(line, "private") && !opens_with_modifier(line, "fileprivate");
-    Some(Opening::Declaration(Some(Namespaced {
+    let (keyword, after) = declaration_at(after_attributes)?;
+    Some(Opening::Declaration(Some(Item {
+        first: number,
         keyword_line: number,
+        public_at: indent + (line.len() - after_attributes.len()),
         keyword,
-        needs_static,
-        name,
-        exported,
+        name: identifier(after.trim_start()).map(|(name, _)| name.to_string()),
+        access: access_written(after_attributes, keyword),
     })))
 }
 
-/// The declarations Swift admits only at **file scope**, which therefore stay where their author
-/// wrote them.
+/// The declaration keyword `text` opens with, and what follows it.
 ///
-/// `extension` and `protocol` cannot be nested inside a type at all, an `import` is file-scoped by
-/// definition, and an operator or a precedence group is global by design. Leaving them is not a
-/// compromise for the first three — an `extension` of a type is reached through the type, and a
-/// `protocol` through its own name — and for the last two it is what those declarations mean.
-const FILE_SCOPE_KEYWORDS: [&str; 6] = [
+/// [`declaration_keyword`] and one recovery: it reads a run of modifiers and stops at the first word
+/// that is not one, which a modifier carrying an argument — `private(set) var seen` — is. Such a
+/// modifier is stepped over and the read continues behind it.
+fn declaration_at(text: &str) -> Option<(&'static str, &str)> {
+    let mut rest = text;
+    loop {
+        if let Some(found) = declaration_keyword(rest) {
+            return Some(found);
+        }
+        let (_, after) = identifier(rest)?;
+        if !after.starts_with('(') {
+            return None;
+        }
+        rest = after[closing(after)? + 1..].trim_start();
+    }
+}
+
+/// `line` with its leading attribute run removed — `@available(*, deprecated) public func f()`
+/// becomes `public func f()`.
+///
+/// An attribute may carry a parenthesised argument, so the parentheses are counted rather than
+/// looked for. A line that is nothing but attributes decorates the declaration below it.
+fn skip_attributes(line: &str) -> &str {
+    let mut rest = line;
+    while let Some(after) = rest.strip_prefix('@') {
+        let Some((_, after)) = identifier(after) else {
+            return rest;
+        };
+        rest = match after.starts_with('(') {
+            true => match closing(after) {
+                Some(end) => after[end + 1..].trim_start(),
+                None => return rest,
+            },
+            false => after.trim_start(),
+        };
+    }
+    rest
+}
+
+/// The offset of the `)` that closes the `(` `text` opens with.
+fn closing(text: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (at, character) in text.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(at);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The access level written in front of `keyword` in `text`, and `None` where none was.
+///
+/// `private(set)` is not one: it is the access of a property's *setter*, and a declaration carrying
+/// it and nothing else has no access level of its own — which is why the parenthesised form is
+/// stepped over rather than read.
+fn access_written(text: &str, keyword: &str) -> Option<&'static str> {
+    let mut rest = text.trim_start();
+    while let Some((word, after)) = identifier(rest) {
+        if word == keyword {
+            return None;
+        }
+        let parenthesised = after.starts_with('(');
+        if !parenthesised && let Some(level) = ACCESS_LEVELS.iter().find(|level| **level == word) {
+            return Some(level);
+        }
+        rest = match parenthesised {
+            true => after[closing(after)? + 1..].trim_start(),
+            false => after.trim_start(),
+        };
+    }
+    None
+}
+
+/// Every access level Swift spells, which is the set gg reads and never writes over.
+const ACCESS_LEVELS: [&str; 6] = [
+    "public",
+    "open",
+    "package",
+    "internal",
+    "private",
+    "fileprivate",
+];
+
+/// The declarations gg leaves exactly as they were written.
+///
+/// An `import` is file-scoped by definition, an `extension` is reached through the type it extends,
+/// and an operator or a precedence group is global by design — none of them is a name a program
+/// imports the module for, and none of them takes an access level gg would have anything to say
+/// about. A `macro` needs a compiler plugin this sandbox has no way to load.
+const LEFT_AS_WRITTEN: [&str; 5] = [
     "import",
     "extension",
-    "protocol",
     "operator",
     "precedencegroup",
     "macro",
@@ -442,34 +424,200 @@ fn opens_with(line: &str, word: &str) -> bool {
         .is_some_and(|after| after.chars().next().is_none_or(|c| !c.is_alphanumeric()))
 }
 
-/// Whether `line` opens with the access modifier `word`, before any other modifier.
-fn opens_with_modifier(line: &str, word: &str) -> bool {
-    line.strip_prefix(word)
-        .is_some_and(|after| after.starts_with(char::is_whitespace))
+// ---------------------------------------------------------------------------------------------
+// The types a declaration writes
+// ---------------------------------------------------------------------------------------------
+
+/// The type names `declaration` writes in return position and in parameter position, for an export
+/// whose keyword is `keyword`.
+///
+/// What they are for: an agent whose `docViewTypes` flags ask for the types around a function is
+/// given a view of each of these beside the function's own. So a name is worth reporting when a
+/// model could open it, which is what decides both readings below.
+///
+/// A `func` writes both — its parameter list, and whatever follows its `->`. A `let` or a `var`
+/// writes one, its type annotation, which is the type reading it hands back. Every other keyword
+/// writes neither: a `struct`, an `enum` or a `protocol` **is** the type, and the names in its
+/// inheritance clause are what it conforms to rather than anything it returns.
+fn types(declaration: &str, keyword: &str) -> (Vec<String>, Vec<String>) {
+    match keyword {
+        "func" => function_types(declaration),
+        "let" | "var" => (annotation(declaration), Vec::new()),
+        _ => (Vec::new(), Vec::new()),
+    }
 }
 
-/// `line` with a `static` inserted immediately in front of its declaration keyword.
+/// A function's return types and its parameter types, read off its own declaration.
 ///
-/// In front of the keyword rather than in front of the line, so `public func parse` becomes
-/// `public static func parse` — which is what an author would have written — rather than
-/// `static public func parse`, which Swift accepts and no Swift author writes.
-fn with_static(line: &str) -> String {
-    let mut at = line.len() - line.trim_start().len();
-    loop {
-        let rest = &line[at..];
-        let Some((word, after)) = identifier(rest) else {
-            break;
-        };
-        if matches!(word, "func" | "var" | "let") {
-            break;
+/// Everything is located from the `func` keyword forwards, so an attribute carrying a parenthesised
+/// argument is not mistaken for the parameter list — and the generic clause is read only where it
+/// opens immediately after the name, so the `<` of an `Array<Int>` parameter is not mistaken for one.
+fn function_types(declaration: &str) -> (Vec<String>, Vec<String>) {
+    let Some(mask) = code_mask(declaration) else {
+        return (Vec::new(), Vec::new());
+    };
+    let Some(after_keyword) = keyword_end(declaration, "func") else {
+        return (Vec::new(), Vec::new());
+    };
+    let after_name = match identifier(declaration[after_keyword..].trim_start()) {
+        Some((_, after)) => declaration.len() - after.len(),
+        None => after_keyword,
+    };
+    let (generics, from) = match declaration[after_name..].trim_start().starts_with('<') {
+        true => match bracketed(declaration, &mask, after_name, '<', '>') {
+            Some((open, close)) => (
+                split(declaration, &mask, open + 1, close)
+                    .into_iter()
+                    .filter_map(|part| {
+                        identifier(part.trim_start()).map(|(name, _)| name.to_string())
+                    })
+                    .collect(),
+                close,
+            ),
+            None => (Vec::new(), after_name),
+        },
+        false => (Vec::new(), after_name),
+    };
+    let Some((open, close)) = bracketed(declaration, &mask, from, '(', ')') else {
+        return (Vec::new(), Vec::new());
+    };
+    let parameters = split(declaration, &mask, open + 1, close)
+        .into_iter()
+        // A parameter is `label name: Type = default`, so its type is what stands between its own
+        // first colon and whatever default value follows.
+        .filter_map(|part| part.split_once(':').map(|(_, kind)| kind))
+        .flat_map(|kind| type_names(kind.split('=').next().unwrap_or(kind), &generics))
+        .collect();
+    let returns = declaration[close..]
+        .split_once("->")
+        .map(|(_, kind)| kind)
+        // A `where` clause constrains the return type rather than naming another one.
+        .map(|kind| kind.split(" where ").next().unwrap_or(kind))
+        .map(|kind| type_names(kind, &generics))
+        .unwrap_or_default();
+    (returns, parameters)
+}
+
+/// The offset just past `keyword` in `declaration`, where it stands as a whole word.
+fn keyword_end(declaration: &str, keyword: &str) -> Option<usize> {
+    declaration
+        .match_indices(keyword)
+        .find(|(at, _)| {
+            let before = declaration[..*at].chars().next_back();
+            let after = declaration[at + keyword.len()..].chars().next();
+            before.is_none_or(|c| !c.is_alphanumeric() && c != '_')
+                && after.is_none_or(|c| !c.is_alphanumeric() && c != '_')
+        })
+        .map(|(at, _)| at + keyword.len())
+}
+
+/// A stored declaration's type annotation — the names between its `:` and whatever value follows.
+fn annotation(declaration: &str) -> Vec<String> {
+    let Some(mask) = code_mask(declaration) else {
+        return Vec::new();
+    };
+    let Some(at) = declaration
+        .char_indices()
+        .find(|(at, character)| *character == ':' && mask.is_code(*at))
+        .map(|(at, _)| at)
+    else {
+        return Vec::new();
+    };
+    let annotated = &declaration[at + 1..];
+    type_names(annotated.split('=').next().unwrap_or(annotated), &[])
+}
+
+/// The names a type expression writes, minus the declaration's own generic parameters.
+///
+/// **Capitalised identifiers**, which is what a Swift type is called by every convention the
+/// language's own libraries follow. It is what separates a type from the words around it that are
+/// not one: `some`, `any`, `inout`, `borrowing`, an argument label and a tuple element's label are
+/// all lowercase, and a name gg reported that is not a type is a documentation view a model opens to
+/// find nothing.
+fn type_names(kind: &str, generics: &[String]) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut rest = kind;
+    while !rest.is_empty() {
+        let trimmed = rest.trim_start();
+        match identifier(trimmed) {
+            Some((name, after)) => {
+                if name.starts_with(char::is_uppercase)
+                    && !generics.iter().any(|generic| generic == name)
+                    && !names.iter().any(|seen| seen == name)
+                {
+                    names.push(name.to_string());
+                }
+                rest = after;
+            }
+            None => {
+                let mut characters = trimmed.chars();
+                characters.next();
+                rest = characters.as_str();
+            }
         }
-        let trimmed = after.trim_start();
-        if trimmed.len() == after.len() {
-            break;
-        }
-        at = line.len() - trimmed.len();
     }
-    format!("{}static {}", &line[..at], &line[at..])
+    names
+}
+
+/// The offsets of the first balanced `open`/`close` pair at or after `from`, in code context.
+///
+/// `None` where there is no pair, which for `<`/`>` is the ordinary answer: most declarations are
+/// not generic, and the `>` of a `->` is not a closing bracket — which is what requiring the
+/// **balance** rules out.
+fn bracketed(
+    text: &str,
+    mask: &CodeMask,
+    from: usize,
+    open: char,
+    close: char,
+) -> Option<(usize, usize)> {
+    let mut opened: Option<usize> = None;
+    let mut depth = 0usize;
+    for (at, character) in text.char_indices().filter(|(at, _)| *at >= from) {
+        if !mask.is_code(at) {
+            continue;
+        }
+        if character == open {
+            opened = opened.or(Some(at));
+            depth += 1;
+        } else if character == close {
+            depth = depth.saturating_sub(1);
+            if depth == 0
+                && let Some(opened_at) = opened
+            {
+                return Some((opened_at, at));
+            }
+        }
+    }
+    None
+}
+
+/// `text[from..to]` split on the commas that are its own — outside every bracket and every string.
+fn split<'a>(text: &'a str, mask: &CodeMask, from: usize, to: usize) -> Vec<&'a str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut opened = from;
+    for (at, character) in text
+        .char_indices()
+        .filter(|(at, _)| *at >= from && *at < to)
+    {
+        if !mask.is_code(at) {
+            continue;
+        }
+        match character {
+            '(' | '[' | '<' => depth += 1,
+            ')' | ']' | '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(&text[opened..at]);
+                opened = at + 1;
+            }
+            _ => {}
+        }
+    }
+    if opened < to {
+        parts.push(&text[opened..to]);
+    }
+    parts
 }
 
 #[cfg(test)]

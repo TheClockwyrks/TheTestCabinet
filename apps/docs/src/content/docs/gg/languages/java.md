@@ -15,12 +15,10 @@ A program is a whole Java compilation unit. The reply is written to
 so the file javac reads and the file the model sent are the same bytes and every
 diagnostic and every stack frame is already in the model's own coordinates.
 
-gg writes two more files beside it. `GgEntry.java` carries the component's two
+gg writes one more file beside it. `GgEntry.java` carries the component's two
 exports and calls `Program.main(new String[0])`, and it declares no `main` of its
-own. `Lib.java` carries one nested class per code module in scope, and is written
-only for an agent that has loaded code. Both name something the model declared,
-so a diagnostic about either is a refusal the model reads rather than a toolchain
-failure.
+own. It names something the model declared, so a diagnostic about it is a refusal
+the model reads rather than a toolchain failure.
 
 This arm has no guest component: `guest_component()` answers `None`, the
 compiled bytes ride on the prepared program, and the engine instantiates a fresh
@@ -69,10 +67,12 @@ are `native` in TeaVM's classlib and emitted as core imports of a module named
 `teavmMath`, which no WebAssembly component can resolve. `gg.internal.MathImports`
 rewrites that module to `test-cabinet:gg/math`, which gg's own host answers.
 
-A code module is checked with `javac` alone, which the driver selects with an
-empty target file. There is nothing a module can be compiled into that a later
-program could load; what the check buys is the author's own located diagnostic at
-the read that binds the module.
+A build request names the directory javac writes its classes into and the
+classpath entries to add to the toolchain's own, which is how a code module's
+classes reach the program compiled against them. An empty target file selects
+`javac` alone, which is what a module is compiled with: a module is checked at
+the read that binds it, for the author's own located diagnostic, and compiled
+again under its binding key for each program that uses it.
 
 ## Toolchain and build outputs
 
@@ -208,7 +208,7 @@ text the parser could not read makes the whole verdict a syntax error, and
 everything else is a compile error. The band is decided over the whole set rather
 than the shown eight. A TeaVM diagnostic about any other file is a compile error
 too, since TeaVM only refuses what the program reached. A javac diagnostic about
-a file that is neither the model's nor one of gg's two is reported to the
+a file that is neither the model's nor `GgEntry.java` is reported to the
 operator. The shared rules are on
 [compilation](/gg/languages/compilation/).
 
@@ -256,27 +256,37 @@ continuation line and a model's bullet list alike. Its program fence tags are
 
 A code module is a class body rather than a whole compilation unit. Its
 `public static` methods become the namespace, and a module offering none is
-refused by name. The names are read from the author's own source by the export
-scan rather than out of a compiled artifact.
+refused by name. The names, each declaration as its author wrote it, and the type
+names that declaration writes in return and in parameter position are read from
+the author's own source by the export scan rather than out of a compiled
+artifact.
 
 The wrapper costs no line at all: the author's `import` lines are lifted to the
-front of the file and blanked where they stood, and the class header shares the
-author's own first line, so a diagnostic is the author's own coordinate with
-nothing subtracted from it.
+front of the file, blanked where they stood, and the `package lib;` and the class
+header share the author's own first line, so a diagnostic is the author's own
+coordinate with nothing subtracted from it.
 
-A module is compiled into the program that uses it, so a program reaches it as a
-path javac checks: `Lib.<key>.<name>(…)`. `Lib` is a class gg generates with one
-nested class per module in scope, each extending that module's own class, which
-is what Java has instead of a type alias — a `static` method and a nested type
-are both inherited members. A key or an export the session does not have is a
-diagnostic on the turn that wrote it. Binding names are camelCase and ASCII-only,
-and hold to being valid Java identifiers: the key is a nested class name and a
-path segment javac resolves, so a leading digit and a reserved word are each
-prefixed with an underscore. The arm reads `.java` files and nothing else.
+Each module is compiled on its own, into package `lib` under a class named by its
+binding key, against the SDK jar and the toolchain and nothing else. The
+directory its classes land in goes on the `-classpath` of the program's own
+compile, which is how the SDK jar reaches a program too: a classpath entry is
+packaging and puts no name in a program's scope. A program reaches an export in
+full, `lib.csvTools.parse(…)`, or under the line the module's documentation view
+states, `import lib.csvTools;`. A key or an export the session does not have is a
+diagnostic on the turn that wrote it, and so is a program that writes neither the
+full name nor the import line.
+
+Binding names are camelCase and ASCII-only, and hold to being valid Java
+identifiers: the key is the class's own name and a path segment javac resolves,
+so a leading digit and a reserved word are each prefixed with an underscore. The
+arm reads `.java` files and nothing else.
+
+A module is compiled before the program that uses it, so a module that does not
+compile is a refusal naming the key it is bound at. Its file is named for that
+key, so a TeaVM diagnostic about a module during a program's own build names the
+key in the file position.
 
 A module body may not write the name of the class gg wraps it in, and the read
-refuses one that does at the author's own line. The name differs between the read
-and a program's own compile, and a constructor is the one declaration Java has
-whose meaning turns on it. A diagnostic that still arrives against a module's file
-during a program's compile names the key the module is bound at, so the agent is
-told which module to fix rather than the operator being told about drift.
+refuses one that does at the author's own line. That name is `Module` while the
+read checks it and the binding key in a program, and a constructor is the one
+declaration Java has whose meaning turns on it.

@@ -44,13 +44,18 @@
 //! and the only thing that makes a build independent of the last one through the same JVM) rather
 //! than for a failure this gate has been shown to catch.
 //!
-//! # The three files a build reads, and which of them is the model's
+//! # The two files a build reads, and which of them is the model's
 //!
 //! [`PROGRAM_FILE`] is the model's reply, byte for byte. Beside it gg writes [`ENTRY_FILE`] — the
-//! component's two exports and a call to `Program.main`, with no `try` and no `catch` — and, for an
-//! agent that has loaded code, one file per [code module](super::source::module_file) and the
-//! [`Lib`](super::source::lib_class) that binds them at `lib.<key>`. TeaVM is given the **model's**
-//! class as its main class, so the whole dependency graph is rooted at the program the model wrote.
+//! component's two exports and a call to `Program.main`, with no `try` and no `catch` — and nothing
+//! else. TeaVM is given the **model's** class as its main class, so the whole dependency graph is
+//! rooted at the program the model wrote.
+//!
+//! An agent's [code modules](compile_module) are not in that compile. Each is compiled on its own,
+//! into a directory of class files that goes on the program compile's **classpath**, which is how
+//! this arm's own SDK jar reaches a program. So nothing gg writes puts a module's name in the
+//! program's scope: the program writes `lib.csvTools.parse(…)`, or its own `import lib.csvTools;`,
+//! or it does not resolve.
 //!
 //! # What a model is told when its program fails: whatever its runtime said
 //!
@@ -166,14 +171,40 @@ const SDK_FILE: &str = "gg-sdk.jar";
 /// than gg's.
 pub(super) const PROGRAM_FILE: &str = "Program.java";
 
-/// The file a code module is **checked** in at the read that binds it.
+/// The file a code module is **checked** in at the read that binds it, named for the class that read
+/// compiles it under.
 pub(super) const MODULE_FILE: &str = "Module.java";
 
 /// The file gg's generated entry class is written into.
 const ENTRY_FILE: &str = "GgEntry.java";
 
-/// The file the `Lib` that binds an agent's code modules is written into.
-const LIB_FILE: &str = "Lib.java";
+/// The directory javac writes a program's own classes into, under the preparation's workspace.
+const PROGRAM_CLASSES: &str = "classes";
+
+/// The file one code module is compiled from, named for the class it declares — which is the key
+/// the agent bound it at.
+///
+/// Java names a compilation unit by its own public type, so this name is not a choice: it is the
+/// key. What it buys is that every diagnostic about a module carries the key in the file position,
+/// which is the one coordinate a model can act on for code it did not write.
+fn module_file(key: &str) -> String {
+    format!("{key}.java")
+}
+
+/// Where that file is written: a directory of the module's own, so no two modules and no program
+/// share a compile's inputs.
+fn module_source(key: &str) -> String {
+    format!("{MODULE_ROOT}/{key}/{}", module_file(key))
+}
+
+/// Where its classes are written, and the path that goes on the **classpath** of every program
+/// compiled against it.
+fn module_classes(key: &str) -> String {
+    format!("{MODULE_ROOT}/{key}/{PROGRAM_CLASSES}")
+}
+
+/// The directory an agent's code modules are built under, inside the preparation's own workspace.
+const MODULE_ROOT: &str = "modules";
 
 /// What TeaVM is asked to write: a `wasm32` core module, which is what the `.wasm` extension selects
 /// in [the shared driver](super::super::jvm).
@@ -241,9 +272,10 @@ pub(super) fn compile_program(
 /// Compile one model program into a component, or say why it could not be.
 ///
 /// `modules` are this agent's loaded code [skills](crate::skills) and [memories](crate::memories),
-/// each already through [`compile_module`]. They are **inputs to this compile**, which is what makes
-/// this arm's preparation take them at all: a compiled module is only reachable from the artifact it
-/// was built into. Each is written beside the program as its own class and reached at `Lib.<key>`.
+/// each already through [`compile_module`]. Every one of them is compiled **first, and on its own**
+/// ([`build_module`]), and what this compile is given is the directory of class files that compile
+/// wrote — a classpath entry, exactly as this arm's SDK jar is. The program's own compile therefore
+/// reads two files, both of which name only what the model declared.
 fn compile(
     program: &str,
     modules: &[CodeModule],
@@ -258,24 +290,20 @@ fn compile(
         .write(ENTRY_FILE, &entry_class())
         .map_err(PrepareFailure::Toolchain)?;
 
-    let mut files = vec![PROGRAM_FILE.to_string(), ENTRY_FILE.to_string()];
-    if !modules.is_empty() {
-        let keys: Vec<&str> = modules.iter().map(|module| module.name.as_str()).collect();
-        workspace
-            .write(LIB_FILE, &source::lib_class(&keys))
-            .map_err(PrepareFailure::Toolchain)?;
-        files.push(LIB_FILE.to_string());
-        for module in modules {
-            let file = source::module_file(&module.name);
-            let wrapped = source::wrap_module(&module.source, &source::module_class(&module.name))?;
-            workspace
-                .write(&file, &wrapped.source)
-                .map_err(PrepareFailure::Toolchain)?;
-            files.push(file);
-        }
+    let mut classpath: Vec<String> = Vec::new();
+    for module in modules {
+        classpath.push(build_module(workspace, module)?);
     }
 
-    let report = request(workspace, source::PROGRAM_CLASS, CORE_MODULE_FILE, &files)?;
+    let files = [PROGRAM_FILE.to_string(), ENTRY_FILE.to_string()];
+    let report = request(
+        workspace,
+        PROGRAM_CLASSES,
+        &classpath,
+        source::PROGRAM_CLASS,
+        CORE_MODULE_FILE,
+        &files,
+    )?;
     verdict(&report, PROGRAM_FILE)?;
 
     let artifact = workspace.output().join(CORE_MODULE_FILE);
@@ -292,15 +320,13 @@ fn compile(
 /// Check a code [skill](crate::skills)'s or [memory](crate::memories)'s Java, and report the names
 /// its namespace offers.
 ///
-/// What comes back is **the author's own source**, not an artifact, and that is the honest shape for
-/// a compiled language: there is nothing a module can be compiled into that a later program could
-/// load, so what this hands on is the body the next [program compile](compile) will build against,
-/// under the key that program's agent bound it at.
+/// What comes back is **the author's own source**, not an artifact, because the key the module will
+/// be bound at does not exist yet and the key is the name of the class it is compiled under. So this
+/// hands on the body, and [`build_module`] compiles it under that key for each program that uses it.
 ///
 /// The compiler still runs, and what it buys is the *location*. Without it a module that does not
-/// compile would take down every program the agent writes from then on — the diagnostic would arrive
-/// against the turn's own program, in a file the author never wrote, on every turn until the module
-/// was somehow unloaded. Running `javac` here instead tells the author at the read, at the module's
+/// compile would take the turn of whoever loaded it, in a file its author never wrote, for as long
+/// as it stayed loaded. Running `javac` here instead tells the author at the read, at the module's
 /// own line and column.
 ///
 /// **javac and not TeaVM**: this output is thrown away, so asking for a wasm module would be paying
@@ -319,6 +345,8 @@ pub(super) fn compile_module(
 
     let report = request(
         workspace,
+        PROGRAM_CLASSES,
+        &[],
         CHECK_ONLY,
         CHECK_ONLY,
         &[MODULE_FILE.to_string()],
@@ -330,6 +358,57 @@ pub(super) fn compile_module(
     })
 }
 
+/// Compile one loaded code module under its binding key, and hand back the classpath entry a program
+/// reaches it through.
+///
+/// A compile of its own, with the SDK and the toolchain on its classpath and **nothing else**: a
+/// module sees gg's surface, the library set and its own declarations, and no other module — the
+/// same scope it was checked in at the read.
+///
+/// A failure here is the model's to act on rather than the operator's, and it names the key: the
+/// module is the thing to fix or to stop loading, and a session told nothing would meet it again on
+/// every turn.
+fn build_module(workspace: &Workspace, module: &CodeModule) -> Result<String, PrepareFailure> {
+    let key = module.name.as_str();
+    let wrapped =
+        source::wrap_module(&module.source, key).map_err(|failure| about(key, failure))?;
+    workspace
+        .write(&module_source(key), &wrapped.source)
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let classes = module_classes(key);
+    let report = request(
+        workspace,
+        &classes,
+        &[],
+        CHECK_ONLY,
+        CHECK_ONLY,
+        &[module_source(key)],
+    )?;
+    verdict(&report, &module_file(key)).map_err(|failure| about(key, failure))?;
+    Ok(classes)
+}
+
+/// One of [`build_module`]'s failures, said as something about the code this session loaded.
+///
+/// Only the model-facing bands are renamed: a toolchain failure is the operator's whatever compiled
+/// when it happened, and saying a key in front of it would blame a skill for a JVM that would not
+/// start.
+fn about(key: &str, failure: PrepareFailure) -> PrepareFailure {
+    let said = match failure {
+        PrepareFailure::Program(PrepareError::Syntax(said) | PrepareError::Compile(said)) => {
+            PrepareError::Compile(format!(
+                "the code this session loaded at `{key}` does not compile: {said}"
+            ))
+        }
+        PrepareFailure::Program(PrepareError::Unsupported(said)) => PrepareError::Unsupported(
+            format!("the code this session loaded at `{key}` cannot be built: {said}"),
+        ),
+        other => return other,
+    };
+    PrepareFailure::Program(said)
+}
+
 /// The main class and target file that ask [the driver](super::super::jvm) for `javac` alone.
 ///
 /// Empty, which is the one value neither field can otherwise take: a class has a name and a target
@@ -338,9 +417,40 @@ pub(super) fn compile_module(
 /// nothing.
 const CHECK_ONLY: &str = "";
 
+/// One build request, as the driver reads it: the preparation's two directories, the directory
+/// javac writes classes into, the classpath entries to add to the toolchain's own, the class TeaVM
+/// roots the program at, the artifact to write, and the sources to compile.
+///
+/// Every path but the first two is **relative to the work directory**, which the driver resolves
+/// against it. The classpath field is joined the way Java joins one, so the driver splits it on
+/// `File.pathSeparator` exactly as it splits the classpath it was started with.
+fn wire_request(
+    workspace: &Workspace,
+    classes: &str,
+    classpath: &[String],
+    main_class: &str,
+    target: &str,
+    files: &[String],
+) -> String {
+    format!(
+        "{}\t{}\t{classes}\t{}\t{main_class}\t{target}\t{}",
+        workspace.work().display(),
+        workspace.output().display(),
+        classpath.join(CLASSPATH_SEPARATOR),
+        files.join("\t"),
+    )
+}
+
+/// What Java's `File.pathSeparator` is on the platforms gg's Java arm runs on, which is every
+/// platform a JDK and TeaVM are installed on by `scripts/ci/install-java.sh` and the toolchain
+/// image.
+const CLASSPATH_SEPARATOR: &str = ":";
+
 /// Send one build to a warm JVM and read what it answered.
 fn request(
     workspace: &Workspace,
+    classes: &str,
+    classpath: &[String],
     main_class: &str,
     target: &str,
     files: &[String],
@@ -348,12 +458,7 @@ fn request(
     let mut compiler = POOL
         .checkout(JavaCompiler::start)
         .map_err(PrepareFailure::Toolchain)?;
-    let request = format!(
-        "{}\t{}\t{main_class}\t{target}\t{}",
-        workspace.work().display(),
-        workspace.output().display(),
-        files.join("\t"),
-    );
+    let request = wire_request(workspace, classes, classpath, main_class, target, files);
     let answered = match compiler.request(&request, BUILD_TIMEOUT) {
         Ok(answered) => answered,
         Err(failure) => {
@@ -474,18 +579,17 @@ const SHOWN: usize = 8;
 ///
 /// * the model's own file — the model's diagnostic, rendered in the model's own coordinates,
 ///   because the file javac read is the file the model wrote and there is nothing to correct;
-/// * [`ENTRY_FILE`] or [`LIB_FILE`] — gg's own two generated files, each of which names something
-///   the model declared and can fail for exactly one reason: the program did not declare what gg's
-///   file names, or declared a class of the same name. That is a **shape refusal shown to the
-///   model**, in the words of the convention it broke, rather than a toolchain failure the model is
-///   not told about ([ruling D4](https://docs.testcabinet.ai/gg/responses-as-code/invariants/));
+/// * [`ENTRY_FILE`] — gg's one generated file, which names something the model declared and can
+///   fail for exactly one reason: the program did not declare what that file names. That is a
+///   **shape refusal shown to the model**, in the words of the convention it broke, rather than a
+///   toolchain failure the model is not told about
+///   ([ruling D4](https://docs.testcabinet.ai/gg/responses-as-code/invariants/));
 /// * a **TeaVM** diagnostic about any other file — which is the classlib refusing to translate
 ///   something the program's own call graph reached, named in the classlib's own file. It is the
 ///   model's, and it says what is missing: `java.nio.file.Files.readString` is
 ///   `Method java.io.BufferedReader.transferTo … was not found`, which is a call to write another
-///   way rather than a broken toolchain;
-/// * a **code module's** own file — the code this session loaded, compiled into this program, named
-///   by the key it is bound at so the agent knows which module to fix or to stop loading;
+///   way rather than a broken toolchain. A code module's own class is on the same road, and its
+///   file is named for the key it is bound at;
 /// * anything else — a file nobody named — which is drift rather than anything this program did, and
 ///   is reported to the operator.
 pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure> {
@@ -533,31 +637,6 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
                 program = source::PROGRAM_CLASS,
             ))));
         }
-        if errors
-            .iter()
-            .all(|diagnostic| diagnostic.file.as_deref() == Some(LIB_FILE))
-        {
-            return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
-                "gg declares `{lib}` beside your program to bind the code this session has loaded, \
-                 and that does not compile against what you wrote: {rendered}\n\nPick another \
-                 name for anything of your own called `{lib}`.",
-                lib = source::LIB_CLASS,
-            ))));
-        }
-        if let Some(keys) = module_keys(&errors) {
-            return Err(PrepareFailure::Program(PrepareError::Compile(format!(
-                "the code this session loaded at `{}` does not compile: {}",
-                keys.join("`, `"),
-                crate::sandbox::language::diagnostics::capped(
-                    errors
-                        .iter()
-                        .map(|diagnostic| diagnostic.render(file))
-                        .collect(),
-                    SHOWN,
-                    "\n\n",
-                ),
-            ))));
-        }
         return Err(PrepareFailure::Toolchain(format!(
             "the Java toolchain refused a file gg generated rather than the program: {rendered}"
         )));
@@ -585,25 +664,6 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
             false => PrepareError::Compile(rendered),
         },
     ))
-}
-
-/// The binding keys of the code modules `errors` are about, when every one of them is.
-///
-/// A module is compiled *into* the program that uses it, so a diagnostic about a module's own file
-/// arrives against the turn's program — in a file the model never wrote, about code somebody else
-/// authored. Reporting that as a [toolchain failure](PrepareFailure::Toolchain) told the operator
-/// about drift and told the model nothing, on every turn, for as long as the module stayed loaded.
-/// Naming the key is what makes it something the agent can act on: the module is the thing to fix
-/// or to stop loading.
-fn module_keys(errors: &[&Diagnostic]) -> Option<Vec<String>> {
-    let mut keys: Vec<String> = Vec::new();
-    for diagnostic in errors {
-        let key = source::module_key_of(diagnostic.file.as_deref()?)?;
-        if !keys.iter().any(|seen| seen == key) {
-            keys.push(key.to_string());
-        }
-    }
-    Some(keys).filter(|keys| !keys.is_empty())
 }
 
 impl Diagnostic {

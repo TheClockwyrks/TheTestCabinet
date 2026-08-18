@@ -186,27 +186,135 @@ fn re_opening_an_open_docview_changes_nothing_at_all() {
     assert_eq!(ctx.total_tokens(), before_tokens, "and it costs nothing");
 }
 
-/// **A re-open with a *different* body is still a no-op.**
+/// **A re-open carrying the same text moves nothing, and a re-open carrying different text shows
+/// the new text.**
 ///
-/// It cannot arise from the production path — a docview's body is a pure function of its key — and
-/// the rule is asserted anyway, because the alternative reading ("re-open if the text changed") is
-/// exactly the repair a later reader would make, and it would reintroduce the supersede this design
-/// removed.
+/// One rule read on one question: is the model holding the page this key now addresses. Every page
+/// of gg's own surface answers yes however often it is asked, because a body is a projection of a
+/// catalogue compiled into the binary — so the band an agent that loaded nothing holds never moves.
+///
+/// A loaded module's page can answer no, because the model rewrote the code a skill or a memory
+/// carries, and there the alternative is a window documenting a declaration that no longer exists.
+/// The page that changed is the only one that moves: the copy already sent is retagged as history
+/// in place and the revision is appended, so the pages around it keep their positions and the prefix
+/// ahead of the retagged copy is untouched.
 #[test]
-fn a_re_open_does_not_replace_the_body_either() {
+fn a_re_open_replaces_a_page_only_when_its_text_changed() {
     let mut ctx = code_model();
-    ctx.open_docview("readFile".to_string(), "the first rendering".to_string());
-    assert_eq!(
-        ctx.open_docview("readFile".to_string(), "a different rendering".to_string()),
-        DocviewOpen::AlreadyOpen
+    ctx.begin_turn(1);
+    ctx.open_docview("readFile".to_string(), "readFile docs".to_string());
+    ctx.open_docview(
+        "csvTools.parse".to_string(),
+        "export function parse(text: string): Row[]".to_string(),
+    );
+    ctx.begin_turn(2);
+    ctx.push(
+        GgContextSource::Assistant,
+        Retention::Ephemeral,
+        Message::assistant(Some("a program".to_string()), Vec::new()),
     );
 
-    let bodies: Vec<String> = ctx
-        .open_docviews()
-        .into_iter()
-        .map(|open| open.body)
-        .collect();
-    assert_eq!(bodies, vec!["the first rendering".to_string()]);
+    let before = rendered(&ctx);
+    let sdk_index = ctx
+        .items()
+        .iter()
+        .position(|item| item.label() == Some("readFile"))
+        .expect("readFile is open");
+
+    // A later turn, so both copies have been sent and a replacement has a cached prefix to protect.
+    ctx.begin_turn(3);
+    assert_eq!(
+        ctx.open_docview(
+            "csvTools.parse".to_string(),
+            "export function parse(text: string): Row[]".to_string(),
+        ),
+        DocviewOpen::AlreadyOpen,
+        "the same text under the same key is a total no-op"
+    );
+    assert_eq!(
+        rendered(&ctx),
+        before,
+        "so the rendered prompt is byte-identical"
+    );
+
+    let revised = ctx.open_docview(
+        "csvTools.parse".to_string(),
+        "export function parse(text: string, strict: boolean): Row[]".to_string(),
+    );
+
+    assert!(
+        matches!(
+            revised,
+            DocviewOpen::Placed {
+                superseded: true,
+                ..
+            }
+        ),
+        "{revised:?}"
+    );
+    assert_eq!(
+        ctx.open_docviews()
+            .into_iter()
+            .map(|open| (open.key, open.body))
+            .collect::<Vec<_>>(),
+        vec![
+            ("readFile".to_string(), "readFile docs".to_string()),
+            (
+                "csvTools.parse".to_string(),
+                "export function parse(text: string, strict: boolean): Row[]".to_string()
+            ),
+        ],
+        "one live page per key, and it is the one the module now declares"
+    );
+    assert_eq!(
+        ctx.items()
+            .iter()
+            .position(|item| item.label() == Some("readFile")),
+        Some(sdk_index),
+        "the page that did not change did not move"
+    );
+    assert_eq!(
+        ctx.items()
+            .iter()
+            .filter(|item| item.source() == GgContextSource::History)
+            .count(),
+        1,
+        "and the copy the revision retired is retagged history rather than removed from the middle"
+    );
+}
+
+/// **A revision inside the turn that opened the page replaces it where it stood**, leaving nothing
+/// behind.
+///
+/// Nothing has been sent, so there is no cached prefix to protect and no history worth recording —
+/// the terms every other view kind is superseded on. A model that rewrote a memory's code and used
+/// it again in one program therefore pays for one page rather than two.
+#[test]
+fn a_revision_within_one_turn_leaves_no_corpse() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    ctx.open_docview("csvTools.parse".to_string(), "the first".to_string());
+    ctx.open_docview("csvTools.widen".to_string(), "widen docs".to_string());
+    ctx.open_docview("csvTools.parse".to_string(), "the revision".to_string());
+
+    assert_eq!(
+        ctx.items()
+            .iter()
+            .filter(|item| item.source() == GgContextSource::History)
+            .count(),
+        0
+    );
+    assert_eq!(
+        ctx.open_docviews()
+            .into_iter()
+            .map(|open| (open.key, open.body))
+            .collect::<Vec<_>>(),
+        vec![
+            ("csvTools.parse".to_string(), "the revision".to_string()),
+            ("csvTools.widen".to_string(), "widen docs".to_string()),
+        ],
+        "the revision takes the index its own first copy held"
+    );
 }
 
 /// **Placement is first-open order, permanently**, so the band is a growing suffix whose members
@@ -312,11 +420,14 @@ fn a_closed_key_re_opens_at_the_tail_like_one_never_opened() {
     ctx.open_docview("writeFile".to_string(), "writeFile docs".to_string());
     ctx.close_docviews(Some("FileRead"));
 
-    assert!(!ctx.docview_is_open("FileRead"));
+    assert!(!docview_keys(&ctx).contains(&"FileRead".to_string()));
     assert!(
         matches!(
             ctx.open_docview("FileRead".to_string(), "FileRead declaration".to_string()),
-            DocviewOpen::Placed { .. }
+            DocviewOpen::Placed {
+                superseded: false,
+                ..
+            }
         ),
         "a closed key is placed again exactly as one that had never been opened"
     );

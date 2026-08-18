@@ -31,8 +31,10 @@ each part of it became.
 ## The strategy, in one paragraph
 
 **Roslyn on the host, a Mono IL interpreter in the guest.** A model's reply is compiled to an
-IL assembly by `csc` in ~0.28 s, base64-encoded into the world's existing `program` string,
-and loaded by the prebuilt component above. That is the same shape the Python and Ruby arms
+IL assembly by `csc` in ~0.22 s and crosses the membrane in the world's existing `program`
+string, as a manifest of the named assemblies that turn needs — gg's SDK, one library per code
+module the agent has loaded, and the program — each base64-encoded. The prebuilt component above
+registers every one of them and runs the program. That is the same shape the Python and Ruby arms
 have — one prebuilt runtime, a payload per turn — rather than the shape Rust, Swift and C++
 have, and it is the whole reason C# is affordable. A prior feasibility study priced this arm
 on the only toolchain it looked at, `componentize-dotnet` (NativeAOT-LLVM, which compiles the
@@ -50,32 +52,31 @@ path for binding a custom WIT world from managed .NET code, and this arm never a
 - the **managed** half reaches gg through `mono_add_internal_call`, Mono's embedding API for
   exactly this. It is older than wasm and needs no build-time code generation.
 
-## The SDK, and why it is source rather than a built assembly
+## The SDK, and why gg carries its sources rather than a built assembly
 
 `src/Gg/` is twelve capability modules, each a `public static partial class` in `namespace Gg` with
 its result types nested inside it, plus a class-less `core` module holding the `ApiException` and
-the `ApiErrorCode` that every module's signatures name. It is **compiled with the model's program**, not
-referenced as a built assembly — `crates/gg/src/sandbox/language/csharp.sdk.rs` carries the sources
-in gg's binary and writes them into the preparation's own workspace beside `program.cs`.
+the `ApiErrorCode` that every module's signatures name. `crates/gg/src/sandbox/language/csharp.sdk.rs`
+carries those sources in gg's binary, and Roslyn compiles them into one assembly, `Gg.dll`, the first
+time a machine prepares anything — into a directory keyed by their content and sealed read-only.
 
-Three things follow, and each of them is why:
+Two things follow, and each of them is why:
 
-- **there is no second assembly for the guest to find.** The guest loads exactly one assembly per
-  run: the program's. An SDK compiled separately would have to be bundled *into* the 35.3 MB
-  component, so every doc-comment edit would mean re-linking it — a ~26 s build rather than the
-  ~70 ms below.
 - **the SDK is reviewable.** What a reviewer reads in the diff is what a model compiles against,
-  with no binary in between.
-- **it costs almost nothing.** ~70 ms on a ~210 ms compile, measured.
+  with no committed binary in between. Bundling it into the 35.3 MB component instead would mean a
+  ~26 s relink on every doc-comment edit.
+- **it costs nothing on a turn.** ~0.28 s once per machine, against ~0.22 s for the program itself.
 
-One compilation is how `csc` is told the library exists, and it puts **no name in a program's
-scope**. A program reaches `Gg.Views.OpenText` by writing the whole path, and `Views.OpenText` after
-writing `using Gg;` of its own — the line `tools/Catalogue.cs` states for every module and a
-documentation view quotes. The .NET class libraries arrive the same way.
+`-r:Gg.dll` is how `csc` is told the library exists, and it puts **no name in a program's scope** — it
+is the supply a code module's own library gets as well. A program reaches `Gg.Views.OpenText` by
+writing the whole path, and `Views.OpenText` after writing `using Gg;` of its own — the line
+`tools/Catalogue.cs` states for every module and a documentation view quotes. The .NET class
+libraries arrive the same way.
 
-`Console.WriteLine` reaches the run's operator, because the SDK redirects `Console.Out` onto gg's
-feedback channel from a `[ModuleInitializer]`. That is why this arm has no logging function in its
-catalogue — there is nothing to catalogue, only `Console`, under the program's own `using System;`.
+`Console.WriteLine` reaches the run's operator, because the SDK puts `Console.Out` on gg's feedback
+channel and `Sources/shell.c` installs that before the program's entry point runs. That is why this
+arm has no logging function in its catalogue — there is nothing to catalogue, only `Console`, under
+the program's own `using System;`.
 
 ## What `build.sh` does
 

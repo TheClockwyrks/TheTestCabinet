@@ -306,7 +306,13 @@ impl ProgramLanguage for Ruby {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [`lib.<key>.<name>`](super::ProgramLanguage::lib_access), under [`LIB_IMPORT`].
+    /// [`require "lib"`](LIB_IMPORT) — the one line a program writes to reach a module this
+    /// session loaded, whichever key it is after.
+    ///
+    /// Key-independent because `lib` is one requirable unit carrying every namespace, so the line
+    /// is the same for `lib.csv_tools.parse` as for
+    /// [`lib.<key>.<name>`](super::ProgramLanguage::lib_access) generally, and a program that has
+    /// written it once reaches everything it loaded.
     fn lib_import(&self, _key: &str) -> Option<String> {
         Some(LIB_IMPORT.to_string())
     }
@@ -338,9 +344,9 @@ impl ProgramLanguage for Ruby {
 /// wrote.
 ///
 /// Deliberately ASCII-only, though Ruby identifiers may be Unicode: the key is quoted back to the
-/// model in the reply that binds it and then typed out by the model in every program that uses it,
-/// and a name a model has to reproduce exactly is one that should have no characters it could get
-/// wrong.
+/// model in the [documentation views](crate::docs) a use of the module opens, and then typed out by
+/// the model in every program that uses it, and a name a model has to reproduce exactly is one that
+/// should have no characters it could get wrong.
 pub(super) fn binding_name(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut pending = false;

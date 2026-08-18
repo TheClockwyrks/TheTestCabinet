@@ -5,8 +5,8 @@
 //!
 //! * [`compile`] — the host-side `rustc` and the in-process component encode, what they cost, what
 //!   they share, and the two failures they tell apart;
-//! * [`source`] — what gg writes around a model's Rust (nothing), and how a code module is declared
-//!   below the program that reads it;
+//! * [`source`] — what gg writes around a model's Rust (nothing), the names a compile is written
+//!   under, and the reading of a code module's exports;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of, one of whose answers no other arm gives;
 //! * `packages/gg-sandbox-rust/` — the crate a program is compiled against: the SDK, the shell, the
@@ -82,24 +82,24 @@
 //!
 //! # And a code module is **linked**, which is why the seam hands a program its modules
 //!
-//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib::<key>`
-//! for every program the agent writes afterwards. On every arm before this one that binding is made
-//! at *run time*: the guest is handed each module's prepared source beside the program and evaluates
-//! it first. Rust has no such moment — a module is Rust, Rust links, and the only artifact a module
-//! can end up in is the artifact of a program that was compiled against it.
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s Rust is a **crate of its own**,
+//! built into an `.rlib` and named to the program's compiler on `--extern <key>=…` — the same
+//! packaging the SDK arrives by, and it puts no name in the program's scope. The model writes
+//! `csv_tools::parse(…)`, or a `use csv_tools::parse;` of its own, and gg writes nothing into the
+//! program. On every arm before this one the binding is made at *run time*: the guest is handed each
+//! module's prepared source beside the program and evaluates it first. Rust has no such moment, so
+//! the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in scope
+//! and this arm compiles them.
 //!
-//! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
-//! scope, this arm writes each one beside the entry file exactly as its author wrote it, and
-//! [`source`](self::source::exports) declares them below the program where they move none of its
-//! lines. The consequence a model can see is that `lib::csv_tools::parse` is a **path** rather than
-//! a property lookup: a key that does not exist is a diagnostic on the turn that wrote it, where an
+//! The consequence a model can see is that `csv_tools::parse` is a **path** rather than a property
+//! lookup: a key or a name that does not exist is a diagnostic on the turn that wrote it, where an
 //! interpreted arm finds out when the call is reached.
 //!
-//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
-//! it is read, only to be checked, and once as part of every program that uses it. Without the first
-//! compile, a module that does not build would take down every program the agent wrote from then on,
-//! with the diagnostic landing against the turn's own program in a file the model never saw. See
-//! [`compile::compile_module`].
+//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone at
+//! the read, and once inside every preparation that links it, because a workspace belongs to one
+//! preparation and the `.rlib` goes with it. The first compile is what puts a module author's
+//! diagnostic at the read instead of against somebody else's program two turns later. See
+//! [`compile::compile_module`] and [`compile`] for what the rebuild costs.
 
 use std::sync::OnceLock;
 
@@ -224,6 +224,28 @@ impl ProgramLanguage for Rust {
         binding_name(name)
     }
 
+    /// **`<key>::<name>`** — a path rooted at the module's own crate, because that is what a module
+    /// is here.
+    ///
+    /// The seam's default roots it at `lib`, which on this arm would name a crate nothing supplies.
+    /// A module arrives on `--extern <key>=…`, exactly as gg's SDK arrives on `--extern gg=…`, so
+    /// the key is the first segment a program writes and there is nothing above it.
+    fn lib_access(&self, key: &str) -> String {
+        format!("{key}{}{}", self.member_separator(), super::LIB_ACCESS_NAME)
+    }
+
+    /// **None**, because this arm reaches gg's own SDK with no line either.
+    ///
+    /// `--extern` puts a crate in the **extern prelude**, which makes the name reachable and puts
+    /// nothing in the program's own scope: `csv_tools::parse(…)` resolves from a program's first
+    /// line, exactly as `gg::files::read_file(…)` does. A program that would rather write
+    /// `use csv_tools::parse;` first may, and that line is the program's own choice rather than
+    /// something the surface requires of it — quoting one here would tell a model a line is needed
+    /// when none is.
+    fn lib_import(&self, _key: &str) -> Option<String> {
+        None
+    }
+
     /// **None.** This arm has no guest component, because the component *is* the program: see this
     /// module's own documentation, and [`PreparedProgram::component`].
     fn guest_component(&self) -> Option<&'static [u8]> {
@@ -313,15 +335,22 @@ impl ProgramLanguage for Rust {
 /// `csv-tools` → `csv_tools`, `my_helpers.v2` → `my_helpers_v2`, `9lives` → `_9lives`.
 ///
 /// snake_case because that is what Rust spells a name in and what this SDK spells every bound
-/// function in, so a program reaching `lib::csv_tools::parse(…)` reads like the rest of its own
-/// scope. Any separator — `-`, `.`, or anything a name should not have had — becomes `_`, a run of
-/// them becomes one, an upper-case letter is lowered, a name that is nothing but separators becomes
+/// function in, so a program reaching `csv_tools::parse(…)` reads like the rest of its own scope.
+/// Any separator — `-`, `.`, or anything a name should not have had — becomes `_`, a run of them
+/// becomes one, an upper-case letter is lowered, a name that is nothing but separators becomes
 /// `module`, and a leading digit is prefixed.
 ///
 /// It has to be a valid Rust **identifier** for a stronger reason than any other arm's does: on this
-/// arm the key is a path segment the compiler resolves (`lib::<key>`), not a string looked up at run
+/// arm the key is a **crate name** the compiler resolves a path from, not a string looked up at run
 /// time, so a key Rust could not parse would be a program that does not compile rather than a call
 /// that fails.
+///
+/// A key that would name a crate the compile already has takes the same leading underscore a keyword
+/// does — the SDK, every crate in the shipped [library set](compile::library_crate_names), the
+/// program's own crate name and the [sysroot crates](SYSROOT) a program reaches without asking.
+/// Handing `std` or `gg` to `--extern` would either shadow a crate a model was told it may write or
+/// leave `rustc` choosing between two candidates for one name, and both fail a program that is
+/// correct.
 ///
 /// Deliberately ASCII-only, though Rust identifiers may be Unicode, for the reason every other arm
 /// gives: a name a model has to reproduce exactly is one that should have no characters it could get
@@ -343,11 +372,23 @@ pub(super) fn binding_name(name: &str) -> String {
     if out.is_empty() {
         return "module".to_string();
     }
-    if out.starts_with(|ch: char| ch.is_ascii_digit()) || RESERVED.contains(&out.as_str()) {
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) || is_taken(&out) {
         out.insert(0, '_');
     }
     out
 }
+
+/// Whether `key` is a word this arm cannot bind a module under.
+fn is_taken(key: &str) -> bool {
+    RESERVED.contains(&key)
+        || SYSROOT.contains(&key)
+        || key == source::CRATE_NAME
+        || compile::library_crate_names().any(|library| library == key)
+}
+
+/// The crates the sysroot puts in front of every program: a module bound under one of these names
+/// would take the standard library's place in the extern prelude.
+const SYSROOT: [&str; 5] = ["std", "core", "alloc", "proc_macro", "test"];
 
 /// Every word `rustc` refuses as a path segment: the 2021 edition's strict keywords and the ones it
 /// reserves for later.

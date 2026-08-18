@@ -11,9 +11,10 @@ and the [ECMAScript guest](/gg/languages/ecmascript-guest/) evaluates it. What
 crosses the sandbox membrane is JavaScript.
 
 `purs` reads the reply and nothing else. The model writes its own module header,
-its own `main :: Effect Unit` and an `import Gg.Files as Gg.Files` for every gg
-module it calls, so every compile diagnostic is already in the model's own
-coordinates and nothing gg offers is in scope before the program asks for it.
+its own `main :: Effect Unit`, an `import Gg.Files as Gg.Files` for every gg
+module it calls and an `import Lib.CsvTools as CsvTools` for every code module it
+uses, so every compile diagnostic is already in the model's own coordinates and
+nothing gg offers is in scope before the program asks for it.
 
 A run-time frame is read back through the source map `purs` and `esbuild` both
 emit: `esbuild` composes the two into the bundle it writes, and gg reads the
@@ -29,23 +30,45 @@ on [compilation](/gg/languages/compilation/).
 
 A program is a module with its own `module … where` header and a `main` of type
 `Effect Unit`. The module name is the model's, and it is the name gg's bundler
-entry imports `main` from. It has to be a name the shipped library set does not
-already publish, since `purs` compiles the program alongside that set and answers
-a collision with `DuplicateModule` at line 1. A reply with no header is
+entry imports `main` from. It has to be a name neither the shipped library set
+nor a loaded code module already publishes, since `purs` compiles the program
+alongside both and answers a collision with `DuplicateModule` at line 1; a
+program naming a loaded module's own `Lib.<Key>` is refused before the compiler
+runs, with a sentence naming the key. A reply with no header is
 `ErrorParsingModule` at line 1, and a program that compiles but declares no
 `main` is refused with a sentence naming the type it must define.
 
-A code skill's or memory's module is an ordinary PureScript module compiled as
-itself, with a bundler entry that re-exports rather than one that runs `main`.
-The guest declares the result at `lib:<key>` and gg's entry module imports each
-of them, since `Gg.Core.lib` names a module and an export as strings and there is
-no import for `purs` to check the two against. What that namespace offers is the
-module's own export list, and gg reports the lower-case value names among its
-exports. A `lib` key is camelCase with its leading upper-case run lower-cased and
-ASCII only, so `CSV-tools` binds at `lib.csvTools`: the key is a record label,
-which PureScript requires to begin lower-case. A program reaches an export by
-string, `Gg.Core.lib "<key>" "<export>"`, which is the form the reply to the read
-that bound it quotes.
+## Code modules
+
+A code skill's or memory's module is an ordinary PureScript module with its own
+`module … where` header and its own export list, and gg files it under
+`Lib.<Key>` by rewriting the name in that header. The rewrite occupies the
+author's own header line and adds none, so every diagnostic is at the line the
+author wrote. A file with no header is `ErrorParsingModule` at line 1, which is
+the compiler's own answer.
+
+`<Key>` is the binding key, which on this arm is PascalCase and ASCII: a skill
+named `csv-tools` is keyed `CsvTools` and compiled as `Lib.CsvTools`. A key that
+would open with something other than an upper-case letter is prefixed `Module`,
+because a PureScript module name is a proper name.
+
+The module is compiled into the same `purs` project as the program that uses it,
+so the program reaches it the way it reaches any other module. The line is the
+key's own:
+
+```
+import Lib.CsvTools as CsvTools
+```
+
+and an export is `CsvTools.parse`, type-checked by `purs` against the module's
+own signature. `ProgramLanguage::lib_import` states that line and
+`ProgramLanguage::lib_access` states `CsvTools.<name>`.
+
+Using a skill or a memory compiles its module on its own first, under
+`module.purs` and the name `Lib.Module`, so an author's mistake is a located
+diagnostic naming the skill rather than a failure of the next program that has it
+in scope. gg reports the lower-case value names among its exports, with the type
+names each signature writes in return and in parameter position.
 
 `.purs` is the arm's only module file extension.
 
@@ -101,8 +124,8 @@ of `output/` that `purs` rewrites are staged as real copies.
 
 The SDK is `packages/gg-sandbox-purescript/src/Gg/`: one module per capability
 (`Gg.Files`, `Gg.Shell`, `Gg.Board`, …) plus `Gg.Core`, which binds no
-capability and carries the failure types, `attempt`, `apiError`, `apiErrorCode`
-and `lib`. Each module carries an explicit export list.
+capability and carries the failure types, `attempt`, `apiError` and
+`apiErrorCode`. Each module carries an explicit export list.
 `Gg.Internal.Wire` is the only module that reaches gg's own SDK: its foreign half
 writes `import * as gg from "gg"`, which `esbuild` leaves external and the guest's
 loader resolves to the instance a TypeScript program shares, so a call the agent
@@ -147,6 +170,8 @@ diagnostics carrying the compiler's own error code and span.
 | `ErrorParsingModule` or `ErrorParsingFFIModule` in the model's file | `PrepareError::Syntax` |
 | Any other `purs` error code in the model's file | `PrepareError::Compile` |
 | `esbuild` reporting no matching export for `main` | `PrepareError::Compile`, with a sentence saying the program must define `main :: Effect Unit` |
+| A program header naming a loaded module's `Lib.<Key>` | `PrepareError::Compile`, with a sentence naming the key |
+| `purs` reporting a diagnostic only in a loaded module's file | `PrepareFailure::Lowering`, naming the key — the module compiled on its own when it was loaded |
 | `purs` reporting only diagnostics in gg's shipped library files | `PrepareFailure::Toolchain` |
 | A compiler that could not run, was killed, timed out, or reported nothing readable | `PrepareFailure::Toolchain` |
 | A `purs` release disagreeing with the manifest's pin | `PrepareFailure::Toolchain` |
@@ -162,13 +187,13 @@ whatever it says about the trap. `Gg.Core.attempt` is how a program handles a
 failure it expects.
 
 Every frame in that rendering is read back through the map `purs` and `esbuild`
-composed, so a frame in the model's own code names `program.purs` and a frame in
-a library names that library's module. `purs` maps a definition that takes no
-argument to its type-signature line, so a frame in one reports the signature
-rather than the body. Two kinds of frame name neither the model's code nor a
-library and are struck instead, with the report closing on how many went: gg's
-own bundler entry, and a position in the flattened bundle the composed map
-resolves nothing for.
+composed, so a frame in the model's own code names `program.purs`, a frame in a
+loaded code module names `Lib.<Key>.purs`, and a frame in a library names that
+library's module. `purs` maps a definition that takes no argument to its
+type-signature line, so a frame in one reports the signature rather than the
+body. Two kinds of frame name neither the model's code nor a library and are
+struck instead, with the report closing on how many went: gg's own bundler entry,
+and a position in the flattened bundle the composed map resolves nothing for.
 
 ## The idiomatic PureScript surface
 
@@ -191,8 +216,8 @@ The SDK is spelled the way a PureScript library is:
   re-throws anything that is not a gg failure.
 - A child agent's brief is a constructor, `Prompt` or `Issue`, so exactly one of
   the two type-checks.
-- `lib key name` hands back `Maybe a` and the program annotates the type it
-  expects.
+- A loaded code module is a module like any other: the program writes
+  `import Lib.CsvTools as CsvTools` and calls `CsvTools.parse`.
 
 ## Prompt segment
 

@@ -93,6 +93,8 @@
 //! | `ErrorParsingModule` / `ErrorParsingFFIModule` | [`PrepareError::Syntax`] — the parser could not read it |
 //! | any other `purs` error code (`TypesDoNotUnify`, `UnknownName`, `NoInstanceFound`, …) | [`PrepareError::Compile`] — read whole and rejected, which is the band a typed arm exists to produce |
 //! | `esbuild` reporting no matching export for `main` | [`PrepareError::Compile`] — the program compiled but declares no entry point |
+//! | a program header naming a [code module](compile_program)'s own `Lib.<Key>` | [`PrepareError::Compile`] — refused before the compiler runs, in a sentence naming the key |
+//! | a diagnostic in a code module and none in the program | [`PrepareFailure::Lowering`] — the module compiled on its own when it was loaded, so this is gg's |
 //! | `purs` or `esbuild` could not run, was killed, or reported nothing | [`PrepareFailure::Toolchain`] — **not** the model's, and never shown to it as its own |
 //! | the `purs` on `PATH` is not the release the shipped tree was compiled by | [`PrepareFailure::Toolchain`], refused by [`agree_on_the_compiler`] at the first compile of the process, naming both releases — because externs are a compiler-version-private format and the alternative is every program failing over gg's own library files |
 //!
@@ -101,6 +103,11 @@
 //! [`module_name`] reads the header it wrote rather than replacing it. A reply with no header is
 //! `ErrorParsingModule` at line 1, which is the compiler's own answer to the compiler's own
 //! question.
+//!
+//! A code module's are its author's, on the same terms. The one thing gg writes into that file is
+//! the module's name, [replaced inside the header line its author wrote](headed), so a module is
+//! `Lib.<Key>` to every program that imports it and every diagnostic is still at the line it was
+//! written on.
 //!
 //! A **run-time** location travels the other way, through the source map `purs` and `esbuild` both
 //! emit and gg composes — see [`locations`](crate::sandbox::ProgramLanguage::locations).
@@ -163,13 +170,19 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// The file a program is compiled under, and the one its diagnostics are located in.
 pub(super) const PROGRAM_FILE: &str = "program.purs";
 
-/// The file a code module is compiled under.
+/// The file a code module is compiled under **on its own**, when the skill or memory carrying it is
+/// used, and the one its author's diagnostics are located in.
 pub(super) const MODULE_FILE: &str = "module.purs";
 
-/// The SDK module whose foreign half holds the bridge, and the one gg's entry module names.
+/// The name that check files the module under.
 ///
-/// It takes the code modules this turn was given; see [`Entry::source`].
-const WIRE_MODULE: &str = "Gg.Internal.Wire";
+/// A name of gg's rather than the author's, because the author's own could be one the shipped
+/// library set already publishes and the check would answer `DuplicateModule` about a module that
+/// compiles perfectly well under the name a program will really reach it by. The key is not known
+/// at that step — [`prepare_module`](crate::sandbox::ProgramLanguage::prepare_module) is handed a source and
+/// nothing else — so the check uses one fixed name and the program compile uses
+/// [the real one](super::module_path).
+const MODULE_CHECK_NAME: &str = "Lib.Module";
 
 /// The entry module `esbuild` is pointed at.
 ///
@@ -288,129 +301,161 @@ pub(super) fn warm() {
     let _ = libraries();
 }
 
-/// Compile a **program** — a model's reply — into the JavaScript module the guest evaluates.
+/// Compile a **program** — a model's reply — into the JavaScript module the guest evaluates, with
+/// every code module this turn carries compiled beside it.
+///
+/// The modules are files of the same `purs` project, so `Lib.CsvTools` is a module the program
+/// imports and `purs` type-checks the call against the author's own signature. Nothing is written
+/// around the reply to reach one: the program carries its own `import Lib.CsvTools as CsvTools`, the
+/// way it carries every other line it needs.
 pub(super) fn compile_program(
     source: &str,
     modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
-    Ok(PreparedProgram {
-        source: compile(PROGRAM_FILE, source, Entry::Program(modules), context)?,
-        component: None,
-    })
-}
-
-/// Compile a **code module** — the code half of a [skill](crate::skills) or a
-/// [memory](crate::memories) — into the JavaScript module the guest declares at `lib:<key>`.
-///
-/// The difference from a program is entirely in the entry module the bundler is pointed at: a
-/// program's calls `main`, a module's re-exports everything the module exported. The author's module
-/// is compiled as itself either way.
-pub(super) fn compile_module(
-    source: &str,
-    context: &PrepareContext,
-) -> Result<String, PrepareFailure> {
-    compile(MODULE_FILE, source, Entry::Module, context)
-}
-
-/// Which of the two things a compiled module is being turned into.
-#[derive(Clone, Copy)]
-enum Entry<'a> {
-    /// A model's program: hand over the code modules this turn was given, then call `main`.
-    Program(&'a [CodeModule]),
-    /// A code module: re-export everything the author's module exported.
-    Module,
-}
-
-impl Entry<'_> {
-    /// The JavaScript entry module `esbuild` is pointed at, for a program whose own module is
-    /// called `module`.
-    ///
-    /// It is gg's, and it names exactly two things: the entry point the model declared, and — where
-    /// this turn carries code modules — the specifiers the guest declares those under. `main` is
-    /// imported by name rather than through the namespace so that a program with no entry point is
-    /// refused by the bundler, with a diagnostic, instead of failing inside the guest as an ordinary
-    /// `TypeError` on `undefined`.
-    ///
-    /// A code module is reached by an `import` the model cannot write: [`Gg.Core.lib`](super) names
-    /// a module and an export as strings, because a code module is compiled separately and there is
-    /// no import for `purs` to check the two against. So the imports are here, and the set is handed
-    /// to the SDK's own bridge before `main` runs.
-    fn source(self, module: &str) -> String {
-        let target = format!("./{OUTPUT_DIR}/{module}/index.js");
-        match self {
-            Self::Module => format!("export * from {target:?};\n"),
-            Self::Program([]) => format!("import {{ main }} from {target:?};\n\nmain();\n"),
-            Self::Program(modules) => {
-                let mut imports = String::new();
-                let mut bound = String::new();
-                for (index, module) in modules.iter().enumerate() {
-                    let specifier = format!(
-                        "{}{}",
-                        crate::sandbox::language::ecmascript::MODULE_SCHEME,
-                        module.name
-                    );
-                    imports.push_str(&format!("import * as lib{index} from {specifier:?};\n"));
-                    bound.push_str(&format!(
-                        "  {}: lib{index},\n",
-                        serde_json::Value::String(module.name.clone())
-                    ));
-                }
-                format!(
-                    "{imports}import {{ registerLib }} from \
-                     \"./{OUTPUT_DIR}/{WIRE_MODULE}/index.js\";\nimport {{ main }} from \
-                     {target:?};\n\nregisterLib({{\n{bound}}})();\nmain();\n"
-                )
-            }
-        }
-    }
-}
-
-/// Compile one PureScript source, filed as `file`, and hand back the JavaScript module.
-///
-/// The one entry point: a program and a code module differ in the name their diagnostics are located
-/// in and in what the bundler is asked to produce, never in how they are compiled.
-fn compile(
-    file: &str,
-    source: &str,
-    entry: Entry<'_>,
-    context: &PrepareContext,
-) -> Result<String, PrepareFailure> {
-    let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
-    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
-    agree_on_the_compiler(context)?;
+    refuse_a_program_taking_a_modules_name(source, modules)?;
+    let workspace = staged(context)?;
 
     workspace
-        .write(file, source)
+        .write(PROGRAM_FILE, source)
         .map_err(PrepareFailure::Toolchain)?;
-    stage(workspace.work(), libraries).map_err(PrepareFailure::Toolchain)?;
+    let mut files = vec![PROGRAM_FILE.to_string()];
+    for module in modules {
+        let file = module_file(&module.name);
+        workspace
+            .write(
+                &file,
+                &headed(&module.source, &super::module_path(&module.name)),
+            )
+            .map_err(PrepareFailure::Toolchain)?;
+        files.push(file);
+    }
 
-    let report = invoke_purs(file, context).map_err(PrepareFailure::Toolchain)?;
-    classify(&report, file)?;
+    let report = invoke_purs(&files, context).map_err(PrepareFailure::Toolchain)?;
+    classify(&report, PROGRAM_FILE, modules)?;
 
     // Read AFTER `purs` accepted the source, so a reply gg cannot find a header in is answered by
     // the compiler's own `ErrorParsingModule` at line 1 rather than by anything written here.
     let module = module_name(source).ok_or_else(|| {
         PrepareFailure::Toolchain(format!(
-            "purs {} compiled {file} and gg could not read its module header",
+            "purs {} compiled {PROGRAM_FILE} and gg could not read its module header",
             compiler_version(),
         ))
     })?;
     workspace
-        .write(ENTRY_FILE, &entry.source(module))
+        .write(ENTRY_FILE, &entry_source(module))
         .map_err(PrepareFailure::Toolchain)?;
 
     let report = invoke_esbuild(context).map_err(PrepareFailure::Toolchain)?;
     classify_bundle(&report, module)?;
 
     let bundle = workspace.work().join(BUNDLE_FILE);
-    std::fs::read_to_string(&bundle).map_err(|error| {
+    let source = std::fs::read_to_string(&bundle).map_err(|error| {
         PrepareFailure::Toolchain(format!(
             "esbuild {} reported success but wrote no JavaScript to {}: {error}",
             manifest().esbuild,
             bundle.display(),
         ))
+    })?;
+    Ok(PreparedProgram {
+        source,
+        component: None,
     })
+}
+
+/// Check a **code module** — the code half of a [skill](crate::skills) or a
+/// [memory](crate::memories) — by compiling it on its own, so an author's mistake is read at the use
+/// that loaded it rather than by the next program that has it in scope.
+///
+/// Nothing is kept: what a program is compiled against is the author's source, written into that
+/// program's own project under the key the module was bound at. This is the one step that ever reads
+/// a module alone, and its whole product is the verdict.
+pub(super) fn check_module(source: &str, context: &PrepareContext) -> Result<(), PrepareFailure> {
+    let workspace = staged(context)?;
+    workspace
+        .write(MODULE_FILE, &headed(source, MODULE_CHECK_NAME))
+        .map_err(PrepareFailure::Toolchain)?;
+    let report =
+        invoke_purs(&[MODULE_FILE.to_string()], context).map_err(PrepareFailure::Toolchain)?;
+    classify(&report, MODULE_FILE, &[])
+}
+
+/// This preparation's own tree, with the library set hard-linked into it and the compiler agreed
+/// with — everything both compiles need before they write a source file.
+fn staged(
+    context: &PrepareContext,
+) -> Result<&crate::sandbox::language::compile::Workspace, PrepareFailure> {
+    let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+    agree_on_the_compiler(context)?;
+    stage(workspace.work(), libraries).map_err(PrepareFailure::Toolchain)?;
+    Ok(workspace)
+}
+
+/// The file one code module is compiled under, beside the program that imports it.
+///
+/// Named for the module it declares, so a run-time frame the composed source map resolves into an
+/// author's own code reads `Lib.CsvTools.purs`. It is also what tells a diagnostic in a module from
+/// one in the shipped library tree, which is a comparison on the file's name — so the name has to be
+/// one no library file has, and `Lib.<Key>.purs` is.
+fn module_file(key: &str) -> String {
+    format!("{}.purs", super::module_path(key))
+}
+
+/// `source` with the name in its module header replaced by `name`.
+///
+/// The one thing gg writes into an author's file, and it is [the wrap a code module
+/// allows](https://docs.testcabinet.ai/gg/responses-as-code/invariants/): the module a program
+/// imports is `Lib.<Key>`, which is gg's to decide because the key is, and the author cannot know
+/// the key their skill will be bound under. It **adds no line** — the replacement happens inside the
+/// header the author wrote — so every diagnostic `purs` reports is at the line its author wrote.
+///
+/// A source with no header is handed over untouched, and `purs` answers `ErrorParsingModule` at
+/// line 1, which is the compiler's own answer to the compiler's own question.
+fn headed(source: &str, name: &str) -> String {
+    match module_name_span(source) {
+        Some(span) => format!("{}{name}{}", &source[..span.start], &source[span.end..]),
+        None => source.to_string(),
+    }
+}
+
+/// Refuse a program whose own header names a module this turn carries.
+///
+/// `purs` would answer it — two modules of one name is `DuplicateModule` — but it may report that
+/// against either file, and a diagnostic in a file the model did not write is read as gg's failure
+/// rather than as the model's. So the collision is answered here, in a sentence naming the key, and
+/// the model reads what it can act on.
+fn refuse_a_program_taking_a_modules_name(
+    source: &str,
+    modules: &[CodeModule],
+) -> Result<(), PrepareFailure> {
+    let Some(declared) = module_name(source) else {
+        return Ok(());
+    };
+    let taken = modules
+        .iter()
+        .find(|module| super::module_path(&module.name) == declared);
+    match taken {
+        None => Ok(()),
+        Some(module) => Err(PrepareFailure::Program(PrepareError::Compile(format!(
+            "your module header names `{declared}`, which is the code module you loaded as \
+             `{}`. Name your own module something else.",
+            module.name,
+        )))),
+    }
+}
+
+/// The JavaScript entry module `esbuild` is pointed at, for a program whose own module is called
+/// `module`.
+///
+/// It is gg's, and it names exactly one thing: the entry point the model declared. `main` is
+/// imported by name rather than through the namespace so that a program with no entry point is
+/// refused by the bundler, with a diagnostic, instead of failing inside the guest as an ordinary
+/// `TypeError` on `undefined`. Whatever code modules the program imported are already in the module
+/// graph `purs` emitted, reached from the program's own `import` line.
+fn entry_source(module: &str) -> String {
+    let target = format!("./{OUTPUT_DIR}/{module}/index.js");
+    format!("import {{ main }} from {target:?};\n\nmain();\n")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -420,9 +465,10 @@ fn compile(
 /// The name of the module `source` declares, or `None` for a source that declares none.
 ///
 /// The model writes its own header, and the name it chose is what the bundler's entry point imports
-/// `main` from — `purs` files a module's emitted JavaScript under its own name. Nothing rewrites the
-/// header and nothing supplies one, so every line of what runs is a line the model wrote and every
-/// coordinate is already the model's.
+/// `main` from — `purs` files a module's emitted JavaScript under its own name. Nothing rewrites a
+/// program's header and nothing supplies one, so every line of what runs is a line the model wrote
+/// and every coordinate is already the model's. A code module's header is the one gg edits, through
+/// [`headed`], and that edit stays inside the line the author wrote.
 ///
 /// Read after `purs` has accepted the source, so this never has to answer for a header the compiler
 /// would have rejected. Comments before the header are skipped rather than searched through, because
@@ -568,9 +614,12 @@ fn version_verdict(observed: &str, purs: &str) -> Result<(), String> {
     ))
 }
 
-/// Spawn `purs` over the source in this preparation's own workspace and wait for it, killing it at
+/// Spawn `purs` over the sources in this preparation's own workspace and wait for it, killing it at
 /// [`COMPILE_TIMEOUT`].
-fn invoke_purs(file: &str, context: &PrepareContext) -> Result<CompilerReport, String> {
+///
+/// `files` is the program and every code module beside it, which is what makes a module a module of
+/// the program's own project rather than something compiled elsewhere and looked up by name.
+fn invoke_purs(files: &[String], context: &PrepareContext) -> Result<CompilerReport, String> {
     let purs = tool(PURS_ENV, "purs");
     context
         .compiler(&purs)
@@ -593,7 +642,7 @@ fn invoke_purs(file: &str, context: &PrepareContext) -> Result<CompilerReport, S
         // hard-linked tree and nothing else can see it.
         .arg("--output")
         .arg(OUTPUT_DIR)
-        .arg(file)
+        .args(files)
         .arg(LIBRARY_GLOB)
         .run(COMPILE_TIMEOUT)
         .map_err(|error| match error.starts_with("could not run") {
@@ -618,11 +667,6 @@ fn invoke_esbuild(context: &PrepareContext) -> Result<CompilerReport, String> {
         // gg's SDK, which the bridge in `Gg/Internal/Wire.js` imports. Left to the guest so that a
         // program and the SDK share one instance, and therefore one `ApiError` class.
         .arg("--external:gg")
-        // The code modules this turn was given, which the guest declares under these specifiers.
-        .arg(format!(
-            "--external:{}*",
-            crate::sandbox::language::ecmascript::MODULE_SCHEME
-        ))
         // The map, inline, so it travels wherever the source does — see
         // [`locations`](crate::sandbox::ProgramLanguage::locations).
         .arg("--sourcemap=inline")
@@ -722,7 +766,16 @@ const PARSE_ERROR_CODES: [&str; 2] = ["ErrorParsingModule", "ErrorParsingFFIModu
 const SHOWN: usize = 8;
 
 /// Turn a finished `purs` invocation into a verdict.
-fn classify(report: &CompilerReport, file: &str) -> Result<(), PrepareFailure> {
+///
+/// `file` is the source whose diagnostics are the model's, or the author's on the check of a module
+/// alone. `modules` is what else was compiled beside it, so a diagnostic in one of those is reported
+/// as [gg's own](PrepareFailure::Lowering) rather than as the model's: every module compiled on its
+/// own when the skill carrying it was used, so one that fails here failed at gg's hands.
+fn classify(
+    report: &CompilerReport,
+    file: &str,
+    modules: &[CodeModule],
+) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());
     }
@@ -744,6 +797,32 @@ fn classify(report: &CompilerReport, file: &str) -> Result<(), PrepareFailure> {
         .filter(|diagnostic| diagnostic.is_from(file))
         .collect();
     if mine.is_empty() {
+        let broken = modules.iter().find(|module| {
+            let file = module_file(&module.name);
+            diagnostics
+                .errors
+                .iter()
+                .any(|diagnostic| diagnostic.is_from(&file))
+        });
+        if let Some(module) = broken {
+            let file = module_file(&module.name);
+            let rendered = crate::sandbox::language::diagnostics::capped(
+                diagnostics
+                    .errors
+                    .iter()
+                    .filter(|diagnostic| diagnostic.is_from(&file))
+                    .map(|diagnostic| diagnostic.render(&file))
+                    .collect(),
+                SHOWN,
+                "\n\n",
+            );
+            return Err(PrepareFailure::Lowering(format!(
+                "purs {} refused the code module gg compiled as `{}` beside the program, which \
+                 compiled on its own when it was loaded:\n{rendered}",
+                compiler_version(),
+                super::module_path(&module.name),
+            )));
+        }
         return Err(PrepareFailure::Toolchain(format!(
             "purs {} {} without reporting a diagnostic in the program{}",
             compiler_version(),

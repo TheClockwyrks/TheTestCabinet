@@ -25,9 +25,10 @@ namespace skills {
 /// Read a skill by name, which also pins its body permanently into the context window.
 ///
 /// The body comes back with its front matter stripped. A skill may be code rather than prose, or
-/// as well as it: code is bound at `lib::<key>` for the rest of the session and the reply names
-/// the key and what it offers, and an on-use program runs once this program has ended, with
-/// whatever it shows arriving on the next turn.
+/// as well as it: its code becomes a module every later program reaches by writing
+/// `import lib.<key>;`, a documentation view opens on each function that module declares, and an
+/// on-use program runs once this program has ended, with whatever it shows arriving on the next
+/// turn.
 ///
 /// <ggop>skills.read_skill</ggop>
 ///

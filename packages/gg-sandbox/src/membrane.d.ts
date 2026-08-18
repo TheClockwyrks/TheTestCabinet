@@ -189,9 +189,9 @@ declare module "test-cabinet:gg/memories" {
     description: string;
     /** The memory body. */
     body: string;
-    /** Reusable code, as a TypeScript module, bound at `lib.<name>` in every later program. */
+    /** Reusable code, as a TypeScript module, importable by every later program. */
     code: string | undefined;
-    /** A script to run once, when the memory first comes into use. */
+    /** A script to run on every use of the memory. */
     onUse: string | undefined;
   }
 

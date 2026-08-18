@@ -204,7 +204,8 @@ fn javac_s_own_codes_decide_which_band_a_refusal_is() {
 
 /// **A refusal about gg's own entry class is the model's shape refusal**, in the words of the
 /// convention it broke — because that file names the model's own class and can fail for no other
-/// reason. A refusal about anything else gg generated is gg's own and the model never sees it.
+/// reason. A refusal about anything else gg generated is gg's own and the model never sees it, and
+/// one about a code module names the key that module is bound at.
 #[test]
 fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
     let report = Report {
@@ -230,31 +231,9 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
         "{rendered}"
     );
 
-    // The other of gg's two, which can only fail because the program declared a class of the same
-    // name — so the model is told which name to change rather than being handed gg's file.
-    let report = Report {
-        ok: false,
-        internal: None,
-        diagnostics: vec![Diagnostic {
-            stage: "javac".to_string(),
-            error: true,
-            code: Some("compiler.err.duplicate.class".to_string()),
-            file: Some("Lib.java".to_string()),
-            line: 1,
-            column: 1,
-            message: "duplicate class: Lib".to_string(),
-        }],
-    };
-    let failure = verdict(&report, PROGRAM_FILE).expect_err("refused");
-    let PrepareFailure::Program(PrepareError::Unsupported(rendered)) = &failure else {
-        panic!("a name gg needs and the program took is a shape refusal: {failure:?}");
-    };
-    assert!(rendered.contains("`Lib`"), "{rendered}");
-
-    // A code module's own file names the code this session loaded, which is compiled into the
-    // program. It is not the model's text and it is not gg's drift: the model is told which key to
-    // fix or to stop loading, because reporting it to the operator alone would take every turn from
-    // then on with nothing said.
+    // A code module's own compile is where its diagnostics are read, and the refusal names the key
+    // the module is bound at: the module is the thing to fix or to stop loading, and a session told
+    // nothing would meet it again on every turn.
     let report = Report {
         ok: false,
         internal: None,
@@ -262,17 +241,32 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
             stage: "javac".to_string(),
             error: true,
             code: Some("compiler.err.cant.resolve.location".to_string()),
-            file: Some("GgModule_helpers.java".to_string()),
-            line: 1,
-            column: 1,
+            file: Some("helpers.java".to_string()),
+            line: 4,
+            column: 9,
             message: "cannot find symbol".to_string(),
         }],
     };
-    let failure = verdict(&report, PROGRAM_FILE).expect_err("refused");
-    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
-        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    let refused = about(
+        "helpers",
+        verdict(&report, "helpers.java").expect_err("refused"),
+    );
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &refused else {
+        panic!("a code module that does not compile is the model's to act on: {refused:?}");
     };
-    assert!(rendered.contains("`helpers`"), "{rendered}");
+    assert!(
+        rendered.contains("`helpers`") && rendered.contains("helpers.java:4:9"),
+        "{rendered}"
+    );
+    // A toolchain failure of that same compile stays the operator's: a JVM that would not start is
+    // nothing a skill did.
+    assert!(
+        matches!(
+            about("helpers", PrepareFailure::Toolchain("no JVM".to_string())),
+            PrepareFailure::Toolchain(_)
+        ),
+        "a toolchain failure was blamed on a skill"
+    );
 
     // A file nobody named is drift rather than a shape the model can fix, and stays the operator's.
     let report = Report {
@@ -499,27 +493,32 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
     );
     assert!(rendered.contains("… and 43 more like these."), "{rendered}");
 
-    // And a code module's own diagnostics are bounded the same way, because a module that stopped
-    // compiling names one problem per call site exactly as the program does.
-    let failure = verdict(
-        &Report {
-            ok: false,
-            internal: None,
-            diagnostics: (0..50)
-                .map(|index| Diagnostic {
-                    stage: "javac".to_string(),
-                    error: true,
-                    code: Some("compiler.err.cant.resolve.location".to_string()),
-                    file: Some("GgModule_helpers.java".to_string()),
-                    line: 7 + index,
-                    column: 1,
-                    message: format!("cannot find symbol {index}"),
-                })
-                .collect(),
-        },
-        PROGRAM_FILE,
-    )
-    .expect_err("refused");
+    // And a code module's own compile is bounded the same way, because a module that stopped
+    // compiling names one problem per call site exactly as a program does. Its own file is what that
+    // build's verdict is read against, and the key rides in front of the whole bounded report rather
+    // than in front of each diagnostic.
+    let failure = about(
+        "helpers",
+        verdict(
+            &Report {
+                ok: false,
+                internal: None,
+                diagnostics: (0..50)
+                    .map(|index| Diagnostic {
+                        stage: "javac".to_string(),
+                        error: true,
+                        code: Some("compiler.err.cant.resolve.location".to_string()),
+                        file: Some("helpers.java".to_string()),
+                        line: 7 + index,
+                        column: 1,
+                        message: format!("cannot find symbol {index}"),
+                    })
+                    .collect(),
+            },
+            "helpers.java",
+        )
+        .expect_err("refused"),
+    );
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
         panic!("a code module that does not compile is the model's to act on: {failure:?}");
     };

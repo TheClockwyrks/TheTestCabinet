@@ -40,6 +40,8 @@ use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,
     canned_outcome,
 };
+use crate::sandbox::language::PrepareContext;
+use crate::sandbox::membrane::CodeModule;
 use crate::sandbox::{
     ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome, language, run_program,
 };
@@ -60,6 +62,16 @@ fn run_with(
     program: &str,
     operations: &[crate::sandbox::operations::OperationId],
 ) -> (SandboxOutcome, CallLog) {
+    run_scoped(program, operations, &[])
+}
+
+/// Run `program` with code modules supplied to it, which is what a turn after a code skill was used
+/// looks like.
+fn run_scoped(
+    program: &str,
+    operations: &[crate::sandbox::operations::OperationId],
+    modules: &[CodeModule],
+) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         javascript(),
@@ -67,7 +79,7 @@ fn run_with(
         ProgramScope {
             capabilities: &all_capabilities(),
             operations,
-            modules: &[],
+            modules,
             ending: RunEnding::Role(EndingRole::Standard),
         },
         SandboxLimits::default(),
@@ -423,6 +435,48 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         outcome.views_opened.len(),
         1,
         "it placed its page in the window"
+    );
+
+    // And the same rule for a **code module**, which is the other thing this arm makes available by
+    // making a specifier resolve. Supplying it declares no name, so the key is an unbound identifier
+    // until the program writes the import line.
+    let modules = [CodeModule {
+        name: "csvTools".to_string(),
+        source: "export function parse(text) {\n  return text.length;\n}\n".to_string(),
+    }];
+    let (outcome, log) = run_scoped(
+        "console.log(csvTools.parse(\"a,b\"));\n",
+        &all_operations(),
+        &modules,
+    );
+    let message = outcome
+        .result
+        .as_ref()
+        .expect_err("an unbound identifier kills the guest")
+        .to_string();
+    assert!(
+        message.contains("ReferenceError") && message.contains("csvTools is not defined"),
+        "a module in scope is not a name in scope: {message}"
+    );
+    assert!(log.calls().is_empty(), "and nothing ran");
+
+    let written =
+        "import * as csvTools from \"lib:csvTools\";\n\nconsole.log(csvTools.parse(\"a,b\"));\n";
+    let (outcome, _log) = run_scoped(written, &all_operations(), &modules);
+    assert_eq!(
+        logs(&outcome),
+        ["3"],
+        "the same call, reached through the line the documentation states"
+    );
+
+    // The authorship rule under those same conditions: a module in scope changes nothing about the
+    // bytes this arm hands the guest, because this arm hands over the reply and does nothing else.
+    let prepared = javascript()
+        .prepare_program(written, &modules, &PrepareContext::new())
+        .expect("this arm prepares whatever it is handed");
+    assert_eq!(
+        prepared.source, written,
+        "the prepared program is the model's own bytes"
     );
 }
 

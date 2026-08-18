@@ -25,8 +25,8 @@
 //! This file is the substrate: that a whole Java program compiles, encodes, instantiates and runs;
 //! that gg reaches the model's own `main`; that an uncaught failure reaches the model **as its own
 //! runtime's dying words, at the model's own file and lines**, with gg catching nothing; that a code
-//! module is compiled into the program and reached at `Lib.<key>`; what TeaVM is not; and what a
-//! turn pays for all of it.
+//! module is a class on the program's own classpath, reached by the line the program wrote and by
+//! nothing else; what TeaVM is not; and what a turn pays for all of it.
 //!
 //! What the **SDK** puts on top of it — every gg operation driven through the real membrane from its Java
 //! spelling, the catalogue reflected out of that SDK's own Javadoc, and the libraries this arm says
@@ -472,8 +472,11 @@ fn a_failure_names_its_own_class_even_when_gg_never_heard_of_it() {
     );
 }
 
-/// **A code module is compiled into the program and reached at `Lib.<key>`**, checked by javac at
-/// the call site.
+/// **A code module is a class on the program's classpath, reached by the line the program writes.**
+///
+/// Both lines Java gives a program are driven here, because both are what the documentation view of
+/// a loaded module states: the class named in full, and the program's own `import lib.<key>;` with
+/// the simple name under it. Neither is written by gg.
 ///
 /// The body carries every shape [the export scan](super::source) has to tell apart, so that the scan
 /// and javac are held to one answer by a real compile and a real run rather than by two readings of
@@ -481,7 +484,7 @@ fn a_failure_names_its_own_class_even_when_gg_never_heard_of_it() {
 /// like a method until the `=`, a generic method whose return type carries its own brackets, an
 /// annotated one, a package-private helper and a private one.
 #[test]
-fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
+fn a_code_module_is_a_class_on_the_classpath_reached_by_the_programs_own_line() {
     let prepared = compile_module(
         "/** Two exports, one field and two helpers. */\n\
          public static final String LABEL = \"first(\";\n\
@@ -519,9 +522,9 @@ fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
         &prepare_with(
             &whole(
                 &["Gg"],
-                "        Gg.log(Lib.helpers.shout(\"gg\"));\n\
-                 \x20       Gg.log(Lib.helpers.listOf(\"a\", \"b\").toString());\n\
-                 \x20       Gg.log(Lib.helpers.LABEL);\n",
+                "        Gg.log(lib.helpers.shout(\"gg\"));\n\
+                 \x20       Gg.log(lib.helpers.listOf(\"a\", \"b\").toString());\n\
+                 \x20       Gg.log(lib.helpers.LABEL);\n",
             ),
             &modules,
         ),
@@ -534,8 +537,143 @@ fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
     // what the scan describes rather than what javac can reach.
     assert_eq!(logs(&outcome), ["GG!", "[a, b]", "first("]);
 
-    // The access the reply that binds a module quotes back is the one that compiles.
-    assert_eq!(java_language().lib_access("helpers"), "Lib.helpers.<name>");
+    // The two lines the documentation view of this module states are the two that compile: the
+    // access, written in full above, and the import — which is the program's own line and brings the
+    // simple name with it.
+    assert_eq!(java_language().lib_access("helpers"), "lib.helpers.<name>");
+    let imported = format!(
+        "{}\n\nimport gg.Gg;\n\n\
+         public final class Program {{\n\
+         \x20   public static void main(String[] args) {{\n\
+         \x20       Gg.log(helpers.shout(\"gg\"));\n\
+         \x20   }}\n\
+         }}\n",
+        java_language()
+            .lib_import("helpers")
+            .expect("this arm states the line a program writes"),
+    );
+    let outcome = evaluate(
+        &prepare_with(&imported, &modules),
+        &[],
+        &modules,
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(logs(&outcome), ["GG!"]);
+}
+
+/// **A program that writes neither line does not compile**, which is what makes the module a library
+/// the program reaches rather than something gg put in its scope.
+///
+/// A classpath entry declares no name — that is the whole of what gg does for a loaded module, and
+/// it is what gg does for its own SDK. So the simple name is a name javac has never heard of until
+/// the program itself asks for it, and asking is a line in the model's own reply.
+#[test]
+fn a_program_that_writes_no_line_reaching_a_module_does_not_compile() {
+    let prepared = compile_module(
+        "public static String shout(String who) { return who.toUpperCase(); }\n",
+        &PrepareContext::new(),
+    )
+    .expect("the module compiles");
+    let modules = vec![CodeModule {
+        name: "helpers".to_string(),
+        source: prepared.source,
+    }];
+
+    let failure = compile_program(
+        &whole(&["Gg"], "        Gg.log(helpers.shout(\"gg\"));\n"),
+        &modules,
+        &PrepareContext::new(),
+    )
+    .expect_err("a bare `helpers` resolves to nothing");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("a name that does not resolve is the model's compile error: {failure:?}");
+    };
+    assert!(
+        rendered.contains("Program.java:") && rendered.contains("helpers"),
+        "the refusal is at the model's own line, about the name it wrote: {rendered}"
+    );
+
+    // And gg wrote nothing of its own into the compile: the same program with the module's own
+    // package named in full is the one that compiles.
+    compile_program(
+        &whole(&["Gg"], "        Gg.log(lib.helpers.shout(\"gg\"));\n"),
+        &modules,
+        &PrepareContext::new(),
+    )
+    .expect("the class named in full is the name javac resolves");
+}
+
+/// **One module cannot see another**, because each is compiled against the SDK and the toolchain and
+/// nothing else — and a module that does not compile is a refusal naming the key it is bound at.
+///
+/// The two claims are one compile. Modules share the package `lib`, which is what makes
+/// `lib.<key>` the name a program writes; what keeps them from being one namespace is that no
+/// module's classes are ever on another module's classpath. So a body reaching for a sibling is a
+/// body that does not compile, whatever else the session has loaded, and the agent is told which
+/// module to fix rather than being handed a diagnostic about its own program.
+#[test]
+fn a_module_is_compiled_against_the_sdk_alone_and_a_broken_one_names_its_key() {
+    let modules = vec![
+        CodeModule {
+            name: "helpers".to_string(),
+            source: "public static String shout(String who) { return who.toUpperCase(); }\n"
+                .to_string(),
+        },
+        CodeModule {
+            name: "other".to_string(),
+            source: "public static String call() { return helpers.shout(\"gg\"); }\n".to_string(),
+        },
+    ];
+    let failure = compile_program(
+        &whole(&["Gg"], "        Gg.log(lib.other.call());\n"),
+        &modules,
+        &PrepareContext::new(),
+    )
+    .expect_err("a module reaching for a sibling does not compile");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    };
+    assert!(
+        rendered.contains("`other`") && rendered.contains("other.java:1"),
+        "the refusal names the key and the module's own line: {rendered}"
+    );
+}
+
+/// **The bytes the compiler reads are the bytes the model sent, with a module in scope.**
+///
+/// The sibling above says it for a program with nothing loaded. This says it for the case a module
+/// could have changed: gg compiles the module into a package of its own beforehand and hands its
+/// classes to this compile as a classpath entry, so the file javac reads for the *program* is still
+/// the reply and nothing has been appended to it.
+#[test]
+fn a_module_in_scope_does_not_change_the_bytes_the_compiler_reads() {
+    let prepared = compile_module(
+        "public static String shout(String who) { return who.toUpperCase(); }\n",
+        &PrepareContext::new(),
+    )
+    .expect("the module compiles");
+    let modules = vec![CodeModule {
+        name: "helpers".to_string(),
+        source: prepared.source,
+    }];
+
+    let program = whole(&["Gg"], "        Gg.log(lib.helpers.shout(\"gg\"));\n");
+    let context = PrepareContext::new();
+    compile_program(&program, &modules, &context).expect("it compiles");
+    let workspace = context.workspace().expect("a workspace");
+    let written = std::fs::read_to_string(workspace.work().join(super::compile::PROGRAM_FILE))
+        .expect("the program's own file");
+    assert_eq!(
+        written, program,
+        "gg wrote something into the file javac read"
+    );
+    // And the module is not in that compilation unit at all: it is a directory of class files
+    // beside it, under the key the agent bound it at.
+    assert!(
+        workspace.work().join("modules/helpers/classes").is_dir(),
+        "the module was not compiled into a classpath entry of its own"
+    );
 }
 
 /// **A module that offers nothing, and one that does not compile, are refused at the read** — with

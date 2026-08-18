@@ -1249,10 +1249,10 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     compile(&format!("#include <vector>\n{VECTOR}"))
         .expect("the header a program includes declares the library it names");
 
-    // **And the same question with a code module bound**, which is the one state in which this arm
-    // has anything of gg's to put in front of a program that never asked. A module reaches gg's
+    // **And the same question with a code module in scope**, which is the one state in which this
+    // arm has anything of gg's to put in front of a program that never asked. A module reaches gg's
     // whole surface through gg's own `#include` in its global module fragment, and the program that
-    // binds it reaches the module's namespace and nothing else — so the same call is refused for
+    // imports it reaches the module's namespace and nothing else — so the same call is refused for
     // the same reason with a skill loaded as without one.
     let modules = [crate::sandbox::CodeModule {
         name: "csv_tools".to_string(),
@@ -1263,9 +1263,16 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let with_module = |source: &str| {
         super::compile::compile_program(source, &modules, &crate::sandbox::PrepareContext::new())
     };
-    with_module("int main() {\n  return (int)lib::csv_tools::greeting().size() - 2;\n}\n")
-        .expect("a module a program binds reaches gg's surface through gg's own line");
-    let bound = with_module(CALL).expect_err("a module in scope declares no gg name for a program");
+    // The module's own line, written by the program: nothing declares `lib` for it either.
+    let import = crate::sandbox::language(GgProgramLanguage::Cpp)
+        .lib_import("csv_tools")
+        .expect("this arm reaches a code module through a line a program writes");
+    with_module(&format!(
+        "{import}\nint main() {{\n  return (int)lib::csv_tools::greeting().size() - 2;\n}}\n"
+    ))
+    .expect("a module a program imports reaches gg's surface through gg's own line");
+    let bound = with_module(&format!("{import}\n{CALL}"))
+        .expect_err("a module in scope declares no gg name for a program");
     match bound {
         // Refused one step further in than the bare program above, and that is the module system
         // rather than a weaker answer: a name attached to the global module exists in the program's
@@ -1274,7 +1281,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
             diagnostic,
         )) => assert!(
-            diagnostic.starts_with("main.cpp:2:")
+            diagnostic.starts_with("main.cpp:3:")
                 && diagnostic.contains("missing '#include'")
                 && diagnostic.contains("'open_text' must be declared before it is used"),
             "a program naming gg's surface with a code module in scope was refused for another \

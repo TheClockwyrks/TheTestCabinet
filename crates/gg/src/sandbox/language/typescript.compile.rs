@@ -96,9 +96,13 @@
 //!   two arms of a study would no longer be counting the same event.
 //! * **A verdict must depend on the program alone.** The same text must compile the same way whether
 //!   it arrives as a turn's program, as a skill's on-use script, or as the code half of a memory
-//!   being written — none of which is prepared with an agent's grant in hand. It is why a code
-//!   module is declared as the wildcard `lib:*` rather than as the modules this agent happens to
-//!   have loaded.
+//!   being written — none of which is prepared with an agent's grant in hand.
+//!
+//! A code module is declared as the wildcard `lib:*` for a reason of its own: what gg reads of a
+//! module is the **head** of each declaration its namespace offers, so an ambient declaration
+//! assembled from those heads would omit the types they name and the members a class carries, and
+//! would refuse calls the guest runs. The declaration itself is what the model reads, quoted whole
+//! in the [documentation view](crate::docs) of the export.
 //!
 //! # Isolation
 //!
@@ -254,7 +258,9 @@ pub(super) fn compile_program(
 /// coordinates. What it offers is what it exports, read back off the emitted JavaScript by
 /// [`ecmascript::exports_of`](crate::sandbox::language::ecmascript::exports_of) — which is handed
 /// the author's own file beside the emission, so that the names are the namespace's answer while
-/// the declaration each documentation view quotes is the one its author wrote, types intact.
+/// the declaration each documentation view quotes is the one its author wrote, types intact. The
+/// type names an export carries in return and in parameter position come off that same declaration,
+/// which is the one text that still has them.
 pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,

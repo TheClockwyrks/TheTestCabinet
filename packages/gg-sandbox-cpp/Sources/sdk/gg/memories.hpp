@@ -74,9 +74,9 @@ struct memory_hit {
 ///
 /// Neither is context: they cost no window, are never shown back, and count against no body limit.
 struct memory_options {
-  /// A C++ translation unit whose declarations are bound at `lib::<name>` in every later program.
+  /// A C++ file whose declarations every later program reaches by writing `import lib.<name>;`.
   std::optional<std::string> code;
-  /// A program gg runs the first time the memory comes into use.
+  /// A program gg runs on every use of the memory.
   ///
   /// Whatever it shows arrives on the next turn.
   std::optional<std::string> on_use;
@@ -84,10 +84,10 @@ struct memory_options {
 
 /// Record a durable memory that survives context compaction, and hand back the memory budget.
 ///
-/// A memory may also carry code: `options.code` is a C++ translation unit whose declarations are
-/// bound at `lib::<name>` in every later program, so a helper written correctly once is never
-/// written again, and `options.on_use` is a program gg runs the first time the memory comes into
-/// use. Neither costs any context window.
+/// A memory may also carry code: `options.code` is a C++ file whose declarations every later
+/// program reaches by writing `import lib.<name>;`, so a helper written correctly once is never
+/// written again, and `options.on_use` is a program gg runs on every use of the memory. Neither
+/// costs any context window.
 ///
 /// <ggop>memories.write_memory</ggop>
 ///
@@ -142,8 +142,8 @@ memories::memory_usage create_memory(std::string_view name, std::string_view des
 
 /// Read one memory's full contents by slug, which is the only thing that brings them into context.
 ///
-/// A memory carrying code loads it on this read: the reply names the `lib::<key>` it is bound at,
-/// and it stays bound for the rest of the session.
+/// A memory carrying code loads it on this read: a documentation view opens on each function it
+/// declares, and every later program reaches it by writing `import lib.<name>;`.
 ///
 /// <ggop>memories.read_memory</ggop>
 ///

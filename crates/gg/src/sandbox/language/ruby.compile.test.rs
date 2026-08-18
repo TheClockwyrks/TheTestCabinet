@@ -109,6 +109,57 @@ fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
     }
 }
 
+/// **A module in scope leaves the model's own program alone**, both in what the compiler reads and
+/// in what the guest is handed.
+///
+/// The [authorship gate](crate::sandbox::language::authorship) drives the program half with nothing
+/// in scope, so the one shape it cannot see is an arm that writes a program's `require "lib"` for it
+/// once a module exists. This drives the arm's own
+/// [`prepare_program`](crate::sandbox::language::ProgramLanguage::prepare_program) through the
+/// registry with a really compiled module beside it and asks both halves: the file the compiler read
+/// is the reply byte for byte, and what the guest is handed is what the same reply produces with
+/// nothing in scope at all.
+#[test]
+fn a_module_in_scope_leaves_the_models_own_program_alone() {
+    let language = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Ruby);
+    let module = crate::sandbox::CodeModule {
+        name: "helpers".to_string(),
+        source: compile_module("def double(n) = n * 2\n", &context()).expect("the module compiles"),
+    };
+    // A program that calls into the module and does NOT write the line that reaches it: the shape an
+    // arm reaching for a module on the program's behalf would have to complete.
+    let source = "puts lib.helpers.double(21)\n";
+
+    let alone = context();
+    let without = language
+        .prepare_program(source, &[], &alone)
+        .expect("this Ruby compiles")
+        .source;
+
+    let scoped = context();
+    let with = language
+        .prepare_program(source, std::slice::from_ref(&module), &scoped)
+        .expect("this Ruby compiles with a module in scope")
+        .source;
+
+    let written = std::fs::read_to_string(
+        scoped
+            .workspace()
+            .expect("the preparation has a workspace")
+            .work()
+            .join(PROGRAM_FILE),
+    )
+    .expect("the compiler was handed a program.rb");
+    assert_eq!(
+        written, source,
+        "a module in scope changed the file the compiler read"
+    );
+    assert_eq!(
+        with, without,
+        "a module in scope changed the program the guest is handed"
+    );
+}
+
 #[test]
 fn ruby_the_parser_rejects_comes_back_as_the_models_own_error() {
     // A refusal is the only thing Opal can say about a program other than "here is your

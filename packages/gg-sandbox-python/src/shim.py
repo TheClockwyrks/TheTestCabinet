@@ -81,8 +81,8 @@ import library  # noqa: F401
 PROGRAM_FILENAME = "program.py"
 
 #: The package the agent's own code modules are registered under, and the name a program imports to
-#: reach them. One level deep: a module bound as `notes` is `lib.notes`, which is what gg tells the
-#: model when the read that carries the code comes back.
+#: reach them. One level deep: a module bound as `notes` is `lib.notes`, which is what the
+#: documentation views a use of that module opens state.
 LIB_PACKAGE = "lib"
 
 #: The deepest Python call stack a program may ask for.
@@ -308,10 +308,9 @@ def _unknown_gg_name(exc: BaseException) -> bool:
 def _load_modules(modules: List[CodeModule], filenames: set) -> None:
     """Evaluate each code module and register it at ``lib.<name>``, for a program that imports it.
 
-    Nothing is added to the source — unlike the JavaScript guest, whose host appends a
-    ``return { … }`` — and nothing is put in front of it: a module body is executed in a namespace of
-    its own with nothing in it, so a module's author writes ``import gg`` exactly as a program does
-    and reaches the same objects.
+    Nothing is added to the source and nothing is put in front of it: a module body is executed in
+    a namespace of its own with nothing in it, so a module's author writes ``import gg`` exactly as
+    a program does and reaches the same objects.
 
     ``lib`` is an ordinary package in :data:`sys.modules`, so ``import lib``, ``from lib import
     notes`` and ``import lib.notes`` all resolve, and a program that writes none of them has no such

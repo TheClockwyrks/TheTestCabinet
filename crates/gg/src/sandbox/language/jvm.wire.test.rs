@@ -424,10 +424,13 @@ fn compile(program: &str) -> Vec<u8> {
     let mut compiler = POOL
         .checkout(JavaCompiler::start)
         .expect("a JVM out of the production pool");
-    let request = format!(
-        "{}\t{}\t{MAIN_CLASS}\t{MODULE_FILE}\t{PROGRAM_FILE}\t{ENTRY_FILE}",
-        workspace.work().display(),
-        workspace.output().display(),
+    let request = wire_request(
+        workspace,
+        PROGRAM_CLASSES,
+        &[],
+        MAIN_CLASS,
+        MODULE_FILE,
+        &[PROGRAM_FILE.to_string(), ENTRY_FILE.to_string()],
     );
     let answered = compiler
         .request(&request, BUILD_TIMEOUT)

@@ -49,6 +49,11 @@ use crate::sandbox::SandboxError;
 
 use super::{ModuleExport, ModuleExportKind};
 
+/// **The type names a declaration writes**, in the two positions a documentation view opens types
+/// for. One reader for both arms, for the reason the export scan itself is one reader.
+#[path = "ecmascript.types.rs"]
+mod types;
+
 /// The core module `rustc` emitted for `wasm32-wasip1`.
 ///
 /// It is not committed. `gg-artifact-typescript` runs `packages/gg-sandbox/build.sh` as a step of
@@ -184,6 +189,10 @@ pub(crate) fn component() -> Result<&'static Component, SandboxError> {
 /// emission, where the types are already erased, so a type-only export contributes nothing here
 /// without anything having to know what a type is; [JavaScript](super::javascript) reads the
 /// author's own file, which is the file the guest evaluates.
+///
+/// A JavaScript declaration writes no type anywhere, so the [type names](types) an export carries
+/// are empty on this path — which is what an empty list means here and on every other arm: the
+/// declaration wrote none, or this arm cannot read one.
 pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
     exports_of(source, source)
 }
@@ -197,6 +206,10 @@ pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
 /// not in it is not callable — but the *declaration* a documentation view quotes is the author's
 /// own, types and all, because a model reading it is about to write TypeScript against it. Nothing
 /// is read twice: one file says which names exist, the other says how each was written.
+///
+/// The [type names](types) an export carries are read off that same authored declaration, so they
+/// are the author's annotations rather than anything recovered from an emission that no longer has
+/// them.
 pub(super) fn exports_of(namespace: &str, authored: &str) -> Vec<ModuleExport> {
     let written = declarations(authored);
     let emitted = declarations(namespace);
@@ -214,8 +227,8 @@ pub(super) fn exports_of(namespace: &str, authored: &str) -> Vec<ModuleExport> {
                     kind: declared.kind,
                     declaration: declared.declaration.clone(),
                     doc: declared.doc.clone(),
-                    returns: Vec::new(),
-                    parameters: Vec::new(),
+                    returns: declared.returns.clone(),
+                    parameters: declared.parameters.clone(),
                 },
                 // A list export of something this file did not declare — a name it imported and
                 // passed on. The `export` line is then the only thing its author wrote about it, so
@@ -279,6 +292,10 @@ struct Declared {
     declaration: String,
     /// The comment written above it.
     doc: Option<String>,
+    /// The type names the declaration writes in return position. See [`types`].
+    returns: Vec<String>,
+    /// The type names the declaration writes in parameter position. See [`types`].
+    parameters: Vec<String>,
 }
 
 /// Every top-level declaration `source` makes, in source order — the ones it exports on the same
@@ -299,12 +316,17 @@ fn declarations(source: &str) -> Vec<Declared> {
         if out.iter().any(|declared| declared.name == name) {
             continue;
         }
+        let kind = kind(rest);
+        let declaration = super::heads::head(line);
+        let (returns, parameters) = types::types_of(&declaration, kind);
         out.push(Declared {
             name: name.to_string(),
-            kind: kind(rest),
-            declaration: super::heads::head(line),
+            kind,
+            declaration,
             doc: super::comments::block_doc(&lines, number)
                 .or_else(|| super::comments::line_doc(&lines, number, &["//"])),
+            returns,
+            parameters,
         });
     }
     out

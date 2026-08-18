@@ -917,6 +917,72 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     }
 }
 
+/// **A code module is reachable exactly as gg's SDK is, and no further.**
+///
+/// The [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) let an arm supply
+/// a module through the mechanism it supplies its own SDK through, and this arm's is `--extern`,
+/// which needs no line at all. So the claim to hold is the other half of that rule: supplying a
+/// crate declares **no name**. A program reaches `csv_tools::shout` because it wrote the path, and a
+/// program that writes the bare name reaches nothing.
+///
+/// The second half is the one a binding written into the program's own crate cannot keep: every
+/// declaration the module made would be an item of the crate the model is writing, and a bare
+/// `shout()` would be one `use` away from resolving without the program ever naming the module.
+/// Driven through the production prepare step, because the compiler a turn really runs is what
+/// decides it.
+#[test]
+fn a_code_module_puts_no_name_in_a_programs_scope() {
+    let modules = [crate::sandbox::CodeModule {
+        name: "csv_tools".to_string(),
+        source: "pub fn shout(word: &str) -> String {\n    word.to_uppercase()\n}\n".to_string(),
+    }];
+    let with_module = |source: &str| {
+        super::compile::compile_program(source, &modules, &crate::sandbox::PrepareContext::new())
+    };
+
+    // The path the module's own documentation view quotes, with no line above it.
+    with_module("fn main() {\n    let _ = csv_tools::shout(\"ok\");\n}\n")
+        .expect("the key is a crate in the extern prelude, which a program reaches by writing it");
+
+    // The same call by the bare name the module declares it under: `rustc`'s own unresolved-name
+    // diagnostic, at the model's own line.
+    let refused = with_module("fn main() {\n    let _ = shout(\"ok\");\n}\n")
+        .expect_err("a module in scope declares no name of its own for a program");
+    match refused {
+        crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
+            diagnostic,
+        )) => assert!(
+            diagnostic.contains("E0425") && diagnostic.contains("line 2"),
+            "a program naming a module's export with no path was refused for another reason: \
+             {diagnostic}"
+        ),
+        other => panic!(
+            "a name that is not in scope is the model's compile error, not {other:?}. A code \
+             module is putting its own declarations in the program's scope."
+        ),
+    }
+
+    // And gg's surface is no more in scope with a module loaded than without one, which is the
+    // question this arm answers the same way in both states.
+    let refused = with_module(
+        "fn main() -> Result<(), gg::Failure> {\n    \
+             let _ = files::read_text_file(\"a.md\", files::ReadOptions::default())?;\n    \
+             Ok(())\n}\n",
+    )
+    .expect_err("a module in scope brings no name of gg's with it");
+    match refused {
+        crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
+            diagnostic,
+        )) => assert!(
+            diagnostic.contains("E0433") && diagnostic.contains("line 2"),
+            "{diagnostic}"
+        ),
+        other => panic!(
+            "gg's surface is reaching a program through the code module in its scope: {other:?}"
+        ),
+    }
+}
+
 #[test]
 fn the_component_binds_exactly_the_operations_gg_offers() {
     // The one drift no source-level test can catch, asked of the artifact rather than of a source

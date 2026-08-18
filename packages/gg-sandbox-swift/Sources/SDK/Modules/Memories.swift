@@ -19,11 +19,11 @@ public enum memories {
 
     /// Record a durable memory that survives a context compaction.
     ///
-    /// A memory may also carry code. `code` is a Swift file whose public declarations are bound at
-    /// `lib.<name>` in every later program this session writes, so a helper got right once is never
-    /// written again; `onUse` is a program gg runs the first time the memory comes into use, whose
-    /// views arrive on the next turn. Neither is context: they cost no window, are never shown back,
-    /// and count against no body limit.
+    /// A memory may also carry code. `code` is a Swift file compiled as a module of its own, which
+    /// every later program this session writes reaches by writing its `import` line, so a helper got
+    /// right once is never written again; `onUse` is a program gg runs on every use of the memory,
+    /// whose views arrive on the next turn. Neither is context: they cost no window, are never shown
+    /// back, and count against no body limit.
     ///
     /// - Parameters:
     ///   - name: The memory's slug: letters, digits, `-`, `_` and `.`. Every other memory call takes
@@ -32,10 +32,9 @@ public enum memories {
     ///     memory index this is the memory's line in it, and so all that is visible until it is
     ///     read.
     ///   - body: The memory's contents.
-    ///   - code: Reusable Swift, whose public declarations are bound at `lib.<name>` in every later
-    ///     program. Left out, the memory carries none.
-    ///   - onUse: A program to run once, when this memory first comes into use. Left out, the memory
-    ///     carries none.
+    ///   - code: Reusable Swift, compiled as a module every later program reaches by writing its
+    ///     `import` line. Left out, the memory carries none.
+    ///   - onUse: A program to run on every use of this memory. Left out, the memory carries none.
     /// - Returns: the memory budget after the write.
     /// - Throws: `core.ApiError` with `.conflict` on a duplicate name, and `.limitExceeded` when
     ///   the body would breach the run's caps — revising or deleting a memory is the way out, rather
@@ -64,8 +63,8 @@ public enum memories {
     ///   - body: The contents to replace the old ones with.
     ///   - code: Reusable Swift to replace the memory's own with. Left out, it clears whatever the
     ///     memory carried.
-    ///   - onUse: A program to run when the memory next comes into use. Left out, it clears whatever
-    ///     the memory carried.
+    ///   - onUse: A program to run on every use of the memory. Left out, it clears whatever the
+    ///     memory carried.
     /// - Returns: the memory budget after the write.
     /// - Throws: `core.ApiError` with `.notFound` when no memory has that name.
     /// - ggop: memories.update_memory
@@ -93,9 +92,11 @@ public enum memories {
     ///     index.
     ///   - body: The memory's initial contents, which stay out of the context window until they are
     ///     read.
-    ///   - code: Reusable Swift, bound at `lib.<name>` from the read that loads this memory onwards.
-    ///     Left out, the memory carries none.
-    ///   - onUse: A program to run once, on that same first read. Left out, the memory carries none.
+    ///   - code: Reusable Swift, compiled as a module every later program reaches by writing its
+    ///     `import` line, from the read that loads this memory onwards. Left out, the memory carries
+    ///     none.
+    ///   - onUse: A program to run on every use, starting with that same read. Left out, the memory
+    ///     carries none.
     /// - Returns: the memory budget after the write.
     /// - Throws: `core.ApiError` with `.conflict` on a duplicate slug, and `.limitExceeded` when
     ///   the contents, or the index entry, would breach a limit.
@@ -116,8 +117,9 @@ public enum memories {
     /// Read one memory's full contents by slug, which is the only thing that brings them into
     /// context.
     ///
-    /// A memory that carries code loads that code on being read: the reply names the `lib.<key>` it
-    /// is bound at, and it stays bound for the rest of the session.
+    /// A memory that carries code loads that code on being read: a documentation view opens for each
+    /// function the module declares, and every later program reaches it by writing its `import`
+    /// line.
     ///
     /// - Parameter name: The memory's slug.
     /// - Returns: the memory's contents.

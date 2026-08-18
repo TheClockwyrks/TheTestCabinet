@@ -22,16 +22,16 @@ def read_skill(name: str) -> str:
     Reading it also pins that body permanently into context, so a skill that has been read stays
     read.
 
-    A skill may be **code** rather than prose, or as well as it. Code is bound at `lib.<key>` for the
-    rest of the session and the reply names the key and what it offers. An on-use script runs once
-    this program has ended, and whatever it shows arrives on the next turn.
+    A skill may be **code** rather than prose, or as well as it. Code becomes a module every later
+    program this session writes reaches by writing `import lib`, and using the skill opens a
+    documentation view of each function that module declares. An on-use script runs on every use,
+    once this program has ended, and whatever it shows arrives on the next turn.
 
     Args:
         name: The skill's name, as the system prompt lists it.
 
     Returns:
-        The skill's body with its front matter stripped, and — where the skill is code — the
-            `lib.<key>` its public names are now bound at.
+        The skill's body with its front matter stripped.
 
     Raises:
         ApiError: `not-found` — listing the skills that do exist — when the name is unknown.

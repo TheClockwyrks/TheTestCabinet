@@ -25,7 +25,8 @@
 //! This file is the substrate: that a whole Kotlin program compiles, encodes, instantiates and runs;
 //! that gg reaches the model's own `main`; that an uncaught failure reaches the model **as its own
 //! runtime's dying words, at the model's own file and lines**, with gg catching nothing; that a code
-//! module is compiled into the program and reached at `lib.<key>`; what this toolchain is not; and
+//! module is a library on the program's classpath, reached through a line the program wrote and
+//! through no other route; what this toolchain is not; and
 //! what a turn pays for all of it.
 //!
 //! What the **SDK** puts on top of it — every gg tool driven through the real membrane from its
@@ -545,10 +546,10 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
     assert_eq!(logs(&outcome), ["caught it", "carried on"]);
 }
 
-/// **A code module is compiled into the program and reached at `lib.<key>`**, checked by the Kotlin
-/// compiler at the call site.
+/// **A code module is a library on the program's classpath, reached through a line the program
+/// wrote**, checked by the Kotlin compiler at the call site.
 #[test]
-fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
+fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
     let prepared = compile_module(
         "import kotlin.math.abs\n\
          \n\
@@ -589,8 +590,25 @@ fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
     .0;
     assert_eq!(logs(&outcome), ["some-title-here", "7"]);
 
-    // And the same names reached through an `import`, which is what a package buys a Kotlin author
-    // that a generated accessor would not.
+    // And the same names reached through the import line the seam publishes, which is the line this
+    // arm's own SDK modules are reached by.
+    let import = kotlin_language()
+        .lib_import("helpers")
+        .expect("this arm states the line a program writes to reach a loaded module");
+    let outcome = evaluate(
+        &prepare_with(
+            &whole(&import, "    gg.log(slugify(\"Another Title\"))\n"),
+            &modules,
+        ),
+        &[],
+        &modules,
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(logs(&outcome), ["another-title"]);
+
+    // A single name, which is the other thing an import of a package of top-level functions can
+    // bring in and is what a Kotlin author writes when one is all they want.
     let outcome = evaluate(
         &prepare_with(
             &whole(
@@ -606,10 +624,77 @@ fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
     .0;
     assert_eq!(logs(&outcome), ["another-title"]);
 
+    // THE LINE IS THE ONLY ROUTE IN. A module is a classpath entry and a classpath entry declares no
+    // name, so a program that writes neither the import nor the qualified name earns the compiler's
+    // own diagnostic — the same one it would earn for any library it did not ask for.
+    let failure = compile_program(
+        &whole("", "    gg.log(slugify(\"Some Title Here\"))\n"),
+        &modules,
+        &PrepareContext::new(),
+    )
+    .expect_err("a name nothing brought into scope does not resolve");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("a name that does not resolve is a compile error: {failure:?}");
+    };
+    assert!(
+        rendered.contains("Program.kt:2") && rendered.contains("slugify"),
+        "the model is told which name, at its own line: {rendered}"
+    );
+
     // The access the reply that binds a module quotes back is the one that compiles.
     assert_eq!(
         kotlin_language().lib_access("helpers"),
         "lib.helpers.<name>"
+    );
+}
+
+/// **The bytes compiled are the bytes the model sent, with a module in scope.**
+///
+/// The authorship gate drives this arm's program half with nothing loaded, so this is where the
+/// claim is held for the half that changed: a module reaches the compile as a classpath entry, and a
+/// classpath entry is packaging rather than text. What the compiler read is `Program.kt`, and it is
+/// the reply byte for byte.
+#[test]
+fn a_module_in_scope_adds_nothing_to_the_program_the_compiler_reads() {
+    let prepared = compile_module(
+        "fun slugify(title: String): String = title.lowercase()\n",
+        &PrepareContext::new(),
+    )
+    .expect("a module of public top-level functions compiles");
+    let modules = vec![CodeModule {
+        name: "helpers".to_string(),
+        source: prepared.source,
+    }];
+
+    let program = whole(
+        "import lib.helpers.*",
+        "    gg.log(lib.helpers.slugify(\"Some Title Here\"))\n",
+    );
+    let context = PrepareContext::new();
+    compile_program(&program, &modules, &context).expect("compiled");
+    let read = std::fs::read_to_string(
+        context
+            .opened_workspace()
+            .expect("the preparation opened a workspace")
+            .join("work")
+            .join(super::compile::PROGRAM_FILE),
+    )
+    .expect("the file the compiler read");
+    assert_eq!(read, program, "gg wrote nothing into the model's own file");
+
+    // And the module is somewhere else entirely: its own source, under its own key, outside the
+    // directory the program's own sources were written into.
+    let module = std::fs::read_to_string(
+        context
+            .opened_workspace()
+            .expect("the preparation opened a workspace")
+            .join("work")
+            .join("modules/helpers/helpers.kt"),
+    )
+    .expect("the module's own file");
+    assert!(
+        module.starts_with("package lib.helpers; fun slugify"),
+        "the module's package shares its author's own first line: {module}"
     );
 }
 

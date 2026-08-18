@@ -48,6 +48,11 @@
 //! **no line at all** — the `package` declaration shares the author's own first line, so the module's
 //! line *n* is line *n* of the file and no diagnostic is moved by anything.
 //!
+//! What that package is *reached* by is nowhere in this file, because it is nothing gg writes: the
+//! module is compiled on its own and its classes are handed to the program's compile as a
+//! **classpath entry**, which is how this arm's own SDK jar reaches a program. The program writes
+//! `lib.csvTools.slugify(…)` or its own `import lib.csvTools.*`, and gg writes neither.
+//!
 //! # Why a lexer rather than a regular expression
 //!
 //! Because the input is untrusted text a model wrote, and `fun ` at the start of a line inside a raw
@@ -85,37 +90,24 @@ pub(super) const PROGRAM_CLASS: &str = "ProgramKt";
 /// named a key for it.
 pub(super) const MODULE_CHECK_PACKAGE: &str = "lib.module";
 
-/// The package one code module's file is compiled into in a program's own compile, given its binding
-/// key — which is what makes a program reach it at `lib.<key>.<name>`.
+/// The package one code module's file is compiled into, given its binding key — which is what makes
+/// a program reach it at `lib.<key>.<name>` and import it at `import lib.<key>.*`.
 ///
 /// A package rather than a wrapping object or a generated accessor, because a Kotlin file's public
-/// top-level functions already *are* a namespace and a package is what names one. That gives the
-/// shape [Rust](super::super::rust)'s `lib::<key>::…` has and the reason neither arm reaches a module
-/// by string: a code module is compiled *into* the program here, so there is a path the compiler can
-/// check the two against.
+/// top-level functions already *are* a namespace and a package is what names one. A package is also
+/// what a **classpath entry** can carry: the module is compiled on its own into a directory of class
+/// files, and that directory is handed to the program's compile the way this arm's SDK jar is, which
+/// is the one mechanism gg has for making a library available without putting a name in scope.
 pub(super) fn module_package(key: &str) -> String {
     format!("lib.{key}")
 }
 
-/// The file one code module is compiled from.
+/// The file one code module is compiled from, named for the key it is bound at.
 ///
-/// Named for the key rather than for the package, because two modules would otherwise be two files
-/// of one name in one compile.
+/// The name is what every diagnostic about the module carries in its file position, so the one
+/// coordinate a model has for code it did not write names the module to fix or to stop loading.
 pub(super) fn module_file(key: &str) -> String {
-    format!("{MODULE_PREFIX}{key}.kt")
-}
-
-/// What every code module's file name begins with, and what [`module_key_of`] reads one back off.
-const MODULE_PREFIX: &str = "GgModule_";
-
-/// The binding key whose module a diagnostic's file names, when it names one.
-///
-/// The inverse of [`module_file`], and it is what lets [`verdict`](super::compile::verdict) tell a
-/// diagnostic about a *module* from one about a file nobody named. Without it a module that failed
-/// only in a program's compile was reported to the operator as toolchain drift, and the model whose
-/// turn it took was told nothing at all.
-pub(super) fn module_key_of(file: &str) -> Option<&str> {
-    file.strip_prefix(MODULE_PREFIX)?.strip_suffix(".kt")
+    format!("{key}.kt")
 }
 
 /// A code module's file, put in a package of its own, and the names its namespace offers.
@@ -267,34 +259,222 @@ const MODIFIERS: [&str; 12] = [
 
 /// The names a module's file offers: every public top-level function of it, in source order.
 ///
-/// A **reading** rather than a rewriting: nothing is inserted, because the module is compiled into
-/// the program that uses it and a program reaches an export by naming it. What this produces is the
-/// list the module's author is *told* the namespace holds.
+/// A **reading** rather than a rewriting: nothing is inserted, because a program reaches an export
+/// by naming it. What this produces is the list the module's author is *told* the namespace holds.
+///
+/// The type names each declaration writes are read off the same span, in return position and in
+/// parameter position, which is what an agent's `docViewTypes` flags open beside the function.
 fn exports(source: &str) -> Vec<ModuleExport> {
     let lines: Vec<&str> = source.lines().collect();
     Lexer::new(source)
         .top_level_functions()
         .into_iter()
         .filter(|function| !function.hidden)
-        .map(|function| ModuleExport {
-            name: function.name,
-            // Only a `fun` reaches here: a top-level property or class of the author's own is not
-            // what this arm binds, so there is no other kind to report.
-            kind: ModuleExportKind::Function,
-            declaration: source[function.start..function.end].trim().to_string(),
-            doc: {
-                // The line its first modifier stands on — and above it, past any annotation written
-                // on a line of its own, whatever prose its author wrote.
-                let line = source[..function.start].matches('\n').count();
-                let above =
-                    super::super::comments::above(&lines, line, |line| line.starts_with('@'));
-                super::super::comments::block_doc(&lines, above)
-                    .or_else(|| super::super::comments::line_doc(&lines, above, &["///", "//"]))
-            },
-            returns: Vec::new(),
-            parameters: Vec::new(),
+        .map(|function| {
+            let declaration = source[function.start..function.end].trim();
+            let signature = Signature::read(
+                declaration,
+                function.parameters.saturating_sub(function.start),
+            );
+            ModuleExport {
+                name: function.name,
+                // Only a `fun` reaches here: a top-level property or class of the author's own is
+                // not what this arm binds, so there is no other kind to report.
+                kind: ModuleExportKind::Function,
+                declaration: declaration.to_string(),
+                doc: {
+                    // The line its first modifier stands on — and above it, past any annotation
+                    // written on a line of its own, whatever prose its author wrote.
+                    let line = source[..function.start].matches('\n').count();
+                    let above =
+                        super::super::comments::above(&lines, line, |line| line.starts_with('@'));
+                    super::super::comments::block_doc(&lines, above)
+                        .or_else(|| super::super::comments::line_doc(&lines, above, &["///", "//"]))
+                },
+                returns: signature.returns,
+                parameters: signature.parameters,
+            }
         })
         .collect()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The types a declaration writes
+// ---------------------------------------------------------------------------------------------
+
+/// The type names one `fun` declaration writes, in the two positions a documentation view asks
+/// about.
+///
+/// Kotlin writes a type after a `:` in both positions, so this arm answers both. What is recorded is
+/// what the author *wrote*, reduced to identifiers: `Map<String, List<Row>>` is `Map`, `String`,
+/// `List` and `Row`, because each is a name a view can be opened under.
+///
+/// A `fun` that declares no return type returns `Unit`, and nothing is recorded for it: the type a
+/// view would open is one the author did not write, and this reads a declaration rather than
+/// inferring one.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Signature {
+    /// The names written in return position.
+    returns: Vec<String>,
+    /// The names written in parameter position, in source order.
+    parameters: Vec<String>,
+}
+
+impl Signature {
+    /// Read `declaration`, whose parameter list opens at `open`.
+    ///
+    /// Both halves are found from that one offset rather than by searching for a `(`, because the
+    /// scan that produced the declaration already knows where the list opens and a second reading
+    /// could disagree with the first — an extension receiver and a default value both write
+    /// parentheses of their own.
+    fn read(declaration: &str, open: usize) -> Self {
+        if declaration.as_bytes().get(open) != Some(&b'(') {
+            return Self::default();
+        }
+        let close = enclosed(declaration, open);
+        // `get` rather than an index: a declaration whose parameter list never closes is a module
+        // the compiler is about to refuse, and reading it must not take the turn down before it can.
+        let list = declaration.get(open + 1..close).unwrap_or_default();
+        let mut signature = Self {
+            returns: named(returned(declaration, close)),
+            parameters: Vec::new(),
+        };
+        for parameter in split_top_level(list) {
+            for name in named(declared_type(parameter)) {
+                if !signature.parameters.contains(&name) {
+                    signature.parameters.push(name);
+                }
+            }
+        }
+        signature
+    }
+}
+
+/// The return type of a declaration, given where its parameter list closed.
+///
+/// A `:` after the `)` opens it and it runs to the end of the declaration, which the scan already
+/// ended at the `{` or the `=` that opens the body. A declaration with no `:` there returns `Unit`
+/// and writes nothing, so nothing is read.
+fn returned(declaration: &str, close: usize) -> &str {
+    let after = declaration
+        .get(close + 1..)
+        .unwrap_or_default()
+        .trim_start();
+    match after.strip_prefix(':') {
+        // A `where` clause bounds a type parameter and is not the return type, so the type stops
+        // where one begins.
+        Some(returned) => match returned.find(" where ") {
+            Some(at) => returned[..at].trim(),
+            None => returned.trim(),
+        },
+        None => "",
+    }
+}
+
+/// One parameter's declared type: everything after the `:` that binds its name.
+///
+/// A default value is dropped with it, because `rows: List<Row> = emptyList()` writes a type and an
+/// expression and only the type is a name a view opens. A `vararg` or an annotation in front of the
+/// name is dropped by taking what follows the `:` at all.
+fn declared_type(parameter: &str) -> &str {
+    let Some(at) = top_level(parameter, ':') else {
+        return "";
+    };
+    let written = &parameter[at + 1..];
+    match top_level(written, '=') {
+        Some(default) => written[..default].trim(),
+        None => written.trim(),
+    }
+}
+
+/// The offset of the first `wanted` character written at the top level of `text` — outside any
+/// `<>`, `()` or `[]` run.
+fn top_level(text: &str, wanted: char) -> Option<usize> {
+    let mut depth = 0i32;
+    for (at, character) in text.char_indices() {
+        if depth == 0 && character == wanted {
+            return Some(at);
+        }
+        match character {
+            '<' | '(' | '[' => depth += 1,
+            '>' | ')' | ']' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// `text` split at the commas written at its top level, dropping whatever is only whitespace.
+fn split_top_level(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (at, character) in text.char_indices() {
+        match character {
+            '<' | '(' | '[' => depth += 1,
+            '>' | ')' | ']' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(&text[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&text[start..]);
+    parts
+        .into_iter()
+        .filter(|part| !part.trim().is_empty())
+        .collect()
+}
+
+/// The identifiers a type expression names, each reduced to the last segment of its qualified name
+/// and listed once.
+///
+/// `kotlin.collections.Map<String, List<Row>?>` is `Map`, `String`, `List` and `Row`. A type
+/// variable is kept, because it is a name the declaration writes and resolving one is the
+/// documentation surface's business rather than this scan's.
+fn named(written: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for word in written.split(|character: char| !is_type_char(character)) {
+        // The last segment that is a name at all, so `kotlin.collections.Map` is `Map`.
+        let Some(name) = word.split('.').rfind(|part| !part.is_empty()) else {
+            continue;
+        };
+        if name.starts_with(|character: char| character.is_ascii_digit()) {
+            continue;
+        }
+        if !names.iter().any(|seen| seen == name) {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+/// Whether a character may stand in a written type name — an identifier's own characters and the
+/// `.` that qualifies one.
+fn is_type_char(character: char) -> bool {
+    character.is_alphanumeric() || character == '_' || character == '.'
+}
+
+/// Where the parameter list opening at `open` in `declaration` closes, as the offset of its `)`.
+///
+/// Nesting is counted, so a default value's own parentheses do not close it early. An unbalanced
+/// list closes at the end of the declaration, which the compiler is about to refuse anyway.
+fn enclosed(declaration: &str, open: usize) -> usize {
+    let mut depth = 0i32;
+    for (at, character) in declaration[open..].char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return open + at;
+                }
+            }
+            _ => {}
+        }
+    }
+    declaration.len()
 }
 
 /// One top-level function declaration.
@@ -310,6 +490,10 @@ struct Function {
     /// Where its signature ends — at the `{` or the `=` that opens its body, or at the end of the
     /// line when it has neither. `source[start..end]` is the declaration and nothing else.
     end: usize,
+    /// Where its parameter list opens, so the [signature reading](Signature::read) can tell the
+    /// parameters behind that `(` from the return type after the matching `)` without searching for
+    /// either.
+    parameters: usize,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -407,6 +591,7 @@ impl<'a> Lexer<'a> {
                 .any(|word| HIDDEN.iter().any(|hidden| word == hidden)),
             start,
             end: self.signature_end(parameters, spans),
+            parameters,
         })
     }
 

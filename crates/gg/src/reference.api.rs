@@ -232,9 +232,6 @@ fn category_of(function: &CatalogueFunction) -> Option<String> {
 /// had only their union could not take it apart again.
 fn opened(view: &DocsRuntime, key: &str, flag: DocViewType) -> Vec<String> {
     view.types_to_open(key, DocViewTypes::only(flag))
-        .into_iter()
-        .map(str::to_string)
-        .collect()
 }
 
 /// The type keys `references` resolve to, deduplicated and in the order they were referenced.

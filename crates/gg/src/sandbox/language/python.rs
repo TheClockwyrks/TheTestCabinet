@@ -99,8 +99,10 @@ pub(super) const SURFACE_IMPORT: &str = "import gg";
 /// [memories](crate::memories) this session has read.
 ///
 /// `lib` is a package the guest assembles per turn out of the modules gg handed it, so it is reached
-/// the way any other package is. The line is quoted in the [documentation view](crate::docs) of the
-/// module and of each declaration it exports, which is the moment it matters.
+/// the way any other package is and the way [gg's own surface](SURFACE_IMPORT) is. Supplying it puts
+/// no name in the program's scope: a program that writes no line for it has no `lib`. The line is
+/// quoted in the [documentation view](crate::docs) of the module and of each declaration it exports,
+/// which is the moment it matters.
 pub(super) const LIB_IMPORT: &str = "import lib";
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
@@ -284,7 +286,12 @@ impl ProgramLanguage for Python {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [`lib.<key>.<name>`](super::ProgramLanguage::lib_access), under [`LIB_IMPORT`].
+    /// [`import lib`](LIB_IMPORT), whatever the key — the line a program writes to reach a loaded
+    /// module, and the same mechanism the [SDK](SURFACE_IMPORT) is supplied by.
+    ///
+    /// Key-independent because `lib` is one package with a submodule per key, so
+    /// [`lib.<key>.<name>`](super::ProgramLanguage::lib_access) resolves off that one line and
+    /// `from lib import <key>` and `import lib.<key>` resolve off the package's own machinery.
     fn lib_import(&self, _key: &str) -> Option<String> {
         Some(LIB_IMPORT.to_string())
     }
@@ -315,10 +322,10 @@ impl ProgramLanguage for Python {
 /// leading digit is prefixed, because the result has to be a valid identifier whatever the author
 /// wrote.
 ///
-/// Deliberately ASCII-only, though Python identifiers are Unicode: the key is quoted back to the
-/// model in the reply that binds it and then typed out by the model in every program that uses it,
-/// and a name a model has to reproduce exactly is one that should have no characters it could get
-/// wrong.
+/// Deliberately ASCII-only, though Python identifiers are Unicode: the key is read by the model in
+/// the [documentation view](crate::docs) of the module and then typed out in every program that
+/// uses it, and a name a model has to reproduce exactly is one that should have no characters it
+/// could get wrong.
 pub(super) fn binding_name(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut pending = false;

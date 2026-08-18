@@ -219,9 +219,9 @@ pub(super) fn compile_program(
 ///
 /// # Two things it deliberately is not
 ///
-/// **It names nothing of gg's.** It used to call `GG::Lib.define`, which meant gg's SDK had to be
-/// loaded before any module ran — and Ruby's `require` is process-wide, so that would have put
-/// `GG::` in front of a program that wrote no `require "gg"`. `Module.new` is Ruby's own. A module
+/// **It names nothing of gg's.** `Module.new` is Ruby's own, so nothing of gg's surface is loaded
+/// to build a namespace — which matters because Ruby's `require` is process-wide and a wrapper
+/// reaching for gg would put `GG::` in front of a program that wrote no `require "gg"`. A module
 /// whose body calls gg writes `require "gg"` itself, exactly as a program does.
 ///
 /// **It occupies no line.** There is no newline after it, so the author's first line is compiled

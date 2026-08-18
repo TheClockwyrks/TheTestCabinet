@@ -14,9 +14,11 @@ import { call } from "../internal/errors.js";
  *
  * Reading pins that body permanently into the agent's context, so a skill once read stays read.
  *
- * A skill may be **code** rather than prose, or as well as it. Code is bound at `lib.<key>` for the
- * rest of the session and the reply names the key and what it exports. An on-use script runs once the
- * program has ended, and whatever it shows arrives on the next turn.
+ * A skill may be **code** rather than prose, or as well as it. Reading one makes its module
+ * importable by every later program and opens a documentation view of each function the module
+ * declares, which is where the line that imports it is stated. Nothing about the module is added to
+ * this reply. An on-use script runs after the program has ended, on every read, and whatever it
+ * shows arrives on the next turn.
  *
  * @ggop skills.read_skill
  * @param name The skill's name, as the system prompt lists it.

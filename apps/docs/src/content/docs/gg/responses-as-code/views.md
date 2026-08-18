@@ -98,11 +98,21 @@ that coexist. A whole-file read has no region and so is its own key.
 Supersession is the view API's alone. A native `read_file` names an action and
 appends a fresh view per read, and that path is untouched by any of this.
 
-A documentation view never supersedes. Re-opening a key that is already open
-does nothing at all: not a move, not a re-emit. The documentation band is
-therefore append-only for the life of a session, and closing is the only thing
-that can disturb it, which is why closing is bought by a capability and opening
-is not.
+A documentation view supersedes only when its text has changed. Re-opening a key
+under the body already open does nothing at all: not a move, not a re-emit. An
+SDK entry's body is a projection of a catalogue compiled into the binary, so it
+renders the same bytes every time and re-opening one is always that no-op.
+
+A loaded module's page is the one that can change under a fixed key, since the
+model writes the code a skill or a memory carries. Using a revised module
+re-opens each of its pages, and a page whose text has changed replaces the copy
+that was open, on the three rules above. Every other page in the band stays where
+it sits.
+
+The band is therefore append-only for as long as an agent's loaded code stands,
+and the prompt prefix ahead of the earliest replaced page survives whatever else
+the agent opens. Closing is bought by a capability and opening is not, because
+closing is what takes back a page the agent still holds.
 
 ## Caps
 
@@ -233,6 +243,11 @@ type views that agent's `docViewTypes` flags place beside each, and the use
 itself adds no message. A function's view carries its declaration, its
 documentation, and the line a program writes to reach it, as an SDK function's
 does.
+
+A type a loaded declaration names is looked for in the module itself first and in
+gg's own catalogue second, so a module's own `Row` opens rather than gg's and
+another module's `Row` is never reached for. The flags select the same types
+whether a use placed the page or the agent opened it by key itself.
 
 Those views belong to the instance that loaded the module. An instance that
 starts with nothing loaded holds none of them, and using the skill again opens

@@ -13,10 +13,10 @@ import Gg.Internal.Wire as Wire
 -- | Read a skill by name, handing back its body with the front matter stripped.
 -- |
 -- | Reading it also pins that body permanently into the context window, so a skill once read stays
--- | read. A skill may be **code** rather than prose, or as well as it: code is bound at `lib.<key>`
--- | for the rest of the session and the reply names the key and what it exports, reachable through
--- | `Gg.Core.lib`. An on-use script runs once the program has ended, and whatever it shows arrives on
--- | the next turn.
+-- | read. A skill may be **code** rather than prose, or as well as it: every later program may
+-- | import that code as `Lib.<Key>`, and gg opens a documentation view of each function the module
+-- | declares. An on-use script runs once the program has ended, and whatever it shows arrives on the
+-- | next turn.
 -- |
 -- | # Operation
 -- |
@@ -28,8 +28,8 @@ import Gg.Internal.Wire as Wire
 -- |
 -- | # Returns
 -- |
--- | The skill's body with its front matter stripped, and — where the skill is code — the
--- | `lib.<key>` its exports are now bound at.
+-- | The skill's body with its front matter stripped. Where the skill is code, that code is loaded
+-- | as well, and what it declares arrives as documentation views rather than in this reply.
 -- |
 -- | # Throws
 -- |

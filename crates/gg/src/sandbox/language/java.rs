@@ -6,7 +6,8 @@
 //! * [`compile`] — the host-side `javac` and TeaVM build, what it costs, what it shares, and the
 //!   two failures it tells apart;
 //! * [`source`] — what gg does to a model's Java before javac sees it (**nothing**), the one
-//!   convention that costs, and the code-module wrapper that is all that is left of a wrapper here;
+//!   convention that costs, and the code-module wrapper, which is a module author's file rather than
+//!   a model's reply;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the text-block lexer — two of whose
 //!   answers are this arm's alone;
@@ -64,7 +65,10 @@
 //!
 //! Its SDK reaches a program the way Java reaches any library: a jar on the classpath, which is
 //! packaging, plus an `import` line **the program writes**. Every module's catalogue entry states
-//! that line, and a program that writes none resolves nothing of gg's.
+//! that line, and a program that writes none resolves nothing of gg's. A code
+//! [skill](crate::skills)'s or [memory](crate::memories)'s module arrives by the same road: the
+//! class directory its own compile produced, on the same classpath, reached by `import lib.<key>;`
+//! or by the class named in full.
 
 use std::sync::OnceLock;
 
@@ -117,24 +121,25 @@ impl ProgramLanguage for Java {
         GgProgramLanguage::Java.display_name()
     }
 
-    /// `Lib.<key>.<name>` — a path javac checks, because a code module on this arm is **compiled
-    /// into the program that uses it** rather than loaded beside it.
+    /// `import lib.csvTools;` — the line a program writes to reach a loaded module, which is the
+    /// line it writes to reach [gg's own SDK](https://docs.testcabinet.ai/gg/languages/java/).
     ///
-    /// That is the shape [Rust](super::rust)'s `lib::<key>::<name>` has and the reason neither arm
-    /// reaches a module by string any more. `Lib` is a class gg generates beside the model's own
-    /// file, with one nested class per module in scope extending that module's own class; see
-    /// [`lib_class`](source::lib_class) for why inheritance is what Java has instead of an alias.
-    fn lib_access(&self, key: &str) -> String {
-        format!("{}.{key}.<name>", source::LIB_CLASS)
+    /// A module is compiled on its own into package [`lib`](source::MODULE_PACKAGE) under a class
+    /// named by its key, and the directory of classes goes on the program's classpath the way this
+    /// arm's SDK jar does. A classpath entry declares no name, so what a program has after it is
+    /// what Java gives it: the class named in full, `lib.csvTools.parse(…)`, or this import and the
+    /// simple name. The access template is the seam's own default, `lib.<key>.<name>`, which on this
+    /// arm is a package, a class and a `static` method.
+    fn lib_import(&self, key: &str) -> Option<String> {
+        Some(format!("import {}.{key};", source::MODULE_PACKAGE))
     }
 
     /// The `javac` compile, the TeaVM translation and the component encode, in this preparation's
     /// own workspace and in a JVM lent to it alone — see [`compile`] for what it costs, what it
     /// shares, and how it tells a program a compiler refused from a compiler that could not run.
     ///
-    /// The modules are **inputs to the compile**, as they are on every compiled arm: a Java code
-    /// module is Java, Java is compiled, and a compiled module is only reachable from the artifact
-    /// it was built into.
+    /// The modules are compiled **before** it, each on its own, and what reaches this compile is the
+    /// classpath entry each of those produced.
     fn prepare_program(
         &self,
         source: &str,
@@ -172,10 +177,10 @@ impl ProgramLanguage for Java {
     /// `javac` alone, pointed at a class body wrapped in a class — and the names the resulting
     /// namespace offers.
     ///
-    /// What comes back is the author's own source rather than an artifact, because there is nothing
-    /// a module can be compiled *into* that a later program could load: the program's own compile is
-    /// where it is built. Running the compiler here anyway is what buys the author a located
-    /// diagnostic at the read rather than one against somebody else's program every turn after it.
+    /// What comes back is the author's own source rather than an artifact, because a module is
+    /// compiled under the **key** it is bound at and no key exists at the read. Running the compiler
+    /// here anyway is what buys the author a located diagnostic at the read rather than one against
+    /// somebody else's program every turn after it.
     ///
     /// The names are read from the author's own source by [`source`]'s export scan rather than out
     /// of a compiled artifact, because they are what the skill's author is *told* the namespace
@@ -333,18 +338,18 @@ impl ProgramLanguage for Java {
 /// `class` → `_class`.
 ///
 /// camelCase because that is what Java spells a name in and what this SDK spells every other bound
-/// function in, so a program reaching `Lib.csvTools.parse(…)` reads like the rest of its own scope.
+/// function in, so a program reaching `lib.csvTools.parse(…)` reads like the rest of its own scope.
 /// Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next word
 /// rather than surviving; a name that is nothing but separators becomes `module`.
 ///
 /// # The result must be a Java identifier, and that is load-bearing
 ///
-/// The key is a **nested class name** in the [`Lib`](source::lib_class) gg declares beside a
-/// program, and the path segment javac resolves when a program writes `Lib.<key>.<name>`. A key that
-/// is not an identifier is therefore a `Lib` that does not compile, on every turn, for a name the
-/// model was handed and cannot change — so a leading digit is prefixed and a **reserved word** is
-/// too. Both are prefixed rather than suffixed because `_class` reads as a name a tool chose and
-/// `class_` reads as one an author typed.
+/// The key is the **name of the class** a module is compiled under in package
+/// [`lib`](source::MODULE_PACKAGE), and the path segment javac resolves when a program writes
+/// `lib.<key>.<name>`. A key that is not an identifier is therefore a module that does not compile,
+/// for a name the model was handed and cannot change — so a leading digit is prefixed and a
+/// **reserved word** is too. Both are prefixed rather than suffixed because `_class` reads as a name
+/// a tool chose and `class_` reads as one an author typed.
 ///
 /// Deliberately ASCII-only, though Java identifiers may be Unicode: a name a model has to reproduce
 /// exactly is one that should have no characters it could get wrong.

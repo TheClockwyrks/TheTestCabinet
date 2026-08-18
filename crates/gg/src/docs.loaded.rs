@@ -188,30 +188,34 @@ impl LoadedDocs {
         read(&self.entries.lock().expect(LOCK))
     }
 
-    /// The **canonical key** whatever `name` addresses, or `None` when nothing loaded answers to it.
+    /// **The entry `name` addresses**, read through `read`, or `None` when nothing loaded answers to
+    /// it.
     ///
     /// The full key first and the bare export name second, the same leniency and the same
     /// canonicalization the SDK half applies: a model reads `csvTools.parseCsv` in a search hit and
     /// types `parseCsv` at a call site, and both have to reach one page filed under one key.
-    pub fn key_of(&self, name: &str) -> Option<String> {
+    ///
+    /// One lookup rather than one per question asked of an entry, so a key, a body and the type
+    /// names a declaration writes cannot come from three different entries for one spelling. `read`
+    /// runs under the registry's lock, so it must not reach back into this registry.
+    pub fn find<T>(&self, name: &str, read: impl FnOnce(&LoadedEntry) -> T) -> Option<T> {
         self.read(|entries| {
             entries
                 .iter()
                 .find(|entry| entry.key == name)
                 .or_else(|| entries.iter().find(|entry| entry.name == name))
-                .map(|entry| entry.key.clone())
+                .map(read)
         })
+    }
+
+    /// The **canonical key** whatever `name` addresses, or `None` when nothing loaded answers to it.
+    pub fn key_of(&self, name: &str) -> Option<String> {
+        self.find(name, |entry| entry.key.clone())
     }
 
     /// One entry's whole documentation view, by either of the two names it answers to.
     pub fn body(&self, name: &str) -> Option<String> {
-        self.read(|entries| {
-            entries
-                .iter()
-                .find(|entry| entry.key == name)
-                .or_else(|| entries.iter().find(|entry| entry.name == name))
-                .map(|entry| entry.body.clone())
-        })
+        self.find(name, |entry| entry.body.clone())
     }
 
     /// Every name a loaded entry answers to, for the hint a failed lookup carries.

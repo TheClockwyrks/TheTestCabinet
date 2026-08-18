@@ -128,13 +128,10 @@ once per process:
 
 `gg.d.ts` declares the whole surface, including the functions this agent was not
 granted. The SDK is static, so those functions are bound and fail as themselves
-at run time, and a compiler that refused them would refuse programs that run. A
-verdict must also depend on the program alone, because the same text is compiled
-as a turn's program, as a skill's on-use script and as the code half of a memory.
-That is why a code module is declared as the wildcard `lib:*`, which types every
-import from a `lib:` specifier as `any`: gg has no declaration for what a skill
-author's module exports, and what an agent happened to load must not change a
-verdict.
+at run time, and a compiler that refused them would refuse programs that run.
+
+It declares a code module as the wildcard `lib:*`, so a `lib:` import is checked
+and what it binds is `any`. The reason is under [code modules](#code-modules).
 
 ## Failures
 
@@ -170,17 +167,49 @@ as a failure, are the guest's own rules and are on
 ## Code modules
 
 A code module is an ordinary TypeScript file with `export`s, accepted as `.ts` or
-`.js`, compiled exactly as a program is and in its own coordinates. A program
-reaches one by importing `lib:<key>`; what the module offers is what it exports,
-read off the JavaScript `tsc` emitted for it.
+`.js`, compiled by the same `tsc` a program is, in an invocation of its own and
+in its own coordinates. It stays a separate artifact: the guest declares it as
+its own module, under its own specifier, exactly as it declares the SDK's
+modules.
 
-A module binds under a `camelCase` key, so `csv-tools` is imported as
-`lib:csvTools`. Every separator joins the next word, a name of nothing but
+A module is supplied to a program the way gg's SDK is, by making the specifier
+resolve. That declares no name. The line the program writes is
+`import * as csvTools from "lib:csvTools";`, and one export is then reached as
+`csvTools.<name>`. A program that omits the line and writes
+`csvTools.parse(text)` is refused by `tsc` for an undeclared name, exactly as a
+program that writes `gg.files.readFile` without importing `gg` is.
+
+The key is the skill's or memory's name in `camelCase`, so `csv-tools` is reached
+as `lib:csvTools`. Every separator joins the next word, a name of nothing but
 separators becomes `module`, and a leading digit is prefixed, so the key is
 always a name a program can bind an import to.
 
+What the module offers is what it exports, read off the JavaScript `tsc` emitted
+for it. Each export is documented from the declaration its author wrote, with the
+annotations `tsc` erased still on it, and a function's export also carries the
+type names that declaration writes in return position and in parameter position.
+Those names are what an agent's `docViewTypes` flags open views of beside the
+function. A built-in such as `string` and a type parameter such as `T` are not
+among them: neither names a declaration anything could open.
+
+A view opens for a name something declares, which is an export of this module or
+an SDK type. `tsc` erases a `type` or an `interface`, so one the module exports
+is not in its namespace and a name only it declares opens nothing.
+
 A module is evaluated by the program that imports it and by nothing else, so a
 broken module another skill loaded cannot fail this turn.
+
+### A module's exports are untyped to `tsc`
+
+`gg.d.ts` declares `lib:*`, the wildcard, so every name an import from a `lib:`
+specifier binds has the type `any`. The import is checked; what it binds is not.
+
+gg reads a module's exports as text: the head of each declaration the namespace
+offers, without its body. An ambient declaration assembled from those heads would
+be missing the types they name and the members a class carries, and would refuse
+calls the guest runs. What the model gets instead is the declaration itself,
+quoted whole in the documentation view of the export, which is the author's own
+account of the call it is about to write.
 
 ## Prompt segment
 

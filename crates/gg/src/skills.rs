@@ -81,11 +81,11 @@ pub struct Skill {
     /// The skill's body (front matter removed), loaded into context when the skill is read. Empty
     /// for a skill that is only code, or only an on-use script.
     body: String,
-    /// The importable modules (`skill.<ext>`), by the extension each was spelled with, bound at
-    /// `lib.<key>` once the skill is read. Ignored under native tool calling, which has no programs
-    /// to bind them into.
+    /// The importable modules (`skill.<ext>`), by the extension each was spelled with, supplied to
+    /// the agent's programs as a library once the skill is used. Ignored under native tool calling,
+    /// which has no programs to import them.
     code: CodeFiles,
-    /// The on-use scripts (`on-use.<ext>`), by extension, run once when the skill is first read.
+    /// The on-use scripts (`on-use.<ext>`), by extension, run on every use of the skill.
     /// Their source is never shown to the model. Ignored under native tool calling for the same
     /// reason.
     on_use: CodeFiles,
@@ -194,10 +194,11 @@ impl SkillLibrary {
     ///   always been.
     /// * `<name>/` — a **skill directory**, which is how a skill carries code:
     ///   * `skill.md` — required. The front matter (and, optionally, a body).
-    ///   * `skill.<ext>` — optional. The importable module, bound at `lib.<key>` once the skill is
-    ///     read. One per program language the skill was authored for (`skill.ts`, `skill.py`); an
-    ///     agent reads the one [its own language names](ProgramLanguage::module_file_extensions).
-    ///   * `on-use.<ext>` — optional. The script gg runs once, when the skill is first read.
+    ///   * `skill.<ext>` — optional. The importable module, supplied to the agent's programs as a
+    ///     library once the skill is used. One per program language the skill was authored for
+    ///     (`skill.ts`, `skill.py`); an agent reads the one
+    ///     [its own language names](ProgramLanguage::module_file_extensions).
+    ///   * `on-use.<ext>` — optional. The script gg runs on every use of the skill.
     ///     Resolved per language exactly as the module is.
     ///
     /// # Every entry must load, exactly as it is written
@@ -690,8 +691,8 @@ fn defect(path: &Path, found: &str, message: String) -> LaunchDefect {
 /// The `<stem>.<ext>` files present under `dir`, one entry per extension that has one.
 ///
 /// A file that is present and **blank** is a defect rather than a dropped entry. An author who
-/// wrote `skill.ts` meant the agent to get a module; an empty one binds `lib.<key>` to nothing, so
-/// the agent's programs would meet a name that exists and exports nothing — and the arm the
+/// wrote `skill.ts` meant the agent to get a module; an empty one supplies a library that exports
+/// nothing, so a program that imported it would reach nothing — and the arm the
 /// directory was authored for silently becomes the arm without it. A file gg cannot read at all is
 /// a defect for the same reason, one step earlier.
 fn read_code_files(dir: &Path, stem: &str, report: &mut LaunchReport) -> CodeFiles {

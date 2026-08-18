@@ -150,9 +150,9 @@ the capability is refused by name. `gg.views.close` reaches the documentation
 band in no configuration.
 
 The reason is a property nothing else in the window has: opening documentation
-only ever appends to the prompt, since re-opening something already open does
-nothing, so a provider's cached prefix survives every lookup an agent makes for
-a whole session. A close removes an item from the middle and costs the run every
+only ever appends to the prompt, since re-opening a page whose text is unchanged
+does nothing, so a provider's cached prefix survives every lookup an agent makes
+for a whole session. A close removes an item from the middle and costs the run every
 cached token after it. Whether that reclaim pays for the invalidation is a
 measurement, so it is a toggle. Keeping the call separate also keeps the
 telemetry attributable: `close_docs_views` has exactly one producer, so a

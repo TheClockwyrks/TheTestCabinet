@@ -225,6 +225,45 @@ export function firstWord() {
     );
 }
 
+/// **A module in scope puts no name in the program's scope**: the import line is the only route in.
+///
+/// The mirror of
+/// [the SDK's own rule](a_program_reaches_gg_through_an_import_it_wrote), for the thing a use of a
+/// code skill or a code memory makes available. Handing the loader a module is packaging — the
+/// specifier resolves, and that is all it does — so the same program is written twice: once naming
+/// the key with no line, where the engine's own `ReferenceError` names the identifier, and once
+/// through the namespace import, where it answers.
+#[test]
+fn a_module_in_scope_is_reached_only_through_the_import_the_program_writes() {
+    let module = (
+        "csvTools",
+        "export function parse(text) {\n  return text.length;\n}\n",
+    );
+
+    let ran = run_with("console.log(csvTools.parse(\"a,b\"));\n", &[module]);
+    let error = ran
+        .result
+        .as_ref()
+        .expect_err("an unbound identifier kills the guest");
+    let message = format!("{error:?}\n{}", ran.stderr);
+    assert!(
+        message.contains("ReferenceError") && message.contains("csvTools is not defined"),
+        "the engine's own sentence is what the model reads: {message}"
+    );
+    assert!(ran.logs.is_empty(), "and nothing ran: {:?}", ran.logs);
+
+    let ran = run_with(
+        "import * as csvTools from \"lib:csvTools\";\n\nconsole.log(csvTools.parse(\"a,b\"));\n",
+        &[module],
+    );
+    assert!(ran.result.is_ok(), "{}", ran.model_facing());
+    assert_eq!(
+        ran.logs,
+        ["3".to_string()],
+        "the same call, reached through the line the documentation states"
+    );
+}
+
 // -------------------------------------------------------------------------------------------------
 // What a failure looks like — ruling D8, capture rather than interception
 // -------------------------------------------------------------------------------------------------
@@ -819,9 +858,56 @@ fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
     assert_eq!(exports[3].kind, ModuleExportKind::Type);
     assert_eq!(exports[3].declaration, "export class Row");
 
-    // Nothing reads a declaration's types on this arm yet, and an empty list says "not read here".
+    // A JavaScript declaration writes no type in either position, so both lists are empty for every
+    // export a module on this arm offers.
     assert!(exports.iter().all(|export| export.returns.is_empty()));
     assert!(exports.iter().all(|export| export.parameters.is_empty()));
+}
+
+/// **A typed declaration states the names a documentation view opens beside it**, in return position
+/// and in parameter position, read off the declaration its author wrote.
+///
+/// [`exports_of`](super::exports_of) is what [TypeScript](super::super::typescript) calls: the
+/// namespace is `tsc`'s emission, which has no types left in it, and the declarations are the
+/// author's file, which has all of them. So this drives both halves — a namespace whose types are
+/// gone, an authored file whose types are there — and asserts the names came from the second.
+#[test]
+fn a_typed_declaration_states_the_types_a_view_opens_beside_it() {
+    let authored = "export function widen(row: Row, into: Table): Report {\n}\n\
+                    export const parse = (text: string): Table => rows(text);\n\
+                    export const limit: Bound = 40;\n";
+    let namespace = "export function widen(row, into) {\n}\n\
+                     export const parse = (text) => rows(text);\n\
+                     export const limit = 40;\n";
+    let exports = super::exports_of(namespace, authored);
+    assert_eq!(
+        crate::sandbox::export_names(&exports),
+        ["widen", "parse", "limit"]
+    );
+
+    assert_eq!(exports[0].returns, ["Report"]);
+    assert_eq!(exports[0].parameters, ["Row", "Table"]);
+
+    assert_eq!(exports[1].returns, ["Table"]);
+    assert!(
+        exports[1].parameters.is_empty(),
+        "`string` names no declaration a view could open: {:?}",
+        exports[1].parameters
+    );
+
+    assert!(
+        exports[2].returns.is_empty() && exports[2].parameters.is_empty(),
+        "a value's annotation stands in neither position: {:?}",
+        exports[2]
+    );
+
+    assert!(
+        super::exports(namespace)
+            .iter()
+            .all(|export| export.returns.is_empty() && export.parameters.is_empty()),
+        "and the same namespace read on its own — which is the JavaScript arm — writes no type at \
+         all"
+    );
 }
 
 /// **A renaming export is named what the namespace calls it and quoted as what its author

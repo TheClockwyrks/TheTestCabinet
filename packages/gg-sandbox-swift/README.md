@@ -230,8 +230,3 @@ a signature step that reached `build.sh` for its bindings would collapse them in
 doc comment would re-cut 3.6 MB of archives that are not even byte-reproducible. That is the whole
 inner-loop cost the artifact crates exist to avoid.
 
-## What is not built
-
-The **registration** that makes `language: "swift"` a value an operator can configure, and the
-**code modules** it is blocked on. `crates/gg/src/sandbox/language/swift.rs` says what registering
-it needs and what the plan for `lib.<key>` is on a language whose modules are linked.

@@ -118,3 +118,108 @@ fn an_include_is_code_and_its_angle_brackets_are_not_a_string() {
     let source = "#include <vector>\n#include \"sandbox.h\"\nint main() { return 0; }\n";
     assert!(defines_main(source));
 }
+
+/// **The line a program writes to reach a module**, and the two words a module name may not carry.
+///
+/// A namespace and a module name are the same identifiers separated differently, except for
+/// `module` and `import`: both are legal namespace names, neither is a legal module-name component,
+/// and both are keys [`binding_name`](super::super::binding_name) really produces.
+#[test]
+fn a_modules_import_line_names_the_module_and_escapes_the_two_words_it_may_not() {
+    assert_eq!(module_import("csv_tools"), "import lib.csv_tools;");
+    assert_eq!(module_name("csv_tools"), "lib.csv_tools");
+
+    assert_eq!(module_import("module"), "import lib.Module;");
+    assert_eq!(module_import("import"), "import lib.Import;");
+}
+
+/// **A function's two type positions, read off the declaration the scan already quoted.**
+///
+/// What each case is about is the one thing that is not a type name: a parameter's own name, its
+/// default argument, the decoration around a type, the specifiers a declaration opens with, and the
+/// container a name a model wants a view of sits inside.
+#[test]
+fn a_function_export_carries_the_types_its_declaration_writes() {
+    let types = |declaration: &str| signature_types(declaration, ModuleExportKind::Function);
+
+    // The ordinary shape: a template argument is a type name of its own, because it is the one this
+    // module declares and the container is the standard library's.
+    assert_eq!(
+        types("std::vector<row> parse(std::string_view text, char sep = ',')"),
+        (
+            vec!["std::vector".to_string(), "row".to_string()],
+            vec!["std::string_view".to_string(), "char".to_string()]
+        )
+    );
+
+    // A default argument carrying a comma inside a literal is one argument, which is what reading
+    // the declaration through the arm's own lexer buys.
+    assert_eq!(
+        types("int count(std::string_view text, char sep = ',')").1,
+        ["std::string_view", "char"]
+    );
+
+    // Decoration is not a name, and a specifier is not one either.
+    assert_eq!(
+        types("static inline const row &widest(const std::vector<row> &rows, row *fallback)"),
+        (
+            vec!["row".to_string()],
+            vec!["std::vector".to_string(), "row".to_string()]
+        )
+    );
+
+    // A trailing return type is the return type, and the `auto` announcing one is not a type.
+    assert_eq!(
+        types("auto widen(int value) -> std::string").0,
+        ["std::string"]
+    );
+
+    // An unnamed parameter is all type, at both spellings of "there is nothing to drop".
+    assert_eq!(types("int one(std::string_view)").1, ["std::string_view"]);
+    assert_eq!(types("int two(std::vector<row>)").1, ["std::vector", "row"]);
+    assert_eq!(types("int three(int)").1, ["int"]);
+
+    // A parameter list that names nothing writes no type, and neither does a declaration this
+    // reading cannot take apart.
+    assert!(types("int nothing()").1.is_empty());
+    assert!(types("row make").0.is_empty());
+
+    // One view per type, opened where the declaration first names it.
+    assert_eq!(
+        types("row merge(const row &left, const row &right)").1,
+        ["row"]
+    );
+}
+
+/// **Only a function writes the two positions**, so nothing else claims them.
+///
+/// A constant's own type is a type, and it is not a return type: a view saying it was would be gg's
+/// reading of the declaration standing in front of the author's.
+#[test]
+fn a_type_and_a_value_write_neither_position() {
+    for kind in [ModuleExportKind::Type, ModuleExportKind::Value] {
+        assert_eq!(
+            signature_types("constexpr double pi = 3.14;", kind),
+            (Vec::new(), Vec::new())
+        );
+        assert_eq!(
+            signature_types("struct row", kind),
+            (Vec::new(), Vec::new())
+        );
+    }
+}
+
+/// **An operator's declaration writes types too**, and the word `operator` is not one of them.
+///
+/// The shape a namespace-scope C++ module really carries beside its functions: a comparison written
+/// as a free function, whose return type and both operands are what a reader of it wants views of.
+#[test]
+fn an_operator_declaration_writes_its_operands_and_not_the_word_operator() {
+    assert_eq!(
+        signature_types(
+            "bool operator==(const row &left, const row &right)",
+            ModuleExportKind::Function
+        ),
+        (vec!["bool".to_string()], vec!["row".to_string()])
+    );
+}

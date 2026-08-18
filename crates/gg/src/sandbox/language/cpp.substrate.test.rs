@@ -636,10 +636,12 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
         name: "csv_tools".to_string(),
         source: prepared.source.clone(),
     }];
-    // The default argument the author wrote is the one the program gets, because nothing was
-    // re-synthesized: the second call passes no separator at all.
+    // The program writes `import lib.csv_tools;` ITSELF, exactly as it writes the `#include` that
+    // reaches gg's surface: what the compile is given is where the module's interface is, which puts
+    // no name in scope. The default argument the author wrote is the one the program gets, because
+    // nothing was re-synthesized: the second call passes no separator at all.
     let component = compile_program(
-        "#include <format>\n\n#include <gg.hpp>\n\nint main() {\n           const auto fields = lib::csv_tools::split(\"a;b;c\", ';');\n           gg::log(std::format(\"{} {}\", fields.size(), fields[1]));\n           gg::log(std::format(\"{}\", lib::csv_tools::split(\"x,y\").size()));\n           return 0;\n         }\n",
+        "#include <format>\n\n#include <gg.hpp>\n\nimport lib.csv_tools;\n\nint main() {\n           const auto fields = lib::csv_tools::split(\"a;b;c\", ';');\n           gg::log(std::format(\"{} {}\", fields.size(), fields[1]));\n           gg::log(std::format(\"{}\", lib::csv_tools::split(\"x,y\").size()));\n           return 0;\n         }\n",
         &modules,
         &PrepareContext::new(),
     )
@@ -649,17 +651,17 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
     let (outcome, _log) = evaluate(&component, &[], RunEnding::None, false, canned_outcome);
     assert_eq!(logs(&outcome), ["3 b", "2"]);
 
-    // And the model's own line numbering is untouched by the module being there, which is what
-    // `-include` buys over a prepended `#include` line: the diagnostic below is on line 2 of a
-    // two-line program compiled with a module in front of it.
+    // And the model's own line numbering is untouched by the module being there, because nothing at
+    // all stands in front of `main.cpp`: the mistake below is on line 3 of the model's own file and
+    // is reported there.
     let located = compile_program(
-        "int main() {\n  return lib::csv_tools::split(1);\n}\n",
+        "import lib.csv_tools;\n\nint main() { return lib::csv_tools::split(1); }\n",
         &modules,
         &PrepareContext::new(),
     );
     match located {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => assert!(
-            rendered.contains("main.cpp:2:"),
+            rendered.contains("main.cpp:3:"),
             "a diagnostic in a program compiled with a module is not at the model's own line: \
              {rendered}"
         ),
@@ -667,98 +669,90 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
     }
 }
 
+/// **A module in scope declares nothing, and changes nothing about the program.**
+///
+/// The [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) this arm holds for
+/// a code module is the one it holds for gg's own surface, which
+/// [`surface`](super::surface) drives for the SDK a header at a time.
+/// `-fmodule-file=` says where the module's interface is on the same terms `-I` says where
+/// gg's headers are, and neither declares a name, so the only thing that puts `lib` in a translation
+/// unit is a line the model wrote — and what a model that forgets reads is clang's own diagnostic at
+/// its own line.
+///
+/// The last third is the authorship half, which a byte comparison of `main.cpp` alone would miss: a
+/// generated file holding `import lib.<key>;` would leave the model's own bytes untouched and still
+/// be gg importing on its behalf. So every file the preparation wrote is read back.
 #[test]
-fn a_module_is_read_at_its_own_line_and_its_includes_are_hoisted() {
+fn a_module_in_scope_declares_nothing_and_changes_nothing_about_the_program() {
     compile::warm();
-
-    // A module that does not compile is reported AT THE AUTHOR'S OWN LINE, and that is the `#line`
-    // directive doing its job: the declaration below is line 3 of what was written and several lines
-    // further down what clang read.
-    let broken = compile::compile_module(
-        "#include <string>\n\n         std::string two() { return 2; }\n",
-        &PrepareContext::new(),
-    );
-    match broken {
-        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
-            assert!(
-                rendered.contains("module_module.cppm:3:"),
-                "a module's diagnostic is not at its author's own line: {rendered}"
-            );
-        }
-        other => panic!("a module that does not compile is a compile error, not {other:?}"),
-    }
-
-    // **An author's `#include` is hoisted rather than refused**, which is what the prelude going away
-    // decided. It used to be refused by name, on the ground that a module already had the standard
-    // library in front of it; nothing is in front of a module now, so refusing the line would leave a
-    // skill author with no route to the standard library at all.
-    //
-    // It is MOVED rather than left where it stands because `#include` is textual: a line inside
-    // `export namespace lib::<key>` would nest the whole header in that namespace. gg lifts it into
-    // the module's global module fragment, beside the `#include <gg.hpp>` gg writes there itself —
-    // and a name attached to the global module reaches nobody who imports the module, so the header
-    // is the module's own and not the program's.
-    //
-    // `<deque>` on purpose: it is not a header gg's own umbrella drags in, so the module below
-    // compiles only if the author's line really was carried over.
-    let included = compile::compile_module(
-        "#include <deque>\nstd::deque<int> ones() { return {1, 2}; }\n",
+    let prepared = compile::compile_module(
+        "#include <string>\n\nstd::string marker() { return \"from the module\"; }\n",
         &PrepareContext::new(),
     )
-    .expect("a module's own `#include` is hoisted into its global module fragment");
-    assert_eq!(export_names(&included.exports), vec!["ones".to_string()]);
+    .expect("an ordinary code module is prepared");
+    let modules = [CodeModule {
+        name: "csv_tools".to_string(),
+        source: prepared.source.clone(),
+    }];
+
+    let program =
+        "#include <gg.hpp>\n\nint main() {\n  gg::log(lib::csv_tools::marker());\n  return 0;\n}\n";
+    match compile_program(program, &modules, &PrepareContext::new()) {
+        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
+            assert!(
+                rendered.contains("use of undeclared identifier 'lib'"),
+                "the compiler's own answer to a module nobody imported is missing: {rendered}"
+            );
+            assert!(
+                rendered.contains("main.cpp:4:"),
+                "the diagnostic is not at the model's own line: {rendered}"
+            );
+        }
+        other => panic!("a program that skips the import is a compile error, not {other:?}"),
+    }
+
+    // The same program with the line it was missing compiles and runs, so what the refusal above is
+    // about is that one line and nothing else about the program.
+    let imported = format!("import lib.csv_tools;\n{program}");
+    let context = PrepareContext::new();
+    let component = compile_program(&imported, &modules, &context)
+        .expect("the program that writes the import compiles")
+        .component
+        .expect("a compiled arm hands back a component");
+    let (outcome, _log) = evaluate(&component, &[], RunEnding::None, false, canned_outcome);
+    assert_eq!(logs(&outcome), ["from the module"]);
+
+    // And what was compiled is what was handed over, byte for byte, with a module in scope.
+    let work = context
+        .opened_workspace()
+        .expect("a compile opens a workspace")
+        .join("work");
+    let written = std::fs::read_to_string(work.join(compile::PROGRAM_FILE))
+        .expect("the model's own file is what the compiler was handed");
     assert_eq!(
-        included.source, "#include <deque>\nstd::deque<int> ones() { return {1, 2}; }\n",
-        "what comes back is the author's own bytes, hoist or no hoist"
+        written, imported,
+        "the bytes compiled are not the bytes the model sent"
     );
-
-    // And the hoist moves no line number, which is the rule this arm answers with `#line` rather than
-    // with arithmetic: the mistake below is on the author's line 4, above an include on line 1 that
-    // gg lifted out of the body altogether.
-    let located = compile::compile_module(
-        "#include <deque>\n\
-         \n\
-         std::deque<int> ones() { return {1}; }\n\
-         int two() { return missingName; }\n",
-        &PrepareContext::new(),
-    );
-    match located {
-        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
-            assert!(
-                rendered.contains("module_module.cppm:4:"),
-                "hoisting the include moved the author's line numbers, which is exactly what the \
-                 `#line` in front of the body is there to prevent: {rendered}"
-            );
+    for entry in std::fs::read_dir(&work)
+        .expect("the workspace is readable")
+        .flatten()
+    {
+        let path = entry.path();
+        if path
+            .file_name()
+            .is_some_and(|name| name == compile::PROGRAM_FILE)
+        {
+            continue;
         }
-        other => panic!("a module that does not compile is a compile error, not {other:?}"),
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        assert!(
+            !text.contains("import lib."),
+            "{} imports the module on the program's behalf:\n{text}",
+            path.display()
+        );
     }
-
-    // A header nobody has is the author's own compile error, at the author's own line — the second
-    // half of what a hoisted `#line` buys, and the reason each hoisted line carries one.
-    let missing = compile::compile_module(
-        "int one() { return 1; }\n#include <boost/asio.hpp>\n",
-        &PrepareContext::new(),
-    );
-    match missing {
-        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
-            assert!(
-                rendered.contains("module_module.cppm:2:") && rendered.contains("file not found"),
-                "a header this toolchain does not carry is reported where its author wrote it: \
-                 {rendered}"
-            );
-        }
-        other => panic!("a header that is not there is a compile error, not {other:?}"),
-    }
-
-    // And a module that includes nothing is still a module: gg's own line is in the fragment
-    // whatever the author wrote, so `gg::log` is reachable from a module with no include of its own
-    // — which is the one thing gg does put in front of a module, and the only one.
-    let fine = compile::compile_module(
-        "int ones() {\n  gg::log(\"from the module\");\n  return 1;\n}\n",
-        &PrepareContext::new(),
-    )
-    .expect("gg's own include is in every module's global module fragment");
-    assert_eq!(export_names(&fine.exports), vec!["ones".to_string()]);
 }
 
 #[test]

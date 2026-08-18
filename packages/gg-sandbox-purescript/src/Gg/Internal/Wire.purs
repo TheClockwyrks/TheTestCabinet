@@ -29,8 +29,6 @@ module Gg.Internal.Wire
   ( Wire
   , call
   , call_
-  , registerLib
-  , lib
   , wire
   , taken
   , lower
@@ -87,15 +85,6 @@ foreign import lowerImpl :: Wire -> Wire -> Wire
 -- | Read one property off a JavaScript value, without knowing anything about it.
 foreign import fieldImpl :: String -> Wire -> Wire
 
--- | Take the code modules this turn was given, by the key each is bound at.
--- |
--- | Called by the entry module gg generates, before it calls the program's `main`.
-foreign import registerLib :: Wire -> Effect Unit
-
--- | One export of one code module, or `null` when this session has no such module or that module
--- | has no such export.
-foreign import libImpl :: forall a. String -> String -> Nullable a
-
 -- | Send a PureScript value across as it stands.
 wire :: forall a. a -> Wire
 wire = unsafeCoerce
@@ -111,10 +100,6 @@ call operation namespace written args = taken <$> callImpl operation namespace w
 -- | Call a function whose answer is nothing worth having.
 call_ :: String -> String -> String -> Array Wire -> Effect Unit
 call_ operation namespace written args = void (callImpl operation namespace written args)
-
--- | One export of a code module, as the type the caller says it is.
-lib :: forall a. String -> String -> Maybe a
-lib key name = toMaybe (libImpl key name)
 
 -- | A record of optional arguments, with the fields named in `converters` converted on the way out.
 lower :: forall converters given. Record converters -> Record given -> Wire

@@ -180,6 +180,33 @@ fn every_module_states_the_one_import_line_this_arm_writes() {
     }
 }
 
+/// **A code module is reached through the line the program wrote**, and the two halves of that line
+/// are what a documentation view of one of its declarations quotes.
+///
+/// A module is compiled as a Swift module named for its key, supplied to a program's compile through
+/// an `-I` exactly as gg's own SDK is — so the line is `import <key>` and the access is the module's
+/// name and then the export's. The qualified access rather than the bare name, though both resolve:
+/// it is what a program writes when one of its own declarations shares the name.
+#[test]
+fn a_code_module_is_reached_through_the_line_the_program_wrote() {
+    assert_eq!(
+        swift().lib_import("csvTools").as_deref(),
+        Some("import csvTools")
+    );
+    assert_eq!(swift().lib_access("csvTools"), "csvTools.<name>");
+    assert_eq!(swift().lib_member("csvTools", "parse"), "csvTools.parse");
+}
+
+/// **The line that reaches gg's surface names the module gg's surface is compiled as**, which is the
+/// name a binding key may not be.
+#[test]
+fn the_surface_import_names_the_surface_module() {
+    assert_eq!(
+        super::SURFACE_IMPORT,
+        format!("import {}", super::SURFACE_MODULE)
+    );
+}
+
 /// **A code module is not the same shape as a program here**, so this arm answers the isolation
 /// gate's subject for itself.
 ///
@@ -194,4 +221,9 @@ fn a_code_module_is_declarations_rather_than_statements() {
         "public func marker() -> String {\n    \"marker-1\"\n}\n"
     );
     assert_eq!(export_names(&source::exports(&module)), vec!["marker"]);
+    assert_eq!(
+        source::module_source(&module),
+        module,
+        "a declaration its author already made public is compiled exactly as it was written",
+    );
 }

@@ -6,8 +6,9 @@
 //! [`source`](super::source) already holds every claim that is a pure function over text — what gg
 //! writes around a module, which lines move, what it exports — and those are microseconds. What is
 //! here is the claim none of them can make: that a real `csc` accepts the compilation unit gg
-//! writes, that the class it produces is where a program looks for it, and that a member of it runs
-//! **inside the embedded interpreter** with gg's surface still in scope. Each of these compiles a
+//! writes, that the library it produces is where a program looks for it, that the line a program
+//! writes is the only route in, and that a member of it runs **inside the embedded interpreter**
+//! with gg's surface still in scope. Each of these compiles a
 //! 35.3 MB component once, so each function drives several statements rather than being one
 //! behaviour per function.
 
@@ -59,9 +60,8 @@ fn a_code_skill_is_read_as_c_sharp_and_says_what_it_offers() {
     )
     .expect("a code skill written as a class body compiles");
 
-    // What comes back is the AUTHOR's own bytes: a module is an input to the program compile that
-    // binds it, not an artifact a guest could load. The class is named for a key this preparation
-    // was never handed.
+    // What comes back is the AUTHOR's own bytes: the library a program references is built for the
+    // key the seam binds when the module is loaded, and this preparation was never handed one.
     assert!(
         prepared.source.starts_with("using System.Text;"),
         "a module's prepared source is not the author's own: {}",
@@ -119,8 +119,8 @@ fn a_program_reaches_a_code_skill_at_the_class_the_binding_names() {
                 "public sealed record Entry(string Slug, int Length);\n",
             ),
         ),
-        // A second module, which reaches the first: they are compiled in binding order, in one
-        // invocation, so one module's class is in scope for the next.
+        // A second module, which reaches the first: they are compiled in binding order and each is
+        // given a reference to the ones before it, so one module's class is in scope for the next.
         module(
             "ledger",
             "public static string Line(string title) => $\"* {lib.CsvTools.Slugify(title)}\";\n",
@@ -145,9 +145,9 @@ fn a_program_reaches_a_code_skill_at_the_class_the_binding_names() {
 
 #[test]
 fn a_code_skill_reaches_ggs_own_surface_and_the_models_lines_do_not_move() {
-    // A module is compiled in the same invocation as the SDK, so gg's surface is reached inside one
-    // exactly as it is inside a program: the author writes the import line, and gg hoists it out of
-    // the class body to where it applies.
+    // A module's own library is compiled against gg's SDK assembly, so gg's surface is reached
+    // inside one exactly as it is inside a program: the author writes the import line, and gg hoists
+    // it out of the class body to where it applies.
     let modules = [module(
         "report",
         concat!(
@@ -185,4 +185,91 @@ fn a_code_skill_reaches_ggs_own_surface_and_the_models_lines_do_not_move() {
         ),
         other => panic!("a type error is the model's compile error, not {other:?}"),
     }
+}
+
+/// **No name a module offers resolves without a line the program wrote**, measured by compiling
+/// three programs and watching Roslyn decide.
+///
+/// The [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) this arm is held
+/// to, asked of the compiler rather than of a reading: a module is supplied as a referenced
+/// assembly, and a reference is availability rather than scope. It is the sibling of
+/// [`nothing_this_arm_offers_resolves_without_a_line_the_program_wrote`](super::surface), asked
+/// about an author's library instead of gg's own — and the two answers have to be the same one, or
+/// the module is supplied by a mechanism the SDK does not get.
+///
+/// Three programs, one call each, differing only in what stands above the call: nothing, refused
+/// with `CS0103`; the line [`lib_import`](crate::sandbox::ProgramLanguage::lib_import) states,
+/// accepted; and the [access](crate::sandbox::ProgramLanguage::lib_access) spelling written out,
+/// accepted with no line at all.
+///
+/// It compiles and never runs, so it instantiates no component: what a compiler refuses never
+/// reaches a guest.
+#[test]
+fn nothing_a_code_skill_offers_resolves_without_a_line_the_program_wrote() {
+    let modules = [module(
+        "csv-tools",
+        "public static string Slugify(string text) => text.ToLowerInvariant();\n",
+    )];
+    let compile = |program: &str| compile_program(program, &modules, &PrepareContext::new());
+    let arm = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::CSharp);
+
+    let bare = compile("var slug = CsvTools.Slugify(\"Release Notes\");\n")
+        .expect_err("a module's class with no line above it does not compile");
+    match bare {
+        PrepareFailure::Program(PrepareError::Compile(diagnostic)) => assert!(
+            diagnostic.starts_with("program.cs(")
+                && diagnostic.contains("CS0103")
+                && diagnostic.contains("'CsvTools'"),
+            "a program naming a module with no import line was refused for another reason: \
+             {diagnostic}"
+        ),
+        other => panic!(
+            "a name that is not in scope is the model's compile error, not {other:?}. A loaded \
+             module is reaching a program that never asked for it."
+        ),
+    }
+
+    let import = arm
+        .lib_import("CsvTools")
+        .expect("this arm states the line a program writes to reach a module");
+    compile(&format!(
+        "{import}\nvar slug = CsvTools.Slugify(\"Release Notes\");\n"
+    ))
+    .expect("the line a documentation view states brings the module into scope");
+
+    let access = arm.lib_member("CsvTools", "Slugify");
+    compile(&format!("var slug = {access}(\"Release Notes\");\n"))
+        .expect("the access spelling resolves with no line at all");
+}
+
+/// **The bytes Roslyn reads are the bytes the model sent, with modules in scope** — compared byte
+/// for byte in the preparation's own workspace.
+///
+/// The sibling of [`the_bytes_the_compiler_reads_are_the_bytes_the_model_sent`](super::surface),
+/// asked with the one thing that could change the answer: two loaded modules. gg writes them into
+/// their own files and compiles them into their own libraries, so nothing about a module reaches
+/// `program.cs` — no using line for it, no declaration of it, and no line of the model's own moved.
+#[test]
+fn the_program_is_the_models_own_bytes_with_a_module_in_scope() {
+    let modules = [
+        module(
+            "csv-tools",
+            "public static string Slug(string text) => text;\n",
+        ),
+        module("ledger", "public static int Lines(string text) => 1;\n"),
+    ];
+    let source = "using Gg;\n\n// a comment gg has no business touching\n   \
+                  Views.OpenText(\"t\", lib.CsvTools.Slug(\"b\"));";
+    let context = PrepareContext::new();
+    compile_program(source, &modules, &context).expect("the subject compiles");
+    let workspace = context
+        .opened_workspace()
+        .expect("this arm's preparation opens a workspace to run a compiler in");
+    let written =
+        std::fs::read_to_string(workspace.join("work").join(super::compile::PROGRAM_FILE))
+            .expect("the file the compiler was given is readable");
+    assert_eq!(
+        written, source,
+        "gg wrote something other than the model's own text into the file Roslyn read"
+    );
 }

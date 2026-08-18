@@ -1031,3 +1031,146 @@ fn a_loaded_module_key_that_names_an_sdk_module_does_not_take_its_page() {
         "{declaration}"
     );
 }
+
+/// A module whose one callable names a type it declares itself in return position and an SDK type in
+/// argument position — the two halves of the resolution rule in one declaration.
+fn csv_tools_naming_both() -> DocsRuntime {
+    loading(&[
+        export(
+            "parse",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function parse(read: FileRead): Row[]",
+            &["Row"],
+            &["FileRead"],
+        ),
+        export(
+            "Row",
+            crate::sandbox::ModuleExportKind::Type,
+            "export type Row = Record<string, string>",
+            &[],
+            &[],
+        ),
+    ])
+}
+
+/// **Opening a loaded declaration by name places its types**, exactly as opening an SDK function
+/// does.
+///
+/// This is the lookup path — the model reading a key in a search hit and opening it itself — and it
+/// has to answer for an author's declaration or a model that opened `csvTools.parse` would hold a
+/// signature naming `Row` and no page for it, while a use of the same skill placed one. The two
+/// spellings every entry answers to both resolve here, since a model types the bare one at a call
+/// site and the qualified one from a hit.
+#[test]
+fn opening_a_loaded_declaration_by_name_places_its_types() {
+    let docs = csv_tools_naming_both();
+    for spelling in ["csvTools.parse", "parse"] {
+        assert_eq!(
+            docs.types_to_open(spelling, DocViewTypes::only(DocViewType::Return)),
+            ["csvTools.Row"],
+            "`{spelling}` names the module's own `Row` in return position"
+        );
+        let arguments = docs.types_to_open(spelling, DocViewTypes::only(DocViewType::Parameters));
+        assert!(
+            arguments.iter().any(|key| key.contains("FileRead")),
+            "and gg's own declaration answers the name the module does not declare: {arguments:?}"
+        );
+    }
+    assert!(
+        docs.types_to_open("csvTools.parse", DocViewTypes::OFF)
+            .is_empty(),
+        "every flag off places nothing beside a loaded declaration either"
+    );
+    assert!(
+        docs.types_to_open("csvTools.parse", DocViewTypes::only(DocViewType::Errors))
+            .is_empty(),
+        "and `errors` reads a vocabulary an author's module does not write"
+    );
+}
+
+/// **A use and a lookup place the same types beside one declaration**, because they ask one function
+/// which types those are.
+///
+/// The failure this forecloses is a model holding two different manuals for one call depending on
+/// how it got there: gg opening `Row` beside `parse` when the skill was used, and the model opening
+/// `parse` itself a turn later and getting the declaration alone.
+#[test]
+fn a_use_and_a_lookup_place_the_same_types_beside_one_declaration() {
+    let docs = csv_tools_naming_both();
+    let mut every = DocViewTypes::default();
+    every.set(DocViewType::Parameters, true);
+    for types in [
+        DocViewTypes::OFF,
+        DocViewTypes::only(DocViewType::Return),
+        DocViewTypes::only(DocViewType::Parameters),
+        every,
+    ] {
+        let mut expected = vec!["csvTools.parse".to_string()];
+        expected.extend(docs.types_to_open("csvTools.parse", types));
+        assert_eq!(
+            docs.use_views("csvTools", types),
+            expected,
+            "under `{}`",
+            types.id()
+        );
+    }
+}
+
+/// **A loaded type opens no further type**, which is what keeps the rule one level deep on this path
+/// as it is on the SDK one: only a declaration with a signature has types to read out of it.
+#[test]
+fn a_loaded_type_key_opens_no_further_types() {
+    let docs = csv_tools_naming_both();
+    let mut every = DocViewTypes::default();
+    every.set(DocViewType::Parameters, true);
+    assert!(docs.types_to_open("csvTools.Row", every).is_empty());
+    assert!(
+        docs.types_to_open("csvTools", every).is_empty(),
+        "and the module's own entry is not a declaration either"
+    );
+}
+
+/// **A lookup resolves a declaration's type in its own module or in gg's, and never in a third
+/// one** — the rule a use is held to, held here to the path the model drives itself.
+///
+/// A declaration writing `Row` says nothing about anybody else's `Row`, so a resolver walking the
+/// whole registry would open a page about another skill's data as though it documented the call the
+/// model is about to write.
+#[test]
+fn a_lookup_never_resolves_a_type_in_another_loaded_module() {
+    let loaded = LoadedDocs::new();
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    loaded.register(
+        language,
+        "csvTools",
+        "skill",
+        "csv-tools",
+        &[export(
+            "parse",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function parse(text: string): Row[]",
+            &["Row"],
+            &[],
+        )],
+    );
+    loaded.register(
+        language,
+        "jsonTools",
+        "memory",
+        "json_tools",
+        &[export(
+            "Row",
+            crate::sandbox::ModuleExportKind::Type,
+            "export type Row = { kind: \"json\" }",
+            &[],
+            &[],
+        )],
+    );
+    let docs = everything(GgProgramLanguage::TypeScript, EndingRole::Standard).reading(loaded);
+
+    assert!(
+        docs.types_to_open("csvTools.parse", DocViewTypes::only(DocViewType::Return))
+            .is_empty(),
+        "the only `Row` in reach belongs to a module this declaration never mentions"
+    );
+}

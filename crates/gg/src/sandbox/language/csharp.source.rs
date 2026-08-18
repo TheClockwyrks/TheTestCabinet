@@ -32,6 +32,11 @@
 //! [Java](super::super::java)'s answer to the same problem for the same reason — that arm's module is
 //! a class body too, and its `public static` methods are what `lib.<key>` offers.
 //!
+//! What [`compile`](super::compile) does with that unit is compile it into `lib.<key>.dll` and hand
+//! the program `-r:` of it, which is the supply gg's own SDK gets. So a program reaches
+//! `lib.CsvTools.Slugify` by writing the whole path and reaches `CsvTools.Slugify` after writing
+//! `using lib;` of its own.
+//!
 //! # Why no line moves
 //!
 //! **`#line`.** C# is one of the two languages in this study with a line-control directive — the
@@ -320,6 +325,7 @@ fn exports(body: &str, mask: &[Mask]) -> Vec<ModuleExport> {
             continue;
         }
         if let Some((name, kind)) = declared_name(line.trim()) {
+            let (returns, parameters) = declared_types(line.trim());
             names.push(ModuleExport {
                 name,
                 kind,
@@ -332,8 +338,8 @@ fn exports(body: &str, mask: &[Mask]) -> Vec<ModuleExport> {
                     super::super::comments::line_doc(&lines, above, &["///", "//"])
                         .or_else(|| super::super::comments::block_doc(&lines, above))
                 },
-                returns: Vec::new(),
-                parameters: Vec::new(),
+                returns,
+                parameters,
             });
         }
     }
@@ -409,6 +415,168 @@ fn declared_name(line: &str) -> Option<(String, ModuleExportKind)> {
     };
     (seen.len() >= 2).then(|| (seen[seen.len() - 1].to_string(), kind))
 }
+
+/// **The type names a declaration writes**, in return position and in parameter position.
+///
+/// What they are for: an agent whose `docViewTypes` flags ask for the types around a function is
+/// given a documentation view of each of these, one level deep, so the shape a call hands back is
+/// documented beside the call. They are resolved by **simple name** against the module's own exports
+/// and gg's catalogue, so what is read here is every identifier a type position spells —
+/// `IReadOnlyList<Entry>` is `IReadOnlyList` and `Entry`, and whichever of the two names something
+/// is what opens.
+///
+/// The **return** names are what stands between the modifiers and the declared name, so a type
+/// declaration has none: `public sealed record Entry(…)` returns nothing, and its positional
+/// parameters are read the way a method's are.
+///
+/// The **parameter** names are read one parameter at a time, because the last identifier in a
+/// parameter is its own name rather than a type. A default value is cut off first, so a `string` in
+/// one is text and not a type.
+///
+/// C#'s built-in type keywords are left out. They name no declaration a view could be opened on, and
+/// a list of them would be noise in front of the names that do.
+fn declared_types(line: &str) -> (Vec<String>, Vec<String>) {
+    let code = mask(line);
+    let readable = |at: usize| code.get(at) == Some(&Mask::Code);
+    let cut = line
+        .find(|character| "(={;".contains(character))
+        .unwrap_or(line.len())
+        .min(line.find("=>").unwrap_or(line.len()));
+    let head = &line[..cut];
+
+    let declaration = declared_name(line);
+    let returns = match declaration {
+        // A type names itself, which is not a type it writes.
+        Some((_, ModuleExportKind::Type))
+            if !line.split_whitespace().any(|word| word == "delegate") =>
+        {
+            Vec::new()
+        }
+        Some((name, _)) => {
+            let mut named = identifiers(head, 0, &readable);
+            // The declared name is the last identifier the head spells outside its generic
+            // parameters, and it is the one identifier here that is not a type.
+            if let Some(at) = named.iter().rposition(|found| *found == name) {
+                named.remove(at);
+            }
+            named
+        }
+        None => Vec::new(),
+    };
+
+    let parameters = match line[cut..].starts_with('(') {
+        false => Vec::new(),
+        true => {
+            let mut named = Vec::new();
+            for (at, parameter) in parameter_list(line, cut, &readable) {
+                let mut spelled = identifiers(&parameter, at, &readable);
+                // The parameter's own name, which every parameter that has a type ends with.
+                spelled.pop();
+                named.extend(spelled);
+            }
+            named
+        }
+    };
+    (dedupe(returns), dedupe(parameters))
+}
+
+/// The identifiers `text` spells, in order, skipping the bytes `readable` says are not code and the
+/// words that name something other than a type.
+///
+/// `at` is where `text` begins in the line `readable` answers about, so a fragment taken out of the
+/// middle of a declaration is still read against the right bytes.
+fn identifiers(text: &str, at: usize, readable: &impl Fn(usize) -> bool) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut current = String::new();
+    let mut start = 0usize;
+    for (offset, character) in text.char_indices() {
+        match character.is_alphanumeric() || character == '_' {
+            true => {
+                if current.is_empty() {
+                    start = offset;
+                }
+                current.push(character);
+            }
+            false => {
+                take(&mut found, &current, at + start, readable);
+                current.clear();
+            }
+        }
+    }
+    take(&mut found, &current, at + start, readable);
+    found
+}
+
+/// Keep one identifier if it is code and names a type rather than a keyword.
+fn take(found: &mut Vec<String>, word: &str, at: usize, readable: &impl Fn(usize) -> bool) {
+    if word.is_empty() || !readable(at) {
+        return;
+    }
+    if MODIFIERS.contains(&word) || TYPE_KEYWORDS.contains(&word) || BUILT_IN_TYPES.contains(&word)
+    {
+        return;
+    }
+    found.push(word.to_string());
+}
+
+/// The parameters of the list opening at `at`, one at a time, each with where it begins in the line.
+///
+/// Split on the commas of the list itself: a comma inside `<…>`, inside a nested call in a default
+/// value, or inside a literal belongs to something else. A default value is cut off, so what comes
+/// back is the parameter's modifiers, its type and its name.
+fn parameter_list(
+    line: &str,
+    at: usize,
+    readable: &impl Fn(usize) -> bool,
+) -> Vec<(usize, String)> {
+    let mut parameters = Vec::new();
+    let mut current = String::new();
+    let mut start = at + 1;
+    let mut depth = 0usize;
+    for (offset, character) in line[at..].char_indices() {
+        let index = at + offset;
+        let nested = readable(index).then_some(character);
+        match nested {
+            Some('(' | '<' | '[') => depth += 1,
+            Some(')' | '>' | ']') => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    parameters.push((start, current));
+                    return parameters;
+                }
+            }
+            Some(',') if depth == 1 => {
+                parameters.push((start, std::mem::take(&mut current)));
+                start = index + 1;
+                continue;
+            }
+            _ => {}
+        }
+        if index > at {
+            current.push(character);
+        }
+    }
+    parameters.push((start, current));
+    parameters
+}
+
+/// One copy of each name, in the order they were read.
+fn dedupe(named: Vec<String>) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for name in named {
+        if !seen.contains(&name) {
+            seen.push(name);
+        }
+    }
+    seen
+}
+
+/// The type keywords C# builds in, which name nothing a documentation view could be opened on.
+const BUILT_IN_TYPES: &[&str] = &[
+    "void", "var", "bool", "byte", "sbyte", "char", "decimal", "double", "float", "int", "uint",
+    "nint", "nuint", "long", "ulong", "short", "ushort", "object", "string", "dynamic", "this",
+    "params", "out", "in", "scoped",
+];
 
 /// `line` with every `<…>` cut out, so the identifiers left are the declaration's own.
 fn without_generics(line: &str) -> String {

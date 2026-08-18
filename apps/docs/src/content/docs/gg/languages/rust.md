@@ -53,12 +53,11 @@ name, so a program which reaches nothing gg offers still runs.
 shim resolves the release the library set was built by. One invocation may take
 60 seconds before it is killed and reported as a toolchain failure.
 
-Both invocations pass `--edition 2024`, `--target wasm32-wasip1`,
-`-Cpanic=abort`, `-Awarnings` and `--error-format=json`, and name the library
-set on `-L dependency=` and `--extern`. A program compiles as a `bin` named
-`program`, with `-Copt-level=s` and `-Cstrip=symbols`. A code module compiles as
-a `lib` with `--emit=metadata`, since everything its author is answerable for is
-reported before code generation and a file of items declares no `main`.
+Every invocation passes `--edition 2024`, `--target wasm32-wasip1`,
+`-Cpanic=abort`, `-Awarnings`, `-Copt-level=s` and `--error-format=json`, and
+names the library set on `-L dependency=` and `--extern`. A program compiles as
+a `bin` named `program`, with `-Cstrip=symbols` as well. A code module compiles
+as a `lib`, since a file of items declares no `main`.
 
 `crates/gg-sandbox-artifacts/rust` generates three artifacts into the build's
 own output directory, reached as `GG_ARTIFACTS_RUST`. `rust.libraries.tar.gz`
@@ -157,19 +156,35 @@ quotes that line.
 
 ## Code modules
 
-A code skill's or memory's Rust is bound at `lib::<key>`, a path the compiler
-resolves rather than a lookup on a value: a key or a name that does not exist is
-a diagnostic on the turn that wrote it. Binding keys are lowered to ASCII
-snake_case identifiers, since the key is a path segment.
+A code skill's or memory's Rust is compiled into an `.rlib` of its own and named
+to the program's `rustc` on `--extern <key>=…`, which is how this arm supplies
+gg's own SDK. That declares no name. A program reaches an export by writing the
+path in full, `csv_tools::parse(…)`, or under the `use csv_tools::parse;` line
+it wrote for itself, and gg writes nothing into the program: the file `rustc`
+reads is the model's own bytes whether or not a module is in scope. Binding keys
+are lowered to ASCII snake_case identifiers, since a key is a crate name the
+program writes as a path segment, and a key that would collide with the SDK, a
+crate in the library set, the program's own crate name or a sysroot crate takes
+a leading underscore.
 
-A module's preparation compiles the author's own bytes alone, only to check
-them, and reads the public items at its top level from that source as the names
-its namespace offers. A module's author writes the same `use gg::<module>;`
-lines a program does. It hands back source, because a module is an input to the
-program compile that links it. Each module in scope is written beside the entry
-file and declared below the program's last line, which moves no line of it. A
-reply that ends mid-line is closed with a newline first, so a declaration never
-lands inside a line the model wrote.
+The `.rlib` is built in the program preparation's own workspace, immediately
+before the program's own invocation, since a workspace belongs to one
+preparation and is removed when it ends. Each module in scope therefore costs
+one further `rustc` per program compiled, and nothing one preparation produced
+is reachable from another.
+
+A module's own preparation compiles the author's bytes alone under that same
+invocation, so a module accepted at the read is a module that links, and its
+author reads a located diagnostic at the read rather than against somebody
+else's program two turns later. It hands back source, which is the input the
+program compile builds the `.rlib` from.
+
+A module is a crate of its own. It reaches gg's surface through the same
+`use gg::<module>;` lines a program writes, it names no other module, and the
+names it offers are the `pub` items at its top level, in source order. Each of
+those is an entry on the agent's documentation surface, and a function's entry
+carries the type names its declaration writes in return position and in
+parameter position.
 
 ## Failures
 
@@ -178,8 +193,10 @@ no parse-only phase and does not mark a diagnostic as a parse failure. A model
 is shown at most eight, each rendered with its children. A diagnostic is located
 only when its primary span falls inside the model's own lines, and its line and
 column are reported exactly as `rustc` gave them. One earned by the library set
-or by the module declarations below the program is still shown, without a
-location. An invocation that emitted no error-level diagnostic, could not be
+is still shown, without a location. A module that the program compile could not
+build is gg's own defect, since the read already accepted it, and ends the run
+as a lowering failure rather than reaching the model as its program's
+diagnostic. An invocation that emitted no error-level diagnostic, could not be
 started, or exceeded the timeout is a toolchain failure rather than the model's
 fault, reported as [the compilation page](/gg/languages/compilation/) describes.
 

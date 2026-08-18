@@ -527,6 +527,42 @@ fn this_arm_declares_the_libraries_a_program_may_reach() {
     }
 }
 
+/// **The line a program writes to reach a code module is `import lib.<key>;`**, and the two words a
+/// module name may not carry are escaped in it and left alone in the namespace.
+///
+/// It is what a model reads in the documentation view of a loaded module and of each of its
+/// declarations, and it is the only thing that puts `lib` in scope: the compile is told where the
+/// module's interface is and declares no name. The escape matters because the key is reachable —
+/// `binding_name` answers `module` for a slug that is nothing but separators — and `lib.module` is
+/// not a module name any C++ compiler accepts.
+#[test]
+fn a_program_reaches_a_code_module_through_an_import_it_writes() {
+    assert_eq!(
+        cpp().lib_import("csv_tools").as_deref(),
+        Some("import lib.csv_tools;")
+    );
+    assert_eq!(cpp().lib_access("csv_tools"), "lib::csv_tools::<name>");
+    assert_eq!(
+        cpp().lib_member("csv_tools", "split"),
+        "lib::csv_tools::split"
+    );
+
+    for reserved in ["module", "import"] {
+        let import = cpp()
+            .lib_import(reserved)
+            .expect("every key is reached through a line");
+        assert!(
+            !import.contains(&format!("lib.{reserved};")),
+            "`{import}` names a module-name component C++ reserves"
+        );
+        assert_eq!(
+            cpp().lib_access(reserved),
+            format!("lib::{reserved}::<name>"),
+            "the namespace keeps the key, which is a name C++ allows"
+        );
+    }
+}
+
 /// **An export carries what a documentation view is rendered from**, off the one line the scan
 /// already found the name on.
 #[test]
@@ -559,6 +595,13 @@ fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
     assert_eq!(exports[2].kind, ModuleExportKind::Value);
     assert_eq!(exports[2].declaration, "constexpr double pi = 3.14;");
 
-    assert!(exports.iter().all(|export| export.returns.is_empty()));
-    assert!(exports.iter().all(|export| export.parameters.is_empty()));
+    // The two positions a function writes types in, read off that same declaration — what the type
+    // views beside its documentation view are opened from.
+    assert_eq!(exports[0].returns, ["std::string"]);
+    assert_eq!(exports[0].parameters, ["std::string_view"]);
+
+    // A type and a constant write neither position, so neither is claimed for them.
+    for export in &exports[1..] {
+        assert!(export.returns.is_empty() && export.parameters.is_empty());
+    }
 }

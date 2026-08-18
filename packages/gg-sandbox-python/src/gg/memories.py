@@ -91,8 +91,7 @@ class MemoryHit:
         found the memory is the thing in hand.
 
         Returns:
-            The memory's body, and — where it carried code — the `lib.<key>` its public names are
-                now bound at.
+            The memory's body.
 
         Raises:
             ApiError: `not-found` when the memory has since been deleted.
@@ -143,11 +142,11 @@ def write_memory(
 ) -> MemoryUsage:
     """Record a durable memory that survives a context compaction.
 
-    A memory may also carry **code**. `code` is a Python module whose public names are bound at
-    `lib.<name>` in every later program this session writes, so a helper got right once is never
-    written again; `on_use` is a script gg runs the first time the memory comes into use, whose views
-    arrive on the next turn. Neither is context: they cost no window, are never shown back, and count
-    against no body limit.
+    A memory may also carry **code**. `code` is a Python module every later program this session
+    writes reaches by writing `import lib`, so a helper got right once is never written again;
+    `on_use` is a script gg runs on every use of the memory, whose views arrive on the next turn.
+    Neither is context: they cost no window, are never shown back, and count against no body
+    limit.
 
     Args:
         name: The memory's slug: letters, digits, `-`, `_` and `.`. Every other memory call takes it,
@@ -155,9 +154,9 @@ def write_memory(
         description: A one-line description of what the memory holds. Where the run keeps a memory
             index this is the memory's line in it, and so all that is visible until it is read.
         body: The memory's contents.
-        code: A Python module whose public names are bound at `lib.<name>` for the rest of the
-            session. The default records a memory that is only prose.
-        on_use: A script gg runs the first time the memory comes into use. The default runs nothing.
+        code: A Python module later programs reach with `import lib`. The default records a
+            memory that is only prose.
+        on_use: A script gg runs on every use of the memory. The default runs nothing.
 
     Returns:
         The memory budget the write left behind. A maximum this run does not bound is `None`, which
@@ -215,9 +214,9 @@ def create_memory(
         description: A one-line description of what the memory holds. Required where the run keeps an
             index, since that is the memory's line in it.
         body: The initial contents, which stay out of the context window until they are read.
-        code: A Python module bound at `lib.<name>` once the memory is read. The default records a
-            memory that is only prose.
-        on_use: A script gg runs on that first read. The default runs nothing.
+        code: A Python module later programs reach with `import lib`, from the read that brings
+            the memory into use. The default records a memory that is only prose.
+        on_use: A script gg runs on every read of the memory. The default runs nothing.
 
     Returns:
         The memory budget the new memory left behind.
@@ -234,15 +233,15 @@ def create_memory(
 def read_memory(name: str) -> str:
     """Read one memory's full contents by slug, which is the only thing that brings them into context.
 
-    A memory that carries code loads that code on being read: the reply names the `lib.<key>` it is
-    bound at, and it stays bound for the rest of the session.
+    A memory that carries code loads that code on being read: every later program this session
+    writes reaches it by writing `import lib`, and the read opens a documentation view of each
+    function it declares.
 
     Args:
         name: The memory's slug.
 
     Returns:
-        The memory's body, and — where it carried code — the `lib.<key>` its public names are now
-            bound at.
+        The memory's body.
 
     Raises:
         ApiError: `not-found` when no memory has that slug.

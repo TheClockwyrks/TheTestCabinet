@@ -64,7 +64,7 @@ import org.teavm.vm.TeaVMOptimizationLevel;
 
 public final class GgCompiler {
     /** The protocol version gg checks at the handshake. Bump it when a field changes meaning. */
-    static final int PROTOCOL = 2;
+    static final int PROTOCOL = 3;
 
     /** The bytecode level the model's program is compiled to. */
     static final String RELEASE = "21";
@@ -96,35 +96,47 @@ public final class GgCompiler {
     }
 
     /**
-     * One build: `<work>\t<output>\t<mainClass>\t<targetFile>\t<file>[\t<file>…]`.
+     * One build:
+     * `<work>\t<output>\t<classes>\t<classpath>\t<mainClass>\t<targetFile>\t<file>[\t<file>…]`.
      *
-     * <p>Every path is absolute and inside one preparation's own tree. Nothing is remembered
-     * between requests, which is what makes a build a function of its request alone.
+     * <p>The first two paths are absolute and inside one preparation's own tree; every path after
+     * them is relative to {@code work}. Nothing is remembered between requests, which is what makes
+     * a build a function of its request alone.
      *
-     * <p>AN EMPTY {@code targetFile} MEANS {@code javac} AND NOTHING ELSE. gg checks a code module
-     * that way: a module is compiled into the program that uses it, so there is no artifact for
-     * TeaVM to write here and no entry point for it to root a dependency graph at — what the check
-     * buys is javac's located diagnostic at the read that binds the module, rather than one against
-     * somebody else's program on every turn after it. Empty is the one value the field cannot
+     * <p>{@code classes} IS WHERE javac WRITES AND {@code classpath} IS WHAT IT READS BESIDES THE
+     * TOOLCHAIN — a path-separated list, possibly empty, appended after the entries this daemon was
+     * started with so that gg's SDK jar stays first. A code module is built into a directory of its
+     * own and handed to the program compiled against it that way, which is how a Java library
+     * reaches any program: as a classpath entry that declares no name.
+     *
+     * <p>AN EMPTY {@code targetFile} MEANS {@code javac} AND NOTHING ELSE. gg builds a code module
+     * that way: there is no entry point for TeaVM to root a dependency graph at, and the module's
+     * classes are the whole of what that build is for. Empty is the one value the field cannot
      * otherwise take, since a file has a name.
      */
     static String build(String request, List<String> classpath) {
         String[] fields = request.split("\t", -1);
-        if (fields.length < 5) {
+        if (fields.length < 7) {
             return Json.failure("internal", "gg sent a request with " + fields.length + " fields");
         }
         Path work = Paths.get(fields[0]);
         Path output = Paths.get(fields[1]);
-        String mainClass = fields[2];
-        String targetFile = fields[3];
+        Path classes = work.resolve(fields[2]);
+        List<String> reads = new ArrayList<>(classpath);
+        for (String entry : fields[3].split(File.pathSeparator)) {
+            if (!entry.isEmpty()) {
+                reads.add(work.resolve(entry).toString());
+            }
+        }
+        String mainClass = fields[4];
+        String targetFile = fields[5];
         List<File> sources = new ArrayList<>();
-        for (int index = 4; index < fields.length; index++) {
+        for (int index = 6; index < fields.length; index++) {
             sources.add(work.resolve(fields[index]).toFile());
         }
 
         List<Diagnostics.Entry> entries = new ArrayList<>();
         long started = System.nanoTime();
-        Path classes = work.resolve("classes");
         try {
             Files.createDirectories(classes);
             Files.createDirectories(output);
@@ -134,7 +146,7 @@ public final class GgCompiler {
 
         boolean compiled;
         try {
-            compiled = javac(sources, classes, classpath, entries);
+            compiled = javac(sources, classes, reads, entries);
         } catch (Throwable failure) {
             return Json.failure("internal", "javac fell over: " + Diagnostics.render(failure));
         }
@@ -145,7 +157,7 @@ public final class GgCompiler {
         }
 
         try {
-            teavm(classes, output, classpath, mainClass, targetFile,
+            teavm(classes, output, reads, mainClass, targetFile,
                     sources.get(0).getName(), entries);
         } catch (Throwable failure) {
             return Json.failure("internal", "TeaVM fell over: " + Diagnostics.render(failure));

@@ -33,8 +33,8 @@ module GG
     # @param name [String] the memory's slug
     # @param description [String] its one-line description
     # @param body [String] its contents
-    # @param code [String, nil] the Ruby module bound at `lib.<name>`
-    # @param on_use [String, nil] the script gg runs on first use
+    # @param code [String, nil] the Ruby module reached at `lib.<name>`
+    # @param on_use [String, nil] the script gg runs on every use
     # @return [Object] the wire record
     # @api private
     def self.input(name, description, body, code, on_use)
@@ -67,11 +67,11 @@ module GG
 
     # Record a durable memory that survives a context compaction.
     #
-    # A memory may also carry **code**. `code` is a Ruby module whose methods are bound at
-    # `lib.<name>` in every later program this session writes, so a helper got right once is never
-    # written again; `on_use` is a script gg runs the first time the memory comes into use, whose
-    # views arrive on the next turn. Neither is context: they cost no window, are never shown back,
-    # and count against no body limit.
+    # A memory may also carry **code**. `code` is a Ruby module whose methods are reached at
+    # `lib.<name>` by every later program this session writes that requires `lib`, so a helper got
+    # right once is never written again; `on_use` is a script gg runs on every use of the memory,
+    # whose views arrive on the next turn. Neither is context: they cost no window, are never shown
+    # back, and count against no body limit.
     #
     # @param name [String] The memory's slug: letters, digits, `-`, `_` and `.`. Every other memory
     #   call takes it, and no two memories may share one.
@@ -79,10 +79,10 @@ module GG
     #   keeps a memory index this is the memory's line in it, and so all that is visible until it is
     #   read.
     # @param body [String] The memory's contents.
-    # @param code [String, nil] A Ruby module whose methods are bound at `lib.<name>` for the rest
-    #   of the session. Leave it out for a memory that is only prose.
-    # @param on_use [String, nil] A script gg runs the first time the memory comes into use. Leave
-    #   it out for a memory that runs nothing.
+    # @param code [String, nil] A Ruby module whose methods are reached at `lib.<name>` for the
+    #   rest of the session. Leave it out for a memory that is only prose.
+    # @param on_use [String, nil] A script gg runs on every use of the memory. Leave it out for a
+    #   memory that runs nothing.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is now used
     # @raise [GG::Core::ApiError] `:conflict` on a duplicate name, and `:limit_exceeded` when the
     #   body would breach the run's caps — revising or deleting a memory is the way out, rather than
@@ -120,10 +120,10 @@ module GG
     #   the run keeps an index, since that is the memory's line in it.
     # @param body [String] The initial contents, which stay out of the context window until they are
     #   read.
-    # @param code [String, nil] A Ruby module bound at `lib.<name>` once the memory is read. Leave
-    #   it out for a memory that is only prose.
-    # @param on_use [String, nil] A script gg runs on that first read. Leave it out for a memory
-    #   that runs nothing.
+    # @param code [String, nil] A Ruby module reached at `lib.<name>` once the memory is read.
+    #   Leave it out for a memory that is only prose.
+    # @param on_use [String, nil] A script gg runs on every read of the memory. Leave it out for a
+    #   memory that runs nothing.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is now used
     # @raise [GG::Core::ApiError] `:conflict` on a duplicate slug, and `:limit_exceeded` when the
     #   contents, or the index entry, would breach a limit.
@@ -136,8 +136,9 @@ module GG
     # Read one memory's full contents by slug, which is the only thing that brings them into
     # context.
     #
-    # A memory that carries code loads that code on being read: the reply names the `lib.<key>` it
-    # is bound at, and it stays bound for the rest of the session.
+    # A memory that carries code loads that code on being read: gg opens a documentation view of
+    # each function the module declares, and a program reaches it at `lib.<key>` by writing
+    # `require "lib"`.
     #
     # @param name [String] The memory's slug.
     # @return [String] the memory's contents

@@ -55,6 +55,40 @@ fn the_binding_name_is_snake_case() {
     assert_eq!(ruby().binding_name(""), "module");
 }
 
+/// **A loaded module is reached through one line the program wrote**, and that line is
+/// `require "lib"`.
+///
+/// The module is supplied the way gg's own SDK is — a unit registered in the guest's require
+/// registry and left unloaded — so supplying it declares no name and the program writes the
+/// `require` its language requires. The line is key-independent because `lib` is one unit carrying
+/// every namespace, and it is deliberately not [`SURFACE_IMPORT`](super::SURFACE_IMPORT): gg's
+/// surface and the agent's own code are two lines, and neither reaches the other's names.
+///
+/// That a program which omits the line reaches nothing is asserted next door, through the real
+/// guest, in [`substrate`](super::substrate).
+#[test]
+fn a_loaded_module_is_reached_through_the_line_the_program_writes() {
+    assert_eq!(
+        ruby().lib_import("csv_tools").as_deref(),
+        Some("require \"lib\"")
+    );
+    assert_eq!(
+        ruby().lib_import("notes"),
+        ruby().lib_import("csv_tools"),
+        "one unit carries every namespace, so the line does not depend on the key"
+    );
+    assert_ne!(
+        ruby().lib_import("csv_tools").as_deref(),
+        Some(super::SURFACE_IMPORT),
+        "gg's surface is not a second way to reach the agent's own code"
+    );
+    assert_eq!(ruby().lib_access("csv_tools"), "lib.csv_tools.<name>");
+    assert_eq!(
+        ruby().lib_member("csv_tools", "parse"),
+        "lib.csv_tools.parse"
+    );
+}
+
 /// **The synthesized file view is Ruby**: keyword arguments, and no terminator.
 ///
 /// gg pushes this into the agent's own transcript as an assistant turn, so the model reads it as an

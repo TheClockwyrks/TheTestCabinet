@@ -169,6 +169,84 @@ fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
     assert_eq!(exports[2].declaration, "class Row:");
     assert_eq!(exports[2].doc, None);
 
+    // Nothing here is annotated, and nothing is inferred from a default value or a body.
     assert!(exports.iter().all(|export| export.returns.is_empty()));
     assert!(exports.iter().all(|export| export.parameters.is_empty()));
+}
+
+/// **A `def` carries the type names its own annotations write**, which is what the type flags open
+/// beside its documentation view.
+#[test]
+fn an_annotated_function_carries_the_types_it_writes() {
+    let module = "\
+def widen(text: str, width: int = 3) -> str:
+    return text
+
+
+async def pack(rows: list[Row], sep) -> \"Report\":
+    return sep
+";
+    let exports = exports(module);
+    assert_eq!(exports[0].returns, ["str"]);
+    assert_eq!(exports[0].parameters, ["str", "int"]);
+
+    // Every name an annotation writes, because each is looked up when a view is opened: a container
+    // and what it contains are both names the author wrote. A quoted forward reference is one of
+    // them, which is how Python names a type declared further down the same file.
+    assert_eq!(exports[1].returns, ["Report"]);
+    assert_eq!(exports[1].parameters, ["list", "Row"]);
+}
+
+/// **An unannotated `def` carries neither list**, and so does everything that is not a function.
+///
+/// Empty means the author wrote no type rather than that the declaration has none, so nothing is
+/// inferred from a default value: a type gg guessed at would open a view about something its author
+/// never named.
+#[test]
+fn an_unannotated_declaration_carries_no_types() {
+    let module = "\
+def widen(text, width=3):
+    return text
+
+
+TOTAL: int = 1
+
+
+class Row(Base):
+    pass
+";
+    for export in exports(module) {
+        assert!(
+            export.returns.is_empty() && export.parameters.is_empty(),
+            "`{}` reported types nothing asked it for",
+            export.declaration
+        );
+    }
+}
+
+/// **What is read is what the annotation writes, and only that.**
+///
+/// `None` is the absence of a value rather than a type, a default value is not an annotation
+/// however it is punctuated, and a name written twice is one name.
+#[test]
+fn only_the_annotations_are_read() {
+    let module = "\
+def close(sep: str = \"):\", key=lambda row: row) -> None:
+    return None
+
+
+def join(first: Row, second: Row) -> Row:
+    return first
+";
+    let exports = exports(module);
+    // The header runs to the colon that opens the body, past a string and a `lambda` that each
+    // write one of their own.
+    assert_eq!(
+        exports[0].declaration,
+        "def close(sep: str = \"):\", key=lambda row: row) -> None:"
+    );
+    assert_eq!(exports[0].parameters, ["str"]);
+    assert!(exports[0].returns.is_empty());
+    assert_eq!(exports[1].parameters, ["Row"]);
+    assert_eq!(exports[1].returns, ["Row"]);
 }

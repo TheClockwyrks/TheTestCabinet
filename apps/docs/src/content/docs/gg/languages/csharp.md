@@ -11,18 +11,23 @@ or re-indented, so a diagnostic at line 7 is line 7 of what the model wrote and
 this arm subtracts no offset anywhere. Every way a C# program may begin is
 accepted, and the prompt directs a model to top-level statements.
 
-Roslyn compiles the reply to a .NET assembly on the host, and the assembly is
-base64-encoded into the string a prepared program carries its source in. The
-guest is a prebuilt component holding Mono's IL interpreter and the .NET class
-library, so nothing about a C# program is compiled to wasm. A prepared program
-carries no component of its own.
+Roslyn compiles the reply to a .NET assembly on the host. The string a prepared
+program carries its source in holds a manifest of the assemblies that turn
+needs: two lines each, the name the guest registers the assembly under and its
+IL as base64, with gg's SDK first, one library per code module in binding order,
+and the program last. The guest is a prebuilt component holding Mono's IL
+interpreter and the .NET class library, so nothing about a C# program is
+compiled to wasm. A prepared program carries no component of its own.
 
-One `csc` invocation compiles the program, the SDK's sources and the code
-modules in scope, driven by a response file in the workspace. It declares
-`-nostdlib+`, `-langversion:14.0`, `-nullable:enable`, `-optimize+`,
+The model's file is the only source in the invocation that judges it. Everything
+that program may reach is a `-r:` reference, so a compile that rejects it reports
+diagnostics located in the model's own file and nowhere else. Each compile is
+driven by a response file in the workspace named for the assembly it produces. It
+declares `-nostdlib+`, `-langversion:14.0`, `-nullable:enable`, `-optimize+`,
 `-debug:embedded`, `-pathmap:`, `-deterministic`, `-utf8output`, the target, the
-output path, and `-r:` for
-every `.dll` under the toolchain's `ref/` directory, sorted. `-debug:embedded`
+output path, `-r:` for every `.dll` under the toolchain's `ref/` directory,
+sorted, and then `-r:` for gg's SDK assembly and for each module library in
+scope. `-debug:embedded`
 puts a portable PDB inside the assembly, which is the only place one can travel
 to the guest, and `-pathmap:` maps the preparation's own workspace onto `./` so
 that what a stack trace names is `./program.cs` rather than a path that differs
@@ -55,19 +60,24 @@ together with `wit-bindgen`'s C bindings for gg's world and the C in
 `packages/gg-sandbox-csharp/Sources/`. Managed code never binds the WIT world;
 it reaches gg through `mono_add_internal_call`. The class libraries and ICU are
 bundled into the component as in-memory resources, so the guest boots with zero
-preopens and loads exactly one assembly per run. Building it needs a second,
+preopens. Each assembly the manifest carries is registered as another such
+resource before any of them is loaded, which is how a reference the host's
+compiler resolved is resolved again in the guest. Building it needs a second,
 larger toolchain than a run does: a full .NET SDK and an unpruned wasi-sdk,
 installed by `scripts/ci/install-gg-build-toolchains.sh`.
 
 ## SDK and signature catalogue
 
 The SDK is 26 `.cs` files under `packages/gg-sandbox-csharp/src/Gg/`, embedded
-in the gg binary as source and written into each preparation's workspace under
-`sdk/`, a path that is also what tells a diagnostic in gg's own SDK apart from
-one in the model's program. A test requires the embedded list and the directory
-to be equal. Compiling the SDK with the program is how `csc` is told the library
-exists, which is what an `--extern` or a classpath entry is on another arm. It
-puts no name in the program's scope.
+in the gg binary as source. A test requires the embedded list and the directory
+to be equal. They are compiled into one assembly, `Gg.dll`, once per machine,
+into a shared directory content-keyed on those sources, the language version and
+the toolchain, placed by rename and sealed read-only. A failure to build it is
+reported as a defect in gg and never as a program's.
+
+`-r:Gg.dll` is how `csc` is told the library exists, which is what an `--extern`
+or a classpath entry is on another arm, and it is the supply a code module gets
+as well. It puts no name in the program's scope.
 
 Every module's catalogue entry states `using Gg;` as the line a program writes,
 and a documentation view quotes it. A program reaches a call either by writing
@@ -115,9 +125,32 @@ a module that declares no `public` member is refused. Exports are every `public`
 declaration at the top level of the body, types and members alike, read from a
 lexical mask rather than a parse.
 
-A module is compiled alone with `-target:library` when it is read, so its author
-gets a diagnostic in their own coordinates, and again as an input to every
-program that binds it. It never becomes a second assembly.
+An export carries the type names its declaration writes in return position and in
+parameter position, which is what an agent's `docViewTypes` flags open beside it.
+Every identifier a type position spells is read, so `IReadOnlyList<Entry>` is both
+`IReadOnlyList` and `Entry`, and C#'s built-in type keywords are left out because
+they name nothing a documentation view could open.
+
+### The module is a library
+
+A module is compiled with `-target:library` into `lib.<key>.dll`, and the program
+that binds it is handed `-r:` of that file. That is the supply gg's own SDK gets,
+so the two are one mechanism and neither declares a name. The modules in scope
+are built in binding order and each is given `-r:` of the ones before it, so one
+module may reach another's class. Each library is registered with the guest
+under its own name and the runtime resolves the program's reference to it.
+
+A program reaches one export by writing `lib.<Key>.<Name>`, which resolves with
+no line above it exactly as `Gg.Views.OpenText` does, and reaches it as
+`<Key>.<Name>` after writing `using lib;`. Those are the two spellings a
+documentation view of a loaded declaration states, and they are the pair this
+arm's catalogue states for gg's own modules.
+
+A module is also compiled alone when it is read, under a fixed key and against
+the same `-r:Gg.dll`, so its author gets a diagnostic in their own coordinates on
+the call that read it. What that read hands back is the author's own source,
+because the library a program references is built for the key the seam binds when
+the module is loaded.
 
 ## Failures
 
@@ -130,24 +163,20 @@ allowed to decide a band.
 | --- | --- |
 | Roslyn's parser refused it | a syntax error, at the model's own coordinates |
 | Only the binder refused it | a compile error, at the model's own coordinates |
-| Every diagnostic is inside gg's SDK | a toolchain failure naming gg |
 | No diagnostic was reported at all | a toolchain failure |
 
 Roslyn's command line does not say which stage raised a diagnostic, so gg asks
 its parser. `packages/gg-sandbox-csharp/tools/Parse.cs` is a parse-only driver
 run on the failing path only: it prints the parser's own errors, and empty
 output means the program parsed. It is built once per machine into a
-content-keyed shared directory, placed by rename and sealed read-only, which is
-the only thing this arm shares between preparations. When it cannot be built or
-cannot answer, the rejection is reported as a compile error, the wider band.
+content-keyed shared directory, placed by rename and sealed read-only, which
+with the SDK assembly is what this arm shares between preparations. When it
+cannot be built or cannot answer, the rejection is reported as a compile error,
+the wider band.
 
-Diagnostics located inside gg's SDK are gg's defect and reach the operator,
-unless `csc` also complained about the model's file, in which case the model's
-own diagnostics are what it is shown. That partition is taken over every
-reported error before anything is dropped for length. What the model reads is
-deduplicated and bounded at eight diagnostics, and the bound never moves an
-error between bands. The rules these bands follow are on
-[compilation](/gg/languages/compilation/).
+What the model reads is deduplicated and bounded at eight diagnostics, and the
+bound never decides which band a failure lands in. The rules these bands follow
+are on [compilation](/gg/languages/compilation/).
 
 At run time the guest is a real .NET runtime, so `try`, `catch` and `finally`
 work, and an unhandled exception reports `Exception.ToString()`: the type, the
@@ -208,8 +237,9 @@ Views.OpenText("build", built.Output);
 
 A value a call hands back carries the calls that belong to it, each catalogued
 as an alias of the module function it repeats. There is no logging function. The
-SDK redirects `Console.Out` onto gg's feedback channel from a
-`[ModuleInitializer]`, so `Console.WriteLine` reaches the run's operator.
+guest puts `Console.Out` on gg's feedback channel before it runs the program's
+entry point, so `Console.WriteLine` reaches the run's operator from the first
+line.
 
 ## Healing dialect
 

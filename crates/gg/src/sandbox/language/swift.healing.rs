@@ -211,7 +211,7 @@ pub(super) const DECLARATION_MODIFIERS: [&str; 15] = [
 /// The declaration keyword `text` opens with once its modifiers are consumed, and what follows it.
 ///
 /// The reading is: an optional run of [modifiers](DECLARATION_MODIFIERS), and then one
-/// [declaration keyword](DECLARATION_KEYWORDS). Read by [the module namespacer](super::source),
+/// [declaration keyword](DECLARATION_KEYWORDS). Read by [the module reader](super::source),
 /// which asks it of a code module's own lines — one reading of what opens a Swift declaration, used
 /// by everything here that needs it.
 pub(super) fn declaration_keyword(text: &str) -> Option<(&'static str, &str)> {
@@ -478,7 +478,7 @@ fn is_ident_char(c: char) -> bool {
 // ---------------------------------------------------------------------------------------------
 
 /// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`], and
-/// the one reading [the module namespacer](super::source) shares.
+/// the one reading [a code module's own scan](super::source) shares.
 ///
 /// `None` means the source did not lex cleanly, and every reader of the mask declines on it. Four
 /// states end a scan uncleanly: an unterminated block comment, an unterminated string of any

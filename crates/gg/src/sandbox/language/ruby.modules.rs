@@ -9,10 +9,19 @@
 //! evaluates it against a fresh anonymous `Module`, and what the body defined is what the namespace
 //! offers. There is no export protocol for a skill's author to remember.
 //!
-//! What the guest cannot supply is the **list**, because that list is model-facing: the reply that
-//! binds a code skill names the key and says what it offers, and a model that is told nothing spends
-//! a turn finding out. The seam is explicit that the names travel *beside* the source rather than
-//! being recovered from it later, so this is where they are read.
+//! What the guest cannot supply is the **list**, because that list is model-facing: using a code
+//! skill opens a [documentation view](crate::docs) per declaration the module offers, each carrying
+//! that declaration and the comment written above it. The seam is explicit that the names travel
+//! *beside* the source rather than being recovered from it later, so this is where they are read.
+//!
+//! # Why a type view is empty here
+//!
+//! A Ruby `def` writes no types: neither a parameter nor a return position carries one, and a YARD
+//! `@param` tag is prose an author may write and usually does not. So an export's
+//! [`returns`](super::super::ModuleExport::returns) and
+//! [`parameters`](super::super::ModuleExport::parameters) are empty on this arm — there is nothing
+//! in a declaration to read them off — and an agent whose `docViewTypes` flags ask for the types
+//! around a module function is given the declaration alone.
 //!
 //! # What is read, and the two things that are deliberately not
 //!
@@ -80,6 +89,8 @@ pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
             kind: ModuleExportKind::Function,
             declaration: head(trimmed),
             doc: super::super::comments::line_doc(&lines, number, &["#"]),
+            // Empty because a Ruby declaration writes no type in either position; the module
+            // documentation above says what follows from that.
             returns: Vec::new(),
             parameters: Vec::new(),
         });

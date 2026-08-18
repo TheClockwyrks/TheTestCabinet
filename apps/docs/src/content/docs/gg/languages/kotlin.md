@@ -20,7 +20,9 @@ model's own coordinates.
 ## Preparation
 
 - The model's reply is written to `Program.kt` byte for byte and compiled as it
-  stands.
+  stands. `GgEntry.java` is the one file gg writes beside it, and an agent's
+  loaded code modules reach that compile as classpath entries rather than as
+  sources.
 - The model declares `fun main()`, with no parameters. That form compiles to a
   `main()` on the file facade `ProgramKt`, which is the method gg's generated
   entry class calls; `fun main(args: Array<String>)` compiles to a different
@@ -47,6 +49,13 @@ JVM and places the driver and the SDK jar.
 A model's source is read against the Kotlin standard library and gg's SDK. The
 driver's own compiler and TeaVM jars are a separate classpath, so a program
 cannot import the compiler's internals or `kotlinx.coroutines`.
+
+A build request names the directory the Kotlin compiler writes its classes into
+and the classpath entries to add to that pair, which is how a code module's
+classes reach the program compiled against them. An empty target file selects
+the Kotlin compiler alone, which is what a module is compiled with: a module is
+checked at the read that binds it, for the author's own located diagnostic, and
+compiled again under its binding key for each program that uses it.
 
 `packages/gg-sandbox-kotlin/libraries.txt` declares in groups what a program may
 import, which is the Kotlin standard library as TeaVM is able to translate it.
@@ -183,16 +192,34 @@ program starts is refused by the sandbox.
 
 A code module is an ordinary Kotlin file, and `kt` is the only extension this arm
 compiles. Its namespace is the file's public top-level functions, and a module
-offering none is refused by name. gg compiles the file into `package lib.<key>`,
-written on the author's own first line so no diagnostic moves, and the module is
-compiled into every program that uses it. A program reaches an export at
-`lib.<key>.<name>` or imports it by name, and a name the module does not export
-is a compile error rather than a run-time failure. A module key is camelCase and
-ASCII-only, and is a package segment the compiler resolves, so a leading digit and
-a hard keyword are each prefixed with an underscore. A diagnostic that arrives
-against a module's file during a program's compile names the key the module is
-bound at, so the agent is told which module to fix rather than the operator being
-told about drift.
+offering none is refused by name. The names, each declaration as its author wrote
+it, and the type names that declaration writes in return and in parameter
+position are read from the author's own source by the export scan rather than out
+of a compiled artifact.
+
+The wrapper costs no line at all: gg's `package` declaration shares the author's
+own first line, so a diagnostic is the author's own coordinate with nothing
+subtracted from it. A `package` the author wrote is refused at that line.
+
+Each module is compiled on its own, into `package lib.<key>`, against the Kotlin
+standard library and gg's SDK jar and nothing else. The directory its classes
+land in goes on the `-classpath` of the program's own compile, which is how the
+SDK jar reaches a program too: a classpath entry is packaging and puts no name in
+a program's scope. So a program reaches an export the two ways it reaches gg's
+own surface. It writes the fully-qualified `lib.csvTools.slugify(…)`, or the
+module's own import line, `import lib.csvTools.*`, which the module's
+documentation view states. A key or an export the session does not have is a
+diagnostic on the turn that wrote it, and so is a program that writes neither the
+qualified name nor the import line.
+
+Binding names are camelCase and ASCII-only, and hold to being valid Kotlin
+identifiers: the key is a package segment the compiler resolves, so a leading
+digit and a hard keyword are each prefixed with an underscore.
+
+A module is compiled before the program that uses it, so a module that does not
+compile is a refusal naming the key it is bound at. Its file is named for that
+key, so a TeaVM diagnostic about a module during a program's own build names the
+key in the file position.
 
 ## Prompt segment
 

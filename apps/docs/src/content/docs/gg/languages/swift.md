@@ -19,17 +19,17 @@ The shell is a module of its own, built ahead of time into `shell.o` and linked
 into every program. A Swift access level is module-wide, so a shell compiled
 beside the reply would put gg's two exports into the model's own file with no
 line the model wrote, and an access level narrow enough to prevent that gives
-the exported symbol internal linkage. The model's module holds the reply and the
-code modules in its scope and nothing else.
+the exported symbol internal linkage. The model's module is named `program` and
+holds the reply and nothing else.
 
 The shell's own two `import` lines are file-scoped. One is the SDK, for the one
 function the shell asks it for. The other is the clang module declared by
 `Sources/module.modulemap`, which carries the generated canonical ABI, `malloc`,
 `free` and the entry-point symbol the shell calls.
 
-One `swiftc` invocation compiles the model's file, the code modules in scope,
-and links the prebuilt shell, the prebuilt SDK module and the library archive at
-`-Osize -g`. gg
+One `swiftc` invocation compiles the model's file and links the prebuilt shell,
+the prebuilt SDK module, the library archive and the object each code module in
+scope compiled to, at `-Osize -g`. gg
 then encodes the linked core module in process, with the pinned
 `wasi_snapshot_preview1` reactor adapter that turns the preview1 module the
 Swift SDK emits into a preview 2 component. That component is what the turn is
@@ -108,29 +108,37 @@ Which calls a run offered is the same question on every arm. See
 
 ## Code modules
 
-A code skill's or memory's namespace is bound at `lib.<key>`. Swift links, so a
-module becomes a further file of the program's own Swift module, and each of its
-top-level declarations is moved into `lib.<key>` by being wrapped where it
-stands in an `extension` of a caseless `enum`. That preserves every line number,
-because the wrap is a prefix on the declaration's first line and a suffix on its
-last, and it preserves argument labels, defaults, generic parameters, `where`
-clauses, `throws` and overloads, because the author's own text is what the
-compiler reads.
+A code skill's or memory's file is compiled into a Swift module of its own,
+named by the key the module is bound under, and the program compile is given the
+`-I` that resolves it and the object it compiled to. That is the same mechanism
+this arm supplies its own SDK through, so a program reaches an author's module
+the way it reaches gg's: by writing `import csvTools`, after which
+`csvTools.parse(…)` and the unqualified `parse(…)` both resolve. A program that
+writes no import line reaches nothing the module carries, and `swiftc` says so
+at the line that named it.
 
-Declarations Swift keeps out of a type stay at file scope, which here is the
-program's own module, so a `protocol` two code modules both declare is a
-redeclaration the turn's compile reports. An `import` is one of them, so a code
-module that calls gg's surface writes `import gg` exactly as a program does, and
-gg writes no line above the author's first. A compiler conditional at a module's
-top level is refused by name as unsupported, because its two halves would land
-in two different `extension` bodies.
+Access is Swift's own across a module boundary, so gg writes `public` in front
+of a top-level declaration whose author wrote none. It is written on the
+declaration's own line, which keeps every line number the author's, and it
+leaves whatever the author did write alone: a `private` or `fileprivate`
+declaration stays inside the module, and a member of a type or of an `extension`
+carries the access its author gave it, as in any Swift library.
+
+Nothing else is written. A declaration keeps its argument labels, defaults,
+generic parameters, `where` clauses, `throws` and overloads, because the
+author's own text is what the compiler reads. A module that calls gg's surface
+writes `import gg` exactly as a program does.
 
 A module is compiled twice: type-checked alone when it is read, so a module that
-does not build fails on the turn that loaded it, and compiled again as part of
-each program that uses it. `lib.<key>.<name>` is therefore a name the compiler
-resolves, and a key that does not exist is a diagnostic on the turn that wrote
-it. Binding keys are camelCase and ASCII only, since a key names both a nested
-type and the file the module is compiled under.
+does not build fails on the turn that loaded it, and built into its own Swift
+module beside each program that uses it. Both compiles read the file
+`-parse-as-library`, so a code module is declarations where a program is the
+file that also carries statements.
+
+Binding keys are camelCase and ASCII only, since a key names both the Swift
+module a program imports and the file it is compiled under. A key that names a
+module the compile already supplies — `gg`, the program's own `program`, or one
+of the library set's — is refused on the turn that would have used it.
 
 ## Failures
 
@@ -145,8 +153,8 @@ scope is gg's own shell or bindings, a diagnostic with no location is a link or 
 driver that failed, and no diagnostics at all is a compiler that crashed or hit
 its timeout. All three are toolchain failures rather than the model's problem,
 and all three are decided over the compiler's whole output before any line is
-dropped. A diagnostic in a code module is the model's, since the module compiled
-on its own when it was read and has stopped working in company.
+dropped. A diagnostic in a code module's own file is the model's, since the
+module compiled on its own when it was read and has stopped building since.
 
 At run time a failure is a trap. An uncaught error, a `fatalError`, a
 force-unwrapped `nil`, an index out of range and an arithmetic overflow all end

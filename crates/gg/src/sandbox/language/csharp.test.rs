@@ -202,23 +202,33 @@ fn the_isolation_subject_for_a_module_is_a_public_member() {
     assert_eq!(export_names(&wrapped.exports), vec!["Marker".to_string()]);
 }
 
-/// **The isolation gate reads this arm's artifact as the assembly it is**, not as the base64 it
-/// travels in.
+/// **The isolation gate reads this arm's artifact as the assemblies it is**, not as the base64 they
+/// travel in.
 ///
 /// The one arm that answers the seam's readability hook, and the one whose `source` does not hold
-/// source: it holds an IL assembly, encoded because the wire's `program` is a string — so a gate
-/// looking for a marker inside the artifact would be looking at an alphabet the marker cannot
-/// survive.
+/// source: it holds a manifest of named IL assemblies, each encoded because the wire's `program` is
+/// a string — so a gate looking for a marker inside the artifact would be looking at an alphabet the
+/// marker cannot survive. Every one of them is decoded, because the marker is in whichever assembly
+/// carried the program that spelled it.
 #[test]
 fn the_isolation_reading_takes_the_transport_encoding_back_off() {
     use base64::Engine as _;
+    let library = b"MZ\x90\x00a library\x00".to_vec();
     let assembly = b"MZ\x90\x00gg-isolation-000-marker\x00\x01".to_vec();
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&assembly);
+    let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let manifest = format!(
+        "Gg.dll\n{}\nGgProgram.dll\n{}\n",
+        encode(&library),
+        encode(&assembly)
+    );
     assert!(
-        !encoded.contains("gg-isolation-000-marker"),
+        !manifest.contains("gg-isolation-000-marker"),
         "the encoding has to hide the marker, or this test proves nothing"
     );
-    assert_eq!(csharp().isolation_readable(encoded.into_bytes()), assembly);
+    assert_eq!(
+        csharp().isolation_readable(manifest.into_bytes()),
+        [library, assembly].concat()
+    );
 }
 
 /// **Something this could not decode is handed back whole**, rather than becoming an empty artifact.
@@ -230,6 +240,33 @@ fn the_isolation_reading_takes_the_transport_encoding_back_off() {
 fn an_artifact_that_is_not_base64_survives_the_reading_unchanged() {
     let bytes = b"not base64 at all !!".to_vec();
     assert_eq!(csharp().isolation_readable(bytes.clone()), bytes);
+}
+
+/// **A bound code module is reached the way gg's own surface is** — one `using`, or the whole path.
+///
+/// A module is supplied as a referenced assembly, exactly as the SDK is, and a reference declares no
+/// name. So the two spellings a documentation view of a loaded declaration states are the two this
+/// arm's catalogue already states for gg's own modules: the line that brings the namespace into
+/// scope, and the path that needs no line.
+///
+/// One line for every module bound rather than a line each, because `lib` is one namespace: the key
+/// is in the access spelling and not in the import.
+#[test]
+fn a_bound_module_is_reached_by_a_using_or_by_its_whole_path() {
+    assert_eq!(
+        csharp().lib_import("CsvTools").as_deref(),
+        Some("using lib;")
+    );
+    assert_eq!(csharp().lib_access("CsvTools"), "lib.CsvTools.<name>");
+    assert_eq!(
+        csharp().lib_member("CsvTools", "Slugify"),
+        "lib.CsvTools.Slugify"
+    );
+    // The namespace the wrap declares and the namespace the line names are one string.
+    assert_eq!(
+        csharp().lib_import("CsvTools"),
+        Some(format!("using {};", source::NAMESPACE))
+    );
 }
 
 /// **Every module of this arm's catalogue states the one line gg writes down beside it.**

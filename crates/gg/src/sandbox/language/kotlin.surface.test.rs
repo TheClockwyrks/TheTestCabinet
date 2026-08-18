@@ -1083,17 +1083,13 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 
 #[test]
 fn a_code_module_is_reached_by_a_path_the_compiler_checks() {
-    // A code module used to be the one place in this SDK where the PROGRAM said what type it
-    // expected, because a module was compiled separately and there was no path for the compiler to
-    // check the two against. That premise stopped holding: a module is now compiled INTO the program
-    // that uses it, in a package of gg's naming, so `lib.<key>.<name>` is an ordinary call the
-    // compiler resolves — and the string family that stood in for it (`lib.text`, `lib.number`,
-    // `lib.flag`, `lib.run`, `lib.has`) is deleted rather than reimplemented over the wire.
+    // A module is compiled on its own into `package lib.<key>` and handed to this program as a
+    // CLASSPATH ENTRY, so `lib.<key>.<name>` is an ordinary call the compiler resolves against a
+    // library — the same relation a program has to gg's own SDK jar.
     //
-    // That is the shape [Rust](super::super::rust) and [Java](super::super::java) already have.
-    // What this drives is the whole of it: every return type reached without a reading function, a
-    // value handed back through a real crossing, and a name that does not exist refused by the
-    // COMPILER rather than at run time.
+    // What this drives is the whole of what that buys: every return type reached without a reading
+    // function, a value handed back through a real crossing, state the module really holds between
+    // two calls, and a name that does not exist refused by the COMPILER rather than at run time.
     let prepared = compile_module(
         r#"private val seen: MutableList<String> = mutableListOf()
 
@@ -1157,8 +1153,8 @@ fun recalled(): String = seen.joinToString("+")
     );
 
     // AND A NAME THAT IS NOT THERE IS THE COMPILER'S REFUSAL, on the turn that wrote it, rather than
-    // a `NOT_FOUND` at run time. That is the whole of what compiling a module into the program buys
-    // a model, and it is what the deleted string family could not have said.
+    // a `NOT_FOUND` at run time. That is the whole of what a checked path buys a model over a lookup
+    // by string.
     let failure = compile_program(
         &whole("", "    lib.helpers.absent()\n"),
         &modules,
@@ -1175,6 +1171,10 @@ fun recalled(): String = seen.joinToString("+")
     let kotlin =
         crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
     assert_eq!(kotlin.lib_access("helpers"), "lib.helpers.<name>");
+    assert_eq!(
+        kotlin.lib_import("helpers").as_deref(),
+        Some("import lib.helpers.*"),
+    );
 
     // AND A SKILL WHOSE NAME IS A KEYWORD IS STILL REACHABLE. The key is a package segment, so a
     // module bound at `object` would make `lib.object.greet(…)` a syntax error against the MODEL's

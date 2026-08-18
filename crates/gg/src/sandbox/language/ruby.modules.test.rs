@@ -112,8 +112,8 @@ end
 /// **An operator method is not reported**, because `lib.<key>.` cannot reach one.
 ///
 /// `def ==(other)` and `def [](index)` are real definitions and are really bound; they are simply
-/// not names a program spells after a dot, so naming them in the reply that binds the module would
-/// be describing a call the model cannot make.
+/// not names a program spells after a dot, so opening a documentation view of one would be
+/// describing a call the model cannot make.
 #[test]
 fn an_operator_method_is_not_a_name_a_program_can_write() {
     assert_eq!(

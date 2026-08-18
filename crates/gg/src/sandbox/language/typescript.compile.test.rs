@@ -8,6 +8,7 @@
 
 use super::*;
 use crate::sandbox::export_names;
+use crate::sandbox::membrane::CodeModule;
 
 /// Compile a program and hand back the compiler's diagnostics, failing the test on a toolchain
 /// failure — a missing `node` is a broken machine, not a result.
@@ -192,6 +193,7 @@ fn a_module_is_compiled_in_its_own_coordinates() {
                  export function rows(path: string): string[] {\n  \
                  const r = files.readFile(path);\n  \
                  return r.kind === \"text\" ? r.contents.split(\"\\n\") : [];\n}\n\
+                 export function widen(row: Row, by: number): Row {\n  return row;\n}\n\
                  export const limit = 40;\n\
                  export interface Row { cells: string[] }\n\
                  function helper(): void {}\n\
@@ -199,7 +201,12 @@ fn a_module_is_compiled_in_its_own_coordinates() {
     let prepared = compile_module(clean, &PrepareContext::new()).expect("the module type-checks");
     assert_eq!(
         export_names(&prepared.exports),
-        vec!["rows".to_string(), "limit".to_string(), "run".to_string()],
+        vec![
+            "rows".to_string(),
+            "widen".to_string(),
+            "limit".to_string(),
+            "run".to_string()
+        ],
         "the namespace is what the module exported: a type is not a value, and an unexported \
          declaration is not offered"
     );
@@ -210,10 +217,23 @@ fn a_module_is_compiled_in_its_own_coordinates() {
         prepared.exports[0].declaration,
         "export function rows(path: string): string[]"
     );
-    assert_eq!(prepared.exports[1].declaration, "export const limit = 40;");
+    assert_eq!(prepared.exports[2].declaration, "export const limit = 40;");
     // A renaming export is named what the namespace calls it and quoted as what its author declared.
-    assert_eq!(prepared.exports[2].name, "run");
-    assert_eq!(prepared.exports[2].declaration, "function helper(): void");
+    assert_eq!(prepared.exports[3].name, "run");
+    assert_eq!(prepared.exports[3].declaration, "function helper(): void");
+
+    // And the types each declaration writes, in the two positions a documentation view opens types
+    // for. They come off the author's annotations, which is the one file that still has them: the
+    // emission `tsc` produced has none. A built-in is not among them, because `string` names no
+    // declaration anything could open.
+    assert_eq!(prepared.exports[1].returns, ["Row"]);
+    assert_eq!(prepared.exports[1].parameters, ["Row"]);
+    assert!(prepared.exports[0].returns.is_empty());
+    assert!(prepared.exports[0].parameters.is_empty());
+    assert!(
+        prepared.exports[2].returns.is_empty() && prepared.exports[2].parameters.is_empty(),
+        "a value's declaration stands in neither position"
+    );
 
     let broken =
         "import { files } from \"gg\";\nexport const total: number = files.listDir(\"src\");\n";
@@ -246,6 +266,57 @@ fn a_code_module_is_imported_under_the_schemes_own_specifier() {
     assert!(
         text.contains("error TS2307"),
         "a specifier the loader cannot resolve is refused before anything runs: {text}"
+    );
+}
+
+/// **A module in scope puts no name in the program's scope**, so a program that omits the import
+/// line does not compile.
+///
+/// The mirror of
+/// [the SDK's own rule](nothing_this_arm_offers_resolves_without_a_line_the_program_wrote), for the
+/// thing a use of a code skill or a code memory makes available. Supplying a module is packaging:
+/// the specifier resolves, and that is all it does. So the same call is written twice, with the
+/// module handed to the preparation both times.
+///
+/// The second half is the authorship rule under the same conditions: what `tsc` read is the reply
+/// byte for byte, with a module in scope changing nothing about it.
+#[test]
+fn a_module_in_scope_is_reached_only_through_the_import_the_program_writes() {
+    let modules = [CodeModule {
+        name: "csvTools".to_string(),
+        source: "export function parse(text) {\n  return text.length;\n}\n".to_string(),
+    }];
+
+    let context = PrepareContext::new();
+    let unwritten = "console.log(csvTools.parse(\"a,b\"));\n";
+    let Err(PrepareFailure::Program(PrepareError::Compile(text))) =
+        super::super::TYPESCRIPT.prepare_program(unwritten, &modules, &context)
+    else {
+        panic!("a name no line brought into scope is not a name this arm resolves");
+    };
+    assert!(
+        text.contains("error TS2304") && text.contains("csvTools"),
+        "the compiler's own sentence names the identifier: {text}"
+    );
+
+    let context = PrepareContext::new();
+    let written =
+        "import * as csvTools from \"lib:csvTools\";\n\nconsole.log(csvTools.parse(\"a,b\"));\n";
+    super::super::TYPESCRIPT
+        .prepare_program(written, &modules, &context)
+        .expect("the same call, reached through the line the documentation states");
+
+    let compiled = std::fs::read_to_string(
+        context
+            .opened_workspace()
+            .expect("the compile opened a workspace")
+            .join("work")
+            .join(PROGRAM_SOURCE),
+    )
+    .expect("the file `tsc` read is still there while the context lives");
+    assert_eq!(
+        compiled, written,
+        "the bytes the compiler read are the bytes the model sent"
     );
 }
 

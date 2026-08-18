@@ -18,9 +18,6 @@ the first thing to read a program. A construct the engine does not have is its
 own `SyntaxError`, at the line the model wrote it on, and nothing runs. The
 engine anchors a syntax error at the start of the statement carrying it.
 
-Code modules on this arm are `.js` files, handed over the same way. What a module
-offers is what its top level exports.
-
 ## The import a program writes
 
 `import * as gg from "gg";` reaches the whole surface, and every call is then
@@ -32,6 +29,29 @@ Two other specifiers resolve, and a program may write either. `import { files }
 from "gg";` reaches one family; `import * as csvTools from "lib:csvTools";`
 reaches a [code module](/gg/modules/) the agent loaded. The full set is on
 [the ECMAScript guest](/gg/languages/ecmascript-guest/).
+
+## Code modules
+
+A code module on this arm is a `.js` file, handed to the guest as its author
+wrote it and declared there as its own module, under its own specifier, exactly
+as the SDK's modules are.
+
+A module is supplied to a program the way gg's SDK is, by making the specifier
+resolve. That declares no name. The line the program writes is
+`import * as csvTools from "lib:csvTools";`, and one export is then reached as
+`csvTools.<name>`. A program that omits the line and writes
+`csvTools.parse(text)` gets the engine's own `ReferenceError` naming `csvTools`,
+at the program's own line, with nothing having run.
+
+The key is the skill's or memory's name in `camelCase`, so `csv-tools` is reached
+as `lib:csvTools`. Every separator joins the next word, a name of nothing but
+separators becomes `module`, and a leading digit is prefixed.
+
+What the module offers is what its top level exports, and each export is
+documented from the declaration its author wrote. The return and parameter types
+a documentation view opens beside a function are empty here, because a JavaScript
+declaration writes none. Reading them is what the annotations on
+[the other arm](/gg/languages/typescript/) buy.
 
 ## The pair with the TypeScript arm
 

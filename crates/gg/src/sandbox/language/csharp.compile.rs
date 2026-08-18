@@ -8,11 +8,15 @@
 //! artifact gg ships is a runtime rather than a program, and the per-turn cost is one `csc` and
 //! nothing else.
 //!
-//! What `csc` is given is the model's program **and the SDK's own sources** — twenty-six `.cs` files
-//! written into the preparation's workspace beside it, so that gg's surface is in the program's own
-//! assembly and the prebuilt guest has nothing extra to carry. It puts no name in the program's
-//! scope: what reaches `Views.OpenText` is the `using Gg;` the program wrote. See [`sdk`](super::sdk)
-//! for why, and below for what it costs.
+//! What `csc` is given is the model's program and **nothing else**. Every library it may reach is a
+//! `-r:` reference: gg's own SDK, as the assembly [`sdk_assembly`] builds once per machine, and one
+//! library per code module in the agent's scope. A reference puts no name in the program's scope,
+//! so what reaches `Views.OpenText` is the `using Gg;` the program wrote and what reaches
+//! `CsvTools.Slugify` is the `using lib;` it wrote.
+//!
+//! What the turn ships is therefore a **manifest** of named assemblies rather than one assembly —
+//! the SDK, the module libraries, and the program — which the guest registers as bundled resources
+//! and resolves references out of, exactly as it resolves the class libraries it carries.
 //!
 //! That shape is what a prior feasibility study missed. Priced on `componentize-dotnet` —
 //! NativeAOT-LLVM, which compiles the *program* to native wasm — this arm measured **25–43 seconds a
@@ -27,8 +31,9 @@
 //! | | |
 //! | --- | --- |
 //! | The first compile in a fresh process tree (JIT, page cache cold) | ~2.4 s |
-//! | Every compile after that | **~0.28 s** |
-//! | Of which the SDK's own 2,500 lines | ~70 ms, against ~210 ms for a program alone |
+//! | A program with nothing loaded, after that | **~0.22 s** |
+//! | Each code module in scope, compiled to its own library | ~0.22 s more |
+//! | gg's own SDK, built once per machine by [`sdk_assembly`] | ~0.28 s, and never again |
 //!
 //! Which puts it **second among the compiled arms**, behind [C++](super::super::cpp)'s ~90 ms — and
 //! that arm is only there because it precompiles a header once per machine — and comfortably ahead
@@ -49,11 +54,13 @@
 //! sentinel, its extraction directories) without being asked, so that redirection is doing real work
 //! here rather than standing by.
 //!
-//! **One thing is shared on purpose**, on the seam's own terms: the parse-only driver
-//! [`parser`] builds, which is content-keyed on its own source and the toolchain it is built
-//! against, placed by rename and sealed read-only. Nothing writes to it afterwards, which is the
-//! whole of the discipline — the measured corruption this contract exists to prevent is a *write*
-//! into a shared tree.
+//! **Two things are shared on purpose**, on the seam's own terms: gg's own SDK assembly
+//! ([`sdk_assembly`]) and the parse-only driver [`parser`] builds. Each is content-keyed on gg's own
+//! sources and the toolchain it is built against, placed by rename and sealed read-only. Nothing
+//! writes to either afterwards, which is the whole of the discipline — the measured corruption this
+//! contract exists to prevent is a *write* into a shared tree. Neither holds anything a model or a
+//! skill author wrote: what is compiled per preparation is compiled in that preparation's own
+//! workspace.
 //!
 //! **Nothing else is shared, and one thing is refused on purpose.** Roslyn ships a compiler *server* —
 //! `VBCSCompiler`, a resident process the SDK's build reuses across compilations — which is exactly
@@ -73,8 +80,11 @@
 //! | exit 0 | compiled | the assembly, base64-encoded |
 //! | non-zero, and the **parser** refused it | a typo | [`PrepareError::Syntax`] — the parser's own diagnostics, at the model's own coordinates |
 //! | non-zero, and only the **binder** refused it | a program written whole against the wrong surface | [`PrepareError::Compile`] — Roslyn's own diagnostics, at the model's own coordinates |
-//! | non-zero, and every diagnostic is in **gg's own SDK** | a defect in gg | [`PrepareFailure::Toolchain`] naming gg — never the model's |
 //! | anything else | the compiler could not finish | [`PrepareFailure::Toolchain`] — **not** the model's, and never shown to it as its own |
+//!
+//! Every diagnostic a program's compile can produce is located in the model's own file, because the
+//! model's own file is the only source in it. gg's SDK earns its diagnostics where it is built, and
+//! [`sdk_assembly`] reports them as a defect in gg.
 //!
 //! **The first two are told apart by asking Roslyn's parser, not by guessing.** javac labels a
 //! diagnostic with a key that says whether the *parser* produced it, so the
@@ -88,24 +98,21 @@
 //! reads the answer off whether it printed anything. See [`parse_errors`] for why that is not the
 //! compiler server this seam forbids, and for what happens when it cannot answer.
 //!
-//! The third is one only this arm has, because the SDK is in the **same invocation** as the program.
-//! A diagnostic located in gg's own sources is gg's defect rather than the model's — unless `csc`
-//! also complained about the model's file, in which case the model's own diagnostics are what it is
-//! shown and gg's are dropped. That order is deliberate: a program declaring a type the SDK already
-//! declares produces diagnostics at both, and it is the model's to fix.
-//!
-//! # A code module is C# in the same invocation
+//! # A code module is a referenced library
 //!
 //! A code [skill](crate::skills)'s or [memory](crate::memories)'s class is bound at `lib.<key>`, and
-//! on an arm that compiles, that binding is the compilation itself: each module in scope is written
-//! into the preparation's workspace as `module_<key>.cs` — [wrapped](super::source::wrap_module) as
-//! `public static class <key>` inside `namespace lib` — and named in the **same `csc` invocation** as
-//! the program and the SDK. Nothing is referenced with `-r:` and nothing becomes a second assembly,
-//! which the prebuilt guest could not load anyway: it loads exactly one per run.
+//! that binding is an **assembly the program references**. Each module in scope is written into the
+//! preparation's workspace as `module_<key>.cs` — [wrapped](super::source::wrap_module) as
+//! `public static class <key>` inside `namespace lib` — compiled on its own with `-target:library`
+//! into `lib.<key>.dll`, and named to the program's compile with `-r:`. The modules are built in
+//! binding order and each references the ones before it, so one module may reach another's class.
 //!
-//! A module is also compiled **alone** when it is read — [`compile_module`], one `-target:library`
-//! over the wrapped file — which is what buys its author a diagnostic in their own coordinates
-//! rather than a program that stops compiling a turn later for reasons in somebody else's file.
+//! It is the same supply gg's own surface gets, which is the point: `-r:Gg.dll` and
+//! `-r:lib.CsvTools.dll` are one mechanism, and neither declares a name.
+//!
+//! A module is also compiled **alone** when it is read — [`compile_module`] — which is what buys its
+//! author a diagnostic in their own coordinates rather than a program that stops compiling a turn
+//! later for reasons in somebody else's file.
 //!
 //! # What is deliberately absent from this arm's class library
 //!
@@ -159,18 +166,41 @@ pub(super) const PROGRAM_FILE: &str = "program.cs";
 /// by that name and by nothing else.
 pub(super) const PROGRAM_ASSEMBLY: &str = "GgProgram.dll";
 
+/// gg's own SDK, as the one assembly every program and every code module references.
+///
+/// It must be the name the guest registers it under — `GG_SDK_ASSEMBLY` in
+/// `packages/gg-sandbox-csharp/Sources/shell.c` — because a reference the compiler resolved is
+/// resolved again in the guest out of the bundled resource of that name.
+pub(super) const SDK_ASSEMBLY: &str = "Gg.dll";
+
+/// The assembly a code module bound at `lib.<key>` is compiled into, and referenced by.
+///
+/// Named for the binding, so that the reference the program's compile is given, the resource the
+/// guest registers and the namespace a program writes are one string with one meaning. The key is
+/// already a C# identifier ([`source::binding_name`]) so it cannot produce a file name that is not
+/// one.
+pub(super) fn module_assembly(key: &str) -> String {
+    format!("lib.{key}.dll")
+}
+
 /// The assembly a **code module's own check** is told to produce, and then thrown away.
 ///
-/// A module is not an artifact on this arm — it is source compiled into the program that binds it —
-/// so this exists only because `csc` must be told where to write. Nothing reads it.
+/// The check compiles a module under a fixed key before any program has asked for it, so this
+/// assembly is not the one a program will reference — that one is built per key, by
+/// [`module_assembly`], when the program that binds it is compiled. Nothing reads this one.
 const MODULE_ASSEMBLY: &str = "GgModule.dll";
 
-/// The response file the compiler's arguments are written into.
+/// The response file one compiler invocation's arguments are written into, named for the assembly
+/// it produces.
 ///
 /// A file rather than an argument list because the reference set alone is ~160 paths: passing them
 /// as `argv` works today and is one platform limit away from not, and a response file is what a
-/// .NET build itself uses for exactly this.
-const RESPONSE_FILE: &str = "csc.rsp";
+/// .NET build itself uses for exactly this. Named per assembly because a preparation runs `csc`
+/// once per module and once for the program, in one workspace, and a fixed name would leave an
+/// operator reading the workspace of a failed turn only the last of them.
+fn response_name(assembly: &str) -> String {
+    format!("{}.rsp", assembly.trim_end_matches(".dll"))
+}
 
 /// The C# language version a program is compiled as — pinned rather than `latest`, so a toolchain
 /// bump cannot silently change what a model may write.
@@ -222,7 +252,7 @@ fn usable(root: &Path) -> bool {
         && root.join("ref").is_dir()
 }
 
-/// Compile a **program** — a model's reply — into the IL the guest interprets, base64-encoded.
+/// Compile a **program** — a model's reply — into the manifest of IL assemblies the guest loads.
 ///
 /// [`component`](PreparedProgram::component) is `None` because this arm evaluates its program with a
 /// **prebuilt** runtime — one the build linked, once, and gg embeds — rather than compiling one per
@@ -234,28 +264,46 @@ pub(super) fn compile_program(
     modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
-    let assembly = compile(program, modules, context)?;
+    let assemblies = compile(program, modules, context)?;
     Ok(PreparedProgram {
-        source: base64::engine::general_purpose::STANDARD.encode(assembly),
+        source: manifest(&assemblies),
         component: None,
     })
+}
+
+/// **The transport**: every assembly this turn needs, named, in the order they were built.
+///
+/// Two lines per assembly — the name the guest registers it under, then its IL as base64 — because
+/// the world's `program` is a `string` and an IL assembly is a PE image whose body is arbitrary.
+/// Widening that parameter to `list<u8>` would change the wire for every arm to say one thing about
+/// one language, and a text manifest costs a third again on a payload that never leaves the process.
+///
+/// The program is last, which is the order they are read in and the order they depend on each other
+/// in. `packages/gg-sandbox-csharp/Sources/shell.c` registers every one of them before it loads any,
+/// so nothing about the guest depends on that order.
+fn manifest(assemblies: &[(String, Vec<u8>)]) -> String {
+    let mut out = String::new();
+    for (name, bytes) in assemblies {
+        out.push_str(name);
+        out.push('\n');
+        out.push_str(&base64::engine::general_purpose::STANDARD.encode(bytes));
+        out.push('\n');
+    }
+    out
 }
 
 /// Prepare a **code module** — the code half of a skill or a memory — by compiling it the way a
 /// program will, and read the names its class offers.
 ///
-/// What comes back is **source**, which is what a compiled arm's module has to be: it is an input to
-/// the [program compile](compile_program) that binds it, not something a guest could load on its
-/// own. The prebuilt guest loads exactly one assembly per run, so a module cannot be a second one —
-/// it is C# handed to the same `csc` as the program, and the class it becomes is in the program's
-/// own assembly. It is the author's own bytes rather than the
-/// [wrapped](super::source::wrap_module) form, because the class is named for the key the *program*
-/// knows and a module's own preparation is handed none.
+/// What comes back is the author's **source**, because the library a program references is built for
+/// a key this preparation is not handed: the seam binds `lib.<key>` when the module is loaded, and
+/// the class inside the library is named for it. So the assembly built here is the check and nothing
+/// more, and [`compile`] builds the one a program references, under the key that program knows.
 ///
 /// It is compiled here, at the read, for what that buys its author: a diagnostic in **their own
 /// coordinates**, on the call that loaded the skill, rather than a program that stops compiling a
-/// turn later for reasons in somebody else's file. `-target:library` is the only difference from a
-/// program's compile — a class body has no entry point and needs none.
+/// turn later for reasons in somebody else's file. It is the same `-target:library` over the same
+/// `-r:Gg.dll` a bound module's own library is built with, so what compiles here compiles there.
 pub(super) fn compile_module(
     module_source: &str,
     context: &PrepareContext,
@@ -264,27 +312,18 @@ pub(super) fn compile_module(
     let root = dotnet_home().ok_or_else(|| PrepareFailure::Toolchain(missing_toolchain()))?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    let sdk = write_sdk(workspace)?;
+    let sdk = sdk_assembly(&root, context).map_err(PrepareFailure::Toolchain)?;
     let file = workspace
         .write(&source::module_file(source::CHECK_KEY), &module.source)
         .map_err(PrepareFailure::Toolchain)?;
-    let output = workspace.output().join(MODULE_ASSEMBLY);
-    let response = workspace
-        .write(
-            RESPONSE_FILE,
-            &response_file(
-                &root,
-                Target::Library,
-                workspace.work(),
-                &sdk,
-                std::slice::from_ref(&file),
-                &output,
-            )?,
-        )
-        .map_err(PrepareFailure::Toolchain)?;
-
-    let report = invoke(&root, &response, context).map_err(PrepareFailure::Toolchain)?;
-    classify(&report, &root, &file, context)?;
+    library(
+        &root,
+        workspace,
+        std::slice::from_ref(&sdk),
+        &file,
+        MODULE_ASSEMBLY,
+        context,
+    )?;
 
     Ok(PreparedModule {
         source: module_source.to_string(),
@@ -292,48 +331,87 @@ pub(super) fn compile_module(
     })
 }
 
-/// Compile one model program, and the code modules in its scope, into an IL assembly's bytes.
+/// Compile one `.cs` file into `assembly`, a library inside this preparation's own output directory
+/// — a code module's own check, and the library a program references — and hand back where it landed.
 ///
-/// The modules are **inputs to the program's own compile**, which is what a binding at `lib.<key>`
-/// has to be on an arm that compiles: each is written into the preparation's workspace as its own
-/// file — `namespace lib;` and the author's declarations inside `public static class <key>` — and
-/// named in the same `csc` invocation. They are in binding order, so one module may reach another's
-/// class, and none of them moves a line of the model's own file.
+/// `-target:library` because a class body has no entry point and needs none, and `libraries` is what
+/// this one may reach: gg's SDK, and for a bound module the modules bound before it.
+fn library(
+    root: &Path,
+    workspace: &Workspace,
+    libraries: &[PathBuf],
+    file: &Path,
+    assembly: &str,
+    context: &PrepareContext,
+) -> Result<PathBuf, PrepareFailure> {
+    let output = workspace.output().join(assembly);
+    let response = workspace
+        .write(
+            &response_name(assembly),
+            &response_file(
+                root,
+                Target::Library,
+                workspace.work(),
+                libraries,
+                std::slice::from_ref(&file.to_path_buf()),
+                &output,
+            )?,
+        )
+        .map_err(PrepareFailure::Toolchain)?;
+    let report = invoke(root, &response, context).map_err(PrepareFailure::Toolchain)?;
+    classify(&report, root, file, context)?;
+    Ok(output)
+}
+
+/// Compile one model program, and the code modules in its scope, into the assemblies the guest runs.
+///
+/// The model's program is compiled **alone**: its own file is the only source in its invocation, and
+/// everything it may reach is a `-r:` reference. Each module in scope is compiled first, into its
+/// own library, in binding order and each referencing the ones before it, so one module may reach
+/// another's class and none of them can move a line of the model's own file.
+///
+/// What comes back is every assembly the turn needs, named as the guest registers it: gg's surface,
+/// the module libraries in binding order, and the program last.
 fn compile(
     program: &str,
     modules: &[CodeModule],
     context: &PrepareContext,
-) -> Result<Vec<u8>, PrepareFailure> {
+) -> Result<Vec<(String, Vec<u8>)>, PrepareFailure> {
     let root = dotnet_home().ok_or_else(|| PrepareFailure::Toolchain(missing_toolchain()))?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+    let sdk = sdk_assembly(&root, context).map_err(PrepareFailure::Toolchain)?;
 
     // Verbatim. Nothing is prepended, appended or re-indented, which is what makes every line and
     // column below the model's own.
     let entry = workspace
         .write(PROGRAM_FILE, program)
         .map_err(PrepareFailure::Toolchain)?;
-    let sdk = write_sdk(workspace)?;
-    let mut sources = Vec::with_capacity(modules.len() + 1);
+
+    let mut assemblies = vec![(SDK_ASSEMBLY.to_string(), read_assembly(&sdk)?)];
+    // What the next compile may reference, which grows as the modules are built: gg's surface first,
+    // then every module bound before this one.
+    let mut libraries = vec![sdk];
     for module in modules {
         let wrapped = source::wrap_module(&module.source, &module.name)?;
-        sources.push(
-            workspace
-                .write(&source::module_file(&module.name), &wrapped.source)
-                .map_err(PrepareFailure::Toolchain)?,
-        );
+        let file = workspace
+            .write(&source::module_file(&module.name), &wrapped.source)
+            .map_err(PrepareFailure::Toolchain)?;
+        let name = module_assembly(&module.name);
+        let output = library(&root, workspace, &libraries, &file, &name, context)?;
+        assemblies.push((name, read_assembly(&output)?));
+        libraries.push(output);
     }
-    sources.push(entry.clone());
 
     let output = workspace.output().join(PROGRAM_ASSEMBLY);
     let response = workspace
         .write(
-            RESPONSE_FILE,
+            &response_name(PROGRAM_ASSEMBLY),
             &response_file(
                 &root,
                 Target::Exe,
                 workspace.work(),
-                &sdk,
-                &sources,
+                &libraries,
+                std::slice::from_ref(&entry),
                 &output,
             )?,
         )
@@ -341,26 +419,98 @@ fn compile(
 
     let report = invoke(&root, &response, context).map_err(PrepareFailure::Toolchain)?;
     classify(&report, &root, &entry, context)?;
+    assemblies.push((PROGRAM_ASSEMBLY.to_string(), read_assembly(&output)?));
+    Ok(assemblies)
+}
 
-    std::fs::read(&output).map_err(|error| {
+/// Read an assembly `csc` was told to write, or say that it did not write one.
+fn read_assembly(path: &Path) -> Result<Vec<u8>, PrepareFailure> {
+    std::fs::read(path).map_err(|error| {
         PrepareFailure::Toolchain(format!(
             "csc reported success but wrote no assembly to {}: {error}",
-            output.display(),
+            path.display(),
         ))
     })
 }
 
-/// Write gg's own SDK into this preparation's workspace, and hand back the files to compile.
-fn write_sdk(workspace: &Workspace) -> Result<Vec<PathBuf>, PrepareFailure> {
-    let mut sdk = Vec::with_capacity(SDK_SOURCES.len());
+/// **gg's own SDK, as one assembly**, built once per machine into a
+/// [shared toolchain directory](shared_toolchain_dir).
+///
+/// # Why it is an assembly rather than sources in every compile
+///
+/// Because that is what a module is, and the two are supplied the same way or the arm has two
+/// stories. A referenced assembly declares no name — `namespace Gg` is reached by a `using Gg;` the
+/// program wrote, exactly as `namespace lib` is reached by a `using lib;` it wrote — and it gives
+/// both halves one identity: a module's method that hands back a `Gg.Files.FileRead` hands back the
+/// program's own `Gg.Files.FileRead`, which two copies compiled into two assemblies could not.
+///
+/// It also puts gg's own diagnostics where they belong. The SDK earns them **here**, once, as a
+/// defect in gg, rather than inside the invocation that judges a model's program.
+///
+/// # How it satisfies the isolation contract
+///
+/// The directory is [shared on purpose](shared_toolchain_dir) and is content-keyed on everything
+/// that could change its bytes — every SDK source gg carries, the language version they are compiled
+/// at, and the toolchain that compiles them — placed by [rename](place_tree) and sealed read-only.
+/// `-deterministic` and a `-pathmap` onto `./` make the assembly a function of those alone, so two
+/// preparations racing to build it write the same bytes and the loser discards an identical copy.
+/// Nothing writes to it afterwards, and nothing a model or a skill author wrote is in it.
+pub(super) fn sdk_assembly(root: &Path, context: &PrepareContext) -> Result<PathBuf, String> {
+    let directory = shared_toolchain_dir(&format!(
+        "csharp-sdk-{}-{:016x}-{}",
+        LANGUAGE_VERSION,
+        fingerprint_sdk(),
+        compiler_stamp(root),
+    ))?;
+    let tree = directory.join(SDK_DIRECTORY);
+    place_tree(&tree, |into| {
+        let mut sources = Vec::with_capacity(SDK_SOURCES.len());
+        for file in SDK_SOURCES {
+            let path = into.join(file.name);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+            }
+            std::fs::write(&path, file.text)
+                .map_err(|error| format!("could not write {}: {error}", path.display()))?;
+            sources.push(path);
+        }
+        let output = into.join(SDK_ASSEMBLY);
+        let rendered = response_file(root, Target::Library, into, &[], &sources, &output).map_err(
+            |failure| match failure {
+                PrepareFailure::Toolchain(message) => message,
+                other => format!("{other:?}"),
+            },
+        )?;
+        let response = into.join(response_name(SDK_ASSEMBLY));
+        std::fs::write(&response, rendered)
+            .map_err(|error| format!("could not write {}: {error}", response.display()))?;
+
+        let report = invoke(root, &response, context)?;
+        match report.ok {
+            true => Ok(()),
+            false => Err(format!(
+                "gg's own C# SDK did not compile, which is a defect in gg rather than in the \
+                 program:\n{}",
+                report.stdout.trim(),
+            )),
+        }
+    })?;
+    Ok(tree.join(SDK_ASSEMBLY))
+}
+
+/// A digest of every SDK source gg carries, for the [assembly](sdk_assembly)'s content key.
+///
+/// Over the names as well as the texts, because a file that moved is a different compilation even
+/// when every byte of C# in it is the same.
+fn fingerprint_sdk() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
     for file in SDK_SOURCES {
-        sdk.push(
-            workspace
-                .write(&format!("{SDK_DIRECTORY}/{}", file.name), file.text)
-                .map_err(PrepareFailure::Toolchain)?,
-        );
+        file.name.hash(&mut hasher);
+        file.text.hash(&mut hasher);
     }
-    Ok(sdk)
+    hasher.finish()
 }
 
 /// What a compilation is for: a model's program, which the guest calls an entry point on, or a code
@@ -425,17 +575,16 @@ impl Target {
 /// compile — is a function of the directory's contents rather than of the order a filesystem
 /// happened to list them in.
 ///
-/// The **SDK's own sources** are compiled with the program, which is what makes gg's surface
-/// reachable without an assembly the guest would have to carry — see [`sdk`](super::sdk). They are
-/// listed before it because a library is read before the thing that depends on it; nothing about C#
-/// requires the order, and it makes the response file read the way the compilation is meant to.
-/// `sources` is everything else, in the order it is to be read: a program's code modules and then
-/// its own file, or a single module on its own check.
+/// `libraries` is what **gg** supplies on top of it, as references and never as sources: its own
+/// [SDK assembly](sdk_assembly), and one library per code module in the compilation's scope. A
+/// reference is availability and nothing else — it declares no name, which is what makes the line
+/// that reaches one the program's own. `sources` is what is being compiled, which is one file: a
+/// model's program, or one module.
 fn response_file(
     root: &Path,
     target: Target,
     work: &Path,
-    sdk: &[PathBuf],
+    libraries: &[PathBuf],
     sources: &[PathBuf],
     output: &Path,
 ) -> Result<String, PrepareFailure> {
@@ -456,10 +605,10 @@ fn response_file(
         "-utf8output".to_string(),
         format!("-out:{}", output.display()),
     ];
-    for reference in references(root)? {
+    for reference in references(root)?.iter().chain(libraries) {
         lines.push(format!("-r:{}", reference.display()));
     }
-    for file in sdk.iter().chain(sources) {
+    for file in sources {
         lines.push(format!("{}", file.display()));
     }
     lines.push(String::new());
@@ -553,12 +702,6 @@ fn missing_toolchain() -> String {
     )
 }
 
-/// Whether one of `csc`'s diagnostics is located inside gg's **own SDK** rather than in anything the
-/// model wrote — which it can be, because the two are one compilation. See [`classify`].
-fn in_the_sdk(line: &str) -> bool {
-    line.contains(&format!("{SDK_DIRECTORY}/"))
-}
-
 /// Turn a finished invocation into a verdict.
 ///
 /// A rejection is recognised by Roslyn's **own diagnostic format** rather than by the exit code,
@@ -568,14 +711,9 @@ fn in_the_sdk(line: &str) -> bool {
 /// fell over without producing one is reported as a toolchain failure and never shown to the model
 /// as its own mistake.
 ///
-/// # And a third case, which is gg's own
-///
-/// The SDK is compiled in the **same invocation** as the program, so a diagnostic can be located in
-/// gg's own sources. Those are reported as a [toolchain failure](PrepareFailure::Toolchain) naming
-/// gg, rather than as a compile error a model would read as its own — unless `csc` also complained
-/// about the model's file, in which case the model's own diagnostics are what it is shown and gg's
-/// are dropped. That order is deliberate: a program declaring a type the SDK already declares
-/// produces diagnostics at both, and it is the model's to fix.
+/// Every diagnostic an invocation here can produce is located in the file that invocation was given,
+/// because gg supplies its SDK and every code module as references rather than as sources. A defect
+/// in gg's own SDK is reported where the SDK is built ([`sdk_assembly`]) and never as a program's.
 fn classify(
     report: &CompilerReport,
     root: &Path,
@@ -612,11 +750,10 @@ fn classify(
 /// bytes across 50 lines** — ~97 bytes a diagnostic — so eight is ~775 bytes and the fifty were
 /// ~4.8 KB of one sentence repeated with the line number changed.
 ///
-/// It bounds what the model **reads** and never what a [band](classify) is decided on: the partition
-/// into the model's diagnostics and gg's own SDK's, and the parser's answer about which stage
-/// refused the program, are both taken over the whole set before this applies. Nor does it bound
-/// what gg's own SDK's diagnostics say when they are the failure — that string is for an operator
-/// reading a defect in gg, who wants all of it, and it never reaches a model.
+/// It bounds what the model **reads** and never what a [band](classify) is decided on: the parser's
+/// answer about which stage refused the program is taken over the whole set before this applies. Nor
+/// does it bound what gg's own SDK's diagnostics say when they are the failure — that string is for
+/// an operator reading a defect in gg, who wants all of it, and it never reaches a model.
 const SHOWN: usize = 8;
 
 /// What `csc` decided, before the [band](classify) is refined — the pure half, over the invocation's
@@ -638,25 +775,12 @@ fn verdict(report: &CompilerReport) -> Result<(), PrepareFailure> {
             report.stderr_tail(),
         )));
     }
-    // What the model wrote, which is everything `csc` did not locate inside gg's own SDK. Decided
-    // over every error the compiler reported, before anything is dropped for length: a diagnostic
-    // the cap below does not show is still a diagnostic this partition counted, so no bound on what
-    // the model reads can move a compile error into gg's own band or out of it.
-    let (mine, ours): (Vec<&str>, Vec<&str>) =
-        reported.into_iter().partition(|line| !in_the_sdk(line));
-    if mine.is_empty() {
-        return Err(PrepareFailure::Toolchain(format!(
-            "gg's own C# SDK did not compile, which is a defect in gg rather than in the \
-             program:\n{}",
-            ours.join("\n"),
-        )));
-    }
     // Deduplicated and capped through the seam's own [bound](SHOWN), because Roslyn reports one
     // diagnostic per call site: a single misremembered SDK name arrives once for every place the
     // program called it, saying the same sentence at fifty different columns.
     Err(PrepareFailure::Program(PrepareError::Compile(
         crate::sandbox::language::diagnostics::capped(
-            mine.into_iter().map(str::to_string).collect(),
+            reported.into_iter().map(str::to_string).collect(),
             SHOWN,
             "\n",
         ),
@@ -879,10 +1003,9 @@ fn fingerprint(bytes: &[u8]) -> u64 {
 /// program `csc` refused for one reason can arrive trailing a `CS8600`/`CS8602` nullable tail as long
 /// as the program, none of which is what stopped it.
 ///
-/// On the [band](verdict) it is the safe direction. A compilation that failed inside gg's own SDK
-/// while merely *warning* about the model's file used to partition as "the model has diagnostics",
-/// and the model was handed a warning it could not act on for a failure that was gg's; with errors
-/// alone deciding it, that compilation is reported as gg's defect, which is what it is.
+/// On the [band](verdict) it is the safe direction: a compilation that produced warnings and no
+/// error at all did not fail for anything in them, so a report built out of them would hand the model
+/// a diagnostic it cannot act on in place of the failure it is looking for.
 fn is_error(line: &str) -> bool {
     let after_location = match line.split_once("): ") {
         Some((_, rest)) => rest,

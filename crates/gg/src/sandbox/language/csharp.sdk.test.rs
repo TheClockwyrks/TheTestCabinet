@@ -74,10 +74,9 @@ fn every_embedded_source_is_the_file_on_disk() {
 }
 
 #[test]
-fn the_sdk_is_written_somewhere_a_diagnostic_can_be_told_apart_from_the_models() {
-    // The whole of how `classify` tells gg's own defect from the model's is where the file is, so
-    // the directory has to be a name no model-facing path can be confused with — and the program is
-    // deliberately not inside it.
+fn every_sdk_source_stays_inside_the_tree_its_assembly_is_built_in() {
+    // The SDK is written into a shared directory gg keys by content and seals read-only, so a name
+    // that climbed out of it would be a build writing somewhere nothing keyed and nothing sealed.
     assert_eq!(SDK_DIRECTORY, "sdk");
     assert!(
         SDK_SOURCES

@@ -25,8 +25,8 @@
 //! What a language does own is everything between the model's text and that wire:
 //!
 //! * how a model's reply becomes source the guest can evaluate ([`ProgramLanguage::prepare_program`]);
-//! * how a code [skill](crate::skills)'s or [memory](crate::memories)'s file becomes a namespace
-//!   bound at `lib.<key>` ([`ProgramLanguage::prepare_module`]);
+//! * how a code [skill](crate::skills)'s or [memory](crate::memories)'s file becomes a library a
+//!   later program of that arm reaches ([`ProgramLanguage::prepare_module`]);
 //! * which prebuilt component evaluates it ([`ProgramLanguage::guest_component`]);
 //! * how its SDK spells the surface ([`ProgramLanguage::catalogue`]);
 //! * and the source gg **writes on the model's behalf** — the synthesized file view
@@ -325,20 +325,28 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         "."
     }
 
-    /// **How a program reaches one export of a module bound at `lib.<key>`**, in this arm's own
-    /// spelling, with [`<name>`](LIB_ACCESS_NAME) standing in for the export.
+    /// **How a program reaches one export of a loaded module**, in this arm's own spelling, with
+    /// [`<name>`](LIB_ACCESS_NAME) standing in for the export.
     ///
     /// This is the line every [documentation view of a loaded module](crate::docs) carries, and it
-    /// is the **only** place a model learns it: `lib` binds no catalogued function, so an arm's own
-    /// catalogue says nothing about it, and the system prompt states what a model cannot be told at
-    /// the moment it matters rather than what it can. The moment it matters is the view of the
-    /// declaration the model is about to call, so that view is what says it.
+    /// is the **only** place a model learns it: a loaded module binds no catalogued function, so an
+    /// arm's own catalogue says nothing about it, and the system prompt states what a model cannot
+    /// be told at the moment it matters rather than what it can. The moment it matters is the view
+    /// of the declaration the model is about to call, so that view is what says it.
     ///
-    /// The default is a path, which is what eight arms write. The three that reach a module **by
-    /// string** — because it is compiled separately and there is no import for their compiler to
-    /// check a program against — override it, and a family of calls that differ by what they hand
-    /// back is written `<text|number|flag|run>` rather than as one of its members, so a model
-    /// reading the view is not shown one arm of a choice it has to make.
+    /// **A module is supplied the way this arm supplies gg's own SDK** — a classpath entry, an
+    /// `--extern`, an include path, a linked object, a specifier the loader resolves — and
+    /// supplying declares no name. What makes an export reachable is the line the program writes
+    /// ([`lib_import`](Self::lib_import)); this is what that line makes resolve, and a view quotes
+    /// the two together.
+    ///
+    /// The default is `lib`, the key and the name joined by this arm's
+    /// [member separator](Self::member_separator), which is what the arms whose supply lands the
+    /// module inside a namespace of gg's own naming write — a `lib` package, a `lib` namespace, a
+    /// `lib` package on a classpath. An arm whose module is a **unit of its own module system**
+    /// overrides it: a crate, a Swift module, a resolved specifier and a PureScript module under an
+    /// alias are each reached by the key alone, because there the key *is* the module and there is
+    /// no `lib` in front of it.
     fn lib_access(&self, key: &str) -> String {
         let step = self.member_separator();
         format!("lib{step}{key}{step}{LIB_ACCESS_NAME}")
@@ -355,17 +363,25 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         self.lib_access(key).replace(LIB_ACCESS_NAME, name)
     }
 
-    /// The line a program writes to reach the module bound at `key`, on an arm that needs one.
+    /// **The line a program writes to reach the module loaded at `key`** — the one line that makes
+    /// its names resolve, on an arm that needs one.
     ///
-    /// `None` on the arms where a code module lands somewhere a program can already name: a
-    /// namespace of the compiled program, a value the guest hands the evaluator, a lookup by string.
-    /// Where the module is a real unit of the language's own module system, the program reaches it
-    /// the way it reaches any other, and the [documentation view](crate::docs) of the module and of
-    /// each of its declarations is the one place a model is told the line — the same place it is
-    /// told the [access](Self::lib_access) that line makes resolve.
+    /// Supplying a module is packaging, and packaging puts nothing in a program's scope, so a
+    /// program reaches a loaded module exactly as it reaches gg's own surface: by writing the line.
+    /// The [documentation view](crate::docs) of the module and of each of its declarations is the
+    /// one place a model is told what that line is — the same place it is told the
+    /// [access](Self::lib_access) the line makes resolve.
     ///
-    /// It takes the key because on an arm whose module system resolves a *specifier*, the line names
-    /// the module it brings in and there is no key-independent line to write.
+    /// It takes the key because the line usually names what it brings in. Where an arm's supply is
+    /// **one unit carrying every module in scope** — a `lib` package, a `lib` namespace, one
+    /// requirable file — the same line reaches all of them and the key changes nothing, which is an
+    /// answer rather than an omission.
+    ///
+    /// `None` is for the arm whose supply already *is* the program's prelude: [Rust](rust) hands a
+    /// module to `rustc` on `--extern`, exactly as it hands it gg's SDK, so the crate is in the
+    /// extern prelude and `<key>::<name>` resolves from the program's first line with no line above
+    /// it. That is the language's own rule for every crate a program links, not a name gg put in
+    /// scope — and a program that would rather write `use <key>::<name>;` first writes it itself.
     fn lib_import(&self, _key: &str) -> Option<String> {
         None
     }
@@ -418,12 +434,13 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// because for one shape of arm the two cannot be prepared apart.
     ///
     /// An **interpreted** arm ignores it entirely: its guest is handed the same list on the wire and
-    /// evaluates each module before the program, so the binding at `lib.<key>` is made at run time
-    /// and a program's preparation has no business knowing what is in scope. A **compiled** arm has
-    /// no such moment. Rust's module is Rust, Rust is compiled, and a compiled module is only
-    /// reachable from the program that was linked against it — so on that arm the modules are
-    /// *inputs to the program's compile*, and a seam that withheld them would be a seam on which a
-    /// code skill silently bound nothing.
+    /// makes each module *reachable* there — registered, declared or assembled into a package, as
+    /// that runtime does it — so what a program can reach is settled at run time and a program's
+    /// preparation has no business knowing what is in scope. A **compiled** arm has no such moment.
+    /// Rust's module is Rust, Rust is compiled, and a compiled module is only reachable from the
+    /// program that was linked against it — so on that arm the modules are *inputs to the program's
+    /// compile*, and a seam that withheld them would be a seam on which a code skill silently bound
+    /// nothing.
     ///
     /// The list is the modules **in scope**, in binding order, which is exactly what
     /// [`ProgramScope::modules`](super::ProgramScope) carries to the guest. An implementation that
@@ -521,7 +538,8 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     fn warm_prepare(&self) {}
 
     /// Turn a code skill's or code memory's source into the source the guest evaluates to produce
-    /// that module's namespace, bound at `lib.<key>`.
+    /// that module's namespace — the library a later program of this arm reaches by writing the line
+    /// [`lib_import`](Self::lib_import) states.
     ///
     /// A module compiles exactly as a program does, so `context` means what it means there, the
     /// [isolation rule](Self::prepare_program) is the same rule, and so is the
@@ -573,14 +591,16 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     }
 
     /// The identifier a code [skill](crate::skills) or [memory](crate::memories) called `name` is
-    /// bound at — the `<key>` of `lib.<key>`.
+    /// loaded under — the `<key>` of this arm's [access spelling](Self::lib_access) and of the
+    /// [line a program writes](Self::lib_import) to reach it.
     ///
     /// A skill's own name is authored prose (`csv-tools`, `my_helpers.v2`, `9lives`), and the key is
     /// a property a **program spells out** rather than one it looks up with a string, so it has to
     /// come out as an identifier the language will parse. Which identifier is the language's
     /// business: `csvTools` where the convention is camelCase, `csv_tools` where it is not. gg's
     /// only requirements are that the result is non-empty and stable for a given name, which is what
-    /// lets it be minted once per agent and quoted back in the reply that names it.
+    /// lets it be minted once per agent and quoted in the documentation views a use of the thing
+    /// opens.
     fn binding_name(&self, name: &str) -> String;
 
     /// The prebuilt guest component that evaluates this language's prepared source, embedded in
@@ -1044,12 +1064,15 @@ pub struct ModuleExport {
     ///
     /// What it is for: an agent whose [`docViewTypes`](crate::config) flags ask for the types around
     /// a function gets a view of each of these, one level deep, so the shape a call hands back is
-    /// documented beside the call. **Empty on every arm today** — reading a declaration's types is a
-    /// per-arm step that has not landed — so an empty list means "not read here", never "returns
-    /// nothing".
+    /// documented beside the call.
+    ///
+    /// **Empty means the arm read no type name here, never that the declaration returns nothing.**
+    /// Every arm whose declarations write types fills it from the declaration it quoted; the arms
+    /// whose declarations write none — a Ruby `def`, a JavaScript `function` — answer with nothing
+    /// and say so on their own scan, because there is no type in the source to read.
     pub returns: Vec<String>,
     /// The type names the declaration writes in parameter position, for the same reason and under
-    /// the same caveat as [`returns`](Self::returns).
+    /// the same reading as [`returns`](Self::returns).
     pub parameters: Vec<String>,
 }
 

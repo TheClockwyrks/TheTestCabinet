@@ -3327,33 +3327,40 @@ impl OperationApi for LoopOperationApi {
         else {
             return Err(docs_not_found_refusal(&name, &self.docs.suggest(&name)));
         };
-        // Resolved from the catalogue and this agent's bound set, never from the window: what the
-        // mode selects is a property of the signature, and which of those are *already* open is the
-        // separate question each `open_docview` answers for itself.
-        let types = self.docs.types_to_open(&name, self.doc_view_types);
+        // Asked under the resolved key rather than the spelling the model typed, so the types beside
+        // a loaded declaration are read off the entry the view itself was filed under. Resolved from
+        // the surface and this agent's bound set, never from the window: what the mode selects is a
+        // property of the declaration, and which of those are *already* open is the separate
+        // question each `open_docview` answers for itself.
+        let types = self.docs.types_to_open(&key, self.doc_view_types);
         let mut opened = Vec::new();
-        if let DocviewOpen::Placed { tokens } = self.context.open_docview(key.clone(), read) {
+        if let DocviewOpen::Placed { tokens, superseded } =
+            self.context.open_docview(key.clone(), read)
+        {
             opened.push(SandboxViewOpened {
                 kind: ViewKind::Docs,
                 selector: key,
                 tokens: tokens as u64,
-                // Never true on this path, and the field is filled in rather than left to a default
-                // so that the one place it could become true is here: a docview is never superseded.
-                superseded: false,
+                // True only where the page itself changed under a key already open, which is a
+                // declaration of a module this agent revised and re-used.
+                superseded,
             });
         }
         for referenced in types {
-            let Some(body) = self.docs.read_type(referenced) else {
+            // `read_any` rather than the type half alone: a type the flags placed beside a loaded
+            // declaration is rendered by the loaded source, and one key rendering everything is what
+            // keeps this path and a use of the same module opening the same pages.
+            let Some(body) = self.docs.read_any(&referenced) else {
                 continue;
             };
-            if let DocviewOpen::Placed { tokens } =
-                self.context.open_docview(referenced.to_string(), body)
+            if let DocviewOpen::Placed { tokens, superseded } =
+                self.context.open_docview(referenced.clone(), body)
             {
                 opened.push(SandboxViewOpened {
                     kind: ViewKind::Docs,
-                    selector: referenced.to_string(),
+                    selector: referenced,
                     tokens: tokens as u64,
-                    superseded: false,
+                    superseded,
                 });
             }
         }

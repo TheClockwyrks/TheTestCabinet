@@ -19,10 +19,11 @@ import gg.internal.ggText
  *
  * The body comes back with its front matter stripped, and a skill that has been read stays read.
  *
- * A skill may be code rather than prose, or as well as it. Code is compiled into every later program
- * this session writes and reached at `lib.<key>.<name>`, and the reply that read it names the key and
- * what it exports. An on-use script runs once the program has ended, and whatever it shows arrives on
- * the next turn.
+ * A skill may be code rather than prose, or as well as it. Code is bound at `lib.<key>` for every
+ * later program this session writes, and the read opens a documentation view of each function the
+ * module declares, which is where its names, its signatures and the line a program writes to reach it
+ * are read. An on-use script runs on every read, once the turn's own program has ended, and whatever
+ * it shows arrives on the next turn.
  *
  * @ggop skills.read_skill
  * @param name The skill's name, as the system prompt lists it.
