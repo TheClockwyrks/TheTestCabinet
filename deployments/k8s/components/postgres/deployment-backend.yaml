@@ -135,9 +135,25 @@ spec:
           # grows with the catalog; a snug limit would turn that growth into
           # OOMKills long before anyone noticed the trend.
           resources:
+            # MEMORY REQUEST == LIMIT. The 768Mi request under a 2Gi ceiling was memory
+            # a node could promise to three pods and honour for one; the scheduler packs
+            # by requests and never consults limits. Equalising them is what makes the
+            # ceiling above a reservation rather than an aspiration — see the
+            # `TCAB_K8S_RUN_MEMORY_*` commentary in base/dispatcher.yaml.
+            #
+            # The 2Gi ceiling itself is unchanged and is corroborated by prod, 2026-08-18:
+            # this container's cgroup high-water mark had reached 2.9Gi over ~4 days, but
+            # the split at the time was 717Mi anon + 108Mi slab against 1027Mi of file
+            # cache. Under a limit cgroup v2 reclaims that cache rather than OOM-killing
+            # for it, so 2Gi is ~2.4x the figure that actually decides a kill. The pod had
+            # no ceiling at all in prod — this manifest's resources block had never been
+            # applied there — which is why it was free to grow to 2.9Gi.
+            #
+            # CPU keeps its gap on purpose: over-limit CPU is throttled, not killed, so
+            # the failure mode is console latency rather than a lost control plane.
             requests:
               cpu: 250m
-              memory: 768Mi
+              memory: 2Gi
             limits:
               cpu: "1500m"
               memory: 2Gi

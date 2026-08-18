@@ -77,9 +77,17 @@ spec:
             # This is the CPU-bound pod of the topology — a match is in-process wasm.
             # Give it real headroom (two concurrent matches by default); a request that
             # would exceed the cap is rejected with 503 rather than throttled.
+            # Memory request == limit (see base/dispatcher.yaml): the 256Mi request
+            # under a 512Mi ceiling let a node seat two of these and honour one. The
+            # ceiling itself is unchanged — it is sized for concurrent wasm matches,
+            # not for the 4Mi prod has actually peaked at, because prod has yet to run
+            # a heavy tournament and the sandbox is what this pod exists to hold.
+            #
+            # CPU keeps its gap deliberately: this is the CPU-bound pod of the topology
+            # and throttling is the correct pressure response for it.
             requests:
               cpu: "1"
-              memory: "256Mi"
+              memory: "512Mi"
             limits:
               cpu: "2"
               memory: "512Mi"

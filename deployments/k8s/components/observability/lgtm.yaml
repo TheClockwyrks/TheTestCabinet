@@ -172,9 +172,25 @@ spec:
             # ingress served 503s until the pod came back). Telemetry load here is
             # bursty by nature — validating a new test case drives far more traffic
             # than a quiet week — so the ceiling is set for the bursts.
+            #
+            # MEMORY REQUEST == LIMIT. The ceiling stays exactly where the 2026-07-20
+            # incident put it — it is not a number to trim from a quiet week's data —
+            # but the 512Mi request underneath it was the same mistake in a different
+            # place: a node would seat this pod believing it needed 512Mi, then seat a
+            # 4Gi sandbox pod beside it, and the two ceilings together exceed anything
+            # an 8Gi node can honour. The burst this stack is sized for would then be
+            # settled by the kubelet evicting whichever pod sat furthest above its
+            # request, and a run pod losing that draw costs real API spend.
+            #
+            # Prod, 2026-08-18: cgroup high-water mark 1.8Gi over a ~9-day pod lifetime
+            # (665Mi anon + 24Mi slab, 190Mi cache), comfortably inside the ceiling.
+            #
+            # The cost is a whole node: 4Gi reserved against ~4.7Gi schedulable means
+            # this pod does not share with a sandbox pod. That is the honest price of a
+            # 4Gi ceiling, and it was already being paid in risk rather than capacity.
             requests:
               cpu: "250m"
-              memory: "512Mi"
+              memory: "4Gi"
             limits:
               cpu: "2"
               memory: "4Gi"

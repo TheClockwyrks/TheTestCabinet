@@ -204,7 +204,7 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
         // pressure and scored at the maximum `oom_score_adj`, and a driver killed by
         // `SIGKILL` runs none of its teardown, orphaning the run's sandbox pod
         // forever. See `config::DEFAULT_DRIVER_CPU_REQUEST`.
-        resources: driver_resources(config),
+        resources: container_resources(&config.driver_resources),
         ..Default::default()
     };
 
@@ -318,7 +318,7 @@ pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
         env: Some(env),
         env_from,
         // No volumes, no mounts: the publisher carries no subscription credentials.
-        resources: None::<ResourceRequirements>,
+        resources: container_resources(&config.publisher_resources),
         ..Default::default()
     };
 
@@ -363,10 +363,10 @@ pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
     }
 }
 
-/// The driver container's `resources`, or `None` when every quantity is absent (so
-/// the field is omitted entirely rather than serialized empty).
-fn driver_resources(config: &Config) -> Option<ResourceRequirements> {
-    let resources = &config.driver_resources;
+/// One container's `resources`, or `None` when every quantity is absent (so the
+/// field is omitted entirely rather than serialized empty). Shared by the driver and
+/// the publisher, which are sized independently but rendered identically.
+fn container_resources(resources: &crate::config::DriverResources) -> Option<ResourceRequirements> {
     if resources.is_empty() {
         return None;
     }
