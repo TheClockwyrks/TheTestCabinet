@@ -644,7 +644,11 @@ halting verbatim, so only its own endpoints are listed here.
 
 - `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
   climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
-  `threshold`, `unloadedCountsAsBroken`, `earlyStop`). Rungs are matched on their
+  `threshold`, `unloadedCountsAsBroken`, `earlyStop`). A create with no `schedule`
+  takes the ladder default, which is **`paused: true`, `autoTopUp: true`** — a new
+  ladder enqueues nothing until it is enabled, and from then on each review feeds it
+  (see [A ladder starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)).
+  Rungs are matched on their
   stable ids and **reconciled, never replaced**, so a reorder or a version bump keeps
   every climber's recorded verdicts. A rung holding a
   [performance](/testing/performance/overview/) or
@@ -672,8 +676,10 @@ halting verbatim, so only its own endpoints are listed here.
   and the control for "stop here regardless" is a hold.
 - `GET|PUT /ladders/{id}/schedule`, `POST /ladders/{id}/topup`,
   `GET /ladders/{id}/queue`, `POST /ladders/{id}/pause`, `.../halt`,
-  `.../halt-all` — the plan endpoints above, with one restriction: a top-up only
-  ever launches a climber's **current** rung.
+  `.../halt-all` — the plan endpoints above, with two differences: a top-up only ever
+  launches a climber's **current** rung, and `pause` is the ladder's enable/disable
+  switch — a ladder starts on its paused side, and `{ "paused": false }` only permits
+  spending, so the caller that enables follows with a `topup` (the console does).
 
 ## Stopping runs in bulk
 
@@ -703,6 +709,146 @@ all. The scoped equivalent is a plan's or ladder's
 
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
 first; `cancel-waiting` throws nothing away and does not need to.
+
+## The console stream
+
+One SSE connection carries everything the console learns about runs it is not
+individually watching: the alerts it shows a person, and the lifecycle transitions
+it maintains its in-flight list from. It is **worker-wide** — every console sees
+every run, whoever launched it — and **live-only**: nothing is replayed, and there
+is no backlog to catch up on.
+
+### `GET /notifications` — subscribe
+
+Opens the stream. Every frame is a **named** SSE event, so there is no unnamed
+`message` frame and a client using `EventSource.onmessage` alone receives nothing.
+
+| `event:` | payload | topic |
+| --- | --- | --- |
+| `stream` | `{ "streamId": "…" }` | always — the first frame |
+| `notification` | `Notification` | `notifications` |
+| `run` | `RunEvent` | `runs` |
+| `resync` | `{ "dropped": n }` | always |
+| `heartbeat` | *(none)* | always — every 15s while idle |
+
+The **hello frame** (`stream`) arrives first and carries the id the client quotes
+back to change its topics. The id is minted per *connection*, not per client: an
+`EventSource` reconnects on its own, and the reconnected stream is a new subscriber
+with default topics, so a client must re-apply what it wanted each time a hello
+frame arrives.
+
+The **`resync` frame** says this client fell behind far enough that the backend
+dropped messages for it. Nothing can be replayed, so the client's recovery is to
+re-read the authoritative lists (`GET /jobs/active`, and the run listing if it is
+showing produced runs). It exists because this is one of the two ways a client can
+stop being current *without* the connection dropping.
+
+The **`heartbeat` frame** covers the other. It carries no payload — its arrival is
+the whole message — and it is why an SSE *comment* keep-alive is not enough here:
+the browser's `EventSource` consumes comments internally and surfaces nothing to
+the page, so a client cannot tell a healthy idle stream from a half-open socket
+that will never deliver anything again. With a heartbeat it can: arm a watchdog,
+rearm it on every frame, and treat an overdue one as a dead connection to tear
+down and reopen. `Sse::keep_alive` still runs alongside it, for the proxies that
+want the comment traffic.
+
+### Topics
+
+| topic | carries | default |
+| --- | --- | --- |
+| `notifications` | a run finished; a publish failed | **on** |
+| `runs` | every in-flight list transition | **off** |
+
+The split is between *alerting* and *list maintenance*. A notification is
+something a person should be told about, filed to the bell and raised as a toast,
+so it fires only for the two things worth interrupting someone over. A run event
+is every transition a list must reflect, including the many nobody wants a toast
+for — a queued run held back to `pending`, a driver reaching `starting`, forty runs
+ending at once under a bulk sweep.
+
+That is why `runs` is off by default and why the two are not one topic: the alerts
+must arrive wherever the user is, so the console holds one stream open for the
+whole session, while the churn is worth carrying only while a page is showing it.
+
+A `RunEvent` carries enough to patch a list in place without a round-trip — the
+run's identity and its state *after* the transition:
+
+```json
+{
+  "kind": "state-changed",
+  "runId": "…",
+  "testCaseSlug": "carom",
+  "testCaseVersion": "v1.0.0",
+  "variant": "base",
+  "harnessSlug": "claude",
+  "modelId": "…",
+  "state": "running"
+}
+```
+
+`kind` is `enqueued` (joined the queue), `state-changed` (moved between two
+non-terminal states), or `finished` (reached `succeeded`, `failed`, or `canceled`,
+and left the in-flight set). A `finished` event adds `recordId` when the run
+produced one and `detail` when it failed or was cancelled. Note that a cancelled
+run raises a run event but **no** notification: it is an operator action, not a
+failure to alert on — but the list must still drop the row.
+
+A run that produced a record also makes the *produced-run* listing stale, which the
+event does not carry; a client re-reads that separately.
+
+### `PUT /notifications/{stream}/topics` — change topics
+
+The control channel SSE itself does not have. Body:
+
+```json
+{ "runs": true }
+```
+
+Both `notifications` and `runs` are optional, and an omitted field leaves that
+topic unchanged — so a client toggling one never disturbs the other. Answers `204`,
+or `404` when no such stream is connected.
+
+A `404` is a normal, expected outcome rather than an error to surface: it means the
+client's stream died and its `EventSource` has reconnected (or is about to) under a
+new id. The recovery is to wait for the next hello frame and re-apply, which is
+what the console does.
+
+The topic change applies to the already-open stream, taking effect on the very
+next message. That is the whole point: the alternative — a second stream opened
+and closed per page — would drop the alerts riding the first one on every
+navigation, and cost a reconnect each time.
+
+### Staying current without polling
+
+A client does not poll this queue. It re-reads `GET /jobs/active` only when
+something tells it its own list may be wrong, and lives on the events in between.
+There are four such moments, and between them they cover every way a client can
+fall out of step:
+
+| trigger | what it recovers |
+| --- | --- |
+| the `runs` topic goes from off to on | anything published while it was off, which is never replayed |
+| the stream (re)connects | the gap, since the stream keeps no backlog |
+| a `resync` frame | messages the backend dropped for a client that fell behind |
+| the watchdog forces a reopen | a stream that died without saying so |
+
+The last two are the ones that make dropping the poll safe, and both are new: a
+lagged client used to be skipped in silence, and a wedged `EventSource` was
+undetectable. A poll was the only thing covering either.
+
+Two client-side details are load-bearing, and a client that omits them will look
+correct in testing and go stale in production:
+
+- **Reopen a stream the browser has abandoned.** After enough failed attempts
+  `EventSource.readyState` settles on `CLOSED` and the browser stops retrying,
+  permanently. Only an explicit reopen recovers it. While `readyState` is
+  `CONNECTING` a retry is already under way and should be left alone — racing it
+  just multiplies connections.
+- **Re-base, then replay.** The active-list snapshot describes the queue as of the
+  moment the request was served. Applying it over a list that live events have
+  since moved forward undoes them — re-adding a run that finished a moment ago, and
+  stranding that row for good with no poll to correct it. Buffer events for the
+  duration of the fetch and apply them on top of the snapshot.
 
 ## Reference rendering
 

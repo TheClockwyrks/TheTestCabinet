@@ -279,6 +279,100 @@ describe("RungListEditor", () => {
     expect(onChange).toHaveBeenCalledWith([rung({ id: "a", runs: 5 })]);
   });
 
+  // Dragging is the reorder a reviewer reaches for, so it is driven here through
+  // dnd-kit's keyboard sensor: it is the same drag the pointer starts, and it is the
+  // one jsdom can actually deliver. The rows are given real geometry first, because
+  // jsdom measures every element as a zero-sized rect at the origin and a sorting
+  // list decides where a rung lands by comparing those rectangles.
+  function rect(top: number, height: number): DOMRect {
+    return {
+      x: 0,
+      y: top,
+      top,
+      bottom: top + height,
+      left: 0,
+      right: 200,
+      width: 200,
+      height,
+      toJSON: () => {},
+    } as DOMRect;
+  }
+
+  function layOutRows(height = 50) {
+    const rows = document.querySelectorAll("li");
+    rows.forEach((row, i) => {
+      row.getBoundingClientRect = () => rect(i * height, height);
+    });
+    // The list too, not just its rows: the drag is confined to its parent, so a
+    // zero-sized `<ol>` would pin every rung to the top of a box with no room in it.
+    const list = document.querySelector("ol");
+    if (list) list.getBoundingClientRect = () => rect(0, rows.length * height);
+  }
+
+  // Space lifts the rung, an arrow moves it a place, Space drops it.
+  async function dragWithKeyboard(handle: Element, key: string) {
+    layOutRows();
+    fireEvent.keyDown(handle, { key: " ", code: "Space" });
+    await act(async () => {});
+    fireEvent.keyDown(handle, { key, code: key });
+    await act(async () => {});
+    fireEvent.keyDown(handle, { key: " ", code: "Space" });
+    await act(async () => {});
+  }
+
+  it("drags a rung down the climb", async () => {
+    const onChange = await renderList([
+      rung({ id: "a" }),
+      rung({ id: "b", slug: "zeta" }),
+    ]);
+    await dragWithKeyboard(
+      screen.getByLabelText(/^Reorder rung 1,/),
+      "ArrowDown",
+    );
+    expect(onChange).toHaveBeenCalledWith([
+      rung({ id: "b", slug: "zeta" }),
+      rung({ id: "a" }),
+    ]);
+  });
+
+  it("drags a rung up the climb", async () => {
+    const onChange = await renderList([
+      rung({ id: "a" }),
+      rung({ id: "b", slug: "zeta" }),
+      rung({ id: "c", slug: "mu" }),
+    ]);
+    await dragWithKeyboard(screen.getByLabelText(/^Reorder rung 3,/), "ArrowUp");
+    expect(onChange).toHaveBeenCalledWith([
+      rung({ id: "a" }),
+      rung({ id: "c", slug: "mu" }),
+      rung({ id: "b", slug: "zeta" }),
+    ]);
+  });
+
+  // A drag that ends where it started is not an edit: reporting one would mark the
+  // draft dirty and, on save, rewrite the climb for nothing.
+  it("does not report a change when a rung is dropped where it was", async () => {
+    const onChange = await renderList([
+      rung({ id: "a" }),
+      rung({ id: "b", slug: "zeta" }),
+    ]);
+    const handle = screen.getByLabelText(/^Reorder rung 1,/);
+    layOutRows();
+    fireEvent.keyDown(handle, { key: " ", code: "Space" });
+    await act(async () => {});
+    fireEvent.keyDown(handle, { key: " ", code: "Space" });
+    await act(async () => {});
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  // The buttons are not decoration left over from before the drag: they are the
+  // one-step nudge, and the only reorder available without a pointer or a lift.
+  it("keeps a per-rung handle alongside the move buttons", async () => {
+    await renderList([rung({ id: "a" }), rung({ id: "b", slug: "zeta" })]);
+    expect(screen.getAllByLabelText(/^Reorder rung /)).toHaveLength(2);
+    expect(screen.getByLabelText("Move rung 2 up")).toBeTruthy();
+  });
+
   it("never offers a case type whose gate could not resolve", async () => {
     await renderList([]);
     const options = Array.from(

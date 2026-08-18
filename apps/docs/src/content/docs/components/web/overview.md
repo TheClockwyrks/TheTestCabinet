@@ -158,6 +158,14 @@ one and pressing back returns to **that dashboard** rather than to the global ru
 list — the shared back-return machinery records the coverage section as the place to
 come back to.
 
+A ladder's board closes that loop without leaving the page at all: expanding a climber
+lists its rungs, and expanding a rung lists **that rung's own runs**, inline, in the
+same dense run log the Runs section uses — in-flight runs included. A rung's verdict is
+an argument about its runs, so the runs are put under the rung rather than behind a
+link to a pre-filtered listing. The board therefore holds the console stream's
+[`runs` topic](/components/backend/api/#topics) open while it is on screen,
+which is also what keeps the tallies and verdicts moving as runs finish under it.
+
 The Runs page carries the global counterparts to a plan's halt, on the trailing edge
 of its tab bar: **Clear pending**, **Kill active**, and **Stop all**. These are
 scoped to nothing — they stop the cabinet, not one plan — so the two that discard
@@ -188,7 +196,8 @@ It runs against the now-implemented [backend](/components/backend/overview/)
 contract: the backend serves the catalog and published runs, owns the run queue
 that the [dispatcher](/components/dispatcher/overview/) drains into per-run
 [driver](/components/driver/overview/) `Job`s, and exposes its run-enqueue,
-produced-run listing, recorded-event, notification, auth-proxy, and
+produced-run listing, recorded-event,
+[console stream](/components/backend/api/#the-console-stream), auth-proxy, and
 review/publish endpoints. Where a host can't
 provide a piece of data — for example a worker that returns no recorded events
 for an older run — the shared UI degrades gracefully rather than erroring.

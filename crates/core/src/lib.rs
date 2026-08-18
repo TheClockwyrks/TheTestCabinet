@@ -101,7 +101,7 @@ pub use harness_registry::DefaultHarnessRegistry;
 pub use job_api::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, JobSummary, LaunchAck,
     LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, Notification, NotificationKind,
-    NotificationOutcome, StatusUpdate,
+    NotificationOutcome, RunEvent, RunEventKind, StatusUpdate, StreamTopicsBody,
 };
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use orchestrator::{

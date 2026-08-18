@@ -8,12 +8,12 @@
 # images because it decides the image every future RUN executes inside — it advances
 # with a rehearsed release, not with every service roll.
 #
-# It stays CONVERGED with the driver SERVICE image, now at `d75f233e` (v0.6.3-rc2). The
+# It stays CONVERGED with the driver SERVICE image, now at `711c71d8` (v0.6.3-rc3). The
 # two pins first re-converged at `31568780` (v0.6.2-rc1), closing a gap that had been open
 # since beta4 while `build-containers` was still path-filtered; both workflows have run
 # unfiltered on every master/staging push since 5ef86c1d, so every build now publishes the
 # service images and all 27 run images at one sha and the pins can simply move together.
-# containers/ did not change between 31568780 and this sha, so the run images are rebuilds
+# containers/ did not change between d75f233e and this sha, so the run images are rebuilds
 # of the same Dockerfiles rather than new content of ours — only upstream base layers
 # moved. Keep the two pins in lockstep rather than letting them drift again.
 apiVersion: apps/v1
@@ -29,6 +29,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:d75f233ea13edee793b1f3180f366bb7cf3b4ea6"
+              value: "ghcr.io/theclockwyrks/tcab-driver:711c71d86e7aae1a41405f2a4ce0c81619c87bbb"
             - name: TCAB_CONTAINER_TAG
-              value: "d75f233ea13edee793b1f3180f366bb7cf3b4ea6"
+              value: "711c71d86e7aae1a41405f2a4ce0c81619c87bbb"
