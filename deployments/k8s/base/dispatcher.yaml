@@ -100,12 +100,50 @@ spec:
             - name: TCAB_K8S_NAMESPACE
               value: "tcab-prod"
             # Resource requests/limits applied to each sandbox pod.
+            #
+            # MEMORY REQUEST == MEMORY LIMIT, DELIBERATELY. The scheduler packs a node
+            # by *requests* and ignores limits entirely, so any gap between the two is
+            # memory the node has promised twice. With a 1Gi request against a 4Gi
+            # ceiling, five sandbox pods fit a node by request and can then demand 20Gi
+            # of it — and the shortfall is not resolved politely. The kubelet ranks
+            # eviction victims by how far a pod exceeds its memory *request*, so the
+            # sandbox pod that grew past 1Gi is the first thing killed on the node,
+            # ahead of every system pod. Killing a sandbox pod mid-run destroys a run
+            # that has already spent real money on harness API calls, which makes this
+            # the one resource the deployment must never oversubscribe.
+            #
+            # Setting them equal makes the scheduler's own accounting the guarantee:
+            # a node admits a sandbox pod only if the full 4Gi is actually there, the
+            # pod can never exceed its request, and it therefore never enters the
+            # kubelet's eviction ranking at all. With every container on the node
+            # carrying a memory limit, the sum of limits stays under allocatable and a
+            # node-level OOM — the kernel picking a victim of its own choosing — cannot
+            # arise from these pods in the first place.
+            #
+            # The cost is density, and it is charged in whole nodes. Node allocatable
+            # is what is left after the kubelet's reservation (on AKS `Standard_D2ps_v6`,
+            # 5766Mi of 7.7Gi capacity), and the DaemonSets request ~984Mi of that, so
+            # ~4782Mi is actually schedulable: exactly ONE 4Gi sandbox pod per node,
+            # with room for its driver pod beside it only if the driver's own ceiling
+            # stays under ~686Mi (see DEFAULT_DRIVER_MEMORY_LIMIT — today's 1Gi does
+            # not, by choice, so a driver lands on a different node than the sandbox it
+            # drives). A 16Gi node fits three.
+            #
+            # CPU is oversubscribed on purpose and is not symmetric with this. A pod
+            # over its CPU limit is throttled, not killed, so the failure mode is a
+            # slower run rather than a destroyed one — worth trading for the density.
+            #
+            # WHEN RAISING THE CEILING: the limit and the request move TOGETHER, and
+            # the new value must still fit one node's schedulable space. The heaviest
+            # cases already exceed 4Gi (a dual-contouring `double` variant needs ~8Gi —
+            # see overlays/local/patch-dispatcher.yaml), so they OOM at this ceiling
+            # until the nodes are large enough to carry an 8Gi request.
             - name: TCAB_K8S_RUN_CPU_REQUEST
               value: "500m"
             - name: TCAB_K8S_RUN_CPU_LIMIT
               value: "2"
             - name: TCAB_K8S_RUN_MEMORY_REQUEST
-              value: "1Gi"
+              value: "4Gi"
             - name: TCAB_K8S_RUN_MEMORY_LIMIT
               value: "4Gi"
             # Pull secret(s) for the run-container images, if the registry is private

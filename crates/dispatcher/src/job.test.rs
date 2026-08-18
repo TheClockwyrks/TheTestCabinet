@@ -9,7 +9,10 @@ use std::time::Duration;
 
 use k8s_openapi::api::core::v1::EnvVar;
 
-use crate::config::DriverResources;
+use crate::config::{
+    DEFAULT_DRIVER_CPU_REQUEST, DEFAULT_DRIVER_MEMORY_LIMIT, DEFAULT_DRIVER_MEMORY_REQUEST,
+    DriverResources,
+};
 use test_cabinet_core::run_record::HarnessSlug;
 use test_cabinet_core::{ClaimedJob, LaunchBody, PublishClaim};
 
@@ -44,11 +47,14 @@ fn config() -> Config {
         max_inflight: 8,
         poll_interval: Duration::from_secs(2),
         job_ttl_seconds: 300,
+        // Mirrors what `DriverResources::from_env` resolves by default: the memory
+        // request and limit are ONE value (see `DEFAULT_DRIVER_MEMORY_REQUEST`), and
+        // CPU is left unbounded.
         driver_resources: DriverResources {
-            cpu_request: Some("100m".to_string()),
-            memory_request: Some("512Mi".to_string()),
+            cpu_request: Some(DEFAULT_DRIVER_CPU_REQUEST.to_string()),
+            memory_request: Some(DEFAULT_DRIVER_MEMORY_REQUEST.to_string()),
             cpu_limit: None,
-            memory_limit: None,
+            memory_limit: Some(DEFAULT_DRIVER_MEMORY_LIMIT.to_string()),
         },
         driver_secrets: vec!["tcab-driver-secrets".to_string()],
         driver_subscription_secret: None,
@@ -601,12 +607,24 @@ fn driver_container_carries_resource_requests() {
         .as_ref()
         .expect("requests are what set the QoS class");
 
-    assert_eq!(requests["cpu"].0, "100m");
-    assert_eq!(requests["memory"].0, "512Mi");
-    // Limits stay absent by default: a memory limit would re-introduce the same
-    // SIGKILL from the container's own cgroup, and the driver holds a whole
-    // produced run tree in memory while it tars it for upload.
-    assert!(resources.limits.is_none());
+    assert_eq!(requests["cpu"].0, DEFAULT_DRIVER_CPU_REQUEST);
+    assert_eq!(requests["memory"].0, DEFAULT_DRIVER_MEMORY_REQUEST);
+
+    // The memory LIMIT is rendered too, and equals the request: a node then reserves
+    // exactly what the driver may use, so the driver can neither be killed to satisfy
+    // another pod's growth nor cause another pod to be. The CPU limit stays absent —
+    // over-limit CPU is throttled, not killed.
+    let limits = resources
+        .limits
+        .as_ref()
+        .expect("the memory limit is rendered by default");
+    assert_eq!(limits["memory"].0, DEFAULT_DRIVER_MEMORY_LIMIT);
+    assert_eq!(
+        limits["memory"].0, requests["memory"].0,
+        "a gap between the driver's memory request and limit is memory the scheduler \
+         has promised twice"
+    );
+    assert!(!limits.contains_key("cpu"));
 }
 
 #[test]
@@ -630,8 +648,9 @@ fn driver_container_limits_are_applied_when_configured() {
 
 #[test]
 fn driver_container_omits_resources_when_all_are_blank() {
-    // The deliberate opt-out (both request variables blanked) must omit the field
-    // rather than serialize an empty `resources: {}`.
+    // The deliberate opt-out (every quantity blanked — both requests AND the memory
+    // limit, which now defaults) must omit the field rather than serialize an empty
+    // `resources: {}`.
     let mut config = config();
     config.driver_resources = DriverResources::default();
 
