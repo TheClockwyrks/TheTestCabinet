@@ -20,6 +20,40 @@ if (!Element.prototype.scrollTo) {
 // quietly.
 HTMLCanvasElement.prototype.getContext = () => null;
 
+// Three gaps jsdom leaves that <Chart> and Observable Plot fall into. Each stub
+// gives back the answer a layout-less DOM should give, so the charts' behavior
+// (re-plotting, pointing, tooltip dismissal) can be asserted under test.
+
+// The chart re-plots when its container's width changes; jsdom measures every
+// element as zero-sized, so there is nothing for a real observer to report.
+if (!("ResizeObserver" in globalThis)) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+// Plot measures a tooltip's text with getBBox to size and orient its box. jsdom
+// does no layout, so report an empty box — the tip still renders, it just lands
+// at the origin, which is all a behavioral assertion needs.
+if (!SVGGraphicsElement.prototype.getBBox) {
+  SVGGraphicsElement.prototype.getBBox = () => new DOMRect(0, 0, 0, 0);
+}
+
+// Plot's pointer interaction — and the chart's touch tooltip dismissal, which
+// hands Plot a synthetic mouse `pointerleave` — branch on `pointerType`, the
+// only field these paths read off the event.
+if (!("PointerEvent" in globalThis)) {
+  globalThis.PointerEvent = class extends MouseEvent {
+    readonly pointerType: string;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerType = init.pointerType ?? "";
+    }
+  } as unknown as typeof PointerEvent;
+}
+
 // react-virtuoso virtualizes off real element measurements, which jsdom reports
 // as zero — so it would render no rows under test. Replace it with a plain list
 // that renders every item, so feed tests can assert on the rendered content
