@@ -1,0 +1,126 @@
+{
+  "$defs": {
+    "JobState": {
+      "description": "A job's lifecycle state on the wire.",
+      "oneOf": [
+        {
+          "const": "queued",
+          "description": "Enqueued, awaiting a dispatcher to claim it.",
+          "type": "string"
+        },
+        {
+          "const": "pending",
+          "description": "Enqueued, but intentionally held back: the run's harness is already at its\nconfigured maximum parallelism, so the backend will not hand it to a\ndispatcher until an in-flight run of the same harness finishes. Distinct from\n`queued` (which is free to be claimed the moment a dispatcher has capacity) so\nan operator can see a run is deliberately waiting rather than merely next in\nline.",
+          "type": "string"
+        },
+        {
+          "const": "dispatched",
+          "description": "Claimed by the dispatcher; the driver Job is being created.",
+          "type": "string"
+        },
+        {
+          "const": "starting",
+          "description": "The driver pod is up and running the pre-run setup (connecting to the\ncontainer runtime, materializing the definition) — not yet executing the\nharness, but it will as soon as setup finishes.",
+          "type": "string"
+        },
+        {
+          "const": "running",
+          "description": "The driver is executing the run.",
+          "type": "string"
+        },
+        {
+          "const": "succeeded",
+          "description": "The run produced a record.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The run could not be driven to a record.",
+          "type": "string"
+        },
+        {
+          "const": "canceled",
+          "description": "The job was canceled before completing.",
+          "type": "string"
+        }
+      ]
+    },
+    "RunEventKind": {
+      "description": "Which transition in a run's life a [`RunEvent`] announces.\n\nThe three are separated because the console does different things with them:\nan `enqueued` run joins the in-flight list, a `state-changed` run is patched in\nplace (without reordering the list), and a `finished` run leaves it — and, for a\nrun that produced a record, makes the produced-run listing stale.",
+      "oneOf": [
+        {
+          "const": "enqueued",
+          "description": "The run entered the queue. Its `state` is `queued` — the dispatcher may hold\nit back to `pending` on the very next claim pass, which arrives as its own\n`state-changed`.",
+          "type": "string"
+        },
+        {
+          "const": "state-changed",
+          "description": "The run moved between two non-terminal states (`queued` ↔ `pending`, or\nforward through `dispatched` → `starting` → `running`).",
+          "type": "string"
+        },
+        {
+          "const": "finished",
+          "description": "The run reached a terminal state (`succeeded`, `failed`, or `canceled`) and\nis no longer in flight.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/run-event.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A run-lifecycle event on the multiplexed console stream (`GET /notifications`,\n`runs` topic).\n\nThis is deliberately **not** a [`Notification`]. A notification is an *alert* —\nsomething a person should be told about, filed to the bell and raised as a toast,\nand so only ever fired for the two things worth interrupting someone over (a run\nfinishing, a publish failing). A run event is *list maintenance*: every transition\nthe in-flight list must reflect, including the many that nobody wants a toast for\n(a queued run held back to `pending`, a driver reaching `starting`, an operator's\nbulk cancel ending forty runs at once). Keeping them separate is what lets the\nconsole subscribe to the alerts always and to the churn only while a page is\nshowing it.\n\nIt carries enough to patch the list in place — the run's identity and its state\nafter the transition — so a console applies it without a round-trip. The one thing\nit does not carry is the produced *record*, so a `finished` run that produced one\nstill makes the produced-run listing stale; the console re-reads that separately.",
+  "properties": {
+    "detail": {
+      "description": "The terminal reason, present on a `finished` event that failed or was\ncanceled.",
+      "type": ["string", "null"]
+    },
+    "harnessSlug": {
+      "description": "The harness driving the run, as its slug string.",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/RunEventKind",
+      "description": "Which transition this announces."
+    },
+    "modelId": {
+      "description": "The opaque model id passed to the harness.",
+      "type": "string"
+    },
+    "recordId": {
+      "description": "The produced run record's id, present on a `finished` event whose run produced\none (a success, or a failure the driver still built a record for).",
+      "type": ["string", "null"]
+    },
+    "runId": {
+      "description": "The run (job) this is about. Named `runId` to match `ActiveJobOut`, which is\nthe shape this event maintains — the console keys its in-flight list on it.",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/JobState",
+      "description": "The run's state **after** the transition. For a `finished` event this is the\nterminal state, which is how a console tells an operator's `canceled` run from\none that ran to `succeeded`/`failed`."
+    },
+    "testCaseSlug": {
+      "description": "The test-case slug being run (e.g. `carom`).",
+      "type": "string"
+    },
+    "testCaseVersion": {
+      "description": "The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at\nenqueue — so the active-run list can show it before the run produces a record.",
+      "type": "string"
+    },
+    "variant": {
+      "description": "The variant being run (e.g. `base`).",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "runId",
+    "testCaseSlug",
+    "testCaseVersion",
+    "variant",
+    "harnessSlug",
+    "modelId",
+    "state"
+  ],
+  "title": "RunEvent",
+  "type": "object"
+}

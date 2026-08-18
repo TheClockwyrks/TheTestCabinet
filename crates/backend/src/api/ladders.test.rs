@@ -391,9 +391,14 @@ fn a_schedule_round_trips_through_the_stores_shape() {
     assert_eq!(LadderSchedule::from_db(schedule.to_db()), schedule);
     let default = LadderSchedule::default();
     assert_eq!(default.outer_axis, LadderAxis::Rung);
-    assert!(!default.paused);
-    // Off by default, so an existing ladder never silently starts enqueueing.
-    assert!(!default.auto_top_up);
+    // Disabled on creation: saving a climb describes the question, and a ladder that
+    // enqueued the moment it was saved would spend a whole buffer before its author had
+    // read it back.
+    assert!(default.paused);
+    // On, so that once the ladder *is* enabled the reviews that decide its rungs are
+    // what keep it climbing. It can start nothing on its own — a top-up of a disabled
+    // ladder enqueues nothing.
+    assert!(default.auto_top_up);
     assert_eq!(default.buffer_target, None);
 }
 

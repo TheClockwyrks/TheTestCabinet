@@ -1,4 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+  type UniqueIdentifier,
+} from "@dnd-kit/core";
+import {
+  restrictToParentElement,
+  restrictToVerticalAxis,
+} from "@dnd-kit/modifiers";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type {
   Gate,
   GateThreshold,
@@ -74,8 +97,13 @@ export function ladderAxisLabel(axis: LadderAxis): string {
 export const DEFAULT_LADDER_AXIS: LadderAxis = "rung";
 
 /**
- * The ordering setting: two mutually exclusive pills over {@link LADDER_AXIS_LABELS},
- * described by what the selected order buys.
+ * The ordering setting: a dropdown over {@link LADDER_AXIS_LABELS}, described by what
+ * the selected order buys.
+ *
+ * A dropdown rather than a pair of pills, because this is one setting with one answer
+ * sitting in a column of other settings — the row's control column should read as a
+ * value ("Rung by rung") the same way the gate's floor does, not as two buttons of
+ * which one happens to be lit.
  *
  * The choice is real and not cosmetic — a top-up emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
@@ -98,27 +126,23 @@ export function LadderAxisPicker({
       modified={value !== DEFAULT_LADDER_AXIS}
       onReset={() => onChange(DEFAULT_LADDER_AXIS)}
     >
-      <div
-        className={styles.settingPills}
-        role="radiogroup"
-        aria-label="Climb order"
-      >
-        {(Object.keys(LADDER_AXIS_LABELS) as LadderAxis[]).map((axis) => (
-          <button
-            key={axis}
-            type="button"
-            role="radio"
-            aria-checked={value === axis}
+      {(id) => (
+        <span className={styles.settingSelect}>
+          <select
+            id={id}
+            className={exec.select}
+            value={value}
             disabled={disabled}
-            className={`${styles.groupPick} ${
-              value === axis ? styles.groupPickOn : ""
-            }`}
-            onClick={() => onChange(axis)}
+            onChange={(e) => onChange(e.target.value as LadderAxis)}
           >
-            {LADDER_AXIS_LABELS[axis]}
-          </button>
-        ))}
-      </div>
+            {(Object.keys(LADDER_AXIS_LABELS) as LadderAxis[]).map((axis) => (
+              <option key={axis} value={axis}>
+                {LADDER_AXIS_LABELS[axis]}
+              </option>
+            ))}
+          </select>
+        </span>
+      )}
     </SettingRow>
   );
 }
@@ -387,11 +411,149 @@ const RUNG_CATEGORIES = CATALOG_CATEGORIES.filter(
 );
 
 /**
+ * The identity a rung is tracked by while the draft is being edited.
+ *
+ * A saved rung has a server id, which is the thing the save reconciles on. One added
+ * in this session has none yet, so it falls back to the coordinates that make it the
+ * rung it is — and those are unique within a climb because {@link RungListEditor}
+ * refuses to add a case at a version and variant the climb already holds.
+ */
+function rungKey(rung: LadderRungInput): string {
+  return rung.id ?? `${rung.slug}@${rung.version}@${rung.variant}`;
+}
+
+/**
+ * One row of the climb: a drag handle, the rung's ordinal and case, its run-count
+ * override, and the move/remove controls.
+ *
+ * Dragging and the ▲▼ buttons are deliberately both here rather than one replacing
+ * the other. Dragging is how a reviewer reorders a climb they are reading — it moves
+ * a rung several places in one gesture, which is what building a climb easiest-first
+ * actually involves — while the buttons remain the precise, always-visible way to
+ * nudge one step, and are what a reviewer reaches for on a trackpad or without a
+ * pointer at all. The handle is a real `<button>` so it takes focus and dnd-kit's
+ * keyboard sensor can lift it too.
+ */
+function SortableRung({
+  id,
+  rung,
+  index,
+  total,
+  label,
+  runsPerCell,
+  onMove,
+  onRunsChange,
+  onRemove,
+}: {
+  id: string;
+  rung: LadderRungInput;
+  index: number;
+  /** How many rungs the climb has, so the ends know not to offer a move off it. */
+  total: number;
+  /** The rung's case named as a reviewer sees it, for the row and its drag handle. */
+  label: string;
+  /** The ladder's default target, shown as this rung's inherited placeholder. */
+  runsPerCell: number;
+  onMove: (to: number) => void;
+  onRunsChange: (runs: number | undefined) => void;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  return (
+    <li
+      ref={setNodeRef}
+      className={`${ladder.rungEditItem} ${
+        isDragging ? ladder.rungEditItemDragging : ""
+      }`}
+      style={{
+        // Translate rather than the full transform: a sorting list only ever needs to
+        // slide rows past each other, and scaling a row mid-drag would resize the
+        // number field the reviewer is dragging past.
+        transform: CSS.Translate.toString(transform),
+        transition,
+      }}
+    >
+      <button
+        type="button"
+        className={ladder.rungDragHandle}
+        {...attributes}
+        {...listeners}
+        aria-label={`Reorder rung ${index + 1}, ${label}`}
+      >
+        ⠿
+      </button>
+      <span className={ladder.rungEditIndex}>{index + 1}</span>
+      <span className={ladder.rungEditName}>
+        {label} · {rung.variant} · {rung.version}
+      </span>
+      <label className={ladder.rungEditRuns}>
+        runs
+        <input
+          className={exec.input}
+          type="number"
+          min={1}
+          max={100}
+          step={1}
+          aria-label={`Runs for rung ${index + 1}`}
+          placeholder={String(runsPerCell)}
+          value={rung.runs ?? ""}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            const n = Math.floor(Number(raw));
+            onRunsChange(
+              raw === "" || !Number.isFinite(n)
+                ? undefined
+                : Math.min(Math.max(n, 1), 100),
+            );
+          }}
+        />
+      </label>
+      <span className={ladder.rungEditActions}>
+        <button
+          type="button"
+          className={ladder.rungMove}
+          aria-label={`Move rung ${index + 1} up`}
+          disabled={index === 0}
+          onClick={() => onMove(index - 1)}
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          className={ladder.rungMove}
+          aria-label={`Move rung ${index + 1} down`}
+          disabled={index === total - 1}
+          onClick={() => onMove(index + 1)}
+        >
+          ▼
+        </button>
+        <button
+          type="button"
+          className={styles.chipRemove}
+          aria-label={`Remove rung ${index + 1}`}
+          onClick={onRemove}
+        >
+          ✕
+        </button>
+      </span>
+    </li>
+  );
+}
+
+/**
  * The ordered rung list: the climb itself.
  *
  * Unlike a plan's case picker this is a *sequence*, not a set, so it is rendered as a
- * numbered list with explicit move controls rather than as pills — the order is the
- * only thing that makes a ladder a ladder, and a picker that hid it would be
+ * numbered list that can be dragged into order rather than as pills — the order is
+ * the only thing that makes a ladder a ladder, and a picker that hid it would be
  * describing a coverage plan. Each rung carries its own optional run-count override
  * so one pivotal step can demand more evidence without making the whole climb more
  * expensive.
@@ -490,11 +652,52 @@ export function RungListEditor({
 
   function move(from: number, to: number) {
     if (to < 0 || to >= rungs.length) return;
-    const next = [...rungs];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved!);
-    onChange(next);
+    onChange(arrayMove(rungs, from, to));
   }
+
+  // A short drag threshold so the handle can still be clicked, focused, and
+  // keyboard-lifted without a stray pixel of pointer movement starting a drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  function onDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return;
+    const from = rungs.findIndex((r) => rungKey(r) === active.id);
+    const to = rungs.findIndex((r) => rungKey(r) === over.id);
+    if (from < 0 || to < 0) return;
+    onChange(arrayMove(rungs, from, to));
+  }
+
+  // Where a rung is going is the whole content of this interaction, and a reviewer
+  // driving it from the keyboard cannot see the rows slide. dnd-kit's stock
+  // announcements name opaque droppable ids; these name the case and the position it
+  // would land at, which is what the list is showing everyone else.
+  const announcements = useMemo<Announcements>(() => {
+    const position = (id: UniqueIdentifier) =>
+      rungs.findIndex((r) => rungKey(r) === id) + 1;
+    const named = (id: UniqueIdentifier) => {
+      const rung = rungs.find((r) => rungKey(r) === id);
+      return rung ? testCaseName(rung.slug) : "rung";
+    };
+    return {
+      onDragStart: ({ active }) =>
+        `Picked up ${named(active.id)} at rung ${position(active.id)} of ${rungs.length}.`,
+      onDragOver: ({ active, over }) =>
+        over
+          ? `${named(active.id)} would become rung ${position(over.id)} of ${rungs.length}.`
+          : undefined,
+      onDragEnd: ({ active, over }) =>
+        over
+          ? `${named(active.id)} is now rung ${position(over.id)} of ${rungs.length}.`
+          : `${named(active.id)} was left where it was.`,
+      onDragCancel: ({ active }) =>
+        `Reordering cancelled. ${named(active.id)} is still rung ${position(active.id)}.`,
+    };
+  }, [rungs, testCaseName]);
 
   function addRung() {
     if (!selectionShown || !sel.slug || !sel.version || !sel.variant) return;
@@ -524,34 +727,32 @@ export function RungListEditor({
           No rungs yet. Add the cases to be climbed, easiest first.
         </p>
       ) : (
-        <ol className={ladder.rungEditList}>
-          {rungs.map((rung, index) => (
-            <li
-              key={rung.id ?? `${rung.slug}@${rung.version}@${rung.variant}`}
-              className={ladder.rungEditItem}
-            >
-              <span className={ladder.rungEditIndex}>{index + 1}</span>
-              <span className={ladder.rungEditName}>
-                {testCaseName(rung.slug)} · {rung.variant} · {rung.version}
-              </span>
-              <label className={ladder.rungEditRuns}>
-                runs
-                <input
-                  className={exec.input}
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  aria-label={`Runs for rung ${index + 1}`}
-                  placeholder={String(runsPerCell)}
-                  value={rung.runs ?? ""}
-                  onChange={(e) => {
-                    const raw = e.target.value.trim();
-                    const n = Math.floor(Number(raw));
-                    const runs =
-                      raw === "" || !Number.isFinite(n)
-                        ? undefined
-                        : Math.min(Math.max(n, 1), 100);
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          // A rung can only ever change its place in the climb, so the drag is pinned
+          // to the list's own axis and bounds: nothing is dropped anywhere else, and
+          // a row dragged sideways off the editor would only suggest otherwise.
+          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+          onDragEnd={onDragEnd}
+          accessibility={{ announcements }}
+        >
+          <SortableContext
+            items={rungs.map(rungKey)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ol className={ladder.rungEditList}>
+              {rungs.map((rung, index) => (
+                <SortableRung
+                  key={rungKey(rung)}
+                  id={rungKey(rung)}
+                  rung={rung}
+                  index={index}
+                  total={rungs.length}
+                  label={testCaseName(rung.slug)}
+                  runsPerCell={runsPerCell}
+                  onMove={(to) => move(index, to)}
+                  onRunsChange={(runs) =>
                     onChange(
                       rungs.map((r, i) =>
                         i === index
@@ -562,41 +763,14 @@ export function RungListEditor({
                             : { ...r, runs }
                           : r,
                       ),
-                    );
-                  }}
+                    )
+                  }
+                  onRemove={() => onChange(rungs.filter((_, i) => i !== index))}
                 />
-              </label>
-              <span className={ladder.rungEditActions}>
-                <button
-                  type="button"
-                  className={ladder.rungMove}
-                  aria-label={`Move rung ${index + 1} up`}
-                  disabled={index === 0}
-                  onClick={() => move(index, index - 1)}
-                >
-                  ▲
-                </button>
-                <button
-                  type="button"
-                  className={ladder.rungMove}
-                  aria-label={`Move rung ${index + 1} down`}
-                  disabled={index === rungs.length - 1}
-                  onClick={() => move(index, index + 1)}
-                >
-                  ▼
-                </button>
-                <button
-                  type="button"
-                  className={styles.chipRemove}
-                  aria-label={`Remove rung ${index + 1}`}
-                  onClick={() => onChange(rungs.filter((_, i) => i !== index))}
-                >
-                  ✕
-                </button>
-              </span>
-            </li>
-          ))}
-        </ol>
+              ))}
+            </ol>
+          </SortableContext>
+        </DndContext>
       )}
 
       <div className={styles.inputRow}>

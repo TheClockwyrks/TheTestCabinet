@@ -140,7 +140,10 @@
   white-space: nowrap;
 }
 
-// Working a rung: runs are still to come.
+// Working a rung: runs are still to come. Not drawn today — the board says nothing
+// about a climber that is simply climbing, because the track and the rung count
+// already do — but kept beside its siblings so the pill has a colour for every state
+// the wire can report.
 .statusClimbing {
   background: t.$color-accent;
 }
@@ -190,9 +193,13 @@
   background: t.$color-positive;
 }
 
-// The rung it is working now.
+// The rung it is working now: outlined in the accent rather than filled with it. A
+// filled segment is how a *cleared* rung reads, so filling this one made a climber that
+// had cleared nothing look finished — most starkly on a one-rung ladder, where the
+// whole track was a single solid bar over the words "0 of 1 rungs cleared".
 .rungStepCurrent {
-  background: t.$color-accent;
+  background: t.$color-bg-2;
+  box-shadow: inset 0 0 0 t.$border-hairline t.$color-accent;
 }
 
 // The rung that stopped it. Reading the track left to right, the first non-green
@@ -341,6 +348,16 @@
   }
 }
 
+// One rung's runs, opened under the rung itself. Full width of the rung row (which is
+// a wrapping flex line) so the run log below is not squeezed into whatever space the
+// verdict and its notes left over.
+.rungRuns {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: t.$space-xs 0 t.$space-sm;
+  padding-left: t.$space-lg;
+}
+
 // ---- The editor ------------------------------------------------------------
 
 // The ordered rung list in the editor. Numbered, because the order *is* the climb —
@@ -364,6 +381,45 @@
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-sm;
+  // Opaque so a row being dragged over its neighbours hides them rather than
+  // blending with them, and positioned so the lifted row can be raised above the
+  // rows it slides past.
+  position: relative;
+}
+
+// The row under the pointer (or lifted by the keyboard). Raised rather than faded:
+// the reviewer is reading the rung they are placing, so it stays fully legible and
+// the list beneath it is what moves.
+.rungEditItemDragging {
+  z-index: 1;
+  border-color: t.$color-accent;
+  box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+}
+
+// The grip that starts a drag. Confined to its own control rather than the whole
+// row, so the run-count field can still be selected and dragged within.
+.rungDragHandle {
+  flex: none;
+  padding: 0 t.$space-xs;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  cursor: grab;
+  // Required by the pointer sensor: without it a touch drag scrolls the page
+  // instead of picking the rung up.
+  touch-action: none;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
 }
 
 // The rung's ordinal, fixed-width so the case names line up down the list however

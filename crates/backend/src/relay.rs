@@ -11,6 +11,14 @@
 //! the latest preview per frame) before the live tail, so it never misses
 //! progress between dispatch and connect.
 //!
+//! Alongside the per-job relay this module owns the **console stream**
+//! ([`Notifier`]): one worker-wide fan-out, multiplexed per client, carrying both
+//! the completion alerts a person is shown and the run-lifecycle events the
+//! in-flight list is maintained from. A client picks its topics and changes them
+//! while connected, so a console subscribes to the churn only while it is on a page
+//! that shows it. That is a different thing from the per-job relay above — this one
+//! is about *every* run's coarse lifecycle, not one run's harness output.
+//!
 //! This state is deliberately **in-memory and transient**: the durable record of
 //! a run is the `RunRecord` persisted to the `run` table on completion, and the
 //! job lifecycle is the `job` table. A backend restart drops the live buffers; a
@@ -18,6 +26,7 @@
 //! its recorded events. Losing the live buffer never loses the run.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use test_cabinet_core::{AssetPreview, HarnessEvent};
@@ -29,10 +38,16 @@ use tokio::sync::broadcast;
 /// from the backlog, so a lag never loses an event for a fresh subscriber.
 const EVENT_CHANNEL_CAPACITY: usize = 1024;
 
-/// How many completion notifications the worker-wide channel buffers for a slow
-/// subscriber before it is lagged. Notifications are small and infrequent (one
-/// per run completion), so a modest buffer is ample.
-const NOTIFICATION_CHANNEL_CAPACITY: usize = 256;
+/// How many messages the worker-wide console channel buffers for a slow subscriber
+/// before it is lagged.
+///
+/// Sized for the *run-event* topic, not the alerts: a run publishes one alert but
+/// half a dozen lifecycle transitions, and a bulk cancel or a coverage top-up moves
+/// hundreds of runs in one go. The buffer is shared by every connected stream
+/// regardless of its topics, so it must absorb the noisiest producer or a console
+/// watching only the quiet topic would be lagged by traffic it never asked for.
+/// Messages are small (a run's identity and a state), so this is cheap.
+const STREAM_CHANNEL_CAPACITY: usize = 4096;
 
 /// An item delivered to a live stream: a harness event, an asset-preview frame,
 /// or the terminal marker that lets a streaming client close cleanly.
@@ -196,7 +211,7 @@ impl Relay {
             .clone()
     }
 
-    /// The worker-wide completion notifier (the console's `/notifications` feed).
+    /// The worker-wide console stream (the `/notifications` feed).
     pub fn notifier(&self) -> &Notifier {
         &self.notifier
     }
@@ -208,39 +223,203 @@ impl Default for Relay {
     }
 }
 
-// --- Completion notifications ----------------------------------------------
+// --- The console stream -----------------------------------------------------
 
 // The notification wire shapes (`Notification`, `NotificationKind`,
-// `NotificationOutcome`) and the run's display identity (`JobSummary`) are shared
-// with the queue's Rust clients, so they live in `core::job_api`; re-export them
-// here so this module — and the `contract-codegen` generator that names them as
-// `relay::…` — keep referring to them unchanged.
-pub use test_cabinet_core::{JobSummary, Notification, NotificationKind, NotificationOutcome};
+// `NotificationOutcome`), the run-lifecycle event (`RunEvent`, `RunEventKind`), and
+// the run's display identity (`JobSummary`) are shared with the queue's Rust
+// clients, so they live in `core::job_api`; re-export them here so this module —
+// and the `contract-codegen` generator that names them as `relay::…` — keep
+// referring to them unchanged.
+pub use test_cabinet_core::{
+    JobSummary, Notification, NotificationKind, NotificationOutcome, RunEvent, RunEventKind,
+};
 
-/// The worker-wide notification fan-out. Live-only (no backlog): a completion
-/// while no client is connected is simply not delivered — the run still surfaces
-/// as a finished run and drops out of the active list.
+/// One message on the console stream, tagged with the topic that gates it.
+///
+/// Both topics ride a single broadcast channel rather than one channel each. A
+/// subscriber must see the two in the order they were published — a run's `finished`
+/// event and its completion `Notification` describe the same instant, and delivering
+/// the alert before the list update (or vice versa) across two channels would let a
+/// console toast a run it still shows as running. One channel makes that ordering
+/// automatic.
+#[derive(Debug, Clone)]
+pub enum StreamMessage {
+    /// An alert for a person: gated on the `notifications` topic.
+    Notification(Box<Notification>),
+    /// An in-flight list transition: gated on the `runs` topic.
+    Run(Box<RunEvent>),
+}
+
+/// Which topics one connected stream currently wants.
+///
+/// Held behind `Arc` and mutated through atomics rather than replaced, because the
+/// toggle arrives on a **different** request than the one serving the stream: the
+/// console `PUT`s its topic change while its `GET` is still open. The stream task
+/// reads these on every message, so a toggle takes effect on the very next one
+/// without disturbing the connection.
+#[derive(Debug)]
+pub struct StreamTopics {
+    notifications: AtomicBool,
+    runs: AtomicBool,
+}
+
+impl StreamTopics {
+    /// The defaults a freshly-opened stream gets: alerts on, run churn off.
+    fn new() -> Self {
+        Self {
+            notifications: AtomicBool::new(true),
+            runs: AtomicBool::new(false),
+        }
+    }
+
+    /// Whether this stream currently wants `message`.
+    fn wants(&self, message: &StreamMessage) -> bool {
+        match message {
+            StreamMessage::Notification(_) => self.notifications.load(Ordering::Relaxed),
+            StreamMessage::Run(_) => self.runs.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Apply a topic change. `None` leaves that topic as it was, so a caller
+    /// toggling one topic never has to restate the other.
+    fn set(&self, notifications: Option<bool>, runs: Option<bool>) {
+        if let Some(on) = notifications {
+            self.notifications.store(on, Ordering::Relaxed);
+        }
+        if let Some(on) = runs {
+            self.runs.store(on, Ordering::Relaxed);
+        }
+    }
+}
+
+/// A registered, connected stream: its live receiver, the topic set the `PUT`
+/// handler mutates, and the registry entry it owns.
+///
+/// Dropping this deregisters the stream. That is the whole reason it exists as a
+/// struct rather than a tuple: the SSE task holds it for as long as the response
+/// body is alive, so a client that disconnects — cleanly or not — takes its registry
+/// entry with it, and the map cannot grow without bound as consoles come and go.
+pub struct StreamHandle {
+    /// The id the client quotes back to change its topics.
+    pub id: String,
+    /// Everything published while this stream is connected.
+    pub receiver: broadcast::Receiver<StreamMessage>,
+    /// This stream's topic set, shared with the registry.
+    pub topics: Arc<StreamTopics>,
+    /// Deregisters `id` on drop.
+    _guard: StreamGuard,
+}
+
+impl StreamHandle {
+    /// Whether this stream currently wants `message` — the per-message filter the
+    /// stream task applies.
+    pub fn wants(&self, message: &StreamMessage) -> bool {
+        self.topics.wants(message)
+    }
+}
+
+/// Removes a stream's registry entry when the stream ends.
+struct StreamGuard {
+    id: String,
+    streams: Arc<Mutex<HashMap<String, Arc<StreamTopics>>>>,
+}
+
+impl Drop for StreamGuard {
+    fn drop(&mut self) {
+        self.streams
+            .lock()
+            .expect("stream registry mutex poisoned")
+            .remove(&self.id);
+    }
+}
+
+/// The worker-wide console fan-out: completion alerts and run-lifecycle events,
+/// multiplexed onto one per-client stream whose topics the client controls.
+///
+/// Live-only (no backlog): anything published while a client is between connections
+/// is simply not delivered. That is deliberate — the durable truth is the `job` and
+/// `run` tables, and a reconnecting console re-reads them rather than replaying a
+/// buffer we would have to bound anyway. What the stream owes a client is a *signal*
+/// that it fell behind, which is why a lagged receiver is reported rather than
+/// silently skipped (see the stream handler).
 #[derive(Clone)]
 pub struct Notifier {
-    tx: broadcast::Sender<Notification>,
+    tx: broadcast::Sender<StreamMessage>,
+    /// Every connected stream's topic set, keyed by stream id, so the `PUT` handler
+    /// can reach a stream being served by a different request.
+    streams: Arc<Mutex<HashMap<String, Arc<StreamTopics>>>>,
 }
 
 impl Notifier {
-    /// Create a notifier with an empty channel.
+    /// Create a notifier with an empty channel and no connected streams.
     pub fn new() -> Self {
-        let (tx, _rx) = broadcast::channel(NOTIFICATION_CHANNEL_CAPACITY);
-        Self { tx }
+        let (tx, _rx) = broadcast::channel(STREAM_CHANNEL_CAPACITY);
+        Self {
+            tx,
+            streams: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
-    /// Subscribe to the live notification stream.
-    pub fn subscribe(&self) -> broadcast::Receiver<Notification> {
-        self.tx.subscribe()
+    /// Open and register a stream with the default topics (alerts on, run churn
+    /// off). The returned handle deregisters itself when dropped.
+    ///
+    /// The receiver is taken **before** the id is published to the client, so nothing
+    /// can be lost between registering and subscribing.
+    pub fn open_stream(&self) -> StreamHandle {
+        let id = uuid::Uuid::new_v4().to_string();
+        let receiver = self.tx.subscribe();
+        let topics = Arc::new(StreamTopics::new());
+        self.streams
+            .lock()
+            .expect("stream registry mutex poisoned")
+            .insert(id.clone(), Arc::clone(&topics));
+        StreamHandle {
+            id: id.clone(),
+            receiver,
+            topics,
+            _guard: StreamGuard {
+                id,
+                streams: Arc::clone(&self.streams),
+            },
+        }
     }
 
-    /// Publish a notification to every current subscriber. A send with no
-    /// subscribers is fine — the channel is live-only, so it is simply dropped.
+    /// Change a connected stream's topics. Returns `false` when no such stream is
+    /// connected — which is how the console learns its stream died (its `EventSource`
+    /// reconnected under a new id, or the backend restarted) and that it must
+    /// re-apply its topics to the new one.
+    pub fn set_topics(&self, id: &str, notifications: Option<bool>, runs: Option<bool>) -> bool {
+        let streams = self.streams.lock().expect("stream registry mutex poisoned");
+        match streams.get(id) {
+            Some(topics) => {
+                topics.set(notifications, runs);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Publish an alert to every stream subscribed to the `notifications` topic. A
+    /// send with no subscribers is fine — the channel is live-only, so it is simply
+    /// dropped.
     pub fn notify(&self, notification: Notification) {
-        let _ = self.tx.send(notification);
+        let _ = self
+            .tx
+            .send(StreamMessage::Notification(Box::new(notification)));
+    }
+
+    /// Publish a run-lifecycle event to every stream subscribed to the `runs` topic.
+    pub fn publish_run(&self, event: RunEvent) {
+        let _ = self.tx.send(StreamMessage::Run(Box::new(event)));
+    }
+
+    /// How many streams are connected right now. Test/diagnostic only.
+    pub fn connected_streams(&self) -> usize {
+        self.streams
+            .lock()
+            .expect("stream registry mutex poisoned")
+            .len()
     }
 }
 
@@ -249,3 +428,7 @@ impl Default for Notifier {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "relay.test.rs"]
+mod tests;

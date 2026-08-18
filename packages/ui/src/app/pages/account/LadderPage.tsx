@@ -22,13 +22,13 @@ import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { useConfirm } from "../../components/ConfirmDialog";
-import {
-  claimSectionReturn,
-  useRecordSectionIndex,
-} from "../../components/backReturn";
+import { useRecordSectionIndex } from "../../components/backReturn";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { useRunsRuntime } from "../../runtime/runsRuntime";
+import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import { routes } from "../../routes";
 import { ReviewQueue } from "./CoveragePlanPage";
+import { RungRuns } from "./LadderRungRuns";
 import { ladderAxisLabel } from "./ladderPickers";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -95,17 +95,22 @@ export function buildRungViews(
 }
 
 /**
- * Where a climber stands, in one phrase.
+ * Where a climber stands, in one phrase — or null when nothing needs saying.
  *
  * The rung **number** is part of the answer in every stopped state, because "walled"
  * alone is the same sentence for a model that fell at the first case and one that
  * cleared six — and telling those two apart is the reason to run a ladder at all.
  * Rungs are numbered from one for the reader; the wire counts positions from zero.
+ *
+ * A climber that is simply climbing gets **no** phrase. It is the unremarkable state,
+ * and the row already says it twice over — the track marks the rung being worked, and
+ * the count beside it reads "1/6 rungs". A pill that only ever repeated those was
+ * three ways of saying the same thing, and it crowded out the row's actual subject.
  */
 export function climberStatusLabel(
   climber: LadderClimber,
   rungCount: number,
-): string {
+): string | null {
   const at = climber.currentRung ? climber.currentRung.position + 1 : rungCount;
   switch (climber.status) {
     case "held":
@@ -115,7 +120,7 @@ export function climberStatusLabel(
     case "awaitingReview":
       return `Rung ${at} — waiting on your review`;
     case "climbing":
-      return `Climbing rung ${at} of ${rungCount}`;
+      return null;
     case "toppedOut":
       return `Topped out — all ${rungCount} rungs cleared`;
   }
@@ -170,7 +175,7 @@ export function describeTally(tally: RungTally): string {
  */
 export function describeLadderTopUp(result: TopUpResult): string {
   if (result.skipped === "paused") {
-    return "This ladder is paused, so nothing was enqueued. Resume it to let it climb.";
+    return "This ladder is disabled, so nothing was enqueued. Enable it to let it climb.";
   }
   if (result.skipped === "busy") {
     return "A top-up for this ladder was already running — nothing was enqueued twice.";
@@ -204,10 +209,10 @@ export function describeLadderHalt(result: HaltResult): string {
     ? "including runs already executing"
     : "that had not started";
   if (result.canceled === 0) {
-    return `Paused. No jobs of this ladder were waiting to cancel (${scope}).`;
+    return `Disabled. No jobs of this ladder were waiting to cancel (${scope}).`;
   }
   const jobs = `${result.canceled} job${result.canceled === 1 ? "" : "s"}`;
-  return `Paused and canceled ${jobs} ${scope}.`;
+  return `Disabled and canceled ${jobs} ${scope}.`;
 }
 
 /**
@@ -216,7 +221,7 @@ export function describeLadderHalt(result: HaltResult): string {
  * A ladder has one idle state a plan does not: every climber stopped. That is the
  * ladder having *answered its question*, not a fault, and saying so is the difference
  * between a reviewer reading a result and a reviewer hunting a bug. The others match
- * the plan's — paused, or a full review buffer waiting on them.
+ * the plan's — disabled, or a full review buffer waiting on them.
  */
 export function ladderStatusNote(
   progress: LadderProgress,
@@ -224,8 +229,8 @@ export function ladderStatusNote(
 ): string | null {
   if (paused) {
     return (
-      "Paused: this ladder will not enqueue anything until you resume it. " +
-      "Whatever is already queued is untouched."
+      "Disabled: this ladder will not enqueue anything until you enable it — which a " +
+      "new ladder never has been. Whatever is already queued is untouched."
     );
   }
   const climbing = progress.climbers.filter(
@@ -253,25 +258,6 @@ export function ladderStatusNote(
   return null;
 }
 
-// The runs listing narrowed to one climber's runs of one rung — half of the review
-// loop this page exists to serve (see the runs behind a verdict, review them, come
-// back). The keys mirror the run filters' URL params, and `latest=0` because a rung
-// pins an exact version that the listing's "current versions only" default would
-// otherwise filter away.
-function rungRunsHref(
-  rung: LadderProgressRung,
-  climber: LadderClimber,
-): string {
-  const params = new URLSearchParams({
-    case: rung.slug,
-    version: rung.version,
-    harness: climber.harness,
-    model: climber.model,
-    latest: "0",
-  });
-  return `${routes.runs()}?${params.toString()}`;
-}
-
 /** The combination a steering or override call names, rebuilt from a climber. */
 function climberCombo(climber: LadderClimber): ReviewPlanCombo {
   return {
@@ -282,9 +268,10 @@ function climberCombo(climber: LadderClimber): ReviewPlanCombo {
 }
 
 // One rung inside an expanded climber: what happened on it, the evidence behind that,
-// and the controls that disagree with it. A rung the climber has not reached yet is
-// still listed — greyed and without controls — because the rungs *ahead* are what the
-// climb is for, and hiding them would make a walled climber look like a finished one.
+// the runs that are that evidence, and the controls that disagree with it. A rung the
+// climber has not reached yet is still listed — greyed and without controls — because
+// the rungs *ahead* are what the climb is for, and hiding them would make a walled
+// climber look like a finished one.
 function RungRow({
   view,
   climber,
@@ -299,6 +286,10 @@ function RungRow({
   onBump: (rung: LadderProgressRung) => void;
 }) {
   const testCaseName = useTestCaseName();
+  // The runs are fetched only once asked for: a long climb holds a rung per case, and
+  // a board that queried every one of them on expand would spend a request per rung to
+  // fill a list nobody had looked at.
+  const [runsOpen, setRunsOpen] = useState(false);
   const { rung, outcome, history, current, tally, reached } = view;
   const effective = outcome?.effective ?? null;
 
@@ -374,14 +365,19 @@ function RungRow({
             {rung.version} → {rung.latestVersion} ↑
           </button>
         )}
+        {/* The runs open **here**, under the rung they belong to, rather than
+            handing the reviewer off to a filtered Runs page: the question a rung
+            raises ("why did this wall?") is answered by its own runs, and answering
+            it should not cost the board the reviewer was reading. */}
         {reached && (
-          <Link
+          <button
+            type="button"
             className={ladderStyles.rungLink}
-            to={rungRunsHref(rung, climber)}
-            onClick={() => claimSectionReturn("coverage", "Back to the ladder")}
+            aria-expanded={runsOpen}
+            onClick={() => setRunsOpen((v) => !v)}
           >
-            Runs
-          </Link>
+            {runsOpen ? "▾" : "▸"} Runs
+          </button>
         )}
         {/* Promote is the upward half of manual control and needs something to
             promote *past*: an undecided rung has no verdict to override, and the
@@ -420,6 +416,8 @@ function RungRow({
           </button>
         )}
       </span>
+
+      {runsOpen && <RungRuns rung={rung} climber={climber} />}
     </li>
   );
 }
@@ -450,6 +448,7 @@ export function ClimberRow({
   const [open, setOpen] = useState(false);
   const cleared = climber.currentRung?.position ?? rungs.length;
   const views = buildRungViews(climber, rungs);
+  const status = climberStatusLabel(climber, rungs.length);
 
   return (
     <section className={ladderStyles.climber}>
@@ -469,11 +468,15 @@ export function ClimberRow({
           {climber.provider && (
             <span className={ladderStyles.climberMeta}>{climber.provider}</span>
           )}
-          <span
-            className={`${ladderStyles.statusPill} ${statusClass(climber)}`}
-          >
-            {climberStatusLabel(climber, rungs.length)}
-          </span>
+          {/* Only the states that say something the track cannot: a wall, a hold, a
+              rung waiting on the reviewer, a finished climb. */}
+          {status && (
+            <span
+              className={`${ladderStyles.statusPill} ${statusClass(climber)}`}
+            >
+              {status}
+            </span>
+          )}
           {/* One segment per rung, so the wall is a position on a line rather than a
               number to be read: the first non-green segment is where this model
               stopped. */}
@@ -520,25 +523,7 @@ export function ClimberRow({
           >
             {climber.focused ? "★" : "☆"}
           </button>
-          <label className={ladderStyles.priorityField}>
-            priority
-            <input
-              className={exec.input}
-              type="number"
-              min={0}
-              max={99}
-              step={1}
-              aria-label={`Climb priority for ${climber.model}`}
-              title="Higher climbs first. Pushes one model to the front without reordering the ladder, which would change what every other climber is measured against."
-              disabled={busy}
-              value={climber.priority}
-              onChange={(e) => {
-                const n = Math.floor(Number(e.target.value));
-                if (!Number.isFinite(n)) return;
-                onSteer(climber, { priority: Math.min(Math.max(n, 0), 99) });
-              }}
-            />
-          </label>
+          <PriorityField climber={climber} busy={busy} onSteer={onSteer} />
           <button
             type="button"
             className={exec.secondary}
@@ -575,6 +560,70 @@ export function ClimberRow({
   );
 }
 
+/**
+ * A climber's climb-order weight: edited locally, written once it is settled.
+ *
+ * Every other steering control is a single gesture with a single value, but this one
+ * is typed — and typing "12" passes through "1", which is a different, valid priority.
+ * Writing on every keystroke therefore sent a write per digit, each of which re-read
+ * the board and re-rendered the field from the server's answer, so a half-typed number
+ * was liable to be replaced by an earlier one mid-edit: the field appeared to change
+ * itself. The draft is held here until the reviewer is done with it (blur, or Enter)
+ * and only then written, and only when it actually differs from what the board says.
+ *
+ * A null draft means "showing the board's value", so a refresh lands as normal while
+ * the field is idle and is ignored while it is being typed into.
+ */
+function PriorityField({
+  climber,
+  busy,
+  onSteer,
+}: {
+  climber: LadderClimber;
+  busy: boolean;
+  onSteer: (climber: LadderClimber, steering: SteeringPatch) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = () => {
+    if (draft === null) return;
+    setDraft(null);
+    // An emptied field is an abandoned edit, not a request for priority zero.
+    if (draft.trim() === "") return;
+    const n = Math.floor(Number(draft));
+    if (!Number.isFinite(n)) return;
+    const priority = Math.min(Math.max(n, 0), 99);
+    if (priority !== climber.priority) onSteer(climber, { priority });
+  };
+
+  return (
+    <label className={ladderStyles.priorityField}>
+      priority
+      <input
+        className={exec.input}
+        type="number"
+        min={0}
+        max={99}
+        step={1}
+        aria-label={`Climb priority for ${climber.model}`}
+        title="Higher climbs first. Pushes one model to the front without reordering the ladder, which would change what every other climber is measured against."
+        disabled={busy}
+        value={draft ?? String(climber.priority)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            setDraft(null);
+          }
+        }}
+      />
+    </label>
+  );
+}
+
 /** The one field of a climber's steering a control changes; the rest is carried. */
 export interface SteeringPatch {
   priority?: number;
@@ -585,10 +634,15 @@ export interface SteeringPatch {
 /**
  * Top up every ladder of the signed-in account that asked to be topped up on review.
  *
- * The ladder half of the plan's `topUpAfterReview`, and the same bargain: there is no
- * background scheduler, so a submitted review is one of the two moments that can
- * refill a buffer, and it is the one that matters because on a ladder the review *is*
- * the verdict — it may well have decided a rung and freed the climber to move up.
+ * The ladder half of the plan's `topUpAfterReview`, and the moment that matters most:
+ * there is no background scheduler, so an enabled ladder is fed by exactly three
+ * gestures — enabling it, pressing "Top up now", and this — and on a ladder the review
+ * *is* the verdict, so it may well have decided a rung and freed the climber to move up.
+ *
+ * The `paused` skip is what keeps a **disabled** ladder — which every new ladder is —
+ * from being started by a review of something else entirely. `autoTopUp` is on by
+ * default, and it is the enable switch, not this flag, that decides whether a ladder
+ * spends anything at all.
  *
  * Failures are swallowed on purpose: this runs after a review has been accepted, and a
  * scheduling hiccup must never present itself as the review having failed. Resolves
@@ -614,9 +668,13 @@ export async function topUpLaddersAfterReview(
 }
 
 // The per-ladder climb dashboard (`/account/ladders/:ladderId`): one row per climber
-// saying where it stopped and why, over the controls that feed the ladder (top up,
-// pause, halt) and the review queue it has filled. Console-only; gated on a signed-in
-// account, because a rung's verdict is computed from *your* reviews alone.
+// saying where it stopped and why, over the controls that feed the ladder (enable /
+// disable, top up, halt) and the review queue it has filled. Console-only; gated on a
+// signed-in account, because a rung's verdict is computed from *your* reviews alone.
+//
+// Opening this page is a read and only a read. Every run this ladder launches is
+// launched by a gesture that asked for runs — enabling the ladder, topping it up by
+// hand, or submitting a review with auto-top-up on.
 export function LadderPage() {
   const { ladderId = "" } = useParams();
   const { token } = useAuth();
@@ -626,6 +684,14 @@ export function LadderPage() {
   // Record this dashboard as the coverage section's index, so a run opened from a rung
   // or from the review queue can return here (see `backReturn`).
   useRecordSectionIndex("coverage");
+
+  // This board lists runs — an expanded rung shows its own, in flight ones included —
+  // so it needs the console stream's run-lifecycle topic for exactly as long as it is
+  // open, the same way the Runs section declares it. Without it a rung's runs would be
+  // a snapshot taken when it was expanded: a queued run would never be seen to start,
+  // and a finished one would sit in the list as "running" until someone navigated.
+  useLiveRunUpdates();
+  const { refreshToken } = useRunsRuntime();
 
   const [ladder, setLadder] = useState<LadderOut | null>(null);
   const [progress, setProgress] = useState<LadderProgress | null>(null);
@@ -679,10 +745,22 @@ export function LadderPage() {
     };
   }, [backend, token, ladderId]);
 
-  // Run the server-side top-up. `announce` distinguishes the reviewer pressing the
-  // button (which must always answer, even to say "nothing to do") from the on-open
-  // call, which speaks only when it actually enqueued something rather than greeting
-  // every visit with a status line the page already shows.
+  // A run of this ladder finishing is the one event that moves the board without anyone
+  // touching it: the tally gains a completed run, and a rung whose gate that settles
+  // changes verdict. The runs runtime bumps `refreshToken` on the stream's `finished`
+  // events, so re-read the board on it — skipping the mount, which the load above has
+  // just done.
+  const seenRefresh = useRef(refreshToken);
+  useEffect(() => {
+    if (seenRefresh.current === refreshToken) return;
+    seenRefresh.current = refreshToken;
+    void refresh();
+  }, [refreshToken, refresh]);
+
+  // Run the server-side top-up. `announce` is on for every gesture that asked for runs
+  // — the button, and enabling the ladder — because such a gesture must always answer,
+  // even to say "nothing to do"; a top-up run as a side effect of something else speaks
+  // only when it actually enqueued.
   const topUp = useCallback(
     async (announce: boolean) => {
       if (!backend?.topUpLadder || !token) return;
@@ -702,39 +780,45 @@ export function LadderPage() {
     [backend, token, ladderId, refresh],
   );
 
-  // Top up once when the ladder is opened. There is no background scheduler, so this
-  // call *is* the scheduler's other half (a submitted review being the first). It is
-  // idempotent and serialized server-side, so a second tab doing the same thing
-  // enqueues nothing twice.
-  const toppedUpFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (loading || !ladder || toppedUpFor.current === ladderId) return;
-    toppedUpFor.current = ladderId;
-    void topUp(false);
-  }, [loading, ladder, ladderId, topUp]);
+  // Opening the dashboard deliberately enqueues **nothing**. A ladder is only ever fed
+  // by a gesture that says so: enabling it, pressing "Top up now", or — once it is
+  // enabled — submitting a review. Reading a board is none of those, and a page that
+  // spent tokens because it was looked at is a page nobody can open to check on a run
+  // they have deliberately stopped.
 
-  // Suspend or resume topping up, leaving the queue alone. Takes the state rather than
-  // toggling, so the control cannot disagree with the server about which way it goes.
-  const setPaused = useCallback(
-    async (paused: boolean) => {
+  // Enable or disable the ladder: the one switch that decides whether it may enqueue at
+  // all. Takes the state rather than toggling, so the control cannot disagree with the
+  // server about which way it goes.
+  //
+  // Enabling immediately tops up, because "enabled" and "climbing" are the same thing
+  // to a reviewer — the alternative leaves a ladder that says it is on and does nothing
+  // until someone finds a second button. Disabling writes only the flag: whatever is
+  // already queued carries on, and cancelling it is what Halt is for.
+  const setEnabled = useCallback(
+    async (enabled: boolean) => {
       if (!backend?.pauseLadder || !token) return;
       setBusy(true);
       setError(null);
       try {
-        const schedule = await backend.pauseLadder(ladderId, paused, token);
+        const schedule = await backend.pauseLadder(ladderId, !enabled, token);
         setLadder((l) => (l ? { ...l, ...schedule } : l));
-        setNote(
-          paused
-            ? "Paused. Nothing new will be enqueued; the queue is untouched."
-            : "Resumed. Top up now, or submit a review, to start climbing again.",
-        );
+        if (!enabled) {
+          setNote(
+            "Disabled. Nothing new will be enqueued; runs already queued carry on.",
+          );
+          return;
+        }
       } catch (e) {
         setError(String(e));
+        return;
       } finally {
         setBusy(false);
       }
+      // Outside the guard above, so the top-up's own busy/error handling owns the rest
+      // of the gesture and its result is what the reviewer is told about.
+      await topUp(true);
     },
-    [backend, token, ladderId],
+    [backend, token, ladderId, topUp],
   );
 
   // Turn "top up when I submit a review" on or off. Written through the schedule
@@ -799,7 +883,7 @@ export function LadderPage() {
           ? await backend.haltAllLadder?.(ladderId, token)
           : await backend.haltLadder?.(ladderId, token);
         if (result) setNote(describeLadderHalt(result));
-        // A halt always leaves the ladder paused, whatever it found to cancel.
+        // A halt always leaves the ladder disabled, whatever it found to cancel.
         setLadder((l) => (l ? { ...l, paused: true } : l));
         await refresh();
       } catch (e) {
@@ -917,7 +1001,7 @@ export function LadderPage() {
               variant: r.variant,
               ...(r.runs === undefined ? {} : { runs: r.runs }),
             })),
-            // No schedule: bumping a pin is not a decision to resume a paused ladder.
+            // No schedule: bumping a pin is not a decision to enable a disabled ladder.
           },
           token,
         );
@@ -963,7 +1047,9 @@ export function LadderPage() {
         <div className={styles.detailTitleRow}>
           <BackChevron to={routes.accountLadders()} label="All ladders" />
           <h1 className={styles.detailTitle}>{ladder?.name ?? ladderId}</h1>
-          {ladder?.paused && <span className={styles.pausedBadge}>paused</span>}
+          {ladder?.paused && (
+            <span className={styles.pausedBadge}>disabled</span>
+          )}
         </div>
         <Link
           className={exec.secondary}
@@ -1031,7 +1117,7 @@ export function LadderPage() {
               Climbs in this order:{" "}
               <strong>{ladderAxisLabel(progress.outerAxis)}</strong>
             </span>
-            <label className={styles.controlToggle}>
+            <label className={`${styles.controlToggle} ${styles.controlEnd}`}>
               <input
                 type="checkbox"
                 checked={ladder?.autoTopUp ?? false}
@@ -1043,28 +1129,43 @@ export function LadderPage() {
             <span className={styles.controlActions}>
               <button
                 type="button"
-                className={exec.primary}
-                disabled={busy || !backend?.topUpLadder}
+                // A disabled ladder makes enabling the primary gesture, and topping one
+                // up is not offered at all: it could only enqueue nothing and say so,
+                // which is a button whose whole function is to report its own futility.
+                className={ladder?.paused ? exec.secondary : exec.primary}
+                disabled={
+                  busy || !backend?.topUpLadder || ladder?.paused !== false
+                }
+                title={
+                  ladder?.paused
+                    ? "This ladder is disabled, so it can enqueue nothing. Enable it — that tops it up too."
+                    : "Enqueue the next runs this climb needs, up to the review buffer."
+                }
                 onClick={() => void topUp(true)}
               >
                 {busy ? "Working…" : "Top up now"}
               </button>
               <button
                 type="button"
-                className={exec.secondary}
+                className={ladder?.paused ? exec.primary : exec.secondary}
                 // Gated on the ladder having loaded: the control sends a state, not a
                 // toggle, and it cannot know which state to send until it knows the
                 // one the ladder is in.
                 disabled={busy || !ladder || !backend?.pauseLadder}
-                onClick={() => void setPaused(!ladder?.paused)}
+                title={
+                  ladder?.paused
+                    ? "Let this ladder enqueue runs, and top it up now."
+                    : "Stop this ladder enqueueing anything more. Runs already queued carry on."
+                }
+                onClick={() => void setEnabled(Boolean(ladder?.paused))}
               >
-                {ladder?.paused ? "Resume" : "Pause"}
+                {ladder?.paused ? "Enable" : "Disable"}
               </button>
               <button
                 type="button"
                 className={exec.secondary}
                 disabled={busy || !backend?.haltLadder}
-                title="Pause, and cancel this ladder's jobs that have not started yet."
+                title="Disable, and cancel this ladder's jobs that have not started yet."
                 onClick={() => void halt(false)}
               >
                 Halt
@@ -1073,7 +1174,7 @@ export function LadderPage() {
                 type="button"
                 className={exec.danger}
                 disabled={busy || !backend?.haltAllLadder}
-                title="Pause, and cancel every job this ladder launched — runs already executing included."
+                title="Disable, and cancel every job this ladder launched — runs already executing included."
                 onClick={() => void halt(true)}
               >
                 Halt all

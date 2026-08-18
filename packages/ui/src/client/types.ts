@@ -823,6 +823,51 @@ export interface RunNotification {
   message?: string | null;
 }
 
+// A run-lifecycle event on the console stream's "runs" topic (SSE over
+// `GET /notifications`). Mirrors the backend's `RunEvent` field for field.
+//
+// Named `RunLifecycleEvent` here, not `RunEvent`, because in this codebase "run
+// events" already means a run's *harness* event stream — the timeline behind
+// `useRunEvents`, `RunEventsPage`, and `RunEventStreams`. This is the coarse job
+// lifecycle of *every* run instead, and the two are unrelated. (The same boundary
+// rename the backend's `Notification` gets as `RunNotification`.)
+//
+// This is list maintenance, not an alert. Where a `RunNotification` is something a
+// person is shown, these are every transition the in-flight list must reflect —
+// including the ones nobody wants a toast for (a run held back to "pending", a
+// driver reaching "starting", forty runs ending at once under a bulk cancel). The
+// two ride the same stream under separate topics, and the console subscribes to
+// this one only while it is showing a list that depends on it.
+//
+//   - "enqueued" — the run joined the queue; add it to the list.
+//   - "state-changed" — patch its phase in place, without reordering the list.
+//   - "finished" — it reached `state` ("succeeded" | "failed" | "canceled") and
+//     leaves the list. A run that produced a record also makes the produced-run
+//     listing stale, which is a separate re-read.
+//
+// `state` is the backend's fine-grained job state, not the console's coarser
+// phase; `runEventPhase` maps it.
+export interface RunLifecycleEvent {
+  kind: "enqueued" | "state-changed" | "finished";
+  runId: string;
+  testCaseSlug: string;
+  testCaseVersion: string;
+  variant: string;
+  harnessSlug: string;
+  modelId: string;
+  state:
+    | "queued"
+    | "pending"
+    | "dispatched"
+    | "starting"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "canceled";
+  recordId?: string | null;
+  detail?: string | null;
+}
+
 // --- Service identity (for the backend-consistency check) ---
 
 // The backend a UI is pointed at, from `GET /healthz`. `id` identifies the

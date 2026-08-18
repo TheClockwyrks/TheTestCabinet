@@ -232,6 +232,39 @@ would be claiming evidence it does not have.
 The board also reports each rung's `latestVersion` and whether the pin has fallen
 behind, so bumping is an informed choice rather than something noticed months later.
 
+## A ladder starts disabled
+
+**Creating a ladder enqueues nothing.** A new ladder is created *disabled*, and stays
+that way until its reviewer enables it from the dashboard — the one gesture that says
+"start spending on this climb".
+
+This is the one place a ladder deliberately departs from the
+[coverage plan](/components/backend/coverage/#topping-up), and the reason is what a
+ladder is for. A plan is a declaration of runs that ought to exist, so filling its
+buffer as soon as someone looks at it is doing what was asked. A ladder is a *question*
+— how far does each of these models get? — and the act of writing the question down is
+not the act of paying for the answer. A climb is also the easy thing to get wrong on
+the first save: the wrong variant, a version nobody has ingested, thirty models where
+five were meant. Enabling separately is the beat in which that is noticed.
+
+Three consequences follow, and all three are the point:
+
+- **Opening the dashboard is a read.** It never enqueues. A reviewer can look at a
+  ladder they have deliberately stopped without restarting it, which is exactly what
+  someone does after killing a run that was failing.
+- **Disabling stops new work only.** It is the same flag as a pause: nothing further is
+  enqueued, and runs already queued or in flight carry on to completion. Cancelling
+  those is [halt](/components/backend/coverage/#pausing-and-halting), which is a
+  separate, louder control precisely because it throws work away.
+- **`autoTopUp` is on by default**, and that is safe *because* of the above: it can only
+  ever feed a ladder somebody has already enabled. Once a ladder is climbing, the review
+  that decides a rung is the natural moment to ask for the next one's runs, and a ladder
+  that needed a button pressed after every review would look broken.
+
+So an enabled ladder is fed by exactly three gestures — enabling it, pressing **Top up
+now**, and submitting a review — and a disabled one by none. A top-up of a disabled
+ladder answers `skipped: "paused"` and enqueues nothing, whoever called it.
+
 ## Feeding a ladder
 
 A ladder's top-up is the plan's top-up with one restriction: **only a climber's
@@ -251,7 +284,9 @@ order mechanism a plan uses:
 
 Everything else is shared: whole cells, the account-wide buffer target with a
 per-ladder override, the per-ladder claim that serializes concurrent top-ups,
-`autoTopUp` firing on review submit, and `GET /ladders/{id}/queue` returning the
+`autoTopUp` firing on review submit (see [above](#a-ladder-starts-disabled) for what
+differs — when it is on by default, and what it cannot start), and
+`GET /ladders/{id}/queue` returning the
 unreviewed-by-you runs on the climbers' current rungs **in the ladder's own order**.
 On a ladder that last one matters more than it does on a plan: the review *is* the
 verdict, so reviewing in the order the buffer was filled is what decides climbers in

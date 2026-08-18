@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { TopUpResult } from "@test-cabinet/run-record/coverage";
@@ -11,6 +11,7 @@ import type {
   LadderRungOutcome,
   RungTally,
 } from "@test-cabinet/run-record/ladders";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type { BackendClient } from "../../../client/clients";
 import {
   sectionReturnTo,
@@ -31,14 +32,49 @@ import {
   topUpLaddersAfterReview,
 } from "./LadderPage";
 
-function galleryValue(): GalleryDataInput {
+// A run of one rung, carrying only the fields the run log reads.
+function runSummary(id: string, slug: string): RunSummary {
+  return {
+    id,
+    startedAt: "2026-08-15T00:00:00Z",
+    finishedAt: "2026-08-15T00:01:00Z",
+    subject: {
+      testCaseSlug: slug,
+      testCaseVersion: "v1.0.0",
+      testType: "end-to-end",
+      variant: "base",
+      harnessSlug: "claude",
+      harnessVersion: "1",
+      modelId: "opus",
+    },
+    metrics: {
+      runTimeSeconds: 60,
+      tokens: {
+        uncachedInput: 100,
+        cachedInput: null,
+        output: null,
+        reasoning: null,
+      },
+      cost: { comparable: 1, actual: 1 },
+    },
+    state: "completed",
+    rating: null,
+  } as unknown as RunSummary;
+}
+
+function galleryValue(
+  queryRunSummaries: GalleryDataInput["queryRunSummaries"] = async () => ({
+    summaries: [],
+    total: 0,
+  }),
+): GalleryDataInput {
   return {
     producedSummaries: [],
     localIds: new Set(),
     writeups: {},
     reviews: {},
     runsLoading: false,
-    queryRunSummaries: async () => ({ summaries: [], total: 0 }),
+    queryRunSummaries,
     testCases: [],
     testCasesStatus: "ready",
     models: [],
@@ -167,8 +203,10 @@ describe("climberStatusLabel", () => {
     );
   });
 
-  it("reports a climber still working as climbing, out of the whole ladder", () => {
-    expect(climberStatusLabel(climber(), 3)).toBe("Climbing rung 2 of 3");
+  // The track marks the rung being worked and the count beside it reads "1/3 rungs",
+  // so a pill saying "climbing rung 2 of 3" was a third way of saying the same thing.
+  it("says nothing about a climber that is simply climbing", () => {
+    expect(climberStatusLabel(climber(), 3)).toBeNull();
   });
 
   it("reports a topped-out climber as having cleared every rung", () => {
@@ -242,9 +280,9 @@ describe("describeLadderTopUp", () => {
     return { bufferTarget: 5, enqueued: 0, cells: [], ...over };
   }
 
-  it("names a paused ladder as paused rather than as idle", () => {
+  it("names a disabled ladder as disabled rather than as idle", () => {
     expect(describeLadderTopUp(result({ skipped: "paused" }))).toMatch(
-      /paused/i,
+      /disabled/i,
     );
   });
 
@@ -295,12 +333,12 @@ describe("describeLadderHalt", () => {
   });
 });
 
-// An idle ladder is either paused, waiting on the reviewer, or finished — and the last
-// of those is a result, not a fault.
+// An idle ladder is either disabled, waiting on the reviewer, or finished — and the
+// last of those is a result, not a fault.
 describe("ladderStatusNote", () => {
-  it("explains a pause before anything else", () => {
+  it("explains being disabled before anything else", () => {
     const note = ladderStatusNote(progress(), true);
-    expect(note).toMatch(/paused/i);
+    expect(note).toMatch(/disabled/i);
     expect(note).toMatch(/already queued is untouched/i);
   });
 
@@ -340,13 +378,14 @@ describe("ClimberRow", () => {
   function renderRow(
     over: Partial<LadderClimber> = {},
     rungs: LadderProgressRung[] = [rung(0), rung(1), rung(2)],
+    query?: GalleryDataInput["queryRunSummaries"],
   ) {
     const onSteer = vi.fn();
     const onOverride = vi.fn();
     const onBump = vi.fn();
     render(
       <MemoryRouter>
-        <GalleryDataProvider value={galleryValue()}>
+        <GalleryDataProvider value={galleryValue(query)}>
           <ClimberRow
             climber={climber(over)}
             rungs={rungs}
@@ -380,19 +419,34 @@ describe("ClimberRow", () => {
     expect(screen.getByText("not reached")).toBeTruthy();
   });
 
-  it("links a reached rung to that combination's runs at the pinned version", () => {
-    renderRow();
+  it("lists a reached rung's own runs inline, for that combination at the pinned version", async () => {
+    const query = vi.fn(async () => ({
+      summaries: [runSummary("run-1", "case-0")],
+      total: 1,
+    }));
+    renderRow({}, undefined, query);
     fireEvent.click(screen.getByRole("button", { expanded: false }));
-    const href =
-      screen.getAllByRole("link", { name: "Runs" })[0]?.getAttribute("href") ??
-      "";
-    const params = new URLSearchParams(href.slice(href.indexOf("?")));
-    expect(params.get("case")).toBe("case-0");
-    expect(params.get("harness")).toBe("claude");
-    expect(params.get("model")).toBe("opus");
-    // A rung pins an exact version, which the listing's "current versions only"
-    // default would otherwise filter away.
-    expect(params.get("latest")).toBe("0");
+    // Nothing is fetched until the rung's runs are actually asked for.
+    expect(query).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: "any",
+        testCase: "case-0",
+        version: "v1.0.0",
+        variant: "base",
+        harness: "claude",
+        model: "opus",
+        // A rung pins an exact version, which the listing's "current versions
+        // only" default would otherwise filter away.
+        latestVersions: false,
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: /run-1|Case 0|opus/i }),
+      ).toBeTruthy(),
+    );
   });
 
   it("offers a promotion only where there is a verdict to promote past", () => {
@@ -452,6 +506,29 @@ describe("ClimberRow", () => {
     );
   });
 
+  // Typing "12" passes through "1", and a write per keystroke re-read the board and
+  // re-rendered the field from the server's answer mid-edit — which is what made the
+  // field appear to change itself.
+  it("writes a typed priority once the field is done with, not per keystroke", () => {
+    const { onSteer } = renderRow({ priority: 0 });
+    const field = screen.getByRole("spinbutton", { name: /Climb priority/ });
+    fireEvent.change(field, { target: { value: "1" } });
+    fireEvent.change(field, { target: { value: "12" } });
+    expect(onSteer).not.toHaveBeenCalled();
+    fireEvent.blur(field);
+    expect(onSteer).toHaveBeenCalledTimes(1);
+    expect(onSteer).toHaveBeenCalledWith(expect.anything(), { priority: 12 });
+  });
+
+  it("treats an emptied priority as an abandoned edit, not as zero", () => {
+    const { onSteer } = renderRow({ priority: 4 });
+    const field = screen.getByRole("spinbutton", { name: /Climb priority/ });
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.blur(field);
+    expect(onSteer).not.toHaveBeenCalled();
+    expect((field as HTMLInputElement).value).toBe("4");
+  });
+
   it("toggles the focus flag from the star", () => {
     const { onSteer } = renderRow();
     fireEvent.click(screen.getByRole("button", { name: /^Watch opus$/ }));
@@ -482,21 +559,28 @@ describe("the ladder's back-return", () => {
     );
   }
 
-  it("hands a run's back control a return to the ladder it was opened from", () => {
+  it("hands a run's back control a return to the ladder it was opened from", async () => {
     render(
       <MemoryRouter initialEntries={["/account/ladders/l1"]}>
-        <GalleryDataProvider value={galleryValue()}>
+        <GalleryDataProvider
+          value={galleryValue(async () => ({
+            summaries: [runSummary("run-1", "case-0")],
+            total: 1,
+          }))}
+        >
           <Routes>
             <Route path="/account/ladders/:ladderId" element={<Dashboard />} />
-            <Route path="/runs" element={<p>the runs</p>} />
+            <Route path="/runs/:runId" element={<p>the run</p>} />
           </Routes>
         </GalleryDataProvider>
       </MemoryRouter>,
     );
     expect(sectionReturnTo("runs", "/runs")).toBe("/runs");
     fireEvent.click(screen.getByRole("button", { expanded: false }));
-    fireEvent.click(screen.getAllByRole("link", { name: "Runs" })[0]!);
-    expect(screen.getByText("the runs")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
+    const row = await screen.findByRole("link", { name: /opus/i });
+    fireEvent.click(row);
+    expect(screen.getByText("the run")).toBeTruthy();
     expect(sectionReturnTo("runs", "/runs")).toBe("/account/ladders/l1");
   });
 });
@@ -537,14 +621,16 @@ describe("topUpLaddersAfterReview", () => {
     } as unknown as BackendClient;
   }
 
-  it("tops up only the ladders that opted in and are not paused", async () => {
+  it("tops up only the ladders that opted in and are enabled", async () => {
     const topUp = vi.fn();
     const enqueued = await topUpLaddersAfterReview(
       backend(
         [
           entry({ id: "on", autoTopUp: true }),
           entry({ id: "off", autoTopUp: false }),
-          entry({ id: "paused", autoTopUp: true, paused: true }),
+          // Disabled is what every ladder is until its reviewer enables it, so this
+          // is also the check that a review of something else can never start one.
+          entry({ id: "disabled", autoTopUp: true, paused: true }),
         ],
         topUp,
       ),

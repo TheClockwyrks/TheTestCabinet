@@ -36,7 +36,7 @@ const PAGE_SIZE = 20;
 export function RunsPage() {
   const { canExecute, localIds, writeups, queryRunSummaries } =
     useGalleryData();
-  const { inProgress } = useRunsRuntime();
+  const { inProgress, refreshToken } = useRunsRuntime();
   const findModel = useFindModel();
   const filters = useRunFilters();
   const { page, setPage, committedQuery, facets, latestVersions } = filters;
@@ -79,6 +79,13 @@ export function RunsPage() {
 
   // Fetch one page whenever the search, the active sort, or the page changes. The
   // prior rows stay on screen until the new page resolves (no empty flash).
+  //
+  // Re-queried on `refreshToken` as well as the usual inputs, the same as the
+  // Unpublished and Failures tabs: a run that finishes leaves the in-flight list
+  // above and becomes a record that belongs in this listing, and without this the
+  // row would simply vanish until the next navigation went and looked. That token
+  // is bumped by the console stream's `finished` run events, so a completed run now
+  // takes its place in the list as it happens.
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -111,7 +118,16 @@ export function RunsPage() {
     return () => {
       active = false;
     };
-  }, [queryRunSummaries, page, needle, facets, latestVersions, sort, dir]);
+  }, [
+    queryRunSummaries,
+    page,
+    needle,
+    facets,
+    latestVersions,
+    sort,
+    dir,
+    refreshToken,
+  ]);
 
   // A new search or facet resets to the first page as it is committed (both drop
   // the page param); a re-sort of the whole history reshapes the result set the

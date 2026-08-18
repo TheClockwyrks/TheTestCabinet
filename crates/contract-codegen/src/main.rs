@@ -230,6 +230,8 @@ fn main() -> Result<()> {
                 bapi::LaunchAck, bapi::LaunchBatchBody, bapi::LaunchBatchItem, bapi::LaunchBatchAck,
                 bapi::BulkCancelOut,
                 relay::NotificationOutcome, relay::NotificationKind, relay::Notification,
+                relay::RunEventKind, relay::RunEvent,
+                bapi::StreamOpened, bapi::StreamResync, bapi::StreamTopicsBody,
                 bapi::ClientConfig,
             ],
         },
@@ -345,6 +347,14 @@ fn main() -> Result<()> {
         anon(
             "jobs-api/notification.schema.json",
             root_schema::<relay::Notification>(),
+        ),
+        anon(
+            "jobs-api/run-event.schema.json",
+            root_schema::<relay::RunEvent>(),
+        ),
+        anon(
+            "jobs-api/stream-topics.schema.json",
+            root_schema::<bapi::StreamTopicsBody>(),
         ),
         anon(
             "jobs-api/client-config.schema.json",

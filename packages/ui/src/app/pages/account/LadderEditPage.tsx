@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type {
   CoverageGroup,
@@ -43,12 +43,14 @@ const DEFAULT_RUNS_PER_CELL = 3;
 // the climb (an ordered list of version-pinned rungs), the climbers (the same
 // reusable combination groups a coverage plan references, plus one-offs), the single
 // gate every rung is judged by, and how the ladder is fed (climb order, review
-// buffer, auto-top-up, paused).
+// buffer, auto-top-up).
 //
 // Rungs are reconciled on their stable ids by the save, so reordering the climb or
 // bumping a rung's version here keeps every climber's recorded verdicts attached to
-// the case that earned them. Halting — which cancels queued jobs — is deliberately
-// not here: it belongs beside the board that shows what would be cancelled.
+// the case that earned them. Enabling and halting — the two controls that decide
+// whether the ladder spends anything — are deliberately not here: they belong beside
+// the board that shows what would be started or cancelled. Saving here never enqueues,
+// and a ladder created here is created disabled.
 // Console-only; gated on a signed-in account.
 export function LadderEditPage() {
   const { ladderId } = useParams();
@@ -72,10 +74,14 @@ export function LadderEditPage() {
   // How the ladder is fed. The defaults match the wire's, so a ladder created here is
   // fed exactly as one created by any other client.
   const [outerAxis, setOuterAxis] = useState<LadderAxis>("rung");
-  const [autoTopUp, setAutoTopUp] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [autoTopUp, setAutoTopUp] = useState(true);
   const [bufferTarget, setBufferTarget] = useState<number | null>(null);
   const [accountBuffer, setAccountBuffer] = useState(FALLBACK_BUFFER_TARGET);
+  // Whether the ladder was enabled when this form loaded. Not state, because nothing
+  // here renders or edits it: it is only the fallback for the save's read-back below,
+  // for a transport that cannot re-read a schedule on its own. A ladder being created
+  // has none, and is created disabled.
+  const loadedPaused = useRef(true);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -115,8 +121,8 @@ export function LadderEditPage() {
           );
           setOuterAxis(existing.outerAxis);
           setAutoTopUp(existing.autoTopUp);
-          setPaused(existing.paused);
           setBufferTarget(existing.bufferTarget ?? null);
+          loadedPaused.current = existing.paused;
         }
         setLoading(false);
       })
@@ -164,25 +170,37 @@ export function LadderEditPage() {
 
   async function onSave() {
     if (!token || !savable) return;
-    const input: LadderInput = {
-      name: name.trim(),
-      runsPerCell,
-      gate,
-      comboGroupIds,
-      combos,
-      rungs,
-      schedule: {
-        outerAxis,
-        paused,
-        autoTopUp,
-        // Omitted rather than sent as 0 when there is no override — null means
-        // "inherit my account default", 0 means "never top this ladder up".
-        ...(bufferTarget === null ? {} : { bufferTarget }),
-      },
-    };
     setBusy(true);
     setError(null);
     try {
+      // Whether the ladder is enabled is not a setting of this page — it is the
+      // dashboard's control, beside the board that shows what enabling would start —
+      // but the schedule is written whole, so the flag has to be carried. It is read
+      // back **here**, at save time, rather than held from the load: an edit that
+      // takes ten minutes must not re-assert the state the ladder was in when the
+      // form opened, and so quietly re-enable a ladder its reviewer has since
+      // disabled. A new ladder is always created disabled.
+      const paused =
+        editing && ladderId
+          ? ((await backend?.getLadderSchedule?.(ladderId, token))?.paused ??
+            loadedPaused.current)
+          : true;
+      const input: LadderInput = {
+        name: name.trim(),
+        runsPerCell,
+        gate,
+        comboGroupIds,
+        combos,
+        rungs,
+        schedule: {
+          outerAxis,
+          paused,
+          autoTopUp,
+          // Omitted rather than sent as 0 when there is no override — null means
+          // "inherit my account default", 0 means "never top this ladder up".
+          ...(bufferTarget === null ? {} : { bufferTarget }),
+        },
+      };
       if (editing && ladderId && backend?.updateLadder) {
         await backend.updateLadder(ladderId, input, token);
       } else if (backend?.createLadder) {
@@ -293,22 +311,20 @@ export function LadderEditPage() {
           <SettingRow
             label="Top this ladder up when I submit a review"
             description="Each review submitted enqueues more of the rung every climber is currently on, up to the review buffer."
-            modified={autoTopUp}
-            onReset={() => setAutoTopUp(false)}
+            help="On by default, and it only applies once the ladder is enabled: a review is the verdict that decides a rung, so it is the moment the next runs should be asked for. Turn it off to feed the ladder only with “Top up now”."
+            modified={!autoTopUp}
+            onReset={() => setAutoTopUp(true)}
           >
             {(id) => (
               <Switch id={id} checked={autoTopUp} onChange={setAutoTopUp} />
             )}
           </SettingRow>
-          <SettingRow
-            label="Pause this ladder"
-            description="Stops anything new being enqueued. Runs already queued carry on."
-            help="Cancelling queued runs is the halt control on the ladder's dashboard, where what would be cancelled is visible."
-            modified={paused}
-            onReset={() => setPaused(false)}
-          >
-            {(id) => <Switch id={id} checked={paused} onChange={setPaused} />}
-          </SettingRow>
+          {!editing && (
+            <p className={styles.empty}>
+              A new ladder starts disabled and enqueues nothing. Enable it from
+              its dashboard when you want the climb to start.
+            </p>
+          )}
 
           <p className={exec.sectionLabel}>
             Climbers{" "}
