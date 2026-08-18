@@ -10,8 +10,8 @@ use std::sync::Arc;
 use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig, GgContextSource, GgModuleDisposition,
-    GgTelemetryKind, MEMORY_PARAM_SCOPE,
+    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig, GgContextSource,
+    GgModuleDisposition, GgTelemetryKind, MEMORY_PARAM_SCOPE,
 };
 
 use super::*;
@@ -1495,5 +1495,51 @@ fn a_transfer_names_the_fresh_instance_an_initialized_module_starts_on() {
         memories.to_module_id.as_deref(),
         Some(successor.caps().memories().instance_id()),
         "an initialized module names the empty store the successor is now holding"
+    );
+}
+
+/// A library holding one skill of the given name, for a test that has to tell two catalogues apart.
+fn library_named(dir: &std::path::Path, name: &str) -> Arc<SkillLibrary> {
+    std::fs::write(
+        dir.join(format!("{name}.md")),
+        format!("---\nname: {name}\ndescription: how the thing is done.\n---\nthe body."),
+    )
+    .expect("the fixture skill is written");
+    Arc::new(SkillLibrary::loaded(dir))
+}
+
+/// **A successor reads its own profile's skills**, not the ones its predecessor was reading.
+///
+/// A library belongs to an agent, so an `exec` onto a profile pointing at another directory has to
+/// arrive holding that directory's catalogue. Carrying the predecessor's would list the successor
+/// skills its own configuration does not offer, and withhold the ones it does.
+#[test]
+fn a_transfer_takes_the_successors_own_skills() {
+    let old_dir = tempfile::TempDir::new().unwrap();
+    let new_dir = tempfile::TempDir::new().unwrap();
+    let predecessor = SkillsRuntime::new(library_named(old_dir.path(), "predecessor-guide"));
+    let successors = SkillsRuntime::new(library_named(new_dir.path(), "successor-guide"));
+    let board = BoardRuntime::disabled();
+    let (registry, inherited, ids) = plain();
+
+    let old = ModuleSet::inert(&history_setup()).with(ModuleHandle::Skills(predecessor));
+    let (successor, report) = transfer(
+        old,
+        &profile_with(vec![(CAPABILITY_SKILLS, json!({}))]),
+        &TransferPlan::Intersection,
+        &ctx(&successors, &board, &registry, &inherited, &ids),
+    );
+
+    assert!(report.carried().contains(&ModuleKind::Skills));
+    let catalogue = successor.caps().skills().library();
+    let names: Vec<&str> = catalogue
+        .skills()
+        .iter()
+        .map(|skill| skill.name())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["successor-guide"],
+        "the successor reads the directory its own profile names"
     );
 }

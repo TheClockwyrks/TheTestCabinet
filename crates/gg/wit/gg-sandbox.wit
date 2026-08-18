@@ -1376,12 +1376,13 @@ world sandbox {
     /// identifier in one arm and a refusal in another, and a study comparing the two would be
     /// comparing the arms rather than the models.
     ///
-    /// `modules` is the code the agent has loaded by reading a code skill or a code memory. Each is
-    /// evaluated BEFORE the program, against the same scope, and its exports are bound at
-    /// `lib.<name>`. An empty list binds no `lib` at all, on the rule every other family obeys: what
-    /// a run does not offer is not a name. A module that throws while loading is reported over
-    /// `feedback.report-module-error` and leaves `lib.<name>` empty — it never takes the program
-    /// down with it.
+    /// `modules` is the code the agent has loaded by using a code skill or a code memory. A guest
+    /// **supplies** them and evaluates none of them: each is made reachable under its own key, and
+    /// the line the program writes to reach one is what runs its body. An empty list supplies no
+    /// module at all, on the rule every other family obeys: what a run does not offer is not a name.
+    /// A module that throws while it is being evaluated is reported over
+    /// `feedback.report-module-error` and leaves its binding empty — it never takes the program down
+    /// with it, on a guest whose language keeps the two separable.
     ///
     /// It returns **nothing**, because a program's return value is not a channel: what a program
     /// has to say about its own work it says over `feedback`, and what it has to say about its own

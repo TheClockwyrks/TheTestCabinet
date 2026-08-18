@@ -1655,11 +1655,17 @@ fn pin_read_skill(
         return;
     };
     if matches!(skills.record_read(name), ReadRecord::Fresh) {
-        context.push(
-            GgContextSource::Skill,
-            Retention::Pinned,
-            Message::user(outcome.output.clone()),
-        );
+        // A code-only skill has no body, and an empty message is not a message: a provider is
+        // handed `"content": ""` and refuses the request, so a skill that carries nothing but a
+        // module would end the turn it was used on. What such a skill puts in the window is the
+        // documentation views its module opened, which are placed by the load rather than here.
+        if !outcome.output.trim().is_empty() {
+            context.push(
+                GgContextSource::Skill,
+                Retention::Pinned,
+                Message::user(outcome.output.clone()),
+            );
+        }
         if let Some(state) = skills.state_event() {
             emitter.emit(state);
         }

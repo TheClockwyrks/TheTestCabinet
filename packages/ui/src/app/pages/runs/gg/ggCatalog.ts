@@ -1004,7 +1004,7 @@ function ownershipParam(what: string): ParamSpec {
 // configuration names none (`crates/gg/src/skills.rs`).
 export const DEFAULT_SKILLS_DIR = ".gg/skills";
 
-// The skills gg ships itself — one per family of the functions it offers
+// The twelve skills gg ships itself — one per family of the functions it offers
 // (`FAMILIES` in `crates/gg/src/skills.builtin.rs`), in the order gg lists them, which
 // is roughly "the workspace, then the work, then yourself".
 //
@@ -1051,6 +1051,11 @@ export const BUILT_IN_SKILL_OPTIONS: ReadonlyArray<{
     label: "gg-delegation — spawning child agents and handing its session on",
   },
   {
+    value: "gg-docs",
+    label:
+      "gg-docs — finding a function by keyword and reclaiming what it read (code mode)",
+  },
+  {
     value: "gg-views",
     label:
       "gg-views — showing itself a file, a value or a signature (code mode)",
@@ -1065,8 +1070,8 @@ export const BUILT_IN_SKILL_OPTIONS: ReadonlyArray<{
   },
 ];
 
-// What a built-in skill IS, said once here rather than eleven times on the checkboxes:
-// where its content comes from, why an agent may be offered fewer than eleven, and what
+// What a built-in skill IS, said once here rather than twelve times on the checkboxes:
+// where its content comes from, why an agent may be offered fewer than twelve, and what
 // switching one off actually does.
 //
 // The "only when the agent has it" rule is the load-bearing half. A family is offered

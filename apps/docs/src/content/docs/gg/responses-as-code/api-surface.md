@@ -251,10 +251,11 @@ module error naming the binding key and the message rather than as the program's
 own failure. The module's source is never shown to the model. Module errors
 accumulate across a hand-over chain and are deduplicated.
 
-Where an arm's guest evaluates every module before the program, a module that
-threw is reported that way and the program runs with its binding empty. Where a
-module is evaluated by the program that imports it, only a program that imports
-the broken module is affected, and it reads the module's own located failure.
+A module is evaluated by the import the program wrote, so a program that imports
+none of them runs none of them. A module that threw while it was evaluated is
+reported that way and the program carries on with that binding empty. An arm
+whose language evaluates an imported module as part of the importing program's
+own evaluation reports the module's located failure as the program's instead.
 
 The same channel carries an on-use script that failed: one sentence naming the
 skill or the memory, and the turn's own outcome untouched.

@@ -69,9 +69,9 @@ fn a_module_keeps_its_source_and_names_what_it_defined() {
 /// **A module in scope leaves the program byte-identical**, which is the whole of how one is
 /// supplied on this arm.
 ///
-/// `lib` is a package the guest assembles in `sys.modules` before the program runs, so supplying a
-/// module puts nothing in front of the model's bytes and no name in the program's scope. The program
-/// reaches it through the line it writes, exactly as it reaches the SDK.
+/// `lib` is a package the guest makes importable, so supplying a module puts nothing in front of the
+/// model's bytes and no name in the program's scope. The program reaches it through the line it
+/// writes, exactly as it reaches the SDK.
 #[test]
 fn a_module_in_scope_leaves_the_program_byte_identical() {
     let modules = [CodeModule {

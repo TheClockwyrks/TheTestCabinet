@@ -748,6 +748,7 @@ describe("gg built-in skill toggles", () => {
       "gg-skills",
       "gg-context",
       "gg-delegation",
+      "gg-docs",
       "gg-views",
       "gg-programs",
       "gg-session",

@@ -98,11 +98,12 @@ pub(super) const SURFACE_IMPORT: &str = "import gg";
 /// The line a program writes to reach the code [skills](crate::skills) and
 /// [memories](crate::memories) this session has read.
 ///
-/// `lib` is a package the guest assembles per turn out of the modules gg handed it, so it is reached
+/// `lib` is a package the guest supplies per turn out of the modules gg handed it, so it is reached
 /// the way any other package is and the way [gg's own surface](SURFACE_IMPORT) is. Supplying it puts
-/// no name in the program's scope: a program that writes no line for it has no `lib`. The line is
-/// quoted in the [documentation view](crate::docs) of the module and of each declaration it exports,
-/// which is the moment it matters.
+/// no name in the program's scope and runs no line of a module: a program that writes no line for it
+/// has no `lib`, and a module's body executes on the import that reaches it. The line is quoted in
+/// the [documentation view](crate::docs) of the module and of each declaration it exports, which is
+/// the moment it matters.
 pub(super) const LIB_IMPORT: &str = "import lib";
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};

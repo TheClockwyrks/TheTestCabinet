@@ -985,7 +985,7 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
     assert_eq!(logs(&outcome), ["HI {\"a\": 1}"]);
 
     // A module that throws is REPORTED, not raised: a broken skill belongs to whoever authored it,
-    // so its binding is left empty and the program still runs.
+    // so the import the program wrote binds an empty module and the program still runs.
     let outcome = run_with_modules(
         "import lib.broken\nimport lib.fine\nprint('ran', hasattr(lib.broken, 'anything'), lib.fine.ok)",
         &[
@@ -1002,6 +1002,31 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
         outcome.module_errors[0].1
     );
 
+    // NOTHING OF A MODULE RUNS UNTIL A PROGRAM IMPORTS IT, which is the whole of what supplying one
+    // means. The module here is loud in both directions a host can see — it prints, and then it
+    // raises — so a body that ran would show up as a log line and as a module error, and a program
+    // that wrote no import for it produces neither. `import lib` alone is the same answer: the
+    // package is gg's own and carries no author's line, and a body executes on the attribute or the
+    // submodule import that names it.
+    const NOISY: (&str, &str) = (
+        "noisy",
+        "print('the module body ran')\nraise ValueError('and then it failed')\n",
+    );
+    for program in ["print('program ran')", "import lib\nprint('program ran')"] {
+        let outcome = run_with_modules(program, &[NOISY]);
+        assert_eq!(logs(&outcome), ["program ran"]);
+        assert!(
+            outcome.module_errors.is_empty(),
+            "a program that did not import it ran none of it: {:?}",
+            outcome.module_errors
+        );
+    }
+
+    // The same module, imported, to prove the side effect above is one this test could have seen.
+    let outcome = run_with_modules("import lib\nprint(lib.noisy.__name__)", &[NOISY]);
+    assert_eq!(logs(&outcome), ["the module body ran", "lib.noisy"]);
+    assert_eq!(outcome.module_errors.len(), 1);
+
     // A module reaches gg through the line a program writes, and reaches it as the same objects.
     let outcome = run_with_modules(
         "import lib\nprint(lib.notes.header())",
@@ -1013,7 +1038,7 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
     assert_eq!(logs(&outcome), ["read_file"]);
 
     // A submodule is imported directly, which is what a Python author reaches for when one module
-    // is all they want. Every form resolves because `lib` is an ordinary package in `sys.modules`.
+    // is all they want. Every form resolves because `lib` is an ordinary package to the machinery.
     let outcome = run_with_modules(
         "from lib.csv_tools import widen\nimport lib.csv_tools as tools\nprint(widen('a', 3), tools.HEADER)",
         &[(
@@ -1023,8 +1048,18 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
     );
     assert_eq!(logs(&outcome), ["a.. name,size"]);
 
-    // A module in scope is still not a name. Supplying one puts a package in `sys.modules` and
-    // nothing in the program, so a program that writes no line for it gets CPython's own
+    // A star import is the one line that means all of them, and it executes all of them.
+    let outcome = run_with_modules(
+        "from lib import *\nprint(csv_tools.HEADER, notes.TITLE)",
+        &[
+            ("csv_tools", "HEADER = 'name,size'\n"),
+            ("notes", "TITLE = 'notes'\n"),
+        ],
+    );
+    assert_eq!(logs(&outcome), ["name,size notes"]);
+
+    // A module in scope is still not a name. Supplying one puts a package where the machinery can
+    // find it and nothing in the program, so a program that writes no line for it gets CPython's own
     // `NameError` — the rule `import gg` is under, applied to the agent's own code.
     let outcome = run_with_modules(
         "print(lib.csv_tools.HEADER)",

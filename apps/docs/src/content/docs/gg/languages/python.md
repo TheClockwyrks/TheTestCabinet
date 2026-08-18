@@ -157,13 +157,23 @@ names its body left behind are the module bound under its key, which is
 `snake_case` and ASCII-only. A module's author writes `import gg` exactly as a
 program does and reaches the same objects.
 
-A module is supplied the way the SDK is: `lib` is a package in the guest's
-`sys.modules`, assembled before the program runs and carrying one submodule per
-key in use. Supplying it declares no name in the program. A program writes
-`import lib` and reaches an export as `lib.<key>.<name>`. A program that wants one
-module writes `from lib import notes` or `import lib.notes`, which resolve as
-they do for any other package. A program that writes none of the three has no
-`lib` at all, which is the rule `import gg` is under.
+A module is supplied the way the SDK is, through the guest's own import
+machinery: a finder on `sys.meta_path` answers for `lib` and for one submodule
+per key in use. Supplying it declares no name in the program and executes no line
+of anybody's module.
+
+A program writes `import lib` and reaches an export as `lib.<key>.<name>`, and
+the attribute naming a key is what executes that module's body. A program that
+wants one module writes `from lib import notes` or `import lib.notes`, which
+resolve as they do for any other package and execute that module alone. A program
+that writes no such line has no `lib` at all, which is the rule `import gg` is
+under, and runs no line of any module the agent has read.
+
+A module whose body raises leaves an empty binding, and the guest reports the
+raise on its own channel: the author of a module is whoever wrote the skill or
+the memory, so the import succeeds and the program carries on. The report is made
+on the import that ran the body, so a turn whose program left a broken module
+alone carries no report of it.
 
 The names that travel beside the source are read by a line scan over the dialect's
 code mask: unindented `def`, `async def`, `class` and plain top-level assignments,

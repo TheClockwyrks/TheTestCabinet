@@ -31,10 +31,11 @@ What this shim does, and what each part is load-bearing for
    Python package ``gg``, baked into the component, and a program reaches it by writing ``import
    gg``. A program that writes no import gets CPython's own ``NameError``, which is the answer the
    invariants ask for and the one a Python programmer expects.
-4. **The agent's code modules are evaluated first** (:func:`_load_modules`), each as a real module
-   registered at ``lib.<name>``, which a program reaches by writing ``import lib``. A module that
-   throws is reported and left empty rather than taking the program down with it: a broken skill
-   belongs to whoever authored it.
+4. **The agent's code modules are supplied, not run** (:func:`_install_modules`). They are put where
+   the import machinery can find them at ``lib.<name>``, and a body executes on the line a program
+   writes to import it. A program that imports none of them runs no line of anybody's module. A
+   module that throws is reported and left empty rather than taking the program down with it: a
+   broken skill belongs to whoever authored it.
 5. **Everything the program has to say is said through ``feedback``**, never through a trap and
    never through a return value. An uncaught exception is caught once, classified, rendered with a
    traceback containing only the program's own frames, and reported at the program's own
@@ -45,12 +46,15 @@ return value to discard, so — unlike the JavaScript guest — there is nothing
 ``feedback.note_return``: the only ways a program shows itself something are a view and ``print``.
 """
 
+import importlib
+import importlib.abc
+import importlib.util
 import io
 import linecache
 import sys
 import traceback
 from types import ModuleType
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import wit_world
 from wit_world import CodeModule
@@ -305,53 +309,141 @@ def _unknown_gg_name(exc: BaseException) -> bool:
     return name == gg.__name__ or name.startswith(f"{gg.__name__}.")
 
 
-def _load_modules(modules: List[CodeModule], filenames: set) -> None:
-    """Evaluate each code module and register it at ``lib.<name>``, for a program that imports it.
+class _ModuleLoader(importlib.abc.Loader):
+    """The loader for one code module: it executes that author's body, and only when asked to.
 
-    Nothing is added to the source and nothing is put in front of it: a module body is executed in
-    a namespace of its own with nothing in it, so a module's author writes ``import gg`` exactly as
-    a program does and reaches the same objects.
+    Nothing is added to the source and nothing is put in front of it: the body is executed in a
+    namespace of its own with nothing in it, so a module's author writes ``import gg`` exactly as a
+    program does and reaches the same objects.
 
-    ``lib`` is an ordinary package in :data:`sys.modules`, so ``import lib``, ``from lib import
-    notes`` and ``import lib.notes`` all resolve, and a program that writes none of them has no such
-    name — which is the same rule the SDK is under.
+    What the module carries afterwards is the public names its own body left behind. A name
+    beginning with an underscore is private by the language's own convention and is not one of them,
+    and the module's own code still reads it: a function it defined closes over the namespace the
+    body ran in rather than over the module this fills.
 
-    What each module carries is the public names its own body left behind. A name beginning with an
-    underscore is private by the language's own convention and is not one of them, and the module's
-    own code still reads it: a function it defined closes over the namespace the body ran in rather
-    than over the module this hands back.
-
-    A module that throws is **reported, not raised**: a broken skill belongs to whoever authored it,
-    not to the program that merely imports it, so its binding is left empty and the program runs.
+    A module that throws is **reported, not raised**. The report is
+    :func:`feedback.report_module_error` and the exception stops here, so the import the program
+    wrote succeeds and binds an empty module: a broken skill belongs to whoever authored it, not to
+    the program that merely imports it, and a model shown a failure in code it was never shown is
+    being blamed for somebody else's line.
     """
-    if not modules:
-        return
-    package = ModuleType(LIB_PACKAGE)
-    # An empty `__path__` is what makes it a package rather than a plain module: `import lib.notes`
-    # asks the machinery for a submodule, and the machinery answers from `sys.modules` without ever
-    # looking at the path.
-    package.__path__ = []  # type: ignore[attr-defined]
-    sys.modules[LIB_PACKAGE] = package
-    for module in modules:
-        filename = f"{module.name}.py"
-        filenames.add(filename)
-        _register_source(filename, module.source)
-        qualified = f"{LIB_PACKAGE}.{module.name}"
-        loaded = ModuleType(qualified)
-        loaded.__file__ = filename
+
+    def __init__(self, name: str, source: str, filenames: set) -> None:
+        self._name = name
+        self._source = source
+        self._filename = f"{name}.py"
+        self._filenames = filenames
+
+    def create_module(self, spec: Any) -> None:
+        """The ordinary module object the machinery makes from the spec."""
+        return None
+
+    def exec_module(self, module: ModuleType) -> None:
+        module.__file__ = self._filename
         namespace: Dict[str, Any] = {}
         try:
-            exec(compile(module.source, filename, "exec"), namespace, namespace)
+            exec(compile(self._source, self._filename, "exec"), namespace, namespace)
         except BaseException as exc:  # noqa: BLE001 — a module may throw anything.
             feedback.report_module_error(
-                module.name, _render(exc, frozenset(filenames))
+                self._name, _render(exc, frozenset(self._filenames))
             )
             namespace = {}
         for name, value in namespace.items():
             if not name.startswith("_"):
-                setattr(loaded, name, value)
-        sys.modules[qualified] = loaded
-        setattr(package, module.name, loaded)
+                setattr(module, name, value)
+
+
+class _PackageLoader(importlib.abc.Loader):
+    """The loader for ``lib`` itself, which carries no submodule of its own.
+
+    ``lib`` is gg's, not an author's, and its body is this: a module-level ``__getattr__`` that
+    imports the submodule an attribute names. That is what makes ``import lib`` followed by
+    ``lib.notes.header()`` reach the module the program named while leaving every module the program
+    did not name unexecuted.
+
+    ``__all__`` is the binding keys, so a program's ``from lib import *`` asks for them one at a
+    time through that same ``__getattr__``: the line that means all of them executes all of them.
+    """
+
+    def __init__(self, keys: Sequence[str]) -> None:
+        self._keys = tuple(keys)
+
+    def create_module(self, spec: Any) -> None:
+        """The ordinary module object the machinery makes from the spec."""
+        return None
+
+    def exec_module(self, module: ModuleType) -> None:
+        keys = self._keys
+
+        def __getattr__(name: str) -> ModuleType:
+            if name in keys:
+                return importlib.import_module(f"{LIB_PACKAGE}.{name}")
+            raise AttributeError(
+                f"module {LIB_PACKAGE!r} has no attribute {name!r}; "
+                f"this agent has loaded {', '.join(keys)}"
+            )
+
+        module.__getattr__ = __getattr__  # type: ignore[attr-defined]
+        module.__all__ = list(keys)  # type: ignore[attr-defined]
+
+
+class _LibFinder(importlib.abc.MetaPathFinder):
+    """The finder that answers for ``lib`` and ``lib.<name>``, and for nothing else.
+
+    On :data:`sys.meta_path`, which is Python's own answer to "where does a module come from?" and
+    the only one that runs a body at the moment the program's import statement does. Holding a
+    source is not running it, so what this installs is availability alone.
+    """
+
+    def __init__(self, sources: Dict[str, str], filenames: set) -> None:
+        self._sources = sources
+        self._filenames = filenames
+
+    def find_spec(
+        self, fullname: str, path: Any = None, target: Any = None
+    ) -> Optional[Any]:
+        if fullname == LIB_PACKAGE:
+            # `is_package` gives it an empty `submodule_search_locations`, which is what makes
+            # `import lib.notes` ask the machinery for a submodule and reach this finder again.
+            return importlib.util.spec_from_loader(
+                fullname, _PackageLoader(tuple(self._sources)), is_package=True
+            )
+        prefix = f"{LIB_PACKAGE}."
+        if not fullname.startswith(prefix):
+            return None
+        name = fullname[len(prefix) :]
+        source = self._sources.get(name)
+        if source is None:
+            return None
+        return importlib.util.spec_from_loader(
+            fullname,
+            _ModuleLoader(name, source, self._filenames),
+            origin=f"{name}.py",
+        )
+
+
+def _install_modules(modules: List[CodeModule], filenames: set) -> None:
+    """Make each code module importable at ``lib.<name>``, without running a line of one.
+
+    ``lib`` is reached through Python's own import machinery, so ``import lib``, ``from lib import
+    notes`` and ``import lib.notes`` all resolve, and a program that writes none of them has no such
+    name — the same rule the SDK is under. An agent that has loaded no code has no ``lib`` at all,
+    because nothing is installed and the name resolves nowhere.
+
+    Each module's source is registered for :mod:`traceback` here rather than at the moment it is
+    executed, so a frame is readable whichever module raised and whenever it did, and its file name
+    is owned from the start: a program error is rendered against this same set.
+    """
+    if not modules:
+        return
+    sources: Dict[str, str] = {}
+    for module in modules:
+        filename = f"{module.name}.py"
+        filenames.add(filename)
+        _register_source(filename, module.source)
+        sources[module.name] = module.source
+    # First, so nothing else can answer for `lib`.
+    sys.meta_path.insert(0, _LibFinder(sources, filenames))
 
 
 class WitWorld(wit_world.WitWorld):
@@ -367,8 +459,9 @@ class WitWorld(wit_world.WitWorld):
     ) -> None:
         """Evaluate one program, reporting everything it did over ``feedback``.
 
-        The code modules are evaluated first and under the same rule the program is: each one writes
-        its own ``import gg``, and what it leaves behind is registered at ``lib.<name>``.
+        The code modules are made importable at ``lib.<name>`` and left unexecuted. Each runs under
+        the same rule the program is, on the line the program writes to import it: it writes its own
+        ``import gg``, and what it leaves behind is what the binding carries.
 
         ``operations``, ``ending`` and ``library`` are **read by nothing here**, and the names are
         the WIT's rather than underscored because that is what gg calls them. They used to build a
@@ -384,7 +477,7 @@ class WitWorld(wit_world.WitWorld):
         _clamp_recursion()
 
         filenames = {PROGRAM_FILENAME}
-        _load_modules(modules, filenames)
+        _install_modules(modules, filenames)
         # `__name__` is `__main__` because that is what a script is, and because a model that
         # guards its entry point with `if __name__ == "__main__":` has written correct Python and
         # must not be silently skipped. It is the whole of what a program starts with.

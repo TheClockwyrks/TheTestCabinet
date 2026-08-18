@@ -344,10 +344,15 @@ impl ProgramLanguage for Swift {
     /// allowed at the top level* in any other file of a module. So this arm answers for itself, as
     /// the [JVM](super::jvm) arms and [Rust](super::rust) do, and the `name` rides in as a returned
     /// **string literal** — which is where the module's one export hands it back.
+    ///
+    /// It writes **no access level**, which is what makes the probe a probe on this arm: the module
+    /// step publishes a declaration the author left unqualified ([`module_source`](source::module_source)),
+    /// so a subject that wrote `public` itself would be handed straight back and the gate would
+    /// measure a transform this arm does not perform on anything real.
     #[cfg(test)]
     fn gate_module(&self, name: &str) -> String {
         format!(
-            "public func marker() -> String {{
+            "func marker() -> String {{
     {}
 }}
 ",

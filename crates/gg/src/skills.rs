@@ -110,8 +110,8 @@ impl Skill {
         &self.description
     }
 
-    /// The skill's body (front matter already stripped). Empty for a code-only skill, whose read
-    /// answers with the note saying where its code went and nothing else.
+    /// The skill's body (front matter already stripped). Empty for a code-only skill, whose use
+    /// pins nothing and answers with the documentation views its module opened.
     pub fn body(&self) -> &str {
         &self.body
     }
@@ -613,14 +613,21 @@ impl Module for SkillsRuntime {
         ModuleHandle::Skills(self.shared())
     }
 
-    /// Re-point the id mint and record how the read set arrived. The catalog itself is run-global
-    /// and immutable, so there is nothing to re-resolve.
+    /// Take the **arriving profile's** catalogue, keep the read set, re-point the id mint and record
+    /// how the read set arrived.
+    ///
+    /// The catalogue is re-resolved because a library belongs to an agent: the successor named its
+    /// own directory, and carrying the predecessor's would list it skills its profile does not read
+    /// and withhold the ones it does. It would also carry the predecessor's
+    /// [built-ins](builtin), which describe a toolset the successor may not have — the one thing a
+    /// catalogue must never do.
     ///
     /// A read set is a promise about a **window**: it says which skill bodies are already pinned in
-    /// it, so the loop answers a repeat read with a note instead of a second copy. That promise is
-    /// only true where the window is, which is why this module is carried by exactly the same
-    /// transfers that carry [history](crate::modules::ModuleKind::History) — a read set adopted
-    /// without its window would suppress a pin the successor's window does not have.
+    /// it, so the loop does not pin a second copy. That promise is only true where the window is,
+    /// which is why this module is carried by exactly the same transfers that carry
+    /// [history](crate::modules::ModuleKind::History) — a read set adopted without its window would
+    /// suppress a pin the successor's window does not have. It is kept verbatim across the change of
+    /// catalogue, since it describes what the window holds rather than what the catalogue offers.
     fn adopt(
         &mut self,
         profile: &GgAgentConfig,
@@ -630,6 +637,7 @@ impl Module for SkillsRuntime {
             return Err(AdoptError::Disabled);
         }
         self.enabled = true;
+        self.library = ctx.skills.library();
         self.ids = Arc::clone(ctx.ids);
         self.origin = GgModuleOrigin::Transferred;
         Ok(())

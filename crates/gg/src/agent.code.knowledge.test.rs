@@ -374,3 +374,38 @@ export const DELIMITER = \",\";
         "and exactly one page was retired: the one whose text changed"
     );
 }
+
+/// **A skill that is only code pins nothing.** Its body is empty, and an empty message is one a
+/// provider refuses — so the turn a code-only skill was used on would end on a rejected request.
+/// What such a skill puts in the window is the documentation views its module opened.
+#[test]
+fn a_code_only_skill_pins_no_message() {
+    let mut context = window();
+    let mut skills = crate::skills::SkillsRuntime::new(Arc::new(
+        crate::skills::SkillLibrary::empty().with_builtins(vec![
+            crate::skills::parse_skill("---\nname: csv-tools\ndescription: parsing.\n---\n")
+                .expect("the fixture skill parses"),
+        ]),
+    ));
+    let call = ToolCall {
+        id: "call-1".to_string(),
+        name: SKILLS_READ_SKILL.to_string(),
+        arguments: serde_json::json!({ "name": "csv-tools" }),
+    };
+    let outcome = ToolOutcome::ok(String::new(), "read skill `csv-tools`");
+    let emitter = Emitter::with_sink(None, Box::new(crate::telemetry::CollectingSink::new()));
+    pin_read_skill(&mut context, &mut skills, &call, &outcome, &emitter);
+
+    assert!(
+        !context
+            .items()
+            .iter()
+            .any(|item| item.source() == GgContextSource::Skill),
+        "a skill with no body puts no message in the window"
+    );
+    assert_eq!(
+        skills.read_count(),
+        1,
+        "it is still recorded as used, so a second use does not pin one either"
+    );
+}

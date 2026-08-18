@@ -11296,10 +11296,20 @@ fn record_tool_result(
             ReadRecord::Fresh => {
                 // Pin the skill body so context accounting attributes it to skills and
                 // compaction retains it verbatim.
+                //
+                // A skill whose whole content is code has no body, and this path must still answer
+                // the call it is answering: a provider requires a `tool` message after the
+                // assistant `tool_calls` that asked for one, and refuses an empty `content`. So an
+                // empty body is answered with one sentence saying so, which is also the truth about
+                // what this agent got — code halves reach a program and there are none here.
+                let body = match outcome.output.trim().is_empty() {
+                    true => format!("Skill `{name}` carries no text for this agent to read."),
+                    false => outcome.output,
+                };
                 context.push(
                     GgContextSource::Skill,
                     Retention::Pinned,
-                    crate::model::Message::tool_result(&call.id, outcome.output),
+                    crate::model::Message::tool_result(&call.id, body),
                 );
                 if let Some(state) = modules.skills().state_event() {
                     emitter.emit(state);

@@ -33,8 +33,12 @@ them all, so a single pass over the directory fixes it. The default directory is
 the exception: nothing seeds `.gg/skills`, so a workspace that authored no skills
 opens with gg's own [built-ins](#the-skills-gg-ships) alone.
 
-The files under that directory are gg's. gg reads them to build the catalogue,
-and an agent's whole interaction with a skill is using it by name.
+The files under that directory are gg's. gg reads them to build the catalogue
+and writes nothing there, no skill path reaches the model, and using a skill by
+name is the whole of what gg offers an agent to do with one. The catalogue is
+fixed once the run starts, so an agent that writes into the directory with its
+[filesystem](/gg/filesystem/) or [shell](/gg/shell/) capability changes nothing
+about what any agent is served.
 
 Each entry is one of two shapes. An entry whose name begins with a dot belongs to
 tooling and is passed over.

@@ -216,14 +216,14 @@ fn the_surface_import_names_the_surface_module() {
 #[test]
 fn a_code_module_is_declarations_rather_than_statements() {
     let module = swift().gate_module("marker-1");
-    assert_eq!(
-        module,
-        "public func marker() -> String {\n    \"marker-1\"\n}\n"
-    );
+    assert_eq!(module, "func marker() -> String {\n    \"marker-1\"\n}\n");
     assert_eq!(export_names(&source::exports(&module)), vec!["marker"]);
+    // The subject writes no access level on purpose: publishing one is what this arm's module step
+    // does to an author's file, and a subject that had written `public` itself would be handed
+    // straight back, leaving the isolation gate measuring a transform that never ran.
     assert_eq!(
         source::module_source(&module),
-        module,
-        "a declaration its author already made public is compiled exactly as it was written",
+        "public func marker() -> String {\n    \"marker-1\"\n}\n",
+        "a declaration its author left unqualified is published where it stands",
     );
 }

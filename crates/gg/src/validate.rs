@@ -1003,9 +1003,9 @@ fn check_params(
 ///
 /// Writing the **same** value on every profile is not that, and is the ordinary shape: an editor
 /// that offers a param per agent seeds each with the documented default, and a document in which
-/// every profile says `.gg/skills` says exactly what gg does. So what is refused is a declaration
-/// that **diverges** from the one in force — the case where the document says two things and the
-/// run can only do one.
+/// every profile says `3` says exactly what gg does. So what is refused is a declaration that
+/// **diverges** from the one in force — the case where the document says two things and the run can
+/// only do one.
 const RUN_LEVEL_PARAMS: &[(&str, &str, &str)] = &[(
     CAPABILITY_SUBAGENTS,
     crate::subagents::PARAM_MAX_DEPTH,

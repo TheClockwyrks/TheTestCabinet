@@ -214,9 +214,6 @@ impl Scope {
 pub(super) enum Did {
     /// **Kept them.** Something the preparation produced is those bytes, and the invariant holds.
     Kept,
-    /// **Wrapped them.** The bytes are all there, whole and in order, inside something larger: a
-    /// prologue, an entry point, a class, a module header.
-    Wrapped,
     /// **Rewrote them, and handed back a map from the rewrite to them.**
     ///
     /// The one relation an arm may have to the model's bytes without a row, other than keeping them,
@@ -228,7 +225,14 @@ pub(super) enum Did {
     /// It is not a weaker `Rewritten`: [`maps_back`] holds the map to naming the handed bytes as its
     /// source, byte for byte, and to resolving into them, so an arm cannot reach this verdict by
     /// emitting a map of something else.
+    ///
+    /// It sits **above** [`Wrapped`](Self::Wrapped) because the two are ordered by faithfulness and
+    /// this one satisfies the invariant while wrapping does not. A drive that wrapped and a drive
+    /// that mapped must fold to the wrap, since the fold reports the worst relation found.
     Mapped,
+    /// **Wrapped them.** The bytes are all there, whole and in order, inside something larger: a
+    /// prologue, an entry point, a class, a module header.
+    Wrapped,
     /// **Rewrote them.** Nothing the preparation produced carries the bytes whole, and nothing maps
     /// back to them. A re-print, an indent, a hoisted line, a renamed declaration.
     Rewritten,
@@ -356,6 +360,20 @@ const UNCONVERTED: &[Unconverted] = &[
         instead: "compiles the module as a named C++ module exporting a namespace it declares, \
                   under an include of gg's surface and the author's own includes hoisted beside it \
                   in the module's own global fragment, anchored by `#line` directives",
+    },
+    // ---- swift ----------------------------------------------------------------------------------
+    Unconverted {
+        arm: GgProgramLanguage::Swift,
+        half: Half::Module,
+        // `Wrapped` rather than `Rewritten` because the word is written in FRONT of a declaration
+        // the author left unqualified and nothing else about the line moves: the bytes are all
+        // there, whole and in order, and the declaration keeps its own line and every column after
+        // the word.
+        did: Did::Wrapped,
+        adds: "public ",
+        instead: "publishes a top-level declaration whose author wrote no access level, so that a \
+                  program importing the module can reach it, in front of the declaration on the \
+                  author's own line so that no diagnostic moves",
     },
     // ---- csharp ---------------------------------------------------------------------------------
     Unconverted {
