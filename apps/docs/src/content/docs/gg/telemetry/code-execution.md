@@ -63,10 +63,11 @@ compiling that turn's own artifact into the engine cost.
 
 `compileMs` belongs to the turn. It is the whole of the language's prepare step,
 including any compiler it shells out to: the program itself, each replacement it
-handed over to, the code half of every skill or memory it brought into use, and
-each on-use script such a read queued. A code skill is compiled again on every
-agent that reads it, so leaving those out would make a skill-heavy compiled arm
-report less than it spent.
+handed over to, and the code half and on-use script of every skill or memory this
+agent first used on this turn. Both halves are prepared once per agent and re-run
+as prepared, so a repeat use queues a run and no compile, while a skill used by a
+second agent is compiled again for it. Leaving those out would make a
+skill-heavy compiled arm report less than it spent.
 
 The field is absent for a language whose prepare step compiles nothing, which is
 [JavaScript](/gg/languages/javascript/) and [Python](/gg/languages/python/). It

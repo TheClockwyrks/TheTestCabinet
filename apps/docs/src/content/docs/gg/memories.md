@@ -142,14 +142,15 @@ halves, so omitting them clears them, on the rule the description and the body
 already follow. A native-mode update leaves both alone, since its schema has no
 way to say anything about them.
 
-- `code` is a module whose exports are bound in every program the agent writes
-  from then on, `key` being the slug in camel case (`csv-tools` → `csvTools`),
-  deduplicated if something else holds it. The reply names the key, the form that
-  reaches it, and the exports.
-- `onUse` is a script gg runs once, when the memory first comes into use, after
-  the turn's program has ended, so the views it opens arrive on the next turn. It
-  cannot end the session, it has no program library, and its source is never
-  shown back to the model.
+- `code` is a module every program the agent writes from then on may import,
+  `key` being the slug in camel case (`csv-tools` → `csvTools`), deduplicated if
+  something else holds it. The load opens a [documentation
+  view](/gg/responses-as-code/views/) per function it declares, each naming the
+  key and the line a program writes to reach it.
+- `onUse` is a script gg runs on every use, after the turn's program has ended,
+  so the views it opens arrive on the next turn. It runs on the agent's own
+  grants, it cannot end the session, and its source is never shown back to the
+  model.
 
 ### Code loading
 
@@ -161,13 +162,10 @@ context.
 | `scratchpad` | the write, since every memory is in the window from the moment it exists |
 | `markdown`, `keyword-search` | the read, since a memory's code follows its body into context |
 
-Under the two file-shaped strategies, a write carrying code is answered with a
-line saying the code is stored and will load, and be named, on the read.
-
-Registration survives a compaction: a loaded module costs no tokens and is never
-summarized, so a boundary leaves it bound and nothing makes an agent re-read a
+A loaded module survives a compaction: it costs no tokens and is never
+summarized, so a boundary leaves it loaded and nothing makes an agent re-read a
 memory to get back a helper it already has. A [`fork`](/gg/fork-and-exec/) and a
-succession start with nothing bound.
+succession start with nothing loaded.
 
 Each half is bounded at 32 768 characters, refused in the same `limit-exceeded`
 voice every other cap uses. That limit protects the transpiler, which parses
@@ -179,7 +177,7 @@ Both halves are compiled at the moment they load, and what happens next depends
 on which moment that is.
 
 - A write that loads (the scratchpad's) is refused, with a located diagnostic.
-  Storing a module that can never be bound would store something that only fails
+  Storing a module that can never load would store something that only fails
   later.
 - A read that loads (the two file-shaped strategies') returns the memory, with
   the diagnostic appended to the body. The body is what the model asked for.

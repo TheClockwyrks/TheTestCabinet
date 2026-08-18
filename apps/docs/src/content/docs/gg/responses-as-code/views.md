@@ -162,6 +162,11 @@ serviced whatever the capability set says.
 A hit's `key` is the fully-qualified name, `gg.<module>.<name>`. That is the key
 documentation is filed under and the key `openDocsView` takes.
 
+The surface a query reaches includes the code modules that agent loaded. A
+loaded module's key is a module entry and every declaration it exports is an
+entry of its own, keyed by the loaded key and the declaration's name, so one
+query finds an author's helper and gg's own functions together.
+
 ## Documentation views
 
 `gg.views.openDocsView(target)` opens one entry's documentation. Pass the bound
@@ -221,6 +226,18 @@ The candidates are the names this agent binds. Matching is tiered by gg tool
 name, then stem, then typo, and only the best tier is offered. A miss with no
 bound name near it carries no suggestion at all, because a wrong name sends the
 model to read documentation for a function it did not want.
+
+A loaded module opens the same way. Using a code [skill](/gg/skills/) or memory
+opens one documentation view per function the module declares, together with the
+type views that agent's `docViewTypes` flags place beside each, and the use
+itself adds no message. A function's view carries its declaration, its
+documentation, and the line a program writes to reach it, as an SDK function's
+does.
+
+Those views belong to the instance that loaded the module. An instance that
+starts with nothing loaded holds none of them, and using the skill again opens
+them. Once open they are ordinary documentation views, opened by key with
+`gg.views.openDocsView` and closed with `gg.docs.close`.
 
 ## The opening turn
 

@@ -29,9 +29,9 @@ one band per source, in this fixed order.
 | Runtime errors | A program that compiled and then threw, or that the sandbox stopped. |
 | File views | The contents of files read into the window. |
 | Agent views | Material a program composed and opened for itself, keyed by label. |
-| Documentation | The documentation views an agent opened, keyed by name. |
+| Documentation | The documentation views an agent opened, keyed by name, and the ones using a code skill or memory opened from its module. |
 | Doc search | The agent's last documentation search, and the opening turn's listing of each module it was granted. |
-| Skills | The [skills](/gg/skills/) shown and read. |
+| Skills | The [skills](/gg/skills/) shown and used. |
 | Memories | The [memories](/gg/memories/) in play. |
 | Task list | The [task](/gg/tasks/) list. |
 | Board | The [project board](/gg/project-management/). |
@@ -43,11 +43,15 @@ cross-model approximation.
 
 Documentation does not follow from a capability. It holds the views a
 [responses-as-code](/gg/responses-as-code/overview/) program opened with
-`gg.views.openDocsView`, and those are bound whatever the capability set says,
-because reading the signature of a call an agent was given is not a privilege.
-So a run with skills switched off can still fill it. Doc search holds two kinds
-of listing under two kinds of selector. An agent's own searches are keyed by the
-constant `search results`, so each of them replaces the last. The
+`gg.views.openDocsView`, which every agent may call, because reading the
+signature of a call an agent was given is not a privilege. So a run with skills
+switched off can still fill it. Using a code skill or memory fills it from that
+module: one view per function the module declares, plus the type views the
+agent's `docViewTypes` flags ask for.
+
+Doc search holds two kinds of listing under two kinds of selector. An agent's
+own searches are keyed by the constant `search results`, so each of them
+replaces the last. The
 [opening turn](/gg/responses-as-code/views/#the-opening-turn) keys its listing of
 each granted module under that module's own path, so every listing stands until
 that module is listed again. The band sits apart from Documentation so that what

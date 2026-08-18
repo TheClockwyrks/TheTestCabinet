@@ -345,11 +345,10 @@ value, and each of them is a declaration gg would otherwise read past:
 - An `implementation` on a capability that offers no implementations to choose
   between. Only Compaction, Memories, Read File, Shell and Autoload
   Specifications have arms; anywhere else the name selects nothing.
-- A run-level param written on an agent that is not the first. The skills
-  directory and the subagent recursion bound are read once for the whole run,
-  off the first profile. Writing the *same* value on every profile is fine and
-  is what the editor does; writing a *different* one is a document that says two
-  things.
+- A run-level param written on an agent that is not the first. The subagent
+  recursion bound is read once for the whole run, off the first profile.
+  Writing the *same* value on every profile is fine and is what the editor
+  does; writing a *different* one is a document that says two things.
 - Two agents naming two different merge agents, or one naming something gg
   cannot read as a name. The board is the run's, so it has one merge agent.
 

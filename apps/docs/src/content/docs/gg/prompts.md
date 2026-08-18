@@ -114,10 +114,10 @@ The code template interpolates:
 - the language's display name, and the arm's checker where it names one;
 - the module list, the message headings, and this agent's ending calls;
 - the catalog of available skills, each with its description and with whether it
-  carries code and whether it carries an on-use script, so that reading one is
-  described by what it will actually do. The catalog covers both the workspace's
-  authored skills and the built-ins gg generates for this agent's own function
-  families;
+  carries code and whether it carries an on-use script that runs on every use, so
+  that using one is described by what it will actually do. The catalog is this
+  agent's own: the skills authored under the directory its profile names, joined
+  with the built-ins gg generates for its own function families;
 - the agents this one may spawn as subagents, the rosters an issue's agent and
   reviewers may be named from, and the id of the issue this agent was dispatched
   to implement;

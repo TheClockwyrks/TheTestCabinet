@@ -45,8 +45,8 @@ tool-calling path only the role's own tools are in the offered set.
 The role is checked before the declaration's shape, so an agent doing work that
 calls `requestChanges([])` is told it is not the one to give verdicts.
 
-An on-use script, being the code a skill or a memory runs when the agent first
-reads it, is given no ending group at all. The model did not write it and is not
+An on-use script, being the code a skill or a memory runs on every use, is given
+no ending group at all. The model did not write it and is not
 answering for it.
 
 ### The declared shapes

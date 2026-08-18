@@ -134,9 +134,10 @@ successor moves into is already held.
 ## What is not persisted
 
 Only the open views. The thread, the [task list](/gg/tasks/),
-[memories](/gg/memories/) and read [skills](/gg/skills/) all start as they do for
-any new agent. Two instances of a profile are two separate agents that share a
-desk.
+[memories](/gg/memories/) and used [skills](/gg/skills/) all start as they do
+for any new agent. An instance opens with nothing loaded, so it holds none of
+the documentation views a used skill's module opened. Two instances of a
+profile are two separate agents that share a desk.
 
 Memories cover state a profile wants to narrate across sessions, and a
 persistent profile with `"scope": "shared"` [memories](/gg/memories/) gets both.

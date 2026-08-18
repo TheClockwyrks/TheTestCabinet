@@ -123,10 +123,12 @@ something that is not open returns `0` rather than failing, so a program that
 tidies up unconditionally does not have to guard every call.
 
 The sweep reaches the file, agent-view and doc-search bands. A selector is what
-the model wrote, and it need not say which band it meant. A read
-[skill](/gg/skills/) is pinned material an operator put in front of the agent
-and is not reachable, by the same rule that keeps an eviction off a locked
-autoloaded specification.
+the model wrote, and it need not say which band it meant. A used
+[skill](/gg/skills/)'s body is pinned material an operator put in front of the
+agent and is not reachable, by the same rule that keeps an eviction off a locked
+autoloaded specification. The documentation views a code skill's module opened
+are ordinary documentation views, closable by an agent that holds
+`docview-close`.
 
 `gg.views.close` sits beside `evict_file_view` rather than inside it, and the
 two differ twice over:
@@ -215,10 +217,11 @@ recovering later is what the turn found: the file it read, the command's output,
 the error.
 
 The pinned prefix is never touched, however wide a range is. That covers the
-system prompt, the build prompt, read skills, locked autoloaded specifications,
-and the live memory, task-list and board blocks, along with the context-usage
-signal, which is not a thread item. Superseded copies of those blocks are
-ordinary history by then, so they archive like any other thread material.
+system prompt, the build prompt, used skill bodies, locked autoloaded
+specifications, and the live memory, task-list and board blocks, along with the
+context-usage signal, which is not a thread item. Superseded copies of those
+blocks are ordinary history by then, so they archive like any other thread
+material.
 Documentation views are retained whatever range is named, so a close remains the
 only removal that reaches them.
 

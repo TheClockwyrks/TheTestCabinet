@@ -245,9 +245,9 @@ the console is [Configurations](/gg/configurations/).
 ### Knowledge
 
 - [Skills](/gg/skills/) — pre-authored knowledge, catalogued in the prompt and
-  read by name: prose retained across compaction once read, code bound into the
-  agent's programs, or both. gg ships twelve of its own, one per family of the
-  functions it offers.
+  used by name: prose retained across compaction once used, a code library the
+  agent's programs import and whose declarations open as documentation views, or
+  both. gg ships twelve of its own, one per family of the functions it offers.
 - [Memories](/gg/memories/) — the same, curated by the model itself and bounded,
   code included.
 

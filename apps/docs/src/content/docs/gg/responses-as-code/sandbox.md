@@ -244,9 +244,9 @@ lets a reader attribute a recorded result to a program rather than to a
 tool-calling turn the model never took.
 
 A code turn's assistant message carries no `tool_calls`, so a skill body a
-program read is pinned as a standalone user message rather than as a `tool`
+program used is pinned as a standalone user message rather than as a `tool`
 message, which would quote a minted id an OpenAI-shaped provider rejects. A
-skill body is pinned exactly once however many times a program reads it.
+skill body is pinned exactly once however many times a program uses it.
 
 The program library is a separate record, held outside the context window: one
 entry per turn that ran a program, holding the source that executed. See the

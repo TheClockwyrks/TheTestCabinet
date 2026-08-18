@@ -30,17 +30,22 @@ holds the model to it.
 
 ### Code modules are gg's to wrap
 
-A code skill's or memory's module is a skill author's file rather than a model's
-reply, so the rule above does not reach it. gg may open a namespace, a class or a
-module declaration around it, may lift the author's own import lines to the
-position that construct requires, and may write the line that brings gg's surface
-into it, which is what a compiled arm needs to link one at all.
+A code [skill](/gg/skills/)'s or memory's module is an author's file rather than
+a model's reply, so the rule above reaches the module's own text and stops there.
+gg may open a namespace, a class or a module declaration around it, may lift the
+author's own import lines to the position that construct requires, and may write
+the line that brings gg's surface into it, which is what a compiled arm needs to
+build one at all.
 
 What still binds is the location: a module diagnostic is anchored by a
 line-control directive the language honours, by a source map, or by a wrapper
 that adds no line, and never by arithmetic. And what a module reaches is the
-module's own business: a program that binds one reaches the module's namespace,
-and reaches gg's surface only through a line the program wrote.
+module's own business: a program reaches the module's namespace through its own
+line, and the module reaches gg's surface through one it wrote itself.
+
+The program that uses a module is a model's reply, so the rule above reaches it
+in full. A module is made available the way an arm makes gg's SDK available, and
+the program names it the way it names anything else.
 
 ## Response healing
 
@@ -68,7 +73,10 @@ it uses is reached from inside it. That is what makes the measured program the
 model's program rather than gg's arrangement of it.
 
 An arm supplies package availability itself: a classpath entry, an extern, an
-include path, a linked archive, each of which declares no name.
+include path, a linked archive, each of which declares no name. A code
+[skill](/gg/skills/)'s or memory's module is supplied through the same mechanism
+as the SDK, so what an arm does for gg's own surface is what it does for an
+author's.
 
 Because a line is the only route in, a documentation view states the line a
 program writes to reach the symbol it describes. An arm whose views omit it

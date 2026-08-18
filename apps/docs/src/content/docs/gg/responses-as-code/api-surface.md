@@ -60,7 +60,7 @@ search hit carries, and a path a program writes. TypeScript spellings:
 Two names belong to the surface without being a capability. `ApiError` is the
 failure type every failed call raises, documented under `core` and reached the
 way every other name is. `lib` holds the code the agent has loaded, and the
-reply to the read that loaded something quotes the form that reaches it.
+documentation views a use opens quote the form that reaches it.
 
 Which line reaches a name is the arm's, and a model reads its own arm's answer in
 its prompt and in every [documentation view](/gg/responses-as-code/views/) it
@@ -182,19 +182,20 @@ is which statement threw, at the coordinates of its own program.
 ## `lib`: code the agent loaded
 
 `lib` holds the code the agent has loaded, from exactly two sources, both of
-them things the agent read: a [code skill](/gg/skills/), a skill directory's
+them things the agent used: a [code skill](/gg/skills/), a skill directory's
 module in this language's own file, and a [code memory](/gg/memories/), the
 `code` a program handed `writeMemory`, `createMemory` or `updateMemory`.
 
-Each is bound under a key, `key` being the skill's name or the memory's slug in
+Each is loaded under a key, `key` being the skill's name or the memory's slug in
 the language's own convention. Two things that spell alike are deduplicated with
 a numeric suffix: a skill `csv-tools` and a memory `csv_tools` both want
-`csvTools`, the first read gets it and the second gets `csvTools2`. The reply to
-the read that loaded it states the key it really got, in that agent's own syntax,
-lists what it exports, and states the form that reaches it.
+`csvTools`, the first use gets it and the second gets `csvTools2`.
 
-That form is the arm's, and each arm's page states its own. On an arm whose guest
-resolves modules, a module is an import the program writes:
+A loaded module is made available the way the arm makes gg's SDK available, and
+the program reaches it through the line the language requires. That line, the
+key, and everything the module declares reach the model as
+[documentation](/gg/responses-as-code/views/): the use opens a view per declared
+function, and the entries are searchable and closable like any other.
 
 ```ts
 import * as csvTools from "lib:csvTools";
@@ -204,9 +205,9 @@ const rows = csvTools.parseCsv(files.readTextFile("data/vendor.csv"));
 views.openText("rows", `${rows.length} rows, ${rows[0].length} columns`);
 ```
 
-Elsewhere the set is a name the SDK hands back, as `lib.<key>.<name>` or, where a
-module is compiled separately from the program that uses it,
-`Gg.Core.lib "<key>" "<name>"`.
+Each arm's page states its own form: an import of the arm's own module
+specifier, a name reached through an extern or a classpath entry, or a module the
+program imports by name.
 
 Loaded code is not an API object: it holds no gg function, and the hint an
 unknown name earns names it separately from the modules.
@@ -214,9 +215,9 @@ unknown name earns names it separately from the modules.
 Loaded code costs no tokens. It is prepared source the host holds and hands to
 the guest, so it is never a context item, is never summarized or evicted, and a
 [compaction](/gg/compaction/) does not touch it. A `fork` or a successor
-inherits the window and the skills read set and starts with nothing bound.
-Re-reading the skill reloads it, and the repeat read is answered with the same
-note naming the same key.
+inherits the window and the skills read set and starts with nothing loaded, and
+holds none of the documentation views a load opened. Using the skill again loads
+it and opens them.
 
 ### Module shape
 
@@ -240,7 +241,7 @@ the same import line a program writes.
 Modules are prepared independently of one another. A module reaches another
 loaded module only on an arm whose guest resolves a module specifier for a
 module as well as for a program. Load order is the order the agent happened to
-read things in, and it is kept out of the contract.
+use things in, and it is kept out of the contract.
 
 ### Module failures
 

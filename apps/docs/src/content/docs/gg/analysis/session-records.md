@@ -84,7 +84,7 @@ a retry exhaustion counts against the run's error ceiling.
 Prompt templates, memories, autoloaded specification files and skills are not
 recorded as filesystem reads. Templates are embedded in the gg binary, so the
 recorder's commit is what says which ones a run used. Every memory mutation and
-every skill body a session read is a recorded tool outcome, every rendered index
+every skill body a session used is a recorded tool outcome, every rendered index
 is a pooled message, and an autoloaded specification reaches the model as a
 message.
 

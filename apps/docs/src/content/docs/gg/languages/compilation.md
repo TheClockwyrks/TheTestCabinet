@@ -82,15 +82,15 @@ an interpreted arm pays one per process. That cost is the turn's
 Everything a turn made its compiler do is charged to that turn, and the figure
 sums four sources: the program the model wrote, each replacement it handed over
 to within the turn's ceiling of four programs, the code half of every
-[skill](/gg/skills/) or [memory](/gg/memories/) the turn brought into use, and
-each on-use script such a read queued. A module is compiled again on each agent
-that reads it, and the read happens inside a call the program made, after the
-sandbox has taken its own reading. Folding those in keeps a skill-heavy run from
-reporting less than it spent.
+[skill](/gg/skills/) or [memory](/gg/memories/) the turn was first to use on its
+agent, and each on-use script that first use prepared. A module is prepared once
+per agent, on its first use there, and that use happens inside a call the program
+made, after the sandbox has taken its own reading. Folding those in keeps a
+skill-heavy run from reporting less than it spent.
 
-An on-use script is prepared once, by the read that queues it, so that its
-author gets a located diagnostic there. It runs as prepared, and is never put
-through the prepare step a second time.
+An on-use script is prepared once per agent, by the first use, so that its author
+gets a located diagnostic there. Every use after it runs the prepared form, so a
+repeat use costs a run and no compiler.
 
 The figure is reported for the turn whose program the compiler rejected too. A
 compile that spent four seconds refusing a program spent them.
@@ -128,7 +128,7 @@ model is never asked to rewrite a program gg accepted.
 
 The same split holds on the other thing gg compiles. A code skill or code memory
 goes through the same prepare step: a rejection hands the author's diagnostic
-back on the read, and a compiler that could not finish ends the run with the
+back on the use, and a compiler that could not finish ends the run with the
 crash detail on the operator's stream.
 
 ## Authorship

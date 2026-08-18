@@ -6,8 +6,8 @@ A module is one unit of per-agent state with defined rules for four questions:
 what it contributes to its holder's prompt, what it reports as telemetry, how it
 is copied, and what happens to it when a different agent takes it over.
 Everything an agent instance holds is a module: its conversation window, its
-memories, its task list, its handle on the board, what it has read from the
-skills catalogue, and its thread archive.
+memories, its task list, its handle on the board, the skills it has used, and
+its thread archive.
 
 There are six kinds, and the list is closed.
 
@@ -17,7 +17,7 @@ There are six kinds, and the list is closed.
 | `memories` | The [memories](/gg/memories/) it curates, under whichever strategy the capability configures. |
 | `tasks` | The [task](/gg/tasks/) list, a blocked-by DAG. |
 | `board` | The [project-management](/gg/project-management/) board. Run-global: every holder holds the same board. |
-| `skills` | The [skills](/gg/skills/) catalogue and the set of skills read so far. |
+| `skills` | Its profile's [skills](/gg/skills/) catalogue and the set of skills used so far. |
 | `archive` | The thread archive [`archive_thread`](/gg/agent-managed-context/) fills and `search_archive` reads. |
 
 ## Ownership
@@ -50,7 +50,7 @@ unowned, so it is not shown a decomposition it has no tool to act on.
 The other four kinds read no ownership param. A window is its holder's prompt. A
 task list is what an agent steers by from turn to turn, so it is always carried
 as its own message. For memories the [strategy](/gg/memories/) already decides
-what the store puts in the window, and for skills the catalogue is the only
+what the store puts in the window, and for skills its own catalogue is the only
 route an agent has to knowing which skills exist.
 
 ## Copying
@@ -74,10 +74,11 @@ quote that id. The window is never shared, because the turn loop holds it
 exclusively for the whole of a turn; asking to share one yields an independent
 copy.
 
-The skills module is copied in halves. The catalogue is immutable and always
-shared. The read set, which records which skill bodies are already pinned in the
-window, follows the window it describes: a fork copies it and a share aliases
-it.
+The skills module is copied in halves. The catalogue is the one its profile
+names a directory for, so a copy of the agent holds the same one, and two
+profiles naming one directory hold one copy between them. The read set, which
+records which skill bodies are already pinned in the window, follows the window
+it describes: a fork copies it and a share aliases it.
 
 [`fork`](/gg/fork-and-exec/) clones a whole set for a copy of the agent that
 made it, applying these rules per kind. A copy therefore gets an independent
@@ -85,10 +86,10 @@ window and task list, a shared board, and memories that follow the forker's
 [scope](/gg/memories/). The copy's memories are re-stamped with the copy's own
 agent id, so its writes are attributed to it.
 
-The [code an agent has loaded](/gg/skills/#code-skills) by reading a code skill
-or memory is not a module. It holds no context, is never summarized and is never
-transferred; a new instance starts with nothing bound and re-reads what it
-wants.
+The [code an agent has loaded](/gg/skills/#code-skills) by using a code skill or
+memory is not a module. It holds no context, is never summarized and is never
+transferred; a new instance starts with nothing loaded, and using the skill
+again is the whole of the recovery.
 
 ## Transfer
 

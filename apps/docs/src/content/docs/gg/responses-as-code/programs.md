@@ -14,10 +14,10 @@ prose around the code. gg runs no analysis of its own to decide whether a reply
 is a program. The reply is healed, then prepared by the agent's program
 language, and that language's compiler or parser is what accepts or refuses it.
 
-The reply is a whole program in its language. It imports the parts of gg's SDK
-it calls, and it declares the entry point its language requires of a program
-that runs. gg compiles it as it stands, on the terms in
-[invariants](/gg/responses-as-code/invariants/).
+The reply is a whole program in its language. It imports what it calls, gg's SDK
+and a module the agent loaded alike, and it declares the entry point its
+language requires of a program that runs. gg compiles it as it stands, on the
+terms in [invariants](/gg/responses-as-code/invariants/).
 
 A program, written in TypeScript:
 

@@ -46,7 +46,7 @@ Compaction summarizes the history. The following state is carried verbatim and
 forms the fixed prefix of the restarted window:
 
 - [Skills](/gg/skills/): the list of available skills, plus the full contents of
-  any that have been read.
+  any that have been used.
 - [Tasks](/gg/tasks/): the active task list.
 - [Memories](/gg/memories/): the list, plus the contents of those in play.
 - The [project board](/gg/project-management/).
@@ -69,7 +69,7 @@ Two further things cross without being pinned material:
 
 The [code an agent has loaded](/gg/skills/#code-skills) from a code skill or
 memory is not context and costs no tokens, so a boundary does not touch it and
-`lib` stays bound exactly as it was.
+`lib` stays loaded exactly as it was.
 
 Everything else is ephemeral and is summarized away, including the text views a
 [responses-as-code](/gg/responses-as-code/overview/) program opened. A `compact`

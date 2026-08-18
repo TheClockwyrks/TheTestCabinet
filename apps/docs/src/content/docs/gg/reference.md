@@ -123,11 +123,11 @@ goes with them. Enumerating that would be a subset lattice per tool. Every call,
 every argument and every sentence gg can send is on the page, and only the
 numbers a run bounds them by belong to the run.
 
-Some descriptions enumerate run data rather than a policy: the skills in the
-library, the agents on the roster, the state an agent stands in and where it may
-go next. There is no configuration-independent rendering of those, so the
-reference is projected from a run holding obvious stand-ins, and each one is
-marked in place in the description, the argument list and the schema, under a
+Some descriptions enumerate run data rather than a policy: the skills in an
+agent's library, the agents on the roster, the state an agent stands in and
+where it may go next. There is no configuration-independent rendering of those,
+so the reference is projected from a run holding obvious stand-ins, and each one
+is marked in place in the description, the argument list and the schema, under a
 caption saying what it stands for. The page learns which strings those are from
 gg, which records the constants it substituted.
 
