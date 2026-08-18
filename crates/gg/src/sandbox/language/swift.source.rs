@@ -62,7 +62,7 @@
 
 use std::fmt::Write as _;
 
-use crate::sandbox::PrepareError;
+use crate::sandbox::{ModuleExport, ModuleExportKind, PrepareError};
 
 use super::healing::{code_mask, declaration_keyword, identifier};
 
@@ -187,11 +187,12 @@ pub(super) fn namespaced(source: &str, key: &str) -> Result<String, PrepareError
 /// What is **not** listed is what a program could not reach: a `private` or `fileprivate` declaration
 /// is invisible outside the module's own file, and an `extension`, `protocol` or operator stays at
 /// file scope and is reached without the namespace at all.
-pub(super) fn exports(source: &str) -> Vec<String> {
+pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
     let Ok(Some(items)) = declarations(source) else {
         return Vec::new();
     };
-    let mut names: Vec<String> = Vec::new();
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out: Vec<ModuleExport> = Vec::new();
     for item in items {
         let Some(namespaced) = item.namespaced else {
             continue;
@@ -199,11 +200,37 @@ pub(super) fn exports(source: &str) -> Vec<String> {
         let Some(name) = namespaced.name.filter(|_| namespaced.exported) else {
             continue;
         };
-        if !names.contains(&name) {
-            names.push(name);
+        if out.iter().any(|seen| seen.name == name) {
+            continue;
         }
+        out.push(ModuleExport {
+            name,
+            kind: kind(namespaced.keyword),
+            declaration: super::super::heads::head(
+                lines
+                    .get(namespaced.keyword_line)
+                    .copied()
+                    .unwrap_or_default()
+                    .trim(),
+            ),
+            // Above the item's **first** line rather than above its keyword: an attribute written on
+            // a line of its own stands between the two, and the documentation is above both.
+            doc: super::super::comments::block_doc(&lines, item.first)
+                .or_else(|| super::super::comments::line_doc(&lines, item.first, &["///", "//"])),
+            returns: Vec::new(),
+            parameters: Vec::new(),
+        });
     }
-    names
+    out
+}
+
+/// What a program does with the declaration `keyword` opens.
+fn kind(keyword: &str) -> ModuleExportKind {
+    match keyword {
+        "func" => ModuleExportKind::Function,
+        "struct" | "class" | "enum" | "actor" | "protocol" | "typealias" => ModuleExportKind::Type,
+        _ => ModuleExportKind::Value,
+    }
 }
 
 /// The key a module is checked under on its own, and the `lib` declaration that check needs.
@@ -236,6 +263,8 @@ struct Namespaced {
     /// The line its declaration keyword stands on — not always [`Item::first`], because an attribute
     /// may be written on a line of its own above it.
     keyword_line: usize,
+    /// The keyword itself, which is what says whether a program calls this, names it, or reads it.
+    keyword: &'static str,
     /// Whether a `static` has to be inserted: a `func`, `var` or `let` becomes a **type** member and
     /// an instance member of a caseless `enum` is unreachable, having no instances to be a member of.
     needs_static: bool,
@@ -374,6 +403,7 @@ fn opens_a_declaration(line: &str, number: usize) -> Option<Opening> {
         !opens_with_modifier(line, "private") && !opens_with_modifier(line, "fileprivate");
     Some(Opening::Declaration(Some(Namespaced {
         keyword_line: number,
+        keyword,
         needs_static,
         name,
         exported,

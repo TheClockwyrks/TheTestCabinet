@@ -74,8 +74,8 @@ use crate::healing::{CodeMask, Dialect};
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    CodeModule, FileWindow, PrepareContext, PrepareError, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, spell,
+    CodeModule, FileWindow, ModuleExport, ModuleExportKind, PrepareContext, PrepareError,
+    PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
@@ -253,27 +253,37 @@ impl ProgramLanguage for FixtureLanguage {
 
     /// A module's namespace is whatever it `def`s, and its prepared source says so in a trailing
     /// comment — the fixture's analogue of the `return { … }` epilogue TypeScript generates.
+    ///
+    /// Every export is a function, quoted as the line that declared it: the fixture's dialect has
+    /// one kind of declaration, so it says so rather than pretending to a range it does not have.
     fn prepare_module(
         &self,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
         let prepared = self.prepare_program(source, &[], context)?;
-        let exports: Vec<String> = prepared
+        let exports: Vec<ModuleExport> = prepared
             .source
             .lines()
-            .filter_map(|line| line.trim().strip_prefix("def "))
-            .map(|rest| {
-                rest.split(['(', ' '])
-                    .next()
-                    .unwrap_or_default()
-                    .trim()
-                    .to_string()
+            .filter_map(|line| {
+                let name = line.trim().strip_prefix("def ")?;
+                let name = name.split(['(', ' ']).next().unwrap_or_default().trim();
+                (!name.is_empty()).then(|| ModuleExport {
+                    name: name.to_string(),
+                    kind: ModuleExportKind::Function,
+                    declaration: line.trim().to_string(),
+                    doc: None,
+                    returns: Vec::new(),
+                    parameters: Vec::new(),
+                })
             })
-            .filter(|name| !name.is_empty())
             .collect();
         Ok(PreparedModule {
-            source: format!("{}\n# exports: {}", prepared.source, exports.join(", ")),
+            source: format!(
+                "{}\n# exports: {}",
+                prepared.source,
+                super::export_names(&exports).join(", ")
+            ),
             exports,
         })
     }

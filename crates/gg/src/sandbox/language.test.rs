@@ -433,10 +433,10 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
 /// **Every language says how a program reaches the code a skill or memory bound**, in a form that
 /// arm's own compiler would accept.
 ///
-/// This is the one fact about the surface that no search can answer: `lib` binds no catalogued
-/// function, so the reply to the read that bound the module is the only place a model is told, and
-/// [`Loaded::note`](crate::knowledge::Loaded::note) builds that sentence from here. A form quoted in
-/// a syntax the arm does not have is a binding the model has not been given.
+/// This is the one fact about the surface an arm's own catalogue cannot state: `lib` binds no
+/// catalogued function, so the [documentation view](crate::docs) a use of the module opens is the
+/// only place a model is told, and that view's line is built from here. A form quoted in a syntax
+/// the arm does not have is a binding the model has not been given.
 ///
 /// Asserted as containment for every arm, plus the exact text of the two that reach a module by
 /// **string** rather than by path, because those two are the ones a `member_separator` would get
@@ -446,10 +446,10 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
 fn every_language_says_how_a_bound_module_is_reached() {
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
         let access = language.lib_access("csvTools");
-        // Both halves of the note, because both are what the model reads: on an arm whose module
-        // system resolves a specifier, `lib` is the scheme in the import line and the access is the
-        // namespace that line bound. Asserting the access alone would have made such an arm state
-        // its scheme nowhere.
+        // Both halves of the view's line, because both are what the model reads: on an arm whose
+        // module system resolves a specifier, `lib` is the scheme in the import line and the access
+        // is the namespace that line bound. Asserting the access alone would have made such an arm
+        // state its scheme nowhere.
         let quoted = format!(
             "{} {access}",
             language.lib_import("csvTools").unwrap_or_default()
@@ -479,6 +479,41 @@ fn every_language_says_how_a_bound_module_is_reached() {
         language(GgProgramLanguage::PureScript).lib_access("csvTools"),
         "Gg.Core.lib \"csvTools\" \"<name>\""
     );
+}
+
+/// **Every arm spells one *named* export**, with the placeholder really gone.
+///
+/// [`lib_member`](ProgramLanguage::lib_member) is derived rather than declared, by substituting into
+/// the [access template](ProgramLanguage::lib_access) — which makes the placeholder a contract
+/// between the two, and an arm that spelled it any other way would hand a model a line reading
+/// `lib.csvTools.<name>` and call it the call site. The sibling gate above cannot catch that: it
+/// lowercases before it compares, so an arm writing `<NAME>` passes it and substitutes nothing.
+///
+/// So this asserts the substitution itself, on every arm: the export's name is in the line and the
+/// placeholder is not.
+#[test]
+fn every_language_spells_one_named_export_with_the_placeholder_gone() {
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let member = language.lib_member("csvTools", "parseCsv");
+        assert!(
+            member.contains("parseCsv"),
+            "{}: `{member}` does not name the export",
+            language.display_name()
+        );
+        assert!(
+            !member.contains(crate::sandbox::language::LIB_ACCESS_NAME),
+            "{}: `{member}` still carries the placeholder, so nothing was substituted",
+            language.display_name()
+        );
+        assert_eq!(
+            member,
+            language
+                .lib_access("csvTools")
+                .replace(crate::sandbox::language::LIB_ACCESS_NAME, "parseCsv"),
+            "{}: the member spelling is the access template with a name in it",
+            language.display_name()
+        );
+    }
 }
 
 /// **A code agent that names no language refuses the launch.** There is no default: gg drives no run
@@ -1121,12 +1156,12 @@ fn preparing_a_module_is_the_languages_own() {
     let module = typescript()
         .prepare_module("export const total = 1;\n", &PrepareContext::new())
         .expect("TypeScript reads its own exports");
-    assert_eq!(module.exports, vec!["total".to_string()]);
+    assert_eq!(export_names(&module.exports), vec!["total".to_string()]);
 
     let fixture = fixture_language()
         .prepare_module("def total\n  x = 1\n", &PrepareContext::new())
         .expect("the fixture reads its own exports");
-    assert_eq!(fixture.exports, vec!["total".to_string()]);
+    assert_eq!(export_names(&fixture.exports), vec!["total".to_string()]);
 
     // Neither language finds the other's exports, because neither is looking for them.
     assert!(

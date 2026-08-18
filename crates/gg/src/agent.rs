@@ -6292,17 +6292,22 @@ impl Agent {
                 fsm: self.fsm.as_ref(),
             },
         );
+        // The code this agent has loaded by using a code skill or memory, and the on-use scripts a
+        // use owes. Per agent instance and per session, beside the docs runtime and the program
+        // library for the same reason: only a code turn touches it, it costs no context, and a
+        // compaction has nothing to do with it.
+        //
+        // Built **before** the documentation runtime because it owns the other half of that runtime's
+        // answer: a used module and its declarations join this agent's documentation surface, and the
+        // runtime reads them through a handle to this registry rather than through a copy of it.
+        let mut knowledge = crate::knowledge::KnowledgeModules::new();
         let mut docs = crate::docs::DocsRuntime::new(
             granted_capabilities.clone(),
             ending_role,
             &granted_operations,
             code.language,
-        );
-        // The code this agent has loaded by reading a code skill or memory, and the on-use scripts a
-        // read owes. Per agent instance and per session, beside the docs runtime and the program
-        // library for the same reason: only a code turn touches it, it costs no context, and a
-        // compaction has nothing to do with it.
-        let mut knowledge = crate::knowledge::KnowledgeModules::new();
+        )
+        .reading(knowledge.documentation());
         // This agent's own rules on filing a board issue — who it may assign one to, and whether
         // reviewers are demanded. The native `create_issue` tool carries these already (the registry
         // built it from the same profile); a code turn rebuilds the tool per call, so it needs them
@@ -6398,6 +6403,25 @@ impl Agent {
             // the same task, and the handoff note at the tail says what changed.
             Opening::Carried { .. } => true,
         };
+
+        // A carried window arrives holding its predecessor's documentation band, and this instance
+        // is not its predecessor. Every page in it is re-derived from its key against *this* agent's
+        // surface, and what will not render goes — most of all a page describing a
+        // [code module](crate::knowledge) the predecessor loaded, since nothing transfers loaded
+        // code and a copy that kept those pages would be describing calls it cannot write until it
+        // uses the skill again. See `transitions::drop_unrenderable_docviews`.
+        if carried {
+            let dropped = transitions::drop_unrenderable_docviews(context, &docs);
+            if dropped > 0 {
+                emitter.emit(log(
+                    "debug",
+                    format!(
+                        "dropped {dropped} documentation view(s) this instance cannot render from \
+                         the window it inherited"
+                    ),
+                ));
+            }
+        }
 
         // The bootstrap turn: on a code agent's fresh window, a program gg writes in this agent's
         // language and **runs** — listing every module the agent was granted and opening the

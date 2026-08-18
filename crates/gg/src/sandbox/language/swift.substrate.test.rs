@@ -57,6 +57,7 @@
 
 use std::time::Instant;
 
+use crate::sandbox::export_names;
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
@@ -660,7 +661,7 @@ fn a_code_module_is_checked_on_its_own_and_reports_its_names() {
         &PrepareContext::new(),
     )
     .expect("that module checks");
-    assert_eq!(prepared.exports, ["parse"]);
+    assert_eq!(export_names(&prepared.exports), ["parse"]);
 
     match compile::compile_module(
         "public func parse() -> Int {\n    \"twelve\"\n}\n",

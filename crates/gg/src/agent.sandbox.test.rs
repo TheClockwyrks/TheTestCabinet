@@ -1250,7 +1250,12 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
         &dir,
         code_set("mock/primary", json!({})),
         program_script(&[
-            "import * as gg from \"gg\";\ngg.skills.readSkill(\"csv-tools\");",
+            // The use and a search for what it produced, in **one** program: the registry the
+            // documentation surface reads is the one the load writes to, so a module brought into
+            // use mid-turn is searchable on that turn rather than on the next one.
+            "import * as gg from \"gg\";\ngg.skills.readSkill(\"csv-tools\");\n\
+             gg.views.openText(\"found\", JSON.stringify(gg.docs.search(\"parse\")\n\
+             .hits.map((hit) => hit.key)));",
             // The next turn: the module is bound, and the on-use script's view has arrived.
             "import * as gg from \"gg\";\nimport * as csvTools from \"lib:csvTools\";\n\
              gg.views.openText(\"parsed\", JSON.stringify(csvTools.parse(\"x,y,z\")));",
@@ -1268,15 +1273,35 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
             .join("\n")
     };
 
-    // The reply to the read told the model where its code went — the binding path it must not guess.
+    // The use opened documentation rather than saying anything: one view per declaration the module
+    // offers that a program can call, headed by the key it is filed under, carrying the specifier
+    // the program imports it by. The sentence this replaced is asserted gone, because a reply is
+    // exactly the wrong place for the one fact no search can answer — it goes out with the next
+    // compaction, and this does not.
     let after_read = text(&requests[1]);
     assert!(
-        after_read.contains("lib:csvTools"),
-        "the read names the specifier the program imports it by: {after_read}"
+        after_read.contains("Documentation: csvTools.parse"),
+        "the use opened a view of the declaration: {after_read}"
     );
     assert!(
-        after_read.contains("parse"),
-        "and what it exports: {after_read}"
+        after_read.contains("lib:csvTools"),
+        "and that view names the specifier the program imports it by: {after_read}"
+    );
+    assert!(
+        !after_read.contains("It stays bound for the rest of your session"),
+        "and nothing was appended to the read's own reply: {after_read}"
+    );
+    // The other half of the sentence that went: an on-use script is queued and runs, and the model
+    // is told about it by what the script shows rather than by gg narrating that one exists.
+    assert!(
+        !after_read.contains("also runs a script"),
+        "including the half about the script: {after_read}"
+    );
+    // And the module was on the documentation surface *before* the program that loaded it ended:
+    // the search that program composed came back with the declaration's own key.
+    assert!(
+        after_read.contains("csvTools.parse\""),
+        "a module used mid-turn is searchable on that turn: {after_read}"
     );
     // The on-use script ran after that turn's program, so its view is in the very next prompt.
     assert!(
@@ -2264,5 +2289,52 @@ async fn a_hand_over_is_cancelled_when_the_program_then_throws() {
             .iter()
             .any(|body| body.contains("was NOT run") && body.contains("failed after handing it")),
         "the model is told its hand-over was cancelled: {bodies:#?}"
+    );
+}
+
+/// **A code memory written under the scratchpad opens its documentation too**, end to end — the
+/// second of the two paths that load a module, and the only one where the *write* is the use.
+///
+/// The scratchpad keeps every memory in the window, so there is no `read_memory` to load the code
+/// later: the write is the one moment it can load, and the sentence the write used to append
+/// ("it loads when you read the memory back") has gone with it. What replaces it is the same set of
+/// pages a skill's use opens, which is what this asserts arrives — on the next turn's prompt, and
+/// spelled the way the module is really reached.
+#[tokio::test]
+async fn a_code_memory_written_under_the_scratchpad_opens_its_documentation() {
+    let dir = TempDir::new().unwrap();
+    let mut set = code_set("mock/primary", json!({}));
+    crate::tools::grant(
+        &mut set.agents[0],
+        test_cabinet_core::gg::CAPABILITY_MEMORIES,
+    );
+
+    let (outcome, _events, requests) = drive_recorded_code_run(
+        &dir,
+        set,
+        program_script(&["import * as gg from \"gg\";\n\
+             gg.memories.writeMemory({ name: \"csv-tools\", description: \"Parsing CSV.\", \
+             body: \"Use the module.\", code: \"/** Split a CSV into rows. */\\nexport function \
+             parse(text: string): string[] { return text.split(\\\",\\\"); }\\n\" });"]),
+    )
+    .await;
+
+    assert_eq!(outcome, SessionOutcome::Ran);
+    let after_write = requests[1]
+        .iter()
+        .filter_map(|message| message.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        after_write.contains("Documentation: csvTools.parse"),
+        "the write opened a view of the declaration it carried: {after_write}"
+    );
+    assert!(
+        after_write.contains("Split a CSV into rows."),
+        "carrying the author's own prose: {after_write}"
+    );
+    assert!(
+        !after_write.contains("It loads — and its `lib` key is named — when you read the memory"),
+        "and nothing was appended to the write's own reply: {after_write}"
     );
 }

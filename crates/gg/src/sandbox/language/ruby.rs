@@ -138,8 +138,8 @@ pub(super) const SURFACE_IMPORT: &str = "require \"gg\"";
 /// never runs a line of anybody's skill. It names nothing of gg's surface, so it is not a second
 /// way to reach [`SURFACE_IMPORT`]'s names.
 ///
-/// The line is quoted in the read that binds the module
-/// ([`Loaded::note`](crate::knowledge::Loaded::note)), which is the moment it matters.
+/// The line is quoted in the [documentation view](crate::docs) of the module and of each
+/// declaration it exports, which is the moment it matters.
 pub(super) const LIB_IMPORT: &str = "require \"lib\"";
 
 /// The interpreter component: the ECMAScript guest with Opal's runtime pre-initialised into it and

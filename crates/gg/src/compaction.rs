@@ -1114,9 +1114,14 @@ pub struct RestoredDocview {
 ///
 /// Called **before** the rewrite, for the reason [`RestoredFile`]s are read before it: the keys are
 /// in the window the reset is about to empty. A key `docs` no longer resolves is dropped rather than
-/// carried as an error — unlike a file path, which the model chose and may be wondering about, a
-/// docview's key came from gg's own catalogue, so a miss is drift in gg and there is nothing the
-/// model could act on.
+/// carried as an error — there is nothing the model could act on either way, and the two reasons a
+/// key can miss are both silent by design. A key out of gg's own catalogue misses only through drift
+/// in gg. A key naming a declaration of a [loaded code module](crate::docs::LoadedDocs) misses when
+/// the agent holding this window is not the instance that loaded it: the code did not travel, so its
+/// documentation must not either. A window that changed hands has normally been swept of those
+/// already — a [carried one](crate::agent::transitions) is re-derived against its new instance
+/// before that instance takes a turn — so what this catches is the same rule at the boundary a
+/// window crosses **without** changing hands.
 pub fn restore_docviews(context: &ContextModel, docs: &DocsRuntime) -> Vec<RestoredDocview> {
     context
         .open_docviews()

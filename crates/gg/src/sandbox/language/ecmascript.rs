@@ -47,6 +47,8 @@ use wasmtime::component::Component;
 
 use crate::sandbox::SandboxError;
 
+use super::{ModuleExport, ModuleExportKind};
+
 /// The core module `rustc` emitted for `wasm32-wasip1`.
 ///
 /// It is not committed. `gg-artifact-typescript` runs `packages/gg-sandbox/build.sh` as a step of
@@ -171,7 +173,7 @@ pub(crate) fn component() -> Result<&'static Component, SandboxError> {
         .expect("the component was just set, and a `OnceLock` never unsets"))
 }
 
-/// **The names a code module offers**, read off its top-level `export` lines.
+/// **What a code module offers**, read off its top-level `export` lines.
 ///
 /// One reader for both arms on this guest, because a module is one thing here: the loader hands a
 /// program the module's own namespace, and a name the module did not export is not in it. There is
@@ -182,54 +184,288 @@ pub(crate) fn component() -> Result<&'static Component, SandboxError> {
 /// emission, where the types are already erased, so a type-only export contributes nothing here
 /// without anything having to know what a type is; [JavaScript](super::javascript) reads the
 /// author's own file, which is the file the guest evaluates.
-pub(super) fn exports(source: &str) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
-    let mut push = |name: &str| {
-        if !name.is_empty() && !names.iter().any(|seen| seen == name) {
-            names.push(name.to_string());
+pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
+    exports_of(source, source)
+}
+
+/// The exports of `namespace`, **documented from `authored`** — the file the module's author really
+/// wrote, when that is a different file from the one the guest evaluates.
+///
+/// The two are the same file on this arm and are not on [TypeScript's](super::typescript), where
+/// `tsc` has already erased every type by the time the namespace can be read. The namespace is
+/// still the emission's answer, because the emission is what the guest evaluates and a name that is
+/// not in it is not callable — but the *declaration* a documentation view quotes is the author's
+/// own, types and all, because a model reading it is about to write TypeScript against it. Nothing
+/// is read twice: one file says which names exist, the other says how each was written.
+pub(super) fn exports_of(namespace: &str, authored: &str) -> Vec<ModuleExport> {
+    let written = declarations(authored);
+    let emitted = declarations(namespace);
+    let lines: Vec<&str> = namespace.lines().collect();
+    exported(namespace)
+        .into_iter()
+        .map(|(name, local, line)| {
+            match written
+                .iter()
+                .chain(emitted.iter())
+                .find(|declared| declared.name == local)
+            {
+                Some(declared) => ModuleExport {
+                    name,
+                    kind: declared.kind,
+                    declaration: declared.declaration.clone(),
+                    doc: declared.doc.clone(),
+                    returns: Vec::new(),
+                    parameters: Vec::new(),
+                },
+                // A list export of something this file did not declare — a name it imported and
+                // passed on. The `export` line is then the only thing its author wrote about it, so
+                // it is what the view quotes.
+                None => ModuleExport {
+                    name,
+                    kind: ModuleExportKind::Value,
+                    declaration: lines.get(line).unwrap_or(&"").trim().to_string(),
+                    doc: None,
+                    returns: Vec::new(),
+                    parameters: Vec::new(),
+                },
+            }
+        })
+        .collect()
+}
+
+/// Every name the namespace offers, in source order and without repeats: what it is called, the
+/// local name it was declared under, and the line the `export` stands on.
+fn exported(source: &str) -> Vec<(String, String, usize)> {
+    let mut names: Vec<(String, String, usize)> = Vec::new();
+    let mut push = |name: &str, local: &str, line: usize| {
+        if !name.is_empty() && !names.iter().any(|(seen, _, _)| seen == name) {
+            names.push((name.to_string(), local.to_string(), line));
         }
     };
-    for line in source.lines() {
+    for (number, line) in source.lines().enumerate() {
         let Some(rest) = line.strip_prefix("export ") else {
             continue;
         };
         let rest = rest.trim_start();
         // `export { a, b as c };` — the list form, whose names are the ones after `as` where there
-        // is one, because that is what the namespace offers.
+        // is one, because that is what the namespace offers. What stands before the `as` is the name
+        // the declaration was written under, which is where its documentation is.
         if let Some(list) = rest.strip_prefix('{')
             && let Some((list, _)) = list.split_once('}')
         {
             for entry in list.split(',') {
                 let entry = entry.trim();
-                push(entry.rsplit(" as ").next().unwrap_or(entry).trim());
+                let (local, name) = entry.rsplit_once(" as ").unwrap_or((entry, entry));
+                push(name.trim(), local.trim(), number);
             }
             continue;
         }
-        // `export function f(…)`, `export class C`, `export const x = …`, and the modifiers that
-        // may stand between the keyword and the name.
-        let mut words = rest.split_whitespace();
-        let Some(mut keyword) = words.next() else {
+        let Some(name) = declared_name(rest) else {
             continue;
         };
-        while ["async", "default"].contains(&keyword) {
-            let Some(next) = words.next() else {
-                break;
-            };
-            keyword = next;
-        }
-        if !["function", "class", "const", "let", "var"].contains(&keyword) {
-            continue;
-        }
-        let Some(name) = words.next() else {
-            continue;
-        };
-        let name = name.trim_start_matches('*');
-        let end = name
-            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
-            .unwrap_or(name.len());
-        push(&name[..end]);
+        push(name, name, number);
     }
     names
+}
+
+/// One top-level declaration of a module, exported or not — everything a documentation view of it
+/// needs, kept under the name it was *declared* as so a renaming export can find it.
+struct Declared {
+    /// The name the declaration itself gives.
+    name: String,
+    /// What a program does with it.
+    kind: ModuleExportKind,
+    /// The declaration as written, without its body.
+    declaration: String,
+    /// The comment written above it.
+    doc: Option<String>,
+}
+
+/// Every top-level declaration `source` makes, in source order — the ones it exports on the same
+/// line and the ones a later `export { … }` names.
+fn declarations(source: &str) -> Vec<Declared> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out: Vec<Declared> = Vec::new();
+    for (number, line) in lines.iter().enumerate() {
+        // Unindented, which is what a module's top level is; the `export` keyword is not part of
+        // what makes a line a declaration, only of what makes it exported.
+        if line.starts_with([' ', '\t']) {
+            continue;
+        }
+        let rest = line.strip_prefix("export ").unwrap_or(line).trim_start();
+        let Some(name) = declared_name(rest) else {
+            continue;
+        };
+        if out.iter().any(|declared| declared.name == name) {
+            continue;
+        }
+        out.push(Declared {
+            name: name.to_string(),
+            kind: kind(rest),
+            declaration: super::heads::head(line),
+            doc: super::comments::block_doc(&lines, number)
+                .or_else(|| super::comments::line_doc(&lines, number, &["//"])),
+        });
+    }
+    out
+}
+
+/// The name `rest` declares, where `rest` is a line with any `export ` keyword already stripped.
+fn declared_name(rest: &str) -> Option<&str> {
+    let name = binding(rest)?.trim_start_matches('*');
+    let end = name
+        .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+        .unwrap_or(name.len());
+    (end > 0).then(|| &name[..end])
+}
+
+/// What a declaration binds: the text starting at its name, once the modifiers and the keyword that
+/// says what kind of thing it is have been read — `None` for a line that declares nothing.
+fn binding(rest: &str) -> Option<&str> {
+    let mut cursor = rest.trim_start();
+    loop {
+        let end = cursor.find(char::is_whitespace)?;
+        let word = &cursor[..end];
+        let after = cursor[end..].trim_start();
+        if ["async", "default"].contains(&word) {
+            cursor = after;
+            continue;
+        }
+        return ["function", "class", "const", "let", "var"]
+            .contains(&word)
+            .then_some(after);
+    }
+}
+
+/// What a program does with the declaration `rest` makes.
+///
+/// A `class` is a type, a `function` is a function, and a binding is whichever its initialiser makes
+/// it: `const parse = (text) => …` is a function to everyone who calls it, and reporting it as a
+/// value because of the keyword it happens to be spelled with would tell a model the opposite of
+/// what it needs to know. The reading is narrow on purpose — an initialiser that *opens* a function
+/// or an arrow, rather than any initialiser with an `=>` somewhere inside it — because a `map` call
+/// in a constant's value is not what that constant is.
+fn kind(rest: &str) -> ModuleExportKind {
+    let word = rest
+        .split_whitespace()
+        .find(|word| !["async", "default"].contains(word))
+        .unwrap_or_default();
+    match word {
+        "class" => ModuleExportKind::Type,
+        "function" => ModuleExportKind::Function,
+        _ => match rest.split_once('=').map(|(_, value)| value) {
+            Some(value) if opens_a_function(value) => ModuleExportKind::Function,
+            _ => ModuleExportKind::Value,
+        },
+    }
+}
+
+/// Whether `value` — the text after a binding's `=` — opens a function.
+fn opens_a_function(value: &str) -> bool {
+    let value = value.trim_start();
+    let value = value.strip_prefix("async").map_or(value, str::trim_start);
+    if value.starts_with("function") {
+        return true;
+    }
+    // A **type-parameter list** stands between the `=` and the parameter list an arrow is
+    // recognised by, on the arm this reader is written for as much as on its untyped twin:
+    // `const identity = <T>(value: T): T => value` is an ordinary TypeScript arrow, and reading it
+    // as a value would file a callable declaration under the one kind a
+    // [use](crate::docs::DocsRuntime::use_views) opens no page for — so a model would be handed the
+    // module and not the manual for the very function it came for. What the same `<` opens where
+    // there is no arrow behind it — an old-style `<Row>data` assertion — is still a value, because
+    // what decides that is what follows the list rather than the list itself.
+    let value = match value.strip_prefix('<') {
+        Some(rest) => match after_angles(rest) {
+            Some(rest) => rest.trim_start(),
+            // An unclosed one is a line the compiler will reject; nothing here guesses.
+            None => return false,
+        },
+        None => value,
+    };
+    let after = match value.strip_prefix('(') {
+        // A parameter list: whatever follows its own `)`, counted so a default value's parentheses
+        // do not close it early.
+        Some(mut rest) => {
+            let mut depth = 1usize;
+            loop {
+                let Some(at) = rest.find([')', '(']) else {
+                    // An unclosed parameter list is a line the compiler will reject; nothing here
+                    // guesses at what its author meant.
+                    return false;
+                };
+                match rest.as_bytes()[at] {
+                    b'(' => depth += 1,
+                    _ => depth -= 1,
+                }
+                rest = &rest[at + 1..];
+                if depth == 0 {
+                    break rest;
+                }
+            }
+        }
+        // A single parameter with no parentheses: `const twice = x => x * 2`.
+        None => {
+            let end = value
+                .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+                .unwrap_or(value.len());
+            &value[end..]
+        }
+    };
+    arrow_follows(after)
+}
+
+/// Whether an arrow follows a parameter list — immediately, or past the **return type** this arm's
+/// typed twin writes between the two.
+///
+/// `(value: T): T => value` is the shape most of a TypeScript module's arrows are written in, and a
+/// reading that demanded the arrow immediately after the `)` would file every one of them as a
+/// value — which is the one classification that costs the model a page, since a
+/// [use](crate::docs::DocsRuntime::use_views) opens a view per *callable* declaration.
+///
+/// The arrow is looked for at the top level of the annotation, so a parameter typed as a function —
+/// `(handler): (row: Row) => void` — is not what makes this one a function. Where the annotation is
+/// itself a function type the two readings agree anyway, which is why the depth is counted rather
+/// than the first `=>` taken.
+fn arrow_follows(after: &str) -> bool {
+    let after = after.trim_start();
+    if after.starts_with("=>") {
+        return true;
+    }
+    let Some(annotation) = after.strip_prefix(':') else {
+        return false;
+    };
+    let bytes = annotation.as_bytes();
+    let mut depth = 0usize;
+    for (at, byte) in bytes.iter().enumerate() {
+        match byte {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            b'=' if depth == 0 && bytes.get(at + 1) == Some(&b'>') => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// The text after the `>` that closes a type-parameter list whose `<` has already been read, or
+/// `None` when the line never closes it.
+///
+/// Counted rather than searched for, because a type parameter may carry a bound that is itself
+/// generic — `<T extends Array<string>>` closes twice before it is done.
+fn after_angles(mut rest: &str) -> Option<&str> {
+    let mut depth = 1usize;
+    loop {
+        let at = rest.find(['<', '>'])?;
+        match rest.as_bytes()[at] {
+            b'<' => depth += 1,
+            _ => depth -= 1,
+        }
+        rest = &rest[at + 1..];
+        if depth == 0 {
+            return Some(rest);
+        }
+    }
 }
 
 #[cfg(test)]

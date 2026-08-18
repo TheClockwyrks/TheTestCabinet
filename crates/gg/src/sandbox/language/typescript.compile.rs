@@ -252,14 +252,16 @@ pub(super) fn compile_program(
 ///
 /// It is an ordinary module of the language, compiled exactly as a program is and in its own
 /// coordinates. What it offers is what it exports, read back off the emitted JavaScript by
-/// [`ecmascript::exports`](crate::sandbox::language::ecmascript::exports).
+/// [`ecmascript::exports_of`](crate::sandbox::language::ecmascript::exports_of) — which is handed
+/// the author's own file beside the emission, so that the names are the namespace's answer while
+/// the declaration each documentation view quotes is the one its author wrote, types intact.
 pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
     let emitted = compile(MODULE_SOURCE, MODULE_EMITTED, source, context)?;
     Ok(PreparedModule {
-        exports: crate::sandbox::language::ecmascript::exports(&emitted),
+        exports: crate::sandbox::language::ecmascript::exports_of(&emitted, source),
         source: emitted,
     })
 }

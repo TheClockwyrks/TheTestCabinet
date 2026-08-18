@@ -56,6 +56,7 @@ use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
 
 use super::compile::{self, compile_program};
+use crate::sandbox::export_names;
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
@@ -629,7 +630,7 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
     // program knows and a module's own preparation is handed none — and the names its namespace
     // offers, read from that same source.
     assert_eq!(prepared.source, authored);
-    assert_eq!(prepared.exports, vec!["split".to_string()]);
+    assert_eq!(export_names(&prepared.exports), vec!["split".to_string()]);
 
     let modules = [CodeModule {
         name: "csv_tools".to_string(),
@@ -705,7 +706,7 @@ fn a_module_is_read_at_its_own_line_and_its_includes_are_hoisted() {
         &PrepareContext::new(),
     )
     .expect("a module's own `#include` is hoisted into its global module fragment");
-    assert_eq!(included.exports, vec!["ones".to_string()]);
+    assert_eq!(export_names(&included.exports), vec!["ones".to_string()]);
     assert_eq!(
         included.source, "#include <deque>\nstd::deque<int> ones() { return {1, 2}; }\n",
         "what comes back is the author's own bytes, hoist or no hoist"
@@ -757,7 +758,7 @@ fn a_module_is_read_at_its_own_line_and_its_includes_are_hoisted() {
         &PrepareContext::new(),
     )
     .expect("gg's own include is in every module's global module fragment");
-    assert_eq!(fine.exports, vec!["ones".to_string()]);
+    assert_eq!(export_names(&fine.exports), vec!["ones".to_string()]);
 }
 
 #[test]

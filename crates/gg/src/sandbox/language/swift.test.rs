@@ -11,6 +11,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::FileWindow;
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// This arm, resolved from the registry — the same trait object a run resolves.
 fn swift() -> &'static dyn ProgramLanguage {
@@ -192,5 +193,5 @@ fn a_code_module_is_declarations_rather_than_statements() {
         module,
         "public func marker() -> String {\n    \"marker-1\"\n}\n"
     );
-    assert_eq!(source::exports(&module), vec!["marker"]);
+    assert_eq!(export_names(&source::exports(&module)), vec!["marker"]);
 }

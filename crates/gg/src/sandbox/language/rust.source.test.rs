@@ -2,6 +2,7 @@
 //! modules in scope.
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// **The file `rustc` reads is the file the model sent**, byte for byte.
 ///
@@ -120,7 +121,7 @@ fn a_program_that_ends_mid_line_is_still_above_the_declarations() {
 #[test]
 fn a_code_module_is_checked_as_its_author_wrote_it() {
     let module = "use gg::files;\n\npub fn parse(_row: &str) -> usize {\n    0\n}\n";
-    assert_eq!(exports(module), vec!["parse".to_string()]);
+    assert_eq!(export_names(&exports(module)), ["parse"]);
 }
 
 /// **The names a compile is written under are the constants everything else reads.**
@@ -132,4 +133,41 @@ fn the_compile_names_are_stated_once_each() {
     // The crate name is what a program with no entry point is named in: `error[E0601]: main
     // function not found in crate program`.
     assert!(module_file("csv_tools").ends_with(".rs"));
+}
+
+/// **An export carries what a documentation view is rendered from**, and an attribute between the
+/// prose and the item has not detached the two.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let module = "/// Parse a row.\n\
+                  #[inline]\n\
+                  pub fn parse(text: &str) -> Vec<u8> {\n\
+                  \x20   Vec::new()\n\
+                  }\n\
+                  \n\
+                  pub struct Row {\n\
+                  \x20   pub id: u8,\n\
+                  }\n\
+                  \n\
+                  pub const LIMIT: usize = 10;\n";
+    let exports = exports(module);
+    assert_eq!(export_names(&exports), ["parse", "Row", "LIMIT"]);
+
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(
+        exports[0].declaration,
+        "pub fn parse(text: &str) -> Vec<u8>"
+    );
+    assert_eq!(exports[0].doc.as_deref(), Some("Parse a row."));
+
+    assert_eq!(exports[1].kind, ModuleExportKind::Type);
+    assert_eq!(exports[1].declaration, "pub struct Row");
+    assert_eq!(exports[1].doc, None);
+
+    // A constant's value is part of its declaration, so nothing is cut off it.
+    assert_eq!(exports[2].kind, ModuleExportKind::Value);
+    assert_eq!(exports[2].declaration, "pub const LIMIT: usize = 10;");
+
+    assert!(exports.iter().all(|export| export.returns.is_empty()));
+    assert!(exports.iter().all(|export| export.parameters.is_empty()));
 }

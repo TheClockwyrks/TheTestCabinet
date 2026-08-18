@@ -548,3 +548,486 @@ fn every_catalogued_member_function_reaches_a_type_view() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The loaded half: the code modules an agent brought into use
+// ---------------------------------------------------------------------------------------------
+
+/// One export, with as much of a declaration as the assertion needs.
+fn export(
+    name: &str,
+    kind: crate::sandbox::ModuleExportKind,
+    declaration: &str,
+    returns: &[&str],
+    parameters: &[&str],
+) -> crate::sandbox::ModuleExport {
+    crate::sandbox::ModuleExport {
+        name: name.to_string(),
+        kind,
+        declaration: declaration.to_string(),
+        doc: None,
+        returns: returns.iter().map(|name| name.to_string()).collect(),
+        parameters: parameters.iter().map(|name| name.to_string()).collect(),
+    }
+}
+
+/// A runtime granted everything, reading a registry holding `exports` under `csvTools`.
+fn loading(exports: &[crate::sandbox::ModuleExport]) -> DocsRuntime {
+    let loaded = LoadedDocs::new();
+    loaded.register(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        "csvTools",
+        "skill",
+        "csv-tools",
+        exports,
+    );
+    everything(GgProgramLanguage::TypeScript, EndingRole::Standard).reading(loaded)
+}
+
+/// **A loaded declaration is looked up under both names it answers to, and canonicalized to one.**
+///
+/// The same rule the SDK half follows, and for the same reason: a model reads the key in a search
+/// hit and types the bare name at a call site, and a view filed under whichever of the two it
+/// happened to write would put one page in the window twice.
+#[test]
+fn a_loaded_declaration_answers_to_its_key_and_to_its_bare_name() {
+    let docs = loading(&[export(
+        "parse",
+        crate::sandbox::ModuleExportKind::Function,
+        "export function parse(text: string): Row[]",
+        &[],
+        &[],
+    )]);
+    for spelling in ["csvTools.parse", "parse"] {
+        assert_eq!(
+            docs.docview_key(spelling).as_deref(),
+            Some("csvTools.parse"),
+            "`{spelling}` resolves, and to the one key it is filed under"
+        );
+        assert!(docs.read_any(spelling).is_some(), "{spelling}");
+    }
+    assert!(
+        docs.read_any("csvTools").is_some(),
+        "and the module itself is an entry under the key it was loaded at"
+    );
+}
+
+/// **gg's own surface wins a collision**, so a loaded declaration can only ever add a name.
+///
+/// A skill that happens to export a `readFile` must not take gg's page out of the model's hands: it
+/// did not ask to replace it, and the SDK is what the prompt and the bootstrap taught it. The
+/// loaded entry keeps its qualified key, which is the name a search hands back for it, so nothing is
+/// unreachable — only unshadowed.
+#[test]
+fn a_loaded_declaration_does_not_shadow_the_sdk() {
+    let docs = loading(&[export(
+        "readFile",
+        crate::sandbox::ModuleExportKind::Function,
+        "export function readFile(path: string): string",
+        &[],
+        &[],
+    )]);
+    let sdk = docs
+        .docview_key("readFile")
+        .expect("an agent granted everything binds gg's own");
+    assert_ne!(sdk, "csvTools.readFile");
+    assert_eq!(
+        docs.docview_key("csvTools.readFile").as_deref(),
+        Some("csvTools.readFile"),
+        "and the author's own is still reachable under its key"
+    );
+}
+
+/// **A near-miss on a loaded declaration is offered back**, because a model reaching for a name it
+/// read a moment ago in a view gg opened for it is the likeliest near-miss there is.
+#[test]
+fn a_failed_lookup_suggests_a_loaded_declaration() {
+    let docs = loading(&[export(
+        "parseCsv",
+        crate::sandbox::ModuleExportKind::Function,
+        "export function parseCsv(text: string): Row[]",
+        &[],
+        &[],
+    )]);
+    assert!(
+        docs.suggest("parsecsv").contains(&"parseCsv".to_string()),
+        "{:?}",
+        docs.suggest("parsecsv")
+    );
+}
+
+/// **A use opens the module's callables and nothing else** — no view of the module itself, and none
+/// of the declarations a program cannot call.
+#[test]
+fn a_use_selects_a_view_per_callable_declaration() {
+    let docs = loading(&[
+        export(
+            "parse",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function parse(text: string): Row[]",
+            &[],
+            &[],
+        ),
+        export(
+            "Row",
+            crate::sandbox::ModuleExportKind::Type,
+            "export type Row = Record<string, string>",
+            &[],
+            &[],
+        ),
+        export(
+            "DELIMITER",
+            crate::sandbox::ModuleExportKind::Value,
+            "export const DELIMITER = \",\"",
+            &[],
+            &[],
+        ),
+    ]);
+    assert_eq!(
+        docs.use_views("csvTools", DocViewTypes::default()),
+        ["csvTools.parse"]
+    );
+    assert!(
+        docs.use_views("jsonTools", DocViewTypes::default())
+            .is_empty(),
+        "and a key naming no loaded module selects nothing"
+    );
+}
+
+/// **The type flags are honoured over a loaded declaration's own type names**, on the rule an SDK
+/// function's are: return types under one flag, argument types under another, unioned, one level
+/// deep and each placed once.
+///
+/// Every arm reads an empty list today, so this is a rule with no data behind it yet — which is
+/// exactly why it is asserted here rather than left to be discovered when an arm starts filling one
+/// in. The declaration a name resolves to is looked for in the **module itself** first, because a
+/// name a declaration writes is most likely the name of something declared beside it.
+#[test]
+fn the_type_flags_select_a_loaded_declarations_own_types() {
+    let docs = loading(&[
+        export(
+            "parse",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function parse(options: Options): Row[]",
+            &["Row"],
+            &["Options"],
+        ),
+        export(
+            "Row",
+            crate::sandbox::ModuleExportKind::Type,
+            "export type Row = Record<string, string>",
+            &[],
+            &[],
+        ),
+        export(
+            "Options",
+            crate::sandbox::ModuleExportKind::Type,
+            "export type Options = { header: boolean }",
+            &[],
+            &[],
+        ),
+    ]);
+    assert_eq!(
+        docs.use_views("csvTools", DocViewTypes::OFF),
+        ["csvTools.parse"],
+        "every flag off places the callable and nothing around it"
+    );
+    assert_eq!(
+        docs.use_views("csvTools", DocViewTypes::only(DocViewType::Return)),
+        ["csvTools.parse", "csvTools.Row"]
+    );
+    assert_eq!(
+        docs.use_views("csvTools", DocViewTypes::only(DocViewType::Parameters)),
+        ["csvTools.parse", "csvTools.Options"]
+    );
+    let mut every = DocViewTypes::default();
+    every.set(DocViewType::Parameters, true);
+    let both = docs.use_views("csvTools", every);
+    assert_eq!(
+        both,
+        ["csvTools.parse", "csvTools.Row", "csvTools.Options"],
+        "the flags are read independently and unioned"
+    );
+}
+
+/// **A type name a loaded declaration writes that the module does not declare falls through to
+/// gg's own catalogue**, which is what makes the rule one level deep rather than one module wide.
+#[test]
+fn a_loaded_declaration_may_name_an_sdk_type() {
+    let docs = loading(&[export(
+        "show",
+        crate::sandbox::ModuleExportKind::Function,
+        "export function show(read: FileRead): void",
+        &[],
+        &["FileRead"],
+    )]);
+    let opened = docs.use_views("csvTools", DocViewTypes::only(DocViewType::Parameters));
+    assert!(
+        opened.iter().any(|key| key.contains("FileRead")),
+        "gg's own declaration is what the name resolves to: {opened:?}"
+    );
+}
+
+/// **A loaded declaration does not shadow gg's own *page*, not just its key.**
+///
+/// [`docview_key`](DocsRuntime::docview_key) and [`read_any`](DocsRuntime::read_any) are asserted to
+/// ask their sources in one order, and the sibling test above holds the resolver to it. This holds
+/// the *renderer* to it, which is the half a window is filled from: a use that opened
+/// `readFile` and got an author's four-line helper back would have replaced gg's manual in the model's
+/// window without anything having refused anything.
+#[test]
+fn a_loaded_declaration_does_not_shadow_the_sdks_own_page() {
+    let docs = loading(&[export(
+        "readFile",
+        crate::sandbox::ModuleExportKind::Function,
+        "export function readFile(path: string): string",
+        &[],
+        &[],
+    )]);
+    let sdk = docs.read_any("readFile").expect("gg's own still renders");
+    assert!(
+        !sdk.contains("export function readFile(path: string): string"),
+        "the page is gg's, not the author's: {sdk}"
+    );
+    let authored = docs
+        .read_any("csvTools.readFile")
+        .expect("and the author's is still reachable under its key");
+    assert!(
+        authored.contains("export function readFile(path: string): string"),
+        "{authored}"
+    );
+}
+
+/// **A near-miss on a loaded module's own key is offered back too**, not only on a declaration's
+/// name. The key is the string a model reads at the top of every view a use opened, so it is as
+/// likely a thing to mistype as the names beneath it.
+#[test]
+fn a_failed_lookup_suggests_a_loaded_module_key() {
+    let docs = loading(&[export(
+        "parse",
+        crate::sandbox::ModuleExportKind::Function,
+        "export function parse(text: string): Row[]",
+        &[],
+        &[],
+    )]);
+    assert!(
+        docs.suggest("csvtools").contains(&"csvTools".to_string()),
+        "{:?}",
+        docs.suggest("csvtools")
+    );
+}
+
+/// **A use opens the views of the module it names and of no other**, which is what keeps two skills
+/// used in one session two separate manuals.
+#[test]
+fn a_use_opens_only_the_module_it_names() {
+    let loaded = LoadedDocs::new();
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    loaded.register(
+        language,
+        "csvTools",
+        "skill",
+        "csv-tools",
+        &[export(
+            "parse",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function parse(text: string): Row[]",
+            &[],
+            &[],
+        )],
+    );
+    loaded.register(
+        language,
+        "jsonTools",
+        "memory",
+        "json_tools",
+        &[export(
+            "read",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function read(text: string): unknown",
+            &[],
+            &[],
+        )],
+    );
+    let docs = everything(GgProgramLanguage::TypeScript, EndingRole::Standard).reading(loaded);
+    assert_eq!(
+        docs.use_views("csvTools", DocViewTypes::default()),
+        ["csvTools.parse"]
+    );
+    assert_eq!(
+        docs.use_views("jsonTools", DocViewTypes::default()),
+        ["jsonTools.read"]
+    );
+}
+
+/// **A key naming a module this instance has not loaded renders nothing**, which is the `None` both
+/// re-derivations of a docview read to drop a view whose module did not travel.
+///
+/// Asserted at the runtime because that is where the two restores ask it, and because the answer has
+/// to be `None` rather than an empty page: a page rendered empty would be a view of a module the
+/// agent cannot call, kept in the window and charged to it.
+#[test]
+fn a_key_of_a_module_this_instance_did_not_load_renders_nothing() {
+    let docs = everything(GgProgramLanguage::TypeScript, EndingRole::Standard);
+    assert_eq!(docs.read_any("csvTools.parse"), None);
+    assert_eq!(docs.read_any("csvTools"), None);
+    assert_eq!(docs.docview_key("csvTools.parse"), None);
+}
+
+/// **The `Errors` flag places nothing beside a loaded declaration**, and that is a statement rather
+/// than an omission.
+///
+/// An error view is opened off the names a function's own documentation comment declares it throws,
+/// in gg's catalogue vocabulary. An author's module does not write that vocabulary and a
+/// [`ModuleExport`](crate::sandbox::ModuleExport) carries no throws list, so there is nothing for the
+/// flag to select — and the flag being on must not therefore reach for something else.
+#[test]
+fn the_errors_flag_places_nothing_beside_a_loaded_declaration() {
+    let docs = loading(&[
+        export(
+            "parse",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function parse(text: string): Row[]",
+            &["Row"],
+            &[],
+        ),
+        export(
+            "Row",
+            crate::sandbox::ModuleExportKind::Type,
+            "export type Row = Record<string, string>",
+            &[],
+            &[],
+        ),
+    ]);
+    assert_eq!(
+        docs.use_views("csvTools", DocViewTypes::only(DocViewType::Errors)),
+        ["csvTools.parse"],
+        "the callable, and nothing the flag could have added"
+    );
+}
+
+/// **A type name resolves in its own module or in gg's, and never in a *third* one.**
+///
+/// The two-source resolver is lenient on purpose — every entry answers to its bare name as well as
+/// to its key — and that leniency is what makes the fallback dangerous here. A declaration writing
+/// `Row` says nothing about anybody else's `Row`, so a resolver that walked the whole registry
+/// would open a page about another skill's data because two authors picked the same word, and open
+/// it as though it documented the call the model is about to write.
+///
+/// Both halves are asserted against one registry: the module's own `Row` is found, and the other
+/// module's is not reached for even when this one declares no such type at all.
+#[test]
+fn a_loaded_declarations_type_never_resolves_in_another_loaded_module() {
+    let loaded = LoadedDocs::new();
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    loaded.register(
+        language,
+        "csvTools",
+        "skill",
+        "csv-tools",
+        &[export(
+            "parse",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function parse(text: string): Row[]",
+            &["Row"],
+            &[],
+        )],
+    );
+    loaded.register(
+        language,
+        "jsonTools",
+        "memory",
+        "json_tools",
+        &[export(
+            "Row",
+            crate::sandbox::ModuleExportKind::Type,
+            "export type Row = { kind: \"json\" }",
+            &[],
+            &[],
+        )],
+    );
+    let docs = everything(GgProgramLanguage::TypeScript, EndingRole::Standard).reading(loaded);
+
+    assert_eq!(
+        docs.use_views("csvTools", DocViewTypes::only(DocViewType::Return)),
+        ["csvTools.parse"],
+        "the only `Row` in reach belongs to a module this declaration never mentions"
+    );
+
+    // And the same declaration in a module that *does* declare `Row` opens it, so the assertion
+    // above is about whose `Row` it is rather than about the flag placing nothing.
+    let own = LoadedDocs::new();
+    own.register(
+        language,
+        "csvTools",
+        "skill",
+        "csv-tools",
+        &[
+            export(
+                "parse",
+                crate::sandbox::ModuleExportKind::Function,
+                "export function parse(text: string): Row[]",
+                &["Row"],
+                &[],
+            ),
+            export(
+                "Row",
+                crate::sandbox::ModuleExportKind::Type,
+                "export type Row = Record<string, string>",
+                &[],
+                &[],
+            ),
+        ],
+    );
+    assert_eq!(
+        everything(GgProgramLanguage::TypeScript, EndingRole::Standard)
+            .reading(own)
+            .use_views("csvTools", DocViewTypes::only(DocViewType::Return)),
+        ["csvTools.parse", "csvTools.Row"]
+    );
+}
+
+/// **A loaded module whose key names one of gg's own modules does not take that page either.**
+///
+/// The precedence rule is asserted above for a declaration; a module key is the other half of it and
+/// the likelier collision, since a skill is named for what it does and so are gg's own families. The
+/// consequence is the one the rule promises: gg's page stays gg's, and the author's declarations are
+/// still reachable — under keys the author's own module key builds, which nothing else claims.
+#[test]
+fn a_loaded_module_key_that_names_an_sdk_module_does_not_take_its_page() {
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    let module = crate::sandbox::catalogue_modules(language)
+        .first()
+        .map(|described| described.id)
+        .expect("this arm declares modules");
+    let loaded = LoadedDocs::new();
+    loaded.register(
+        language,
+        module,
+        "skill",
+        module,
+        &[export(
+            "parse",
+            crate::sandbox::ModuleExportKind::Function,
+            "export function parse(text: string): string[]",
+            &[],
+            &[],
+        )],
+    );
+    let docs = everything(GgProgramLanguage::TypeScript, EndingRole::Standard).reading(loaded);
+
+    let page = docs
+        .read_any(module)
+        .expect("gg's own module still renders");
+    assert!(
+        !page.contains("The code the skill"),
+        "the page under `{module}` is gg's, not the skill's: {page}"
+    );
+    let declaration = docs
+        .read_any(&format!("{module}.parse"))
+        .expect("and the author's declaration is still reachable under its own key");
+    assert!(
+        declaration.contains("export function parse(text: string): string[]"),
+        "{declaration}"
+    );
+}

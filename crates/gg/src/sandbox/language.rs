@@ -136,6 +136,16 @@ pub use compile::{
 #[path = "language/diagnostics.rs"]
 mod diagnostics;
 
+/// **The comment above a declaration**, in whichever spelling an arm's language writes one — the
+/// half of every arm's [export scan](PreparedModule::exports) that is one rule rather than eleven.
+#[path = "language/comments.rs"]
+mod comments;
+
+/// **A declaration without its body**, for the arms that open one with a brace — the other half of
+/// an [export scan](PreparedModule::exports) that is one rule rather than five.
+#[path = "language/heads.rs"]
+mod heads;
+
 pub use diagnostics::library_set;
 
 #[path = "language/typescript.rs"]
@@ -274,6 +284,15 @@ pub(crate) mod fixture;
 #[cfg(test)]
 pub(crate) use fixture::fixture_languages;
 
+/// **What stands in for an export's name** in the [access spelling](ProgramLanguage::lib_access)
+/// every arm declares.
+///
+/// Named rather than written out at each site because it is a contract between an arm's own
+/// spelling and [`lib_member`](ProgramLanguage::lib_member), which substitutes into it —
+/// `every_language_says_how_a_bound_module_is_reached` holds every arm to writing it, so an arm that
+/// spelled the placeholder some other way would produce a member line with no name in it.
+pub const LIB_ACCESS_NAME: &str = "<name>";
+
 /// One program language gg can drive a responses-as-code agent in.
 ///
 /// Object-safe on purpose: the registry hands out `&'static dyn ProgramLanguage`, so nothing that
@@ -307,22 +326,33 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     }
 
     /// **How a program reaches one export of a module bound at `lib.<key>`**, in this arm's own
-    /// spelling, with `<name>` standing in for the export.
+    /// spelling, with [`<name>`](LIB_ACCESS_NAME) standing in for the export.
     ///
-    /// This is the sentence the reply to a [code skill or memory](crate::knowledge)'s read is built
-    /// from, and it is the **only** place a model learns it: `lib` binds no catalogued function, so
-    /// there is nothing to search for, and the system prompt states what a model cannot be told at
-    /// the moment it matters rather than what it can. The moment it matters is the read that bound
-    /// the module, so the read is what says it.
+    /// This is the line every [documentation view of a loaded module](crate::docs) carries, and it
+    /// is the **only** place a model learns it: `lib` binds no catalogued function, so an arm's own
+    /// catalogue says nothing about it, and the system prompt states what a model cannot be told at
+    /// the moment it matters rather than what it can. The moment it matters is the view of the
+    /// declaration the model is about to call, so that view is what says it.
     ///
     /// The default is a path, which is what eight arms write. The three that reach a module **by
     /// string** — because it is compiled separately and there is no import for their compiler to
     /// check a program against — override it, and a family of calls that differ by what they hand
     /// back is written `<text|number|flag|run>` rather than as one of its members, so a model
-    /// reading the note is not shown one arm of a choice it has to make.
+    /// reading the view is not shown one arm of a choice it has to make.
     fn lib_access(&self, key: &str) -> String {
         let step = self.member_separator();
-        format!("lib{step}{key}{step}<name>")
+        format!("lib{step}{key}{step}{LIB_ACCESS_NAME}")
+    }
+
+    /// **The whole spelling one named export is reached by** — [`lib_access`](Self::lib_access) with
+    /// the export's name in it.
+    ///
+    /// Derived rather than declared beside the template, so that an arm states its shape once and
+    /// the two spellings cannot drift: a module view quotes the template because it is about every
+    /// export at once, and a declaration's own view quotes this because the model reading it is
+    /// about to write exactly this line.
+    fn lib_member(&self, key: &str, name: &str) -> String {
+        self.lib_access(key).replace(LIB_ACCESS_NAME, name)
     }
 
     /// The line a program writes to reach the module bound at `key`, on an arm that needs one.
@@ -330,9 +360,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// `None` on the arms where a code module lands somewhere a program can already name: a
     /// namespace of the compiled program, a value the guest hands the evaluator, a lookup by string.
     /// Where the module is a real unit of the language's own module system, the program reaches it
-    /// the way it reaches any other, and the read that binds it
-    /// ([`Loaded::note`](crate::knowledge::Loaded::note)) is the one place a model is told the line
-    /// — the same place it is told the [access](Self::lib_access) that line makes resolve.
+    /// the way it reaches any other, and the [documentation view](crate::docs) of the module and of
+    /// each of its declarations is the one place a model is told the line — the same place it is
+    /// told the [access](Self::lib_access) that line makes resolve.
     ///
     /// It takes the key because on an arm whose module system resolves a *specifier*, the line names
     /// the module it brings in and there is no key-independent line to write.
@@ -942,18 +972,98 @@ pub struct PreparedProgram {
 }
 
 /// A code module that prepared cleanly: the source whose evaluation produces the module's namespace,
-/// and the names that namespace offers.
+/// and what that namespace offers.
 ///
-/// The names travel beside the source rather than being read back out of it, because they are what
+/// The exports travel beside the source rather than being read back out of it, because they are what
 /// the model is *told* it can call — and a second reading of the same fact is a second chance for
 /// the two to disagree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedModule {
     /// The source the guest evaluates to produce the module's namespace.
     pub source: String,
-    /// The exported names, in source order, as the namespace lists them. A renaming export is listed
-    /// under the name the namespace gives it.
-    pub exports: Vec<String>,
+    /// What the namespace offers, in source order, one entry per declaration it exports. A renaming
+    /// export is listed under the name the namespace gives it.
+    pub exports: Vec<ModuleExport>,
+}
+
+/// What kind of thing one of a module's [exports](ModuleExport) is — the first thing a documentation
+/// view of it says, and the one fact about a declaration that is worth knowing before reading it.
+///
+/// Three, because three is what a model does something *different* with: a function is called, a
+/// type is named in a signature and reached through its own members, and a value is read. Every arm
+/// answers in these terms whatever its own vocabulary is, so a Swift `actor`, a C++ `struct` and a
+/// Rust `enum` arrive as one kind — recording eleven languages' keywords in a type shared by all
+/// eleven would be describing the arms instead of what the model may write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModuleExportKind {
+    /// Something a program calls.
+    Function,
+    /// Something a program *names* — a class, a struct, an enum, an interface, an alias. Reached
+    /// through its own members rather than called.
+    Type,
+    /// Something a program reads: a constant, a variable, and the namespace-like exports that are
+    /// neither of the other two — a Rust `mod`, a C++ `namespace`. Those last are a genuine
+    /// stretch, and they are here rather than in a fourth variant because a model reaches them the
+    /// way it reaches a value: by writing the name and going on.
+    Value,
+}
+
+/// **One name a code module offers**, and everything a documentation view of it is rendered from.
+///
+/// A used module joins the agent's documentation surface, where each declaration is an entry the
+/// model searches, opens and closes exactly as it does one of gg's own — so what an export carries
+/// is decided by what such a view shows, and by nothing else. It is the module's *author* speaking
+/// throughout: gg quotes the declaration and the prose above it rather than paraphrasing either,
+/// because a model that is going to write a call against this line should read the line.
+///
+/// Read by the arm, at the [preparation](ProgramLanguage::prepare_module) that accepted the module,
+/// off the source its author wrote. Every arm reads what its own scan can see and reports nothing
+/// where it cannot tell: an export the model was not told about is a call gg failed to advertise,
+/// where a wrong one is a call that does not compile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleExport {
+    /// The name a program writes to reach it — what the *namespace* calls it, so a renaming export
+    /// is named the thing it was renamed to. It is also the name its documentation view is opened
+    /// and searched under.
+    pub name: String,
+    /// What a program does with it.
+    pub kind: ModuleExportKind,
+    /// The declaration as the author wrote it, without its body.
+    ///
+    /// Quoted rather than rebuilt from the parts an arm managed to read: a signature gg assembled
+    /// would be gg's account of a declaration standing in front of the author's, and the model is
+    /// about to write a call against the author's.
+    pub declaration: String,
+    /// The documentation comment written on it.
+    ///
+    /// `None` both for a declaration whose author wrote none and for one whose comment this arm's
+    /// scan cannot see — the two are not told apart, because neither gives the view anything to
+    /// show.
+    pub doc: Option<String>,
+    /// The type names the declaration writes in return position.
+    ///
+    /// What it is for: an agent whose [`docViewTypes`](crate::config) flags ask for the types around
+    /// a function gets a view of each of these, one level deep, so the shape a call hands back is
+    /// documented beside the call. **Empty on every arm today** — reading a declaration's types is a
+    /// per-arm step that has not landed — so an empty list means "not read here", never "returns
+    /// nothing".
+    pub returns: Vec<String>,
+    /// The type names the declaration writes in parameter position, for the same reason and under
+    /// the same caveat as [`returns`](Self::returns).
+    pub parameters: Vec<String>,
+}
+
+/// The names `exports` offers, in the order they were read.
+///
+/// **Every reader of this is a gate**, which is why it is compiled for the tests alone. What a use
+/// of a module produces for the model is [documentation](crate::docs::LoadedDocs) — an entry per
+/// declaration, carrying the declaration itself — so nothing in a running gg has a reason to reduce
+/// an export to its name any more. What does have one is the eleven arms' export-scan gates, and a
+/// list of names is the assertion each of them is written as; one reading of it here is what keeps
+/// them from growing eleven local spellings of the same fold.
+#[cfg(test)]
+pub fn export_names(exports: &[ModuleExport]) -> Vec<&str> {
+    exports.iter().map(|export| export.name.as_str()).collect()
 }
 
 /// Why a source could not be prepared for its guest — because of what the **model wrote**.

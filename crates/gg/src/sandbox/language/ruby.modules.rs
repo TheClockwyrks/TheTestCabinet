@@ -40,16 +40,19 @@
 
 use crate::healing::{CodeMask, Dialect, lines_with_offsets};
 
+use super::super::{ModuleExport, ModuleExportKind};
+
 /// Every public method `source`'s top level defines, in source order and without repeats.
-pub(super) fn exports(source: &str) -> Vec<String> {
+pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
     // An unlexable module is scanned as though it were all code. The mask exists to keep a `def`
     // inside a heredoc from being read as a definition; where the lexer lost its place there is
     // nothing better to do than read the lines, and the cost of being wrong is a name in a list
     // rather than a deletion.
     let mask = super::healing::RUBY_DIALECT.code_mask(source);
-    let mut out: Vec<String> = Vec::new();
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out: Vec<ModuleExport> = Vec::new();
     let mut private = false;
-    for (offset, line) in lines_with_offsets(source) {
+    for (number, (offset, line)) in lines_with_offsets(source).enumerate() {
         if line.starts_with([' ', '\t']) || !is_code(mask.as_ref(), offset) {
             continue;
         }
@@ -66,12 +69,52 @@ pub(super) fn exports(source: &str) -> Vec<String> {
         let Some((name, declared_private)) = defined_method(trimmed) else {
             continue;
         };
-        if private || declared_private || out.iter().any(|seen| seen == name) {
+        if private || declared_private || out.iter().any(|seen| seen.name == name) {
             continue;
         }
-        out.push(name.to_string());
+        out.push(ModuleExport {
+            name: name.to_string(),
+            // Every name this scan reports is a `def`, because a method is the only thing the
+            // wrapper's module ends up offering — the module documentation above says why a
+            // constant and an `attr_reader` are not here.
+            kind: ModuleExportKind::Function,
+            declaration: head(trimmed),
+            doc: super::super::comments::line_doc(&lines, number, &["#"]),
+            returns: Vec::new(),
+            parameters: Vec::new(),
+        });
     }
     out
+}
+
+/// `line` without the body it opens — what a documentation view quotes.
+///
+/// A `def` line *is* the declaration: Ruby's body starts on the line below, so there is nothing to
+/// cut but an endless method's `=`, which opens a body of exactly one expression.
+///
+/// That `=` is the one **outside** the parameter list, and the distinction is the whole of this
+/// function. `def widen(text, width = 8)` writes a default value with an `=` around it in exactly
+/// the spelling an endless method uses, so a cut at the first one quotes `def widen(text, width` —
+/// a declaration that is not a line of Ruby and whose second parameter has gone missing. An
+/// endless method's `=` is at bracket depth zero and a default value's never is.
+fn head(line: &str) -> String {
+    let mut depth = 0usize;
+    let mut cut = None;
+    for (at, character) in line.char_indices() {
+        match character {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            // Matched with its spaces, which is also what tells an endless method's `=` from the
+            // `=` a name ends in: `def width=(value)` declares a setter and opens no body, and
+            // neither does `def ==(other)`.
+            ' ' if depth == 0 && line[at..].starts_with(" = ") => {
+                cut = Some(at);
+                break;
+            }
+            _ => {}
+        }
+    }
+    cut.map_or(line, |at| &line[..at]).trim_end().to_string()
 }
 
 /// Whether the byte at `offset` is code, treating an unlexable source as all code.

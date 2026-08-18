@@ -10,7 +10,7 @@
 //! modules are the one thing gg still writes into the entry file, and they go *below* the model's
 //! last line — see [`module_declarations`].
 
-use crate::sandbox::CodeModule;
+use crate::sandbox::{CodeModule, ModuleExport, ModuleExportKind};
 
 /// The file a program is compiled under, and the one its diagnostics are located in.
 ///
@@ -146,24 +146,49 @@ const MODULE_PREFIX: &str = "__gg_module_";
 /// The scan is lexical and **unindented-only**, like every other reading in this arm: a `pub fn`
 /// nested inside an `impl` or a `mod` is indented, is not a name the program reaches directly, and
 /// is not reported.
-pub(super) fn exports(source: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    for line in source.lines() {
+pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out: Vec<ModuleExport> = Vec::new();
+    for (number, line) in lines.iter().enumerate() {
         if line.starts_with([' ', '\t']) {
             continue;
         }
-        let Some(name) = exported_name(line) else {
+        let Some((name, keyword)) = exported_name(line) else {
             continue;
         };
-        if !names.iter().any(|seen| seen == name) {
-            names.push(name.to_string());
+        if out.iter().any(|seen| seen.name == name) {
+            continue;
         }
+        // An attribute stands between an item's documentation and the item, and belongs to the item:
+        // `#[inline]` under three lines of `///` has not detached them from each other.
+        let above = super::super::comments::above(&lines, number, |line| line.starts_with("#["));
+        out.push(ModuleExport {
+            name: name.to_string(),
+            kind: kind(keyword),
+            declaration: super::super::heads::head(line),
+            doc: super::super::comments::line_doc(&lines, above, &["///"]),
+            returns: Vec::new(),
+            parameters: Vec::new(),
+        });
     }
-    names
+    out
 }
 
-/// The name `line` makes public, if it makes one.
-fn exported_name(line: &str) -> Option<&str> {
+/// What a program does with the item `keyword` opens.
+///
+/// `mod` is the one that does not fit and it is a [`Value`](ModuleExportKind::Value): a program
+/// reaches a module by writing its name and going on, which is what it does with a constant. The
+/// alternative was a fourth kind for the one arm that has them.
+fn kind(keyword: &str) -> ModuleExportKind {
+    match keyword {
+        "fn" => ModuleExportKind::Function,
+        "struct" | "enum" | "trait" | "type" => ModuleExportKind::Type,
+        _ => ModuleExportKind::Value,
+    }
+}
+
+/// The name `line` makes public and the keyword that says what it is, if it makes one.
+fn exported_name(line: &str) -> Option<(&str, &str)> {
     let rest = line.trim().strip_prefix("pub")?;
     // `pub(crate)`, `pub(super)`, `pub(in …)` — visible to the program, which is in the same crate.
     let rest = match rest.strip_prefix('(') {
@@ -196,7 +221,7 @@ fn exported_name(line: &str) -> Option<&str> {
     let end = after
         .find(|c: char| !(c.is_alphanumeric() || c == '_'))
         .unwrap_or(after.len());
-    (end > 0).then(|| &after[..end])
+    (end > 0).then(|| (&after[..end], keyword))
 }
 
 /// The item keywords whose declaration names something a program may reach through `lib::<key>`.

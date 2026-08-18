@@ -72,7 +72,7 @@
 //! for is ASCII, and an ASCII byte never appears inside a multi-byte UTF-8 sequence, so byte
 //! comparisons find exactly what string comparisons would.
 
-use super::super::{PrepareError, PrepareFailure};
+use super::super::{ModuleExport, ModuleExportKind, PrepareError, PrepareFailure};
 
 /// The class a **program** compiles to: the file facade the Kotlin compiler emits `Program.kt`'s
 /// top-level declarations into, which is the file's name with `Kt` on the end.
@@ -123,8 +123,8 @@ pub(super) fn module_key_of(file: &str) -> Option<&str> {
 pub(super) struct Wrapped {
     /// The whole `.kt` file.
     pub source: String,
-    /// The names the module's namespace offers, in source order.
-    pub exports: Vec<String>,
+    /// What the module's namespace offers, in source order.
+    pub exports: Vec<ModuleExport>,
 }
 
 /// Put a code [skill](crate::skills)'s or [memory](crate::memories)'s **module** — an ordinary Kotlin
@@ -270,12 +270,30 @@ const MODIFIERS: [&str; 12] = [
 /// A **reading** rather than a rewriting: nothing is inserted, because the module is compiled into
 /// the program that uses it and a program reaches an export by naming it. What this produces is the
 /// list the module's author is *told* the namespace holds.
-fn exports(source: &str) -> Vec<String> {
+fn exports(source: &str) -> Vec<ModuleExport> {
+    let lines: Vec<&str> = source.lines().collect();
     Lexer::new(source)
         .top_level_functions()
         .into_iter()
         .filter(|function| !function.hidden)
-        .map(|function| function.name)
+        .map(|function| ModuleExport {
+            name: function.name,
+            // Only a `fun` reaches here: a top-level property or class of the author's own is not
+            // what this arm binds, so there is no other kind to report.
+            kind: ModuleExportKind::Function,
+            declaration: source[function.start..function.end].trim().to_string(),
+            doc: {
+                // The line its first modifier stands on — and above it, past any annotation written
+                // on a line of its own, whatever prose its author wrote.
+                let line = source[..function.start].matches('\n').count();
+                let above =
+                    super::super::comments::above(&lines, line, |line| line.starts_with('@'));
+                super::super::comments::block_doc(&lines, above)
+                    .or_else(|| super::super::comments::line_doc(&lines, above, &["///", "//"]))
+            },
+            returns: Vec::new(),
+            parameters: Vec::new(),
+        })
         .collect()
 }
 
@@ -287,6 +305,11 @@ struct Function {
     name: String,
     /// Whether a visibility modifier keeps it out of the namespace.
     hidden: bool,
+    /// Where it begins: the first byte of its modifier run, or of `fun` where it carries none.
+    start: usize,
+    /// Where its signature ends — at the `{` or the `=` that opens its body, or at the end of the
+    /// line when it has neither. `source[start..end]` is the declaration and nothing else.
+    end: usize,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -375,14 +398,45 @@ impl<'a> Lexer<'a> {
     /// The declaration whose `fun` keyword runs from `at` to `end`, when it declares a named
     /// function.
     fn function_at(&self, at: usize, end: usize, spans: &[(usize, usize)]) -> Option<Function> {
-        let name = self.declared_name(end, spans)?;
+        let (name, parameters) = self.declared_name(end, spans)?;
+        let (modifiers, start) = self.modifiers_before(at);
         Some(Function {
             name,
-            hidden: self
-                .modifiers_before(at)
+            hidden: modifiers
                 .iter()
                 .any(|word| HIDDEN.iter().any(|hidden| word == hidden)),
+            start,
+            end: self.signature_end(parameters, spans),
         })
+    }
+
+    /// Where the signature whose parameter list opens at `parameters` ends: past its own `)`, then
+    /// at the `{` or the `=` that opens the body — or at the end of the line, for a declaration
+    /// whose body is written on the next one.
+    ///
+    /// The parameter list is walked by counting its own brackets, so a default value's parentheses
+    /// do not close it early, and the spans are stepped over so a `)` inside a string is not one.
+    fn signature_end(&self, parameters: usize, spans: &[(usize, usize)]) -> usize {
+        let mut at = parameters;
+        let mut depth = 0usize;
+        let mut closed = false;
+        while at < self.bytes.len() {
+            if let Some((_, end)) = spans.iter().find(|(start, end)| at >= *start && at < *end) {
+                at = *end;
+                continue;
+            }
+            match self.bytes[at] {
+                b'(' if !closed => depth += 1,
+                b')' if !closed => {
+                    depth = depth.saturating_sub(1);
+                    closed = depth == 0;
+                }
+                b'{' | b'=' | b'\n' if closed => return at,
+                _ => {}
+            }
+            at += 1;
+        }
+        self.bytes.len()
     }
 
     /// The name declared after a `fun` keyword: the last identifier before the parameter list.
@@ -391,7 +445,7 @@ impl<'a> Lexer<'a> {
     /// the parameter list opens with no name in front of it (an anonymous function), or when no
     /// parameter list arrives at all — each of which is something other than a function this
     /// namespace could offer.
-    fn declared_name(&self, from: usize, spans: &[(usize, usize)]) -> Option<String> {
+    fn declared_name(&self, from: usize, spans: &[(usize, usize)]) -> Option<(String, usize)> {
         let mut at = from;
         let mut last: Option<String> = None;
         let mut angles = 0usize;
@@ -411,7 +465,7 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             match self.bytes[at] {
-                b'(' => return last,
+                b'(' => return last.map(|name| (name, at)),
                 // A type parameter list stands between `fun` and the name, and the identifiers in
                 // it are types rather than the declaration's own name.
                 b'<' => angles += 1,
@@ -436,14 +490,16 @@ impl<'a> Lexer<'a> {
         None
     }
 
-    /// The run of modifier words immediately before `at`.
+    /// The run of modifier words immediately before `at`, and where that run begins — which is `at`
+    /// itself for a declaration that carries none.
     ///
     /// Walks backwards over whitespace and words, stopping at the first thing that is not a
     /// [modifier](MODIFIERS) — a `)`, a `}`, an unknown word — so a `private` belonging to the
     /// *previous* declaration is never read as this one's.
-    fn modifiers_before(&self, at: usize) -> Vec<String> {
+    fn modifiers_before(&self, at: usize) -> (Vec<String>, usize) {
         let mut words = Vec::new();
         let mut scan = at;
+        let mut start = at;
         loop {
             while scan > 0 && self.bytes[scan - 1].is_ascii_whitespace() {
                 scan -= 1;
@@ -453,13 +509,14 @@ impl<'a> Lexer<'a> {
                 scan -= 1;
             }
             if scan == end {
-                return words;
+                return (words, start);
             }
             let word = &self.source[scan..end];
             if !MODIFIERS.contains(&word) {
-                return words;
+                return (words, start);
             }
             words.push(word.to_string());
+            start = scan;
         }
     }
 

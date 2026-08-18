@@ -49,6 +49,7 @@ use crate::limits::TurnErrorType;
 
 use super::compile::{compile_module, compile_program, warm};
 use crate::ending::{Ending, EndingRole};
+use crate::sandbox::export_names;
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
@@ -563,7 +564,7 @@ fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
     )
     .expect("a module of public top-level functions compiles");
     assert_eq!(
-        prepared.exports,
+        export_names(&prepared.exports),
         ["slugify", "distance"],
         "a private or internal function is the author's own business",
     );

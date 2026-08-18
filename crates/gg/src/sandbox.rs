@@ -107,9 +107,18 @@ pub(crate) mod signatures;
 
 pub use invoker::OperationApi;
 pub use language::{
-    FileWindow, PARAM_LANGUAGE, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    all_languages, language, library_set, resolve_program_language, spell,
+    FileWindow, ModuleExport, ModuleExportKind, PARAM_LANGUAGE, PrepareFailure, PreparedModule,
+    PreparedProgram, ProgramLanguage, all_languages, language, library_set,
+    resolve_program_language, spell,
 };
+
+// The one reading of an export list. Compiled for the tests alone, because every reader left is a
+// gate: what a use of a code module produces is a set of documentation entries rather than a list of
+// names, so gg itself no longer reduces an export to its name — while eleven arms' export-scan gates
+// are each written as an assertion over exactly that list, and a gate reaching for a spelling it has
+// to guess the module of is a gate that grows a twelfth copy instead.
+#[cfg(test)]
+pub use language::export_names;
 
 // gg's own name for each model-facing call, for the code outside this module that has to *quote*
 // one: a prompt naming the call that ends a session, a notice naming the hand-over gg did not

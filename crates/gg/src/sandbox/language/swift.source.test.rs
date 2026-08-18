@@ -5,6 +5,7 @@
 //! claim, asserted in `swift.substrate.test.rs` against a real `swiftc`.
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// The namespaced form of `source` under `key`, for a test that is about the text.
 fn wrapped(source: &str, key: &str) -> String {
@@ -161,7 +162,7 @@ fn a_source_that_does_not_lex_is_left_alone() {
 fn the_exports_are_every_namespaced_declaration() {
     let source = "public func parse() {}\nstruct Row {}\nenum Kind {}\ntypealias Rows = [Row]\nlet limit = 10\nvar seen = 0\nactor Store {}\nfinal class Cache {}\n";
     assert_eq!(
-        exports(source),
+        export_names(&exports(source)),
         vec![
             "parse", "Row", "Kind", "Rows", "limit", "seen", "Store", "Cache"
         ],
@@ -173,14 +174,14 @@ fn the_exports_are_every_namespaced_declaration() {
 #[test]
 fn what_a_program_cannot_reach_is_not_listed() {
     let source = "import Foundation\n\nprotocol Named {}\n\nprivate func helper() {}\nfileprivate let secret = 1\n\nfunc run() {}\n";
-    assert_eq!(exports(source), vec!["run"]);
+    assert_eq!(export_names(&exports(source)), vec!["run"]);
 }
 
 /// **A declaration nested inside another is not one of the module's names.**
 #[test]
 fn a_nested_declaration_is_not_an_export() {
     let source = "struct Row {\n    func describe() -> String { \"\" }\n    struct Inner {}\n}\n";
-    assert_eq!(exports(source), vec!["Row"]);
+    assert_eq!(export_names(&exports(source)), vec!["Row"]);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -204,4 +205,40 @@ fn the_lib_declarations_are_one_enum_per_key() {
 fn a_module_file_is_named_for_its_key() {
     assert_eq!(module_file("csvTools"), "module_csvTools.swift");
     assert!(module_file("csvTools").starts_with(MODULE_FILE_PREFIX));
+}
+
+/// **An export carries what a documentation view is rendered from**, with the prose read from above
+/// the declaration's *first* line rather than above its keyword — an attribute stands between them.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let source = "/// Widen a row.\n\
+                  @inlinable\n\
+                  public func widen(_ text: String) -> String {\n\
+                  \x20   text\n\
+                  }\n\
+                  \n\
+                  public struct Row {\n\
+                  \x20   public let id: Int\n\
+                  }\n\
+                  \n\
+                  public let limit = 10\n";
+    let exports = exports(source);
+    assert_eq!(export_names(&exports), ["widen", "Row", "limit"]);
+
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(
+        exports[0].declaration,
+        "public func widen(_ text: String) -> String"
+    );
+    assert_eq!(exports[0].doc.as_deref(), Some("Widen a row."));
+
+    assert_eq!(exports[1].kind, ModuleExportKind::Type);
+    assert_eq!(exports[1].declaration, "public struct Row");
+    assert_eq!(exports[1].doc, None);
+
+    assert_eq!(exports[2].kind, ModuleExportKind::Value);
+    assert_eq!(exports[2].declaration, "public let limit = 10");
+
+    assert!(exports.iter().all(|export| export.returns.is_empty()));
+    assert!(exports.iter().all(|export| export.parameters.is_empty()));
 }

@@ -6,14 +6,17 @@
 //! [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/api-surface/) it may instead, or as
 //! well, be **code**, in two independent halves:
 //!
-//! - a **module**, whose exports are bound at `lib.<key>` in every program the agent writes from
-//!   then on, so a helper an author got right once, or a model got right twenty turns ago, is
-//!   reached by calling it rather than by rewriting it; and
-//! - an **on-use script**, run once when the thing is first read, whose
+//! - a **module**, supplied to every program the agent writes from then on the way that arm supplies
+//!   gg's own SDK — an extern, a classpath entry, a module specifier — so a helper an author got
+//!   right once, or a model got right twenty turns ago, is reached by calling it rather than by
+//!   rewriting it; and
+//! - an **on-use script**, run each time the thing is used, whose
 //!   [views](crate::context::ViewKind) arrive in the agent's next prompt. Its source is never shown
 //!   to the model: it is how a skill *shows* the agent something, not something the agent reads.
 //!
-//! This is the per-agent state behind both.
+//! This is the per-agent state behind both, and behind a third thing that follows from the first:
+//! the [documentation](crate::docs::LoadedDocs) a loaded module puts on the agent's surface, which
+//! is owned here because it is written by the same event — the load — that binds the module.
 //!
 //! # It is not a [module](crate::modules) in gg's sense
 //!
@@ -28,23 +31,35 @@
 //!
 //! A [fork](https://docs.testcabinet.ai/gg/fork-and-exec/) or a successor inherits the window and
 //! the skills read set, but **not** the loaded modules: the registry is built where the session is
-//! driven, and a new instance starts with nothing bound. Reading the skill again is what reloads it,
-//! and a repeat read is answered with the same note naming the same key — so the recovery is one
-//! call and the model is told what it got.
+//! driven, and a new instance starts with nothing loaded. Using the skill again is the whole of the
+//! recovery — it re-loads the module under the same key and re-opens the documentation, so one call
+//! restores both halves.
+//!
+//! The documentation follows the code rather than the window, which is what keeps that honest: a
+//! view describing a module belongs to the instance that loaded it, and an instance that starts with
+//! nothing loaded [renders none of them](crate::docs::DocsRuntime::read_any).
 //!
 //! # Keys
 //!
-//! A skill named `csv-tools` and a memory slugged `csv_tools` both want to be `lib.csvTools`. The
-//! first one read gets it; the second gets `csvTools2`. Which is why **the key an agent really got
-//! is stated back to it** in the reply to the read that loaded it — a binding path a model has to
-//! guess is a binding path it will guess wrong.
+//! A skill named `csv-tools` and a memory slugged `csv_tools` both want the key `csvTools`. The
+//! first one used gets it; the second gets `csvTools2`. Which is why **the key an agent really got
+//! is what its documentation is filed under** — the module's own
+//! [view](crate::docs::DocsRuntime::read_any) is keyed by it and every declaration's view is keyed
+//! by it and a name, and each of those views quotes the line a program writes to reach what it
+//! documents. A binding path a model has to guess is a binding path it will guess wrong; the answer
+//! is a page it can read, and re-read, rather than a sentence appended to a reply it will compact
+//! away.
+//!
+//! Nothing about a load is appended to the reply. The use produces documentation, and the
+//! documentation is the whole of what gg says about it.
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
+use crate::docs::LoadedDocs;
 use crate::sandbox::{
-    CodeModule, PrepareFailure, PreparedProgram, ProgramLanguage, SandboxOutcome, prepare_module,
-    prepare_program,
+    CodeModule, ModuleExport, PrepareFailure, PreparedProgram, ProgramLanguage, SandboxOutcome,
+    prepare_module, prepare_program,
 };
 
 /// Where a piece of loaded code came from — what a failure names, and what the reply to the read
@@ -120,8 +135,8 @@ struct OnUseScript {
 /// One agent's loaded code, and the on-use scripts it owes.
 ///
 /// Forked with the agent (each gets its own set: what one agent has read says nothing about what
-/// another has), and never shared — two agents' `lib` objects are two different sets of bindings
-/// even when they came from the same skill.
+/// another has), and never shared — two agents that used the same skill hold two loaded modules and
+/// two documentation registries, not one of either.
 #[derive(Debug, Default)]
 pub struct KnowledgeModules {
     /// The loaded modules, keyed by the binding key, kept in key order so the list handed to the
@@ -152,93 +167,59 @@ pub struct KnowledgeModules {
     /// zero on every read is noise, and "did not compile" and "compiled instantly" are different
     /// claims.
     compiled: Option<Duration>,
+    /// **The documentation every loaded module put on this agent's surface** — one entry for the
+    /// module and one per declaration it exports, written here at the load.
+    ///
+    /// It lives beside the code rather than beside the documentation runtime because the two are one
+    /// fact stated twice otherwise: a module is loaded and a set of declarations becomes readable, at
+    /// one moment, from one preparation. The runtime holds a
+    /// [handle to this same registry](Self::documentation) rather than a copy of it, so what a
+    /// program may call and what a lookup will describe cannot come apart — not even within the turn
+    /// that loaded it, which is exactly when a snapshot would be wrong.
+    docs: LoadedDocs,
 }
 
-/// What loading a code skill or memory produced — the binding key its code got, and whether an
-/// on-use script was queued. Both halves are optional: a skill may carry either, both, or neither.
+/// What loading a code skill or memory produced — the key its code got, and whether an on-use
+/// script was queued. Both halves are optional: a skill may carry either, both, or neither.
+///
+/// **Nothing here is said to the model.** A use produces documentation — the module's own view and
+/// one per declaration it exports — and the caller reads this to know which views to open, not to
+/// know what to append to a reply. A sentence stating a key is a sentence the next compaction takes
+/// away; a documentation view is a page the model can re-open, and close when it is done with it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Loaded {
-    /// The `lib` key the module was bound at, when there was a module.
+    /// The key the module was loaded under, when there was a module — and the key its documentation
+    /// is filed under.
     pub key: Option<String>,
-    /// The names it exports, in the order the generated namespace lists them.
-    pub exports: Vec<String>,
+    /// **What the module exports**, in the order its namespace lists them — carried whole rather
+    /// than as a list of names.
+    ///
+    /// Because a name is the smallest half of what a use produces. Bringing a code skill into use
+    /// [registers a documentation entry](crate::docs::LoadedDocs::register) per declaration the
+    /// module offers, and every one of those is rendered from what the arm read at the preparation
+    /// that has just happened here: the declaration its author wrote, and the prose above it.
+    /// Handing the caller names alone would mean reading the module a second time to recover the
+    /// rest — the second reading the [seam](crate::sandbox::PreparedModule) exists to prevent, and a
+    /// second chance for the two to disagree about what the module offers.
+    pub exports: Vec<ModuleExport>,
     /// Whether an on-use script was queued to run once this turn's program has ended.
     pub on_use: bool,
-}
-
-impl Loaded {
-    /// Whether loading did anything at all — `false` for the ordinary prose skill or memory, whose
-    /// read is exactly what it always was.
-    pub fn is_empty(&self) -> bool {
-        self.key.is_none() && !self.on_use
-    }
-
-    /// The sentence appended to the read's reply, telling the model where its code went.
-    ///
-    /// It is appended rather than returned separately because the read's result *is* the body: one
-    /// string crosses the membrane, and a binding path the model has to infer is a binding path it
-    /// will get wrong. An empty [`Loaded`] appends nothing, so a prose skill's reply is untouched.
-    ///
-    /// The call is written in the **reader's own** [spelling](ProgramLanguage::lib_access), for the
-    /// same reason every call gg quotes back at a model is spelled in that model's language: on an
-    /// arm where an API object is a module, `lib.<key>.<name>` is not a path the compiler will
-    /// accept, and on the three that reach a module by string it is not a path at all — a binding
-    /// quoted in a syntax the model cannot use is a binding it has not been given.
-    ///
-    /// This note is the **only** place a model is told the spelling, and on an arm that reaches a
-    /// code module through its own module system it is the only place it is told the
-    /// [line](ProgramLanguage::lib_import) that makes the spelling resolve. `lib` binds no
-    /// catalogued function, so there is nothing to search for, and the system prompt says a skill
-    /// *carries* code without saying how it is reached, because the read that binds it is the moment
-    /// that answer matters.
-    pub fn note(
-        &self,
-        origin: KnowledgeOrigin,
-        language: &'static dyn ProgramLanguage,
-    ) -> Option<String> {
-        if self.is_empty() {
-            return None;
-        }
-        let mut note = String::new();
-        if let Some(key) = &self.key {
-            note.push_str(&format!(
-                "\n\n---\nThe code this {} carries is loaded: {}call it as `{}`",
-                origin.noun(),
-                match language.lib_import(key) {
-                    Some(line) => format!("write `{line}` and "),
-                    None => String::new(),
-                },
-                language.lib_access(key)
-            ));
-            if self.exports.is_empty() {
-                note.push_str(". It exports nothing.");
-            } else {
-                note.push_str(&format!(". It exports: {}.", self.exports.join(", ")));
-            }
-            note.push_str(
-                " It stays bound for the rest of your session, including across a compaction.",
-            );
-        }
-        if self.on_use {
-            if note.is_empty() {
-                note.push_str("\n\n---");
-            } else {
-                note.push(' ');
-            }
-            note.push_str(&format!(
-                "This {} also runs a script when it is first used; it runs once your program has \
-                 ended, so anything it shows you arrives on your next turn.",
-                origin.noun()
-            ));
-        }
-        Some(note)
-    }
 }
 
 impl KnowledgeModules {
     /// An agent with nothing loaded.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// **A handle to the documentation this agent's loaded modules offer**, for the
+    /// [documentation runtime](crate::docs::DocsRuntime::reading) that answers lookups about them.
+    ///
+    /// A handle and never a copy: the runtime is built once, at the top of a session, and modules
+    /// are loaded turn after turn — so a runtime holding a snapshot would answer about the surface
+    /// as it stood before the agent had used anything, forever. See [`LoadedDocs`].
+    pub fn documentation(&self) -> LoadedDocs {
+        self.docs.clone()
     }
 
     /// The modules the guest binds, in key order.
@@ -283,7 +264,8 @@ impl KnowledgeModules {
     /// That is exactly right while a run is single-language, and it is a known gap the day one is
     /// not: a reviewer in one language reading a code memory a root wrote in another gets that
     /// language's syntax diagnostic appended to the read, and `lib.<key>` binds nothing. The failure
-    /// is loud (the model is told, in the reply that names the key) rather than silent, which is why
+    /// is loud — a diagnostic is the one thing a use still says in words, since a module that did
+    /// not prepare has no documentation to open — rather than silent, which is why
     /// it is a gap rather than a defect — but closing it means recording the authoring language on
     /// the memory and on the skill and deciding what a cross-language read *should* do, which is a
     /// contract change rather than a rename.
@@ -316,6 +298,13 @@ impl KnowledgeModules {
                 }
             };
             self.loaded.insert(key.clone(), prepared.source);
+            // Registered here, at the one moment the exports and the key are both in hand, so the
+            // agent's documentation surface gains the module and its declarations as part of the
+            // load rather than as a second step a caller could forget. A re-load replaces what was
+            // filed under the key, which is what keeps a revised memory's documentation from
+            // describing a declaration it no longer carries.
+            self.docs
+                .register(language, &key, origin.noun(), name, &prepared.exports);
             loaded.exports = prepared.exports;
             loaded.key = Some(key);
         }

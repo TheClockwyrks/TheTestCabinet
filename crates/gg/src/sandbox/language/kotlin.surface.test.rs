@@ -24,6 +24,7 @@ use super::substrate::{
     evaluate_as, evaluate_closing_docviews, logs, prepare, prepare_with, trap, whole,
 };
 use crate::ending::{Ending, EndingRole};
+use crate::sandbox::export_names;
 use crate::sandbox::fake::{CallLog, all_operations, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::SandboxOutcome;
@@ -1114,7 +1115,7 @@ fun recalled(): String = seen.joinToString("+")
     )
     .expect("the Kotlin toolchain compiles a code module");
     assert_eq!(
-        prepared.exports,
+        export_names(&prepared.exports),
         [
             "greet", "add", "negated", "describe", "remember", "recalled"
         ],

@@ -16,6 +16,7 @@ use crate::sandbox::{CodeModule, PrepareContext, PrepareError, PrepareFailure};
 use super::compile::{compile_module, compile_program};
 use super::source::binding_name;
 use super::substrate::{evaluate, logs};
+use crate::sandbox::export_names;
 use crate::sandbox::fake::canned_outcome;
 use crate::sandbox::membrane::RunEnding;
 
@@ -67,7 +68,7 @@ fn a_code_skill_is_read_as_c_sharp_and_says_what_it_offers() {
         prepared.source
     );
     assert_eq!(
-        prepared.exports,
+        export_names(&prepared.exports),
         vec!["Slugify".to_string(), "Entry".to_string()],
         "the module did not report what `lib.<key>.` really offers"
     );

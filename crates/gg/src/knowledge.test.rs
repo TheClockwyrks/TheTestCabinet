@@ -4,7 +4,7 @@
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::*;
-use crate::sandbox::fixture;
+use crate::sandbox::{export_names, fixture};
 
 /// The [program language](ProgramLanguage) these tests load code in: **TypeScript**, named
 /// explicitly because every module they load is TypeScript source and every export list they assert
@@ -13,12 +13,7 @@ fn ts() -> &'static dyn ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::TypeScript)
 }
 
-/// The one arm whose API objects are modules, for the note that is written in its syntax.
-fn rust() -> &'static dyn ProgramLanguage {
-    crate::sandbox::language(GgProgramLanguage::Rust)
-}
-
-/// The one arm that reaches `lib` through the language's own module system, for the note that has
+/// The one arm that reaches `lib` through the language's own module system, for the view that has
 /// to state the line.
 fn python() -> &'static dyn ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Python)
@@ -43,78 +38,96 @@ fn with_csv_tools() -> (KnowledgeModules, Loaded) {
 fn a_loaded_module_is_bound_at_a_camel_cased_key() {
     let (modules, loaded) = with_csv_tools();
     assert_eq!(loaded.key.as_deref(), Some("csvTools"));
-    assert_eq!(loaded.exports, vec!["parse".to_string()]);
+    assert_eq!(export_names(&loaded.exports), vec!["parse".to_string()]);
     let bound = modules.code_modules();
     assert_eq!(bound.len(), 1);
     assert_eq!(bound[0].name, "csvTools");
     assert!(bound[0].source.contains("export function parse(text)"));
 }
 
-#[test]
-fn the_note_states_the_binding_path_and_what_it_exports() {
-    let (_, loaded) = with_csv_tools();
-    let note = loaded
-        .note(KnowledgeOrigin::Skill, ts())
-        .expect("a loaded module produces a note");
-    // The model must never have to guess where its code went.
-    assert!(note.contains("lib:csvTools"), "{note}");
-    assert!(note.contains("csvTools.<name>"), "{note}");
-    assert!(note.contains("parse"), "{note}");
-    assert!(note.contains("skill"), "{note}");
-}
-
-/// **The binding path is written in the reader's own syntax.**
+/// **A load puts the module and its declarations on the agent's documentation surface.**
 ///
-/// The note is the only place a model is told where its code went, and it is quoted rather than
-/// inferred precisely so the model cannot get it wrong. On an arm whose API objects are **modules**
-/// that means `lib::csv_tools::<name>`: `lib.csvTools.<name>` is not a path Rust will accept, so a
-/// note written with the other arms' separator would be a binding the model has not been given.
+/// This is the whole of what a use says to the model. There is no sentence in the reply: the key it
+/// got, what the module offers and the line that reaches each declaration are a set of pages it can
+/// open, re-open and close, and a page survives a compaction because it is re-derived from its key
+/// while a sentence in a reply does not.
 #[test]
-fn the_note_writes_the_binding_path_in_the_readers_own_syntax() {
-    let (_, loaded) = with_csv_tools();
-    let note = loaded
-        .note(KnowledgeOrigin::Skill, rust())
-        .expect("a loaded module produces a note");
-    assert!(note.contains("lib::csvTools::<name>"), "{note}");
-}
+fn a_load_registers_the_module_and_its_declarations() {
+    let (modules, loaded) = with_csv_tools();
+    let docs = modules.documentation();
+    assert_eq!(loaded.key.as_deref(), Some("csvTools"));
 
-/// **The note states the line that brings the module into scope, on an arm that needs one.**
-///
-/// The binding path is only half an answer where a code module is a module of the language's own
-/// module system: `lib.csvTools.parse` resolves in a Python program that wrote `import lib` and
-/// raises a `NameError` in one that did not. The read that bound the module is the only place a
-/// model is told either half, so both are asserted — on Python, whose line is key-independent, and
-/// on TypeScript, whose line names the specifier the guest's loader resolves the module under.
-#[test]
-fn the_note_states_the_line_that_brings_lib_into_scope() {
-    let (_, loaded) = with_csv_tools();
-    let note = loaded
-        .note(KnowledgeOrigin::Skill, python())
-        .expect("a loaded module produces a note");
-    let line = python()
-        .lib_import("csvTools")
-        .expect("this arm reaches `lib` through a line a program writes");
-    assert!(note.contains(&line), "{note}");
-    assert!(note.contains("lib.csvTools.<name>"), "{note}");
-
-    let note = loaded
-        .note(KnowledgeOrigin::Skill, ts())
-        .expect("a loaded module produces a note");
+    let module = docs
+        .body("csvTools")
+        .expect("the module is an entry under the key it was loaded at");
     assert!(
-        note.contains("import * as csvTools from \"lib:csvTools\";"),
-        "{note}"
+        module.contains("skill"),
+        "it says what carried the code: {module}"
+    );
+    assert!(module.contains("parse"), "and what it offers: {module}");
+
+    let function = docs
+        .body("csvTools.parse")
+        .expect("and each declaration is an entry of its own");
+    assert!(
+        function.contains("export function parse(text: string)"),
+        "quoting the author's own declaration: {function}"
+    );
+    assert!(
+        function.contains("csvTools.parse"),
+        "and the spelling a program writes to reach it: {function}"
     );
 }
 
+/// **A load documents the module in the *reader's* own language** — its key, its member spelling
+/// and the line that brings it into scope, all three from the arm doing the reading.
+///
+/// Python is the second arm here rather than a second TypeScript case because all three differ from
+/// TypeScript's: the key is snake_cased, the module is reached with a line of the language's own
+/// (`lib.csvTools.parse` resolves in a Python program that wrote `import lib` and raises a
+/// `NameError` in one that did not), and a view is the only place a model is told either half. A
+/// spelling quoted in a syntax the arm does not have is a binding the model has not been given.
 #[test]
-fn a_prose_skill_produces_no_note_at_all() {
+fn a_load_documents_the_module_in_the_readers_own_language() {
+    let mut modules = KnowledgeModules::new();
+    let loaded = modules
+        .load(
+            python(),
+            KnowledgeOrigin::Skill,
+            "csv-tools",
+            Some("def parse(text):\n    return text.split(\",\")\n"),
+            None,
+        )
+        .expect("a valid Python module loads");
+    let key = loaded.key.as_deref().expect("the module was loaded");
+    assert_eq!(
+        key, "csv_tools",
+        "the key is spelled as this arm spells an identifier"
+    );
+
+    let view = modules
+        .documentation()
+        .body(&format!("{key}.parse"))
+        .expect("the function is documented, keyed the way this arm spells a member");
+    let line = python()
+        .lib_import(key)
+        .expect("this arm reaches `lib` through a line a program writes");
+    assert!(view.contains(&line), "{view}");
+    assert!(view.contains("lib.csv_tools.parse"), "{view}");
+}
+
+/// **A prose skill puts nothing anywhere**: no module for a program to reach, and no documentation
+/// for a model to read, because there is no code to describe.
+#[test]
+fn a_prose_skill_registers_nothing_at_all() {
     let mut modules = KnowledgeModules::new();
     let loaded = modules
         .load(ts(), KnowledgeOrigin::Skill, "prose", None, None)
         .expect("a skill with no code loads");
-    assert!(loaded.is_empty());
-    assert_eq!(loaded.note(KnowledgeOrigin::Skill, ts()), None);
+    assert_eq!(loaded.key, None);
+    assert!(!loaded.on_use);
     assert!(modules.code_modules().is_empty());
+    assert!(modules.documentation().candidates().is_empty());
 }
 
 #[test]
@@ -148,7 +161,7 @@ fn reloading_the_same_thing_reuses_its_key_and_replaces_its_source() {
         .expect("a revised module loads");
     assert_eq!(again.key, first.key);
     assert_eq!(modules.code_modules().len(), 1);
-    assert!(again.exports.contains(&"VERSION".to_string()));
+    assert!(export_names(&again.exports).contains(&"VERSION"));
 }
 
 /// An on-use script is an execution the agent asked for, so every use queues one.

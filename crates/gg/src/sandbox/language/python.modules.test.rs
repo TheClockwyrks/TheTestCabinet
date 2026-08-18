@@ -1,6 +1,16 @@
 //! What a Python code module is read to offer, and — as often — what it is deliberately not.
 
 use super::exports;
+use crate::sandbox::ModuleExportKind;
+
+/// The names alone — what most of a scan's own assertions are about. What each export carries
+/// *beside* its name is asserted in its own test below.
+fn names(source: &str) -> Vec<String> {
+    exports(source)
+        .into_iter()
+        .map(|export| export.name)
+        .collect()
+}
 
 /// **A module's definitions are its exports**, in source order, each spelled once.
 #[test]
@@ -24,7 +34,7 @@ class Row:
         self.name = name
 ";
     assert_eq!(
-        exports(module),
+        names(module),
         ["HEADER", "TIMEOUT", "widen", "fetch", "Row"]
     );
 }
@@ -35,7 +45,7 @@ class Row:
 #[test]
 fn an_underscored_name_is_private() {
     assert_eq!(
-        exports("_secret = 1\n__all__ = ['x']\nvisible = 2\n"),
+        names("_secret = 1\n__all__ = ['x']\nvisible = 2\n"),
         ["visible"]
     );
 }
@@ -48,7 +58,7 @@ fn an_underscored_name_is_private() {
 #[test]
 fn an_imported_name_is_not_an_export() {
     assert_eq!(
-        exports(
+        names(
             "import json\nfrom math import hypot\n\ndef pack(rows):\n    return json.dumps(rows)\n"
         ),
         ["pack"]
@@ -75,7 +85,7 @@ EXAMPLE = 1
 def widen(text, width):
     return text
 ";
-    assert_eq!(exports(module), ["widen"]);
+    assert_eq!(names(module), ["widen"]);
 }
 
 /// **The shapes whose target only a parser could name are left alone**, and a module that binds one
@@ -103,7 +113,7 @@ fn a_target_that_needs_a_parser_is_not_guessed_at() {
 #[test]
 fn a_redefined_name_is_listed_once() {
     assert_eq!(
-        exports("def go():\n    pass\n\n\ndef go():\n    pass\n"),
+        names("def go():\n    pass\n\n\ndef go():\n    pass\n"),
         ["go"]
     );
 }
@@ -117,7 +127,48 @@ fn a_redefined_name_is_listed_once() {
 #[test]
 fn an_unlexable_module_is_read_as_lines() {
     assert_eq!(
-        exports("broken = 'unterminated\ndef go():\n    pass\n"),
+        names("broken = 'unterminated\ndef go():\n    pass\n"),
         ["broken", "go"]
     );
+}
+
+/// **An export carries what a documentation view is rendered from**, and on this arm the prose is
+/// as often below the declaration as above it: a docstring is what a Python author writes.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let module = "def widen(text, width={\"pad\": 1}):\n\
+                  \x20   \"\"\"Widen a row to `width`.\"\"\"\n\
+                  \x20   return text\n\
+                  \n\
+                  # The header every file opens with.\n\
+                  HEADER = \"name,size\"\n\
+                  \n\
+                  class Row:\n\
+                  \x20   pass\n";
+    let exports = exports(module);
+    assert_eq!(names(module), ["widen", "HEADER", "Row"]);
+
+    // The header runs to the colon that opens the body, past a default value's own braces.
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(
+        exports[0].declaration,
+        "def widen(text, width={\"pad\": 1}):"
+    );
+    assert_eq!(exports[0].doc.as_deref(), Some("Widen a row to `width`."));
+
+    // An assignment has no body: what it binds is what it is.
+    assert_eq!(exports[1].kind, ModuleExportKind::Value);
+    assert_eq!(exports[1].declaration, "HEADER = \"name,size\"");
+    assert_eq!(
+        exports[1].doc.as_deref(),
+        Some("The header every file opens with.")
+    );
+
+    // A body that opens with code rather than a string has no docstring to read.
+    assert_eq!(exports[2].kind, ModuleExportKind::Type);
+    assert_eq!(exports[2].declaration, "class Row:");
+    assert_eq!(exports[2].doc, None);
+
+    assert!(exports.iter().all(|export| export.returns.is_empty()));
+    assert!(exports.iter().all(|export| export.parameters.is_empty()));
 }

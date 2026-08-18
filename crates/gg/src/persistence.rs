@@ -396,6 +396,15 @@ pub fn restore_text_views(context: &mut ContextModel, views: &[OpenTextView]) ->
 /// key whose function this instance does not bind renders nothing and is skipped rather than
 /// restored as documentation for a call it cannot make.
 ///
+/// **A view of a loaded module is dropped here, always.** A restored instance starts with nothing
+/// loaded — [code is not a module](crate::knowledge) and nothing transfers it — so a key naming a
+/// declaration of some [code skill or memory](crate::docs::LoadedDocs) the last instance used
+/// resolves to nothing in this one, and falls out through the same `None`. That is the whole of the
+/// enforcement, and it is enforcement rather than accident: those views describe code the new
+/// instance cannot call until it uses the skill itself, and using the skill is what opens them
+/// again. Re-rendering from the key is exactly what makes the distinction free — a replay would have
+/// carried the text across with nothing behind it.
+///
 /// No skip-if-already-open pass, for the reason the text half has none and a stronger one:
 /// [`open_docview`](ContextModel::open_docview) is a no-op on a key that is open, so the restore is
 /// idempotent by construction.

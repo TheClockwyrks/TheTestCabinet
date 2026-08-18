@@ -25,6 +25,7 @@ use super::substrate::{
 };
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::PrepareContext;
+use crate::sandbox::export_names;
 use crate::sandbox::fake::{
     CallLog, all_operations, canned_outcome, typescript as typescript_language,
 };
@@ -1220,7 +1221,7 @@ fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
         &PrepareContext::new(),
     )
     .expect("the Java toolchain compiles a code module");
-    assert_eq!(prepared.exports, ["greet", "add"]);
+    assert_eq!(export_names(&prepared.exports), ["greet", "add"]);
 
     let modules = vec![crate::sandbox::CodeModule {
         name: "helpers".to_string(),

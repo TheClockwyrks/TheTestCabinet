@@ -1971,18 +1971,26 @@ pub(super) struct LoopOperationApi {
 
 #[allow(dead_code)]
 impl LoopOperationApi {
-    /// Bring a code skill or memory into use: transpile and bind its module, queue its on-use
-    /// script, and tell the model where its code went.
+    /// Bring a code skill or memory into use: prepare and supply its module, queue its on-use
+    /// script, and open the documentation the module put on this agent's surface.
     ///
-    /// The note is **appended to the read's own output**, because a read's result *is* the body —
-    /// one string crosses the membrane — and a binding path a model has to infer is one it will
-    /// infer wrong. A prose skill or memory carries neither half, so nothing is appended and the
-    /// read is exactly what it always was.
+    /// **The reply is untouched.** A use produces documentation and no message: the module's own
+    /// entry and one per declaration it exports join this agent's
+    /// [documentation surface](crate::docs) at the load, and this opens
+    /// [a view per callable declaration](crate::docs::DocsRuntime::use_views) beside them. That is a
+    /// better answer than the sentence it replaces on every count a sentence was ever justified by —
+    /// it names the line the model must write, it does so for each declaration rather than for the
+    /// module as a whole, it survives a compaction because a docview is re-derived from its key, and
+    /// the model can take it back out of the window when it is finished with it. A prose skill or
+    /// memory carries no code, so nothing is registered, nothing is opened, and the read is exactly
+    /// what it always was.
     ///
     /// A failure to compile does **not** fail the read. The body is what was asked for, the code is
     /// somebody else's (an authored skill's, or a memory written twenty turns ago), and refusing to
     /// hand over a mostly-prose skill because its helper has a syntax error would be the wrong
-    /// trade. The diagnostic is appended instead, located in the author's own coordinates.
+    /// trade. The diagnostic is appended instead, located in the author's own coordinates — and it
+    /// is the one thing a use still says in words, because there is no documentation to open for a
+    /// module that did not prepare.
     ///
     /// A **compiler that could not finish**, and a source gg accepted and could not prepare, are
     /// gg's rather than the author's, and end the run
@@ -2004,17 +2012,21 @@ impl LoopOperationApi {
             .knowledge
             .load(self.language, origin, name, code, on_use)
         {
-            Ok(loaded) => {
-                if let Some(note) = loaded.note(origin, self.language) {
-                    outcome.output.push_str(&note);
-                }
-            }
+            Ok(loaded) => self.open_loaded_docviews(loaded.key.as_deref()),
             Err(error) => {
                 record_knowledge_failure(&error, &self.spawner, &self.fault, &self.emitter);
                 outcome.output.push_str(&format!("\n\n---\nNOTE: {error}"));
             }
         }
         outcome
+    }
+
+    /// [Open the documentation](open_loaded_docviews) of the module just loaded at `key`, or do
+    /// nothing when the thing that was used carried no code.
+    fn open_loaded_docviews(&mut self, key: Option<&str>) {
+        if let Some(key) = key {
+            open_loaded_docviews(&mut self.context, &self.docs, self.doc_view_types, key);
+        }
     }
 
     /// Load a memory's code at the moment it is **written**, under the strategy where a memory is in
@@ -2034,7 +2046,8 @@ impl LoopOperationApi {
     /// A write whose **compiler could not finish** is gg's defect and ends the run
     /// ([`record_knowledge_failure`]). The call is still refused, for the reason above: under this
     /// strategy the write is the only moment the code loads, so a memory stored here whose module
-    /// never bound would leave the model naming a `lib` key that does not exist. It is refused as
+    /// never bound would leave the model holding a memory whose code nothing has, with no
+    /// documentation of it and no later moment at which either could arrive. It is refused as
     /// an [`IoError`](ToolFailure::IoError) rather than as an
     /// [`InvalidArgument`](ToolFailure::InvalidArgument): the compiler is a process gg ran and the
     /// process failed, and classifying it as a bad argument would record the model's call as
@@ -2045,20 +2058,17 @@ impl LoopOperationApi {
         &mut self,
         name: &str,
         code: &MemoryCode,
-        mut outcome: ToolOutcome,
+        outcome: ToolOutcome,
     ) -> ToolOutcome {
         if !outcome.ok || code.is_empty() {
             return outcome;
         }
         let strategy = self.memories_rt.strategy();
         if strategy.has_index() || strategy.has_search() {
-            // The code is stored and will load when the memory is read — but the model wrote it on
-            // *this* call and would otherwise be left to wonder whether it took. One sentence, on
-            // the call that earned it.
-            outcome.output.push_str(
-                "\n\n---\nThe code this memory carries is stored. It loads — and its `lib` key is \
-                 named — when you read the memory back.",
-            );
+            // The code is stored and loads when the memory is read, which is where its documentation
+            // arrives too. Nothing is said about it here: a write is not a use, and a sentence
+            // promising what a later call will do is the kind of narration the documentation surface
+            // exists to replace.
             return outcome;
         }
         match self.knowledge.load(
@@ -2069,9 +2079,7 @@ impl LoopOperationApi {
             code.on_use.as_deref(),
         ) {
             Ok(loaded) => {
-                if let Some(note) = loaded.note(KnowledgeOrigin::Memory, self.language) {
-                    outcome.output.push_str(&note);
-                }
+                self.open_loaded_docviews(loaded.key.as_deref());
                 outcome
             }
             Err(error) => {
@@ -3516,9 +3524,50 @@ impl OperationApi for LoopOperationApi {
     }
 }
 
+/// **Open a documentation view of every callable declaration the module loaded at `key` offers**,
+/// and of the types this agent's [flags](DocViewTypes) place beside them.
+///
+/// It is [`open_docs_view`](LoopOperationApi::open_docs_view) in every respect that matters, and
+/// deliberately: the same [rendering](DocsRuntime::read_any) and the same
+/// [placement](ContextModel::open_docview), which does nothing whatever to a key already open. What
+/// differs is only who asked — gg, on the model's behalf, because a use is the moment the model
+/// needs the manual and the moment it can least afford a round trip to ask for it. A **second** use
+/// therefore opens nothing new, which is what makes using a skill again the cheap recovery it is
+/// described as.
+///
+/// A key the runtime does not resolve is skipped rather than placed empty. That is not defensive: it
+/// is the same `None` a [restore](crate::persistence::restore_docviews) reads to drop a view of a
+/// module the instance has not loaded, and reaching it here would mean a module was registered and
+/// then unregistered inside one call.
+///
+/// Nothing is reported. The views are in the window and the window is what the model reads next
+/// turn; a count of them in the reply would be gg narrating a thing the model is about to see.
+///
+/// Free rather than a method because what it needs is three things and not a turn: the window, the
+/// runtime that renders a key, and the flags. Both callers — a use and a
+/// [scratchpad write](LoopOperationApi::loaded_on_write), which is the one strategy where the write
+/// *is* the use — reach it through the api, and it is asserted without one.
+fn open_loaded_docviews(
+    context: &mut ContextModel,
+    docs: &DocsRuntime,
+    types: DocViewTypes,
+    key: &str,
+) {
+    for view in docs.use_views(key, types) {
+        let Some(body) = docs.read_any(&view) else {
+            continue;
+        };
+        context.open_docview(view, body);
+    }
+}
+
 #[cfg(test)]
 #[path = "agent.code.views.test.rs"]
 mod view_tests;
+
+#[cfg(test)]
+#[path = "agent.code.knowledge.test.rs"]
+mod knowledge_tests;
 
 #[cfg(test)]
 #[path = "agent.code.feedback.test.rs"]

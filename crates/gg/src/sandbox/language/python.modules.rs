@@ -35,27 +35,131 @@
 
 use crate::healing::{CodeMask, Dialect, lines_with_offsets};
 
+use super::super::{ModuleExport, ModuleExportKind};
+
 /// Every public name `source`'s top level defines, in source order and without repeats.
-pub(super) fn exports(source: &str) -> Vec<String> {
+pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
     // An unlexable module is scanned as though it were all code. The mask exists to keep a `def`
     // inside a docstring from being read as a definition; where the lexer lost its place there is
     // nothing better to do than read the lines, and the cost of being wrong is a name in a list
     // rather than a deletion.
     let mask = super::healing::PYTHON_DIALECT.code_mask(source);
-    let mut out: Vec<String> = Vec::new();
-    for (offset, line) in lines_with_offsets(source) {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out: Vec<ModuleExport> = Vec::new();
+    for (number, (offset, line)) in lines_with_offsets(source).enumerate() {
         if line.starts_with([' ', '\t']) || !is_code(mask.as_ref(), offset) {
             continue;
         }
         let Some(name) = defined_name(line) else {
             continue;
         };
-        if name.starts_with('_') || out.iter().any(|seen| seen == name) {
+        if name.starts_with('_') || out.iter().any(|seen| seen.name == name) {
             continue;
         }
-        out.push(name.to_string());
+        out.push(ModuleExport {
+            name: name.to_string(),
+            kind: kind(line),
+            declaration: head(line),
+            doc: doc(&lines, number),
+            returns: Vec::new(),
+            parameters: Vec::new(),
+        });
     }
     out
+}
+
+/// What a program does with the name `line` defines.
+fn kind(line: &str) -> ModuleExportKind {
+    if line.starts_with("class ") {
+        return ModuleExportKind::Type;
+    }
+    match line.starts_with("def ") || line.starts_with("async ") {
+        true => ModuleExportKind::Function,
+        false => ModuleExportKind::Value,
+    }
+}
+
+/// `line` without the body it opens — what a documentation view quotes.
+///
+/// A `def` and a `class` open their body with the colon that closes the header, so the header is
+/// everything up to and including it. The colon is *kept*, because `def widen(text)` without one is
+/// not a line of Python and the point of quoting a declaration is that a reader can trust it. An
+/// assignment has no body at all: what it binds is what it is, so the whole line is the declaration.
+fn head(line: &str) -> String {
+    let line = line.trim_end();
+    if !(line.starts_with("def ") || line.starts_with("async ") || line.starts_with("class ")) {
+        return line.to_string();
+    }
+    // Past the parameter list first, so a default value written as a dict or a lambda cannot end the
+    // header early — then to the colon that opens the body.
+    let mut depth = 0usize;
+    for (at, character) in line.char_indices() {
+        match character {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => return line[..=at].to_string(),
+            _ => {}
+        }
+    }
+    line.to_string()
+}
+
+/// The documentation written on the declaration at `index` — the `#` comment above it, or, failing
+/// that, the docstring below it.
+///
+/// Both, because Python has two and its authors write the second one. A run of `#` above a
+/// declaration is the shape [every other arm shares](super::super::comments); a **docstring** is the shape
+/// Python itself calls documentation, and it is the first thing *inside* the body rather than
+/// anything above it. Reading only the comment would leave nearly every Python module's views empty
+/// of the prose its author actually wrote.
+fn doc(lines: &[&str], index: usize) -> Option<String> {
+    super::super::comments::line_doc(lines, index, &["#"]).or_else(|| docstring(lines, index))
+}
+
+/// The docstring opening the body of the declaration on line `index`, if it opens with one.
+///
+/// The body's first statement, which is what a docstring is: the next line with anything on it. A
+/// blank line or a comment in between is walked past, and anything that is not a quoted string ends
+/// the search — a declaration whose body begins with code has no docstring, and reading further
+/// would be quoting code as prose.
+fn docstring(lines: &[&str], index: usize) -> Option<String> {
+    let (at, line) = lines
+        .iter()
+        .enumerate()
+        .skip(index + 1)
+        .find(|(_, line)| !line.trim().is_empty() && !line.trim_start().starts_with('#'))?;
+    let text = line.trim();
+    let quote = QUOTES.into_iter().find(|quote| text.starts_with(quote))?;
+    let opened = &text[quote.len()..];
+    // A one-line docstring closes on the line it opened on.
+    if let Some(closed) = opened.strip_suffix(quote) {
+        return prose(vec![closed]);
+    }
+    let mut run: Vec<&str> = vec![opened.trim_end()];
+    for line in lines.iter().skip(at + 1) {
+        let text = line.trim();
+        match text.strip_suffix(quote) {
+            Some(last) => {
+                run.push(last.trim_end());
+                return prose(run);
+            }
+            None => run.push(text),
+        }
+    }
+    // An unterminated docstring is a module the compiler will reject; nothing here guesses at where
+    // its author meant it to end.
+    None
+}
+
+/// The quotes a docstring may open with, triple first: a `"""` also starts with a `"`, and reading
+/// it as the shorter one would close the string on its own opening delimiter.
+const QUOTES: [&str; 4] = ["\"\"\"", "'''", "\"", "'"];
+
+/// `run` as one document, or `None` when a docstring held nothing worth showing.
+fn prose(run: Vec<&str>) -> Option<String> {
+    let text = run.join("\n");
+    let text = text.trim_matches('\n').trim_end();
+    (!text.trim().is_empty()).then(|| text.to_string())
 }
 
 /// Whether the byte at `offset` is code, treating an unlexable source as all code.

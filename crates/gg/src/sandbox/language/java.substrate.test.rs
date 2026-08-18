@@ -49,6 +49,7 @@ use crate::limits::TurnErrorType;
 
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
+use crate::sandbox::export_names;
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
@@ -505,7 +506,7 @@ fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
     )
     .expect("the module compiles");
     assert_eq!(
-        prepared.exports,
+        export_names(&prepared.exports),
         ["shout", "listOf"],
         "the scan offers the `public static` METHODS and nothing else",
     );

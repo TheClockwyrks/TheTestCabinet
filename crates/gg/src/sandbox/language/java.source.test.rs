@@ -6,6 +6,7 @@
 //! that one says javac and TeaVM agree.
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// The module's own body: everything the wrapper's header on line 1 is not, plus every line after.
 fn body(wrapped: &Wrapped) -> String {
@@ -111,7 +112,7 @@ fn something_that_merely_looks_like_an_import_is_left_alone() {
     )
     .expect("wraps");
     assert!(body(&wrapped).contains("// import java.util.List;"));
-    assert_eq!(wrapped.exports, ["importantThing"]);
+    assert_eq!(export_names(&wrapped.exports), ["importantThing"]);
 }
 
 #[test]
@@ -126,7 +127,7 @@ fn a_module_exports_its_public_static_methods_and_nothing_else() {
         MODULE_CHECK_CLASS,
     )
     .expect("wraps");
-    assert_eq!(wrapped.exports, ["greet", "add"]);
+    assert_eq!(export_names(&wrapped.exports), ["greet", "add"]);
 }
 
 #[test]
@@ -167,7 +168,7 @@ fn a_body_that_names_the_class_gg_wraps_it_in_is_refused_at_the_read() {
         MODULE_CHECK_CLASS,
     )
     .expect("wraps");
-    assert_eq!(wrapped.exports, ["only", "other"]);
+    assert_eq!(export_names(&wrapped.exports), ["only", "other"]);
 }
 
 /// **`Lib` reaches each module by inheritance**, which is what Java has instead of a type alias.
@@ -270,7 +271,7 @@ fn a_declaration_is_found_past_its_own_annotations_and_generics() {
         MODULE_CHECK_CLASS,
     )
     .expect("wraps");
-    assert_eq!(wrapped.exports, ["twice"]);
+    assert_eq!(export_names(&wrapped.exports), ["twice"]);
 }
 
 #[test]
@@ -286,5 +287,48 @@ fn a_nested_type_does_not_offer_its_own_methods_to_the_namespace() {
         MODULE_CHECK_CLASS,
     )
     .expect("wraps");
-    assert_eq!(wrapped.exports, ["outer"]);
+    assert_eq!(export_names(&wrapped.exports), ["outer"]);
+}
+
+/// **An export carries what a documentation view is rendered from**, and on this arm the prose is a
+/// javadoc block: the shape a Java author writes.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let wrapped = wrap_module(
+        "/** Greet someone. */\n\
+         public static String greet(String who) { return who; }\n\
+         @Deprecated\n\
+         public static int add(int left, int right) { return left + right; }\n",
+        MODULE_CHECK_CLASS,
+    )
+    .expect("wraps");
+    assert_eq!(export_names(&wrapped.exports), ["greet", "add"]);
+
+    // Every name a Java module offers is a `public static` method, so there is one kind here.
+    assert_eq!(wrapped.exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(
+        wrapped.exports[0].declaration,
+        "public static String greet(String who)"
+    );
+    assert_eq!(wrapped.exports[0].doc.as_deref(), Some("Greet someone."));
+
+    // An annotation is part of the declaration it stands on, and is quoted with it.
+    assert_eq!(
+        wrapped.exports[1].declaration,
+        "@Deprecated\npublic static int add(int left, int right)"
+    );
+    assert_eq!(wrapped.exports[1].doc, None);
+
+    assert!(
+        wrapped
+            .exports
+            .iter()
+            .all(|export| export.returns.is_empty())
+    );
+    assert!(
+        wrapped
+            .exports
+            .iter()
+            .all(|export| export.parameters.is_empty())
+    );
 }

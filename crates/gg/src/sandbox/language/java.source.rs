@@ -46,7 +46,7 @@
 //! ASCII, and an ASCII byte never appears inside a multi-byte UTF-8 sequence, so byte comparisons
 //! find exactly what string comparisons would.
 
-use super::super::{PrepareError, PrepareFailure};
+use super::super::{ModuleExport, ModuleExportKind, PrepareError, PrepareFailure};
 
 /// The class a program declares, and the one gg's entry class calls `main` on.
 pub(super) const PROGRAM_CLASS: &str = "Program";
@@ -118,8 +118,8 @@ pub(super) fn lib_class(keys: &[&str]) -> String {
 pub(super) struct Wrapped {
     /// The whole `.java` file.
     pub source: String,
-    /// The names the module's namespace offers, in source order.
-    pub exports: Vec<String>,
+    /// What the module's namespace offers, in source order.
+    pub exports: Vec<ModuleExport>,
 }
 
 /// Wrap a code [skill](crate::skills)'s or [memory](crate::memories)'s **module** — a class body —
@@ -293,11 +293,28 @@ fn keyword<'a>(line: &'a str, word: &str) -> Option<&'a str> {
 /// A **reading** rather than a rewriting: nothing is inserted, because the module is compiled into
 /// the program that uses it and a program reaches an export by naming it. What this produces is the
 /// list the module's author is *told* the namespace holds.
-fn exports(body: &str) -> Vec<String> {
+fn exports(body: &str) -> Vec<ModuleExport> {
+    let lines: Vec<&str> = body.lines().collect();
     Lexer::new(body)
         .declarations()
         .iter()
-        .filter_map(Declaration::exported_method)
+        .filter_map(|declaration| {
+            let name = declaration.exported_method()?;
+            let written = body.get(declaration.start..declaration.end)?.trim();
+            // The line its first token stands on, which is where its documentation is written above.
+            let line = body[..declaration.start].matches('\n').count();
+            Some(ModuleExport {
+                name,
+                // Every name here is a `public static` method: a field is not one and neither is a
+                // nested type, because [`Declaration::exported_method`] reports neither.
+                kind: ModuleExportKind::Function,
+                declaration: written.to_string(),
+                doc: super::super::comments::block_doc(&lines, line)
+                    .or_else(|| super::super::comments::line_doc(&lines, line, &["///", "//"])),
+                returns: Vec::new(),
+                parameters: Vec::new(),
+            })
+        })
         .collect()
 }
 
@@ -309,6 +326,12 @@ struct Declaration {
     /// Whether an identifier was immediately followed by `(` — which is what makes it a method
     /// rather than a field.
     call: Option<String>,
+    /// Where it begins: the first byte of its first token, which is its annotation's `@` where it
+    /// carries one, so that the documentation above it is found above the whole declaration.
+    start: usize,
+    /// Where it ends: the `{` that opens its body or the `;` that stands in for one, so that
+    /// `body[start..end]` is the declaration and nothing else.
+    end: usize,
 }
 
 impl Declaration {
@@ -389,9 +412,10 @@ impl<'a> Lexer<'a> {
                 b'{' | b';' | b'}' => {
                     if byte == b'{' || depth == 0 {
                         // A declaration ends at its body, its terminator, or the end of the class.
-                        if let Some(declaration) = current.take()
+                        if let Some(mut declaration) = current.take()
                             && depth == 0
                         {
+                            declaration.end = at;
                             declarations.push(declaration);
                         }
                     }
@@ -408,6 +432,8 @@ impl<'a> Lexer<'a> {
                     current.get_or_insert(Declaration {
                         tokens: Vec::new(),
                         call: None,
+                        start: at,
+                        end: at,
                     });
                     at += 1;
                 }
@@ -422,6 +448,8 @@ impl<'a> Lexer<'a> {
                     let declaration = current.get_or_insert(Declaration {
                         tokens: Vec::new(),
                         call: None,
+                        start: at,
+                        end: at,
                     });
                     // An identifier immediately followed by `(` is the method's own name; the ones
                     // before it are modifiers, annotations and the return type.

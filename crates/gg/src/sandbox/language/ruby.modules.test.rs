@@ -1,6 +1,16 @@
 //! What a Ruby code module is read to offer, and — as often — what it is deliberately not.
 
 use super::exports;
+use crate::sandbox::ModuleExportKind;
+
+/// The names alone — what most of a scan's own assertions are about. What each export carries
+/// *beside* its name is asserted in its own test below.
+fn names(source: &str) -> Vec<String> {
+    exports(source)
+        .into_iter()
+        .map(|export| export.name)
+        .collect()
+}
 
 /// **A module's methods are its exports**, in source order, each spelled once.
 ///
@@ -28,7 +38,7 @@ class Row
   end
 end
 ";
-    assert_eq!(exports(module), ["widen", "parse", "empty?"]);
+    assert_eq!(names(module), ["widen", "parse", "empty?"]);
 }
 
 /// **A constant is not offered, and that is a fact about how the module is evaluated.**
@@ -41,7 +51,7 @@ end
 #[test]
 fn a_constant_is_not_an_export() {
     assert_eq!(
-        exports("HEADER = \"name,size\"\nTIMEOUT = 30\n\ndef widen(text)\n  text\nend\n"),
+        names("HEADER = \"name,size\"\nTIMEOUT = 30\n\ndef widen(text)\n  text\nend\n"),
         ["widen"]
     );
 }
@@ -74,7 +84,7 @@ def visible
   2
 end
 ";
-    assert_eq!(exports(module), ["widen", "visible"]);
+    assert_eq!(names(module), ["widen", "visible"]);
 }
 
 /// **Nothing inside a heredoc is read as a definition.**
@@ -96,7 +106,7 @@ def widen(text, width)
   text
 end
 ";
-    assert_eq!(exports(module), ["widen"]);
+    assert_eq!(names(module), ["widen"]);
 }
 
 /// **An operator method is not reported**, because `lib.<key>.` cannot reach one.
@@ -107,7 +117,7 @@ end
 #[test]
 fn an_operator_method_is_not_a_name_a_program_can_write() {
     assert_eq!(
-        exports("def ==(other)\n  true\nend\n\ndef save!(row)\n  row\nend\n"),
+        names("def ==(other)\n  true\nend\n\ndef save!(row)\n  row\nend\n"),
         ["save!"]
     );
 }
@@ -120,7 +130,58 @@ fn an_operator_method_is_not_a_name_a_program_can_write() {
 #[test]
 fn an_unlexable_module_is_still_read() {
     assert_eq!(
-        exports("x = \"unterminated\n\ndef widen(t)\n  t\nend\n"),
+        names("x = \"unterminated\n\ndef widen(t)\n  t\nend\n"),
         ["widen"]
+    );
+}
+
+/// **An export carries what a documentation view is rendered from.** Every one of them is a method
+/// here, because a method is the only thing the wrapper's module ends up offering.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let module = "# Widen a row.\n\
+                  def widen(text, width)\n\
+                  \x20 text\n\
+                  end\n\
+                  \n\
+                  def twice(x) = x * 2\n";
+    let exports = exports(module);
+    assert_eq!(names(module), ["widen", "twice"]);
+
+    // Ruby's body starts on the line below, so the `def` line is already the declaration.
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(exports[0].declaration, "def widen(text, width)");
+    assert_eq!(exports[0].doc.as_deref(), Some("Widen a row."));
+
+    // An endless method's body is the one expression after its `=`, and that is a body too.
+    assert_eq!(exports[1].kind, ModuleExportKind::Function);
+    assert_eq!(exports[1].declaration, "def twice(x)");
+    assert_eq!(exports[1].doc, None);
+
+    assert!(exports.iter().all(|export| export.returns.is_empty()));
+    assert!(exports.iter().all(|export| export.parameters.is_empty()));
+}
+
+/// **A default parameter value is part of the declaration**, not the body an endless method opens.
+///
+/// Both are written `name = value`, and only one of them is at bracket depth zero. Quoting
+/// `def widen(text, width` would show the model a line Ruby does not parse and drop the very
+/// parameter whose spelling it opened the view to read.
+#[test]
+fn a_default_parameter_value_does_not_end_the_declaration() {
+    let module = "\
+def widen(text, width = 8)
+  text.ljust(width)
+end
+
+def clamp(value, low = 0, high = 10) = value.clamp(low, high)
+";
+    let exports = exports(module);
+    assert_eq!(names(module), ["widen", "clamp"]);
+    assert_eq!(exports[0].declaration, "def widen(text, width = 8)");
+    // The endless method's own `=` is still the cut: it is the one outside the parameter list.
+    assert_eq!(
+        exports[1].declaration,
+        "def clamp(value, low = 0, high = 10)"
     );
 }

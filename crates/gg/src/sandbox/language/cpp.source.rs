@@ -109,6 +109,8 @@
 //! a program that was never wrong is the misattribution this codebase spends the most effort not
 //! making.
 
+use super::super::{ModuleExport, ModuleExportKind};
+
 /// The file a code module is compiled under, given its binding key — `module_csv_tools.cppm`.
 ///
 /// A fixed name per key inside a workspace that is private per preparation, on the same terms
@@ -310,12 +312,13 @@ fn opens_an_include(line: &str) -> bool {
 /// Where it cannot tell what a line declares it reports nothing, which is the safe direction — an
 /// unreported name is a call the model was not told about and the compiler still resolves, where a
 /// wrong one is a call that does not compile.
-pub(super) fn exports(source: &str) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
+pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
+    let mut names: Vec<ModuleExport> = Vec::new();
+    let lines: Vec<&str> = source.lines().collect();
     let code = code_mask(source);
     let mut offset = 0usize;
     let mut depth = 0usize;
-    for line in source.split_inclusive('\n') {
+    for (number, line) in source.split_inclusive('\n').enumerate() {
         let start = offset;
         offset += line.len();
         let outermost = depth == 0;
@@ -332,18 +335,28 @@ pub(super) fn exports(source: &str) -> Vec<String> {
         if !outermost || line.starts_with([' ', '\t']) || code.get(start) == Some(&false) {
             continue;
         }
-        let Some(name) = declared_name(line.trim_end()) else {
+        let Some((name, kind)) = declared_name(line.trim_end()) else {
             continue;
         };
-        if !names.iter().any(|seen| seen == name) {
-            names.push(name.to_string());
+        if names.iter().any(|seen| seen.name == name) {
+            continue;
         }
+        names.push(ModuleExport {
+            name: name.to_string(),
+            kind,
+            declaration: super::super::heads::head(line.trim_end()),
+            doc: super::super::comments::block_doc(&lines, number)
+                .or_else(|| super::super::comments::line_doc(&lines, number, &["///", "//"])),
+            returns: Vec::new(),
+            parameters: Vec::new(),
+        });
     }
     names
 }
 
-/// The name `line` declares at namespace scope, if this reading can tell.
-fn declared_name(line: &str) -> Option<&str> {
+/// The name `line` declares at namespace scope and what a program does with it, if this reading can
+/// tell.
+fn declared_name(line: &str) -> Option<(&str, ModuleExportKind)> {
     let line = line.trim();
     if line.is_empty() || line.starts_with(['#', '}', ')', '/', '*']) {
         return None;
@@ -356,13 +369,23 @@ fn declared_name(line: &str) -> Option<&str> {
             let rest = word(rest, "class")
                 .or_else(|| word(rest, "struct"))
                 .unwrap_or(rest);
-            return identifier(rest);
+            // A `namespace` is neither a type nor a function: a program writes its name on the way
+            // to something inside it, which is what it does with a value.
+            let kind = match keyword {
+                "namespace" => ModuleExportKind::Value,
+                _ => ModuleExportKind::Type,
+            };
+            return identifier(rest).map(|name| (name, kind));
         }
     }
     if let Some(rest) = word(line, "using") {
         // `using row = …` names `row`; `using std::swap;` and `using namespace std;` name nothing
         // this namespace offers.
-        return line.contains('=').then(|| identifier(rest)).flatten();
+        return line
+            .contains('=')
+            .then(|| identifier(rest))
+            .flatten()
+            .map(|name| (name, ModuleExportKind::Type));
     }
     if word(line, "template").is_some() || word(line, "typedef").is_some() {
         return None;
@@ -370,11 +393,16 @@ fn declared_name(line: &str) -> Option<&str> {
     // A function or a variable, which is everything left. The declarator's name is the last
     // identifier before the first `(` that opens a parameter list, or before the `=`, `{` or `;`
     // that ends a variable's declarator — so `std::vector<row> parse(std::string_view text)` names
-    // `parse` and `constexpr double pi = 3.14;` names `pi`.
+    // `parse` and `constexpr double pi = 3.14;` names `pi`. Which of the two it was is what that
+    // first character says: a parameter list is what makes a declarator a function.
     let end = line
         .find(['(', '=', '{', ';'])
         .filter(|at| !line[..*at].ends_with("operator"))?;
-    last_identifier(&line[..end])
+    let kind = match line.as_bytes()[end] {
+        b'(' => ModuleExportKind::Function,
+        _ => ModuleExportKind::Value,
+    };
+    last_identifier(&line[..end]).map(|name| (name, kind))
 }
 
 /// The rest of `text` when it opens with `word` at an identifier boundary.

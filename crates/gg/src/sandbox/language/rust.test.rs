@@ -11,6 +11,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::{CodeModule, FileWindow};
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// This arm, resolved from the registry — the same trait object a run resolves.
 fn rust() -> &'static dyn ProgramLanguage {
@@ -322,7 +323,7 @@ fn private_is_not_an_export() {}
 pub use std::fmt::Debug;
 ";
     assert_eq!(
-        source::exports(module),
+        export_names(&source::exports(module)),
         vec![
             "Row".to_string(),
             "LIMIT".to_string(),
@@ -345,7 +346,10 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
         module,
         "pub fn marker() -> &'static str {\n    \"gg-isolation-7\"\n}\n"
     );
-    assert_eq!(source::exports(&module), vec!["marker".to_string()]);
+    assert_eq!(
+        export_names(&source::exports(&module)),
+        vec!["marker".to_string()]
+    );
 }
 
 /// **The generated catalogue is this language's**, and it carries the whole surface in Rust's own

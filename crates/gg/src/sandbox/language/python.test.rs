@@ -10,6 +10,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::{FileWindow, PrepareContext};
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// This arm, resolved from the registry — the same trait object a run resolves.
 fn python() -> &'static dyn ProgramLanguage {
@@ -62,7 +63,7 @@ fn a_module_keeps_its_source_and_names_what_it_defined() {
         .prepare_module(source, &PrepareContext::new())
         .expect("this arm prepares every module");
     assert_eq!(prepared.source, source);
-    assert_eq!(prepared.exports, ["HEADER", "widen"]);
+    assert_eq!(export_names(&prepared.exports), ["HEADER", "widen"]);
 }
 
 /// **`.py`, and nothing else.**

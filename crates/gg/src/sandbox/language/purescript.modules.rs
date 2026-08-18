@@ -39,16 +39,36 @@
 
 use crate::healing::{CodeMask, Dialect, lines_with_offsets};
 
+use super::super::{ModuleExport, ModuleExportKind};
+
 /// Every name `source`'s namespace offers, in source order and without repeats.
-pub(super) fn exports(source: &str) -> Vec<String> {
+pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
     // An unlexable module is scanned as though it were all code. The mask exists to keep a `data`
     // inside a string literal from being read as a declaration; where the lexer lost its place there
     // is nothing better to do than read the lines, and the cost of being wrong is a name in a list
     // rather than a deletion.
     let mask = super::healing::PURESCRIPT_DIALECT.code_mask(source);
+    let declared = declared(source, mask.as_ref());
     match export_list(source, mask.as_ref()) {
-        Some(listed) => listed,
-        None => declared(source, mask.as_ref()),
+        Some(listed) => listed
+            .into_iter()
+            .map(
+                |name| match declared.iter().find(|export| export.name == name) {
+                    Some(export) => export.clone(),
+                    // A header may list a name this file does not declare — something it imported and
+                    // passed on. What its author wrote about it is then the export list entry itself.
+                    None => ModuleExport {
+                        declaration: name.clone(),
+                        name,
+                        kind: ModuleExportKind::Value,
+                        doc: None,
+                        returns: Vec::new(),
+                        parameters: Vec::new(),
+                    },
+                },
+            )
+            .collect(),
+        None => declared,
     }
 }
 
@@ -166,22 +186,107 @@ fn value_name(entry: &str) -> Option<&str> {
 }
 
 /// Every top-level value `source` declares, in source order and without repeats — what a header with
-/// no export list offers.
-fn declared(source: &str, mask: Option<&CodeMask>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for (offset, line) in lines_with_offsets(source) {
+/// no export list offers, and where a header *with* one finds what it listed.
+///
+/// A value written in the idiomatic two lines — `greet :: String -> String` above
+/// `greet who = "hi " <> who` — is **one** declaration, quoted as its signature. First spelling wins,
+/// which is what makes that so: the signature is the line an author writes for a reader, and a
+/// definition's left-hand side says nothing a caller needs. A value written with no signature is
+/// quoted as its definition's head, since that is the only line there is.
+fn declared(source: &str, mask: Option<&CodeMask>) -> Vec<ModuleExport> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out: Vec<ModuleExport> = Vec::new();
+    for (number, (offset, line)) in lines_with_offsets(source).enumerate() {
         // A declaration is at column zero; anything indented belongs to the one above it.
         if line.starts_with([' ', '\t']) || !is_code(mask, offset) {
             continue;
         }
-        let Some(name) = declared_value(line.trim_end()) else {
+        let line = line.trim_end();
+        let Some(name) = declared_value(line) else {
             continue;
         };
-        if !out.iter().any(|seen| seen == name) {
-            out.push(name.to_string());
+        if out.iter().any(|seen| seen.name == name) {
+            continue;
         }
+        out.push(ModuleExport {
+            name: name.to_string(),
+            kind: kind(line),
+            declaration: head(line),
+            doc: super::super::comments::line_doc(&lines, number, &["-- |", "--"]),
+            returns: Vec::new(),
+            parameters: Vec::new(),
+        });
     }
     out
+}
+
+/// What a program does with the value `line` declares.
+///
+/// PureScript has one namespace-level thing a `lib.<key>.` chain can reach — a value — so the
+/// question is only whether that value is one you apply. Its **signature** answers it: a `->` at the
+/// top level of a type is a function and nothing else is. A value with no signature is read from its
+/// own definition instead, where an argument between the name and the `=` says the same thing.
+///
+/// A curried function is a function however many arrows it has, and a `Number` is a value however it
+/// was computed; neither is a case this has to think about.
+fn kind(line: &str) -> ModuleExportKind {
+    let line = line.strip_prefix("foreign import ").unwrap_or(line);
+    let rest = match line.split_once("::") {
+        Some((_, signature)) => return arrow(signature),
+        None => line,
+    };
+    // A definition: `greet who = …` takes an argument and `limit = 10` does not.
+    let Some((head, _)) = rest.split_once('=') else {
+        return ModuleExportKind::Value;
+    };
+    match head.split_whitespace().count() > 1 {
+        true => ModuleExportKind::Function,
+        false => ModuleExportKind::Value,
+    }
+}
+
+/// Whether `signature` writes a `->` outside any bracket of its own — the arrow that makes a type a
+/// function, rather than one inside a parameter's own type or a constraint's.
+fn arrow(signature: &str) -> ModuleExportKind {
+    let bytes = signature.as_bytes();
+    let mut depth = 0usize;
+    for (at, byte) in bytes.iter().enumerate() {
+        match byte {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            b'-' if depth == 0 && bytes.get(at + 1) == Some(&b'>') => {
+                return ModuleExportKind::Function;
+            }
+            _ => {}
+        }
+    }
+    ModuleExportKind::Value
+}
+
+/// `line` without the body it opens — what a documentation view quotes.
+///
+/// A signature has no body, so it is quoted whole. A definition's body is everything after its `=`,
+/// and cutting there is right for exactly the definitions that *have* one: `greet who = "hi " <> who`
+/// binds an argument, and what a caller needs from it is the name and the arguments and not the
+/// expression they are used in.
+///
+/// A definition binding **no** arguments is a value, and a value's own value is part of its
+/// declaration — the same rule the [brace-bodied arms](super::super::heads) keep from the other side.
+/// Cutting `limit = 10` at its `=` would quote `limit =`, which is not a line of PureScript and has
+/// had the one thing a reader opened the view for taken out of it. The test is the one
+/// [`kind`] already applies, so the two readings of a definition cannot disagree.
+fn head(line: &str) -> String {
+    let line = line.trim_end();
+    if line.contains("::") {
+        return line.to_string();
+    }
+    let Some((head, _)) = line.split_once('=') else {
+        return line.to_string();
+    };
+    match head.split_whitespace().count() > 1 {
+        true => format!("{} =", head.trim_end()),
+        false => line.to_string(),
+    }
 }
 
 /// The value `line` declares at the module's top level, or `None`.

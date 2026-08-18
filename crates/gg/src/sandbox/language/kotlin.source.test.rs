@@ -3,6 +3,7 @@
 //! reading of the same question does not have.
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// The names [`Lexer::top_level_functions`] finds, with whether each is hidden.
 fn scanned(source: &str) -> Vec<(String, bool)> {
@@ -36,7 +37,7 @@ fn a_module_goes_in_a_package_of_its_own_on_the_author_s_own_first_line() {
         &module_package("csvTools"),
     )
     .expect("wrapped");
-    assert_eq!(wrapped.exports, ["greet", "add"]);
+    assert_eq!(export_names(&wrapped.exports), ["greet", "add"]);
     // The package declaration shares the author's own line 1, terminated by the semicolon Kotlin
     // allows, so a module whose first line is an `import` still parses and NO LINE MOVES.
     assert!(
@@ -71,7 +72,7 @@ fn a_module_whose_first_line_is_an_import_still_parses() {
         "{}",
         wrapped.source.lines().next().unwrap_or_default(),
     );
-    assert_eq!(wrapped.exports, ["distance"]);
+    assert_eq!(export_names(&wrapped.exports), ["distance"]);
     assert_eq!(wrapped.source.lines().count(), 2);
 }
 
@@ -230,4 +231,46 @@ fn every_scan_is_a_byte_comparison_rather_than_a_slice() {
         let _ = wrap_module(source, MODULE_CHECK_PACKAGE);
         let _ = scanned(source);
     }
+}
+
+/// **An export carries what a documentation view is rendered from**, cut at whichever of the two
+/// things opens a Kotlin body: the brace, or the `=` of an expression body.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let wrapped = wrap_module(
+        "/** Greet someone. */\n\
+         fun greet(who: String): String {\n\
+        \x20   return \"hi $who\"\n\
+         }\n\
+         \n\
+         fun add(a: Int, b: Int) = a + b\n",
+        &module_package("csvTools"),
+    )
+    .expect("wrapped");
+    assert_eq!(export_names(&wrapped.exports), ["greet", "add"]);
+
+    // Only a top-level `fun` reaches the namespace, so there is one kind here.
+    assert_eq!(wrapped.exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(
+        wrapped.exports[0].declaration,
+        "fun greet(who: String): String"
+    );
+    assert_eq!(wrapped.exports[0].doc.as_deref(), Some("Greet someone."));
+
+    assert_eq!(wrapped.exports[1].kind, ModuleExportKind::Function);
+    assert_eq!(wrapped.exports[1].declaration, "fun add(a: Int, b: Int)");
+    assert_eq!(wrapped.exports[1].doc, None);
+
+    assert!(
+        wrapped
+            .exports
+            .iter()
+            .all(|export| export.returns.is_empty())
+    );
+    assert!(
+        wrapped
+            .exports
+            .iter()
+            .all(|export| export.parameters.is_empty())
+    );
 }

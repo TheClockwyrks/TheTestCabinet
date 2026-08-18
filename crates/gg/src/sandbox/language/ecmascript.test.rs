@@ -15,6 +15,7 @@
 //! host call cross, does a failure reach standard error — are all questions about the seam, and the
 //! seam is here.
 
+use crate::sandbox::ModuleExportKind;
 use wasmtime::Store;
 use wasmtime::component::HasSelf;
 
@@ -762,13 +763,8 @@ fn the_exports_of_a_module_are_read_off_its_export_lines() {
                   export class Row {\n}\nlet hidden = 1;\nexport { hidden as visible };\n\
                   export default parseCsv;\n";
     assert_eq!(
-        super::exports(source),
-        vec![
-            "parseCsv".to_string(),
-            "limit".to_string(),
-            "Row".to_string(),
-            "visible".to_string(),
-        ],
+        crate::sandbox::export_names(&super::exports(source)),
+        ["parseCsv", "limit", "Row", "visible"],
         "every named export, once, in the order the module declares them"
     );
     assert!(
@@ -776,4 +772,114 @@ fn the_exports_of_a_module_are_read_off_its_export_lines() {
         "a module that exports nothing offers nothing: the loader hands a program the module's own \
          namespace, and a name it did not export is not in it"
     );
+}
+
+/// **An export carries what a documentation view is rendered from**: what a program does with it,
+/// the declaration its author wrote without its body, and the prose above it.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let source = "/**\n\
+                  \x20* Parse a CSV row.\n\
+                  \x20*/\n\
+                  export function parseCsv({ text, width }) {\n\
+                  \x20 return [];\n\
+                  }\n\
+                  // How many rows fit.\n\
+                  export const limit = 10;\n\
+                  export const twice = (x) => {\n\
+                  \x20 return x * 2;\n\
+                  };\n\
+                  export class Row {\n\
+                  }\n";
+    let exports = super::exports(source);
+    assert_eq!(
+        crate::sandbox::export_names(&exports),
+        ["parseCsv", "limit", "twice", "Row"]
+    );
+
+    // A destructured parameter list has a brace in it, and it is not the body: a view that quoted
+    // `export function parseCsv(` would have cut the declaration in half.
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(
+        exports[0].declaration,
+        "export function parseCsv({ text, width })"
+    );
+    assert_eq!(exports[0].doc.as_deref(), Some("Parse a CSV row."));
+
+    // A binding's value is part of its declaration, and a line comment is documentation.
+    assert_eq!(exports[1].kind, ModuleExportKind::Value);
+    assert_eq!(exports[1].declaration, "export const limit = 10;");
+    assert_eq!(exports[1].doc.as_deref(), Some("How many rows fit."));
+
+    // An arrow is a function to everyone who calls it, whichever keyword it was bound with.
+    assert_eq!(exports[2].kind, ModuleExportKind::Function);
+    assert_eq!(exports[2].declaration, "export const twice = (x) =>");
+    assert_eq!(exports[2].doc, None);
+
+    assert_eq!(exports[3].kind, ModuleExportKind::Type);
+    assert_eq!(exports[3].declaration, "export class Row");
+
+    // Nothing reads a declaration's types on this arm yet, and an empty list says "not read here".
+    assert!(exports.iter().all(|export| export.returns.is_empty()));
+    assert!(exports.iter().all(|export| export.parameters.is_empty()));
+}
+
+/// **A renaming export is named what the namespace calls it and quoted as what its author
+/// declared** — the two halves of a `export { local as public }` line coming from two places.
+///
+/// And a list entry naming something this file never declared is quoted as the export line itself,
+/// which is the whole of what its author wrote about it. Reporting a declaration gg invented for it
+/// would be gg speaking where the author did not.
+#[test]
+fn a_list_export_is_documented_from_the_declaration_it_renames() {
+    let source = "// Widen a row.\n\
+                  function helper(row) {\n\
+                  \x20 return row;\n\
+                  }\n\
+                  import { elsewhere } from \"./other.js\";\n\
+                  export { helper as widen, elsewhere };\n";
+    let exports = super::exports(source);
+    assert_eq!(
+        crate::sandbox::export_names(&exports),
+        ["widen", "elsewhere"]
+    );
+
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(exports[0].declaration, "function helper(row)");
+    assert_eq!(exports[0].doc.as_deref(), Some("Widen a row."));
+
+    assert_eq!(exports[1].kind, ModuleExportKind::Value);
+    assert_eq!(
+        exports[1].declaration,
+        "export { helper as widen, elsewhere };"
+    );
+    assert_eq!(exports[1].doc, None);
+}
+
+/// **A typed arrow is a function**, whichever of the two things TypeScript writes between its `=`
+/// and its parameter list is there.
+///
+/// The kind decides whether [a use](crate::docs::DocsRuntime::use_views) opens a page for the
+/// declaration at all, so filing one as a value is not a cosmetic mislabelling: it withholds the
+/// manual for a call the model is meant to make. A **return type** stands after the parameter list
+/// and **type parameters** stand before it, and most of a TypeScript module's arrows carry one or
+/// both.
+///
+/// What the same `<` opens where no arrow follows it — an old-style assertion — is still a value,
+/// which is what keeps this a rule about arrows rather than about angle brackets.
+#[test]
+fn a_typed_arrow_is_read_as_a_function() {
+    let source = "export const twice = (x: number): number => x * 2;\n\
+                  export const identity = <T>(value: T): T => value;\n\
+                  export const first = <T extends Array<string>>(xs: T) => xs[0];\n\
+                  export const rows = <Row[]>parsed;\n";
+    let exports = super::exports(source);
+    assert_eq!(
+        crate::sandbox::export_names(&exports),
+        ["twice", "identity", "first", "rows"]
+    );
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(exports[1].kind, ModuleExportKind::Function);
+    assert_eq!(exports[2].kind, ModuleExportKind::Function);
+    assert_eq!(exports[3].kind, ModuleExportKind::Value);
 }

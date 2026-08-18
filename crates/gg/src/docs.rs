@@ -72,6 +72,26 @@
 //! member. Neither depends on the other being open, which is exactly why closing one never disturbs
 //! the other.
 //!
+//! # Two sources, one surface
+//!
+//! Not everything a model can look up is in the catalogue. A [code skill or memory](crate::knowledge)
+//! an agent has brought into use puts its module and each of its declarations on this same surface,
+//! and every call here reads both: the catalogue first, and the
+//! [loaded registry](LoadedDocs) second. There is no second *route* — no lookup for an author's
+//! helper, no filter to say which kind of thing you meant — because to a model reading a search hit
+//! or opening a page there is no difference worth being taught: both are reference material gg
+//! holds, and both are found, opened, re-opened and closed the same way.
+//!
+//! The two are separate *sources* rather than one merged index because they are separate in every
+//! other respect. The catalogue is compiled into the binary and is the same for every run, so its
+//! index is `&'static` and built once per language. A loaded module arrived at a turn, belongs to
+//! the one agent instance that used it, and disappears with that instance — which is what makes the
+//! surface per-instance in a way the catalogue never was, and is why every place that re-derives a
+//! view from its key — a [restore](crate::persistence::restore_docviews), a
+//! [compaction](crate::compaction::restore_docviews), a window a
+//! [succession or a fork](crate::agent::transitions) carried across — drops the ones naming a
+//! module this instance has not loaded.
+//!
 //! # Why a miss answers with names
 //!
 //! A lookup that finds nothing is answered by [`suggest`](DocsRuntime::suggest) as well as by
@@ -94,6 +114,16 @@ mod suggest;
 
 #[path = "docs.search.rs"]
 mod search;
+
+/// **The second source this surface reads**: the code modules this agent loaded, which are owned,
+/// per-instance and unknown to the compiled-in catalogue.
+#[path = "docs.loaded.rs"]
+mod loaded;
+
+// The loaded half, re-exported for the same reason the search half is: the
+// [knowledge registry](crate::knowledge) owns one of these and the loop hands the handle to a
+// runtime, so the name it is spelled by outside this module is `docs`'.
+pub use loaded::LoadedDocs;
 
 // The search surface, re-exported so `docs` is the single name the loop and the membrane import
 // from — the same rule `sandbox` follows. `DocHit` and `DocKind` are fields of a `DocSearch` and the
@@ -403,7 +433,8 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::Launc
 }
 
 /// The per-agent state behind `search` and `view.openDocsView()`: what this agent was
-/// [granted](Grants), which is what decides which functions exist to be documented.
+/// [granted](Grants), which is what decides which of gg's functions exist to be documented, and
+/// what it has [loaded](LoadedDocs), which is the other half of what it can look up.
 pub struct DocsRuntime {
     /// What this agent was granted — the capability ids it holds, its [ending role](EndingRole) and
     /// the operations its own allowlist names — held as the one value the membrane also holds.
@@ -419,6 +450,19 @@ pub struct DocsRuntime {
     /// decides how each of them is **spelled**, and a directory or a lookup that answered in a
     /// language the model is not writing would be describing calls it cannot make.
     language: &'static dyn ProgramLanguage,
+    /// **The code modules this agent has loaded**, read through a handle to the registry its
+    /// [knowledge](crate::knowledge) state owns.
+    ///
+    /// A second source rather than a second surface: every lookup here asks the catalogue first and
+    /// this second, so a used skill's declaration is found, opened and closed exactly as one of gg's
+    /// own is. It is a handle and never a copy, because the set it describes changes *during* a turn
+    /// — a program that uses a skill and then searches for what it got must find it — and a snapshot
+    /// taken when this runtime was built would be empty for the whole of the session.
+    ///
+    /// [Empty](LoadedDocs::default) for every reader of this surface that is not a live agent: the
+    /// bootstrap's placeholder, the console reference, the built-in skills' generator. None of them
+    /// is an instance that could have loaded anything.
+    loaded: LoadedDocs,
 }
 
 impl DocsRuntime {
@@ -439,7 +483,28 @@ impl DocsRuntime {
         Self {
             grants: Grants::new(capabilities, Some(role), operations.iter().copied()),
             language: language(program_language),
+            loaded: LoadedDocs::new(),
         }
+    }
+
+    /// The same runtime, reading `loaded` for the code modules this agent has brought into use.
+    ///
+    /// A separate step rather than a fifth constructor argument because exactly one caller has a
+    /// registry to hand: the session loop, which owns the agent's [knowledge](crate::knowledge)
+    /// state and hands this runtime the handle to it. Every other reader of the surface — the
+    /// [bootstrap](crate::bootstrap)'s placeholder, the console [reference](crate::reference), the
+    /// generator behind the [built-in skills](crate::skills) — describes the SDK on behalf of nobody
+    /// in particular, and a required argument would have made all three name an empty registry to
+    /// say so.
+    pub fn reading(mut self, loaded: LoadedDocs) -> Self {
+        self.loaded = loaded;
+        self
+    }
+
+    /// The loaded-module registry this runtime reads — for the [`search`] half, which ranks
+    /// over both sources and lives in a module of its own.
+    fn loaded(&self) -> &LoadedDocs {
+        &self.loaded
     }
 
     /// The [program language](ProgramLanguage) this runtime answers in.
@@ -659,7 +724,7 @@ impl DocsRuntime {
     }
 
     /// One key's documentation, whichever kind of thing it addresses — a function first, a type
-    /// otherwise.
+    /// otherwise, and a **loaded** declaration last.
     ///
     /// The single entry point everything that re-derives a [docview](crate::context::OpenDocview)
     /// from its key goes through, so a re-seeded window cannot come back holding a different kind of
@@ -667,10 +732,24 @@ impl DocsRuntime {
     /// calls, and a name it can write into a program is the one it more likely meant. Both halves
     /// are keyed by their module-qualified name and the two namespaces cannot meet, so the
     /// judgement is only ever reached through the *fallback* bare names each half also answers to.
+    ///
+    /// The [loaded](LoadedDocs) source is asked last for the same reason and one more. gg's own
+    /// surface is what every agent holds and what the prompt and the bootstrap taught it; a skill's
+    /// key that happened to shadow one would take a page the model did not ask to replace out of its
+    /// hands, silently. Asked last, a loaded declaration can only ever *add* a name.
+    ///
+    /// **A key naming a module this instance has not loaded answers `None`**, and that is what makes
+    /// every re-derivation of a view honest across an instance boundary: a
+    /// [restore](crate::persistence::restore_docviews), a
+    /// [compaction](crate::compaction::restore_docviews) and the sweep a window
+    /// [carried across a fork or a succession](crate::agent::transitions) gets before its new
+    /// instance takes a turn all drop what they cannot render, so an instance that starts with
+    /// nothing loaded opens holding none of these views rather than holding empty ones.
     pub fn read_any(&self, key: &str) -> Option<String> {
         self.read(key)
             .or_else(|| self.read_type(key))
             .or_else(|| self.read_module(key))
+            .or_else(|| self.loaded.body(key))
     }
 
     /// **The single key** whatever `name` addresses is filed under, or `None` when this agent binds
@@ -708,9 +787,80 @@ impl DocsRuntime {
         // A module answers to gg's id and to this arm's path, the same leniency a function and a
         // type get; the path is the canonical one, because it is the string search files the hit
         // under and the string a program writes.
-        let module = module_of(self.language.catalogue(), name)?;
-        self.read_module(module.path)
-            .map(|_| module.path.to_string())
+        if let Some(module) = module_of(self.language.catalogue(), name)
+            && let Some(path) = self
+                .read_module(module.path)
+                .map(|_| module.path.to_string())
+        {
+            return Some(path);
+        }
+        // Last, and canonicalized the same way: a loaded declaration answers to the key it is filed
+        // under and to its bare name, and the key is what a view is filed under. See
+        // [`read_any`](Self::read_any) for why the loaded source is asked after gg's own.
+        self.loaded.key_of(name)
+    }
+
+    /// **The documentation views a use of the module loaded at `key` opens** — one per declaration
+    /// it exports that a program can *call*, and, under `types`, the declarations those name.
+    ///
+    /// Why functions and not everything: a use is gg opening pages on a model's behalf, and the
+    /// model's reason for using a code skill is to call what it carries. Opening a page per constant
+    /// as well would spend the window on the half of a module nobody reaches for, and every one of
+    /// those pages is one [search](Self::search) away for a model that wants it — which is the whole
+    /// reason the entries exist rather than only the views.
+    ///
+    /// The [type flags](DocViewTypes) are read exactly as they are for an SDK function, off the
+    /// names the declaration writes in [return](crate::sandbox::ModuleExport::returns) and
+    /// [parameter](crate::sandbox::ModuleExport::parameters) position. Both lists are empty on every
+    /// arm today, so the flags place nothing yet; the rule is written here so that an arm learning to
+    /// read a declaration's types starts placing them with nothing changed at this end.
+    /// [`Errors`](DocViewType::Errors) selects nothing on this path at all, and that is a statement
+    /// rather than an omission: a declared failure is read out of a documentation comment written in
+    /// gg's own catalogue vocabulary, which an author's module does not write.
+    ///
+    /// A named type is looked for **in the module itself first** and in the SDK second, because a
+    /// name a declaration writes is most likely the name of something declared beside it — and a
+    /// module's own `Row` must not open gg's. Those two and no third: the SDK half is asked
+    /// [directly](type_declaration) rather than through [`docview_key`](Self::docview_key), whose
+    /// own last resort is the loaded registry as a whole. Going through it would let *another*
+    /// module's `Row` answer for this one's — a page about code the declaration in hand has nothing
+    /// to do with, opened because two authors picked the same word.
+    pub fn use_views(&self, key: &str, types: DocViewTypes) -> Vec<String> {
+        let mut keys: Vec<String> = Vec::new();
+        let mut place = |candidate: String| {
+            if !keys.contains(&candidate) {
+                keys.push(candidate);
+            }
+        };
+        // Collected under the registry's lock and resolved after it, never inside: resolving reaches
+        // back into the same registry, and the lock is not reentrant.
+        let mut referenced: Vec<String> = Vec::new();
+        self.loaded.read(|entries| {
+            for entry in entries {
+                if entry.module != key || entry.kind != DocKind::Function {
+                    continue;
+                }
+                place(entry.key.clone());
+                if types.enabled(DocViewType::Return) {
+                    referenced.extend(entry.returns.iter().cloned());
+                }
+                if types.enabled(DocViewType::Parameters) {
+                    referenced.extend(entry.parameters.iter().cloned());
+                }
+            }
+        });
+        for name in referenced {
+            let own = loaded::member_key(self.language, key, &name);
+            let sdk = || {
+                type_declaration(self.language, &name)
+                    .filter(|declaration| self.type_is_reachable(declaration.key()))
+                    .map(|declaration| declaration.key().to_string())
+            };
+            if let Some(resolved) = self.loaded.key_of(&own).or_else(sdk) {
+                place(resolved);
+            }
+        }
+        keys
     }
 
     /// The SDK types to open beside the function called `name`, under `types` — the whole of the
@@ -888,9 +1038,15 @@ impl DocsRuntime {
                 }
             }
         }
+        let mut candidates: Vec<String> = candidates.into_iter().map(str::to_string).collect();
+        // The loaded declarations too, under both names they answer to. A model that has just used a
+        // code skill is reaching for a name it read a moment ago in a view gg opened for it, which
+        // makes a near-miss on one of those *more* likely than a near-miss on the SDK — and a hint
+        // drawn from the catalogue alone could never recover it.
+        candidates.extend(self.loaded.candidates());
         candidates.sort_unstable();
         candidates.dedup();
-        suggest::nearest(name, candidates)
+        suggest::nearest(name, candidates.iter().map(String::as_str))
     }
 
     /// **Whether this agent's scope binds a function** — the one predicate deciding what a model may

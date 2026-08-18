@@ -916,3 +916,230 @@ fn an_unknown_kind_names_every_kind_there_is() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The second source: the code modules this agent loaded
+// ---------------------------------------------------------------------------------------------
+
+/// A runtime granted everything, reading a registry holding one used `csv-tools` skill.
+fn with_csv_tools() -> DocsRuntime {
+    let loaded = crate::docs::LoadedDocs::new();
+    loaded.register(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        "csvTools",
+        "skill",
+        "csv-tools",
+        &[
+            crate::sandbox::ModuleExport {
+                name: "parseCsv".to_string(),
+                kind: crate::sandbox::ModuleExportKind::Function,
+                declaration: "export function parseCsv(text: string): Row[]".to_string(),
+                doc: Some("Split a CSV into rows.\nA quoted field may span lines.".to_string()),
+                returns: Vec::new(),
+                parameters: Vec::new(),
+            },
+            crate::sandbox::ModuleExport {
+                name: "Row".to_string(),
+                kind: crate::sandbox::ModuleExportKind::Type,
+                declaration: "export type Row = Record<string, string>".to_string(),
+                doc: None,
+                returns: Vec::new(),
+                parameters: Vec::new(),
+            },
+        ],
+    );
+    full().reading(loaded)
+}
+
+/// **A search finds a declaration of a module the agent loaded**, on the same terms it finds one of
+/// gg's own — one query, one ranked list, both sources in it.
+///
+/// This is what makes a code skill discoverable rather than merely available. A model that has used
+/// a skill and then forgotten what it offers has exactly one thing it knows how to do about that,
+/// and it is the same thing it does about gg's own surface.
+#[test]
+fn a_search_finds_a_declaration_of_a_loaded_module() {
+    let docs = with_csv_tools();
+    let found = docs
+        .search(ask("parseCsv"))
+        .expect("the query is not empty");
+    assert_eq!(
+        keys(&found),
+        ["csvTools.parseCsv", "csvTools"],
+        "the declaration itself leads, on its own name; the module follows, because its own view \
+         lists what it offers and a model half-remembering a name should find the module too"
+    );
+    let hit = &found.hits[0];
+    assert_eq!(hit.kind, DocKind::Function);
+    assert_eq!(hit.module, "csvTools", "keyed to the module it came from");
+    assert_eq!(
+        hit.summary, "Split a CSV into rows.",
+        "the brief is the first line of the author's own comment, and stops there"
+    );
+    assert!(
+        docs.read_any(&hit.key).is_some(),
+        "and what a search returns, an open opens"
+    );
+}
+
+/// **A loaded declaration is matched on the same four kinds of evidence an SDK entry is**, because
+/// the two sources are scored by one function over one set of fields.
+#[test]
+fn a_loaded_declaration_matches_on_its_declaration_and_its_prose_too() {
+    let docs = with_csv_tools();
+    for (query, why) in [
+        ("Row", "its declaration text"),
+        ("quoted field", "the detail beneath its brief"),
+    ] {
+        let found = docs.search(ask(query)).expect("the query is not empty");
+        assert!(
+            keys(&found).iter().any(|key| key.starts_with("csvTools.")),
+            "`{query}` finds it through {why}: {:?}",
+            keys(&found)
+        );
+    }
+}
+
+/// **The whole of a loaded module is a directory**, exactly as an SDK module is: an empty query with
+/// the module filter, which is a lookup rather than a ranking.
+#[test]
+fn a_loaded_module_answers_a_module_filter_with_its_own_directory() {
+    let found = with_csv_tools()
+        .search(DocQuery {
+            query: "",
+            module: Some("csvTools"),
+            ..DocQuery::default()
+        })
+        .expect("an empty query with a filter is a directory");
+    assert_eq!(
+        keys(&found),
+        ["csvTools", "csvTools.Row", "csvTools.parseCsv"],
+        "the module leads its own directory, and the rest is ordered by key"
+    );
+}
+
+/// **A `kind` filter tells a loaded module's callables from the rest of it**, which is the one
+/// distinction on this surface that has to stay exact: a model narrowing to `function` is narrowing
+/// to what it can write a call against.
+#[test]
+fn a_kind_filter_narrows_a_loaded_module_to_what_can_be_called() {
+    let found = with_csv_tools()
+        .search(DocQuery {
+            query: "",
+            module: Some("csvTools"),
+            kind: Some("function"),
+            ..DocQuery::default()
+        })
+        .expect("a filtered directory");
+    assert_eq!(keys(&found), ["csvTools.parseCsv"]);
+}
+
+/// **An agent that has loaded nothing searches the SDK and nothing else** — the same emptiness a
+/// fresh instance opens with, asked of the surface rather than of the registry.
+#[test]
+fn an_agent_that_loaded_nothing_finds_nothing_of_anybody_elses() {
+    let found = full()
+        .search(ask("parseCsv"))
+        .expect("the query is not empty");
+    assert_eq!(found.total, 0, "{:?}", keys(&found));
+}
+
+/// **A `type` filter reaches the second source too**, which is the one filter whose loaded half is
+/// answered by a predicate of its own ([`LoadedEntry::concerns_type`](crate::docs::LoadedDocs)).
+///
+/// Asserted at the surface rather than on the predicate because the question a model asks is *what
+/// can I do with a value of this shape*, and an agent that has loaded a module holding the shape
+/// must be answered about it. Every arm reads an empty `returns`/`parameters` today, so the type's
+/// own entry is the whole of the honest answer — silence about a function's types is not evidence
+/// that it has none.
+#[test]
+fn a_type_filter_reaches_a_loaded_modules_own_type() {
+    let found = with_csv_tools()
+        .search(DocQuery {
+            query: "",
+            declared_type: Some("Row"),
+            ..DocQuery::default()
+        })
+        .expect("an empty query with a filter is a directory");
+    assert_eq!(keys(&found), ["csvTools.Row"]);
+}
+
+/// **One page and one total over both sources.** A model pages a search by an offset it was handed
+/// back, and a total that counted only the catalogue would tell it the list was shorter than it is —
+/// the exact failure the envelope exists to prevent, reintroduced by the second source.
+#[test]
+fn a_page_over_both_sources_reports_one_total() {
+    let docs = with_csv_tools();
+    let all = docs
+        .search(DocQuery {
+            query: "",
+            module: Some("csvTools"),
+            ..DocQuery::default()
+        })
+        .expect("a directory");
+    assert_eq!(all.total, 3);
+    let page = docs
+        .search(DocQuery {
+            query: "",
+            module: Some("csvTools"),
+            offset: Some(1),
+            limit: Some(1),
+            ..DocQuery::default()
+        })
+        .expect("a directory");
+    assert_eq!(page.total, 3, "the total counts what paging skipped");
+    assert_eq!(page.offset, 1);
+    assert_eq!(keys(&page), ["csvTools.Row"]);
+}
+
+/// **A loaded module answers a `kind: "module"` filter**, so the directory of modules a model asks
+/// for names the one it loaded beside gg's own.
+#[test]
+fn a_kind_module_filter_lists_a_loaded_module_beside_ggs_own() {
+    let found = with_csv_tools()
+        .search(DocQuery {
+            query: "",
+            kind: Some("module"),
+            limit: Some(MAX_SEARCH_LIMIT),
+            ..DocQuery::default()
+        })
+        .expect("a directory of modules");
+    assert!(
+        keys(&found).contains(&"csvTools"),
+        "the loaded module is one of them: {:?}",
+        keys(&found)
+    );
+    assert!(
+        keys(&found).len() > 1,
+        "beside gg's own: {:?}",
+        keys(&found)
+    );
+}
+
+/// **Nothing gates the second source.** The `visible` pass answers *may this agent call it* about
+/// gg's own surface; a module this instance loaded was answered when it loaded it. An agent holding
+/// no capability at all still finds the code it brought into use, or a run whose profile grants
+/// little would have handed the model a module it could call and could not look up.
+#[test]
+fn an_agent_granted_nothing_still_finds_the_module_it_loaded() {
+    let loaded = crate::docs::LoadedDocs::new();
+    loaded.register(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        "csvTools",
+        "skill",
+        "csv-tools",
+        &[crate::sandbox::ModuleExport {
+            name: "parseCsv".to_string(),
+            kind: crate::sandbox::ModuleExportKind::Function,
+            declaration: "export function parseCsv(text: string): Row[]".to_string(),
+            doc: None,
+            returns: Vec::new(),
+            parameters: Vec::new(),
+        }],
+    );
+    let found = runtime(&[])
+        .reading(loaded)
+        .search(ask("parseCsv"))
+        .expect("the query is not empty");
+    assert_eq!(keys(&found), ["csvTools.parseCsv", "csvTools"]);
+}

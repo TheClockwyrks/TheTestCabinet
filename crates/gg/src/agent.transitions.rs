@@ -593,6 +593,51 @@ fn succession_message(call: &ToolCall, key: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// What a carried window may still claim to describe
+// ---------------------------------------------------------------------------
+
+/// **Drop every [documentation view](GgContextSource::DocsView) this instance cannot render**, from
+/// a window it inherited rather than opened.
+///
+/// A carried window is a *copy*: a [fork](handle_fork) clones its forker's whole conversation and a
+/// history-keeping succession hands the successor the thread it was holding, and in both cases the
+/// documentation band comes across verbatim. The band is a description of the surface the agent is
+/// working through — and the arriving instance's surface is not its predecessor's. Two things it
+/// held may be gone. Its [loaded code modules](crate::docs::LoadedDocs) certainly are: code is not a
+/// [module](crate::modules), nothing transfers it, and a new instance starts with nothing loaded, so
+/// a page headed `Documentation: csvTools.parse` describes a call this agent cannot write until it
+/// uses the skill itself — which is the one call that brings both the module and its pages back. Its
+/// gg functions may be too, since an `exec` succession resolves the successor's grants from another
+/// profile.
+///
+/// Re-derivation is the test, and it is the same one both other boundaries use
+/// ([`crate::persistence::restore_docviews`],
+/// [`crate::compaction::restore_docviews`]): a key the arriving
+/// instance's runtime renders is a key it may keep, and a key that renders nothing is dropped. One
+/// rule for the three moments a window outlives the instance that filled it, rather than a fourth
+/// spelling of it here.
+///
+/// It does not disturb the append-only rule the band otherwise keeps. That rule is about *a
+/// session* — nothing inside one may take a page away from a model except the
+/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) call it makes itself — and
+/// this runs once, before the arriving instance has taken a turn, on a window it has not yet read.
+///
+/// Returns how many went, for the operator: a copy that quietly lost half its manual is worth a line
+/// in the log, and a copy that lost none costs nothing to say nothing about.
+pub(super) fn drop_unrenderable_docviews(context: &mut ContextModel, docs: &DocsRuntime) -> usize {
+    let stale: Vec<String> = context
+        .open_docviews()
+        .into_iter()
+        .filter(|open| docs.read_any(&open.key).is_none())
+        .map(|open| open.key)
+        .collect();
+    for key in &stale {
+        context.close_docviews(Some(key));
+    }
+    stale.len()
+}
+
+// ---------------------------------------------------------------------------
 // The notes an arriving instance opens on
 // ---------------------------------------------------------------------------
 

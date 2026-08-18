@@ -12,6 +12,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::FileWindow;
 
 use super::*;
+use crate::sandbox::{ModuleExportKind, export_names};
 
 /// This arm, resolved from the registry — the same trait object a run resolves.
 fn cpp() -> &'static dyn ProgramLanguage {
@@ -405,7 +406,7 @@ int nested_is_still_a_name() { return 1; }
 }
 ";
     assert_eq!(
-        source::exports(module),
+        export_names(&source::exports(module)),
         vec![
             "row".to_string(),
             "kind".to_string(),
@@ -420,8 +421,10 @@ int nested_is_still_a_name() { return 1; }
     // An indented declaration is inside something else and is not a name the program reaches at
     // `lib::<key>::<name>`, and a comment declares nothing.
     assert_eq!(
-        source::exports("struct row {\n  int inner_is_not_an_export() { return 1; }\n};\n"),
-        vec!["row".to_string()]
+        export_names(&source::exports(
+            "struct row {\n  int inner_is_not_an_export() { return 1; }\n};\n"
+        )),
+        ["row"]
     );
     assert!(source::exports("// int commented_out();\n").is_empty());
 }
@@ -439,7 +442,10 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
         module,
         "#include <string>\n\nstd::string marker() {\n  return \"gg-isolation-7\";\n}\n"
     );
-    assert_eq!(source::exports(&module), vec!["marker".to_string()]);
+    assert_eq!(
+        export_names(&source::exports(&module)),
+        vec!["marker".to_string()]
+    );
 
     // It is a module a skill author could have written, include and all: the line goes into the
     // global module fragment, and what stays inside `namespace lib::module` is the export the gate
@@ -519,4 +525,40 @@ fn this_arm_declares_the_libraries_a_program_may_reach() {
             "`{absent}` is deliberately not in this arm's library set"
         );
     }
+}
+
+/// **An export carries what a documentation view is rendered from**, off the one line the scan
+/// already found the name on.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let module = "/// Widen a row.\n\
+                  std::string widen(std::string_view text) {\n\
+                  \x20   return std::string(text);\n\
+                  }\n\
+                  \n\
+                  struct Row {\n\
+                  \x20   int id;\n\
+                  };\n\
+                  \n\
+                  constexpr double pi = 3.14;\n";
+    let exports = source::exports(module);
+    assert_eq!(export_names(&exports), ["widen", "Row", "pi"]);
+
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(
+        exports[0].declaration,
+        "std::string widen(std::string_view text)"
+    );
+    assert_eq!(exports[0].doc.as_deref(), Some("Widen a row."));
+
+    assert_eq!(exports[1].kind, ModuleExportKind::Type);
+    assert_eq!(exports[1].declaration, "struct Row");
+    assert_eq!(exports[1].doc, None);
+
+    // A variable's initialiser is what a reader came for, so it is quoted whole.
+    assert_eq!(exports[2].kind, ModuleExportKind::Value);
+    assert_eq!(exports[2].declaration, "constexpr double pi = 3.14;");
+
+    assert!(exports.iter().all(|export| export.returns.is_empty()));
+    assert!(exports.iter().all(|export| export.parameters.is_empty()));
 }

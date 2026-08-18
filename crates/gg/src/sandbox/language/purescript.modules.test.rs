@@ -8,17 +8,26 @@
 
 use super::*;
 
+/// The names alone — what most of a scan's own assertions are about. What each export carries
+/// *beside* its name is asserted in its own test below.
+fn names(source: &str) -> Vec<String> {
+    exports(source)
+        .into_iter()
+        .map(|export| export.name)
+        .collect()
+}
+
 /// **An export list is the whole answer**, in the order it lists them.
 #[test]
 fn an_export_list_names_what_the_namespace_offers() {
     assert_eq!(
-        exports("module Helpers (greet, add) where\n\ngreet = 1\nadd = 2\nsecret = 3\n"),
+        names("module Helpers (greet, add) where\n\ngreet = 1\nadd = 2\nsecret = 3\n"),
         ["greet", "add"]
     );
     // Withheld names are withheld: `secret` is declared and is not exported, and `purs` really does
     // leave it out of the emitted JavaScript.
     assert!(
-        !exports("module Helpers (greet) where\ngreet = 1\nsecret = 2\n")
+        !names("module Helpers (greet) where\ngreet = 1\nsecret = 2\n")
             .contains(&"secret".to_string())
     );
 }
@@ -27,7 +36,7 @@ fn an_export_list_names_what_the_namespace_offers() {
 #[test]
 fn an_export_list_may_be_written_over_several_lines() {
     assert_eq!(
-        exports(
+        names(
             "module Helpers\n  \
              ( slugify\n  \
              , titleCase\n  \
@@ -50,7 +59,7 @@ fn an_export_list_may_be_written_over_several_lines() {
 #[test]
 fn only_the_values_in_an_export_list_are_reported() {
     assert_eq!(
-        exports(
+        names(
             "module Helpers (greet, Colour(..), class Show2, module Prelude, type Alias) where\n\
              greet = 1\n"
         ),
@@ -65,7 +74,7 @@ fn only_the_values_in_an_export_list_are_reported() {
 #[test]
 fn a_header_with_no_list_offers_every_top_level_value() {
     assert_eq!(
-        exports(
+        names(
             "module Helpers where\n\
              \n\
              import Prelude\n\
@@ -90,7 +99,7 @@ fn a_header_with_no_list_offers_every_top_level_value() {
 #[test]
 fn a_declaration_that_is_not_a_value_is_not_reported() {
     assert_eq!(
-        exports(
+        names(
             "module Helpers where\n\
              \n\
              import Prelude\n\
@@ -119,7 +128,7 @@ fn a_declaration_that_is_not_a_value_is_not_reported() {
 #[test]
 fn a_multi_equation_definition_is_reported_once() {
     assert_eq!(
-        exports(
+        names(
             "module Helpers where\n\
              \n\
              describe :: Int -> String\n\
@@ -137,7 +146,7 @@ fn a_multi_equation_definition_is_reported_once() {
 #[test]
 fn text_that_is_not_code_declares_nothing() {
     assert_eq!(
-        exports(
+        names(
             "module Helpers where\n\
              \n\
              usage :: String\n\
@@ -163,7 +172,7 @@ fn text_that_is_not_code_declares_nothing() {
 /// model the skill it just read offers nothing.
 #[test]
 fn a_module_with_no_header_reports_its_declarations() {
-    assert_eq!(exports("greet :: String\ngreet = \"hi\"\n"), ["greet"]);
+    assert_eq!(names("greet :: String\ngreet = \"hi\"\n"), ["greet"]);
 }
 
 /// **A source the lexer cannot read is scanned as though it were all code**, which over-reports
@@ -176,7 +185,86 @@ fn a_module_with_no_header_reports_its_declarations() {
 fn an_unlexable_module_is_read_as_code() {
     // An unterminated string: the mask declines, and the scan reads the lines anyway.
     assert_eq!(
-        exports("module Helpers where\ngreet = \"open\nlimit = 1\n"),
+        names("module Helpers where\ngreet = \"open\nlimit = 1\n"),
         ["greet", "limit"]
     );
+}
+
+/// **An export carries what a documentation view is rendered from**, and the declaration it quotes
+/// is the **signature**: that is the line a PureScript author writes for a reader, where a
+/// definition's left-hand side says nothing a caller needs.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let module = "module Helpers where\n\
+                  \n\
+                  -- | Greet someone.\n\
+                  greet :: String -> String\n\
+                  greet who = \"hi \" <> who\n\
+                  \n\
+                  limit :: Int\n\
+                  limit = 10\n";
+    let exports = exports(module);
+    assert_eq!(names(module), ["greet", "limit"]);
+
+    // A `->` at the top level of a type is what makes a value one you apply.
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(exports[0].declaration, "greet :: String -> String");
+    assert_eq!(exports[0].doc.as_deref(), Some("Greet someone."));
+
+    assert_eq!(exports[1].kind, ModuleExportKind::Value);
+    assert_eq!(exports[1].declaration, "limit :: Int");
+    assert_eq!(exports[1].doc, None);
+
+    assert!(exports.iter().all(|export| export.returns.is_empty()));
+    assert!(exports.iter().all(|export| export.parameters.is_empty()));
+}
+
+/// **A header with an export list documents what it lists**, off the declarations below it.
+///
+/// The two readings are one surface: a listed name is looked up among the file's declarations, so a
+/// module that says what it offers gets the same view as one that says nothing — the signature its
+/// author wrote and the prose above it. A list that dropped either would make an author's export
+/// list cost them their documentation.
+#[test]
+fn a_listed_export_is_documented_from_the_declaration_it_names() {
+    let module = "module Helpers (greet, absent) where\n\
+                  \n\
+                  -- | Greet someone.\n\
+                  greet :: String -> String\n\
+                  greet who = \"hi \" <> who\n\
+                  \n\
+                  secret :: Int\n\
+                  secret = 1\n";
+    let exports = exports(module);
+    assert_eq!(names(module), ["greet", "absent"]);
+
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(exports[0].declaration, "greet :: String -> String");
+    assert_eq!(exports[0].doc.as_deref(), Some("Greet someone."));
+
+    // A list may name something this file did not declare — a re-export. The only thing its author
+    // wrote about it is the list entry, so that is what the view quotes, and gg claims nothing else.
+    assert_eq!(exports[1].kind, ModuleExportKind::Value);
+    assert_eq!(exports[1].declaration, "absent");
+    assert_eq!(exports[1].doc, None);
+}
+
+/// **A declaration with no signature is quoted from its definition**, which is the only line its
+/// author wrote — and the cut depends on which of the two kinds of definition it is.
+///
+/// A **function**'s body is what follows its `=`, and a caller needs the name and the arguments
+/// rather than the expression they are used in. A **value** has no body at all: what it binds is
+/// what it is, and quoting `limit =` would hand the reader a line PureScript does not parse with the
+/// one thing they opened the view for cut out of it. That is the rule the brace-bodied arms keep
+/// from the other side, and it is the same test `kind` makes, so the two cannot disagree about one
+/// line.
+#[test]
+fn a_declaration_with_no_signature_is_quoted_from_its_definition() {
+    let module = "module Helpers where\n\nlimit = 10\n\ngreet who = \"hi \" <> who\n";
+    let exports = exports(module);
+    assert_eq!(names(module), ["limit", "greet"]);
+    assert_eq!(exports[0].kind, ModuleExportKind::Value);
+    assert_eq!(exports[0].declaration, "limit = 10");
+    assert_eq!(exports[1].kind, ModuleExportKind::Function);
+    assert_eq!(exports[1].declaration, "greet who =");
 }

@@ -56,6 +56,7 @@ use crate::limits::TurnErrorType;
 
 use super::compile::compile_program;
 use crate::ending::{Ending, EndingRole};
+use crate::sandbox::export_names;
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
@@ -719,7 +720,7 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
     )
     .expect("an ordinary Rust module compiles");
     assert_eq!(
-        module.exports,
+        export_names(&module.exports),
         vec!["shout".to_string(), "MARK".to_string()],
         "a module's namespace is every public item it declares, in source order"
     );

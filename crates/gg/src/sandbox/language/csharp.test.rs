@@ -12,6 +12,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::FileWindow;
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// This arm, resolved from the registry — the same trait object a run resolves.
 fn csharp() -> &'static dyn ProgramLanguage {
@@ -198,7 +199,7 @@ fn the_isolation_subject_for_a_module_is_a_public_member() {
     );
     let wrapped = source::wrap_module(&module, source::CHECK_KEY)
         .expect("the isolation subject is a module this arm can wrap");
-    assert_eq!(wrapped.exports, vec!["Marker".to_string()]);
+    assert_eq!(export_names(&wrapped.exports), vec!["Marker".to_string()]);
 }
 
 /// **The isolation gate reads this arm's artifact as the assembly it is**, not as the base64 it

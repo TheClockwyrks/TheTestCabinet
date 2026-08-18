@@ -2,6 +2,7 @@
 //! actually writes.
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// The mask, as a string of one character per byte — `c` for code, `t` for text, `h` for a hole —
 /// which is what makes an expectation here readable beside its input.
@@ -72,7 +73,7 @@ fn a_module_is_a_class_body_under_the_key_it_is_bound_at() {
         "the class gg opened is not closed outside the author's coordinates: {}",
         module.source
     );
-    assert_eq!(module.exports, vec!["Slugify".to_string()]);
+    assert_eq!(export_names(&module.exports), vec!["Slugify".to_string()]);
 }
 
 #[test]
@@ -112,7 +113,7 @@ fn the_using_lines_a_c_sharp_file_opens_with_are_lifted_out_of_the_class_body() 
         Some(4),
         "the author's line 5 did not stay line 5: {body}"
     );
-    assert_eq!(module.exports, vec!["Count".to_string()]);
+    assert_eq!(export_names(&module.exports), vec!["Count".to_string()]);
 }
 
 #[test]
@@ -131,7 +132,7 @@ fn only_the_run_of_usings_at_the_top_is_taken() {
         "a `using` statement was hoisted out of the body it belongs to: {}",
         module.source
     );
-    assert_eq!(module.exports, vec!["Read".to_string()]);
+    assert_eq!(export_names(&module.exports), vec!["Read".to_string()]);
 }
 
 #[test]
@@ -155,7 +156,7 @@ fn a_module_names_every_public_thing_it_offers_and_nothing_else() {
     .expect("a module of public members wraps");
 
     assert_eq!(
-        module.exports,
+        export_names(&module.exports),
         vec![
             "Slugify", "First", "Ceiling", "Word", "Total", "Row", "Colour", "Score", "Nested",
         ],
@@ -225,7 +226,7 @@ fn a_declaration_that_is_only_text_is_not_one() {
         "Kit",
     )
     .expect("a module whose only declaration is real wraps");
-    assert_eq!(module.exports, vec!["Sample".to_string()]);
+    assert_eq!(export_names(&module.exports), vec!["Sample".to_string()]);
 }
 
 #[test]
@@ -262,7 +263,7 @@ fn a_brace_that_is_only_text_does_not_hide_a_declaration() {
     )
     .expect("a module whose strings contain braces wraps");
     assert_eq!(
-        module.exports,
+        export_names(&module.exports),
         vec![
             "Open".to_string(),
             "Interpolated".to_string(),
@@ -275,4 +276,56 @@ fn a_brace_that_is_only_text_does_not_hide_a_declaration() {
 fn a_modules_file_is_named_so_a_diagnostic_in_one_is_never_the_models() {
     assert_eq!(module_file("CsvTools"), "module_CsvTools.cs");
     assert!(module_file(CHECK_KEY).starts_with(MODULE_FILE_PREFIX));
+}
+
+/// **An export carries what a documentation view is rendered from**, cut at whichever of the three
+/// things a C# member opens a body with — a brace, an `=>`, or nothing at all.
+#[test]
+fn an_export_carries_its_kind_its_declaration_and_its_documentation() {
+    let module = wrap_module(
+        "/// Slugify a string.\n\
+         public static string Slugify(string text) => text.ToLowerInvariant();\n\
+         public const int Limit = 3;\n\
+         public static int Rows { get; set; }\n\
+         public sealed class Row { }\n",
+        "CsvTools",
+    )
+    .expect("a module declaring something public wraps");
+    assert_eq!(
+        export_names(&module.exports),
+        ["Slugify", "Limit", "Rows", "Row"]
+    );
+
+    // An expression-bodied member: the arrow is the boundary, not the value.
+    assert_eq!(module.exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(
+        module.exports[0].declaration,
+        "public static string Slugify(string text)"
+    );
+    assert_eq!(module.exports[0].doc.as_deref(), Some("Slugify a string."));
+
+    // A field's `=` opens its value, and the value is part of the declaration.
+    assert_eq!(module.exports[1].kind, ModuleExportKind::Value);
+    assert_eq!(module.exports[1].declaration, "public const int Limit = 3;");
+    assert_eq!(module.exports[1].doc, None);
+
+    // A property's accessors are a body, and the brace is the boundary.
+    assert_eq!(module.exports[2].kind, ModuleExportKind::Value);
+    assert_eq!(module.exports[2].declaration, "public static int Rows");
+
+    assert_eq!(module.exports[3].kind, ModuleExportKind::Type);
+    assert_eq!(module.exports[3].declaration, "public sealed class Row");
+
+    assert!(
+        module
+            .exports
+            .iter()
+            .all(|export| export.returns.is_empty())
+    );
+    assert!(
+        module
+            .exports
+            .iter()
+            .all(|export| export.parameters.is_empty())
+    );
 }

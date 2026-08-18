@@ -7,6 +7,7 @@
 //! processes' worth of both.
 
 use super::*;
+use crate::sandbox::export_names;
 
 /// Compile a program and hand back the compiler's diagnostics, failing the test on a toolchain
 /// failure — a missing `node` is a broken machine, not a result.
@@ -197,11 +198,22 @@ fn a_module_is_compiled_in_its_own_coordinates() {
                  export { helper as run };\n";
     let prepared = compile_module(clean, &PrepareContext::new()).expect("the module type-checks");
     assert_eq!(
-        prepared.exports,
+        export_names(&prepared.exports),
         vec!["rows".to_string(), "limit".to_string(), "run".to_string()],
         "the namespace is what the module exported: a type is not a value, and an unexported \
          declaration is not offered"
     );
+
+    // The names are the emission's answer and the declarations are the author's: `tsc` erased every
+    // type on the way past, and a model reading this view is about to write TypeScript against it.
+    assert_eq!(
+        prepared.exports[0].declaration,
+        "export function rows(path: string): string[]"
+    );
+    assert_eq!(prepared.exports[1].declaration, "export const limit = 40;");
+    // A renaming export is named what the namespace calls it and quoted as what its author declared.
+    assert_eq!(prepared.exports[2].name, "run");
+    assert_eq!(prepared.exports[2].declaration, "function helper(): void");
 
     let broken =
         "import { files } from \"gg\";\nexport const total: number = files.listDir(\"src\");\n";

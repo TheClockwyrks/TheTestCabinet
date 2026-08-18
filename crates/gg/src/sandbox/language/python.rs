@@ -99,8 +99,8 @@ pub(super) const SURFACE_IMPORT: &str = "import gg";
 /// [memories](crate::memories) this session has read.
 ///
 /// `lib` is a package the guest assembles per turn out of the modules gg handed it, so it is reached
-/// the way any other package is. The line is quoted in the read that binds the module
-/// ([`Loaded::note`](crate::knowledge::Loaded::note)), which is the moment it matters.
+/// the way any other package is. The line is quoted in the [documentation view](crate::docs) of the
+/// module and of each declaration it exports, which is the moment it matters.
 pub(super) const LIB_IMPORT: &str = "import lib";
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};

@@ -66,7 +66,7 @@
 //! nothing, which is the safe direction: an unlisted export is a call the model was not told about
 //! and the compiler still resolves, where a wrong one is a name that does not exist.
 
-use crate::sandbox::{PrepareError, PrepareFailure};
+use crate::sandbox::{ModuleExport, ModuleExportKind, PrepareError, PrepareFailure};
 
 /// The namespace every code module's class is declared in — the `lib` of `lib.<key>`.
 ///
@@ -103,8 +103,8 @@ pub(super) struct Module {
     /// `namespace lib;`, the hoisted `using` lines, and the author's own body inside
     /// `public static class <key>`.
     pub source: String,
-    /// The names `lib.<key>` offers, in source order.
-    pub exports: Vec<String>,
+    /// What `lib.<key>` offers, in source order.
+    pub exports: Vec<ModuleExport>,
 }
 
 /// The identifier a code [skill](crate::skills) or [memory](crate::memories) called `name` is bound
@@ -294,11 +294,12 @@ fn keyword<'a>(line: &'a str, word: &str) -> Option<&'a str> {
 /// Read from the byte mask rather than from a parse, so a `public` inside a string or a comment is
 /// not one, and a `public` nested inside another declaration is at a depth this does not report. A
 /// line it cannot make a name out of is skipped rather than guessed at.
-fn exports(body: &str, mask: &[Mask]) -> Vec<String> {
-    let mut names = Vec::new();
+fn exports(body: &str, mask: &[Mask]) -> Vec<ModuleExport> {
+    let mut names: Vec<ModuleExport> = Vec::new();
+    let lines: Vec<&str> = body.lines().collect();
     let mut depth = 0usize;
     let mut at = 0usize;
-    for line in body.split_inclusive('\n') {
+    for (number, line) in body.split_inclusive('\n').enumerate() {
         let start = at;
         at += line.len();
         let offset = line.len() - line.trim_start().len();
@@ -318,8 +319,22 @@ fn exports(body: &str, mask: &[Mask]) -> Vec<String> {
         if !outermost || mask.get(start + offset) != Some(&Mask::Code) {
             continue;
         }
-        if let Some(name) = declared_name(line.trim()) {
-            names.push(name);
+        if let Some((name, kind)) = declared_name(line.trim()) {
+            names.push(ModuleExport {
+                name,
+                kind,
+                declaration: super::super::heads::head(line.trim()),
+                // Above the declaration, past the attribute lines a C# author writes between the
+                // two: `[Obsolete]` under three lines of `///` has not detached them.
+                doc: {
+                    let above =
+                        super::super::comments::above(&lines, number, |line| line.starts_with('['));
+                    super::super::comments::line_doc(&lines, above, &["///", "//"])
+                        .or_else(|| super::super::comments::block_doc(&lines, above))
+                },
+                returns: Vec::new(),
+                parameters: Vec::new(),
+            });
         }
     }
     names
@@ -337,25 +352,28 @@ const MODIFIERS: &[&str] = &[
 /// The kinds of declaration whose name is the identifier that follows the keyword.
 const TYPE_KEYWORDS: &[&str] = &["class", "record", "struct", "enum", "interface"];
 
-/// The name a `public` line declares, or `None` for a line this cannot read.
+/// The name a `public` line declares and what a program does with it, or `None` for a line this
+/// cannot read.
 ///
 /// Two shapes, which is all a class body has: a **type**, whose name follows its keyword, and a
 /// **member**, whose name is the last identifier before its parameter list or its initialiser. The
 /// generic argument lists are cut out first, so `public static T First<T>(…)` names `First` rather
 /// than `T`.
-fn declared_name(line: &str) -> Option<String> {
+///
+/// Which kind a member is comes off the same cut: a parameter list is what makes a member a method,
+/// and a member with none is a field or a property — something a program reads.
+fn declared_name(line: &str) -> Option<(String, ModuleExportKind)> {
     let mut words = line.split_whitespace().peekable();
     if words.peek() != Some(&"public") {
         return None;
     }
-    let head: String = {
-        // Everything up to the parameter list, the initialiser or the body — whichever comes first.
-        let cut = line
-            .find(['(', '=', '{', ';'])
-            .unwrap_or(line.len())
-            .min(line.find("=>").unwrap_or(line.len()));
-        without_generics(&line[..cut])
-    };
+    // Everything up to the parameter list, the initialiser or the body — whichever comes first.
+    let cut = line
+        .find(['(', '=', '{', ';'])
+        .unwrap_or(line.len())
+        .min(line.find("=>").unwrap_or(line.len()));
+    let member = line[cut..].starts_with('(');
+    let head: String = without_generics(&line[..cut]);
     let mut tokens = head
         .split(|character: char| !(character.is_alphanumeric() || character == '_'))
         .filter(|token| !token.is_empty())
@@ -369,16 +387,27 @@ fn declared_name(line: &str) -> Option<String> {
         if TYPE_KEYWORDS.contains(&token) {
             // `record class` and `record struct` name the identifier after the second word.
             let next = tokens.next()?;
-            return match TYPE_KEYWORDS.contains(&next) {
-                true => tokens.next().map(str::to_string),
-                false => Some(next.to_string()),
+            let name = match TYPE_KEYWORDS.contains(&next) {
+                true => tokens.next()?,
+                false => next,
             };
+            return Some((name.to_string(), ModuleExportKind::Type));
         }
         seen.push(token);
     }
     // A member: its type, then its name. One token alone is a return type with no name — a line this
     // cannot read, which is reported as nothing rather than guessed at.
-    (seen.len() >= 2).then(|| seen[seen.len() - 1].to_string())
+    // A `delegate` is read like a method — its name follows a return type — and is a **type** all
+    // the same: a program names it where a parameter's type goes rather than calling it.
+    let kind = match (
+        line.split_whitespace().any(|word| word == "delegate"),
+        member,
+    ) {
+        (true, _) => ModuleExportKind::Type,
+        (false, true) => ModuleExportKind::Function,
+        (false, false) => ModuleExportKind::Value,
+    };
+    (seen.len() >= 2).then(|| (seen[seen.len() - 1].to_string(), kind))
 }
 
 /// `line` with every `<…>` cut out, so the identifiers left are the declaration's own.

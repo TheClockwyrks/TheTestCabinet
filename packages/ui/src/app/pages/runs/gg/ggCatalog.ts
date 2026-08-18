@@ -1073,7 +1073,7 @@ export const BUILT_IN_SKILL_OPTIONS: ReadonlyArray<{
 // only when this agent really holds at least one of its functions, so the list is a
 // ceiling rather than a roster: switching nothing off on an agent with no board still
 // yields no `gg-project`.
-export const BUILT_IN_SKILLS_HINT = `Skills gg writes itself, one per family of the functions this agent has — generated from its live tools rather than authored, so they cannot describe a tool it was not given. Under tool calling a built-in's body is the family's real tool definitions and parameters; under responses-as-code it opens a documentation view per function on the turn after it is read. A family is offered only when the agent holds at least one of its functions, and a skill of the same name in the skills directory replaces it. Switching one off withholds it from this agent entirely — the family's functions still work, the manual for them is simply not there. ${TOGGLES_HINT}`;
+export const BUILT_IN_SKILLS_HINT = `Skills gg writes itself, one per family of the functions this agent has — generated from its live tools rather than authored, so they cannot describe a tool it was not given. Under tool calling a built-in's body is the family's real tool definitions and parameters; under responses-as-code it opens a documentation view per function on the turn after it is used. A family is offered only when the agent holds at least one of its functions, and a skill of the same name in the skills directory replaces it. Switching one off withholds it from this agent entirely — the family's functions still work, the manual for them is simply not there. ${TOGGLES_HINT}`;
 
 // The bounds gg falls back to when a configuration sets no cap, mirroring the
 // per-capability defaults in `crates/gg/src/{tasks,board,memories}.rs`. Surfaced as
@@ -1496,11 +1496,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     id: "skills",
     name: "Skills",
     group: "Knowledge",
-    // Not "authored markdown" any more, and the change is bigger than the wording: a
-    // skill may be prose, an importable code module bound at `lib.<key>` in every later
-    // program's scope, a script that runs once when the skill is first read, or any
-    // combination — and gg ships eleven of its own, so the capability is worth enabling
-    // in a workspace that authored none.
+    // A skill may be prose, a code module the agent's programs import, a script gg runs
+    // on every use, or any combination — and gg ships twelve of its own, so the
+    // capability is worth enabling in a workspace that authored none.
     purpose:
       "Skills — prose, code, or both — catalogued in the prompt and pinned once read.",
     defaultOn: true,
@@ -1510,7 +1508,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Skills directory",
         kind: "text",
         defaultValue: DEFAULT_SKILLS_DIR,
-        hint: "Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is. A `<name>.md` file there is a prose skill; a `<name>/` directory is one too, with its front matter and body in a required `skill.md` beside an optional `skill.<ext>` (a module the agent's programs can call) and `on-use.<ext>` (a script that runs once, when the skill is first read). The extension is the program language of the agent reading it — `skill.ts` for a TypeScript agent — so a directory may carry one per language.",
+        hint: "Where this agent reads its authored skills from. A skills library belongs to the agent, so each profile names its own directory and two profiles naming one directory share the load. Relative paths are joined onto the workspace; an absolute path is used as-is. A `<name>.md` file there is a prose skill; a `<name>/` directory is one too, with its front matter and body in a required `skill.md` beside an optional `skill.<ext>` (a module the agent's programs import) and `on-use.<ext>` (a script gg runs on every use). The extension is the program language of the agent using it — `skill.ts` for a TypeScript agent — so a directory may carry one per language.",
       },
       {
         key: "builtIns",

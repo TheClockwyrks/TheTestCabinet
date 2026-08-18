@@ -25,6 +25,20 @@
 //! is withheld by being able to read what a record's fields mean; what would be wrong is advertising
 //! the shape of a value only an unbound function can produce.
 //!
+//! # Two sources, one ranking
+//!
+//! The catalogue is not the only thing a query reaches. A [code skill or memory](crate::knowledge)
+//! an agent has brought into use puts its module and each of its declarations on the same surface,
+//! and those entries are [owned, per-instance state](super::LoadedDocs) rather than a projection of
+//! anything compiled in — so they cannot be folded into the `&'static` index, and they are unioned
+//! at query time instead. Both sources are scored by [one function](score) over
+//! [four texts](Fields) and ranked in one list, because a model asking *what can do this* must be
+//! answered by whichever of the two knows, in one order, without having to ask twice.
+//!
+//! Nothing gates the second source. Those entries describe code *this* instance loaded, so the
+//! question `bound` answers about gg's own surface — may this agent call it — was settled when the
+//! module was loaded.
+//!
 //! # Why the ranking is tiered rather than scored
 //!
 //! For the reason [`suggest`](super::suggest) gives about near-misses, and it is the same problem: a
@@ -507,7 +521,12 @@ impl super::DocsRuntime {
 
         let index = index(self.language);
         let visible = self.visible(index);
-        let mut ranked: Vec<(Scored, &DocEntry, Vec<DocModule>)> = Vec::new();
+        // One list over both sources, built as **hits** rather than as entries, because the two
+        // sources have nothing else in common: one is a `&'static` projection of a compiled-in
+        // catalogue and the other is an owned, per-instance registry, and the only thing the ranking
+        // needs of either is what a model would read. Everything the sort reads — the key, the kind
+        // — a hit already carries.
+        let mut ranked: Vec<(Scored, DocHit)> = Vec::new();
         for (position, entry) in index.entries.iter().enumerate() {
             if !visible[position] {
                 continue;
@@ -528,18 +547,57 @@ impl super::DocsRuntime {
             // An empty query with a filter is a directory, so a filtered entry with nothing to score
             // against is a hit at the weakest tier — ranked, in that case, entirely by its key.
             let scored = match terms.is_empty() {
-                true => Scored {
-                    tier: TIER_DETAIL,
-                    relevance: Relevance::default(),
-                },
+                true => directory_hit(),
                 false => match entry.score(&terms) {
                     Some(scored) => scored,
                     None => continue,
                 },
             };
-            ranked.push((scored, entry, modules));
+            ranked.push((scored, entry.hit(&modules)));
         }
-        ranked.sort_by(|(left, a, _), (right, b, _)| {
+        // The second source, scored by the same rules and ranked in the same list. Nothing gates it:
+        // these entries describe code *this instance* brought into use, so the question `visible`
+        // answers about gg's own surface — may this agent call it — was answered when the module was
+        // loaded.
+        self.loaded().read(|entries| {
+            for entry in entries {
+                if kind.is_some_and(|kind| kind != entry.kind) {
+                    continue;
+                }
+                if module.is_some_and(|module| !entry.in_module(module)) {
+                    continue;
+                }
+                if declared_type.is_some_and(|name| !entry.concerns_type(name)) {
+                    continue;
+                }
+                let scored = match terms.is_empty() {
+                    true => directory_hit(),
+                    false => match score(
+                        &Fields {
+                            folded: &entry.folded,
+                            signature: &entry.signature,
+                            brief: &entry.brief_folded,
+                            detail: &entry.detail_folded,
+                        },
+                        &terms,
+                    ) {
+                        Some(scored) => scored,
+                        None => continue,
+                    },
+                };
+                ranked.push((
+                    scored,
+                    DocHit {
+                        key: entry.key.clone(),
+                        kind: entry.kind,
+                        module: entry.module.clone(),
+                        name: entry.name.clone(),
+                        summary: entry.brief.clone(),
+                    },
+                ));
+            }
+        });
+        ranked.sort_by(|(left, a), (right, b)| {
             left.tier
                 .cmp(&right.tier)
                 .then(breadth_then_frequency(&left.relevance, &right.relevance))
@@ -560,7 +618,7 @@ impl super::DocsRuntime {
                     false => Ordering::Equal,
                 })
                 // The last word, and the reason a search is reproducible across runs.
-                .then(a.key.cmp(b.key))
+                .then(a.key.cmp(&b.key))
         });
 
         let total = ranked.len();
@@ -568,7 +626,7 @@ impl super::DocsRuntime {
             .into_iter()
             .skip(offset as usize)
             .take(limit as usize)
-            .map(|(_, entry, modules)| entry.hit(&modules))
+            .map(|(_, hit)| hit)
             .collect();
         Ok(DocSearch {
             total: saturating(total),
@@ -702,6 +760,100 @@ fn in_module(modules: &[DocModule], filter: &str) -> bool {
     })
 }
 
+/// **The four texts a query is matched against**, borrowed from whichever source holds them.
+///
+/// Two sources feed one ranking: the `&'static` [index](DocIndex) over a compiled-in catalogue, and
+/// the owned, per-instance [registry](super::LoadedDocs) of the code modules an agent loaded. They
+/// share no type and never will — one is a projection of the binary and the other is text that
+/// arrived at a turn — but a hit from either must sort against a hit from the other on identical
+/// evidence, so what the ranking reads is stated once, here, as four strings.
+///
+/// The three prose fields arrive **lowercased**, because matching is case-insensitive and a source
+/// that lowercased them per query would do it once per term per entry per call for a value that
+/// cannot change.
+struct Fields<'a> {
+    /// The identifier, [folded](fold) — case and separators dropped.
+    folded: &'a str,
+    /// The rendered signature or declaration text.
+    signature: &'a str,
+    /// The one-line brief.
+    brief: &'a str,
+    /// Everything the documentation says beneath its first line.
+    detail: &'a str,
+}
+
+/// Score one entry's `fields` against already-[normalized](normalize) `terms`, or `None` when no
+/// term matched any of the four.
+///
+/// The entry's tier is the **best** any single term achieved, so one term landing on the name
+/// carries an entry that another term only brushed in a paragraph. Breadth and frequency are
+/// summed across every field, because they answer a different question from the tier: *how much
+/// of what you asked for is in here*, rather than *what kind of thing matched*.
+fn score(fields: &Fields<'_>, terms: &[String]) -> Option<Scored> {
+    let mut tier: Option<u8> = None;
+    let mut matched = 0;
+    let mut occurrences = 0;
+    for term in terms {
+        // The identifier is matched **folded** — case and separators dropped — which is what
+        // lets one query find `write_file`, `writeFile` and `WriteFile` on the three arms that
+        // spell it those ways. Everything else is prose or source text, where folding would
+        // destroy exactly the structure being matched.
+        let folded = fold(term);
+        let identifier = match folded.is_empty() {
+            true => Relevance::default(),
+            false => relevance(fields.folded, std::slice::from_ref(&folded)),
+        };
+        let identifier_tier = if folded.is_empty() {
+            None
+        } else if fields.folded == folded {
+            Some(TIER_IDENTIFIER_EXACT)
+        } else if fields.folded.starts_with(&folded) {
+            Some(TIER_IDENTIFIER_PREFIX)
+        } else if identifier.is_match() {
+            Some(TIER_IDENTIFIER_CONTAINS)
+        } else {
+            None
+        };
+        let term = std::slice::from_ref(term);
+        let signature = relevance(fields.signature, term);
+        let brief = relevance(fields.brief, term);
+        let detail = relevance(fields.detail, term);
+        let Some(term_tier) = identifier_tier
+            .or_else(|| signature.is_match().then_some(TIER_SIGNATURE))
+            .or_else(|| brief.is_match().then_some(TIER_BRIEF))
+            .or_else(|| detail.is_match().then_some(TIER_DETAIL))
+        else {
+            continue;
+        };
+        matched += 1;
+        occurrences +=
+            identifier.occurrences + signature.occurrences + brief.occurrences + detail.occurrences;
+        tier = Some(tier.map_or(term_tier, |best| best.min(term_tier)));
+    }
+    tier.map(|tier| Scored {
+        tier,
+        relevance: Relevance {
+            matched,
+            occurrences,
+            first_at: None,
+        },
+    })
+}
+
+/// What a hit scores when there is **nothing to score it against**: an empty query carrying a
+/// filter, which is a directory rather than a ranking.
+///
+/// The weakest tier and no relevance at all, so the whole result is tied and the key alone orders it
+/// — which is what makes a directory read as the plain alphabetical list it should be. Named because
+/// both sources produce it and a second spelling of "tied at the bottom" is a second thing to keep
+/// in step.
+fn directory_hit() -> Scored {
+    Scored {
+        tier: TIER_DETAIL,
+        relevance: Relevance::default(),
+    }
+}
+
 impl DocEntry {
     /// The modules this entry belongs to **as the asking agent can see them** — the answer both the
     /// `module` filter and a [hit](Self::hit) are built from.
@@ -736,63 +888,17 @@ impl DocEntry {
     }
 
     /// Score this entry against already-[normalized](normalize) `terms`, or `None` when no term
-    /// matched any of its four fields.
-    ///
-    /// The entry's tier is the **best** any single term achieved, so one term landing on the name
-    /// carries an entry that another term only brushed in a paragraph. Breadth and frequency are
-    /// summed across every field, because they answer a different question from the tier: *how much
-    /// of what you asked for is in here*, rather than *what kind of thing matched*.
+    /// matched any of its four fields — [the one ranking](score), over this entry's own texts.
     fn score(&self, terms: &[String]) -> Option<Scored> {
-        let mut tier: Option<u8> = None;
-        let mut matched = 0;
-        let mut occurrences = 0;
-        for term in terms {
-            // The identifier is matched **folded** — case and separators dropped — which is what
-            // lets one query find `write_file`, `writeFile` and `WriteFile` on the three arms that
-            // spell it those ways. Everything else is prose or source text, where folding would
-            // destroy exactly the structure being matched.
-            let folded = fold(term);
-            let identifier = match folded.is_empty() {
-                true => Relevance::default(),
-                false => relevance(&self.folded, std::slice::from_ref(&folded)),
-            };
-            let identifier_tier = if folded.is_empty() {
-                None
-            } else if self.folded == folded {
-                Some(TIER_IDENTIFIER_EXACT)
-            } else if self.folded.starts_with(&folded) {
-                Some(TIER_IDENTIFIER_PREFIX)
-            } else if identifier.is_match() {
-                Some(TIER_IDENTIFIER_CONTAINS)
-            } else {
-                None
-            };
-            let term = std::slice::from_ref(term);
-            let signature = relevance(&self.signature, term);
-            let brief = relevance(&self.brief_folded, term);
-            let detail = relevance(&self.detail_folded, term);
-            let Some(term_tier) = identifier_tier
-                .or_else(|| signature.is_match().then_some(TIER_SIGNATURE))
-                .or_else(|| brief.is_match().then_some(TIER_BRIEF))
-                .or_else(|| detail.is_match().then_some(TIER_DETAIL))
-            else {
-                continue;
-            };
-            matched += 1;
-            occurrences += identifier.occurrences
-                + signature.occurrences
-                + brief.occurrences
-                + detail.occurrences;
-            tier = Some(tier.map_or(term_tier, |best| best.min(term_tier)));
-        }
-        tier.map(|tier| Scored {
-            tier,
-            relevance: Relevance {
-                matched,
-                occurrences,
-                first_at: None,
+        score(
+            &Fields {
+                folded: &self.folded,
+                signature: &self.signature,
+                brief: &self.brief_folded,
+                detail: &self.detail_folded,
             },
-        })
+            terms,
+        )
     }
 
     /// This entry as a model reads it in a result list, in the modules
