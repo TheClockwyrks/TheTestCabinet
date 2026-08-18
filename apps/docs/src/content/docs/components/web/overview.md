@@ -158,6 +158,14 @@ one and pressing back returns to **that dashboard** rather than to the global ru
 list — the shared back-return machinery records the coverage section as the place to
 come back to.
 
+A ladder's board closes that loop without leaving the page at all: expanding a climber
+lists its rungs, and expanding a rung lists **that rung's own runs**, inline, in the
+same dense run log the Runs section uses — in-flight runs included. A rung's verdict is
+an argument about its runs, so the runs are put under the rung rather than behind a
+link to a pre-filtered listing. The board therefore holds the console stream's
+[`runs` topic](/components/backend/api/#topics) open while it is on screen,
+which is also what keeps the tallies and verdicts moving as runs finish under it.
+
 The Runs page carries the global counterparts to a plan's halt, on the trailing edge
 of its tab bar: **Clear pending**, **Kill active**, and **Stop all**. These are
 scoped to nothing — they stop the cabinet, not one plan — so the two that discard

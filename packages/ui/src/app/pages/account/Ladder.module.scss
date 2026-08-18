@@ -140,7 +140,10 @@
   white-space: nowrap;
 }
 
-// Working a rung: runs are still to come.
+// Working a rung: runs are still to come. Not drawn today — the board says nothing
+// about a climber that is simply climbing, because the track and the rung count
+// already do — but kept beside its siblings so the pill has a colour for every state
+// the wire can report.
 .statusClimbing {
   background: t.$color-accent;
 }
@@ -190,9 +193,13 @@
   background: t.$color-positive;
 }
 
-// The rung it is working now.
+// The rung it is working now: outlined in the accent rather than filled with it. A
+// filled segment is how a *cleared* rung reads, so filling this one made a climber that
+// had cleared nothing look finished — most starkly on a one-rung ladder, where the
+// whole track was a single solid bar over the words "0 of 1 rungs cleared".
 .rungStepCurrent {
-  background: t.$color-accent;
+  background: t.$color-bg-2;
+  box-shadow: inset 0 0 0 t.$border-hairline t.$color-accent;
 }
 
 // The rung that stopped it. Reading the track left to right, the first non-green
@@ -339,6 +346,16 @@
   &:focus-visible {
     outline: none;
   }
+}
+
+// One rung's runs, opened under the rung itself. Full width of the rung row (which is
+// a wrapping flex line) so the run log below is not squeezed into whatever space the
+// verdict and its notes left over.
+.rungRuns {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: t.$space-xs 0 t.$space-sm;
+  padding-left: t.$space-lg;
 }
 
 // ---- The editor ------------------------------------------------------------
