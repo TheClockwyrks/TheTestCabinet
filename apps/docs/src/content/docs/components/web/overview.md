@@ -188,7 +188,8 @@ It runs against the now-implemented [backend](/components/backend/overview/)
 contract: the backend serves the catalog and published runs, owns the run queue
 that the [dispatcher](/components/dispatcher/overview/) drains into per-run
 [driver](/components/driver/overview/) `Job`s, and exposes its run-enqueue,
-produced-run listing, recorded-event, notification, auth-proxy, and
+produced-run listing, recorded-event,
+[console stream](/components/backend/api/#the-console-stream), auth-proxy, and
 review/publish endpoints. Where a host can't
 provide a piece of data — for example a worker that returns no recorded events
 for an older run — the shared UI degrades gracefully rather than erroring.

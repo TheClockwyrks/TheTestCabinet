@@ -710,6 +710,119 @@ all. The scoped equivalent is a plan's or ladder's
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
 first; `cancel-waiting` throws nothing away and does not need to.
 
+## The console stream
+
+One SSE connection carries everything the console learns about runs it is not
+individually watching: the alerts it shows a person, and the lifecycle transitions
+it maintains its in-flight list from. It is **worker-wide** — every console sees
+every run, whoever launched it — and **live-only**: nothing is replayed, and there
+is no backlog to catch up on.
+
+### `GET /notifications` — subscribe
+
+Opens the stream. Every frame is a **named** SSE event, so there is no unnamed
+`message` frame and a client using `EventSource.onmessage` alone receives nothing.
+
+| `event:` | payload | topic |
+| --- | --- | --- |
+| `stream` | `{ "streamId": "…" }` | always — the first frame |
+| `notification` | `Notification` | `notifications` |
+| `run` | `RunEvent` | `runs` |
+| `resync` | `{ "dropped": n }` | always |
+
+The **hello frame** (`stream`) arrives first and carries the id the client quotes
+back to change its topics. The id is minted per *connection*, not per client: an
+`EventSource` reconnects on its own, and the reconnected stream is a new subscriber
+with default topics, so a client must re-apply what it wanted each time a hello
+frame arrives.
+
+The **`resync` frame** says this client fell behind far enough that the backend
+dropped messages for it. Nothing can be replayed, so the client's recovery is to
+re-read the authoritative lists (`GET /jobs/active`, and the run listing if it is
+showing produced runs). It exists because this is the one way a client can lose
+messages *without* the connection dropping — silence would otherwise be
+indistinguishable from an idle queue.
+
+### Topics
+
+| topic | carries | default |
+| --- | --- | --- |
+| `notifications` | a run finished; a publish failed | **on** |
+| `runs` | every in-flight list transition | **off** |
+
+The split is between *alerting* and *list maintenance*. A notification is
+something a person should be told about, filed to the bell and raised as a toast,
+so it fires only for the two things worth interrupting someone over. A run event
+is every transition a list must reflect, including the many nobody wants a toast
+for — a queued run held back to `pending`, a driver reaching `starting`, forty runs
+ending at once under a bulk sweep.
+
+That is why `runs` is off by default and why the two are not one topic: the alerts
+must arrive wherever the user is, so the console holds one stream open for the
+whole session, while the churn is worth carrying only while a page is showing it.
+
+A `RunEvent` carries enough to patch a list in place without a round-trip — the
+run's identity and its state *after* the transition:
+
+```json
+{
+  "kind": "state-changed",
+  "runId": "…",
+  "testCaseSlug": "carom",
+  "testCaseVersion": "v1.0.0",
+  "variant": "base",
+  "harnessSlug": "claude",
+  "modelId": "…",
+  "state": "running"
+}
+```
+
+`kind` is `enqueued` (joined the queue), `state-changed` (moved between two
+non-terminal states), or `finished` (reached `succeeded`, `failed`, or `canceled`,
+and left the in-flight set). A `finished` event adds `recordId` when the run
+produced one and `detail` when it failed or was cancelled. Note that a cancelled
+run raises a run event but **no** notification: it is an operator action, not a
+failure to alert on — but the list must still drop the row.
+
+A run that produced a record also makes the *produced-run* listing stale, which the
+event does not carry; a client re-reads that separately.
+
+### `PUT /notifications/{stream}/topics` — change topics
+
+The control channel SSE itself does not have. Body:
+
+```json
+{ "runs": true }
+```
+
+Both `notifications` and `runs` are optional, and an omitted field leaves that
+topic unchanged — so a client toggling one never disturbs the other. Answers `204`,
+or `404` when no such stream is connected.
+
+A `404` is a normal, expected outcome rather than an error to surface: it means the
+client's stream died and its `EventSource` has reconnected (or is about to) under a
+new id. The recovery is to wait for the next hello frame and re-apply, which is
+what the console does.
+
+The topic change applies to the already-open stream, taking effect on the very
+next message. That is the whole point: the alternative — a second stream opened
+and closed per page — would drop the alerts riding the first one on every
+navigation, and cost a reconnect each time.
+
+### Why a client still polls
+
+An event-driven list is not a self-healing one. Two failure modes survive it, and
+a client should keep a slow reconcile against `GET /jobs/active` as a backstop:
+
+- **The `runs` topic is off some of the time.** Anything published while it was off
+  is not replayed when it comes back on. Reconciling when the topic is enabled
+  covers the common case; the periodic sweep covers the rest.
+- **An `EventSource` can wedge** — errored without reconnecting, so no further
+  hello frame arrives and nothing surfaces the fault to the page.
+
+The third case, a client falling behind on a healthy connection, is *not* left to
+the poll: it reports itself as a `resync` frame and recovers immediately.
+
 ## Reference rendering
 
 A test case's reference mockups are rendered to screenshots **once, by the

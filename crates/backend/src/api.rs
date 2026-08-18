@@ -46,7 +46,8 @@ pub use coverage::{
 };
 pub use jobs::{
     ActiveJobOut, BulkCancelOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck,
-    LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
+    LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamOpened,
+    StreamResync, StreamTopicsBody,
 };
 pub use ladders::{
     ClimberStatus, Ladder, LadderAxis, LadderCell, LadderClimber, LadderClimberInput, LadderInput,
@@ -326,9 +327,16 @@ pub fn router(state: AppState) -> Router {
             "/publish-jobs/{id}/verify-token",
             post(publish_jobs::verify_token),
         )
-        // The worker-wide run-completion feed (SSE), so the console can alert on
-        // any run finishing without holding a per-run subscription open.
+        // The worker-wide console feed (SSE): completion alerts, so the console can
+        // alert on any run finishing without holding a per-run subscription open,
+        // multiplexed with the run-lifecycle events it maintains its in-flight list
+        // from. A client picks its topics per connection through the companion route
+        // below, quoting the stream id the feed hands it on connect.
         .route("/notifications", get(jobs::notifications))
+        .route(
+            "/notifications/{stream}/topics",
+            put(jobs::set_stream_topics),
+        )
         // Reviewer coverage tooling (auth-gated; keyed to the token's account):
         // reusable groups, multiple declarative plans, and the coverage matrix a plan
         // expands into. Console-only — the public site carries no token and never

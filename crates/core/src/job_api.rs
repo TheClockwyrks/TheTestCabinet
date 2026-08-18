@@ -414,6 +414,143 @@ impl Notification {
     }
 }
 
+/// Which transition in a run's life a [`RunEvent`] announces.
+///
+/// The three are separated because the console does different things with them:
+/// an `enqueued` run joins the in-flight list, a `state-changed` run is patched in
+/// place (without reordering the list), and a `finished` run leaves it — and, for a
+/// run that produced a record, makes the produced-run listing stale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum RunEventKind {
+    /// The run entered the queue. Its `state` is `queued` — the dispatcher may hold
+    /// it back to `pending` on the very next claim pass, which arrives as its own
+    /// `state-changed`.
+    Enqueued,
+    /// The run moved between two non-terminal states (`queued` ↔ `pending`, or
+    /// forward through `dispatched` → `starting` → `running`).
+    StateChanged,
+    /// The run reached a terminal state (`succeeded`, `failed`, or `canceled`) and
+    /// is no longer in flight.
+    Finished,
+}
+
+/// A run-lifecycle event on the multiplexed console stream (`GET /notifications`,
+/// `runs` topic).
+///
+/// This is deliberately **not** a [`Notification`]. A notification is an *alert* —
+/// something a person should be told about, filed to the bell and raised as a toast,
+/// and so only ever fired for the two things worth interrupting someone over (a run
+/// finishing, a publish failing). A run event is *list maintenance*: every transition
+/// the in-flight list must reflect, including the many that nobody wants a toast for
+/// (a queued run held back to `pending`, a driver reaching `starting`, an operator's
+/// bulk cancel ending forty runs at once). Keeping them separate is what lets the
+/// console subscribe to the alerts always and to the churn only while a page is
+/// showing it.
+///
+/// It carries enough to patch the list in place — the run's identity and its state
+/// after the transition — so a console applies it without a round-trip. The one thing
+/// it does not carry is the produced *record*, so a `finished` run that produced one
+/// still makes the produced-run listing stale; the console re-reads that separately.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunEvent {
+    /// Which transition this announces.
+    pub kind: RunEventKind,
+    /// The run (job) this is about. Named `runId` to match `ActiveJobOut`, which is
+    /// the shape this event maintains — the console keys its in-flight list on it.
+    pub run_id: String,
+    /// The run's display identity (test case, variant, harness, model), so a console
+    /// that has never seen this run can render the row from the event alone.
+    #[serde(flatten)]
+    pub summary: JobSummary,
+    /// The run's state **after** the transition. For a `finished` event this is the
+    /// terminal state, which is how a console tells an operator's `canceled` run from
+    /// one that ran to `succeeded`/`failed`.
+    pub state: JobState,
+    /// The produced run record's id, present on a `finished` event whose run produced
+    /// one (a success, or a failure the driver still built a record for).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub record_id: Option<String>,
+    /// The terminal reason, present on a `finished` event that failed or was
+    /// canceled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub detail: Option<String>,
+}
+
+impl RunEvent {
+    /// A run that just entered the queue.
+    pub fn enqueued(run_id: &str, summary: JobSummary) -> Self {
+        Self {
+            kind: RunEventKind::Enqueued,
+            run_id: run_id.to_string(),
+            summary,
+            state: JobState::Queued,
+            record_id: None,
+            detail: None,
+        }
+    }
+
+    /// A run that moved to a new non-terminal state.
+    pub fn state_changed(run_id: &str, summary: JobSummary, state: JobState) -> Self {
+        Self {
+            kind: RunEventKind::StateChanged,
+            run_id: run_id.to_string(),
+            summary,
+            state,
+            record_id: None,
+            detail: None,
+        }
+    }
+
+    /// A run that reached the terminal `state`, with whatever record it produced and
+    /// the reason it ended (for a failure or a cancellation).
+    pub fn finished(
+        run_id: &str,
+        summary: JobSummary,
+        state: JobState,
+        record_id: Option<&str>,
+        detail: Option<&str>,
+    ) -> Self {
+        Self {
+            kind: RunEventKind::Finished,
+            run_id: run_id.to_string(),
+            summary,
+            state,
+            record_id: record_id.map(str::to_string),
+            detail: detail.map(str::to_string),
+        }
+    }
+}
+
+/// Which of the console stream's topics a subscriber wants, as
+/// `PUT /notifications/{stream}/topics` carries them.
+///
+/// Both fields are optional so a caller toggles one topic without having to restate
+/// the other — the console flips `runs` on and off as it enters and leaves the pages
+/// that show in-flight runs, and never wants that request to disturb its alerts.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct StreamTopicsBody {
+    /// Whether to deliver [`Notification`]s (the bell/toast alerts). Defaults to on
+    /// when a stream is opened; a console has no reason to turn it off, but it is
+    /// settable so the topic set is uniform.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub notifications: Option<bool>,
+    /// Whether to deliver [`RunEvent`]s (in-flight list maintenance). Defaults to
+    /// **off**: most of the console shows no in-flight list, and a run's churn is far
+    /// noisier than its alerts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub runs: Option<bool>,
+}
+
 #[cfg(test)]
 #[path = "job_api.test.rs"]
 mod tests;

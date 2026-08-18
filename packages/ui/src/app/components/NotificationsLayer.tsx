@@ -4,7 +4,7 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./notifications.scss";
 import { useWorkers } from "../../client/context";
-import type { RunNotification } from "../../client/types";
+import type { RunLifecycleEvent, RunNotification } from "../../client/types";
 import { useRunsRuntime } from "../runtime/runsRuntime";
 import {
   notificationFromPush,
@@ -14,28 +14,48 @@ import {
   reconcileActiveRuns,
   type ActiveRunsResult,
 } from "../runtime/reconcileActiveRuns";
+import { runListAction } from "../runtime/runLifecycle";
 import { NotificationToast } from "./NotificationToast";
 import { NotificationsSidebar } from "./NotificationsSidebar";
 
 // How often the console reconciles its in-progress list against the workers'
-// authoritative active sets — the backstop that recovers a completion whose live push
-// never arrived (the feed keeps no backlog) even if the push channel is wedged, and
-// the only thing that surfaces a run enqueued somewhere other than this browser (a
-// coverage plan or ladder top-up, another tab, another machine). Frequent enough to
-// feel prompt, cheap enough to poll.
-const RECONCILE_INTERVAL_MS = 15_000;
+// authoritative active sets.
+//
+// This used to be the console's *primary* way of learning about in-flight runs, at
+// 15s, because the push feed carried only completions: it announced no enqueue and
+// no phase change, so a run started by a coverage plan, a ladder, another tab or
+// another machine appeared only when a poll happened to find it. The stream now
+// carries the whole lifecycle (`onRunLifecycle`), so this is demoted to a genuine
+// backstop and can be far slower.
+//
+// It is not removed, because two failure modes survive an event-driven list, and
+// neither announces itself:
+//
+//   - The stream is only subscribed to run events while a page that needs them is
+//     mounted. Anything that happens while it is off is not replayed when it comes
+//     back on — the reconcile on enable covers the common case, this covers the rest.
+//   - An `EventSource` can wedge: errored without reconnecting, so `onOpen` never
+//     fires again, with no error surfaced to the page. (The other silent-loss case,
+//     the backend dropping messages for a client that fell behind, *is* signalled —
+//     see `onResync` — and recovers immediately rather than waiting for this.)
+const RECONCILE_INTERVAL_MS = 120_000;
 
 // The console's notification subsystem, mounted once inside the router (so its
 // toasts and sidebar can use <Link>) and only where runs execute. It:
 //   - seeds the in-progress list from each worker's active runs, so a run the
 //     user is watching survives a page reload (the session store is rebuilt);
-//   - subscribes to every worker's notification push (SSE) and, per completion,
-//     raises a toast, files the notification for the bell, and prunes the finished
-//     run from the in-progress list — globally, so it works even when the live
-//     monitor isn't open;
+//   - holds each worker's console stream (SSE) open for the whole session and, per
+//     completion alert, raises a toast, files the notification for the bell, and
+//     prunes the finished run from the in-progress list — globally, so it works
+//     even when the live monitor isn't open;
 //   - does the same, minus the pruning, for a **failed publish** — the alert that
 //     exists because publishing is asynchronous and the console has usually
 //     navigated away from the release's live stream by the time it fails;
+//   - applies the stream's run-lifecycle events to the in-progress list, which is
+//     what keeps that list current as runs are enqueued and advance. Those arrive
+//     only while some page has asked for them (`useLiveRunUpdates`); the alerts
+//     above arrive always, which is why the stream is opened here rather than by
+//     the pages that read the list;
 //   - marks a run's notification read once the user opens that run.
 // It is rendered by `GalleryApp` behind the `canExecute` gate, so the static site
 // (no workers, no bell) never mounts it.
@@ -112,6 +132,29 @@ export function NotificationsLayer() {
     [add],
   );
 
+  // Apply one run-lifecycle event to the in-progress list. This is what keeps the
+  // list current between fetches; the reconcile below is only its backstop. What
+  // each event means for the list is decided by `runListAction`; this only applies
+  // the result.
+  const handleRunLifecycle = useCallback((event: RunLifecycleEvent) => {
+    const runtime = runtimeRef.current;
+    const action = runListAction(event, runtime.inProgress);
+    switch (action.kind) {
+      case "track":
+        runtime.track(action.run);
+        break;
+      case "update":
+        runtime.update(action.runId, { state: action.state });
+        break;
+      case "remove":
+        runtime.remove(action.runId);
+        if (action.refresh) runtime.requestRefresh();
+        break;
+      case "ignore":
+        break;
+    }
+  }, []);
+
   // Reconcile the in-progress list against every worker's active runs and apply the
   // result: track newly-seen runs, drop finished ones, and re-read produced runs so
   // a recovered completion surfaces. This is exactly what a manual page refresh
@@ -146,13 +189,21 @@ export function NotificationsLayer() {
     const unsubscribes = workersRef.current.map((worker) =>
       worker.client.subscribeToNotifications({
         onNotification: handlePush,
+        onRunLifecycle: handleRunLifecycle,
         // A transport fault is non-fatal: the web EventSource reconnects on its
         // own; a desktop listen error just means no notifications until retried.
         onError: () => {},
-        // The feed carries no backlog, so a completion that fired while the channel
-        // was down is never replayed. Reconcile against the active list on every
-        // (re)connect to recover any completion missed during the gap.
+        // The feed carries no backlog, so anything published while the channel was
+        // down is never replayed. Reconcile against the active list on every
+        // (re)connect to recover whatever was missed during the gap.
         onOpen: () => {
+          void reconcileActive();
+        },
+        // The connection stayed up but this client fell behind and the backend
+        // dropped messages for it. Same recovery as a reconnect, and the reason the
+        // periodic poll can be slow: the one silent-loss case that is not a
+        // disconnect reports itself.
+        onResync: () => {
           void reconcileActive();
         },
       }),
@@ -160,7 +211,7 @@ export function NotificationsLayer() {
     return () => {
       for (const unsubscribe of unsubscribes) unsubscribe();
     };
-  }, [workerKey, handlePush, reconcileActive]);
+  }, [workerKey, handlePush, handleRunLifecycle, reconcileActive]);
 
   // A periodic backstop for reconnect-time reconciliation: that only recovers a
   // missed completion if the channel actually reconnects. If it wedges — an
