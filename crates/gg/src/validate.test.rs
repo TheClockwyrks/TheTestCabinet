@@ -420,11 +420,35 @@ fn a_blank_implementation_is_the_absent_one() {
     }
 }
 
-/// **A run-level param written on another profile is refused when it diverges** — the skills
-/// directory and the subagent recursion bound are read once, off the first profile, so a different
-/// value elsewhere is read by nothing.
+/// **A run-level param written on another profile is refused when it diverges** — the subagent
+/// recursion bound is read once, off the first profile, so a different value elsewhere is read by
+/// nothing.
 #[test]
 fn a_diverging_run_level_param_is_refused() {
+    let mut set = minimal();
+    put(
+        &mut set,
+        GgCapabilityConfig {
+            params: json!({ crate::subagents::PARAM_MAX_DEPTH: 3 }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
+        },
+    );
+    set.agents.push(GgAgentConfig {
+        name: "worker".to_string(),
+        capabilities: vec![GgCapabilityConfig {
+            params: json!({ crate::subagents::PARAM_MAX_DEPTH: 5 }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
+        }],
+        ..GgAgentConfig::root()
+    });
+    let refusal = refusal_text(&set);
+    assert!(refusal.contains('5'), "{refusal}");
+}
+
+/// **A skills directory is a per-agent param**: one profile may read `.gg/skills` while another
+/// reads a directory of its own, because a library belongs to the agent that loads it.
+#[test]
+fn a_skills_directory_may_differ_per_agent() {
     let mut set = minimal();
     put(
         &mut set,
@@ -439,10 +463,10 @@ fn a_diverging_run_level_param_is_refused() {
             params: json!({ crate::agent::PARAM_SKILLS_DIR: "docs/skills" }),
             ..GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
         }],
+        model_id: set.agents[0].model_id.clone(),
         ..GgAgentConfig::root()
     });
-    let refusal = refusal_text(&set);
-    assert!(refusal.contains("docs/skills"), "{refusal}");
+    assert_eq!(defects(&set), Vec::new());
 }
 
 /// …and the same value on every profile is the ordinary shape, which is what an editor that offers

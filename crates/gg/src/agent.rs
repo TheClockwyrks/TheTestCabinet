@@ -1651,10 +1651,13 @@ struct Orchestrator {
     /// wrapped in a [`RecordingShellRunner`](crate::capture::RecordingShellRunner) rooted at that agent's own workspace — see
     /// [`shell_for`](Self::shell_for).
     shell: Arc<dyn ShellRunner>,
-    /// The shared skills library (loaded once), cloned into each agent's own skills runtime.
-    skills_library: Arc<SkillLibrary>,
-    /// Whether the [skills](CAPABILITY_SKILLS) capability is on.
-    skills_enabled: bool,
+    /// Each profile's own [skills](CAPABILITY_SKILLS) library, by profile name, for the profiles
+    /// that enable the capability.
+    ///
+    /// A skill library belongs to an agent: a profile names the directory it loads from, and two
+    /// profiles naming one directory share the `Arc` this map holds twice. A profile absent from
+    /// here reads no skills.
+    skills: BTreeMap<String, Arc<SkillLibrary>>,
     /// The shared token estimator (built once — the BPE vocab is expensive), backing every agent's
     /// context accounting.
     estimator: Arc<dyn TokenEstimator>,
@@ -1830,8 +1833,8 @@ impl Orchestrator {
         report: &mut crate::validate::LaunchReport,
     ) -> Result<Self, String> {
         let set = &invocation.capability_set;
-        // Load the skills library once (empty when the capability is off or nothing is seeded) and
-        // share its Arc across agents; each agent keeps its own read-state runtime over it.
+        // One library per profile that enables skills, loaded once per distinct directory; each
+        // agent keeps its own read-state runtime over the one its profile named.
         let skills = resolve_skills(set, &invocation.workspace_dir);
         let limits = resolve_run_limits(set, report, warnings);
         // Every machine the run declares, parsed once here and shared by every instance each of
@@ -1951,11 +1954,7 @@ impl Orchestrator {
             base_emitter: emitter.clone(),
             factory,
             shell,
-            skills_library: skills.library(),
-            // Any profile: the library is the run's, and a run whose *reviewer* alone reads
-            // skills is still a run with skills. Whether a given agent is offered them is that
-            // agent's own switch, read by `CapabilityModules::resolve`.
-            skills_enabled: set.any_agent_enabled(CAPABILITY_SKILLS),
+            skills,
             estimator: Arc::new(BpeTokenEstimator::new()),
             model_windows: invocation.model_windows.clone(),
             vision: Arc::new(VisionSupport::new(invocation.model_modalities.clone())),
@@ -1986,17 +1985,16 @@ impl Orchestrator {
         self.machines.get(profile)
     }
 
-    /// The run's skills runtime over the shared library (a fresh read-state runtime per agent), or
-    /// a disabled one when **no** profile in the run reads skills.
+    /// A skills runtime over `profile`'s own library, or a disabled one for a profile that reads no
+    /// skills.
     ///
-    /// Run-level on purpose: it holds the one library, loaded once from the one directory. Whether a
-    /// *particular* agent is offered it is that agent's own switch, applied where every other
-    /// per-profile capability is — [`CapabilityModules::resolve`](crate::modules::CapabilityModules::resolve).
-    fn skills_runtime(&self) -> SkillsRuntime {
-        if self.skills_enabled {
-            SkillsRuntime::new_in(Arc::clone(&self.skills_library), &self.module_ids)
-        } else {
-            SkillsRuntime::disabled()
+    /// Per profile, like every other capability this loop reads: a run may point its implementer at
+    /// one directory and its reviewer at another, and each agent's catalogue is the one its own
+    /// profile named.
+    fn skills_runtime(&self, profile: &GgAgentConfig) -> SkillsRuntime {
+        match self.skills.get(profile.name.as_str()) {
+            Some(library) => SkillsRuntime::new_in(Arc::clone(library), &self.module_ids),
+            None => SkillsRuntime::disabled(),
         }
     }
 
@@ -3325,9 +3323,6 @@ async fn drive_agent(
         AgentRole::Sub { inherited, .. } => inherited,
         AgentRole::Issue { .. } | AgentRole::Root => &no_inheritance,
     };
-    // The shared skills library, read once for the whole succession: every incarnation forks its own
-    // read-state runtime over it.
-    let orch_skills = orch.skills_runtime();
 
     // The **incarnation** state — what crosses from one instance of this agent to the next.
     //
@@ -3494,8 +3489,11 @@ async fn drive_agent(
                 },
             ),
             None => {
+                // This profile's own catalogue: the module set about to be resolved is this
+                // agent's, and so is the library it reads from.
+                let profile_skills = orch.skills_runtime(&profile);
                 let module_ctx = ModuleResolveCtx {
-                    skills: &orch_skills,
+                    skills: &profile_skills,
                     board: &orch.board,
                     memories: &orch.memory_registry,
                     inherited,
@@ -4157,8 +4155,11 @@ async fn drive_agent(
             program_language: successor_code.enabled.then_some(successor_code.language),
         };
         let (successor_modules, report) = {
+            // The successor's own catalogue, which is the one its profile named rather than the
+            // one this incarnation was reading.
+            let successor_skills = orch.skills_runtime(&successor_profile);
             let module_ctx = ModuleResolveCtx {
-                skills: &orch_skills,
+                skills: &successor_skills,
                 board: &orch.board,
                 memories: &orch.memory_registry,
                 inherited,
@@ -9718,115 +9719,124 @@ pub(crate) fn check_invocation(
         &invocation.model_windows,
         report,
     );
-    resolve_skills_dir(
-        &invocation.capability_set,
-        &invocation.workspace_dir,
-        report,
-    );
+    for profile in &invocation.capability_set.agents {
+        if profile.is_enabled(CAPABILITY_SKILLS) {
+            resolve_skills_dir(profile, &invocation.workspace_dir, report);
+        }
+    }
 }
 
-/// This module's contribution to the [workspace gate](crate::validate::validate_workspace): the
-/// run's [skills library](SkillLibrary), read off the seeded workspace as the first turn will find
-/// it.
+/// This module's contribution to the [workspace gate](crate::validate::validate_workspace): every
+/// profile's [skills library](SkillLibrary), read off the seeded workspace as the first turn will
+/// find it.
 ///
 /// Three questions, and each of them needs the filesystem rather than the document:
 ///
-/// 1. A `dir` the capability **named** must be a directory gg can open. A configured path that is
+/// 1. A `dir` a profile **named** must be a directory gg can open. A configured path that is
 ///    not there is a typo (or a workspace that never seeded what it was meant to), and loading
 ///    `.gg/skills` instead would hand the agent a set of skills nobody configured. The **default**
 ///    directory being absent is not this: it is absent from every workspace that authored no
 ///    skills, and an empty library is exactly right there.
 /// 2. Every entry under it must load — [`SkillLibrary::load`] reports each one that does not.
-/// 3. A skill carrying **code** must carry it in a language some agent that could read the skill
-///    actually writes. A directory authored `skill.ts` on a Python run binds nothing: the skill
-///    reads as prose, the run looks like the arm without code skills, and the only trace is a
-///    warning on a turn nobody re-reads.
+/// 3. A skill carrying **code** must carry it in a language the profile reading it writes. A
+///    directory authored `skill.ts` read by a Python agent loads nothing: the skill reads as prose,
+///    the agent looks like the arm without code skills, and the only trace is a warning on a turn
+///    nobody re-reads.
+///
+/// Each distinct directory is walked once however many profiles name it, so one unreadable entry is
+/// one defect rather than one per agent.
 pub(crate) fn check_workspace(
     invocation: &GgInvocation,
     report: &mut crate::validate::LaunchReport,
 ) {
-    let set = &invocation.capability_set;
-    // Any profile, not just the root: the library is loaded once for the run, and a run in which
-    // only a subagent reads skills still has to have them.
-    if !set.any_agent_enabled(CAPABILITY_SKILLS) {
-        return;
+    let mut loaded: BTreeMap<PathBuf, Arc<SkillLibrary>> = BTreeMap::new();
+    let mut checked: BTreeSet<(PathBuf, GgProgramLanguage)> = BTreeSet::new();
+    for profile in &invocation.capability_set.agents {
+        if !profile.is_enabled(CAPABILITY_SKILLS) {
+            continue;
+        }
+        // Already reported: the launch pass read this param and refused a `dir` that is not a path.
+        let dir = resolve_skills_dir(
+            profile,
+            &invocation.workspace_dir,
+            &mut crate::validate::LaunchReport::already_reported(),
+        );
+        let library = match loaded.get(&dir) {
+            Some(library) => Arc::clone(library),
+            None => {
+                let library = if configures_skills_dir(profile) && !dir.is_dir() {
+                    report.report(crate::validate::LaunchDefect::run_level(
+                        crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_SKILLS_DIR),
+                        dir.display().to_string(),
+                        format!(
+                            "the `{CAPABILITY_SKILLS}` capability names this directory as the one \
+                             the agent `{}` loads its skills from, and there is no such directory \
+                             in the workspace; that agent would open with a library nobody \
+                             authored.",
+                            profile.name,
+                        ),
+                    ));
+                    Arc::new(SkillLibrary::empty())
+                } else {
+                    Arc::new(SkillLibrary::load(&dir, report))
+                };
+                loaded.insert(dir.clone(), Arc::clone(&library));
+                library
+            }
+        };
+        check_skill_languages(profile, &dir, &library, &mut checked, report);
     }
-    // Already reported: the launch pass read this param and refused a `dir` that is not a path.
-    let dir = resolve_skills_dir(
-        set,
-        &invocation.workspace_dir,
-        &mut crate::validate::LaunchReport::already_reported(),
-    );
-    if configures_skills_dir(set) && !dir.is_dir() {
-        report.report(crate::validate::LaunchDefect::run_level(
-            crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_SKILLS_DIR),
-            dir.display().to_string(),
-            format!(
-                "the `{CAPABILITY_SKILLS}` capability names this directory as the one the run's \
-                 skills are loaded from, and there is no such directory in the workspace; every \
-                 agent would open with a library nobody authored."
-            ),
-        ));
-        return;
-    }
-    let library = SkillLibrary::load(&dir, report);
-    check_skill_languages(set, &dir, &library, report);
 }
 
-/// Whether the [skills](CAPABILITY_SKILLS) capability **names** its directory, as opposed to taking
+/// Whether `profile` **names** its skills directory, as opposed to taking
 /// [the default](DEFAULT_SKILLS_DIR).
 ///
 /// The distinction is the whole of why a missing skills directory is sometimes a refusal and
 /// sometimes the ordinary case: a path an operator wrote is a promise about the workspace, and an
 /// unwritten one is the absence that takes a documented default.
-fn configures_skills_dir(set: &GgCapabilitySet) -> bool {
-    set.capability(CAPABILITY_SKILLS)
+fn configures_skills_dir(profile: &GgAgentConfig) -> bool {
+    profile
+        .capability(CAPABILITY_SKILLS)
         .and_then(|capability| capability.params.get(PARAM_SKILLS_DIR))
         .is_some_and(|value| !value.is_null())
 }
 
-/// Every skill that carries code must carry it in a language some agent that could read it writes.
+/// Every skill that carries code must carry it in the language of the profile reading it.
 ///
-/// The reading agent's language is what decides which of a skill directory's `skill.<ext>` files it
+/// The using agent's language is what decides which of a skill directory's `skill.<ext>` files it
 /// gets, so a directory serving several arms carries a spelling for each. One that carries only
-/// spellings nobody in the run writes is an authoring mistake with no symptom: the skill still
-/// reads, its prose still arrives, and the module the author wrote is simply never bound — which is
+/// spellings this profile does not write is an authoring mistake with no symptom: the skill still
+/// reads, its prose still arrives, and the module the author wrote is simply never loaded — which is
 /// indistinguishable from the arm that has no code skills at all.
 ///
-/// Checked against the agents that could actually be handed the module: skills enabled **and**
+/// Checked only for a profile that could actually be handed the module: skills enabled **and**
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) on, since a tool-calling agent has no programs
-/// for a module to be bound into and is shown a skill's prose half by design.
+/// to import a module into and is shown a skill's prose half by design.
+///
+/// `checked` records the `(directory, language)` pairs already judged, so two profiles reading one
+/// directory in one language report one defect rather than two.
 fn check_skill_languages(
-    set: &GgCapabilitySet,
+    profile: &GgAgentConfig,
     dir: &Path,
     library: &SkillLibrary,
+    checked: &mut BTreeSet<(PathBuf, GgProgramLanguage)>,
     report: &mut crate::validate::LaunchReport,
 ) {
-    let readers: Vec<GgProgramLanguage> = set
-        .agents
-        .iter()
-        .filter(|agent| {
-            agent.is_enabled(CAPABILITY_SKILLS) && agent.is_enabled(CAPABILITY_RESPONSES_AS_CODE)
-        })
-        .map(|agent| {
-            // Already reported: the launch pass resolved each profile's language and refused one it
-            // could not read.
-            sandbox::resolve_program_language(
-                agent,
-                &mut crate::validate::LaunchReport::already_reported(),
-            )
-        })
-        .collect();
-    if readers.is_empty() {
+    if !profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE) {
         return;
     }
+    // Already reported: the launch pass resolved each profile's language and refused one it could
+    // not read.
+    let id = sandbox::resolve_program_language(
+        profile,
+        &mut crate::validate::LaunchReport::already_reported(),
+    );
+    if !checked.insert((dir.to_path_buf(), id)) {
+        return;
+    }
+    let language = sandbox::language(id);
     for skill in library.skills() {
-        if !skill.has_code()
-            || readers.iter().any(|language| {
-                let language = sandbox::language(*language);
-                skill.code(language).is_some() || skill.on_use(language).is_some()
-            })
-        {
+        if !skill.has_code() || skill.code(language).is_some() || skill.on_use(language).is_some() {
             continue;
         }
         report.report(crate::validate::LaunchDefect::run_level(
@@ -9838,11 +9848,11 @@ fn check_skill_languages(
                 .collect::<Vec<_>>()
                 .join(", "),
             format!(
-                "the skill `{}` carries code spelled only this way, and no agent in this run \
-                 writes a language that reads it; the skill would load as prose and its module \
-                 would never be bound, which is indistinguishable from a run with no code skills \
-                 at all.",
+                "the skill `{}` carries code spelled only this way, and the agent reading it \
+                 writes {}; the skill would load as prose and its module would never be loaded, \
+                 which is indistinguishable from an agent with no code skills at all.",
                 skill.name(),
+                language.display_name(),
             ),
         ));
     }
@@ -9882,47 +9892,59 @@ fn validate_model_windows(
     ))
 }
 
-/// Build the run's [`SkillsRuntime`] from the capability set and workspace: when **any** profile
-/// enables the [`skills`](CAPABILITY_SKILLS) capability, load the library from the resolved
-/// [skills directory](resolve_skills_dir); otherwise the runtime is
-/// [disabled](SkillsRuntime::disabled) (a configuration with the capability off everywhere) and
-/// offers nothing.
+/// Load one [`SkillLibrary`] per profile that enables the [`skills`](CAPABILITY_SKILLS) capability,
+/// keyed by profile name.
 ///
-/// Any profile rather than the root's, because the library is the *run's*: it is loaded once from
-/// one directory, and a run whose reviewer alone reads skills is a run with skills. Which agents are
-/// offered it is each profile's own switch, applied by
-/// [`CapabilityModules::resolve`](crate::modules::CapabilityModules::resolve) — reading the root's
-/// there would leave a profile that switched skills on holding none, with nothing in the record to
-/// tell that apart from the arm with skills off.
-fn resolve_skills(set: &GgCapabilitySet, workspace_dir: &Path) -> SkillsRuntime {
-    if !set.any_agent_enabled(CAPABILITY_SKILLS) {
-        return SkillsRuntime::disabled();
-    }
-    // Discarding, twice over. `check_invocation` read this same param at launch and refused the run
-    // if gg could not read a path from it, and the [workspace gate](crate::validate::validate_workspace)
-    // then walked this same directory — over the workspace as the run's first turn will find it —
-    // and refused the run if any entry in it would not load. So this load can report nothing.
+/// A library belongs to an agent, so each profile is read from the directory its own
+/// [`dir`](PARAM_SKILLS_DIR) names. Profiles naming one directory share a single load: the map is
+/// keyed by resolved path first, so a run whose four workers all read `.gg/skills` walks that
+/// directory once and hands the same `Arc` to all four.
+fn resolve_skills(
+    set: &GgCapabilitySet,
+    workspace_dir: &Path,
+) -> BTreeMap<String, Arc<SkillLibrary>> {
+    // Discarding, twice over. `check_invocation` read these same params at launch and refused the
+    // run if gg could not read a path from one, and the
+    // [workspace gate](crate::validate::validate_workspace) then walked each of these directories —
+    // over the workspace as the run's first turn will find it — and refused the run if any entry in
+    // one would not load. So these loads can report nothing.
     let report = &mut crate::validate::LaunchReport::Discarding;
-    let dir = resolve_skills_dir(set, workspace_dir, report);
-    SkillsRuntime::new(Arc::new(SkillLibrary::load(&dir, report)))
+    let mut by_dir: BTreeMap<PathBuf, Arc<SkillLibrary>> = BTreeMap::new();
+    let mut by_profile: BTreeMap<String, Arc<SkillLibrary>> = BTreeMap::new();
+    for profile in &set.agents {
+        if !profile.is_enabled(CAPABILITY_SKILLS) {
+            continue;
+        }
+        let dir = resolve_skills_dir(profile, workspace_dir, report);
+        let library = match by_dir.get(&dir) {
+            Some(library) => Arc::clone(library),
+            None => {
+                let library = Arc::new(SkillLibrary::load(&dir, report));
+                by_dir.insert(dir, Arc::clone(&library));
+                library
+            }
+        };
+        by_profile.insert(profile.name.clone(), library);
+    }
+    by_profile
 }
 
-/// Resolve the directory skills are loaded from: the skills capability's
+/// Resolve the directory `profile` loads its skills from: the skills capability's
 /// [`dir`](PARAM_SKILLS_DIR) param when set (relative to the workspace, or absolute as
 /// given), else [`DEFAULT_SKILLS_DIR`] under the workspace.
 ///
 /// An absent `dir` takes the default. A present one that is not a path — a number, an object, a
 /// string of nothing but whitespace — is [reported](crate::validate) and refuses the launch. It is
 /// the quietest of all these defects otherwise: the default directory is very likely to exist, the
-/// library loads from it, and the run proceeds with a set of skills nobody configured. Whether the
+/// library loads from it, and the agent proceeds with a set of skills nobody configured. Whether the
 /// resolved directory can actually be **read** is a different question, and one the workspace
 /// answers rather than the document; it is checked after seeding, not here.
 fn resolve_skills_dir(
-    set: &GgCapabilitySet,
+    profile: &GgAgentConfig,
     workspace_dir: &Path,
     report: &mut crate::validate::LaunchReport,
 ) -> PathBuf {
-    let declared = set
+    let declared = profile
         .capability(CAPABILITY_SKILLS)
         .map(|capability| &capability.params)
         .and_then(|params| params.get(PARAM_SKILLS_DIR))
@@ -9937,9 +9959,10 @@ fn resolve_skills_dir(
                     crate::validate::as_written(value),
                     format!(
                         "the `{CAPABILITY_SKILLS}` capability's `{PARAM_SKILLS_DIR}` names the \
-                         directory the run's skills are loaded from, and gg cannot read a path \
+                         directory the agent `{}` loads its skills from, and gg cannot read a path \
                          here; loading `{DEFAULT_SKILLS_DIR}` instead would give the agent a set \
-                         of skills nobody configured."
+                         of skills nobody configured.",
+                        profile.name,
                     ),
                 ));
                 DEFAULT_SKILLS_DIR

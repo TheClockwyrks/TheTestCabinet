@@ -39,7 +39,7 @@
 //! is stated back to it** in the reply to the read that loaded it — a binding path a model has to
 //! guess is a binding path it will guess wrong.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use crate::sandbox::{
@@ -70,8 +70,8 @@ impl KnowledgeOrigin {
 
 /// An on-use script that has not run yet.
 ///
-/// Queued when the read happens and drained once the turn's program has ended — never run inline.
-/// Two reasons, and the first alone is decisive: a read reaches gg from *inside* a membrane call
+/// Queued when the use happens and drained once the turn's program has ended — never run inline.
+/// Two reasons, and the first alone is decisive: a use reaches gg from *inside* a membrane call
 /// that already holds the [operation api](crate::sandbox::OperationApi) mutably, so there is no api
 /// to run a second program against. The second is that deferring is the honest contract anyway — the
 /// views the script opens arrive in the next prompt, which is what every view does.
@@ -85,17 +85,36 @@ pub struct PendingOnUse {
     /// [prepare step](crate::sandbox::ProgramLanguage::prepare_program), which is why it is a whole
     /// [`PreparedProgram`] and not the text it was written as.
     ///
-    /// It is prepared **once**, here at the read, and run as-is. Preparing it again at the point of
-    /// running would be a second trip through a compiler on every arm that has one, and on a
-    /// compiled arm it would not even be the same program: a Rust script's prepared form is a wasm
-    /// component and its source is empty, so a second preparation would compile nothing and report
-    /// a clean run over a script that never executed.
+    /// It is prepared **once per agent**, by the first use, and re-run as prepared on every use
+    /// after it. Preparing it again at the point of running would be a second trip through a
+    /// compiler on every arm that has one, and on a compiled arm it would not even be the same
+    /// program: a Rust script's prepared form is a wasm component and its source is empty, so a
+    /// second preparation would compile nothing and report a clean run over a script that never
+    /// executed.
     pub program: PreparedProgram,
-    /// The one module bound into its scope: the same thing's own code, if it carries any. An on-use
+    /// The one module in its scope: the same thing's own code, if it carries any. An on-use
     /// script sees its own module and no other — it runs at a moment the agent did not choose, so
     /// letting it reach whatever else happened to be loaded would make its behaviour depend on the
-    /// order the agent read things in.
+    /// order the agent used things in.
     pub module: Option<CodeModule>,
+}
+
+/// One prepared on-use script, kept for the life of the agent so that using the thing again costs
+/// a run and no compiler.
+///
+/// The source it was prepared from is kept beside it because a [memory](crate::memories)'s code is
+/// the model's to rewrite: a script prepared from text the memory no longer carries would run
+/// something nobody asked for.
+#[derive(Debug, Clone)]
+struct OnUseScript {
+    /// The script's source, as it stood when this was prepared.
+    source: String,
+    /// The module's source, as it stood when this was prepared.
+    module_source: Option<String>,
+    /// The prepared script.
+    program: PreparedProgram,
+    /// The module in its scope.
+    module: Option<CodeModule>,
 }
 
 /// One agent's loaded code, and the on-use scripts it owes.
@@ -110,13 +129,12 @@ pub struct KnowledgeModules {
     /// evaluated in list order, and a set that reordered itself between turns would make a
     /// program's behaviour depend on nothing the model can see.
     loaded: BTreeMap<String, String>,
-    /// Which `(origin, name)` already has a binding key, so a second read of the same skill re-uses
+    /// Which `(origin, name)` already has a binding key, so a second use of the same skill re-uses
     /// it rather than minting `csvTools2` for the same code.
     keys: BTreeMap<(KnowledgeOrigin, String), String>,
-    /// Every `(origin, name)` this agent has already brought into use, whether or not it carried any
-    /// code. It is what makes an on-use script run **once per agent** rather than once per read —
-    /// including for a thing that had no script the first time and has one now.
-    used: BTreeSet<(KnowledgeOrigin, String)>,
+    /// The prepared on-use script of each `(origin, name)` that carries one, so that using a thing
+    /// again queues a run and no compile.
+    scripts: BTreeMap<(KnowledgeOrigin, String), OnUseScript>,
     /// The on-use scripts queued this turn.
     pending: Vec<PendingOnUse>,
     /// What the language has spent **compiling for this agent** since the figure was last drained —
@@ -241,9 +259,11 @@ impl KnowledgeModules {
     /// stored: whoever wrote the thing gets a located diagnostic on the call that tried to use it,
     /// instead of a silent empty `lib` entry and a `TypeError` two turns later.
     ///
-    /// Loading the same thing twice is idempotent — the key is re-used, the source replaced (a
-    /// memory can be updated), and the on-use script is **not** queued again. "Once" means once per
-    /// agent, not once per read.
+    /// Loading the same thing twice re-uses the key and replaces the source (a memory can be
+    /// updated). The on-use script is queued **every** time, because using a skill is an execution
+    /// the agent asked for: an author who wrote one meant it to run when the skill is used, and a
+    /// second use is a second use. It is prepared once and re-run as prepared, so the repeat costs
+    /// no compiler.
     ///
     /// Both preparations are **timed** for a language that
     /// [compiles](ProgramLanguage::prepare_compiles), and the reading is accumulated on
@@ -277,7 +297,6 @@ impl KnowledgeModules {
     ) -> Result<Loaded, KnowledgeError> {
         let mut loaded = Loaded::default();
         let identity = (origin, name.to_string());
-        let first_use = !self.used.contains(&identity);
 
         if let Some(source) = code {
             let prepared = self
@@ -301,40 +320,54 @@ impl KnowledgeModules {
             loaded.key = Some(key);
         }
 
-        if let Some(source) = on_use
-            && first_use
-        {
+        if let Some(source) = on_use {
             // The module is resolved **before** the script is prepared, not after, because a
-            // compiled language links the modules in scope into the artifact it produces: a script
-            // prepared without its own module in hand would be a script whose `lib` binding is
-            // missing on exactly the arms where it cannot be added later.
+            // compiled language builds the modules in scope into the artifact it produces: a script
+            // prepared without its own module in hand would be a script whose module is missing on
+            // exactly the arms where it cannot be added later.
             let module = loaded.key.as_ref().and_then(|key| {
                 self.loaded.get(key).map(|source| CodeModule {
                     name: key.clone(),
                     source: source.clone(),
                 })
             });
-            let modules: Vec<CodeModule> = module.iter().cloned().collect();
+            let module_source = module.as_ref().map(|module| module.source.clone());
+            let prepared = self.scripts.get(&identity).is_some_and(|script| {
+                script.source == source && script.module_source == module_source
+            });
+            if !prepared {
+                let modules: Vec<CodeModule> = module.iter().cloned().collect();
+                let program = self
+                    .timed(language, || prepare_program(language, source, &modules))
+                    .map_err(|error| KnowledgeError {
+                        origin,
+                        name: name.to_string(),
+                        half: "onUse",
+                        error,
+                    })?;
+                self.scripts.insert(
+                    identity.clone(),
+                    OnUseScript {
+                        source: source.to_string(),
+                        module_source,
+                        program,
+                        module,
+                    },
+                );
+            }
             let script = self
-                .timed(language, || prepare_program(language, source, &modules))
-                .map_err(|error| KnowledgeError {
-                    origin,
-                    name: name.to_string(),
-                    half: "onUse",
-                    error,
-                })?;
+                .scripts
+                .get(&identity)
+                .expect("the on-use script was just prepared or was already held");
             self.pending.push(PendingOnUse {
                 origin,
                 name: name.to_string(),
-                program: script,
-                module,
+                program: script.program.clone(),
+                module: script.module.clone(),
             });
             loaded.on_use = true;
         }
 
-        // Recorded even for a thing that carried neither half, so a memory the model later gives an
-        // on-use script to does not get to run it in an agent that has already used the memory.
-        self.used.insert(identity);
         Ok(loaded)
     }
 

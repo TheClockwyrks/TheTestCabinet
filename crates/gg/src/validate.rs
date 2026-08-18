@@ -996,9 +996,8 @@ fn check_params(
 /// **Every params key gg reads once for the whole run**, checked on the profiles that are not the
 /// one it is read off.
 ///
-/// A handful of keys configure the run rather than an agent: the [skills](CAPABILITY_SKILLS)
-/// library is loaded once from one directory, and the [subagents](CAPABILITY_SUBAGENTS) recursion
-/// bound is a property of the tree. gg reads each off the [root](GgCapabilitySet::capability),
+/// One key configures the run rather than an agent: the [subagents](CAPABILITY_SUBAGENTS) recursion
+/// bound is a property of the tree. gg reads it off the [root](GgCapabilitySet::capability),
 /// which is the only profile a run is guaranteed to have — so a *different* value written on
 /// another profile is read by nothing at all, whatever it says.
 ///
@@ -1007,18 +1006,11 @@ fn check_params(
 /// every profile says `.gg/skills` says exactly what gg does. So what is refused is a declaration
 /// that **diverges** from the one in force — the case where the document says two things and the
 /// run can only do one.
-const RUN_LEVEL_PARAMS: &[(&str, &str, &str)] = &[
-    (
-        CAPABILITY_SKILLS,
-        crate::agent::PARAM_SKILLS_DIR,
-        "the run's skills are loaded once, from one directory",
-    ),
-    (
-        CAPABILITY_SUBAGENTS,
-        crate::subagents::PARAM_MAX_DEPTH,
-        "the recursion bound is a property of the run's agent tree",
-    ),
-];
+const RUN_LEVEL_PARAMS: &[(&str, &str, &str)] = &[(
+    CAPABILITY_SUBAGENTS,
+    crate::subagents::PARAM_MAX_DEPTH,
+    "the recursion bound is a property of the run's agent tree",
+)];
 
 /// Whether two declarations of one key say the same thing, read the way the resolver that consumes
 /// them would: a number by its value (so `3` and `3.0` are one declaration, exactly as
@@ -1038,12 +1030,10 @@ fn same_declaration(left: &Value, right: &Value) -> bool {
 /// It exists because a divergence is measured against **what is in force**, not against what the
 /// root happens to have typed. An editor that offers the param per agent seeds every profile with
 /// the documented default, and a root that is an [FSM shell](crate::fsm::is_shell) writes no
-/// capability params at all — so a set in which the workers say `.gg/skills` and the root says
-/// nothing describes exactly the run gg conducts, and refusing it would refuse the editor's own
-/// output.
+/// capability params at all — so a set in which the workers say `3` and the root says nothing
+/// describes exactly the run gg conducts, and refusing it would refuse the editor's own output.
 fn run_level_default(capability: &str, key: &str) -> Option<Value> {
     match (capability, key) {
-        (CAPABILITY_SKILLS, _) => Some(Value::from(crate::skills::DEFAULT_SKILLS_DIR)),
         (CAPABILITY_SUBAGENTS, _) => Some(Value::from(crate::subagents::DEFAULT_MAX_DEPTH as u64)),
         _ => None,
     }

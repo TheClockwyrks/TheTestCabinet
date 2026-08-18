@@ -151,39 +151,43 @@ fn reloading_the_same_thing_reuses_its_key_and_replaces_its_source() {
     assert!(again.exports.contains(&"VERSION".to_string()));
 }
 
+/// An on-use script is an execution the agent asked for, so every use queues one.
 #[test]
-fn an_on_use_script_is_queued_once_per_agent() {
+fn an_on_use_script_is_queued_on_every_use() {
+    let script = "import * as gg from \"gg\";\ngg.views.openText(\"guide\", \"hello\");\n";
     let mut modules = KnowledgeModules::new();
-    let first = modules
-        .load(
-            ts(),
-            KnowledgeOrigin::Skill,
-            "guide",
-            None,
-            Some("import * as gg from \"gg\";\ngg.views.openText(\"guide\", \"hello\");\n"),
-        )
-        .expect("an on-use script loads");
-    assert!(first.on_use);
-    assert_eq!(modules.take_pending().len(), 1);
-
-    // Read again: the script has already run for this agent, so nothing is queued.
-    let again = modules
-        .load(
-            ts(),
-            KnowledgeOrigin::Skill,
-            "guide",
-            None,
-            Some("import * as gg from \"gg\";\ngg.views.openText(\"guide\", \"hello\");\n"),
-        )
-        .expect("a repeat read loads");
-    assert!(!again.on_use);
-    assert!(modules.take_pending().is_empty());
+    for use_number in 1..=3 {
+        let loaded = modules
+            .load(ts(), KnowledgeOrigin::Skill, "guide", None, Some(script))
+            .expect("an on-use script loads");
+        assert!(loaded.on_use, "use {use_number}");
+        assert_eq!(modules.take_pending().len(), 1, "use {use_number}");
+    }
 }
 
+/// …and the repeat costs no compiler: the script is prepared once and re-run as prepared.
 #[test]
-fn a_thing_used_without_a_script_does_not_run_one_added_later() {
-    // A memory the model updates to carry an on-use script has already been used; running it then
-    // would be running it at a moment the "once, when it first comes into use" rule does not name.
+fn a_repeat_use_re_runs_the_prepared_script() {
+    let script = "import * as gg from \"gg\";\ngg.views.openText(\"guide\", \"hello\");\n";
+    let mut modules = KnowledgeModules::new();
+    let first = {
+        modules
+            .load(ts(), KnowledgeOrigin::Skill, "guide", None, Some(script))
+            .expect("an on-use script loads");
+        modules.take_pending().remove(0)
+    };
+    let again = {
+        modules
+            .load(ts(), KnowledgeOrigin::Skill, "guide", None, Some(script))
+            .expect("a repeat use loads");
+        modules.take_pending().remove(0)
+    };
+    assert_eq!(first.program, again.program);
+}
+
+/// A script a memory gains later runs on the use that first carries it.
+#[test]
+fn a_script_added_to_a_memory_runs_on_the_next_use() {
     let mut modules = KnowledgeModules::new();
     modules
         .load(ts(), KnowledgeOrigin::Memory, "notes", None, None)
@@ -197,8 +201,41 @@ fn a_thing_used_without_a_script_does_not_run_one_added_later() {
             Some("import * as gg from \"gg\";\ngg.views.openText(\"notes\", \"hi\");\n"),
         )
         .expect("the revised memory loads");
-    assert!(!later.on_use);
-    assert!(modules.take_pending().is_empty());
+    assert!(later.on_use);
+    assert_eq!(modules.take_pending().len(), 1);
+}
+
+/// A script the model rewrites is prepared again, so a use never runs text the memory no longer
+/// carries.
+#[test]
+fn a_rewritten_script_is_prepared_again() {
+    let mut modules = KnowledgeModules::new();
+    modules
+        .load(
+            ts(),
+            KnowledgeOrigin::Memory,
+            "notes",
+            None,
+            Some("import * as gg from \"gg\";\ngg.views.openText(\"notes\", \"first\");\n"),
+        )
+        .expect("a memory with a script loads");
+    let first = modules.take_pending().remove(0);
+    modules
+        .load(
+            ts(),
+            KnowledgeOrigin::Memory,
+            "notes",
+            None,
+            Some("import * as gg from \"gg\";\ngg.views.openText(\"notes\", \"second\");\n"),
+        )
+        .expect("the rewritten memory loads");
+    let again = modules.take_pending().remove(0);
+    assert_ne!(first.program, again.program);
+    assert!(
+        again.program.source.contains("second"),
+        "{:?}",
+        again.program
+    );
 }
 
 #[test]
