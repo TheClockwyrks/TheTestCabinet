@@ -1,16 +1,26 @@
 // Automated validation for the Spin sub-item `at-bound`: a paddle held against the
-// top/bottom edge cannot move, so it is stationary and imparts no spin even while
-// the movement key is still held. The real integrator clamps a bound-pinned paddle's
-// velocity to zero (entities.ts: the clamped displacement, not the held input,
-// becomes vy), so a build that drives spin off the held input rather than the
-// paddle's actual motion fails this.
+// top/bottom edge cannot travel, so it imparts no spin even while the movement key is
+// still held into the bound. `specs/playfield.md` clamps a paddle's center to
+// [55, 665] and drives the spin mechanic from the motion it actually made this step,
+// so a paddle already pinned there adds nothing to the ball however long the key is
+// held — the ball comes off it straight.
 //
-// Discriminating check: the SAME held velocity clear of the bound DOES impart spin,
-// so passing proves the build reads real motion — not that it never adds spin.
+// What the paddle REPORTS as its `vy` while pinned is not graded. `specs/playfield.md`
+// says a paddle moves at 720 px/s while a movement key is held, so a build that keeps
+// reporting the held 720 against the bound is reading the spec as fairly as one that
+// reports the zero it actually travelled. Both are conformant, and the thing this
+// point is about — what the pinned paddle does to the ball — is identical either way.
+//
+// Discriminating check: the SAME held velocity clear of the bound DOES impart spin and
+// DOES bend the flight, so passing proves the build reads real motion — not that it
+// never adds spin.
 
 import {
   actLeftPaddleHit,
   arrangeLeftPaddleHit,
+  actCurveOffset,
+  assertCurved,
+  assertStraight,
   neutralizeExtraBalls,
   startPlaying,
   PADDLE_MAX_CY,
@@ -25,17 +35,19 @@ import {
 const BOUND_START_X = 285;
 
 export default function item() {
-  // The two contacts `act` read back, for `assert` to score.
+  // The two contacts `act` read back, and the flight after each, for `assert` to score.
   let bound;
+  let boundFlight;
   let free;
+  let freeFlight;
 
   return {
     id: "spin.at-bound",
 
     // Paddle pinned at the bottom bound while holding "down" (vy = +720): it cannot
-    // move, so the strike must add no spin and its reported vy must be ~0. Only this
-    // first contact can be posed here — the free-paddle control needs a fresh match,
-    // which cannot be started until this one has been driven.
+    // travel, so the strike must add no spin and the return must fly straight. Only
+    // this first contact can be posed here — the free-paddle control needs a fresh
+    // match, which cannot be started until this one has been driven.
     async arrange(api) {
       await startPlaying(api);
       await arrangeLeftPaddleHit(api, {
@@ -49,8 +61,11 @@ export default function item() {
     async act(api) {
       bound = await actLeftPaddleHit(api, { leadTicks: LEAD_TICKS });
       // Let the return fly on, so the clip shows the bound-pinned paddle sending the
-      // ball back on a straight line (no curve) — the behavior being checked.
-      await api.advance(90); // 90 ticks (0.75s) of visible straight flight
+      // ball back on a straight line (no curve) — and measure that straightness,
+      // rather than only inferring it from a zero spin reading. The return rides out
+      // along the bottom of the field, clear of both obstacles, so the whole window is
+      // free flight.
+      boundFlight = await actCurveOffset(api, 90); // 90 ticks (0.75s) of measured flight
 
       // Control: the same held velocity clear of the bound, where the paddle really
       // moves, must impart spin — proving the no-spin result above is due to no motion.
@@ -75,9 +90,11 @@ export default function item() {
         leadTicks: LEAD_TICKS,
       });
       free = await actLeftPaddleHit(api, { leadTicks: LEAD_TICKS });
-      // The contrasting curve, so the clip shows both halves of the discrimination
-      // (the two 0.75s tails together match the old 1500ms clip).
-      await api.advance(90);
+      // The contrasting curve, measured over free flight short of the bottom wall it
+      // bends toward, then held for the rest of the tail so the clip shows both halves
+      // of the discrimination (the two 0.75s tails together match the old 1500ms clip).
+      freeFlight = await actCurveOffset(api, 72);
+      await api.advance(18);
     },
 
     async assert(api, check) {
@@ -95,17 +112,14 @@ export default function item() {
         0,
       );
       check.expectClose(
-        "a paddle pinned at the bound reports zero velocity (vy)",
-        bound.paddle.vy,
-        0,
-        1,
-      );
-      check.expectClose(
-        "so it imparts no spin even with the key held into the bound (spin)",
+        "a paddle pinned at the bound imparts no spin even with the key held into it (spin)",
         bound.ball.spin,
         0,
         0.5,
       );
+      assertStraight(check, boundFlight, {
+        who: "the return off the bound-pinned paddle",
+      });
       check.expectGt(
         "the ball rebounds off the free paddle rather than passing through it (vx)",
         free.ball.vx,
@@ -116,6 +130,9 @@ export default function item() {
         free.ball.spin,
         400,
       );
+      assertCurved(check, freeFlight, {
+        who: "that same key's shot clear of the bound",
+      });
     },
   };
 }

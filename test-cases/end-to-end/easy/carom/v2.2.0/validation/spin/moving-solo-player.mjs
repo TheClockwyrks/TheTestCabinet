@@ -10,12 +10,15 @@
 import {
   arrangePaddleHit,
   actPaddleHit,
+  actCurveOffset,
+  assertCurved,
   startPlaying,
   LEAD_TICKS,
 } from "../_helpers.mjs";
 
 export default function item() {
   let hit;
+  let curve;
 
   return {
     id: "spin.moving-solo-player",
@@ -40,8 +43,13 @@ export default function item() {
 
     async act(api) {
       hit = await actPaddleHit(api, "left", { leadTicks: LEAD_TICKS });
-      // Let the return fly on, so the clip shows the curve the spin produces.
-      await api.advance(96); // 0.8 s of visible curve
+      // Fly the return on and measure how far it bends off the line it left the
+      // paddle on. The window stops short of the bottom wall the curve is heading
+      // for — the offset is measured against free flight, and a bounce inside it
+      // would reflect the very line it is measured against.
+      curve = await actCurveOffset(api, 72); // 0.6 s of measured curve
+      // The rest of the old 96-tick tail, so the clip still shows the curve running on.
+      await api.advance(24);
     },
 
     async assert(api, check) {
@@ -51,6 +59,7 @@ export default function item() {
         hit.ball.spin,
         400,
       );
+      assertCurved(check, curve, { who: "the shot off the swung human paddle" });
     },
   };
 }

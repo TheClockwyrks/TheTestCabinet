@@ -1,17 +1,21 @@
 // Automated validation for the Audio sub-item `scoring`: a cue plays when a point is
 // scored.
 //
-// Audio is armed with one neutral key press (the game must not autoplay), then a real
-// ball is driven out the right goal. The real scoring code increments the score and
-// the audio log must grow across the point — the build played a cue. See
+// Audio is armed with one real key press (the game must not autoplay), then a real
+// ball is driven out the right goal in real time. The real scoring code increments the
+// score and the audio log must grow across the point — the build played a cue. See
 // validation/_helpers.mjs.
 
-import { startPlaying, armAudio, arrangeGoal, actGoal } from "../_helpers.mjs";
+import {
+  startPlaying,
+  armAudio,
+  arrangeGoal,
+  actCue,
+  assertCue,
+} from "../_helpers.mjs";
 
 export default function item() {
-  let before;
-  let scored;
-  let after;
+  let cue;
 
   return {
     id: "audio.scoring",
@@ -23,18 +27,14 @@ export default function item() {
     },
 
     async act(api) {
-      before = (await api.audio()).length;
-      scored = await actGoal(api);
-      after = (await api.audio()).length;
+      // The point is the rally ending: a scored ball respawns to the countdown, a
+      // match point to the match-over screen, so either way play leaves "playing".
+      cue = await actCue(api, (s) => s.screen !== "playing");
     },
 
     async assert(api, check) {
-      check.expectEq("a point is scored (player one)", scored.score.p1, 1);
-      check.expectGt(
-        "a cue is played on the scored point (Web Audio sources started)",
-        after,
-        before,
-      );
+      check.expectEq("a point is scored (player one)", cue.snap.score.p1, 1);
+      assertCue(check, cue, { what: "the scored point" });
     },
   };
 }

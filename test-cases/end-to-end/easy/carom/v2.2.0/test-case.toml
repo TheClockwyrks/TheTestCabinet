@@ -470,7 +470,8 @@ validation = { script = "validation/paddles/rally-caps.mjs", outputs = [
 # 720 px/s in Solo and for both players in Versus, and the AI paddle at its own,
 # deliberately slower speed. Each is driven the way it really moves — a held key for
 # the human paddles, the real AI's chase for the opponent — and its rate is measured
-# back.
+# back. The human ones are measured from the pre-serve countdown the started match
+# opens on, which specs/ui.md pins as live play for everything but the ball.
 [[review.categories]]
 id = "paddle-movement"
 title = "Paddle Movement"
@@ -598,18 +599,23 @@ title = "Spin"
 id = "stationary"
 title = "No spin from a stationary paddle"
 description = "A stationary paddle imparts no new spin, so the return stays straight."
-# Automated validation: a real stationary-paddle contact imparts no spin, so the
-# return stays straight. See validation/spin/stationary.mjs.
+# Automated validation: a real stationary-paddle contact imparts no spin, and the
+# return is then measured holding a straight line rather than only reporting a zero.
+# See validation/spin/stationary.mjs.
 validation = { script = "validation/spin/stationary.mjs", outputs = [
   { id = "straight", name = "Straight return, no curve", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "at-bound"
 title = "No spin at the field bound"
-description = "A paddle pinned at the field bound imparts no spin even while the movement key is held into the bound."
+description = "A paddle pinned at the field bound imparts no spin even while the movement key is held into the bound, so the ball comes off it straight."
 # Automated validation: a paddle pinned at the bound while holding the key into it
-# imparts no spin (its real velocity clamps to zero), while the same held key
-# mid-field does. See validation/spin/at-bound.mjs.
+# imparts no spin and returns the ball on a straight line, while the same held key
+# mid-field imparts spin and bends the flight. What the pinned paddle REPORTS as its
+# velocity is not graded: the spec has a paddle move at 720 px/s while a movement key
+# is held, so reporting the held speed against the bound is as fair a reading as
+# reporting the zero it covered, and what the paddle does to the ball — the point
+# here — is the same either way. See validation/spin/at-bound.mjs.
 validation = { script = "validation/spin/at-bound.mjs", outputs = [
   { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "video" },
 ] }
@@ -623,7 +629,8 @@ id = "moving-solo-player"
 title = "Human paddle imparts spin while moving (Solo)"
 description = "In Solo the human's paddle (left), swung as it strikes, curves the ball's flight."
 # Automated validation: a real downward-swung left-paddle contact imparts significant
-# positive spin. See validation/spin/moving-solo-player.mjs.
+# positive spin, and the flight afterwards bends off its line by as far as that spin
+# requires. See validation/spin/moving-solo-player.mjs.
 validation = { script = "validation/spin/moving-solo-player.mjs", outputs = [
   { id = "curve", name = "A curved shot off the moving human paddle (Solo)", kind = "video" },
 ] }
@@ -631,8 +638,15 @@ validation = { script = "validation/spin/moving-solo-player.mjs", outputs = [
 id = "moving-solo-ai"
 title = "AI paddle imparts spin while moving (Solo)"
 description = "In Solo the AI's paddle (right), moving as it strikes, curves the ball's flight just as a human paddle does."
-# Automated validation: the real AI strikes the ball while chasing and imparts
-# significant spin from its motion. See validation/spin/moving-solo-ai.mjs.
+# Automated validation: the real AI strikes the ball while chasing, imparts spin
+# tracking its own paddle speed, and bends the flight by as far as that spin requires.
+# Whether the AI is still travelling when the ball arrives is the build's to decide, not
+# the scenario's — an AI faster than the 560 px/s cap closes the arranged gap early and
+# strikes at a standstill, leaving no motion to read spin from. That is reported as an
+# unmet precondition (no verdict either way, decided by a reviewer) rather than a
+# failure: the point never saw the spin mechanic, and the speed behind it is already
+# graded by `paddle-movement.speed-solo-ai` and `gameplay.ai-outrun`. See
+# validation/spin/moving-solo-ai.mjs.
 validation = { script = "validation/spin/moving-solo-ai.mjs", outputs = [
   { id = "curve", name = "A curved shot off the moving AI paddle", kind = "video" },
 ] }
@@ -641,7 +655,8 @@ id = "moving-versus-p1"
 title = "Player one imparts spin while moving (Versus)"
 description = "In Versus player one's paddle (left), swung as it strikes, curves the ball's flight; an upward swing curves it the opposite way from a downward one."
 # Automated validation: a real upward-swung left-paddle contact imparts significant
-# negative spin. See validation/spin/moving-versus-p1.mjs.
+# negative spin, and the flight afterwards bends off its line by as far as that spin
+# requires. See validation/spin/moving-versus-p1.mjs.
 validation = { script = "validation/spin/moving-versus-p1.mjs", outputs = [
   { id = "curve", name = "A curved shot off player one's moving paddle (Versus)", kind = "video" },
 ] }
@@ -650,7 +665,8 @@ id = "moving-versus-p2"
 title = "Player two imparts spin while moving (Versus)"
 description = "In Versus player two's paddle (right), swung as it strikes, curves the ball's flight."
 # Automated validation: a real downward-swung right-paddle contact imparts significant
-# positive spin. See validation/spin/moving-versus-p2.mjs.
+# positive spin, and the flight afterwards bends off its line by as far as that spin
+# requires. See validation/spin/moving-versus-p2.mjs.
 validation = { script = "validation/spin/moving-versus-p2.mjs", outputs = [
   { id = "curve", name = "A curved shot off player two's moving paddle (Versus)", kind = "video" },
 ] }
@@ -660,7 +676,9 @@ title = "Spin decays"
 description = "Imparted spin decays back to straight within roughly a couple of seconds."
 # Automated validation: impart real spin, then step the real simulation forward and
 # confirm the spin falls to roughly half after one half-life and to a small fraction
-# after ~2 s. See validation/spin/decay.mjs.
+# after ~2 s — and that the FLIGHT straightens with it, the same shot bending far less
+# once the spin has decayed than it did while it was fresh. See
+# validation/spin/decay.mjs.
 validation = { script = "validation/spin/decay.mjs", outputs = [
   { id = "decay", name = "A curved shot straightening out", kind = "video" },
 ] }
@@ -745,6 +763,11 @@ validation = { script = "validation/pause/ball-continues.mjs", outputs = [
 # with injected keyboard input through the debug API (see specs/instrumentation.md)
 # and its effect read back. (Solo play is rated on the single-player domain, which
 # the reviewer scores separately from this checklist.)
+#
+# The match is started from the title with those injected keys, which lands on the
+# pre-serve countdown, and the key is held from there — so these points are read
+# during the countdown. specs/ui.md pins that as live play: only the ball is held,
+# and the paddles answer their movement keys throughout.
 [[review.categories]]
 id = "controls-solo"
 title = "Single Player Controls"
@@ -783,6 +806,10 @@ validation = { script = "validation/controls-solo/m.mjs", outputs = [
 # Versus: player one drives the left paddle with W/S, player two the right paddle
 # with Up/Down. (Versus play is rated on the versus domain, scored separately from
 # this checklist.)
+#
+# As in Solo, the match is started from the title with injected keys and the key is
+# held from the pre-serve countdown it lands on. specs/ui.md pins that as live play:
+# only the ball is held, and the paddles answer their movement keys throughout.
 [[review.categories]]
 id = "controls-versus"
 title = "Multi Player Controls"
@@ -936,6 +963,14 @@ validation = { script = "validation/ui/menu-matchover.mjs", outputs = [
 # first; the exact sound is the model's own, only that a cue plays is scored. The
 # muted-playback, never-fail-to-load, and silent-until-interaction properties are
 # reviewed by a person from play.
+# Every cue point is driven in REAL time, on the build's own clock, with audio armed
+# first by a browser-trusted press of a key the game binds. Both are needed to read a
+# build that plays perfectly for a player: a build may unlock its AudioContext only
+# from a real DOM event and only for a key it owns, and the specification says nothing
+# about whether cues fire when a script advances the clock by hand — so a build that
+# stays silent while stepping (rather than firing a burst of blips when a script steps
+# a whole rally at once) is conformant. See the audio section of
+# validation/_helpers.mjs.
 [[review.categories]]
 id = "audio"
 title = "Audio"
@@ -943,8 +978,8 @@ title = "Audio"
 id = "paddle-hit"
 title = "Paddle-hit cue"
 description = "A distinct short cue plays when the ball strikes a paddle. Audio is synthesized with the Web Audio API (no audio files)."
-# Automated validation: drive a real paddle contact and confirm a Web Audio cue fires.
-# See validation/audio/paddle-hit.mjs.
+# Automated validation: drive a real paddle contact in real time and confirm a Web
+# Audio cue fires across it. See validation/audio/paddle-hit.mjs.
 validation = { script = "validation/audio/paddle-hit.mjs", outputs = [
   { id = "hit", name = "The paddle hit whose cue is checked", kind = "video" },
 ] }
@@ -952,8 +987,8 @@ validation = { script = "validation/audio/paddle-hit.mjs", outputs = [
 id = "wall-bounce"
 title = "Wall bounce cue"
 description = "A distinct short cue plays when the ball bounces off the side wall of the playfield (the top or bottom edge)."
-# Automated validation: fire the ball into a wall and confirm a Web Audio cue fires.
-# See validation/audio/wall-bounce.mjs.
+# Automated validation: fire the ball into a wall in real time and confirm a Web Audio
+# cue fires across the bounce. See validation/audio/wall-bounce.mjs.
 validation = { script = "validation/audio/wall-bounce.mjs", outputs = [
   { id = "bounce", name = "The wall bounce whose cue is checked", kind = "video" },
 ] }
@@ -961,8 +996,8 @@ validation = { script = "validation/audio/wall-bounce.mjs", outputs = [
 id = "obstacle-bounce"
 title = "Obstacle bounce cue"
 description = "A distinct short cue plays when the ball bounces off a mid-field obstacle."
-# Automated validation: fire the ball into an obstacle and confirm a Web Audio cue
-# fires. See validation/audio/obstacle-bounce.mjs.
+# Automated validation: fire the ball into an obstacle in real time and confirm a Web
+# Audio cue fires across the bounce. See validation/audio/obstacle-bounce.mjs.
 validation = { script = "validation/audio/obstacle-bounce.mjs", outputs = [
   { id = "bounce", name = "The obstacle bounce whose cue is checked", kind = "video" },
 ] }
@@ -970,8 +1005,8 @@ validation = { script = "validation/audio/obstacle-bounce.mjs", outputs = [
 id = "scoring"
 title = "Scoring cue"
 description = "A cue plays when a point is scored."
-# Automated validation: drive a real point and confirm a Web Audio cue fires. See
-# validation/audio/scoring.mjs.
+# Automated validation: drive a real point in real time and confirm a Web Audio cue
+# fires across it. See validation/audio/scoring.mjs.
 validation = { script = "validation/audio/scoring.mjs", outputs = [
   { id = "score", name = "The scored point whose cue is checked", kind = "video" },
 ] }

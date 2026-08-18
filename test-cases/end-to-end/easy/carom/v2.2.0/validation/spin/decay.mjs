@@ -13,10 +13,18 @@
 // leaving the field, the paddles are cleared (so no further hit changes spin) and
 // the ball's POSITION is re-centered between chunks while its velocity and spin carry
 // through untouched — the spin decays purely from the elapsed simulation time.
+//
+// The reported scalar falling is only half of what "spin decays" means to a player:
+// the FLIGHT has to straighten with it. So the same shot is set down twice in the same
+// measuring lane — once while the spin is fresh and once after it has decayed — and how
+// far each bends off its line is measured. Both must match what the spin at that moment
+// requires, and the late one must be a fraction of the early one.
 
 import {
   actLeftPaddleHit,
   arrangeLeftPaddleHit,
+  actCurveOffset,
+  assertCurved,
   clearPaddles,
   startPlaying,
   ball0,
@@ -30,12 +38,25 @@ const HALF_LIFE = 96; // 96 ticks = 0.8 s, the spec's spin half-life
 const TO_TWO_SECONDS = 144; // 144 ticks = 1.2 s more, ~2 s total since the hit
 const RECENTER_CHUNK = 12; // 12 ticks = the old 0.1 s chunk between recenterings
 
+// The lane each bend is measured in. The ball is set down at the same point, at the
+// same speed, heading the same way for both measurements, so the early and the late
+// one differ in nothing but the spin that decayed between them. Starting at x=240
+// heading level keeps the whole window clear of the obstacles, the walls and the
+// goals, so both are measured over free flight. The window is part of the flight the
+// spin decays over, not an addition to it — the two together with the drives between
+// them still land the readings at one half-life and at ~2 s.
+const MEASURE_X = 240;
+const MEASURE_Y = 360;
+const MEASURE_TICKS = 48; // 0.4 s — long enough for a fresh spin to bend the flight far
+
 export default function item() {
   // What `act` read off the real simulation, for `assert` to score.
   let hit;
   let spin0;
   let halfLife;
   let settled;
+  let earlyBend;
+  let lateBend;
 
   return {
     id: "spin.decay",
@@ -64,11 +85,29 @@ export default function item() {
         }
       };
 
-      await flyFor(HALF_LIFE); // one half-life
+      // Set the shot down in the measuring lane and fly it free, so how far it bends
+      // is read off the same shot both times. Speed is the ball's own — no paddle hit
+      // follows, so nothing changes it between the two measurements — and the spin
+      // carries through untouched, which is the whole point.
+      const measureBend = async () => {
+        const b = ball0(await api.snapshot());
+        const speed = Math.hypot(b.vx, b.vy);
+        await api.call("setBall", 0, {
+          x: MEASURE_X,
+          y: MEASURE_Y,
+          vx: speed,
+          vy: 0,
+        }); // keep spin
+        return actCurveOffset(api, MEASURE_TICKS);
+      };
+
+      earlyBend = await measureBend(); // the fresh spin, bending hard
+      await flyFor(HALF_LIFE - MEASURE_TICKS); // to one half-life since the hit
       halfLife = ball0(await api.snapshot()).spin;
 
-      await flyFor(TO_TWO_SECONDS); // ~2 s total since the hit
-      settled = ball0(await api.snapshot()).spin;
+      await flyFor(TO_TWO_SECONDS - MEASURE_TICKS);
+      lateBend = await measureBend(); // the decayed spin, barely bending
+      settled = ball0(await api.snapshot()).spin; // ~2 s total since the hit
     },
 
     async assert(api, check) {
@@ -92,6 +131,19 @@ export default function item() {
         "spin falls to a small fraction after ~2 s (|spin|)",
         Math.abs(settled),
         0.25 * Math.abs(spin0),
+      );
+      // The flight has to straighten with the number. Each bend must match the spin
+      // the ball carried through it...
+      assertCurved(check, earlyBend, { who: "the shot while its spin is fresh" });
+      assertCurved(check, lateBend, { who: "the same shot once its spin has decayed" });
+      // ...and the late one must be a fraction of the early one: the decay leaves
+      // about a quarter of the spin by the time the second is measured, so a build
+      // whose flight keeps bending as hard as it did at the hit fails here even
+      // though its reported spin fell.
+      check.expectLt(
+        "the decayed shot bends far less than the fresh one did (px off the line)",
+        Math.abs(lateBend.offset),
+        0.4 * Math.abs(earlyBend.offset),
       );
     },
   };

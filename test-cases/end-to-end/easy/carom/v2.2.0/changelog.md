@@ -1,3 +1,134 @@
+## A parked AI makes `spin.moving-solo-ai` inconclusive, not failed
+
+The point hands the right paddle to the real AI and aims a ball to arrive while it is
+still sweeping down to intercept, so its own chase is what curves the ball. Whether that
+sweep is still running when the ball lands is not the scenario's to decide. The AI moves
+at whatever speed the build gave it and only while the ball sits outside its deadzone
+(`specs/modes/single-player.md`), so its motion is bang-bang: it eats the arranged gap at
+full speed and then stops. An AI quicker than the 560 px/s cap arrives early, waits on the
+lane, and strikes at a standstill.
+
+A run did exactly that, with an AI at 1073 px/s. It imparted no spin because there was no
+motion to impart any, and the point failed — charging a speed defect to a spin mechanic
+that was, on that build's own four other spin points, implemented correctly. The speed was
+already caught twice over, by `paddle-movement.speed-solo-ai` and `gameplay.ai-outrun`.
+
+A standstill contact is now an **unmet precondition** rather than a failure. The drive
+stops at `requireMovingPaddle`, the runtime reports it inconclusive, and no verdict is
+synthesized either way — the point is left for a reviewer, which is the honest answer when
+the situation being graded never arose. It stops there deliberately, before the readings:
+a standstill contact satisfies all of them vacuously (no motion, so no spin, so no curve,
+and every reading agrees with every other) and the point would otherwise pass having
+watched nothing.
+
+Nothing else about the point moves. A build whose AI travels and imparts no spin still
+fails it — a reference mutated to impart spin only from the human paddle reads 0 against
+the 476 its chase required. And an AI that never moves at all cannot hide here: it takes
+the inconclusive result but fails `paddle-movement.speed-solo-ai` (0 px/s against a floor
+of 250) and `gameplay.ai-intercepts` (a reachable shot goes in).
+
+Two things are corrected in passing. The spin tolerance is now taken on the magnitude of
+what the contact required, so an AI that comes at the lane from below — conformant, and
+signed the other way — is graded on the same fraction rather than collapsing to the
+absolute floor. And a comment claiming the AI "eases off as it nears the ball" is gone: it
+does not ease, it stops dead inside its deadzone, and the reason the tolerance reads spin
+against the paddle's measured velocity is that the AI's speed is its own, not that it
+tapers.
+
+## The pre-serve countdown is live play
+
+`specs/ui.md` described the Countdown screen as "the brief pre-serve hold before a ball
+is launched" and left it there. Everything else about that state was pinned elsewhere —
+`specs/playfield.md` has the obstacle clock running through it, `specs/ui.md` has a
+paused countdown resuming as a countdown — but nothing said whether a player can move a
+paddle while it runs, and builds split on it. Most treat the countdown as live and let
+both sides take up position before the serve; one froze the paddles until the ball
+launched, which is an equally fair reading of a "hold".
+
+It is not a free choice, because the controls and paddle-speed points are read there.
+They start a match from the title with injected keys, which lands on the countdown, and
+hold a movement key from that moment — so a build that freezes the paddles scores zero
+on eight controls points and all three human paddle-speed points, on a question the
+specification never answered.
+
+`specs/ui.md` now answers it: only the ball is held, the match itself is live, the
+paddles answer their movement keys and the pause key still pauses. The points are
+unchanged — what changed is that they now grade something the specification asks for.
+
+## Cues are read the way a player hears them
+
+Every Audio point failed on builds that audibly play. Two separate causes, both in the
+checking rather than the built games.
+
+The first was the arming press. A cue can only be scheduled once the build has created
+its `AudioContext`, which browsers withhold until the player interacts, so each point
+armed audio with a genuine browser key press before driving its event — and chose `Z`,
+a key the game does not bind, so that arming could disturb nothing. But a build is free
+to return from its key handler the moment it sees a key it does not own, audio and all;
+leaving foreign keys to the browser is good behavior, not a defect. Such a build never
+unlocked, never scheduled a cue, and failed all four points while playing perfectly for
+a person at the keyboard. Arming now presses `W`, which `specs/modes/single-player.md`
+and `specs/modes/versus.md` both bind in both ways to play. It still disturbs nothing: a
+paddle travels at 720 px/s _while a key is held_, over simulation time, and a tap
+delivered while the build sits on its manual clock spans no simulation time at all.
+
+The second was driving the event by stepping. A build that drops queued cues while a
+script advances the clock by hand — so that stepping a whole rally at once does not fire
+a burst of blips — plays every cue for a real player and none for the check. Nothing in
+the specification says a hand-driven step must sound, and it is not a question these
+points should be deciding. So each cue is now driven in real time on the build's own
+clock: hand back `setAutoStep`, let the posed contact, bounce or goal happen at the
+speed it really happens, and read the audio log across it. The recorded clips show the
+same events at their real speed as a side effect.
+
+The points themselves are unchanged — a build that plays no cue still fails all four,
+which a silenced reference build confirms.
+
+## Spin is graded on where the ball ends up
+
+Every Spin point read the `spin` scalar out of a snapshot and stopped there. That grades
+the cause and never the effect: a build that computes `spin += paddleVy * 0.85` exactly,
+reports it faithfully, and then flies the ball dead straight satisfies every reading the
+category took and has no spin mechanic at all. The clips showed the curve; nothing
+checked it.
+
+So each point now also measures where the ball actually goes. After the contact the
+flight is followed for a fixed window and its perpendicular offset from the straight
+line it left the paddle on is measured, against the offset `specs/balls.md` requires —
+integrated from the state the build itself reported at the rebound, since how a build
+resolves the instant of a contact is its own business and a hardcoded coordinate would
+grade that instead. The no-spin contacts (`stationary`, and the pinned half of
+`at-bound`) assert the mirror of it: the return holds its line. `decay` measures the
+same shot twice, once while its spin is fresh and once after it has decayed, so the
+flight has to straighten with the number.
+
+Only the magnitude of the offset is compared. `specs/balls.md` pins how hard a spinning
+ball bends — a lateral acceleration of `|spin|` px/s² — and that opposite spins bend it
+opposite ways, but it deliberately does not say which side positive spin bends toward
+("one way", "the other"). Two builds that mirror each other are both conformant and both
+bend just as far, so the check grades the mechanic the specification defines and stays
+blind to the choice it leaves open.
+
+Reference builds mutated to report the right spin and never apply it, and to apply it at
+half strength, fail these readings; one mutated to drift a spinless ball fails the
+straight-line ones.
+
+## `spin.at-bound` stops grading what a pinned paddle reports
+
+The point asserted that a paddle pinned against the field bound reports `vy` of zero
+while the movement key is still held into it. That is one reading of the specification
+and not the only one: `specs/playfield.md` says a paddle moves at 720 px/s _while a
+movement key is held_, so a build that keeps reporting the held speed against the bound
+is reading it as fairly as one that reports the zero it actually covered, and
+`specs/instrumentation.md` asks the snapshot for "each paddle's velocity" without
+settling which. A build was failing the point on that alone while doing the right thing
+to the ball.
+
+What the point is actually about survives untouched, and is now stronger: the pinned
+paddle imparts no spin however long the key is held, the ball comes off it on a straight
+line, and the same held key clear of the bound both imparts spin and visibly bends the
+flight.
+
 ## `spin.at-bound` reads the rebound, not a contact flag
 
 Both halves of the point's discrimination asserted that the paddle "strikes the ball",

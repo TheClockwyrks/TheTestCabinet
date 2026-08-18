@@ -9,13 +9,16 @@
 import {
   actLeftPaddleHit,
   arrangeLeftPaddleHit,
+  actCurveOffset,
+  assertStraight,
   startPlaying,
   LEAD_TICKS,
 } from "../_helpers.mjs";
 
 export default function item() {
-  // The bounce `act` read back, for `assert` to score.
+  // The bounce `act` read back, and the flight after it, for `assert` to score.
   let still;
+  let curve;
 
   return {
     id: "spin.stationary",
@@ -40,8 +43,12 @@ export default function item() {
     async act(api) {
       still = await actLeftPaddleHit(api, { leadTicks: LEAD_TICKS });
       // Let the returned ball travel on so the clip shows the very thing checked:
-      // a stationary-paddle return crossing straight, with no curve.
-      await api.advance(192); // 192 ticks = the old 1600ms clip hold
+      // a stationary-paddle return crossing straight, with no curve — and measure
+      // that straightness rather than only inferring it from a zero spin reading.
+      // The return rides the y=360 lane, which clears both obstacles, so the whole
+      // window is free flight.
+      curve = await actCurveOffset(api, 96); // 0.8 s of measured flight
+      await api.advance(96); // the rest of the old 192-tick clip hold
     },
 
     async assert(api, check) {
@@ -52,6 +59,7 @@ export default function item() {
         0,
         0.5,
       );
+      assertStraight(check, curve, { who: "the stationary-paddle return" });
     },
   };
 }

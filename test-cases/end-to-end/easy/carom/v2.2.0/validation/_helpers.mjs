@@ -278,6 +278,138 @@ export function actLeftPaddleHit(api, opts) {
   return actPaddleHit(api, "left", opts);
 }
 
+// ---- Spin curvature (where the spin actually puts the ball) -----------------
+//
+// A spin reading is only a number. What `specs/balls.md` promises is that the
+// number BENDS THE FLIGHT: every step applies a lateral acceleration perpendicular
+// to the ball's direction of travel, of magnitude `|spin|` px/s^2, while the spin
+// itself decays by `0.5 ^ (dt / 0.8)`. A build that reports exactly the right spin
+// and then flies dead straight satisfies every reading a spin item takes and still
+// has no spin mechanic at all, so each spin item also measures where the ball
+// ARRIVES — the curve is the point of the mechanic, and the reported scalar is only
+// its cause.
+//
+// The measurement is the ball's perpendicular offset from the straight line its own
+// rebound velocity defines: ~0 for a return with no spin, and for a spun one the offset
+// the spec's own equations predict, integrated forward from the state the build
+// itself reported at the contact. Predicting from that measured state rather than
+// from a hardcoded coordinate is what keeps this a check on the spin mechanic: how
+// a build resolves the instant of a contact — and so the exact point and angle the
+// ball leaves the paddle at — is a build's own business, and a fixed coordinate
+// would grade that instead.
+//
+// Only the MAGNITUDE of the offset is compared. The spec pins how hard a spinning
+// ball bends (`|spin|` px/s^2) and that opposite spins bend it opposite ways, but it
+// never says which side POSITIVE spin bends toward — "one way" and "the other". Two
+// builds that mirror each other's convention are both conformant, and a mirrored
+// path has the same offset magnitude, so comparing magnitudes grades the mechanic
+// the spec defines while staying blind to the choice it deliberately leaves open.
+
+/** The spin half-life from specs/balls.md, in ticks: `spin *= 0.5 ^ (dt / 0.8)`. */
+export const SPIN_HALF_LIFE = 96; // 96 ticks = 0.8 s at 120 Hz
+
+/**
+ * The signed perpendicular offset of `end` from the straight line `start` was
+ * travelling along, after `ticks`. Positive is to the left of that heading; only
+ * `Math.abs` of it is ever graded (see the section note above).
+ */
+function perpOffset(start, end, ticks) {
+  const t = ticks / TICK_HZ;
+  const speed = Math.hypot(start.vx, start.vy);
+  // The unit normal to the heading at `start`.
+  const nx = -start.vy / speed;
+  const ny = start.vx / speed;
+  return (
+    (end.x - (start.x + start.vx * t)) * nx +
+    (end.y - (start.y + start.vy * t)) * ny
+  );
+}
+
+/**
+ * The offset `specs/balls.md` requires over `ticks`, integrated from `start` on the
+ * case's own fixed timestep.
+ *
+ * A lateral acceleration perpendicular to travel is a pure turn — it changes the
+ * heading and not the speed — so the spec's `|spin|` px/s^2 is a turn rate of
+ * `spin / speed` radians per second, and the flight is that turn integrated while
+ * the spin decays underneath it. Speed is constant here because a paddle hit is the
+ * only thing that changes it and the window holds none.
+ */
+function predictedPerpOffset(start, ticks) {
+  const dt = 1 / TICK_HZ;
+  const decay = 0.5 ** (1 / SPIN_HALF_LIFE);
+  const speed = Math.hypot(start.vx, start.vy);
+  let heading = Math.atan2(start.vy, start.vx);
+  let spin = start.spin;
+  let x = start.x;
+  let y = start.y;
+  for (let i = 0; i < ticks; i += 1) {
+    heading += (spin / speed) * dt;
+    x += speed * Math.cos(heading) * dt;
+    y += speed * Math.sin(heading) * dt;
+    spin *= decay;
+  }
+  return perpOffset(start, { x, y }, ticks);
+}
+
+/**
+ * ACT half of a curvature measurement: fly the ball on for `ticks` and report how
+ * far its flight bent away from the straight line it set off along, beside what the
+ * spec requires of the spin it set off with.
+ *
+ * Call it on a ball already in flight — straight after the contact half of a paddle
+ * hit — and keep the window clear of the walls, the obstacles and the paddles: it
+ * measures free flight, and any bounce inside it reflects the path the offset is
+ * measured against. Returns `{ ticks, start, end, offset, predicted }`, where
+ * `offset` is what the build flew and `predicted` is what `specs/balls.md` says it
+ * should have.
+ */
+export async function actCurveOffset(api, ticks) {
+  const start = ball0(await api.snapshot());
+  await api.advance(ticks);
+  const end = ball0(await api.snapshot());
+  return {
+    ticks,
+    start,
+    end,
+    offset: perpOffset(start, end, ticks),
+    predicted: predictedPerpOffset(start, ticks),
+  };
+}
+
+/**
+ * Assert that a `actCurveOffset` measurement matches the spin that produced it:
+ * the flight bent as far as `specs/balls.md` requires of the spin the build reported
+ * at the contact. `who` names the shot in the assertion.
+ *
+ * The tolerance is a fraction of the required offset, with an absolute floor so a
+ * gently spun shot (the AI's own chase speed decides its spin, so its curve is
+ * whatever its motion earns) is not graded to the pixel. Records into `check`.
+ */
+export function assertCurved(check, curve, { who, tolerance = 0.2, floor = 4 }) {
+  const required = Math.abs(curve.predicted);
+  check.expectClose(
+    `${who} bends the flight as far as its spin requires (px off the straight line after ${curve.ticks} ticks)`,
+    Math.abs(curve.offset),
+    required,
+    Math.max(floor, tolerance * required),
+  );
+}
+
+/**
+ * Assert that a `actCurveOffset` measurement shows a STRAIGHT flight: a spinless
+ * return holds the line it left the paddle on. The counterpart to `assertCurved`
+ * for the contacts that must impart no spin. Records into `check`.
+ */
+export function assertStraight(check, curve, { who, tolerance = 3 }) {
+  check.expectClose(
+    `${who} holds a straight line (px off it after ${curve.ticks} ticks)`,
+    Math.abs(curve.offset),
+    0,
+    tolerance,
+  );
+}
+
 // ---- Rally speed -----------------------------------------------------------
 
 /**
@@ -954,6 +1086,11 @@ export function assertAiSpeed(check, { speed }) {
   );
 }
 
+// The slowest paddle travel `spin.moving-solo-ai` will read a contact from. Below it
+// the AI was, for practical purposes, parked when the ball arrived, and the scenario
+// that point exists to observe never happened (see `requireMovingPaddle`).
+export const AI_STRIKE_MIN_VY = 100; // px/s
+
 /**
  * ARRANGE half of the AI moving-hit spin check: a live Solo match with the human
  * paddle parked, the AI (right) paddle started above the mid lane, a ball aimed to
@@ -961,7 +1098,13 @@ export function assertAiSpeed(check, { speed }) {
  * lane, and the AI handed control. So the AI strikes the ball while its paddle is
  * moving, imparting spin from that motion.
  *
- * Pair with `actPaddleHit(api, "right")`.
+ * The gap it starts with is what buys the sweep: an AI chasing at the 560 px/s
+ * `specs/modes/single-player.md` caps it at is still travelling when the ball arrives.
+ * Nothing here can guarantee that, though — the AI's speed is the build's, its motion
+ * is bang-bang around a deadzone, and an AI quick enough to close the gap early parks
+ * on the lane and strikes at a standstill. That is what `requireMovingPaddle` is for.
+ *
+ * Pair with `actPaddleHit(api, "right")` and `requireMovingPaddle`.
  */
 export async function arrangeAiMovingHit(api) {
   await api.reset();
@@ -972,6 +1115,47 @@ export async function arrangeAiMovingHit(api) {
   await api.call("setPaddle", "right", { cy: 180, vy: 0 }); // AI starts above the lane
   await api.call("setBall", 0, { x: 1072, y: 360, vx: 500, vy: 0, spin: 0 });
   await api.call("setAiControl", true);
+}
+
+/**
+ * Require that a contact caught the paddle actually TRAVELLING, and mark the scenario
+ * inconclusive rather than failed when it did not. `hit` is what `actPaddleHit`
+ * returned; `who` names the paddle in the reason.
+ *
+ * This exists for the one contact whose motion is not ours to pose. The human spin
+ * points set a paddle's velocity and know it, but `spin.moving-solo-ai` hands the
+ * paddle to the real AI on purpose — its own chase is what has to curve the ball — and
+ * the AI moves only while the ball sits outside its deadzone
+ * (`specs/modes/single-player.md`), at whatever speed the build gave it. An AI faster
+ * than the 560 px/s cap closes the arranged gap early and waits on the lane, so the
+ * ball meets a paddle that is not moving and no spin is imparted. Nothing about the
+ * spin mechanic has been observed at that point — the situation this point grades
+ * never arose — and the speed that caused it is already graded, twice, by
+ * `paddle-movement.speed-solo-ai` and `gameplay.ai-outrun`. Failing here as well would
+ * charge one defect to a mechanic that may be perfectly implemented.
+ *
+ * So this throws the runtime's unmet-precondition marker instead (see
+ * `PRECONDITION_UNMET` in packages/browser-driver/validation.mjs): the drive is
+ * reported as inconclusive, no verdict is synthesized either way, and the point is
+ * left for a reviewer to decide by hand. The marker is a plain property rather than an
+ * imported class because a case's helpers are loaded by path and cannot resolve the
+ * runtime's module.
+ *
+ * Either direction of travel counts. The scenario arranges a downward chase, but a
+ * build whose AI comes at the lane from below is conformant and imparts spin just the
+ * same, only signed the other way.
+ */
+export function requireMovingPaddle(hit, { who, minVy = AI_STRIKE_MIN_VY }) {
+  const vy = hit.paddle.vy;
+  if (Math.abs(vy) >= minVy) return hit;
+  const err = new Error(
+    `${who} was not travelling when it struck (vy ${vy.toFixed(1)} px/s, ` +
+      `below the ${minVy} px/s this point reads a contact from), so its motion could ` +
+      `impart no spin to observe`,
+  );
+  // The runtime's inconclusive marker; see the doc comment above.
+  err.ttcPreconditionUnmet = true;
+  throw err;
 }
 
 // ---- Pause: paddles and the ball must freeze -------------------------------
@@ -1139,18 +1323,94 @@ export const REQUIRED_DEBUG_OPS = [
 
 // ---- Audio (reads the Web Audio cues the build actually schedules) ----------
 //
-// The game must not autoplay: it creates (or resumes) its AudioContext only on the
-// first real user interaction (flow.md). So before driving an event whose cue is
-// checked, arm audio with one neutral key press. This must be a GENUINE browser
-// gesture (`api.userKey`), not a debug `press`: a build may feed the debug API
-// through a purely logical input path and unlock audio only from a real DOM event —
-// both are conformant — so a debug press would leave its AudioContext uncreated and
-// no cue would ever be scheduled, even though the build plays fine for a real player.
-// A key with no game binding leaves state untouched while still counting as the
-// interaction. From there the driver's `api.audio` reports every Web Audio source
-// the build starts, so a cue is confirmed by the log growing across the event.
+// Two things stand between a scripted scenario and a cue the build really plays, and
+// a check that ignores either reads silence from a game that is not silent.
+//
+// FIRST, the game must not autoplay: it creates (or resumes) its AudioContext only on
+// the first real player interaction (specs/ui.md). So arm it before driving the event.
+// The press must be a GENUINE browser gesture (`api.userKey`), not a debug `press`: a
+// build may feed the debug API through a purely logical input path and unlock audio
+// only from a real DOM event — both are conformant — so a debug press would leave its
+// AudioContext uncreated and no cue would ever be scheduled.
+//
+// The gesture must also be one the GAME recognizes. A key the game does not bind is
+// the tempting choice (it can disturb nothing), but a build is free to ignore such a
+// key entirely — to return from its key handler before doing anything at all, audio
+// included — and leaving keys it does not own to the browser is good behavior, not a
+// defect. So the arming press is `W`, which `specs/modes/single-player.md` and
+// `specs/modes/versus.md` both bind, in both ways to play. It disturbs nothing anyway:
+// a paddle moves at 720 px/s *while a key is held*, over simulation time, and a tap
+// delivered while the build is on its manual clock spans no simulation time at all —
+// there is no step between the press and the release for the paddle to travel in.
+//
+// SECOND, the event itself is driven in REAL time (`actCue`) rather than by stepping.
+// What this grades is that a player hears the game, and the specification says nothing
+// about whether cues fire when a script advances the clock by hand — a build that
+// drops them while stepping (so that instantly stepping a long rally does not fire a
+// burst of blips at once) plays perfectly for a person at the keyboard. Handing the
+// build back its own clock and letting the posed event happen at the speed it really
+// happens takes the question off the table.
+//
+// From there the driver's `api.audio` reports every Web Audio source the build starts,
+// so a cue is confirmed by that log growing across the event.
 
-/** Arm the build's audio with a single neutral, browser-trusted first key press. */
+/**
+ * Arm the build's audio with a single browser-trusted press of a key the game binds
+ * (see the section note above). Poses nothing and spans no simulation time, so it is
+ * arrange-callable; call it before posing the scenario.
+ */
 export async function armAudio(api) {
-  await api.userKey("KeyZ");
+  await api.userKey("KeyW");
+}
+
+/**
+ * ACT half of a cue check: hand the build back its own clock, let the posed event
+ * happen in real time, and report the Web Audio sources it started across it.
+ *
+ * `reached(snapshot)` is how the event is recognized — the ball's velocity reversing
+ * off a paddle or a wall, a point landing on the scoreboard. Polling stops the moment
+ * it holds, so the window costs only as long as the event takes; `ms` is the wall
+ * clock this gives up after, generous enough that a build pacing itself differently is
+ * not cut off mid-flight.
+ *
+ * `tailTicks` are filmed AFTER the log is read, so the clip shows what the cue
+ * accompanied — the ball coming away from the paddle, the point going up — rather than
+ * cutting at the instant of contact. They are outside the measured window on purpose:
+ * a cue that only arrives during the tail is a cue the build did not play on the event.
+ *
+ * Pair with an `arrangeX` that poses the event and with `armAudio` before it. Returns
+ * `{ reached, snap, before, after, waited }` — `before`/`after` being the length of
+ * the audio log either side of the event.
+ */
+export async function actCue(api, reached, { ms = 2500, poll = 25, tailTicks = 60 } = {}) {
+  const before = (await api.audio()).length;
+  await api.call("setAutoStep", true);
+  let snap = await api.snapshot();
+  let waited = 0;
+  while (!reached(snap) && waited < ms) {
+    await api.settle(poll);
+    waited += poll;
+    snap = await api.snapshot();
+  }
+  const hit = reached(snap);
+  // A build schedules its cue from its own loop, on the frame the collision lands —
+  // which is not necessarily the frame this poll happened to observe it on. A short
+  // tail lets that frame finish before the log is read, so the check is not a race
+  // against the build's own render cadence.
+  await api.settle(100);
+  const after = (await api.audio()).length;
+  await api.advance(tailTicks); // 60 ticks = 0.5 s of visible aftermath
+  return { reached: hit, snap, before, after, waited };
+}
+
+/**
+ * Assert that a cue was played across an `actCue` window. `what` names the event.
+ * Records into `check`.
+ */
+export function assertCue(check, cue, { what }) {
+  check.expectGt(
+    `a cue is played on ${what} (Web Audio sources started)`,
+    cue.after,
+    cue.before,
+  );
 }

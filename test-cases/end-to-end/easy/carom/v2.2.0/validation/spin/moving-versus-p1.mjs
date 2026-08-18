@@ -9,12 +9,15 @@
 import {
   arrangePaddleHit,
   actPaddleHit,
+  actCurveOffset,
+  assertCurved,
   startPlaying,
   LEAD_TICKS,
 } from "../_helpers.mjs";
 
 export default function item() {
   let hit;
+  let curve;
 
   return {
     id: "spin.moving-versus-p1",
@@ -39,7 +42,10 @@ export default function item() {
 
     async act(api) {
       hit = await actPaddleHit(api, "left", { leadTicks: LEAD_TICKS });
-      await api.advance(96); // 0.8 s of visible curve
+      // Measure the bend over free flight (short of the top wall this upward curve
+      // runs toward), then hold the rest of the old 96-tick tail for the clip.
+      curve = await actCurveOffset(api, 72); // 0.6 s of measured curve
+      await api.advance(24);
     },
 
     async assert(api, check) {
@@ -49,6 +55,7 @@ export default function item() {
         hit.ball.spin,
         -400,
       );
+      assertCurved(check, curve, { who: "the shot off player one's swung paddle" });
     },
   };
 }

@@ -35,7 +35,10 @@ moves between them as below.
    defined per way to play in `specs/modes/single-player.md` and
    `specs/modes/versus.md`.
 4. Countdown. The brief pre-serve hold before a ball is launched, rendered over
-   the in-match field. When it applies is defined in `specs/balls.md`.
+   the in-match field. When it applies is defined in `specs/balls.md`. Only the
+   ball is held: the match itself is live, so the paddles answer their movement
+   keys and the pause key still pauses, and both sides can take up position before
+   the serve arrives.
 5. Paused. Reachable from the match. Offers Resume, Restart, and Quit to menu, and
    opens with Resume selected. The field is visible but frozen behind the pause
    menu. There are two ways back into the match, and a build provides both:
