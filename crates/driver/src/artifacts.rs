@@ -18,9 +18,12 @@
 //! runs and behavior is unchanged — there is no separate artifact service in that
 //! topology.
 
+use std::fs::File;
+use std::io::Seek;
 use std::path::Path;
 
 use test_cabinet_core::{BackendClient, HttpBackendClient, RunRecord, find_build_output};
+use tokio_util::io::ReaderStream;
 
 /// A failure tarring or uploading the produced run tree.
 #[derive(Debug, thiserror::Error)]
@@ -78,13 +81,46 @@ pub async fn upload_run_tree(
     job_token: &str,
 ) -> Result<(), UploadError> {
     let run_dir = out_dir.join(run_id);
-    // Tar synchronously into memory: a run tree is bounded (source + a static build
-    // + a few media clips), so buffering it is fine and keeps the upload a single
-    // request the artifact service can verify-then-unpack.
-    let tarball = tar_run_dir(&run_dir).map_err(|source| UploadError::Tar {
-        path: run_dir.display().to_string(),
-        source,
-    })?;
+    let path_label = run_dir.display().to_string();
+
+    // Build the tarball on DISK and stream it, rather than assembling it in memory.
+    //
+    // This is the driver's single largest allocation and the reason its memory
+    // ceiling used to be unsizeable. A run tree is bounded only by the case that
+    // produced it — source, a static build, and proof/asset media — so buffering the
+    // whole archive made peak driver memory a function of the heaviest case rather
+    // than of the driver's own work: measured peaks ran ~475MiB against a 512Mi
+    // request, i.e. right at the ceiling. Every other moment in a driver's life costs
+    // under 10MiB.
+    //
+    // The timing is what makes that dangerous rather than merely untidy. This upload
+    // happens AFTER the harness session has finished and BEFORE the terminal status
+    // is posted, so a driver killed here loses a run that has already paid for every
+    // one of its API calls — strictly the most expensive way for a run to die. Reading
+    // the archive off disk a chunk at a time makes the ceiling a property of the
+    // driver instead, which is what lets the deployment give it a real memory limit
+    // (see the dispatcher's `DEFAULT_DRIVER_MEMORY_LIMIT`).
+    //
+    // Tarring is a blocking filesystem walk, so it runs on the blocking pool: the same
+    // task is still streaming harness events and heartbeating status, and stalling the
+    // reactor for the length of a large walk would starve both.
+    let scratch_dir = out_dir.to_path_buf();
+    let tarball = tokio::task::spawn_blocking(move || tar_run_dir(&run_dir, &scratch_dir))
+        .await
+        .map_err(|join| UploadError::Tar {
+            path: path_label.clone(),
+            source: std::io::Error::other(join),
+        })?
+        .map_err(|source| UploadError::Tar {
+            path: path_label,
+            source,
+        })?;
+
+    // No `Content-Length`: a wrapped stream has no size hint, so reqwest frames the
+    // body `chunked`. The artifact service's `DefaultBodyLimit` enforces its cap as
+    // the bytes arrive either way, and declaring a length alongside a chunked body
+    // would be the one framing error that could truncate an upload silently.
+    let body = reqwest::Body::wrap_stream(ReaderStream::new(tokio::fs::File::from_std(tarball)));
 
     let url = format!("{}/runs/{}/artifacts", artifacts_url, run_id);
     let response = reqwest::Client::new()
@@ -92,7 +128,7 @@ pub async fn upload_run_tree(
         .bearer_auth(job_token)
         .header("x-tcab-job-id", job_id)
         .header(reqwest::header::CONTENT_TYPE, "application/x-tar")
-        .body(tarball)
+        .body(body)
         .send()
         .await
         .map_err(UploadError::Transport)?;
@@ -452,17 +488,37 @@ async fn publish_artifacts(
     Ok(())
 }
 
-/// Tar `run_dir` into an in-memory archive, with every entry path relative to
-/// `run_dir` itself (so the archive root *is* the run directory's contents). The
-/// whole tree is walked: `run-record.json`, the `implementation/` build/media, and
-/// the `events.jsonl`/`raw.jsonl` logs when present.
-fn tar_run_dir(run_dir: &Path) -> Result<Vec<u8>, std::io::Error> {
-    let mut builder = tar::Builder::new(Vec::new());
-    // `append_dir_all("", run_dir)` archives the directory's *contents* at the
-    // archive root (an empty prefix), which is exactly the relative layout the
-    // service untars under `<store-root>/{id}/`.
-    builder.append_dir_all("", run_dir)?;
-    builder.into_inner()
+/// Tar `run_dir` into a temporary file on `scratch_dir`, with every entry path
+/// relative to `run_dir` itself (so the archive root *is* the run directory's
+/// contents). The whole tree is walked: `run-record.json`, the `implementation/`
+/// build/media, and the `events.jsonl`/`raw.jsonl` logs when present. The returned
+/// file is rewound, ready for the upload to read from the start.
+///
+/// `scratch_dir` is the driver's own out-dir rather than the system temp dir, for
+/// two reasons: it is the volume already sized to hold a run tree, and it is the
+/// same filesystem as `run_dir`, so the archive cannot fail halfway on a `/tmp` that
+/// turns out to be a small tmpfs — which, being memory-backed, would also reinstate
+/// the very allocation writing to disk exists to avoid.
+///
+/// The file is created via `tempfile_in`, so it has **no directory entry**: the
+/// kernel reclaims it when the last descriptor closes, including when the driver is
+/// killed mid-upload. Nothing is left behind for a later run to trip over, and there
+/// is no cleanup path that has to be remembered on the error branches.
+fn tar_run_dir(run_dir: &Path, scratch_dir: &Path) -> Result<File, std::io::Error> {
+    let mut file = tempfile::tempfile_in(scratch_dir)?;
+    {
+        let mut builder = tar::Builder::new(&mut file);
+        // `append_dir_all("", run_dir)` archives the directory's *contents* at the
+        // archive root (an empty prefix), which is exactly the relative layout the
+        // service untars under `<store-root>/{id}/`.
+        builder.append_dir_all("", run_dir)?;
+        // Write the end-of-archive trailer before the borrow ends; without it the
+        // service sees a truncated tar.
+        builder.finish()?;
+    }
+    // `append_dir_all` left the cursor at the end of the archive.
+    file.rewind()?;
+    Ok(file)
 }
 
 /// The root-relative playable-build link for a produced run, when its collected
@@ -480,3 +536,7 @@ pub fn playable_build_link(out_dir: &Path, run_id: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "artifacts.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "artifacts.tarball.test.rs"]
+mod tarball_tests;

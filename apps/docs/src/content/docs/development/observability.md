@@ -77,6 +77,16 @@ queries. What is kept, and why:
 | --- | --- |
 | `container_memory_max_usage_bytes` | The **cgroup's own high-water mark**, maintained continuously by the kernel — so it catches a spike that happened between two scrapes. This is the sizing number. |
 | `container_memory_working_set_bytes` | What the kubelet actually evicts on. |
+
+Read those first two together rather than picking one. `max_usage` includes
+reclaimable page cache, which the kernel drops under pressure instead of OOM-killing
+for, so it *overstates* the footprint that actually decides a kill — it is a safe
+upper bound. `working_set` is the quantity eviction and the OOM killer act on, but it
+is only sampled each scrape, so a spike between two scrapes is invisible to it — it
+is a lower bound. A ceiling picked above the `max_usage` peak is certainly safe; one
+picked from the `working_set` peak alone is not. Where they diverge sharply the gap is
+page cache, which is normal for a container that just wrote a build tree to disk.
+
 | `container_spec_memory_limit_bytes` | What the pod was configured with, so peaks can be compared to the ceiling without cross-referencing manifests. |
 | `container_cpu_usage_seconds_total` | Real CPU draw. |
 | `container_cpu_cfs_{periods,throttled_periods,throttled_seconds}_total` | Whether CPU oversubscription is actually costing anything. |

@@ -230,8 +230,9 @@ and
 | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | Queue-admission cap on concurrent runs | `8` |
 | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How often to poll the queue | `2` |
 | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | TTL after which a finished Job is garbage-collected | `300` |
-| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container. Present to keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first — taking its sandbox cleanup with it | `100m` / `512Mi` |
-| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` / `_MEMORY_LIMIT` | no | Limits on the driver container. Unset by default on purpose: a memory limit re-introduces the same `SIGKILL`, and the driver holds a whole run tree in memory while tarring it | — |
+| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container. Present to keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first — taking its sandbox cleanup with it | `100m` / `1Gi` |
+| `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | The memory limit on the driver container, defaulting to the same value as its request so a node reserves exactly what the driver may use — see [the driver pod's own ceiling](#the-driver-pods-own-ceiling). Blank leaves the container unbounded (not advised) | `1Gi` |
+| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU limit on the driver container. Unset on purpose: over-limit CPU is throttled rather than killed, so a ceiling would only slow a driver's teardown | — |
 | `TCAB_DISPATCHER_DRIVER_SECRETS` | yes | Comma-separated `Secret` names mounted into each driver Job via `envFrom` — how the harness API key reaches the run engine | — |
 | `TCAB_ARTIFACTS_URL` | yes | The artifact `Service`, forwarded to each driver so it can upload | — |
 | `TCAB_K8S_*` (sandbox passthroughs) | no | `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_CPU_REQUEST`/`_LIMIT`, `TCAB_K8S_RUN_MEMORY_REQUEST`/`_LIMIT`, `TCAB_K8S_IMAGE_PULL_SECRETS`, `TCAB_K8S_POD_READY_TIMEOUT_SECONDS`, `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`, `TCAB_K8S_RUN_POD_PREFIX` — forwarded verbatim into each driver Job | per-variable |
@@ -264,9 +265,67 @@ keys is the Secret set, not a per-pod injection.
 Set `TCAB_K8S_RUN_CPU_*` and `TCAB_K8S_RUN_MEMORY_*` (the dispatcher forwards
 them into each Job, and the driver applies them to the sandbox pod) so the
 scheduler can place sandbox pods sensibly and one heavy run cannot starve a node.
-A run compiles and runs a small app under a coding agent, so a request in the
-region of `500m`/`1Gi` and a limit a few times that is a reasonable starting
-point; tune against your cases.
+
+**Memory: set the request equal to the limit.** CPU and memory are not symmetric
+here, and the difference decides whether a busy node loses runs. The scheduler
+packs a node by *requests* and ignores limits entirely, so any gap between the two
+is memory the node has promised more than once. When the promises come due the
+kubelet resolves it by eviction, ranked by how far each pod sits above its memory
+*request* — which selects precisely the sandbox pod that grew, ahead of every
+system pod on the node. A sandbox pod killed mid-run destroys a run that has
+already spent real money on harness API calls, so this is the one resource a
+deployment must not oversubscribe.
+
+Setting them equal makes the scheduler's own arithmetic the guarantee: a node
+admits a sandbox pod only when the whole ceiling is actually available, the pod
+can never exceed its request, and it therefore never enters the eviction ranking.
+Once every container on the node carries a memory limit, the sum of limits stays
+within allocatable and a node-level OOM — the kernel choosing a victim for
+itself — cannot arise from these pods at all.
+
+**CPU is deliberately oversubscribed** (the shipped values are `500m` against a
+`2` limit). A container over its CPU limit is throttled, not killed, so the
+failure mode is a slower run rather than a lost one — a good trade for density.
+
+Size the ceiling in whole nodes, because that is how it is charged. Node
+*allocatable* is what remains after the kubelet's own reservation, and the
+DaemonSets take a further slice before any run does; on AKS `Standard_D2ps_v6`
+(8GB) that leaves roughly 4.7GiB schedulable, so the shipped `4Gi` seats exactly
+one sandbox pod per node. A 16GB node seats three. Check yours rather than
+assuming:
+
+```sh
+kubectl get nodes -o custom-columns=NAME:.metadata.name,ALLOCATABLE:.status.allocatable.memory
+```
+
+The heaviest cases need more than `4Gi` — a dual-contouring `double` variant wants
+around `8Gi` (see
+[`overlays/local/patch-dispatcher.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/overlays/local/patch-dispatcher.yaml))
+and will OOM below it. Raise the request and the limit **together**, and only to a
+value one node can still seat; a request no node can satisfy is unschedulable
+forever and merely queues.
+
+### The driver pod's own ceiling
+
+The driver is a separate pod from the sandbox it drives, and it gets the same
+treatment for the same reason: `TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` and
+`TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` both default to `1Gi`.
+
+Its ceiling used to be unset, because the driver's peak was a function of the run
+tree it tarred **in memory** to upload — which made any limit a guess about the
+heaviest future case. The driver now streams that archive off disk, so its peak is
+a property of its own work (under 10MiB outside the upload) and a ceiling is
+sizeable. The `1Gi` default is generous on purpose: the upload happens after the
+harness session finishes and before terminal status is reported, so a driver
+killed there loses the most expensive thing in the system — a run that has paid
+for every one of its API calls.
+
+On an 8GB node a `4Gi` sandbox pod plus a `1Gi` driver exceeds what is
+schedulable, so the driver lands on a *different* node than the sandbox it drives.
+That is the intent, not a side effect: the two ceilings can then never contend for
+one node's memory. Tightening the driver to `512Mi` lets the pair co-schedule
+again and saves nodes, at the cost of that isolation — do it only once every
+driver image in the cluster carries the streaming upload.
 
 ### Queueing when the cluster is full
 
