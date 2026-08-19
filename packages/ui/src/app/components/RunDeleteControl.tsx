@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
+import { useConfirm } from "./ConfirmDialog";
 import { routes } from "../routes";
 import { TrashIcon } from "./TrashIcon";
 import styles from "./RunDeleteControl.module.scss";
@@ -17,6 +18,7 @@ import styles from "./RunDeleteControl.module.scss";
 // list. A failure keeps the user on the page with the reason shown inline.
 export function RunDeleteControl({ runId }: { runId: string }) {
   const { canDelete, deleteRun } = useRunDeletion();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +26,7 @@ export function RunDeleteControl({ runId }: { runId: string }) {
   if (!canDelete(runId)) return null;
 
   const onDelete = async () => {
-    if (!window.confirm(CONFIRM_DELETE_RUN)) return;
+    if (!(await confirm(CONFIRM_DELETE_RUN))) return;
     setBusy(true);
     setError(null);
     try {

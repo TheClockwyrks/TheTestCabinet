@@ -279,30 +279,60 @@ export type LaunchBatchAck = {
 };
 
 /**
+ * The response to one of the three global cancel controls: how many runs the sweep
+ * stopped, and how far into the queue it reached.
+ *
+ * The **count is the point**. A sweep that reported only success would leave the
+ * operator unable to tell "the queue was already empty" from "nothing matched", and
+ * those call for opposite next moves. The two scope flags let the console phrase what
+ * it just did ("stopped 12 runs, including 3 already executing") from the response
+ * alone, rather than from which button it happens to have called.
+ */
+export type BulkCancelOut = {
+  /**
+   * How many jobs moved to the terminal `canceled` state.
+   */
+  canceled: number;
+  /**
+   * Whether the sweep reached runs that had not started yet (`queued`, `pending`)
+   * — the ones that had cost nothing.
+   */
+  includedWaiting: boolean;
+  /**
+   * Whether the sweep reached runs that were already executing (`dispatched`,
+   * `starting`, `running`) — the ones whose work was discarded.
+   */
+  includedActive: boolean;
+};
+
+/**
  * Whether a finished run produced a record. `completed` carries a record id to
  * open; `failed` carries a reason.
  */
 export type NotificationOutcome = "completed" | "failed";
 
 /**
- * The kind of a [`Notification`]. Only [`Self::RunCompleted`] exists today;
- * modeled as an enum so it is part of the generated contract and the console can
- * switch on it as more are added.
+ * The kind of a [`Notification`] — which event in a run's life it announces. The
+ * console switches on it, because the kinds mean different things about the same
+ * run: a completion changes the in-flight list, a publish failure does not.
  */
-export type NotificationKind = "run-completed";
+export type NotificationKind = "run-completed" | "publish-failed";
 
 /**
- * A worker-wide notification that a run reached a terminal state. Carries the
- * run's display identity (flattened to the console's notification shape) plus
- * how it ended. Delivered over `GET /notifications` (SSE).
+ * A worker-wide notification about a run: that it reached a terminal state, or
+ * that publishing it failed. Carries the run's display identity (flattened to the
+ * console's notification shape) plus how it ended. Delivered over
+ * `GET /notifications` (SSE).
  */
 export type Notification = {
   /**
-   * The notification kind. Only `run-completed` exists today.
+   * Which event this announces.
    */
   kind: NotificationKind;
   /**
-   * The job id the run was observed under.
+   * The job the notification is about — the **run** job for `run-completed`,
+   * the **publish** job for `publish-failed`. It identifies the attempt rather
+   * than the run, so a run that fails to publish twice raises two alerts.
    */
   jobId: string;
   /**
@@ -311,7 +341,8 @@ export type Notification = {
   outcome: NotificationOutcome;
   /**
    * The persisted run record's id the console links the alert to: the produced
-   * record's id for a `completed` run, the job id for a `failed` one.
+   * record's id for a `completed` run, the job id for a `failed` one, and the
+   * run that could not be released for a `publish-failed` one.
    */
   recordId?: string;
   /**
@@ -339,6 +370,140 @@ export type Notification = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+};
+
+/**
+ * Which transition in a run's life a [`RunEvent`] announces.
+ *
+ * The three are separated because the console does different things with them:
+ * an `enqueued` run joins the in-flight list, a `state-changed` run is patched in
+ * place (without reordering the list), and a `finished` run leaves it — and, for a
+ * run that produced a record, makes the produced-run listing stale.
+ */
+export type RunEventKind = "enqueued" | "state-changed" | "finished";
+
+/**
+ * A run-lifecycle event on the multiplexed console stream (`GET /notifications`,
+ * `runs` topic).
+ *
+ * This is deliberately **not** a [`Notification`]. A notification is an *alert* —
+ * something a person should be told about, filed to the bell and raised as a toast,
+ * and so only ever fired for the two things worth interrupting someone over (a run
+ * finishing, a publish failing). A run event is *list maintenance*: every transition
+ * the in-flight list must reflect, including the many that nobody wants a toast for
+ * (a queued run held back to `pending`, a driver reaching `starting`, an operator's
+ * bulk cancel ending forty runs at once). Keeping them separate is what lets the
+ * console subscribe to the alerts always and to the churn only while a page is
+ * showing it.
+ *
+ * It carries enough to patch the list in place — the run's identity and its state
+ * after the transition — so a console applies it without a round-trip. The one thing
+ * it does not carry is the produced *record*, so a `finished` run that produced one
+ * still makes the produced-run listing stale; the console re-reads that separately.
+ */
+export type RunEvent = {
+  /**
+   * Which transition this announces.
+   */
+  kind: RunEventKind;
+  /**
+   * The run (job) this is about. Named `runId` to match `ActiveJobOut`, which is
+   * the shape this event maintains — the console keys its in-flight list on it.
+   */
+  runId: string;
+  /**
+   * The run's state **after** the transition. For a `finished` event this is the
+   * terminal state, which is how a console tells an operator's `canceled` run from
+   * one that ran to `succeeded`/`failed`.
+   */
+  state: JobState;
+  /**
+   * The produced run record's id, present on a `finished` event whose run produced
+   * one (a success, or a failure the driver still built a record for).
+   */
+  recordId?: string;
+  /**
+   * The terminal reason, present on a `finished` event that failed or was
+   * canceled.
+   */
+  detail?: string;
+  /**
+   * The test-case slug being run (e.g. `carom`).
+   */
+  testCaseSlug: string;
+  /**
+   * The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+   * enqueue — so the active-run list can show it before the run produces a record.
+   */
+  testCaseVersion: string;
+  /**
+   * The variant being run (e.g. `base`).
+   */
+  variant: string;
+  /**
+   * The harness driving the run, as its slug string.
+   */
+  harnessSlug: string;
+  /**
+   * The opaque model id passed to the harness.
+   */
+  modelId: string;
+};
+
+/**
+ * The console stream's first frame: the id this client quotes back to
+ * `PUT /notifications/{stream}/topics`.
+ *
+ * The id is minted per **connection**, not per client, and deliberately so. An
+ * `EventSource` reconnects on its own after a drop, and the reconnected stream is a
+ * new subscriber with default topics — so the client must be told the new id and
+ * re-apply what it wanted. Handing out a client-chosen or long-lived id would hide
+ * that transition and leave a console silently subscribed to nothing.
+ */
+export type StreamOpened = {
+  /**
+   * The connected stream's id.
+   */
+  streamId: string;
+};
+
+/**
+ * The console stream's "you fell behind" frame: this client was lagged and the
+ * named number of messages were dropped for it.
+ *
+ * It carries the count only as a diagnostic — a client's response is the same
+ * whatever the number: re-read the active list (and, if it is showing them, the
+ * produced runs). The frame exists because the stream keeps no backlog, so there is
+ * nothing to replay and silence would be indistinguishable from an idle queue.
+ */
+export type StreamResync = {
+  /**
+   * How many messages were dropped for this client.
+   */
+  dropped: number;
+};
+
+/**
+ * Which of the console stream's topics a subscriber wants, as
+ * `PUT /notifications/{stream}/topics` carries them.
+ *
+ * Both fields are optional so a caller toggles one topic without having to restate
+ * the other — the console flips `runs` on and off as it enters and leaves the pages
+ * that show in-flight runs, and never wants that request to disturb its alerts.
+ */
+export type StreamTopicsBody = {
+  /**
+   * Whether to deliver [`Notification`]s (the bell/toast alerts). Defaults to on
+   * when a stream is opened; a console has no reason to turn it off, but it is
+   * settable so the topic set is uniform.
+   */
+  notifications?: boolean;
+  /**
+   * Whether to deliver [`RunEvent`]s (in-flight list maintenance). Defaults to
+   * **off**: most of the console shows no in-flight list, and a run's churn is far
+   * noisier than its alerts.
+   */
+  runs?: boolean;
 };
 
 /**

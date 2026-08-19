@@ -30,15 +30,19 @@
 //! worker's out_dir — so the per-run base-href rewrite and the path-traversal
 //! guard are identical.
 
-use std::io::Cursor;
+use std::io::Seek;
 use std::sync::Arc;
 
-use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path, Request, State};
+use axum::body::Body;
+use axum::extract::{Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures_util::StreamExt;
+use tokio::io::AsyncWriteExt;
+use tower_http::compression::CompressionLayer;
+use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -52,9 +56,15 @@ use crate::store::{ArtifactStore, impl_dir};
 
 /// The maximum size of an uploaded artifact tarball, in bytes. A run's collected
 /// tree (source + a static build + a handful of media clips) is comfortably under
-/// this; the cap stops a malformed or hostile upload from exhausting memory, since
-/// the body is buffered before it is unpacked. 2 GiB is generous headroom for the
-/// heavier test cases the benchmark is moving toward.
+/// this; 2 GiB is generous headroom for the heavier test cases the benchmark is
+/// moving toward.
+///
+/// The cap now bounds **disk**, not memory: the body is spooled to the store's
+/// scratch dir as it arrives rather than buffered, so it is the store filling up
+/// that a hostile upload threatens, not the service's address space. It is enforced
+/// by [`upload`] while writing rather than by a `DefaultBodyLimit` layer, because
+/// that layer only constrains extractors that buffer (`Bytes`, `String`, `Json`) and
+/// is inert against the raw `Body` this handler now takes.
 const MAX_UPLOAD_BYTES: usize = 2 * 1024 * 1024 * 1024;
 
 /// The shared handler state: the backing store, the backend URL for upload auth,
@@ -85,12 +95,10 @@ pub fn router(state: AppState) -> Router {
         // Upload a finished run's collected tree (driver → service, per-job token),
         // or delete it (backend → service, shared control-plane service token) when
         // the control plane deletes the run.
-        .route(
-            "/runs/{id}/artifacts",
-            post(upload)
-                .delete(delete)
-                .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES)),
-        )
+        // No `DefaultBodyLimit` layer: `upload` takes the raw `Body` so it can spool
+        // to disk, and that layer only bounds the buffering extractors. The cap is
+        // applied as the bytes are written — see `MAX_UPLOAD_BYTES`.
+        .route("/runs/{id}/artifacts", post(upload).delete(delete))
         // Download a run's source tree as a tar (publisher → service, per-publish-job
         // token). The one *gated* read: a server-to-server pull the publisher uses to
         // drive the GitHub-repo + Pages release, verified against the backend like an
@@ -125,6 +133,22 @@ pub fn router(state: AppState) -> Router {
         // for a request carrying our bearer token. Mirror the request's headers
         // instead, which echoes `Authorization` back explicitly.
         .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
+        // Compress responses for callers that advertise `Accept-Encoding: gzip`.
+        // This service hands a reviewer the run's produced tree — the playable
+        // build's HTML/JS/CSS, the `.jsonl` event and raw logs, the uncompressed
+        // `archive.tar` — all of which are text that compresses heavily and all of
+        // which a console pulls over whatever link the reviewer happens to have.
+        //
+        // The default predicate already skips tiny bodies, images (the build's
+        // sprite/texture output, which is PNG and would only grow), gRPC, and SSE.
+        // It does *not* know about `application/gzip`, so exclude that explicitly:
+        // `archive.tar.gz` is served pre-compressed, and re-encoding it would burn
+        // CPU to hand back slightly larger bytes.
+        .layer(
+            CompressionLayer::new().gzip(true).compress_when(
+                DefaultPredicate::new().and(NotForContentType::const_new("application/gzip")),
+            ),
+        )
         .with_state(state)
 }
 
@@ -155,6 +179,57 @@ const JOB_ID_HEADER: &str = "x-tcab-job-id";
 /// verify must use the publish-job id, not the store key.
 const PUBLISH_JOB_ID_HEADER: &str = "x-tcab-publish-job-id";
 
+/// Write `body` to an unnamed file in `scratch_dir` as it arrives, refusing it once
+/// more than `max_bytes` have been written. Returns the file rewound, plus the byte
+/// count.
+///
+/// The file is created with `tempfile_in`, so it carries **no directory entry**: a
+/// partial upload — one that errored, or one refused for exceeding the cap — is
+/// reclaimed by the kernel when the handle drops, and a store listing never sees an
+/// in-flight upload. That is what lets every failure path here simply return.
+///
+/// The cap is applied per chunk rather than from `Content-Length`, which a chunked
+/// request does not carry and a hostile one may understate.
+async fn spool_to_disk(
+    body: Body,
+    scratch_dir: std::path::PathBuf,
+    max_bytes: usize,
+) -> Result<(std::fs::File, usize), ApiError> {
+    let spooled = tokio::task::spawn_blocking(move || tempfile::tempfile_in(scratch_dir))
+        .await
+        .map_err(|err| ApiError::internal(format!("upload spool task failed: {err}")))?
+        .map_err(|err| ApiError::internal(format!("creating the upload spool file: {err}")))?;
+
+    let mut spooled = tokio::fs::File::from_std(spooled);
+    let mut stream = body.into_data_stream();
+    let mut written: usize = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk
+            .map_err(|err| ApiError::bad_request(format!("reading the upload body: {err}")))?;
+        written = written.saturating_add(chunk.len());
+        if written > max_bytes {
+            return Err(ApiError::payload_too_large(format!(
+                "upload exceeds the {max_bytes} byte limit"
+            )));
+        }
+        spooled
+            .write_all(&chunk)
+            .await
+            .map_err(|err| ApiError::internal(format!("spooling the upload: {err}")))?;
+    }
+    spooled
+        .flush()
+        .await
+        .map_err(|err| ApiError::internal(format!("flushing the upload spool: {err}")))?;
+
+    let mut spooled = spooled.into_std().await;
+    // The caller reads from the start; writing left the cursor at the end.
+    spooled
+        .rewind()
+        .map_err(|err| ApiError::internal(format!("rewinding the upload spool: {err}")))?;
+    Ok((spooled, written))
+}
+
 /// `POST /runs/{id}/artifacts` — store a finished run's collected artifact tree.
 ///
 /// `{id}` is the **run/record id**: the store key, and how the console later
@@ -169,12 +244,12 @@ const PUBLISH_JOB_ID_HEADER: &str = "x-tcab-publish-job-id";
 /// job id in the [`JOB_ID_HEADER`] and the verify uses that. A path that escapes
 /// the run directory is rejected as a `400`. Replaces any prior tree for the same
 /// id (an idempotent re-upload). `201 Created` on success.
-#[tracing::instrument(name = "artifacts.upload", skip(state, body), fields(run.id = %id, bytes = body.len()), err(Debug))]
+#[tracing::instrument(name = "artifacts.upload", skip(state, body), fields(run.id = %id, bytes = tracing::field::Empty), err(Debug))]
 async fn upload(
     State(state): State<AppState>,
     Path(id): Path<String>,
     headers: axum::http::HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Result<Response, ApiError> {
     let token =
         crate::auth::bearer(&headers).ok_or_else(|| ApiError::unauthorized("missing job token"))?;
@@ -190,20 +265,35 @@ async fn upload(
         .ok_or_else(|| ApiError::unauthorized(format!("missing `{JOB_ID_HEADER}` header")))?;
     verify_job_token(&state.http, &state.backend_url, job_id, &token).await?;
 
+    // Spool the body to disk as it arrives, rather than extracting it into memory.
+    //
+    // This handler is the far end of the driver's upload, and it used to take
+    // `Bytes` — the whole tarball resident before a single entry was unpacked, up to
+    // the 2 GiB cap. That is the one allocation a long-lived shared service must not
+    // make: it is the only pod here whose peak is set by a *caller's* payload rather
+    // than by its own work, so its memory ceiling could not be sized from anything it
+    // does. Prod bears that out — this pod's kernel high-water mark reached 3.2 GiB
+    // against a node with ~4.7 GiB schedulable, on a service that requests nothing at
+    // all and so can land beside a run pod.
+    //
+    // Note the body is only touched AFTER the token has been verified above. An
+    // unauthenticated caller must not be able to make the service write anything,
+    // which is also why the cap is checked per chunk rather than after the fact.
+    let (mut spooled, written) =
+        spool_to_disk(body, state.store.scratch_dir(), MAX_UPLOAD_BYTES).await?;
+    tracing::Span::current().record("bytes", written);
+
     // The store I/O is blocking (tar unpack writes many small files); run it off
     // the async runtime so a large upload does not stall other connections. Keyed by
     // the run id from the path, not the job id the token was verified against.
     let store = state.store.clone();
     let id_for_task = id.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut cursor = Cursor::new(body.as_ref());
-        store.store_run(&id_for_task, &mut cursor)
-    })
-    .await
-    .map_err(|err| ApiError::internal(format!("artifact unpack task failed: {err}")))?
-    .map_err(map_store_error)?;
+    tokio::task::spawn_blocking(move || store.store_run(&id_for_task, &mut spooled))
+        .await
+        .map_err(|err| ApiError::internal(format!("artifact unpack task failed: {err}")))?
+        .map_err(map_store_error)?;
 
-    tracing::info!(run.id = %id, "stored run artifacts");
+    tracing::info!(run.id = %id, bytes = written, "stored run artifacts");
     Ok(StatusCode::CREATED.into_response())
 }
 
@@ -485,3 +575,7 @@ fn map_store_error(err: crate::store::StoreError) -> ApiError {
 #[cfg(test)]
 #[path = "api.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "api.spool.test.rs"]
+mod spool_tests;

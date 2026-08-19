@@ -56,8 +56,9 @@
   }
 }
 
-// The rollup strip above the matrix: covered-cell and missing-run stats plus the
-// "trigger all missing" action.
+// The rollup strip above the matrix: the covered-cell, missing-run, buffer, and
+// waiting-on-you stats. The actions that move them live in `.controls` below, so
+// the numbers read as a status line rather than as a toolbar.
 .summary {
   display: flex;
   flex-wrap: wrap;
@@ -77,10 +78,178 @@
   }
 }
 
-// Push the "trigger all missing" action to the far right of the summary strip,
-// away from the stats it acts on.
-.summaryTrigger {
+// The plan's feeding controls, between the roll-up stats and the matrix: what order
+// its runs arrive in and whether a review tops it up on the left, the actions
+// (top up / pause / halt) pushed to the right. Wraps rather than scrolls, so a
+// narrow viewport stacks the actions under the state they act on instead of
+// pushing the page sideways.
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-md t.$space-lg;
+  padding: t.$space-md t.$space-lg;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  margin-bottom: t.$space-lg;
+}
+
+// The "runs in this order: One case at a time" line — a statement, not a control;
+// the choice itself is made in the plan editor.
+.controlOrder {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+
+  strong {
+    color: t.$color-text;
+  }
+}
+
+// A checkbox + label pair (auto-top-up), laid out inline so the label reads as one
+// sentence with its box rather than as a stray caption. Also used in the plan editor's
+// settings column, which is why the alignment below is a separate class.
+.controlToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  cursor: pointer;
+}
+
+// Starts the control strip's right-hand cluster: this item and everything after it are
+// pushed to the strip's trailing edge, leaving only the "runs in this order" statement
+// on the left. Carried by the auto-top-up toggle, so the setting sits with the buttons
+// that act on the same thing rather than trailing the statement it has nothing to do
+// with. Exactly one item in a strip may carry it — two auto margins split the free
+// space between them instead of collecting it at one end, which is why `.controlActions`
+// no longer sets its own.
+.controlEnd {
   margin-left: auto;
+}
+
+// The action buttons at the trailing end of the control strip, allowed to wrap as a
+// block once the row runs out of width.
+.controlActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The "paused" pill beside a plan's title, in the same warning colour the
+// stale-version pill uses for "you may want to look at this".
+.pausedBadge {
+  flex: none;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-warning;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+// A plan card's title beside its paused pill.
+.rowTitleRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The "N to review" pill on a block header: runs that are done and counted, but
+// still sitting in the reviewer's buffer.
+.waitingBadge {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
+}
+
+// The plan's own review queue, in the plan's emission order.
+.queue {
+  margin-bottom: t.$space-xl;
+}
+
+.queueList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// One queued run: the case name followed by the identity that distinguishes it from
+// its siblings in the buffer. Wraps on a narrow viewport rather than truncating —
+// the model is exactly what tells two adjacent rows apart.
+.queueRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-sm t.$space-md;
+  padding: t.$space-2xs 0;
+}
+
+.queueLink {
+  color: t.$color-accent;
+  font-size: t.$font-md;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.queueMeta {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+// The explanatory line under a schedule field (the ordering hint, the buffer's
+// empty-versus-zero note).
+.fieldHint {
+  margin: 0 0 t.$space-md;
+  max-width: 42rem;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// Widths for the controls that sit on the right of a setting row. The inputs
+// themselves stretch to their container (see `RunExec.module.scss`), so the row
+// sizes them through a wrapper rather than fighting the input's own width.
+.settingNumber {
+  flex: none;
+  width: 6rem;
+}
+
+.settingSelect {
+  flex: none;
+  width: 16rem;
+  max-width: 100%;
+}
+
+.settingUnit {
+  flex: none;
+  width: 13rem;
+  max-width: 100%;
+}
+
+// A pill group as a setting row's control: the same pills as elsewhere, without the
+// standalone block's bottom margin (the row supplies its own spacing).
+.settingPills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: t.$space-sm;
 }
 
 .matrix {
@@ -235,11 +404,11 @@
   gap: t.$space-xs;
 }
 
-// One combination's coverage against this case: label, progress bar, count, and
-// the trigger button.
+// One cell's coverage: label, progress bar, count (with its pending / to-review
+// notes), a link to the runs behind it, and the trigger button.
 .cell {
   display: grid;
-  grid-template-columns: minmax(10rem, 1fr) minmax(4rem, 8rem) auto auto;
+  grid-template-columns: minmax(10rem, 1fr) minmax(4rem, 8rem) auto auto auto;
   align-items: center;
   gap: t.$space-md;
   padding: t.$space-2xs 0;
@@ -250,12 +419,42 @@
 }
 
 .cellLabel {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
   color: t.$color-text;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+// The muted qualifiers trailing a cell's count ("2 pending", "1 to review"). They
+// are the answer to "why is this cell not moving", so they sit with the count they
+// qualify rather than in a column of their own.
+.cellNote {
+  margin-left: t.$space-sm;
+  color: t.$color-warning;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+// The cell's "Runs" link: a quiet text control into the runs listing narrowed to
+// this cell — half of the review loop (see the run, review it, come back).
+.cellLink {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+    text-decoration: underline;
+  }
 }
 
 .cellBar {

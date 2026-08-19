@@ -81,6 +81,37 @@ spec:
           volumeMounts:
             - name: state
               mountPath: /state
+          # Give the scheduler something to reserve. Without requests this container
+          # is BestEffort — the first thing evicted under node pressure — which is
+          # the wrong class for a single-writer pod that cannot be replaced by a
+          # second replica while it restarts.
+          #
+          # The figures come from a populated deployment: near-idle CPU with bursts
+          # to roughly a core while the publisher rebuilds the public snapshot, and
+          # ~650Mi resident. Both ceilings are intentionally loose — CPU because
+          # throttling this container shows up directly as console latency, memory
+          # because the snapshot refresh materializes every run record at once, so
+          # the peak tracks catalog size. Treat them as a runaway backstop, and
+          # revisit them (rather than the other way round) if a deployment
+          # legitimately outgrows them.
+          resources:
+            # MEMORY REQUEST == LIMIT. The 768Mi request under a 2Gi ceiling was memory
+            # the scheduler could promise to three pods and honour for one; equalising
+            # them makes a node admit the backend only when the whole ceiling is really
+            # there. See base/dispatcher.yaml for the full argument, and
+            # components/postgres/deployment-backend.yaml for the measured prod figures
+            # behind the 2Gi (it is the variant prod runs; this one is for SQLite
+            # deployments).
+            #
+            # CPU keeps its request/limit gap on purpose: over-limit CPU is throttled,
+            # not killed, so the failure mode is a slower response rather than a lost
+            # control plane.
+            requests:
+              cpu: 250m
+              memory: 2Gi
+            limits:
+              cpu: "1500m"
+              memory: 2Gi
           # Readiness and liveness MUST stay on different endpoints. /readyz is 503
           # until the definition store holds versions, which on a store that starts
           # empty means until an ingest has filled it — minutes for a cold catalog.

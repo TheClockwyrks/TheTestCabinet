@@ -3,11 +3,16 @@ import { useOptionalWorkers } from "../../client/context";
 import { useAuth } from "../../client/auth";
 import { useGalleryData } from "./galleryContext";
 import { useRunsRuntime } from "../runtime/runsRuntime";
+import type { ConfirmOptions } from "../components/ConfirmDialog";
 
-/** The shared confirmation prompt shown before a run is permanently deleted. */
-export const CONFIRM_DELETE_RUN =
-  "Delete this run permanently? Its record, reviews, and stored media are " +
-  "removed. This cannot be undone.";
+/** The shared confirmation shown before a run is permanently deleted. */
+export const CONFIRM_DELETE_RUN: ConfirmOptions = {
+  title: "Delete run",
+  message:
+    "Delete this run permanently? Its record, reviews, and stored media are " +
+    "removed. This cannot be undone.",
+  confirmLabel: "Delete run",
+};
 
 /**
  * The shared gate and action for permanently deleting a run, used by both the

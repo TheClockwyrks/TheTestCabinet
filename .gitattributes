@@ -3,3 +3,39 @@
 # shebang line (which a Windows checkout would otherwise introduce when
 # core.autocrlf is on) makes the interpreter fail to start.
 *.sh text eol=lf
+
+# Formats this repository commits as binary, declared rather than inferred.
+#
+# Git guesses binary from content, and what it guesses on is a NUL byte — so
+# without these lines "is this file binary?" and "does this file contain a NUL?"
+# are the same question, and a gate cannot use one to judge the other. That is
+# not hypothetical: scripts/hooks/no-nul-bytes.sh exists because a NUL in a `.mjs`
+# made it invisible to grep, and the first draft of that gate skipped every file
+# it was meant to catch for exactly this reason.
+#
+# Declaring them also stops git trying to diff or merge them as text, which it
+# should never do to a wasm component or a rendered video.
+#
+# Every extension below was verified to be wholly binary in this tree — tracked
+# count equal to NUL-containing count — at the time it was added. A new binary
+# format needs a line here; a file that needs a NUL and is NOT one of these
+# formats almost certainly wants an escape instead.
+*.wasm binary
+*.jar  binary
+*.gz   binary
+*.glb  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webm binary
+*.wav  binary
+*.mp3  binary
+*.ogg  binary
+*.mid  binary
+*.ico  binary
+*.icns binary
+*.pdf  binary
+*.zip  binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary

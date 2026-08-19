@@ -9,7 +9,10 @@ use std::time::Duration;
 
 use k8s_openapi::api::core::v1::EnvVar;
 
-use crate::config::DriverResources;
+use crate::config::{
+    DEFAULT_DRIVER_CPU_REQUEST, DEFAULT_DRIVER_MEMORY_LIMIT, DEFAULT_DRIVER_MEMORY_REQUEST,
+    DriverResources,
+};
 use test_cabinet_core::run_record::HarnessSlug;
 use test_cabinet_core::{ClaimedJob, LaunchBody, PublishClaim};
 
@@ -44,12 +47,16 @@ fn config() -> Config {
         max_inflight: 8,
         poll_interval: Duration::from_secs(2),
         job_ttl_seconds: 300,
+        // Mirrors what `DriverResources::from_env` resolves by default: the memory
+        // request and limit are ONE value (see `DEFAULT_DRIVER_MEMORY_REQUEST`), and
+        // CPU is left unbounded.
         driver_resources: DriverResources {
-            cpu_request: Some("100m".to_string()),
-            memory_request: Some("512Mi".to_string()),
+            cpu_request: Some(DEFAULT_DRIVER_CPU_REQUEST.to_string()),
+            memory_request: Some(DEFAULT_DRIVER_MEMORY_REQUEST.to_string()),
             cpu_limit: None,
-            memory_limit: None,
+            memory_limit: Some(DEFAULT_DRIVER_MEMORY_LIMIT.to_string()),
         },
+        publisher_resources: DriverResources::default(),
         driver_secrets: vec!["tcab-driver-secrets".to_string()],
         driver_subscription_secret: None,
         subscription_dir: "/var/run/tcab/subscription".to_string(),
@@ -370,6 +377,57 @@ fn carries_ownership_and_job_id_labels() {
     );
 }
 
+/// A driver `Job` has `backoffLimit: 0`, so an evicted driver pod is not replaced —
+/// it is a destroyed run. The autoscaler cannot know that (a `Job` pod normally
+/// *is* replaceable), and the driver's small CPU request makes its node an
+/// attractive consolidation target for as long as the run lasts, so the pod must
+/// say so itself.
+#[test]
+fn driver_pod_is_pinned_against_autoscaler_eviction() {
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let annotations = job
+        .spec
+        .as_ref()
+        .unwrap()
+        .template
+        .metadata
+        .as_ref()
+        .unwrap()
+        .annotations
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        annotations
+            .get("cluster-autoscaler.kubernetes.io/safe-to-evict")
+            .map(String::as_str),
+        Some("false"),
+    );
+}
+
+/// The publisher is single-attempt for the same reason and holds an in-flight
+/// release; evicting it mid-deploy is no more recoverable than evicting a driver.
+#[test]
+fn publish_pod_is_pinned_against_autoscaler_eviction() {
+    let job = build_publish_job(&publish_claim(), &config());
+    let annotations = job
+        .spec
+        .as_ref()
+        .unwrap()
+        .template
+        .metadata
+        .as_ref()
+        .unwrap()
+        .annotations
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        annotations
+            .get("cluster-autoscaler.kubernetes.io/safe-to-evict")
+            .map(String::as_str),
+        Some("false"),
+    );
+}
+
 #[test]
 fn names_the_job_and_namespaces_it() {
     let job = build_driver_job(&claim(), &config()).unwrap();
@@ -550,12 +608,68 @@ fn driver_container_carries_resource_requests() {
         .as_ref()
         .expect("requests are what set the QoS class");
 
-    assert_eq!(requests["cpu"].0, "100m");
-    assert_eq!(requests["memory"].0, "512Mi");
-    // Limits stay absent by default: a memory limit would re-introduce the same
-    // SIGKILL from the container's own cgroup, and the driver holds a whole
-    // produced run tree in memory while it tars it for upload.
-    assert!(resources.limits.is_none());
+    assert_eq!(requests["cpu"].0, DEFAULT_DRIVER_CPU_REQUEST);
+    assert_eq!(requests["memory"].0, DEFAULT_DRIVER_MEMORY_REQUEST);
+
+    // The memory LIMIT is rendered too, and equals the request: a node then reserves
+    // exactly what the driver may use, so the driver can neither be killed to satisfy
+    // another pod's growth nor cause another pod to be. The CPU limit stays absent —
+    // over-limit CPU is throttled, not killed.
+    let limits = resources
+        .limits
+        .as_ref()
+        .expect("the memory limit is rendered by default");
+    assert_eq!(limits["memory"].0, DEFAULT_DRIVER_MEMORY_LIMIT);
+    assert_eq!(
+        limits["memory"].0, requests["memory"].0,
+        "a gap between the driver's memory request and limit is memory the scheduler \
+         has promised twice"
+    );
+    assert!(!limits.contains_key("cpu"));
+}
+
+#[test]
+fn publish_container_carries_its_own_resources() {
+    // The publish Job's container used to carry no `resources` at all, which put its
+    // pod in `BestEffort` — first evicted, highest OOM score — and, more importantly,
+    // made the sum of limits on whatever node it landed on unknowable. It is sized
+    // independently of the driver, so this asserts the publisher's own values reach
+    // the Job rather than the driver's leaking into it.
+    let mut config = config();
+    config.publisher_image = Some("ghcr.io/example/tcab-publisher:latest".to_string());
+    config.publisher_resources = DriverResources {
+        cpu_request: Some("100m".to_string()),
+        memory_request: Some("1Gi".to_string()),
+        cpu_limit: None,
+        memory_limit: Some("1Gi".to_string()),
+    };
+    config.driver_resources.memory_request = Some("777Mi".to_string());
+    config.driver_resources.memory_limit = Some("777Mi".to_string());
+
+    let job = build_publish_job(&publish_claim(), &config);
+    let resources = job
+        .spec
+        .as_ref()
+        .unwrap()
+        .template
+        .spec
+        .as_ref()
+        .unwrap()
+        .containers[0]
+        .resources
+        .as_ref()
+        .expect("the publish container carries resources");
+
+    let requests = resources.requests.as_ref().expect("requests");
+    let limits = resources.limits.as_ref().expect("limits");
+    assert_eq!(requests["memory"].0, "1Gi");
+    assert_eq!(limits["memory"].0, "1Gi");
+    assert_eq!(
+        requests["memory"].0, limits["memory"].0,
+        "a gap between the publisher's memory request and limit is memory the \
+         scheduler has promised twice"
+    );
+    assert!(!limits.contains_key("cpu"));
 }
 
 #[test]
@@ -579,8 +693,9 @@ fn driver_container_limits_are_applied_when_configured() {
 
 #[test]
 fn driver_container_omits_resources_when_all_are_blank() {
-    // The deliberate opt-out (both request variables blanked) must omit the field
-    // rather than serialize an empty `resources: {}`.
+    // The deliberate opt-out (every quantity blanked — both requests AND the memory
+    // limit, which now defaults) must omit the field rather than serialize an empty
+    // `resources: {}`.
     let mut config = config();
     config.driver_resources = DriverResources::default();
 

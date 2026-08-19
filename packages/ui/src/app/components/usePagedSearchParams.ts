@@ -8,7 +8,10 @@ import { useDebouncedValue } from "./useDebouncedValue";
 // filter travels as `q`. Both are omitted at their defaults (page 1, empty
 // filter) to keep the common URL clean, and each of these lists lives under its
 // own route so the shared `page`/`q` namespace never collides between them.
-const PAGE_PARAM = "page";
+/** The page key. Exported so the sibling filter params (see `useRunFilters`) can
+ * drop the page as they commit, exactly as a new free-text filter does — every
+ * filter change reshapes the result set, so the window must fall back to page 1. */
+export const PAGE_PARAM = "page";
 const QUERY_PARAM = "q";
 
 function readPage(params: URLSearchParams): number {

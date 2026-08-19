@@ -1,0 +1,71 @@
+@use "../styles/tokens" as t;
+
+.root {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 2.5rem;
+  height: 1.4rem;
+}
+
+// The checkbox covers the whole control and is transparent: the track below is
+// what the user sees, and every click, tap and key press still lands on a native
+// input.
+.input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.track {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 0.15rem;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: t.$border-hairline solid t.$color-border;
+  background: t.$color-bg-2;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.thumb {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: t.$color-text-muted;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+
+.input:checked + .track {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+}
+
+.input:checked + .track .thumb {
+  transform: translateX(1.05rem);
+  background: t.$color-bg;
+}
+
+.input:focus-visible + .track {
+  border-color: t.$color-accent;
+  box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+}
+
+.input:disabled + .track {
+  opacity: 0.5;
+}

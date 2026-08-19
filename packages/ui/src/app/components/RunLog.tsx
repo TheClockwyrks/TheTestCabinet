@@ -5,6 +5,7 @@ import type { RunSort, SortDir } from "../../client/clients";
 import type { InProgressRun } from "../../client/types";
 import { canonicalModelId } from "@test-cabinet/ui";
 import { describeRunState } from "../data/runState";
+import { isPublishable } from "../data/useRunPublish";
 import { useFindModel } from "../data/useModels";
 import { useTestCaseName } from "../data/useTestCaseName";
 import { useTestCaseType } from "../data/useTestCaseType";
@@ -211,6 +212,7 @@ export function RunLog({
         id: run.runId,
         active: true,
         killable: run.state !== "failed",
+        publishable: false,
         testCaseSlug: run.testCaseSlug,
         modelId: run.modelId,
         harnessSlug: run.harnessSlug,
@@ -222,6 +224,7 @@ export function RunLog({
         id: row.summary.id,
         active: false,
         killable: false,
+        publishable: isPublishable(row.summary),
         testCaseSlug: subject.testCaseSlug,
         modelId: subject.modelId,
         harnessSlug: subject.harnessSlug,

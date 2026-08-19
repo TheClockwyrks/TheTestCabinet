@@ -10,6 +10,7 @@ import { FAMILIES } from "../../data/families";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { ModelLogoPicker } from "../../components/ModelLogoPicker";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { useModelConfig } from "../../data/useModelConfig";
 import { useModels } from "../../data/useModels";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
@@ -61,6 +62,7 @@ export function ModelConfigPage() {
   const [params] = useSearchParams();
   const { models, status } = useModels();
   const navigate = useNavigate();
+  const { confirm } = useConfirm();
   const runtime = useRunsRuntime();
 
   // Edit mode is the `/models/:modelId/edit` route (a slug in the URL); the seed
@@ -222,11 +224,14 @@ export function ModelConfigPage() {
   const onDelete = async () => {
     if (!editing) return;
     if (
-      !window.confirm(
-        "Delete this model configuration? The model reverts to being derived " +
+      !(await confirm({
+        title: "Delete model configuration",
+        message:
+          "Delete this model configuration? The model reverts to being derived " +
           "from its runs alone (its curated name, description, and logo are " +
           "removed). This cannot be undone.",
-      )
+        confirmLabel: "Delete configuration",
+      }))
     ) {
       return;
     }

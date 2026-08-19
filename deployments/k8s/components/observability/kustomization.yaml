@@ -14,6 +14,13 @@
 #                              mounted over the image's own copy, to set log
 #                              retention (see the file's header for why a full
 #                              config replacement is unavoidable for Loki).
+#   4. prometheus.yaml       — likewise mounted over the image's copy, to add the
+#                              kubelet cAdvisor scrape job (the image ships
+#                              Prometheus as a pure OTLP sink with no scrape jobs,
+#                              so there is otherwise no per-container CPU/memory
+#                              history to size run pods against).
+#   5. rbac-lgtm.yaml        — the read-only cluster-scoped grant that scrape needs
+#                              (nodes list/watch + nodes/metrics get).
 #
 # Retention windows are env vars on the StatefulSet, not values here: an overlay
 # retunes an environment by patching LOKI_RETENTION_PERIOD / TEMPO_BLOCK_RETENTION /
@@ -35,12 +42,14 @@ kind: Component
 resources:
   - lgtm.yaml
   - networkpolicy-lgtm.yaml
+  - rbac-lgtm.yaml
 
 configMapGenerator:
-  # Name-suffixed with a content hash, so editing loki-config.yaml changes the
-  # ConfigMap name, which changes the pod template, which rolls the pod. Without the
-  # hash the file would change on disk while the running Loki kept its old config
-  # (a subPath mount never picks up in-place ConfigMap updates).
+  # Name-suffixed with a content hash, so editing either file changes the ConfigMap
+  # name, which changes the pod template, which rolls the pod. Without the hash the
+  # file would change on disk while the running process kept its old config (a
+  # subPath mount never picks up in-place ConfigMap updates).
   - name: tcab-lgtm-config
     files:
       - loki-config.yaml
+      - prometheus.yaml

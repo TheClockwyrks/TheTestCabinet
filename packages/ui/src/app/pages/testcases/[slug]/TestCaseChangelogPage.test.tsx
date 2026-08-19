@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { TestCaseSummary } from "../../../data/testCases";
+import type { TestCaseDetail } from "../../../data/testCases";
 import { routePatterns, routes } from "../../../routes";
 import { TestCaseChangelogPage } from "./TestCaseChangelogPage";
 
@@ -12,19 +12,25 @@ vi.mock("../../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-// The catalog is injected through `useTestCases`; mock it so each test seeds an
+// The catalog is injected through `useTestCase`; mock it so each test seeds an
 // exact fixture. The layout also reads `useGalleryData` for the run/arena
 // affordances — none of which the Changelog tab needs — so stub it minimally.
-const useTestCases = vi.fn();
-vi.mock("../../../data/useTestCases", () => ({
-  useTestCases: () => useTestCases(),
+const catalog = vi.fn<() => { testCases: TestCaseDetail[]; status: string }>();
+// The layout resolves the case it is about through `useTestCase` (a per-slug
+// fetch), so the stub answers from the fixture catalog each test seeds — the same
+// lookup the real hook performs against the host.
+vi.mock("../../../data/useTestCase", () => ({
+  useTestCase: (slug: string | undefined) => {
+    const { testCases, status } = catalog();
+    return { testCase: testCases.find((c) => c.slug === slug), status };
+  },
 }));
 vi.mock("../../../data/galleryContext", () => ({
   useGalleryData: () => ({ canExecute: false, arena: undefined }),
 }));
 
 // A catalog entry carrying only the fields the Changelog tab and its layout read.
-function testCase(extra: Partial<TestCaseSummary> = {}): TestCaseSummary {
+function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
   return {
     slug: "carom",
     name: "Carom",
@@ -39,7 +45,7 @@ function testCase(extra: Partial<TestCaseSummary> = {}): TestCaseSummary {
     changelog: [],
     errata: [],
     ...extra,
-  } as TestCaseSummary;
+  } as TestCaseDetail;
 }
 
 function renderChangelog(slug = "carom") {
@@ -57,7 +63,7 @@ function renderChangelog(slug = "carom") {
 
 describe("TestCaseChangelogPage", () => {
   it("lists every version's entry newest-first", () => {
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [
         testCase({
           changelog: [
@@ -89,7 +95,7 @@ describe("TestCaseChangelogPage", () => {
   });
 
   it("shows an empty state when no changelog is recorded", () => {
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [testCase({ changelog: [] })],
       status: "ready",
     });

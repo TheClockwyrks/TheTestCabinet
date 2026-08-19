@@ -26,7 +26,13 @@ import type {
   VerdictStatus,
 } from "../ratings";
 
-export type { DomainRating, Rating, ReviewRevision, ReviewVerdict, VerdictStatus };
+export type {
+  DomainRating,
+  Rating,
+  ReviewRevision,
+  ReviewVerdict,
+  VerdictStatus,
+};
 export type { HarnessFamily, MediaKind, TestType };
 // The normalized harness event shape is generated from the Rust `HarnessEvent`
 // contract (crates/core/src/event.rs) — the live monitor and the published
@@ -117,9 +123,28 @@ export interface LogoFetchResult {
   logoSvg: string;
 }
 
+/**
+ * One case as the catalog *listing* (`GET /test-cases`) carries it: its versions
+ * plus the metadata a card renders. This is deliberately the whole of what a
+ * listing needs — resolving a version is what a client does for the one case a
+ * visitor opens, never for every case it lists.
+ */
 export interface TestCase {
   slug: string;
+  /** Every visible version, oldest first. */
   versions: string[];
+  /** Display name, from the latest visible version. */
+  name: string;
+  /** The case's test type, which drives how a listing groups it. */
+  testType: TestType;
+  /** For an asset-generation case, the asset shape it produces; null for a
+   * non-asset case or a backend that predates the field. */
+  assetKind: AssetKind | null;
+  /** Relative difficulty (`easy` / `medium` / `hard`). */
+  difficulty: string;
+  tags: string[];
+  /** The short plain-text abstract a card shows, or null. */
+  summary: string | null;
 }
 
 // A reference for a view, resolved to an absolute media URL. A rendered mockup or
@@ -602,6 +627,22 @@ export interface LaunchConfig {
   retryCount?: number;
 }
 
+// What a run is being launched *on behalf of*, recorded on the enqueued job as its
+// origin. It is deliberately structured rather than the `plan:<id>` / `ladder:<id>`
+// string the backend stores: the transport formats it, so a caller cannot mistype an
+// origin into a `400` (or, worse on an older backend, into a run that no halt would
+// ever reach). Absent means a hand-launch — the run form's own submit — which no
+// plan's or ladder's scoped halt should ever sweep up.
+//
+// Attribution is bookkeeping only. Coverage counting stays global: a run counts toward
+// its cell's target whoever launched it and whatever launched it, so tagging a run's
+// origin never changes what a plan considers still missing.
+export interface LaunchOrigin {
+  kind: "plan" | "ladder";
+  // The plan's or ladder's opaque id.
+  id: string;
+}
+
 // The terminal outcome of a publish. Publishing is **asynchronous**: the backend
 // enqueues a per-publish job and the gh/wrangler release runs in a `tcab-publisher`
 // Job, observed over a live stream that ends with this result. `published` is true
@@ -614,6 +655,17 @@ export interface PublishResult {
   published: boolean;
   sourceRepo: string | null;
   playableBuild: string | null;
+}
+
+// The acknowledgement of an **enqueued** publish (`202` from
+// `POST /runs/{id}/publish`): the queued publish job and where its release can be
+// watched. This is the whole of a publish the caller is guaranteed to see
+// synchronously — the release itself runs minutes later in its own Job. Watching
+// it is optional (see `WorkerClient.publish`); a caller that does not raises no
+// alert of its own and relies on the backend's `publish-failed` notification.
+export interface PublishEnqueued {
+  publishJobId: string;
+  liveUrl: string;
 }
 
 // A human-readable progress line streamed while a publish runs, surfaced so a
@@ -746,14 +798,21 @@ export interface HarnessConfigEntry {
   maxParallelism: number | null;
 }
 
-// A worker-wide run-completion notification, pushed to the console without
-// polling (SSE over `GET /notifications` on web; a global Tauri event on desktop).
-// Mirrors the worker's `WorkerNotification` / desktop `RunNotification` field for
-// field, so both transports deserialize into this one type. `recordId` (the run to
-// open) is present when `outcome` is "completed"; `message` (the reason) when
-// "failed".
+// A worker-wide notification about a run, pushed to the console without polling
+// (SSE over `GET /notifications`). Mirrors the backend's `Notification` field for
+// field. Two kinds arrive here:
+//
+//   - "run-completed" — the run reached a terminal state. `recordId` (the run to
+//     open) is present when `outcome` is "completed"; `message` (the reason) when
+//     "failed". `jobId` is the run job, so the console prunes it from the
+//     in-flight list.
+//   - "publish-failed" — the run's release did not land (`outcome` is always
+//     "failed"). `jobId` is the *publish* job, `recordId` the run that stayed
+//     unpublished, and `message` the publisher's reason. Publishing is
+//     asynchronous and the console rarely stays on the live stream, so this is
+//     how a failed release becomes visible at all.
 export interface RunNotification {
-  kind: "run-completed";
+  kind: "run-completed" | "publish-failed";
   jobId: string;
   testCaseSlug: string;
   variant: string;
@@ -762,6 +821,51 @@ export interface RunNotification {
   outcome: "completed" | "failed";
   recordId?: string | null;
   message?: string | null;
+}
+
+// A run-lifecycle event on the console stream's "runs" topic (SSE over
+// `GET /notifications`). Mirrors the backend's `RunEvent` field for field.
+//
+// Named `RunLifecycleEvent` here, not `RunEvent`, because in this codebase "run
+// events" already means a run's *harness* event stream — the timeline behind
+// `useRunEvents`, `RunEventsPage`, and `RunEventStreams`. This is the coarse job
+// lifecycle of *every* run instead, and the two are unrelated. (The same boundary
+// rename the backend's `Notification` gets as `RunNotification`.)
+//
+// This is list maintenance, not an alert. Where a `RunNotification` is something a
+// person is shown, these are every transition the in-flight list must reflect —
+// including the ones nobody wants a toast for (a run held back to "pending", a
+// driver reaching "starting", forty runs ending at once under a bulk cancel). The
+// two ride the same stream under separate topics, and the console subscribes to
+// this one only while it is showing a list that depends on it.
+//
+//   - "enqueued" — the run joined the queue; add it to the list.
+//   - "state-changed" — patch its phase in place, without reordering the list.
+//   - "finished" — it reached `state` ("succeeded" | "failed" | "canceled") and
+//     leaves the list. A run that produced a record also makes the produced-run
+//     listing stale, which is a separate re-read.
+//
+// `state` is the backend's fine-grained job state, not the console's coarser
+// phase; `runEventPhase` maps it.
+export interface RunLifecycleEvent {
+  kind: "enqueued" | "state-changed" | "finished";
+  runId: string;
+  testCaseSlug: string;
+  testCaseVersion: string;
+  variant: string;
+  harnessSlug: string;
+  modelId: string;
+  state:
+    | "queued"
+    | "pending"
+    | "dispatched"
+    | "starting"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "canceled";
+  recordId?: string | null;
+  detail?: string | null;
 }
 
 // --- Service identity (for the backend-consistency check) ---

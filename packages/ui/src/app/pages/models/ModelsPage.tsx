@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useRef, type ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
 import { ColumnMenu, type ColumnMenuHandle } from "../../components/ColumnMenu";
 import { SortableHeaderCell } from "../../components/SortableHeaderCell";
@@ -79,7 +80,10 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
     optional: true,
     sortKey: (model) => perMillion(model.prices?.uncachedInput ?? null),
     render: (model) => (
-      <Price value={perMillion(model.prices?.uncachedInput ?? null)} label="Input" />
+      <Price
+        value={perMillion(model.prices?.uncachedInput ?? null)}
+        label="Input"
+      />
     ),
   },
   {
@@ -113,7 +117,9 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
   },
 ];
 
-const MODEL_COLUMN_BY_ID = new Map(MODEL_COLUMNS.map((column) => [column.id, column]));
+const MODEL_COLUMN_BY_ID = new Map(
+  MODEL_COLUMNS.map((column) => [column.id, column]),
+);
 
 // Models: the curated catalog as a dense, column-aligned table — one row per
 // model showing its provider, name, comparable per-token input/output prices,
@@ -121,7 +127,7 @@ const MODEL_COLUMN_BY_ID = new Map(MODEL_COLUMNS.map((column) => [column.id, col
 // to catalog order; the headers can be clicked to sort by any column, columns are
 // user-resizable, and the optional columns can be shown/hidden via the picker.
 export function ModelsPage() {
-  const { models } = useModels();
+  const { models, status } = useModels();
   // The add affordance shows only where curating a model is possible (a signed-in
   // console with a config-capable backend); it is null (hidden) otherwise.
   const config = useModelConfig();
@@ -161,7 +167,18 @@ export function ModelsPage() {
           )}
         </div>
 
-        {models.length === 0 ? (
+        {/* The three states are distinct and must read that way: a fetch in
+            flight is a wait, an unreachable backend is a fault, and only a
+            resolved-but-empty catalog is genuinely "no models yet". Reporting
+            the first two as the third told a visitor the cabinet was empty
+            while it was still being read. */}
+        {status === "loading" ? (
+          <LoadingState label="Loading models…" />
+        ) : status === "error" ? (
+          <p className={styles.empty}>
+            Couldn&apos;t reach the backend — the model catalog is unavailable.
+          </p>
+        ) : models.length === 0 ? (
           <p className={styles.empty}>No models are in the catalog yet.</p>
         ) : (
           <div className={styles.wrap}>

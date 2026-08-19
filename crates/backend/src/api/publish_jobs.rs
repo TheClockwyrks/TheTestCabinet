@@ -15,7 +15,11 @@
 //! backend attaches the produced links to the run, flips it published, and queues a
 //! public-snapshot refresh ([`crate::db::Db::complete_publish_job`]); the publisher
 //! never calls `POST /runs` (which needs an account token) — it reports via the
-//! per-publish-job token instead.
+//! per-publish-job token instead. On a terminal **failure** it records the reason on
+//! the publish job and pushes a `publish-failed`
+//! [notification](test_cabinet_core::NotificationKind::PublishFailed) onto the
+//! console's worker-wide feed, because a console that enqueued the publish and
+//! navigated away is no longer watching the live stream.
 
 use std::convert::Infallible;
 
@@ -30,13 +34,16 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
 
+// The notification shapes this module raises a failed publish on; they live in
+// `core` alongside the run-queue's, and are re-exported by `crate::relay`.
+use test_cabinet_core::{JobSummary, Notification};
 // The publish-queue wire shapes the dispatcher and publisher speak live in `core`
 // (so neither must depend on this crate); re-export them so this module refers to
 // them unqualified, mirroring `jobs`'s re-export of the run-queue shapes.
 pub use test_cabinet_core::{
     PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
 };
-use test_cabinet_entities::publish_job;
+use test_cabinet_entities::{publish_job, run};
 
 use crate::auth::{ServiceAuth, bearer_token, token_matches};
 use crate::error::ApiError;
@@ -155,8 +162,9 @@ pub async fn ingest_events(
 /// published, queues a public-snapshot refresh
 /// ([`crate::db::Db::complete_publish_job`]), and pushes the terminal item onto the
 /// live stream. On `Failed` it records the reason on the publish job
-/// ([`crate::db::Db::set_publish_job_state`]) and likewise closes the stream. Either
-/// way the live stream ends with this exact [`PublishResult`].
+/// ([`crate::db::Db::set_publish_job_state`]), raises the worker-wide
+/// `publish-failed` notification ([`notify_publish_failed`]), and likewise closes
+/// the stream. Either way the live stream ends with this exact [`PublishResult`].
 #[tracing::instrument(
     name = "publish_jobs.result",
     skip(state, headers, result),
@@ -197,6 +205,7 @@ pub async fn report_result(
                 .set_publish_job_state(&id, "failed", &now, Some(detail))
                 .await
                 .map_err(ApiError::from)?;
+            notify_publish_failed(&state, &id, &job.run_id, detail).await;
         }
     }
 
@@ -238,6 +247,58 @@ pub async fn verify_token(
 }
 
 // --- Helpers ----------------------------------------------------------------
+
+/// Raise the worker-wide `publish-failed` alert for a release that did not land, so
+/// a reviewer who enqueued the publish and moved on to the next run still learns
+/// about it. Nothing else surfaces the failure once the console has left the live
+/// stream — the run just silently stays unpublished — which is precisely how a
+/// transient GitHub 5xx goes unnoticed for hours.
+///
+/// The run's identity comes from its lifted columns
+/// ([`crate::db::Db::get_run_row`]), so the alert reads like every other one (case ·
+/// harness · variant · model) rather than naming an opaque id.
+///
+/// Best-effort, deliberately: the durable failure is already recorded on the publish
+/// job by the time this runs, so a run that cannot be read — it was deleted, or the
+/// store faulted — is left un-announced rather than failing the publisher's report
+/// and leaving it to retry a result the backend has already accepted.
+async fn notify_publish_failed(state: &AppState, publish_job_id: &str, run_id: &str, detail: &str) {
+    let run = match state.db.get_run_row(run_id).await {
+        Ok(Some(run)) => run,
+        Ok(None) => {
+            tracing::warn!(
+                "publish {publish_job_id} failed for run {run_id}, which no longer exists; \
+                 not notifying"
+            );
+            return;
+        }
+        Err(err) => {
+            tracing::warn!(
+                "publish {publish_job_id} failed but run {run_id} could not be read to \
+                 notify: {err}"
+            );
+            return;
+        }
+    };
+    state.relay.notifier().notify(Notification::publish_failed(
+        publish_job_id,
+        run_summary(&run),
+        run_id,
+        detail,
+    ));
+}
+
+/// Build a run's display identity from its stored row — the publish path's analogue
+/// of [`super::jobs::job_summary`], which lifts the same five fields off a job row.
+fn run_summary(run: &run::Model) -> JobSummary {
+    JobSummary {
+        test_case_slug: run.test_case_slug.clone(),
+        test_case_version: run.test_case_version.clone(),
+        variant: run.variant.clone(),
+        harness_slug: run.harness_slug.clone(),
+        model_id: run.model_id.clone(),
+    }
+}
 
 /// Load a publish job and verify the request carries its per-job token. `404` for
 /// an unknown publish job, `401` for a missing or wrong token. The publish path's

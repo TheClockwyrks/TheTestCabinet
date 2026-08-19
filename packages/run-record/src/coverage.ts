@@ -111,8 +111,56 @@ export type CoverageGroupInput = {
 };
 
 /**
- * A reviewer's named coverage plan: the groups it references, any one-off members,
- * and the target runs-per-cell. Persisted whole; one account may hold many.
+ * Which axis a coverage plan's cell loop nests on — and therefore the order its
+ * runs execute in, since a top-up emits cells in this order, `job.queue_seq` is
+ * monotonic, and the dispatcher claims in ascending order.
+ *
+ * The console labels these "One case at a time" and "One model at a time". They are
+ * deliberately *not* described to reviewers as depth- or breadth-first: the choice
+ * is about what you want to be able to review together, not about tree traversal.
+ */
+export type CoverageAxis = "case" | "combination";
+
+/**
+ * How a plan is **fed**, as opposed to what it declares.
+ *
+ * Split from [`CoveragePlan`] because the two are edited by different gestures —
+ * the members and the target are the plan's definition, these are the controls a
+ * reviewer reaches for while it is running — so writing one can never clobber the
+ * other. Flattened into [`CoveragePlanOut`] on the way out, so a reader still sees
+ * one object.
+ */
+export type CoverageSchedule = {
+  /**
+   * Which axis the cell loop nests on, and therefore the order runs execute in.
+   */
+  outerAxis: CoverageAxis;
+  /**
+   * Whether topping up is suspended. The mildest halting control: no new runs are
+   * emitted and everything already queued is left alone.
+   */
+  paused: boolean;
+  /**
+   * Whether submitting a review re-runs this plan's top-up automatically. Off by
+   * default, so an existing plan never silently starts enqueueing.
+   */
+  autoTopUp: boolean;
+  /**
+   * This plan's override of the account's review-buffer target, or null to inherit
+   * it. Null and `0` are different instructions — "no opinion" versus "never top
+   * up" — which is why this is nullable rather than defaulted to zero.
+   */
+  bufferTarget?: number;
+};
+
+/**
+ * A reviewer's named coverage plan **as declared**: the groups it references, any
+ * one-off members, and the target runs-per-cell. Persisted whole; one account may
+ * hold many.
+ *
+ * How the plan is *fed* is [`CoverageSchedule`], stored beside this and never
+ * written by a declaration save. Handlers return the two flattened together as
+ * [`CoveragePlanOut`].
  */
 export type CoveragePlan = {
   /**
@@ -150,6 +198,67 @@ export type CoveragePlan = {
 };
 
 /**
+ * One plan as a reader sees it: its declaration and its schedule, flattened into a
+ * single object so `outerAxis`, `paused`, `autoTopUp`, and `bufferTarget` sit
+ * alongside the plan's own fields. The split exists in the code and the store, not
+ * in the reviewer's mental model.
+ */
+export type CoveragePlanOut = {
+  /**
+   * The plan's opaque id (minted on create).
+   */
+  id: string;
+  /**
+   * The reviewer-chosen display name.
+   */
+  name: string;
+  /**
+   * The target number of runs desired for each `case × combination` cell.
+   */
+  runsPerCell: number;
+  /**
+   * The referenced combination groups' ids.
+   */
+  comboGroupIds: Array<string>;
+  /**
+   * The referenced case groups' ids.
+   */
+  caseGroupIds: Array<string>;
+  /**
+   * One-off combinations pinned directly on the plan (unioned with the groups).
+   */
+  combos: Array<ReviewPlanCombo>;
+  /**
+   * One-off cases pinned directly on the plan (unioned with the groups).
+   */
+  cases: Array<ReviewPlanCase>;
+  /**
+   * RFC 3339 of when the plan was last saved.
+   */
+  updatedAt: string;
+  /**
+   * Which axis the cell loop nests on, and therefore the order runs execute in.
+   */
+  outerAxis: CoverageAxis;
+  /**
+   * Whether topping up is suspended. The mildest halting control: no new runs are
+   * emitted and everything already queued is left alone.
+   */
+  paused: boolean;
+  /**
+   * Whether submitting a review re-runs this plan's top-up automatically. Off by
+   * default, so an existing plan never silently starts enqueueing.
+   */
+  autoTopUp: boolean;
+  /**
+   * This plan's override of the account's review-buffer target, or null to inherit
+   * it. Null and `0` are different instructions — "no opinion" versus "never top
+   * up" — which is why this is nullable rather than defaulted to zero.
+   */
+  bufferTarget?: number;
+};
+
+/**
  * The create/update body for a coverage plan (the server assigns `id` and
  * `updatedAt`).
  */
@@ -178,6 +287,16 @@ export type CoveragePlanInput = {
    * One-off cases pinned directly on the plan.
    */
   cases: Array<ReviewPlanCase>;
+  /**
+   * The schedule to apply along with this save, or null to leave it alone.
+   *
+   * Nested and optional rather than flattened into the body, and that is the whole
+   * point: a console that saves an edited member list without sending a schedule
+   * cannot un-pause the plan or reset its buffer target as a side effect. On
+   * **create** an absent schedule means [`CoverageSchedule::default`] — today's
+   * behaviour exactly.
+   */
+  schedule?: CoverageSchedule;
 };
 
 /**
@@ -209,12 +328,25 @@ export type CoveragePlanSummary = {
    * The total runs still to trigger across the plan.
    */
   runsMissing: number;
+  /**
+   * The completed runs across the plan the requester has not reviewed.
+   */
+  runsUnreviewed: number;
+  /**
+   * Whether the plan is paused. Carried on the summary so the list can say why a
+   * plan with missing runs is not filling itself.
+   */
+  paused: boolean;
+  /**
+   * Whether a submitted review tops this plan up.
+   */
+  autoTopUp: boolean;
 };
 
 /**
  * One cell of the coverage matrix: a plan case (at its pinned version) crossed
  * with a resolved combination, with the run/job counts that say how close it is to
- * the target.
+ * the target and how much of it is waiting on the requester.
  */
 export type CoverageCell = {
   /**
@@ -246,13 +378,32 @@ export type CoverageCell = {
    */
   desired: number;
   /**
-   * Completed runs for this cell.
+   * Completed runs for this cell, counted globally.
    */
   completed: number;
   /**
-   * In-flight jobs (queued / dispatched / running) for this cell.
+   * In-flight jobs (queued / pending / dispatched / starting / running) for this
+   * cell, counted globally.
    */
   inFlight: number;
+  /**
+   * How many of [`Self::in_flight`] are `pending` — deliberately held back rather
+   * than merely waiting to be claimed, because their harness is at its parallelism
+   * cap or (for a game jam) another run of the same jam is already going on that
+   * model.
+   *
+   * Surfaced separately because it is the answer to "why is my buffer full but
+   * nothing running?", which is otherwise indistinguishable from a stuck queue. It
+   * is a **subset** of `inFlight`, not an addition to it.
+   */
+  pending: number;
+  /**
+   * How many of [`Self::completed`] the **requesting account** has not reviewed.
+   * The only per-account number on the cell: it changes nothing about what the
+   * cell needs, but it occupies the review buffer, which is what makes an
+   * otherwise mysteriously idle plan explicable.
+   */
+  unreviewed: number;
   /**
    * How many more runs to trigger: `max(0, desired - (completed + in_flight))`.
    */
@@ -275,10 +426,15 @@ export type CoverageCell = {
  */
 export type CoverageMatrix = {
   /**
-   * Every `case × combination` cell, in plan order (cases outer, combinations
-   * inner).
+   * Every `case × combination` cell, in the plan's own emission order — which
+   * axis is outer is the plan's [`CoverageSchedule::outer_axis`], echoed below so
+   * a reader knows what the order means without fetching the plan again.
    */
   cells: Array<CoverageCell>;
+  /**
+   * The axis the cells above are ordered on.
+   */
+  outerAxis: CoverageAxis;
   /**
    * How many cells have met their target (`remaining == 0`).
    */
@@ -291,4 +447,233 @@ export type CoverageMatrix = {
    * The sum of every cell's `remaining` — the total runs still to trigger.
    */
   runsMissing: number;
+  /**
+   * The sum of every cell's `pending` — runs deliberately held back by the queue.
+   */
+  runsPending: number;
+  /**
+   * The sum of every cell's `unreviewed` — completed runs waiting on *you*.
+   */
+  runsUnreviewed: number;
+  /**
+   * The plan's review-buffer occupancy: in-flight jobs plus unreviewed runs. When
+   * this has reached `bufferTarget`, a top-up will deliberately enqueue nothing,
+   * which is the difference between a finished plan and a full one.
+   */
+  runsOutstanding: number;
+  /**
+   * The buffer target in force for this plan (its own override, else the
+   * account's setting, else the backend default).
+   */
+  bufferTarget: number;
+};
+
+/**
+ * The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write.
+ * One setting today; the resource exists because the review buffer is a property of
+ * the *reviewer* (how much work they want waiting on them) rather than of any one
+ * plan, with a per-plan override for the exceptions.
+ */
+export type CoverageSettings = {
+  /**
+   * The account's default review-buffer target: how many runs a top-up may leave
+   * outstanding (in flight, or finished and unreviewed) before it stops.
+   */
+  bufferTarget: number;
+  /**
+   * Whether [`Self::buffer_target`] is the account's own choice or the backend's
+   * compiled-in default because they have never chosen one. A `PUT` always makes
+   * it a choice.
+   */
+  isDefault: boolean;
+};
+
+/**
+ * The `PUT /coverage-settings` body.
+ */
+export type CoverageSettingsInput = {
+  /**
+   * The review-buffer target to store, clamped to `MAX_BUFFER_TARGET`. `0` is a
+   * legitimate value — "never top me up automatically" — and is stored as such.
+   */
+  bufferTarget: number;
+};
+
+/**
+ * Why a top-up did no work. Distinguishing these matters: "paused" is a decision
+ * the reviewer made and can undo, "busy" is a moment that will pass, and neither is
+ * the same as a top-up that ran and found nothing to launch.
+ */
+export type TopUpSkipped = "paused" | "busy";
+
+/**
+ * One cell a top-up launched, and the jobs it enqueued for it.
+ */
+export type TopUpLaunch = {
+  /**
+   * The ladder rung this cell belongs to, or null for a coverage plan (which has
+   * no rungs). Shared shape, because plans and ladders top up through the same
+   * code path and a console showing "what did that button just do" wants one
+   * answer format.
+   */
+  rungId?: string;
+  /**
+   * The test-case slug.
+   */
+  slug: string;
+  /**
+   * The pinned version.
+   */
+  version: string;
+  /**
+   * The variant.
+   */
+  variant: string;
+  /**
+   * The harness.
+   */
+  harness: HarnessSlug;
+  /**
+   * The combination's canonical model id (not the launched one — see
+   * [`test_cabinet_core::model_id::launch_model_id`]).
+   */
+  model: string;
+  /**
+   * The provider for a provider-routed harness, or null.
+   */
+  provider?: string;
+  /**
+   * How many runs were enqueued for this cell — always the cell's whole shortfall,
+   * never a partial cell.
+   */
+  runs: number;
+  /**
+   * The enqueued jobs' ids, in queue order, so a console can follow them straight
+   * into its in-progress list.
+   */
+  jobIds: Array<string>;
+};
+
+/**
+ * What a top-up did, reported in enough detail that an idle plan is never a
+ * mystery: whether it ran at all, what the buffer allowed, and exactly what it
+ * enqueued.
+ */
+export type TopUpResult = {
+  /**
+   * Why nothing was attempted, or null when the scheduler ran. A top-up that ran
+   * and enqueued nothing (a full buffer, or a satisfied plan) reports null here
+   * with `enqueued` zero — deliberately distinct from having been skipped.
+   */
+  skipped?: TopUpSkipped;
+  /**
+   * The buffer target in force (the plan's override, else the account's setting,
+   * else the backend default).
+   */
+  bufferTarget: number;
+  /**
+   * The requester's buffer occupancy as the scheduler saw it, or null when it
+   * never ran.
+   */
+  outstanding?: number;
+  /**
+   * How many runs were enqueued in total.
+   */
+  enqueued: number;
+  /**
+   * The cells that were launched, in the order they were emitted — which is the
+   * order they will execute and therefore be reviewed in.
+   */
+  cells: Array<TopUpLaunch>;
+};
+
+/**
+ * One run in a scoped review queue: a completed run of this plan (or ladder) the
+ * requesting account has not reviewed.
+ */
+export type CoverageQueueEntry = {
+  /**
+   * The run's id — what the console opens to review it.
+   */
+  runId: string;
+  /**
+   * The ladder rung this run belongs to, or null for a coverage plan.
+   */
+  rungId?: string;
+  /**
+   * The test-case slug.
+   */
+  slug: string;
+  /**
+   * The test-case version.
+   */
+  version: string;
+  /**
+   * The variant.
+   */
+  variant: string;
+  /**
+   * The harness.
+   */
+  harness: HarnessSlug;
+  /**
+   * The model id the run was launched with.
+   */
+  model: string;
+  /**
+   * RFC 3339 of when the run finished.
+   */
+  finishedAt: string;
+};
+
+/**
+ * The plan's (or ladder's) unreviewed-by-me runs, in its own order.
+ */
+export type CoverageQueue = {
+  /**
+   * The runs to review, in the order the plan or ladder emitted their cells —
+   * **not** newest-first like the global Unreviewed page. Reviewing walks the
+   * buffer in the order it was deliberately filled, which is what makes a case's
+   * repeats comparable against each other.
+   */
+  runs: Array<CoverageQueueEntry>;
+  /**
+   * Whether the listing was cut short at the cap. A queue is walked from the
+   * front, not paged, so this is a "there is more behind this" flag rather than a
+   * cursor.
+   */
+  truncated: boolean;
+};
+
+/**
+ * The `POST …/pause` body: the pause state to set. A body rather than two verbs so
+ * the control is idempotent and a console can drive a toggle without tracking which
+ * direction it is going.
+ */
+export type PauseInput = {
+  /**
+   * Whether topping up should be suspended.
+   */
+  paused: boolean;
+};
+
+/**
+ * What a halt did — a plan's or a ladder's, which differ only in what they sweep.
+ *
+ * The **count is the point**, not a nicety: a halt that reports only success cannot
+ * be told apart from a halt whose scope was wrong, and the reviewer's next move
+ * differs completely between "the queue was already empty" and "nothing I launched
+ * was found". The plan or ladder is always left paused, which is why that is stated
+ * here in prose rather than reported as a field that could only ever say `true`.
+ */
+export type HaltResult = {
+  /**
+   * How many jobs were moved to `canceled`.
+   */
+  canceled: number;
+  /**
+   * Whether the halt also reached jobs that were already executing (`halt all`)
+   * rather than only the ones that had cost nothing yet.
+   */
+  includedActive: boolean;
 };

@@ -3,8 +3,10 @@ import { Link } from "react-router";
 import type { CoveragePlanSummary } from "@test-cabinet/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
 import exec from "../runs/RunExec.module.scss";
@@ -34,13 +36,16 @@ export function planProgress(plan: CoveragePlanSummary): PlanProgress {
 }
 
 // The Coverage tab (`/account/coverage`): the signed-in reviewer's coverage plans,
-// each a card with its roll-up (cells covered / runs missing) linking to its own
-// dashboard, plus create / edit / delete. Splitting the model space across several
-// smaller plans keeps each dashboard — and its "Trigger all missing" — manageable.
+// each a card with its roll-up (cells covered / runs missing / waiting on you) and
+// how it is being fed, linking to its own dashboard, plus create / edit / delete.
+// The account-wide review buffer every plan inherits is a property of the reviewer
+// rather than of this list, so it lives in Settings → Reviewing. Splitting the model
+// space across several smaller plans keeps each dashboard manageable.
 // Console-only and gated on a signed-in account (plans are per-account).
 export function CoveragePlansPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
+  const { confirm } = useConfirm();
 
   const [plans, setPlans] = useState<CoveragePlanSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,7 +65,7 @@ export function CoveragePlansPage() {
     let active = true;
     setLoading(true);
     setError(null);
-    Promise.resolve(backend.getCoveragePlansSummary?.(token) ?? [])
+    (backend.getCoveragePlansSummary?.(token) ?? Promise.resolve([]))
       .then((p) => {
         if (!active) return;
         setPlans(p);
@@ -80,10 +85,13 @@ export function CoveragePlansPage() {
     async (id: string, name: string) => {
       if (!backend?.deleteCoveragePlan || !token) return;
       if (
-        !window.confirm(
-          `Delete the plan “${name}”? This removes the plan (its groups are left ` +
+        !(await confirm({
+          title: "Delete plan",
+          message:
+            `Delete the plan “${name}”? This removes the plan (its groups are left ` +
             `untouched) and cannot be undone.`,
-        )
+          confirmLabel: "Delete plan",
+        }))
       ) {
         return;
       }
@@ -98,17 +106,20 @@ export function CoveragePlansPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload],
+    [backend, token, reload, confirm],
   );
 
   if (!token) {
     return (
       <PageLayout>
-        <PromptHeader command="--coverage" comment={<>// your coverage plans</>} />
+        <PromptHeader
+          command="--coverage"
+          comment={<>// your coverage plans</>}
+        />
         <AccountTabs active="coverage" />
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use coverage plans — they are saved to your account. Use the
-          account control in the top bar to register or log in.
+          Sign in to use coverage plans — they are saved to your account. Use
+          the account control in the top bar to register or log in.
         </p>
       </PageLayout>
     );
@@ -130,13 +141,13 @@ export function CoveragePlansPage() {
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
       {loading ? (
-        <p className={styles.empty}>Loading plans…</p>
+        <LoadingState size="section" label="Loading plans…" />
       ) : !plans || plans.length === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>
             You have no coverage plans yet. Create one to declare the cases and
-            harness/model combinations you want covered — reference reusable groups
-            from the Groups tab, or pin one-off entries directly.
+            harness/model combinations you want covered — reference reusable
+            groups from the Groups tab, or pin one-off entries directly.
           </p>
           <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>
             Create your first plan
@@ -149,14 +160,24 @@ export function CoveragePlansPage() {
             return (
               <div key={plan.id} className={styles.rowCard}>
                 <div className={styles.rowMain}>
-                  <Link
-                    className={styles.rowTitleLink}
-                    to={routes.accountCoveragePlan(plan.id)}
-                  >
-                    {plan.name}
-                  </Link>
+                  <span className={styles.rowTitleRow}>
+                    <Link
+                      className={styles.rowTitleLink}
+                      to={routes.accountCoveragePlan(plan.id)}
+                    >
+                      {plan.name}
+                    </Link>
+                    {/* A paused plan with missing runs is otherwise indistinguishable
+                        from a stuck one, and the list is where that reads worst. */}
+                    {plan.paused && (
+                      <span className={styles.pausedBadge}>paused</span>
+                    )}
+                  </span>
                   <span className={styles.rowSub}>
                     {plan.runsPerCell} runs/cell
+                    {plan.autoTopUp && " · tops up on review"}
+                    {plan.runsUnreviewed > 0 &&
+                      ` · ${plan.runsUnreviewed} waiting on you`}
                   </span>
                 </div>
                 <div className={styles.rowRight}>
@@ -171,8 +192,8 @@ export function CoveragePlansPage() {
                       />
                     </span>
                     <span className={styles.groupCount}>
-                      {plan.cellsSatisfied}/{plan.cellsTotal} · {plan.runsMissing}{" "}
-                      missing
+                      {plan.cellsSatisfied}/{plan.cellsTotal} ·{" "}
+                      {plan.runsMissing} missing
                     </span>
                   </span>
                   <span className={styles.rowActions}>

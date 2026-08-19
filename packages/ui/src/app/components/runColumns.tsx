@@ -49,6 +49,8 @@ export type RunScope = "global" | "variant" | "model";
  */
 export interface EnrichedRun {
   summary: RunSummary;
+  /** Whether the run is still unpublished — a produced run awaiting review or
+   * publish — and so carries the UNPUBLISHED tag. */
   local: boolean;
   displayName: string;
   /** The model's catalog display name, resolved once so the cell and its sort
@@ -470,6 +472,11 @@ export function sortRuns(
  * A local, unpublished writeup still wins the rating (an in-progress edit must
  * show before it is published); absent one, the summary's own aggregate rating
  * (`summary.rating`) stands in.
+ *
+ * A row reads as unpublished when the console's produced worklist claims it OR the
+ * card itself carries no publish timestamp — the listings draw produced runs from
+ * the server now, so a row can be unpublished without the (separately loaded, and
+ * worker-dependent) worklist knowing about it.
  */
 export function useEnrichedRuns(
   runs: readonly RunSummary[],
@@ -485,7 +492,7 @@ export function useEnrichedRuns(
         const review = findReview(summary.id, localWriteups);
         return {
           summary,
-          local: localIds.has(summary.id),
+          local: localIds.has(summary.id) || !summary.publishedAt,
           displayName: testCaseName(summary.subject.testCaseSlug),
           modelName:
             findModel(

@@ -3,11 +3,16 @@ import { useOptionalWorkers } from "../../client/context";
 import { useAuth } from "../../client/auth";
 import { useGalleryData } from "./galleryContext";
 import { useRunsRuntime } from "../runtime/runsRuntime";
+import type { ConfirmOptions } from "../components/ConfirmDialog";
 
 /** The shared confirmation shown before an in-flight run is killed. */
-export const CONFIRM_KILL_RUN =
-  "Kill this run? It stops immediately and is recorded as canceled. This " +
-  "cannot be undone.";
+export const CONFIRM_KILL_RUN: ConfirmOptions = {
+  title: "Kill run",
+  message:
+    "Kill this run? It stops immediately and is recorded as canceled. This " +
+    "cannot be undone.",
+  confirmLabel: "Kill run",
+};
 
 /**
  * The shared gate and action for killing an in-flight run, used by both the

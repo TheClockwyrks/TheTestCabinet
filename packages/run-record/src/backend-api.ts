@@ -7,7 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { HarnessFamily } from "./index";
+import type { AssetKind, HarnessFamily, TestType } from "./index";
 
 /**
  * The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
@@ -20,7 +20,42 @@ export type ErrorBody = { code: string; message: string };
  */
 export type ErrorEnvelope = { error: ErrorBody };
 
-export type CatalogCase = { slug: string; versions: Array<string> };
+/**
+ * One entry of the catalog listing: a case, its visible versions, and the
+ * display metadata a card renders — read from the latest visible version. This
+ * is the *summary* half of the catalog contract; the detail half is
+ * [`VersionResponse`], which a client fetches only for a case it opens.
+ */
+export type CatalogCase = {
+  slug: string;
+  /**
+   * Every visible version, oldest first.
+   */
+  versions: Array<string>;
+  /**
+   * The case's display name, from its latest visible version.
+   */
+  name: string;
+  /**
+   * The case's test type, which drives how a listing groups it.
+   */
+  testType: TestType;
+  /**
+   * For an asset-generation case, the asset shape it produces — the catalog
+   * partitions its 2D / 3D / Particle / Audio tabs on this.
+   */
+  assetKind: AssetKind;
+  /**
+   * Relative difficulty (`easy` / `medium` / `hard`). A game jam is
+   * unclassified and reports whatever its manifest carries.
+   */
+  difficulty: string;
+  tags: Array<string>;
+  /**
+   * The short plain-text abstract a card shows, when the case declares one.
+   */
+  summary: string | null;
+};
 
 export type CatalogResponse = { testCases: Array<CatalogCase> };
 

@@ -14,6 +14,7 @@ import type {
   RunSubscription,
   NotificationSubscription,
 } from "../client";
+import { runPhase } from "../client/runPhase";
 import type {
   AssetKind,
   AssetPreview,
@@ -25,12 +26,14 @@ import type {
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
+  LaunchOrigin,
   LogoFetchResult,
   Model,
   ModelInput,
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  PublishEnqueued,
   PublishProgress,
   PublishResult,
   ReviewDocumentInput,
@@ -38,6 +41,7 @@ import type {
   ReviewStats,
   RunEventStreams,
   RunJob,
+  RunLifecycleEvent,
   RunNotification,
   RunPage,
   RunSummaryPage,
@@ -57,13 +61,35 @@ import type {
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  BulkCancelOut,
+  StreamOpened,
+} from "@test-cabinet/run-record/jobs-api";
+import type {
   CoverageGroup,
   CoverageGroupInput,
   CoverageMatrix,
-  CoveragePlan,
   CoveragePlanInput,
+  CoveragePlanOut,
   CoveragePlanSummary,
+  CoverageQueue,
+  CoverageSchedule,
+  CoverageSettings,
+  CoverageSettingsInput,
+  HaltResult,
+  TopUpResult,
 } from "@test-cabinet/run-record/coverage";
+import type {
+  LadderClimberInput,
+  LadderInput,
+  LadderOut,
+  LadderOverrideInput,
+  LadderProgress,
+  LadderRung,
+  LadderRungOrderInput,
+  LadderRungOutcome,
+  LadderSchedule,
+  StoredClimberOut,
+} from "@test-cabinet/run-record/ladders";
 import {
   delJson,
   delVoid,
@@ -73,6 +99,7 @@ import {
   postJson,
   putBytes,
   putJson,
+  putVoid,
 } from "./http";
 import {
   applyScoreExclusions,
@@ -95,10 +122,19 @@ interface CatalogResponse {
   testCases: CatalogEntry[];
 }
 
-// One entry of `GET /test-cases`.
+// One entry of `GET /test-cases`: the case's versions plus the display metadata
+// a catalog card renders, resolved server-side from the latest visible version.
+// It is what lets a listing render from this single request instead of resolving
+// every version of every case first.
 interface CatalogEntry {
   slug: string;
   versions: string[];
+  name: string;
+  testType: TestType;
+  assetKind?: AssetKind | null;
+  difficulty: string;
+  tags: string[];
+  summary: string | null;
 }
 
 // `GET /test-cases/{slug}/versions` — the versions for one case, wrapped in
@@ -322,6 +358,20 @@ interface MyReviewsResponseBody {
   total: number;
 }
 
+// The path of one coverage plan's resource, or of a sub-resource beneath it
+// (`/schedule`, `/topup`, …). Every plan-scoped call routes through here so the id is
+// escaped exactly once, in one place — a plan id is opaque and must survive the URL
+// intact for the scoped controls (halt above all) to address the right plan.
+function planPath(id: string, suffix = ""): string {
+  return `/coverage-plans/${encodeURIComponent(id)}${suffix}`;
+}
+
+// The ladder equivalent of {@link planPath}. Ladders are a sibling surface, not a mode
+// of a plan, so they get their own route family rather than a query flag.
+function ladderPath(id: string, suffix = ""): string {
+  return `/ladders/${encodeURIComponent(id)}${suffix}`;
+}
+
 export function createHttpBackend(baseUrl: string): BackendClient {
   return {
     async identity(): Promise<BackendIdentity> {
@@ -339,7 +389,16 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         baseUrl,
         "/test-cases",
       );
-      return testCases.map((e) => ({ slug: e.slug, versions: e.versions }));
+      return testCases.map((e) => ({
+        slug: e.slug,
+        versions: e.versions,
+        name: e.name,
+        testType: e.testType,
+        assetKind: e.assetKind ?? null,
+        difficulty: e.difficulty,
+        tags: e.tags,
+        summary: e.summary,
+      }));
     },
 
     async listVersions(slug: string): Promise<string[]> {
@@ -546,36 +605,34 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async listCoveragePlans(token: string): Promise<CoveragePlan[]> {
-      return getJson<CoveragePlan[]>(baseUrl, "/coverage-plans", token);
+    async listCoveragePlans(token: string): Promise<CoveragePlanOut[]> {
+      // Each plan arrives with its schedule flattened in (`CoveragePlanOut`), so the
+      // plans list can show paused/axis/buffer state without a call per plan.
+      return getJson<CoveragePlanOut[]>(baseUrl, "/coverage-plans", token);
     },
 
     async createCoveragePlan(
       input: CoveragePlanInput,
       token: string,
-    ): Promise<CoveragePlan> {
-      return postJson<CoveragePlan>(baseUrl, "/coverage-plans", input, token);
+    ): Promise<CoveragePlanOut> {
+      return postJson<CoveragePlanOut>(
+        baseUrl,
+        "/coverage-plans",
+        input,
+        token,
+      );
     },
 
     async updateCoveragePlan(
       id: string,
       input: CoveragePlanInput,
       token: string,
-    ): Promise<CoveragePlan> {
-      return putJson<CoveragePlan>(
-        baseUrl,
-        `/coverage-plans/${encodeURIComponent(id)}`,
-        input,
-        token,
-      );
+    ): Promise<CoveragePlanOut> {
+      return putJson<CoveragePlanOut>(baseUrl, planPath(id), input, token);
     },
 
     async deleteCoveragePlan(id: string, token: string): Promise<void> {
-      await delVoid(
-        baseUrl,
-        `/coverage-plans/${encodeURIComponent(id)}`,
-        token,
-      );
+      await delVoid(baseUrl, planPath(id), token);
     },
 
     async getCoveragePlansSummary(
@@ -592,9 +649,234 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       id: string,
       token: string,
     ): Promise<CoverageMatrix> {
-      return getJson<CoverageMatrix>(
+      return getJson<CoverageMatrix>(baseUrl, planPath(id, "/coverage"), token);
+    },
+
+    async getCoverageSettings(token: string): Promise<CoverageSettings> {
+      return getJson<CoverageSettings>(baseUrl, "/coverage-settings", token);
+    },
+
+    async setCoverageSettings(
+      input: CoverageSettingsInput,
+      token: string,
+    ): Promise<CoverageSettings> {
+      // The backend clamps the target, so it echoes back what it actually stored
+      // rather than what was asked for — display that, not the submitted value.
+      return putJson<CoverageSettings>(
         baseUrl,
-        `/coverage-plans/${encodeURIComponent(id)}/coverage`,
+        "/coverage-settings",
+        input,
+        token,
+      );
+    },
+
+    async getCoveragePlanSchedule(
+      id: string,
+      token: string,
+    ): Promise<CoverageSchedule> {
+      return getJson<CoverageSchedule>(
+        baseUrl,
+        planPath(id, "/schedule"),
+        token,
+      );
+    },
+
+    async setCoveragePlanSchedule(
+      id: string,
+      schedule: CoverageSchedule,
+      token: string,
+    ): Promise<CoverageSchedule> {
+      return putJson<CoverageSchedule>(
+        baseUrl,
+        planPath(id, "/schedule"),
+        schedule,
+        token,
+      );
+    },
+
+    async topUpCoveragePlan(id: string, token: string): Promise<TopUpResult> {
+      // The top-up takes no body — every input (the plan, its schedule, the account's
+      // buffer target, what is already outstanding) is server-side state it recomputes
+      // per call, which is exactly what makes repeating the call harmless.
+      return postJson<TopUpResult>(baseUrl, planPath(id, "/topup"), {}, token);
+    },
+
+    async getCoveragePlanQueue(
+      id: string,
+      token: string,
+    ): Promise<CoverageQueue> {
+      return getJson<CoverageQueue>(baseUrl, planPath(id, "/queue"), token);
+    },
+
+    async pauseCoveragePlan(
+      id: string,
+      paused: boolean,
+      token: string,
+    ): Promise<CoverageSchedule> {
+      // The desired state travels in the body, so the control is idempotent and a
+      // console can drive a switch without tracking which way it is going.
+      return postJson<CoverageSchedule>(
+        baseUrl,
+        planPath(id, "/pause"),
+        { paused },
+        token,
+      );
+    },
+
+    async haltCoveragePlan(id: string, token: string): Promise<HaltResult> {
+      return postJson<HaltResult>(baseUrl, planPath(id, "/halt"), {}, token);
+    },
+
+    async haltAllCoveragePlan(id: string, token: string): Promise<HaltResult> {
+      return postJson<HaltResult>(
+        baseUrl,
+        planPath(id, "/halt-all"),
+        {},
+        token,
+      );
+    },
+
+    async listLadders(token: string): Promise<LadderOut[]> {
+      return getJson<LadderOut[]>(baseUrl, "/ladders", token);
+    },
+
+    async getLadder(id: string, token: string): Promise<LadderOut> {
+      return getJson<LadderOut>(baseUrl, ladderPath(id), token);
+    },
+
+    async createLadder(input: LadderInput, token: string): Promise<LadderOut> {
+      // The response carries every rung's minted id — the stable handle a reorder, a
+      // version bump, and every recorded verdict key off — so the caller must adopt
+      // the returned ladder rather than the one it submitted.
+      return postJson<LadderOut>(baseUrl, "/ladders", input, token);
+    },
+
+    async updateLadder(
+      id: string,
+      input: LadderInput,
+      token: string,
+    ): Promise<LadderOut> {
+      return putJson<LadderOut>(baseUrl, ladderPath(id), input, token);
+    },
+
+    async deleteLadder(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, ladderPath(id), token);
+    },
+
+    async reorderLadderRungs(
+      id: string,
+      input: LadderRungOrderInput,
+      token: string,
+    ): Promise<LadderRung[]> {
+      return postJson<LadderRung[]>(
+        baseUrl,
+        ladderPath(id, "/rungs/order"),
+        input,
+        token,
+      );
+    },
+
+    async getLadderSchedule(
+      id: string,
+      token: string,
+    ): Promise<LadderSchedule> {
+      return getJson<LadderSchedule>(
+        baseUrl,
+        ladderPath(id, "/schedule"),
+        token,
+      );
+    },
+
+    async setLadderSchedule(
+      id: string,
+      schedule: LadderSchedule,
+      token: string,
+    ): Promise<LadderSchedule> {
+      return putJson<LadderSchedule>(
+        baseUrl,
+        ladderPath(id, "/schedule"),
+        schedule,
+        token,
+      );
+    },
+
+    async getLadderProgress(
+      id: string,
+      token: string,
+    ): Promise<LadderProgress> {
+      return getJson<LadderProgress>(
+        baseUrl,
+        ladderPath(id, "/progress"),
+        token,
+      );
+    },
+
+    async topUpLadder(id: string, token: string): Promise<TopUpResult> {
+      return postJson<TopUpResult>(
+        baseUrl,
+        ladderPath(id, "/topup"),
+        {},
+        token,
+      );
+    },
+
+    async getLadderQueue(id: string, token: string): Promise<CoverageQueue> {
+      return getJson<CoverageQueue>(baseUrl, ladderPath(id, "/queue"), token);
+    },
+
+    async pauseLadder(
+      id: string,
+      paused: boolean,
+      token: string,
+    ): Promise<LadderSchedule> {
+      return postJson<LadderSchedule>(
+        baseUrl,
+        ladderPath(id, "/pause"),
+        { paused },
+        token,
+      );
+    },
+
+    async haltLadder(id: string, token: string): Promise<HaltResult> {
+      return postJson<HaltResult>(baseUrl, ladderPath(id, "/halt"), {}, token);
+    },
+
+    async haltAllLadder(id: string, token: string): Promise<HaltResult> {
+      return postJson<HaltResult>(
+        baseUrl,
+        ladderPath(id, "/halt-all"),
+        {},
+        token,
+      );
+    },
+
+    async setLadderClimber(
+      id: string,
+      input: LadderClimberInput,
+      token: string,
+    ): Promise<StoredClimberOut> {
+      // The combination travels in the body, not the path: a model id contains
+      // slashes and has no business being a path segment.
+      return postJson<StoredClimberOut>(
+        baseUrl,
+        ladderPath(id, "/climbers"),
+        input,
+        token,
+      );
+    },
+
+    async setLadderOutcome(
+      id: string,
+      input: LadderOverrideInput,
+      token: string,
+    ): Promise<LadderRungOutcome> {
+      // The response is the verdict as it now stands — the override applied over (or
+      // cleared back to) whatever the gate itself computed, which is not necessarily
+      // what was submitted.
+      return postJson<LadderRungOutcome>(
+        baseUrl,
+        ladderPath(id, "/outcomes"),
+        input,
         token,
       );
     },
@@ -658,6 +940,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.testCase) params.set("testCase", opts.testCase);
       if (opts?.model) params.set("model", opts.model);
       if (opts?.harness) params.set("harness", opts.harness);
+      if (opts?.variant) params.set("variant", opts.variant);
+      if (opts?.version) params.set("version", opts.version);
+      // Only sent when on: the backend defaults it off, so the common URL stays
+      // free of a redundant `latestVersions=false`.
+      if (opts?.latestVersions) params.set("latestVersions", "true");
       if (opts?.q) params.set("q", opts.q);
       if (opts?.sort) params.set("sort", opts.sort);
       if (opts?.dir) params.set("dir", opts.dir);
@@ -798,6 +1085,20 @@ function launchBodyOf(config: LaunchConfig) {
   };
 }
 
+// The query string attributing an enqueue to the plan or ladder that asked for it,
+// or "" for a hand-launch (which no scoped halt should ever sweep up).
+//
+// The origin rides in the **query**, not in `LaunchBody`: the body is stored verbatim
+// as the job's request and handed back to the driver, and queue bookkeeping is none of
+// the driver's business. Formatting it here (rather than taking the `plan:<id>` string
+// from callers) is what makes a mistyped origin impossible — the backend rejects an
+// unparseable one `400`, precisely because a run enqueued under a typo is one no halt
+// would ever reach.
+function originQuery(origin?: LaunchOrigin | null): string {
+  if (!origin) return "";
+  return `?origin=${encodeURIComponent(`${origin.kind}:${origin.id}`)}`;
+}
+
 // The backend's `GET /jobs/{id}` status (`JobStatusOut`): the job's lifecycle
 // state, the produced run record's id once it succeeded, and the reason on
 // failure. Unlike the old worker status, this carries the record *id* (the
@@ -827,25 +1128,39 @@ function mapJobState(state: string): RunJob["state"] {
   return "running";
 }
 
-// Map a backend job state to the console's coarser in-progress *phase* for the
-// active-run list. `dispatched` (claimed, the driver pod being created) and
-// `starting` (the pod up, running pre-run setup) both read as "starting"; a
-// harness-capped hold reads as "pending", a free-but-unclaimed job as "queued".
-// A terminal job never appears in the active list, so it falls back to "running".
+// The SSE `event:` names on the console stream (`GET /notifications`), matching the
+// backend's `STREAM_EVENT_*` constants. The stream is multiplexed, so every frame is
+// named — there is no unnamed `message` frame and `EventSource.onmessage` never
+// fires on it.
+const STREAM_EVENT_HELLO = "stream";
+const STREAM_EVENT_NOTIFICATION = "notification";
+const STREAM_EVENT_RUN = "run";
+const STREAM_EVENT_RESYNC = "resync";
+const STREAM_EVENT_HEARTBEAT = "heartbeat";
+
+// How long the console stream may go without a frame before it is treated as dead
+// and reopened. The backend heartbeats every 15s, so this allows three missed
+// beats — loose enough that a slow network or a briefly throttled background tab
+// does not churn the connection, tight enough that a wedged stream is noticed in
+// under a minute rather than never.
+const STREAM_STALE_MS = 50_000;
+
+// Backoff for reopening a stream we tore down ourselves, so a backend that is down
+// or mid-rollout is not hammered. Capped rather than given up on: with no polling
+// left, this connection is the console's only source of run updates.
+const STREAM_REOPEN_BASE_MS = 1_000;
+const STREAM_REOPEN_MAX_MS = 30_000;
+
+// The topic-control path for one connected stream.
+const topicsPath = (streamId: string): string =>
+  `/notifications/${encodeURIComponent(streamId)}/topics`;
+
+// The console's in-progress phase for a row of the active-run list. A terminal job
+// never appears in that list, so the shared mapping's `null` is unreachable here;
+// it falls back to "running" rather than dropping a row the backend just told us is
+// in flight.
 function mapActiveState(state: string): InProgressRun["state"] {
-  switch (state) {
-    case "queued":
-      return "queued";
-    case "pending":
-      return "pending";
-    case "dispatched":
-    case "starting":
-      return "starting";
-    case "running":
-      return "running";
-    default:
-      return "running";
-  }
+  return runPhase(state) ?? "running";
 }
 
 // The artifact service's base URL as the execution client consumes it. It is
@@ -962,6 +1277,20 @@ export function createBackendExec(
   artifacts: ArtifactsUrlSource | string | null,
 ): WorkerClient {
   const backend = createHttpBackend(backendUrl);
+
+  // The console stream's per-connection state, shared by `subscribeToNotifications`
+  // (which learns the id) and `setRunLifecycleEnabled` (which uses it). It lives on
+  // the client rather than inside the subscription because the two are called from
+  // different places at different times: the subscription is opened once for the
+  // session by the notifications layer, while the topic is toggled by whichever page
+  // is currently mounted.
+  //
+  // `streamId` is the id of the stream that is connected *right now*, or null while
+  // disconnected. `runLifecycleWanted` is what the console last asked for, which
+  // outlives any single connection and is re-applied to each new one.
+  let streamId: string | null = null;
+  let runLifecycleWanted = false;
+
   // The artifact service's base URL is itself fetched (`GET /config`), so it has
   // two forms here and they are not interchangeable. `artifactsNow` is the
   // best-known value *this instant*, for the synchronous media resolvers below —
@@ -1036,15 +1365,18 @@ export function createBackendExec(
     async launchRun(
       config: LaunchConfig,
       token?: string | null,
+      origin?: LaunchOrigin | null,
     ): Promise<string> {
       // Enqueue a run on the backend's job queue; the dispatcher creates the
       // driver Job. The body is the backend's `LaunchBody` (camelCase). The
       // backend gates `POST /jobs` on the launching account, so the signed-in
       // account's token rides along as `Authorization: Bearer` — without it the
-      // enqueue is rejected `401`.
+      // enqueue is rejected `401`. The account is recorded on the job; `origin`,
+      // when given, additionally records which plan or ladder asked for the run,
+      // which is what puts it inside that plan's or ladder's halt scope.
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
-        "/jobs",
+        `/jobs${originQuery(origin)}`,
         launchBodyOf(config),
         token,
       );
@@ -1054,16 +1386,19 @@ export function createBackendExec(
     async launchRunBatch(
       configs: LaunchConfig[],
       token?: string | null,
+      origin?: LaunchOrigin | null,
     ): Promise<BatchLaunchResult[]> {
       // Enqueue the whole set in one `POST /jobs/batch` (same account gate as
       // `POST /jobs`) instead of a request per run — the fan-out a coverage
       // "trigger all missing" or a multi-combination new-run submit produces. An
       // empty set needs no round-trip. The ack returns one entry per run, aligned
       // by index, each an enqueued job id or a per-run rejection reason.
+      // One `origin` attributes the whole batch — a batch is one decision by one
+      // plan, ladder, or person; two origins mean two batches.
       if (configs.length === 0) return [];
       const ack = await postJson<LaunchBatchAckResponse>(
         backendUrl,
-        "/jobs/batch",
+        `/jobs/batch${originQuery(origin)}`,
         { runs: configs.map(launchBodyOf) },
         token,
       );
@@ -1113,23 +1448,183 @@ export function createBackendExec(
     },
 
     subscribeToNotifications(handlers: NotificationSubscription): () => void {
-      // An EventSource holds one long-lived SSE connection and reconnects on its
-      // own if it drops — exactly what an always-on notifications channel wants.
-      const source = new EventSource(joinUrl(backendUrl, "/notifications"));
-      // Fires on the initial connect and on every automatic reconnect. Because the
-      // feed carries no backlog, a completion that fired while the channel was down
-      // is gone; the console reconciles against the active list on each open to
-      // recover it.
-      source.onopen = () => handlers.onOpen?.();
-      source.onmessage = (event) => {
-        try {
-          handlers.onNotification(JSON.parse(event.data) as RunNotification);
-        } catch {
-          // A malformed payload shouldn't tear down the channel; drop it.
-        }
+      // A supervised `EventSource`. The browser reconnects on its own after an
+      // ordinary drop, which handles most faults — but not all of them, and the
+      // console has no poll left to fall back on, so the two it misses are handled
+      // here:
+      //
+      //   - **It gave up.** After enough failed attempts `readyState` settles on
+      //     CLOSED and the browser stops retrying, permanently, with nothing but an
+      //     `error` event to say so. Reopening is the only recovery.
+      //   - **It thinks it is connected and is not.** A half-open socket — a laptop
+      //     resumed from sleep, a NAT that dropped the flow — delivers no frames and
+      //     raises no error. Nothing in the `EventSource` API reports this, which is
+      //     why the backend emits a periodic `heartbeat` event: any frame at all
+      //     rearms the watchdog below, and an overdue one means the stream is dead
+      //     however healthy it claims to be.
+      let source: EventSource | null = null;
+      let watchdog: ReturnType<typeof setTimeout> | null = null;
+      let retry: ReturnType<typeof setTimeout> | null = null;
+      let attempt = 0;
+      let unsubscribed = false;
+
+      // The backend mints a fresh stream id per *connection*, so any reconnect —
+      // the browser's or ours — lands on a new stream with default topics. Both
+      // facts live here: the current id (null while disconnected), and what the
+      // console last asked for, which is re-applied to each new stream as its hello
+      // frame arrives. Without that replay a console that was watching in-flight
+      // runs would come back from a blip subscribed to nothing, with no error to
+      // notice.
+      const applyTopics = () => {
+        if (!streamId) return;
+        void putVoid(backendUrl, topicsPath(streamId), {
+          runs: runLifecycleWanted,
+        }).catch(() => {
+          // The stream died between the hello frame and this call. Nothing to do:
+          // a reconnect is already under way and the next hello frame re-applies
+          // the same intent.
+        });
       };
-      source.onerror = (event) => handlers.onError?.(event);
-      return () => source.close();
+
+      const clearTimers = () => {
+        if (watchdog !== null) clearTimeout(watchdog);
+        if (retry !== null) clearTimeout(retry);
+        watchdog = null;
+        retry = null;
+      };
+
+      // Rearmed by every frame, whatever kind. Firing means the backend has not
+      // even managed a heartbeat in well over its interval, so the connection is
+      // gone whatever `readyState` says.
+      const armWatchdog = () => {
+        if (watchdog !== null) clearTimeout(watchdog);
+        watchdog = setTimeout(() => reopen(), STREAM_STALE_MS);
+      };
+
+      // Tear the current connection down and open a new one, backing off so a
+      // backend that is down (or rolling) is not hammered. Capped, because the
+      // console is useless until this succeeds — it must keep trying.
+      const reopen = () => {
+        if (unsubscribed) return;
+        clearTimers();
+        source?.close();
+        source = null;
+        streamId = null;
+        const delay = Math.min(
+          STREAM_REOPEN_BASE_MS * 2 ** attempt,
+          STREAM_REOPEN_MAX_MS,
+        );
+        attempt += 1;
+        retry = setTimeout(open, delay);
+      };
+
+      const open = () => {
+        if (unsubscribed) return;
+        const current = new EventSource(joinUrl(backendUrl, "/notifications"));
+        source = current;
+        armWatchdog();
+
+        // Every frame is evidence the stream is alive, so rearm on all of them —
+        // including the heartbeat, which carries nothing else.
+        const onFrame =
+          (handle: (event: MessageEvent) => void) => (event: Event) => {
+            armWatchdog();
+            handle(event as MessageEvent);
+          };
+
+        current.addEventListener(
+          STREAM_EVENT_HELLO,
+          onFrame((event) => {
+            try {
+              streamId = (JSON.parse(event.data) as StreamOpened).streamId;
+            } catch {
+              return;
+            }
+            applyTopics();
+          }),
+        );
+
+        current.addEventListener(
+          STREAM_EVENT_NOTIFICATION,
+          onFrame((event) => {
+            try {
+              handlers.onNotification(
+                JSON.parse(event.data) as RunNotification,
+              );
+            } catch {
+              // A malformed payload shouldn't tear down the channel; drop it.
+            }
+          }),
+        );
+
+        current.addEventListener(
+          STREAM_EVENT_RUN,
+          onFrame((event) => {
+            try {
+              handlers.onRunLifecycle?.(
+                JSON.parse(event.data) as RunLifecycleEvent,
+              );
+            } catch {
+              // As above — one bad frame is not worth the connection.
+            }
+          }),
+        );
+
+        // The backend dropped messages for this client because it fell behind. The
+        // stream keeps no backlog, so they are gone; the only recovery is to
+        // re-read the authoritative lists.
+        current.addEventListener(
+          STREAM_EVENT_RESYNC,
+          onFrame(() => handlers.onResync?.()),
+        );
+
+        current.addEventListener(
+          STREAM_EVENT_HEARTBEAT,
+          onFrame(() => {}),
+        );
+
+        // Fires on connect, whether this was the first attempt, the browser's own
+        // reconnect, or ours. Because the feed carries no backlog, anything
+        // published while the channel was down is gone; the console reconciles
+        // against the active list on each open to recover it.
+        current.onopen = () => {
+          attempt = 0;
+          armWatchdog();
+          handlers.onOpen?.();
+        };
+
+        current.onerror = (event) => {
+          // The stream this id named is gone. Clearing it keeps a topic change
+          // made while disconnected from PUTting against a dead stream; the next
+          // hello frame supplies the new id.
+          streamId = null;
+          handlers.onError?.(event);
+          // CLOSED means the browser has given up for good — it will not retry, so
+          // nothing reopens this but us. CONNECTING means it is already retrying,
+          // and racing it would only multiply connections; the watchdog is the
+          // backstop if that retry never lands.
+          if (current.readyState === EventSource.CLOSED) reopen();
+        };
+      };
+
+      open();
+
+      return () => {
+        unsubscribed = true;
+        clearTimers();
+        streamId = null;
+        source?.close();
+        source = null;
+      };
+    },
+
+    async setRunLifecycleEnabled(enabled: boolean): Promise<void> {
+      runLifecycleWanted = enabled;
+      // Record the intent even with no stream open — the console toggles this on
+      // navigation, which can easily happen before the stream connects or during a
+      // reconnect, and the hello-frame handler replays whatever was last wanted.
+      if (!streamId) return;
+      await putVoid(backendUrl, topicsPath(streamId), { runs: enabled });
     },
 
     async listRuns(): Promise<StoredRun[]> {
@@ -1263,22 +1758,19 @@ export function createBackendExec(
       );
     },
 
+    enqueuePublish(id: string, token: string): Promise<PublishEnqueued> {
+      return enqueuePublish(backendUrl, id, token);
+    },
+
     async publish(
       id: string,
       token: string,
       onProgress?: (progress: PublishProgress) => void,
     ): Promise<PublishResult> {
-      // Publishing is asynchronous. `POST /runs/{id}/publish` is the gate (the
-      // backend refuses a run with zero reviews / an infra failure) and the
-      // *enqueue*: it answers `202` with the publish-job id and the live URL to
-      // observe the gh/wrangler release on. Subscribe to that NDJSON stream and
-      // resolve once it reports the terminal result — never poll.
-      const ack = await postJson<{ publishJobId: string; liveUrl: string }>(
-        backendUrl,
-        `/runs/${encodeURIComponent(id)}/publish`,
-        {},
-        token,
-      );
+      // Publishing is asynchronous: the POST only gates and enqueues. Subscribe to
+      // the live NDJSON stream it points at and resolve once that reports the
+      // terminal result — never poll.
+      const ack = await enqueuePublish(backendUrl, id, token);
       return streamPublish(backendUrl, ack.liveUrl, onProgress);
     },
 
@@ -1305,6 +1797,37 @@ export function createBackendExec(
         {},
         token,
       );
+    },
+
+    async cancelWaitingRuns(token: string): Promise<BulkCancelOut> {
+      // `POST /jobs/cancel-waiting` — every `queued` and `pending` job, whoever
+      // launched it. The backend names these states "waiting" rather than "pending"
+      // because `pending` is one of them (a run held back by its harness's
+      // parallelism cap), and the console surfaces that state separately.
+      return postJson<BulkCancelOut>(
+        backendUrl,
+        "/jobs/cancel-waiting",
+        {},
+        token,
+      );
+    },
+
+    async cancelActiveRuns(token: string): Promise<BulkCancelOut> {
+      // `POST /jobs/cancel-active` — every `dispatched`, `starting`, and `running`
+      // job. It deliberately leaves the waiting queue alone, so the dispatcher
+      // resumes claiming from it immediately; `cancelAllRuns` is the one that stops.
+      return postJson<BulkCancelOut>(
+        backendUrl,
+        "/jobs/cancel-active",
+        {},
+        token,
+      );
+    },
+
+    async cancelAllRuns(token: string): Promise<BulkCancelOut> {
+      // `POST /jobs/cancel-all` — both sets in one atomic sweep rather than two
+      // calls, so no queued job can be claimed into execution between them.
+      return postJson<BulkCancelOut>(backendUrl, "/jobs/cancel-all", {}, token);
     },
 
     // A pre-publish run's proof / asset media is served by the artifact service
@@ -1442,6 +1965,25 @@ type PublishStreamLine =
       playableBuild?: string | null;
       detail?: string | null;
     };
+
+// Gate and enqueue a publish (`POST /runs/{id}/publish`, Bearer). The backend
+// refuses a run that cannot be published (no reviews, an infrastructure failure)
+// here, synchronously; on acceptance it answers `202` with the queued publish job
+// and the live URL its release can be watched on. Shared by the transport's
+// enqueue-only method and by `publish`, which goes on to watch that stream, so the
+// two can never gate differently.
+function enqueuePublish(
+  backendUrl: string,
+  id: string,
+  token: string,
+): Promise<PublishEnqueued> {
+  return postJson<PublishEnqueued>(
+    backendUrl,
+    `/runs/${encodeURIComponent(id)}/publish`,
+    {},
+    token,
+  );
+}
 
 // Read the backend's live publish stream (`GET /publish-jobs/{id}/live`, NDJSON),
 // forwarding each progress line to `onProgress` and resolving with the terminal

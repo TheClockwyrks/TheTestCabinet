@@ -13,8 +13,18 @@ pub struct Model {
     /// The job id; the primary key, minted by the backend at enqueue.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    /// The lifecycle state: `queued`, `dispatched`, `running`, `succeeded`,
-    /// `failed`, or `canceled`.
+    /// The lifecycle state: `queued`, `pending`, `dispatched`, `starting`,
+    /// `running`, `succeeded`, `failed`, or `canceled`.
+    ///
+    /// `pending` is a *held back* job, distinct from `queued`: it is eligible but
+    /// deliberately not dispatched yet, because its harness is at its parallelism cap
+    /// or another run of the same game jam and model is still in flight. The console
+    /// surfaces it separately from `queued` so a review buffer that is full of jobs
+    /// nothing is executing reads as serialization rather than as a stuck queue.
+    /// `starting` is a job whose driver Job exists but has not begun the run.
+    ///
+    /// Neither `queued` nor `pending` has a driver, which is why they are the pair a
+    /// `halt` (and the Runs page's "Clear pending") can cancel for free.
     pub state: String,
     /// The launch request serialized verbatim (the `RunRequest` HTTP shape the
     /// console submitted), handed to the driver when the job is claimed.
@@ -52,7 +62,39 @@ pub struct Model {
     /// infrastructure/catastrophic failure. Bounded against the launch request's
     /// `retryCount` so the retry chain always terminates.
     pub attempt: i32,
-    /// RFC 3339 of when the job was enqueued (the claim ordering key).
+    /// The queue's ordering key: a monotonic sequence number minted at enqueue, in
+    /// the order the runs were submitted (a batch's runs keep the order the console
+    /// listed them in). The claim dispatches in ascending `queue_seq`, so a batch of
+    /// repeated runs starts — and so finishes — in the order it was requested.
+    ///
+    /// `created_at` cannot serve as that key: every run of one `POST /jobs/batch`
+    /// shares a single enqueue timestamp, and it is stored as a string whose RFC 3339
+    /// subsecond part is variable-length, so lexicographic order is not always
+    /// chronological order. `0` for rows enqueued before the column existed, which
+    /// sorts them ahead of everything minted since — correct, as they are older.
+    pub queue_seq: i64,
+    /// The account that launched this job (from the auth service, via the verified
+    /// bearer token), or `NULL` when unknown — every row enqueued before the column
+    /// existed, which reads as an unattributed manual launch.
+    ///
+    /// Attribution only. Coverage counting stays **global**: a run counts toward its
+    /// cell's target whoever launched it, so an existing run is never re-requested
+    /// just because a different account produced it. The per-account half of
+    /// coverage is *judgement* — whose `review` row exists — not this column.
+    #[sea_orm(nullable)]
+    pub user_id: Option<String>,
+    /// What launched this job: `plan:<id>` for a coverage plan's top-up,
+    /// `ladder:<id>` for a ladder's, or `NULL` for a run launched by hand from the
+    /// new-run form.
+    ///
+    /// This is what makes halting safe. `halt` cancels exactly the plan's or
+    /// ladder's own `queued`/`pending` jobs; without an origin there is no way to
+    /// tell those from the manual run someone kicked off in another tab, and a
+    /// `NULL` origin is never swept up by a scoped halt. Like `user_id`, it is
+    /// invisible to coverage counting.
+    #[sea_orm(nullable)]
+    pub origin: Option<String>,
+    /// RFC 3339 of when the job was enqueued.
     pub created_at: String,
     /// RFC 3339 of the last state transition.
     pub updated_at: String,

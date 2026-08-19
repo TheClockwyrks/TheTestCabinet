@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CONFIRM_KILL_RUN, useRunKill } from "../data/useRunKill";
+import { useConfirm } from "./ConfirmDialog";
 import styles from "./KillRunControl.module.scss";
 
 // A control for killing an in-flight run, shown in the live monitor while the run
@@ -16,13 +17,14 @@ import styles from "./KillRunControl.module.scss";
 // only issues the request and reports a failure inline.
 export function KillRunControl({ runId }: { runId: string }) {
   const { canKill, killRun } = useRunKill();
+  const { confirm } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!canKill) return null;
 
   const onKill = async () => {
-    if (!window.confirm(CONFIRM_KILL_RUN)) return;
+    if (!(await confirm(CONFIRM_KILL_RUN))) return;
     setBusy(true);
     setError(null);
     try {
