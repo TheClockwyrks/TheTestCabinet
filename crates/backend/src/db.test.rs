@@ -3031,10 +3031,14 @@ async fn publishable_slice_matches_the_publish_gate() {
         ("cat", RunState::Catastrophic, false),
         ("slow", RunState::TimedOut, false),
         ("harness", RunState::HarnessError, false),
+        ("hung", RunState::Hung, false),
         ("infra", RunState::Infrastructure, false),
-        // A reviewed infrastructure failure is the case the review count alone
-        // would wrongly admit: it is our fault, so it is never publishable.
+        // The two never-publishable states, each seeded reviewed as well, because a
+        // review is what satisfies the other half of the rule: these are the rows the
+        // slice would list and the gate would then refuse.
         ("infra-reviewed", RunState::Infrastructure, true),
+        ("canceled", RunState::Canceled, false),
+        ("canceled-reviewed", RunState::Canceled, true),
     ];
     for (id, state, reviewed) in seeded {
         let mut r = record(id);
@@ -3063,7 +3067,7 @@ async fn publishable_slice_matches_the_publish_gate() {
     accepted_by_the_gate.sort();
 
     assert_eq!(listed, accepted_by_the_gate);
-    assert_eq!(listed, ["cat", "done-reviewed", "harness", "slow"]);
+    assert_eq!(listed, ["cat", "done-reviewed", "harness", "hung", "slow"]);
 }
 
 /// Publishing a run retires it from the worklist — the slice is what is *still*

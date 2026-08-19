@@ -4213,13 +4213,17 @@ fn state_slice(state: SummaryState) -> Select<run::Entity> {
             query.filter(run::Column::RunState.is_in(publishable_failure_states()))
         }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
-        // Mirrors `gate_publishable` as a query: not already public, never an
-        // infrastructure failure, and either a publishable failure tier (no review
-        // required) or a run someone has reviewed. Kept in step with the gate by
-        // `publishable_slice_matches_the_publish_gate`.
+        // Mirrors `gate_publishable` as a query: not already public, never one of the
+        // states that can never be published, and either a publishable failure tier
+        // (no review required) or a run someone has reviewed. The exclusion is
+        // `never_publishable_states` rather than a written-out state for the reason
+        // that helper exists: a review is enough to satisfy the second half of the
+        // rule, so any state naming itself unpublishable has to be refused by the
+        // first half or a reviewed one would be listed and then refused by the gate.
+        // Kept in step with the gate by `publishable_slice_matches_the_publish_gate`.
         SummaryState::Publishable => query
             .filter(run::Column::Published.eq(false))
-            .filter(run::Column::RunState.ne("infrastructure"))
+            .filter(run::Column::RunState.is_not_in(never_publishable_states()))
             .filter(
                 Condition::any()
                     .add(run::Column::RunState.is_in(publishable_failure_states()))
