@@ -246,6 +246,15 @@ pub fn resolve_path(cwd: &Path, path: &str) -> Result<PathBuf, String> {
     Ok(cwd.join(path))
 }
 
+/// The `path` argument's schema, worded once for all four filesystem tools: `lead` names what
+/// the path points at, and the resolution rule is the same everywhere.
+fn path_param(lead: &str) -> Value {
+    json!({
+        "type": "string",
+        "description": format!("{lead}. Workspace-relative or absolute."),
+    })
+}
+
 /// Read `field` from `args` as an **optional** positive integer (the `offset`/`limit`
 /// paging arguments). Absent or `null` is `None` — the caller's default applies — while a
 /// present value that is not a positive integer is an error rather than a silent default,
@@ -572,20 +581,14 @@ impl Tool for ReadFileTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        let path = json!({
-            "type": "string",
-            "description": "Path to the file to read — relative to the workspace root, or absolute."
-        });
+        let path = path_param("File to read");
         // The unlimited mode offers no paging arguments at all: with the whole file in
         // every result there is nothing for the agent to page through, and offering knobs
         // that never bind would misrepresent the arm.
         let Some(cap) = self.policy.line_cap() else {
             return ToolDefinition::new(
                 "read_file",
-                "Read a file and return its contents (truncated if very \
-                 large). Text files are returned as text; a PNG, JPEG, GIF, or WebP image \
-                 is returned as the image itself when the session's model can see one, and \
-                 otherwise described.",
+                "Read a file.",
                 json!({
                     "type": "object",
                     "properties": { "path": path },
@@ -595,21 +598,13 @@ impl Tool for ReadFileTool {
             );
         };
 
-        let (description, limit_description) = (
-            format!(
-                "Read a file. A text file returns {cap} lines by \
-                 default, starting at `offset`; pass a larger `limit` when you need \
-                 more of the file at once. The result tells you how many lines the file \
-                 has and where to continue from. A PNG, JPEG, GIF, or WebP image is \
-                 returned whole, as the image itself, when the session's model can see \
-                 one — `offset`/`limit` do not apply to it."
-            ),
-            format!("How many lines to return (default {cap}; larger is allowed)."),
-        );
+        // The cap itself belongs on the argument that overrides it: the system prompt already
+        // tells this run's model how many lines a read returns.
+        let limit_description = format!("Lines to return (default {cap}; larger is allowed).");
 
         ToolDefinition::new(
             "read_file",
-            description,
+            "Read a file.",
             json!({
                 "type": "object",
                 "properties": {
@@ -617,7 +612,7 @@ impl Tool for ReadFileTool {
                     "offset": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "1-based line number to start reading from (default 1)."
+                        "description": "First line to read, 1-based (default 1)."
                     },
                     "limit": {
                         "type": "integer",
@@ -706,18 +701,15 @@ impl Tool for WriteFileTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "write_file",
-            "Write UTF-8 text to a file, creating parent directories \
-             and overwriting any existing file.",
+            "Write UTF-8 text to a file, creating parent directories and overwriting \
+             any existing file.",
             json!({
                 "type": "object",
                 "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path to write — relative to the workspace root, or absolute."
-                    },
+                    "path": path_param("File to write"),
                     "contents": {
                         "type": "string",
-                        "description": "The file's full contents."
+                        "description": "Full file contents."
                     }
                 },
                 "required": ["path", "contents"],
@@ -786,23 +778,19 @@ impl Tool for EditFileTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "edit_file",
-            "Replace an exact occurrence of `old_string` with `new_string` in a \
-             file. `old_string` must appear exactly once; the edit fails if \
-             it is missing or ambiguous.",
+            "Replace `old_string` with `new_string` in a file. `old_string` must match \
+             the file's text exactly and occur exactly once.",
             json!({
                 "type": "object",
                 "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path to edit — relative to the workspace root, or absolute."
-                    },
+                    "path": path_param("File to edit"),
                     "old_string": {
                         "type": "string",
-                        "description": "The exact text to replace (must be unique in the file)."
+                        "description": "Text to replace."
                     },
                     "new_string": {
                         "type": "string",
-                        "description": "The replacement text."
+                        "description": "Replacement text."
                     }
                 },
                 "required": ["path", "old_string", "new_string"],
@@ -903,15 +891,11 @@ impl Tool for ListDirTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "list_dir",
-            "List a directory's entries. Directories are \
-             suffixed with `/`. Defaults to the workspace root.",
+            "List a directory's entries.",
             json!({
                 "type": "object",
                 "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Directory to list — relative to the workspace root, or absolute (defaults to `.`)."
-                    }
+                    "path": path_param("Directory to list (default `.`)")
                 },
                 "required": [],
                 "additionalProperties": false

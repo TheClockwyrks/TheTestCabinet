@@ -414,10 +414,9 @@ async fn a_tool_description_states_only_the_limits_in_force() {
         },
     );
     let description = CreateMemoryTool::new(unbounded).definition().description;
-    // The description cap is the one limit every strategy defaults, so it is still stated; what must
-    // be gone are the three this arm switched off.
-    assert!(!description.contains("12 memories"), "{description}");
-    assert!(!description.contains("500 characters"), "{description}");
+    // With every limit this description states switched off, the sentence naming them goes
+    // entirely rather than dangling on an empty list.
+    assert!(!description.contains("at most"), "{description}");
 }
 
 /// `read_memory` tells the model where slugs come from, which differs by strategy: an index it can

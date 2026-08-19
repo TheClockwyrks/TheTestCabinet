@@ -1,4 +1,4 @@
-//! The `read_skill` tool: load an authored [skill](crate::skills)'s body into context.
+//! The `read_skill` tool: load a [skill](crate::skills)'s body into context.
 //!
 //! Unlike `read_file`, `read_skill` takes a skill **name** (not a path), returns the
 //! skill's body with its front matter stripped, and — crucially — the loop records the
@@ -25,7 +25,7 @@ use crate::skills::SkillLibrary;
 /// The tool name the loop keys skill-specific context handling on.
 pub const READ_SKILL_TOOL: &str = "read_skill";
 
-/// Reads an authored skill by name, returning its body (front matter stripped).
+/// Reads a skill by name, returning its body (front matter stripped).
 pub struct ReadSkillTool {
     /// The shared skill catalog this tool resolves names against.
     library: Arc<SkillLibrary>,
@@ -45,30 +45,23 @@ impl Tool for ReadSkillTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        // List the available skill names in the description so the schema is self-contained
-        // even apart from the system-prompt catalog.
+        // The `name` enum carries the run's catalogue, so the schema is self-contained without the
+        // description repeating the list the system prompt already gives with each skill's purpose.
         let available: Vec<&str> = self
             .library
             .skills()
             .iter()
             .map(|skill| skill.name())
             .collect();
-        let description = format!(
-            "Read an authored skill by name and load its full contents into your context \
-             (they remain available for the rest of the session). Skills are short guides \
-             for parts of this task; their names and descriptions are listed in your \
-             system prompt. Available skills: {}.",
-            available.join(", ")
-        );
         ToolDefinition::new(
             READ_SKILL_TOOL,
-            description,
+            "Read a skill by name.",
             json!({
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "The name of the skill to read (as listed in the system prompt).",
+                        "description": "Skill to read.",
                         "enum": available,
                     }
                 },

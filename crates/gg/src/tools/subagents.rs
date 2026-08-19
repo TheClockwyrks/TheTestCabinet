@@ -79,8 +79,8 @@ pub(crate) fn handled_by_loop(name: &str) -> ToolOutcome {
 /// agent's [resolved roster](GgRosterEntry) so its description names the agents that may be
 /// spawned.
 pub struct SpawnSubagentTool {
-    /// The profiles this agent may spawn, each with the label the model names it by, listed in
-    /// its `agent` argument's description.
+    /// The profiles this agent may spawn, each with the id the model names it by, listed in the
+    /// tool's description.
     agents: Vec<GgRosterEntry>,
 }
 
@@ -101,17 +101,10 @@ impl Tool for SpawnSubagentTool {
         ToolDefinition::new(
             SPAWN_SUBAGENT_TOOL,
             format!(
-                "Delegate a scoped piece of work to a child agent that runs in parallel with you. \
-                 Provide an `agent` — the id of the agent to run it as, which configures the \
-                 subagent's model, tools, and instructions — and a `prompt`, a self-contained brief \
-                 telling the subagent exactly what to do and what 'done' means. The agents you may \
-                 spawn: {menu}. (Board issues are not dispatched this way: submitting an issue \
-                 automatically spawns an agent for it once its blockers are done.) Returns the new \
-                 subagent's id immediately — it is scheduled and runs on its own; call \
-                 `wait_for_subagents` to collect its result, or `send_message` to guide it while it \
-                 runs. A subagent shares your workspace, so give concurrent subagents \
-                 non-overlapping briefs. Spawning fails if you are already at the maximum \
-                 delegation depth.",
+                "Delegate scoped work to a child agent that runs in parallel with you. Returns \
+                 the new subagent's id; collect its result with `wait_for_subagents`, or steer it \
+                 with `send_message` while it runs. Subagents share your workspace, so give \
+                 concurrent subagents non-overlapping briefs. Agents you may spawn: {menu}.",
                 menu = agent_menu(&self.agents),
             ),
             json!({
@@ -119,14 +112,12 @@ impl Tool for SpawnSubagentTool {
                 "properties": {
                     "agent": {
                         "type": "string",
-                        "description": "The id of the agent to run the subagent as, copied exactly \
-                                        from the list of agents you may spawn. This selects its \
-                                        model, tools, and instructions."
+                        "description": "The id of an agent you may spawn, copied exactly, \
+                                        selecting the subagent's model, tools and instructions."
                     },
                     "prompt": {
                         "type": "string",
-                        "description": "A self-contained brief for the subagent (what to do and \
-                                        how it will be judged done)."
+                        "description": "A self-contained brief: what to do, and what counts as done."
                     }
                 },
                 "required": ["agent", "prompt"],
@@ -152,19 +143,15 @@ impl Tool for WaitForSubagentsTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             WAIT_FOR_SUBAGENTS_TOOL,
-            "Wait for one or more of your subagents to finish and collect their return values. \
-             Pass `ids` (a list of subagent ids) to wait for specific children, or omit it to \
-             wait for all of your outstanding subagents. While you wait you free your run slot so \
-             your subagents (and other agents) can run; you resume once the awaited subagents have \
-             all returned. The result contains each subagent's final message.",
+            "Suspend until subagents finish and collect their return values.",
             json!({
                 "type": "object",
                 "properties": {
                     "ids": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Optional ids of the subagents to wait for (omit to wait \
-                                        for all outstanding ones)."
+                        "description": "Subagent ids to wait for; omit to wait for all \
+                                        outstanding ones."
                     }
                 },
                 "additionalProperties": false
@@ -189,20 +176,18 @@ impl Tool for SendMessageTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             SEND_MESSAGE_TOOL,
-            "Send a message to one of your running subagents. Provide the subagent's `agentId` \
-             and the `message` text. The subagent receives your message at its next turn (as a \
-             message from you), so you can course-correct or add context while it works. Fails if \
-             the agent is not one of your subagents or has already returned.",
+            "Send a message to one of your running subagents. It arrives at that subagent's next \
+             turn, so you can course-correct or add context while it works.",
             json!({
                 "type": "object",
                 "properties": {
                     "agentId": {
                         "type": "string",
-                        "description": "The id of the subagent to message (one you spawned)."
+                        "description": "The subagent to message."
                     },
                     "message": {
                         "type": "string",
-                        "description": "The message to deliver to the subagent."
+                        "description": "Text to deliver."
                     }
                 },
                 "required": ["agentId", "message"],

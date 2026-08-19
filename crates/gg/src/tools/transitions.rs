@@ -103,17 +103,11 @@ impl Tool for TransitionStateTool {
         ToolDefinition::new(
             TRANSITION_STATE_TOOL,
             format!(
-                "Move this process on to its next state. You are in the `{state}` state of the \
-                 `{fsm}` process; naming a state hands the work to the agent that state runs, which \
-                 has its own model, tools and instructions. The states you may move to: {menu}. \
-                 What you take with you is fixed by the process, not by you — the transition you \
-                 name decides which of your conversation, memories, task list, board, skills and \
-                 thread archive the next agent receives, and your opening message there says what \
-                 arrived and what did not. The transition happens once this turn's tool results are \
-                 recorded, so finish the turn normally; you do not end your session, the next state \
-                 continues it.",
+                "Move this process from its `{state}` state to the state you name, which runs its \
+                 own agent with its own model, tools and instructions. States you may move to: \
+                 {menu}. The process decides what carries over, so put anything the next agent \
+                 must have in `note`.",
                 state = self.position.state(),
-                fsm = self.position.fsm(),
                 menu = self.position.legal_targets(),
             ),
             json!({
@@ -121,15 +115,11 @@ impl Tool for TransitionStateTool {
                 "properties": {
                     "state": {
                         "type": "string",
-                        "description": "The name of the state to move to (one of the states you \
-                                        may move to)."
+                        "description": "State to move to."
                     },
                     "note": {
                         "type": "string",
-                        "description": "Optional. What the next state's agent should know or do \
-                                        first. It is shown to that agent as its opening message; \
-                                        anything you hand over in your conversation or task list \
-                                        does not need repeating here."
+                        "description": "Opening message for the next state's agent."
                     }
                 },
                 "required": ["state"],
@@ -153,12 +143,23 @@ pub struct ExecTool {
     /// The agents this agent may become — its delegation roster, which is also the allowlist an
     /// `exec` target is validated against.
     agents: Vec<GgRosterEntry>,
+    /// Whether this agent is offered [`spawn_subagent`](super::subagents::SpawnSubagentTool) as
+    /// well, which decides whether the description contrasts the two.
+    ///
+    /// `exec` is bought by its own capability and never implies the delegation one, and the
+    /// profile's tool allowlist can strip a spawn call this one keeps — so the contrast is
+    /// rendered only for an agent that holds both.
+    spawn_subagent: bool,
 }
 
 impl ExecTool {
-    /// Declare `exec` for an agent whose roster is `agents`.
-    pub fn new(agents: Vec<GgRosterEntry>) -> Self {
-        Self { agents }
+    /// Declare `exec` for an agent whose roster is `agents`, which also holds `spawn_subagent`
+    /// when `spawn_subagent`.
+    pub fn new(agents: Vec<GgRosterEntry>, spawn_subagent: bool) -> Self {
+        Self {
+            agents,
+            spawn_subagent,
+        }
     }
 }
 
@@ -172,18 +173,16 @@ impl Tool for ExecTool {
         ToolDefinition::new(
             EXEC_TOOL,
             format!(
-                "Continue this session as a different agent. You are replaced: the named agent's \
-                 model, tools and instructions take over from your next turn, and it keeps \
-                 everything the two of you both have — your whole conversation above all, so it \
-                 does not need to be caught up. Anything it does not have (a capability its profile \
-                 turns off) is dropped, and anything only it has starts empty; its opening message \
-                 says which. The agents you may become: {menu}. Use it when the work has changed \
-                 shape rather than merely grown — a different toolset, a different model, a \
-                 different set of instructions — and use `spawn_subagent` instead when you want the \
-                 other agent to work *for* you and report back. The change happens once this turn's \
-                 tool results are recorded, so finish the turn normally; your session does not end, \
-                 the other agent continues it, and whatever put you to work sees one agent \
-                 throughout.",
+                "Continue this session as a different agent: its model, tools and instructions \
+                 take over from your next turn, and it inherits your conversation. Use it when the \
+                 work needs a different toolset, model or instructions{delegation}. Agents you may \
+                 become: {menu}.",
+                delegation = if self.spawn_subagent {
+                    "; use `spawn_subagent` instead to have another agent work for you and report \
+                     back"
+                } else {
+                    ""
+                },
                 menu = agent_menu(&self.agents),
             ),
             json!({
@@ -191,15 +190,11 @@ impl Tool for ExecTool {
                 "properties": {
                     "agent": {
                         "type": "string",
-                        "description": "The name of the agent to continue as (one of the agents you \
-                                        may become). This selects its model, tools, and \
-                                        instructions."
+                        "description": "Agent to continue as."
                     },
                     "prompt": {
                         "type": "string",
-                        "description": "Optional. What the agent taking over should do first. It is \
-                                        shown to it as its opening message; anything already in the \
-                                        conversation it inherits does not need repeating here."
+                        "description": "Opening message for the agent taking over."
                     }
                 },
                 "required": ["agent"],
@@ -218,7 +213,60 @@ impl Tool for ExecTool {
 /// It takes no `agent`: a fork can only ever be the agent making it. That is the whole difference
 /// from `spawn_subagent`, and it is what makes the copy worth having — it starts knowing everything
 /// the forker knows instead of from a brief someone had to write.
-pub struct ForkTool;
+pub struct ForkTool {
+    /// Whether this agent is offered [`spawn_subagent`](super::subagents::SpawnSubagentTool) as
+    /// well, which decides whether the description contrasts the two.
+    ///
+    /// `fork` needs only the delegation machinery, while a spawn additionally needs a non-empty
+    /// roster and can be stripped by the profile's tool allowlist — so an agent holding `fork`
+    /// routinely holds no spawn call to be preferred over.
+    spawn_subagent: bool,
+    /// Whether this agent holds a [task list](crate::tasks).
+    tasks: bool,
+    /// Whether this agent holds a [thread archive](crate::archive).
+    archive: bool,
+    /// This agent's [memory](crate::memories) binding: `None` without memories at all, and
+    /// otherwise whether that binding links the copy's notebook to this one's.
+    memories: Option<bool>,
+}
+
+impl ForkTool {
+    /// Declare `fork` for an agent that also holds `spawn_subagent` when `spawn_subagent`, holds a
+    /// task list when `tasks` and a thread archive when `archive`, and whose memory binding is
+    /// `memories`.
+    pub fn new(spawn_subagent: bool, tasks: bool, archive: bool, memories: Option<bool>) -> Self {
+        Self {
+            spawn_subagent,
+            tasks,
+            archive,
+            memories,
+        }
+    }
+
+    /// The sentence naming the modules the copy gets its **own** of, or the empty string for an
+    /// agent holding none of them — so a fork description never names a module its caller has no
+    /// way to hold.
+    fn divergence(&self) -> String {
+        let mut own: Vec<&str> = Vec::new();
+        if self.tasks {
+            own.push("task list");
+        }
+        if self.memories == Some(false) {
+            own.push("memories");
+        }
+        if self.archive {
+            own.push("thread archive");
+        }
+        match own.split_last() {
+            None => String::new(),
+            Some((last, [])) => format!(" Its copy of your {last} diverges from yours."),
+            Some((last, rest)) => format!(
+                " Its copies of your {} and {last} diverge from yours.",
+                rest.join(", ")
+            ),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for ForkTool {
@@ -229,26 +277,32 @@ impl Tool for ForkTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             FORK_TOOL,
-            "Run a copy of yourself, in parallel, on something you will not do yourself. The copy \
-             is you: your model, your tools, your instructions, and a private copy of your whole \
-             conversation, so it already knows everything you know and needs no briefing — pass \
-             only what it should do *differently*. It is an ordinary subagent from there: it gets \
-             its own id, works in your workspace, and you collect it with `wait_for_subagents` or \
-             guide it with `send_message`. Prefer it over `spawn_subagent` exactly when the context \
-             is the expensive part — when briefing a fresh agent would mean re-explaining what you \
-             have already worked out. Its own copies of your task list, notes and thread archive \
-             diverge from yours the moment either of you writes; shared memories stay shared. The \
-             copy starts once this turn's tool results are recorded, so wait for it on a later turn \
-             rather than this one. Fails at the maximum delegation depth."
-                .to_string(),
+            format!(
+                "Run a copy of yourself in parallel on work you will not do yourself. The copy \
+                 works in your workspace and has your model, tools, instructions and a private \
+                 copy of your conversation, so brief it only on what it should do \
+                 differently{delegation}. \
+                 Collect it with `wait_for_subagents` or steer it with \
+                 `send_message`.{divergence}{shared}",
+                delegation = if self.spawn_subagent {
+                    "; prefer it over `spawn_subagent` whenever briefing a fresh agent would mean \
+                     re-explaining what you have already worked out"
+                } else {
+                    ""
+                },
+                divergence = self.divergence(),
+                shared = if self.memories == Some(true) {
+                    " Your memories stay shared with it."
+                } else {
+                    ""
+                },
+            ),
             json!({
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "What the copy of you should do that you will not. It is \
-                                        shown to it as its opening message, on top of the \
-                                        conversation it inherits from you."
+                        "description": "What the copy should do differently from you."
                     }
                 },
                 "required": ["prompt"],

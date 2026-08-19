@@ -271,7 +271,7 @@ fn shell_offload_comes_from_the_shell_capability() {
     disabled.capabilities[0].enabled = false;
     assert_eq!(shell_offload(&disabled), OffloadPolicy::Inline);
 
-    // The policy actually reaches the offered tool: its description states the ceiling.
+    // The policy actually reaches the offered tool: its description offers the file pair.
     let registry = ToolRegistry::from_capabilities(&with_mode(
         SHELL_OUTPUT_OFFLOAD,
         json!({ "maxLines": 120 }),
@@ -282,7 +282,7 @@ fn shell_offload_comes_from_the_shell_capability() {
         .find(|def| def.name == SHELL_TOOL)
         .expect("shell is offered");
     assert!(
-        definition.description.contains("last 120 lines"),
+        definition.description.contains("files named in the result"),
         "{}",
         definition.description
     );

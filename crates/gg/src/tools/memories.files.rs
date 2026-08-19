@@ -60,27 +60,21 @@ impl Tool for CreateMemoryTool {
         let indexed = store.strategy().has_index();
         drop(store);
 
-        let purpose = if indexed {
-            "Record a new memory. It is added to your memory index — the list of slugs and \
-             descriptions you can see above, which stays in your context — and keeps the \
-             contents themselves outside your context until you `read_memory` them. Write the \
-             `description` for a future you scanning that index and deciding whether this is the \
-             memory it needs."
+        // With an index in front of the model, how to find a memory again is the index's business;
+        // without one, the only handle on the contents is the words they contain.
+        let searchable = if indexed {
+            ""
         } else {
-            "Record a new memory. Its contents are kept outside your context window; you find it \
-             again with `search_memories` and pull it back with `read_memory`, so write the words \
-             you would search for into it. A `description` is optional and is shown alongside \
-             search results."
+            " Include words you would later search for."
         };
         ToolDefinition::new(
             CREATE_MEMORY_TOOL,
             format!(
-                "{purpose} Memories persist for the session and survive context compaction{}.",
+                "Record a new memory{}.{searchable}",
                 bounds_note(&[
                     (caps.max_count, "memories"),
                     (caps.max_len_per_memory, "characters of contents each"),
                     (caps.max_len_index, "characters of index"),
-                    (caps.max_len_description, "characters of description each"),
                 ])
             ),
             json!({
@@ -88,19 +82,19 @@ impl Tool for CreateMemoryTool {
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "A short slug naming the memory (letters, digits, `-`, `_`, `.`), the handle every other memory call takes."
+                        "description": "Slug naming the memory."
                     },
                     "description": {
                         "type": "string",
                         "description": if indexed {
-                            "A one-line summary of what the memory holds, shown in your memory index."
+                            "One-line summary, shown in your memory index."
                         } else {
-                            "An optional one-line summary of what the memory holds, shown with search results."
+                            "One-line summary, shown with search results."
                         }
                     },
                     "contents": {
                         "type": "string",
-                        "description": "The memory's initial contents, as markdown."
+                        "description": "Contents, as markdown."
                     }
                 },
                 "required": if indexed { json!(["name", "description", "contents"]) } else { json!(["name", "contents"]) },
@@ -177,19 +171,16 @@ impl Tool for ReadMemoryTool {
         ToolDefinition::new(
             READ_MEMORY_TOOL,
             if indexed {
-                "Read one memory's full contents, by the slug your memory index lists it under. \
-                 The index is always in front of you; the contents are not, so read a memory when \
-                 the work you are doing is the work it is about."
+                "Read a memory's contents, by the slug your memory index lists it under."
             } else {
-                "Read one memory's full contents, by the slug `search_memories` returned. Nothing \
-                 about your memories is in your context until you read one."
+                "Read a memory's contents, by the slug `search_memories` returned."
             },
             json!({
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "The slug of the memory to read."
+                        "description": "The memory to read."
                     }
                 },
                 "required": ["name"],
@@ -248,35 +239,24 @@ impl Tool for EditMemoryTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        let caps = self.store.lock().caps();
         ToolDefinition::new(
             EDIT_MEMORY_TOOL,
-            format!(
-                "Revise a memory in place by replacing the one exact occurrence of `old_string` \
-                 with `new_string` — the same edit `edit_file` makes, on a memory instead of a \
-                 file. Append to a memory by quoting its last line and replacing it with itself \
-                 plus what you are adding. Fails if the text is missing or appears more than \
-                 once{}, or if the edit would leave the memory empty — delete it instead when you \
-                 no longer need it.",
-                match caps.max_len_per_memory {
-                    Some(cap) => format!(", or if the result would exceed {cap} characters"),
-                    None => String::new(),
-                }
-            ),
+            "Replace `old_string` with `new_string` in a memory. To append, replace its last \
+             line with that line plus the new text.",
             json!({
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "The slug of the memory to revise."
+                        "description": "The memory to revise."
                     },
                     "old_string": {
                         "type": "string",
-                        "description": "The exact text to replace, which must appear exactly once in the memory."
+                        "description": "Text to replace, matching exactly and occurring once."
                     },
                     "new_string": {
                         "type": "string",
-                        "description": "The text to put in its place. May be empty to cut the old text out."
+                        "description": "Replacement text; empty to cut the old text out."
                     }
                 },
                 "required": ["name", "old_string", "new_string"],
@@ -348,15 +328,10 @@ impl Tool for SearchMemoriesTool {
         ToolDefinition::new(
             SEARCH_MEMORIES_TOOL,
             format!(
-                "Find the memories that mention any of `keywords`, best first. Matching is plain \
+                "Find the memories mentioning any of `keywords`, best first{}. Matching is \
                  case-insensitive substring matching over each memory's slug, description and \
-                 contents, ranked by how many of your keywords a memory mentions and then by how \
-                 often — so pass several specific words rather than one sentence. Each result \
-                 carries a short excerpt; `read_memory` the ones worth having in full.{}",
-                match caps.max_results {
-                    Some(cap) => format!(" At most {cap} results come back."),
-                    None => String::new(),
-                }
+                 contents.",
+                bounds_note(&[(caps.max_results, "results")])
             ),
             json!({
                 "type": "object",
@@ -364,7 +339,7 @@ impl Tool for SearchMemoriesTool {
                     "keywords": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "The words to look for. At least one must be non-empty."
+                        "description": "Individual specific words to look for."
                     }
                 },
                 "required": ["keywords"],

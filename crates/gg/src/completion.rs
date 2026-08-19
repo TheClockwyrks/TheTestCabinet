@@ -44,8 +44,7 @@ pub(crate) fn role_tool_definitions(role: EndingRole) -> Vec<ToolDefinition> {
     match role {
         EndingRole::Standard => vec![ToolDefinition::new(
             FINISH_TOOL,
-            "End your session once the work is complete, reporting what you did. This is the only \
-             way to end it: a reply with no tool call does not.",
+            "End your session once the work is complete.",
             json!({
                 "type": "object",
                 "properties": {
@@ -61,8 +60,7 @@ pub(crate) fn role_tool_definitions(role: EndingRole) -> Vec<ToolDefinition> {
         EndingRole::Review => vec![
             ToolDefinition::new(
                 APPROVE_TOOL,
-                "Accept the work you are reviewing: it meets every completion criterion and stays \
-                 in scope. Ends your session.",
+                "Accept the work: it meets every completion criterion and stays in scope.",
                 json!({
                     "type": "object",
                     "properties": {},
@@ -71,8 +69,7 @@ pub(crate) fn role_tool_definitions(role: EndingRole) -> Vec<ToolDefinition> {
             ),
             ToolDefinition::new(
                 REQUEST_CHANGES_TOOL,
-                "Reject the work you are reviewing, listing every change it needs before it can be \
-                 accepted. Ends your session.",
+                "Reject the work, naming every change it needs to be accepted.",
                 json!({
                     "type": "object",
                     "properties": {
@@ -80,8 +77,7 @@ pub(crate) fn role_tool_definitions(role: EndingRole) -> Vec<ToolDefinition> {
                             "type": "array",
                             "minItems": 1,
                             "items": { "type": "string" },
-                            "description": "One change per entry, each saying what is wrong and \
-                                            what to change."
+                            "description": "One change per entry: what is wrong and what to change."
                         }
                     },
                     "required": ["items"],

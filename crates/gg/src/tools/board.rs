@@ -157,33 +157,6 @@ fn name_array(
     }
 }
 
-/// Render half of a filing agent's [roster](GgRosterEntry) as a sentence for `create_issue`'s
-/// description, so the model is told exactly which ids it may pass and the caller-scoped guidance
-/// for each.
-///
-/// Deliberately the same shape as the delegation tools' menu: naming an agent to assign an issue to
-/// and naming an agent to spawn are the same act from the model's side, and a model that has learned
-/// one spelling should not have to learn a second.
-fn agent_menu(agents: &[GgRosterEntry]) -> String {
-    if agents.is_empty() {
-        return "(none)".to_string();
-    }
-    agents
-        .iter()
-        .map(|entry| {
-            // The id is what the model passes; the name is only here so the menu reads as prose.
-            let name = entry.name.trim();
-            match (name.is_empty(), entry.description.trim()) {
-                (true, "") => format!("`{}`", entry.agent_id),
-                (true, why) => format!("`{}` ({why})", entry.agent_id),
-                (false, "") => format!("`{}` ({name})", entry.agent_id),
-                (false, why) => format!("`{}` ({name}: {why})", entry.agent_id),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("; ")
-}
-
 /// One profile as a confirmation names it: its id, and — when the roster carries a display name that
 /// says more than the id already does — that name in parentheses after it.
 ///
@@ -227,19 +200,15 @@ impl Tool for CreateEpicTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             CREATE_EPIC_TOOL,
-            "Create an epic to group related issues. Provide a `prefix` of 3-6 letters naming the \
-             epic (upper-cased for you — a prefix of `auth` becomes `AUTH`), a `title`, and a \
-             `description` of what the epic covers. The prefix is the epic's id, and the issues you \
-             file under it are numbered from it: `AUTH-1`, `AUTH-2`, and so on.",
+            "Create an epic grouping related issues.",
             json!({
                 "type": "object",
                 "properties": {
                     "prefix": {
                         "type": "string",
-                        "description": "A 3-6 letter prefix naming the epic (upper-cased); its \
-                                        issues are numbered from it, e.g. `AUTH-1`."
+                        "description": "3-6 letters, upper-cased to form the epic's id."
                     },
-                    "title": { "type": "string", "description": "A short title for the epic." },
+                    "title": { "type": "string", "description": "A short title." },
                     "description": {
                         "type": "string",
                         "description": "What this epic covers."
@@ -316,32 +285,6 @@ impl CreateIssueTool {
         Self { store, policy }
     }
 
-    /// The `agent`/`reviewers` half of the tool's description — the profiles this agent may
-    /// assign the work to, the ones it may name as reviewers, and whether naming reviewers is
-    /// required. Each is offered as `` `id` (Name: guidance) ``: the id is the value the argument
-    /// takes, and the rest is there so the model can tell one profile from another.
-    fn assignment_guidance(&self) -> String {
-        let implementers = agent_menu(&self.policy.implementers);
-        let reviewer_list = agent_menu(&self.policy.reviewers);
-        let reviewers = if self.policy.require_reviewers {
-            format!(
-                " You must also name one or more `reviewers` by id, drawn from: {reviewer_list}. \
-                 Each of them reviews the finished work, and all of them must approve it before the \
-                 issue is accepted."
-            )
-        } else {
-            format!(
-                " You may name one or more `reviewers` by id, drawn from: {reviewer_list}. Each of \
-                 them reviews the finished work, and all of them must approve it before the issue \
-                 is accepted."
-            )
-        };
-        format!(
-            " Name in `agent` the id of the agent this issue is dispatched to; you may assign to: \
-             {implementers}.{reviewers}"
-        )
-    }
-
     /// Refuse an id this agent may not assign the issue to, listing the ids it may.
     ///
     /// The refusal lists ids rather than display names because an id is exactly what the model has
@@ -394,24 +337,14 @@ impl Tool for CreateIssueTool {
         }
         ToolDefinition::new(
             CREATE_ISSUE_TOOL,
-            format!(
-                "Create an issue — a heavyweight, self-contained unit of work. Provide a `title` \
-                 and the structured sections that make it safe to hand off: `inScope` (what this \
-                 issue is responsible for), `outOfScope` (what it is not), and \
-                 `completionCriteria` (how it will be judged done). Optionally add a \
-                 `description` overview, a `blockedBy` list of issue ids that must finish first \
-                 (a cycle is refused — issues form a DAG), and an `epicId` to group it under an \
-                 epic. You do not choose the issue's id: it is assigned from its epic's prefix \
-                 (`AUTH-1`, `AUTH-2`, …) and reported back to you.{}",
-                self.assignment_guidance()
-            ),
+            "Create an issue: one self-contained unit of work, dispatched to `agent`.",
             json!({
                 "type": "object",
                 "properties": {
-                    "title": { "type": "string", "description": "A short title for the issue." },
+                    "title": { "type": "string", "description": "A short title." },
                     "description": {
                         "type": "string",
-                        "description": "An optional longer overview of the issue."
+                        "description": "A longer overview."
                     },
                     "inScope": {
                         "type": "string",
@@ -419,26 +352,25 @@ impl Tool for CreateIssueTool {
                     },
                     "outOfScope": {
                         "type": "string",
-                        "description": "What this issue is explicitly not responsible for."
+                        "description": "What it is not responsible for."
                     },
                     "completionCriteria": {
                         "type": "string",
-                        "description": "How the issue will be judged done (its acceptance criteria)."
+                        "description": "How the work is judged done."
                     },
                     "blockedBy": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Optional ids of issues that must be done before this one."
+                        "description": "Ids of issues that must finish first."
                     },
                     "epicId": {
                         "type": "string",
-                        "description": "Optional id of the epic to group this issue under."
+                        "description": "The epic to group this issue under."
                     },
                     "agent": {
                         "type": "string",
                         "enum": GgRosterEntry::ids(&self.policy.implementers),
-                        "description": "The id of the agent to dispatch this issue to, copied \
-                                        exactly from the agents you may assign to."
+                        "description": "The id of the agent to dispatch this issue to."
                     },
                     "reviewers": {
                         "type": "array",
@@ -446,8 +378,8 @@ impl Tool for CreateIssueTool {
                             "type": "string",
                             "enum": GgRosterEntry::ids(&self.policy.reviewers)
                         },
-                        "description": "The ids of the agents that must each approve this issue's \
-                                        work before it is accepted."
+                        "description": "The ids of the agents that must each approve the work \
+                                        before the issue is accepted."
                     }
                 },
                 "required": required,
@@ -602,10 +534,7 @@ impl Tool for UpdateIssueTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             UPDATE_ISSUE_TOOL,
-            "Revise an issue by `id`: change its `title`, `description`, `inScope`, \
-             `outOfScope`, `completionCriteria`, `status` (`open`, `in_progress`, or `done`), \
-             and/or `epicId` (pass an empty string to ungroup it). Supply at least one field to \
-             change. To change what an issue is blocked by, use `set_issue_blocked_by` instead.",
+            "Revise an issue. Supply at least one field to change.",
             json!({
                 "type": "object",
                 "properties": {
@@ -613,7 +542,7 @@ impl Tool for UpdateIssueTool {
                     "title": { "type": "string", "description": "A new title." },
                     "description": {
                         "type": "string",
-                        "description": "A new overview (empty clears it)."
+                        "description": "A new overview; empty clears it."
                     },
                     "inScope": { "type": "string", "description": "A new in-scope statement." },
                     "outOfScope": { "type": "string", "description": "A new out-of-scope statement." },
@@ -628,7 +557,7 @@ impl Tool for UpdateIssueTool {
                     },
                     "epicId": {
                         "type": "string",
-                        "description": "Re-group under this epic (empty string ungroups)."
+                        "description": "The epic to re-group under; empty ungroups."
                     }
                 },
                 "required": ["id"],
@@ -755,10 +684,7 @@ impl Tool for SetIssueBlockedByTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             SET_ISSUE_BLOCKED_BY_TOOL,
-            "Set which issues an issue is blocked by. Provide the issue `id` and the full \
-             `blockedBy` list of issue ids that must finish first (pass `[]` to clear all \
-             blockers). This replaces the issue's current blockers. Any edge that would create a \
-             cycle is refused and nothing changes — issues form a DAG.",
+            "Replace the set of issues an issue is blocked by.",
             json!({
                 "type": "object",
                 "properties": {
@@ -769,7 +695,7 @@ impl Tool for SetIssueBlockedByTool {
                     "blockedBy": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "The full set of issue ids this issue is blocked by (`[]` clears)."
+                        "description": "The full set of issue ids this issue is blocked by; `[]` clears them."
                     }
                 },
                 "required": ["id", "blockedBy"],
@@ -836,8 +762,7 @@ impl Tool for RemoveEpicTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             REMOVE_EPIC_TOOL,
-            "Remove an epic by `id`. Any issue grouped under it is ungrouped (its issues are \
-             kept). Fails if no epic of that id exists.",
+            "Remove an epic. The issues grouped under it are kept, ungrouped.",
             json!({
                 "type": "object",
                 "properties": {
@@ -900,8 +825,7 @@ impl Tool for RemoveIssueTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             REMOVE_ISSUE_TOOL,
-            "Remove an issue by `id`. It is also dropped from any other issue's blockers, so no \
-             dangling dependency is left. Fails if no issue of that id exists.",
+            "Remove an issue, dropping it from every other issue's blockers.",
             json!({
                 "type": "object",
                 "properties": {
@@ -964,18 +888,13 @@ impl Tool for WaitForIssueTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             WAIT_FOR_ISSUE_TOOL,
-            "Wait until a board issue is finished before continuing. Provide the `issueId`. Your \
-             turn is suspended (freeing capacity for other agents) until that issue reaches a \
-             terminal state — done, or failed if its assigned agent could not complete it — then \
-             resumes and tells you which. Use this to sequence your own work behind an issue you \
-             depend on. You cannot wait on the issue you were assigned to implement (do the work \
-             and finish — your issue is completed when you are).",
+            "Suspend your turn until a board issue finishes, then resume.",
             json!({
                 "type": "object",
                 "properties": {
                     "issueId": {
                         "type": "string",
-                        "description": "The id of the board issue to wait for."
+                        "description": "The id of the issue to wait for."
                     }
                 },
                 "required": ["issueId"],

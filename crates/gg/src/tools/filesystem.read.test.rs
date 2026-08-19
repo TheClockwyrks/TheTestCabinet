@@ -454,20 +454,24 @@ async fn an_unterminated_last_line_is_counted() {
 
 /// Two modes, two declarations: the capped one offers the paging arguments and states the
 /// default *as* a default, and the unlimited one offers neither knob.
+///
+/// The cap is stated on `limit` — the argument that overrides it — and nowhere else: the
+/// system prompt already tells the model how many lines a read returns this run, so repeating
+/// it in the tool's own prose is a second copy sent on every request.
 #[test]
 fn each_mode_declares_exactly_the_arguments_it_honors() {
     let capped = tool(ReadPolicy::DefaultCap(250)).definition();
-    assert!(
-        capped.description.contains("250 lines by default"),
-        "{}",
-        capped.description
-    );
     let properties = capped.parameters["properties"].as_object().unwrap();
     assert!(properties.contains_key("offset"));
     let limit = properties["limit"]["description"].as_str().unwrap();
     assert!(
-        limit.contains("larger is allowed"),
-        "the declaration says the cap is negotiable: {limit}"
+        limit.contains("250") && limit.contains("larger is allowed"),
+        "the declaration states the cap as a default the model may talk past: {limit}"
+    );
+    assert!(
+        !capped.description.contains("250"),
+        "the system prompt already states this run's line cap: {}",
+        capped.description
     );
 
     let unlimited = tool(ReadPolicy::Unlimited).definition();

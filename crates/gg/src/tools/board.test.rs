@@ -223,9 +223,9 @@ async fn create_issue_only_assigns_to_a_spawnable_agent() {
     assert!(outcome.output.contains("agent"), "{}", outcome.output);
 }
 
-/// Every model-facing surface of `create_issue` is in the **id** vocabulary: the schema enumerates
-/// ids, the description reads `` `id` (Name) `` so the model can tell two profiles apart, and the
-/// confirmation leads with the id the issue was recorded under.
+/// Every model-facing surface of `create_issue` is in the **id** vocabulary: the two rosters reach
+/// the model as the schema's `enum`s — not as prose, which the system prompt's project-management
+/// section already renders — and the confirmation leads with the id the issue was recorded under.
 #[tokio::test]
 async fn create_issue_offers_ids_and_names_them_in_prose() {
     let (store, ctx, _dir) = fixture();
@@ -240,20 +240,15 @@ async fn create_issue_offers_ids_and_names_them_in_prose() {
         definition.parameters["properties"]["reviewers"]["items"]["enum"],
         json!([REVIEWER])
     );
-    assert!(
-        definition
-            .description
-            .contains(&format!("`{IMPLEMENTER}` ({IMPLEMENTER_NAME})")),
-        "{}",
-        definition.description
-    );
-    assert!(
-        definition
-            .description
-            .contains(&format!("`{REVIEWER}` ({REVIEWER_NAME})")),
-        "{}",
-        definition.description
-    );
+    // The roster is enumerated once, in the schema. Re-listing it in the description would be the
+    // same names paid for on every request, after the system prompt has already listed them.
+    for name in [IMPLEMENTER_NAME, REVIEWER_NAME] {
+        assert!(
+            !definition.description.contains(name),
+            "the description restates the roster: {}",
+            definition.description
+        );
+    }
 
     let outcome = tool.invoke(issue_args("a"), &ctx).await;
     assert!(outcome.ok, "{}", outcome.output);
@@ -279,9 +274,13 @@ async fn the_reviewers_feature_makes_reviewers_mandatory() {
     assert_eq!(bare.failure, Some(ToolFailure::InvalidArgument));
     assert!(bare.output.contains("reviewer"), "{}", bare.output);
     assert_eq!(store.lock().unwrap().issue_count(), 0);
-    // The tool tells the model the field is required, and which agents may fill it.
+    // The tool tells the model the field is required, and which agents may fill it — both through
+    // the schema, which is where a model reads a requirement it must satisfy.
     let definition = tool.definition();
-    assert!(definition.description.contains("reviewers"));
+    assert_eq!(
+        definition.parameters["properties"]["reviewers"]["items"]["enum"],
+        json!([REVIEWER])
+    );
     assert_eq!(
         definition.parameters["required"],
         json!([

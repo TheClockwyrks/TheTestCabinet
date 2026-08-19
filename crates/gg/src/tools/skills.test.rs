@@ -89,15 +89,14 @@ async fn an_unknown_skill_is_not_found_and_a_malformed_call_is_not() {
     assert_eq!(malformed.failure, Some(ToolFailure::InvalidArgument));
 }
 
+/// The catalogue reaches the model through the `name` enum — the whole library, exactly — rather
+/// than through prose repeating what the system prompt already lists.
 #[test]
 fn definition_advertises_the_available_skill_names() {
     let definition = tool().definition();
     assert_eq!(definition.name, READ_SKILL_TOOL);
-    assert!(definition.description.contains("intro"));
-    assert!(definition.description.contains("combat"));
-    // The name parameter is constrained to the known skills.
     let names = definition.parameters["properties"]["name"]["enum"]
         .as_array()
         .expect("an enum of skill names");
-    assert_eq!(names.len(), 2);
+    assert_eq!(names, &vec![json!("combat"), json!("intro")]);
 }

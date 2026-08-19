@@ -489,10 +489,12 @@ async fn a_failed_write_falls_back_to_inline_output() {
     assert!(note.ends_with(']'), "{}", data.body);
 }
 
-/// The tool's own description states the ceiling and the directory when offloading is on, so a model
-/// reading the schema of the tool it is about to call learns the rule there too.
+/// The tool's own description says a tail is what comes back when offloading is on, and that the
+/// whole output is retrievable, so a model reading the schema of the tool it is about to call
+/// learns the rule there too. Neither the *paths* nor the *numbers* are in it: the result carries
+/// the paths, and states the counts on the one call that lost something.
 #[test]
-fn the_definition_states_the_ceiling_when_offloading() {
+fn the_definition_names_the_tail_when_offloading() {
     let inline = ShellTool::new(OffloadPolicy::Inline).definition();
     assert!(
         !inline.description.contains("grep"),
@@ -507,12 +509,25 @@ fn the_definition_states_the_ceiling_when_offloading() {
     };
     let offloaded = ShellTool::new(OffloadPolicy::Offload(limits.clone())).definition();
     assert!(
-        offloaded.description.contains("last 120 lines"),
+        offloaded
+            .description
+            .contains("the tail of merged stdout+stderr"),
         "{}",
         offloaded.description
     );
     assert!(
-        offloaded.description.contains(OFFLOAD_DIR),
+        !offloaded.description.contains("120"),
+        "{}",
+        offloaded.description
+    );
+    assert!(
+        offloaded.description.contains("files named in the result")
+            && offloaded.description.contains("`grep`"),
+        "{}",
+        offloaded.description
+    );
+    assert!(
+        !offloaded.description.contains(OFFLOAD_DIR),
         "{}",
         offloaded.description
     );
@@ -528,8 +543,11 @@ fn the_definition_states_the_ceiling_when_offloading() {
         adaptive.description
     );
     assert!(
-        adaptive.description.contains("last 120 lines")
-            && adaptive.description.contains(OFFLOAD_DIR),
+        adaptive
+            .description
+            .contains("the tail of merged stdout+stderr")
+            && !adaptive.description.contains("120")
+            && adaptive.description.contains("files named in the result"),
         "{}",
         adaptive.description
     );

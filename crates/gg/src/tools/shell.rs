@@ -366,34 +366,25 @@ impl Tool for ShellTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        let mut description =
-            "Run a shell command with `sh -c` in the workspace directory. Returns the merged \
-             stdout+stderr (truncated if very long) and the exit code. Use it to build, run, and \
-             inspect the project."
-                .to_string();
-        if let Some(limits) = self.offload.limits() {
-            // The ceiling is stated on the tool itself as well as in the system prompt: a model
-            // reading the definition of the tool it is about to call should not have to remember a
-            // paragraph from the top of the session to know that what comes back is a tail.
-            if self.offload.withholds_on_success() {
-                description.push_str(&format!(
-                    " A command that succeeds returns only its exit code — none of its output. A \
-                     command that fails returns the {} of its output. Either way the full stdout \
-                     and stderr of every command are written to a file pair under `{}`, named in \
-                     the result, which you can `grep` when you need more than what came back.",
-                    limits.describe(),
-                    limits.dir.display(),
-                ));
-            } else {
-                description.push_str(&format!(
-                    " Only the {} of the output is returned; the full stdout and stderr of every \
-                     command are written to a file pair under `{}`, named in the result, which you \
-                     can `grep` when you need more than the tail.",
-                    limits.describe(),
-                    limits.dir.display(),
-                ));
+        // Only the branch in force is rendered: a model reading the schema of the tool it is about
+        // to call is told what this build of gg returns, not what some other configuration would.
+        // The files are named in the result, so the description says only that they exist.
+        let description = match self.offload.limits() {
+            None => "Run a command with `sh -c` in the workspace directory. Returns the exit code \
+                     and merged stdout+stderr."
+                .to_string(),
+            Some(_) if self.offload.withholds_on_success() => {
+                "Run a command with `sh -c` in the workspace directory. A command that succeeds \
+                 returns only its exit code; one that fails also returns the tail of merged \
+                 stdout+stderr. Full stdout and stderr are written to files named in the result — \
+                 `grep` them for more."
+                    .to_string()
             }
-        }
+            Some(_) => "Run a command with `sh -c` in the workspace directory. Returns the exit \
+                        code and the tail of merged stdout+stderr. Full stdout and stderr are \
+                        written to files named in the result — `grep` them for more."
+                .to_string(),
+        };
         ToolDefinition::new(
             SHELL_TOOL,
             description,
@@ -402,12 +393,11 @@ impl Tool for ShellTool {
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "The command line to run via `sh -c`."
+                        "description": "The command line to run."
                     },
                     "timeout_secs": {
                         "type": "number",
-                        "description": "Optional per-command timeout in seconds \
-                            (default 120). The command is killed if it exceeds this."
+                        "description": "Timeout in seconds (default 120)."
                     }
                 },
                 "required": ["command"],

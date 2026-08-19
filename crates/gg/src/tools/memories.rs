@@ -221,17 +221,11 @@ impl Tool for WriteMemoryTool {
         ToolDefinition::new(
             WRITE_MEMORY_TOOL,
             format!(
-                "Record a new durable memory — a short note you curate that persists for \
-                 the session and survives context compaction. Provide a unique `name`, a \
-                 one-line `description`, and the `body`. Every memory you hold stays in your \
-                 context window, so they are bounded{}; if a limit is hit, revise an existing \
-                 memory with `update_memory` or remove one with `delete_memory` rather than \
-                 accruing more.",
+                "Record a new memory under a unique `name`{}.",
                 bounds_note(&[
                     (caps.max_count, "memories"),
                     (caps.max_len_per_memory, "characters of body each"),
                     (caps.max_total_len, "characters of body in total"),
-                    (caps.max_len_description, "characters of description each"),
                 ])
             ),
             json!({
@@ -239,15 +233,15 @@ impl Tool for WriteMemoryTool {
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "A short, unique handle for the memory (used to update or delete it)."
+                        "description": "Unique handle, taken by `update_memory` and `delete_memory`."
                     },
                     "description": {
                         "type": "string",
-                        "description": "A one-line summary of what the memory is for, shown up front."
+                        "description": "One-line summary of the memory."
                     },
                     "body": {
                         "type": "string",
-                        "description": "The memory's contents — the fact or decision to remember."
+                        "description": "What to remember."
                     }
                 },
                 "required": ["name", "description", "body"],
@@ -314,24 +308,21 @@ impl Tool for UpdateMemoryTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             UPDATE_MEMORY_TOOL,
-            "Revise an existing memory in place: supply its `name` and the new \
-             `description` and `body` (both are replaced). Fails if no memory of that name \
-             exists (use `write_memory` to create one) or if the new body would exceed a \
-             length limit.",
+            "Replace an existing memory's `description` and `body`.",
             json!({
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "The name of the memory to revise."
+                        "description": "The memory to revise."
                     },
                     "description": {
                         "type": "string",
-                        "description": "The new one-line description (replaces the old one)."
+                        "description": "Replaces the current description."
                     },
                     "body": {
                         "type": "string",
-                        "description": "The new body (replaces the old one)."
+                        "description": "Replaces the current body."
                     }
                 },
                 "required": ["name", "description", "body"],
@@ -399,14 +390,13 @@ impl Tool for DeleteMemoryTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             DELETE_MEMORY_TOOL,
-            "Remove (evict) a memory you no longer need by `name`, freeing room for new \
-             ones. Fails if no memory of that name exists.",
+            "Remove a memory you no longer need.",
             json!({
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "The name of the memory to remove."
+                        "description": "The memory to remove."
                     }
                 },
                 "required": ["name"],

@@ -143,40 +143,30 @@ impl Tool for AddTaskTool {
         let mut properties = json!({
             "id": {
                 "type": "string",
-                "description": "A short, unique id for the task (used to reference it)."
+                "description": "Short unique slug naming the task."
             },
             "title": {
                 "type": "string",
-                "description": "A short title for the task."
+                "description": "Short title."
             },
             "description": {
                 "type": "string",
-                "description": "An optional longer description of the task."
+                "description": "Longer description of the task."
             },
             "blockedBy": {
                 "type": "array",
                 "items": { "type": "string" },
-                "description": "Optional ids of tasks that must be done before this one."
+                "description": "Ids of tasks that must finish first."
             }
         });
         let mut required = vec!["id", "title"];
-        let description = if mode == TaskMode::Issues {
+        if mode == TaskMode::Issues {
             merge_structured_properties(&mut properties);
             required.extend(["inScope", "outOfScope", "completionCriteria"]);
-            "Add a task to your plan. Provide a unique `id` (a short slug you will use to \
-             reference it), a `title`, an optional `description`, the structured sections \
-             `inScope` / `outOfScope` / `completionCriteria` (this list is in issues mode, so \
-             these are required), and an optional `blockedBy` list of the ids of tasks that must \
-             finish first. The list is a DAG — a blocker that would create a cycle is refused."
-        } else {
-            "Add a task to your plan. Provide a unique `id` (a short slug you will use to \
-             reference it), a `title`, an optional `description`, and an optional \
-             `blockedBy` list of the ids of tasks that must finish first. The list is a DAG \
-             — a blocker that would create a cycle is refused."
-        };
+        }
         ToolDefinition::new(
             ADD_TASK_TOOL,
-            description,
+            "Add a task.",
             json!({
                 "type": "object",
                 "properties": properties,
@@ -282,15 +272,15 @@ fn merge_structured_properties(properties: &mut Value) {
     let object = properties.as_object_mut().expect("properties object");
     object.insert(
         "inScope".to_string(),
-        json!({ "type": "string", "description": "What the task is responsible for." }),
+        json!({ "type": "string", "description": "What the task covers." }),
     );
     object.insert(
         "outOfScope".to_string(),
-        json!({ "type": "string", "description": "What the task is deliberately not responsible for." }),
+        json!({ "type": "string", "description": "What the task excludes." }),
     );
     object.insert(
         "completionCriteria".to_string(),
-        json!({ "type": "string", "description": "How the task will be judged done." }),
+        json!({ "type": "string", "description": "How the task is judged done." }),
     );
 }
 
@@ -321,37 +311,28 @@ impl Tool for UpdateTaskTool {
         let mut properties = json!({
             "id": {
                 "type": "string",
-                "description": "The id of the task to revise."
+                "description": "The task to revise."
             },
             "title": {
                 "type": "string",
-                "description": "A new title (replaces the old one)."
+                "description": "Replacement title."
             },
             "description": {
                 "type": "string",
-                "description": "A new description (empty clears it)."
+                "description": "Replacement description; empty clears it."
             },
             "status": {
                 "type": "string",
                 "enum": ["pending", "in_progress", "done"],
-                "description": "A new status."
+                "description": "New status."
             }
         });
-        let description = if mode == TaskMode::Issues {
+        if mode == TaskMode::Issues {
             merge_structured_properties(&mut properties);
-            "Revise a task by `id`: change its `title`, `description`, `status` (`pending`, \
-             `in_progress`, or `done`), and/or its structured sections `inScope` / `outOfScope` \
-             / `completionCriteria` (a supplied section cannot be cleared — issues-mode tasks \
-             always carry it). Supply at least one field to change. To change what a task is \
-             blocked by, use `set_blocked_by` instead."
-        } else {
-            "Revise a task by `id`: change its `title`, `description`, and/or `status` \
-             (`pending`, `in_progress`, or `done`). Supply at least one field to change. To \
-             change what a task is blocked by, use `set_blocked_by` instead."
-        };
+        }
         ToolDefinition::new(
             UPDATE_TASK_TOOL,
-            description,
+            "Revise a task. Use `set_blocked_by` to change blockers.",
             json!({
                 "type": "object",
                 "properties": properties,
@@ -452,21 +433,18 @@ impl Tool for SetBlockedByTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             SET_BLOCKED_BY_TOOL,
-            "Set which tasks a task is blocked by. Provide the task `id` and the full \
-             `blockedBy` list of task ids that must finish first (pass `[]` to clear all \
-             blockers). This replaces the task's current blockers. Any edge that would \
-             create a cycle is refused and nothing changes — tasks form a DAG.",
+            "Replace the set of tasks a task is blocked by.",
             json!({
                 "type": "object",
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "The id of the task whose blockers to set."
+                        "description": "The task whose blockers to set."
                     },
                     "blockedBy": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "The full set of task ids this task is blocked by (`[]` clears)."
+                        "description": "The full set of task ids that must finish first; `[]` clears."
                     }
                 },
                 "required": ["id", "blockedBy"],
@@ -533,14 +511,13 @@ impl Tool for CompleteTaskTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             COMPLETE_TASK_TOOL,
-            "Mark a task done by `id`. Tasks blocked by it become actionable once all of \
-             their blockers are done. Fails if no task of that id exists.",
+            "Mark a task done.",
             json!({
                 "type": "object",
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "The id of the task to mark done."
+                        "description": "The task to mark done."
                     }
                 },
                 "required": ["id"],
@@ -601,14 +578,13 @@ impl Tool for RemoveTaskTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             REMOVE_TASK_TOOL,
-            "Remove a task by `id`. It is also dropped from any other task's blockers, so \
-             no dangling dependency is left. Fails if no task of that id exists.",
+            "Remove a task, dropping it from every other task's blockers.",
             json!({
                 "type": "object",
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "The id of the task to remove."
+                        "description": "The task to remove."
                     }
                 },
                 "required": ["id"],

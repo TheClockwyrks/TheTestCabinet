@@ -330,10 +330,11 @@ pub(super) fn every_policy() -> Vec<Configuration> {
 /// Every tool whose description or schema is built from run data is shown built from the
 /// placeholders, **and says which ones it carries**.
 ///
-/// Two halves, and both are needed. The description assertion guards against the reference silently
-/// rendering an empty list (an unbound library, an empty roster) and reading as though gg offers a
-/// tool with nothing to point at. The `runData` assertion guards the page's other half: a token in
-/// the prose that the entry does not declare is a token a reader has no way to know is a
+/// Two halves, and both are needed. The rendered-text assertions guard against the reference
+/// silently rendering an empty list (an unbound library, an empty roster) and reading as though gg
+/// offers a tool with nothing to point at — in a tool's description, or, where the roster is
+/// carried by the schema, in its parameters. The `runData` assertion guards the page's other half:
+/// a token in the text that the entry does not declare is a token a reader has no way to know is a
 /// placeholder, and marking it by looking for angle brackets is what this field exists to avoid.
 #[test]
 fn run_data_descriptions_are_built_from_placeholders() {
@@ -352,7 +353,14 @@ fn run_data_descriptions_are_built_from_placeholders() {
             .any(|stand_in| stand_in.token == token)
     };
 
-    assert!(entry("read_skill").description.contains(PLACEHOLDER_SKILL));
+    // `read_skill` carries its library in the `name` enum rather than in its prose, so the scan
+    // has to find it in the serialized schema for the page to mark it.
+    assert!(
+        entry("read_skill")
+            .parameters
+            .to_string()
+            .contains(PLACEHOLDER_SKILL)
+    );
     assert!(declares("read_skill", PLACEHOLDER_SKILL));
     for name in ["spawn_subagent", "exec"] {
         assert!(

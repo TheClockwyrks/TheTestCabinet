@@ -895,6 +895,13 @@ impl ToolRegistry {
         // reason the collection calls below are not gated on the roster alone.
         let can_fork = capabilities.is_enabled(CAPABILITY_FORK)
             && capabilities.is_enabled(CAPABILITY_SUBAGENTS);
+        // Whether `spawn_subagent` survives to be offered **beside** the succession calls: the
+        // roster gate above and the allowlist narrowing below. Neither succession capability
+        // implies the delegation one, so each of the two descriptions contrasts itself with a
+        // spawn only for an agent that was actually handed one.
+        let offers_spawn = capabilities.is_enabled(CAPABILITY_SUBAGENTS)
+            && can_delegate
+            && capabilities.grants_tool(SPAWN_SUBAGENT_TOOL);
 
         if capabilities.is_enabled(CAPABILITY_SUBAGENTS) {
             // The subagent tools only *declare* themselves; the loop intercepts their calls and
@@ -940,7 +947,10 @@ impl ToolRegistry {
         // spawning uses — and is withheld from an agent standing in a machine state, where the
         // run's next move is the machine's decision and `transition_state` is how it is made.
         if capabilities.is_enabled(CAPABILITY_EXEC) && can_delegate && facts.fsm.is_none() {
-            tools.push(Box::new(transitions::ExecTool::new(spawnable.to_vec())));
+            tools.push(Box::new(transitions::ExecTool::new(
+                spawnable.to_vec(),
+                offers_spawn,
+            )));
         }
         // `fork` needs a way to *collect* the copy rather than a roster: it is a child, and an
         // agent that cannot `wait_for_subagents` on it or `send_message` to it has produced a
@@ -948,7 +958,18 @@ impl ToolRegistry {
         // [subagents](CAPABILITY_SUBAGENTS) capability, so that — and not the roster, which a
         // fork never reads — is exactly what it is gated on.
         if can_fork {
-            tools.push(Box::new(transitions::ForkTool));
+            // The copy is made from this agent's **modules**, so what the description may say
+            // about divergence is read from the set it holds rather than from its tool allowlist:
+            // a fork copies a task list its holder was granted no task tools for all the same.
+            tools.push(Box::new(transitions::ForkTool::new(
+                offers_spawn,
+                capabilities.is_enabled(CAPABILITY_TASKS) && modules.tasks().offers_tasks(),
+                capabilities.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+                    && modules.archive().offers_archive(),
+                (capabilities.is_enabled(CAPABILITY_MEMORIES)
+                    && modules.memories().offers_memories())
+                .then(|| modules.memories().is_linkable()),
+            )));
         }
 
         // Narrow to the agent's own [allowlist](GgAgentConfig::tools) last. Everything above says

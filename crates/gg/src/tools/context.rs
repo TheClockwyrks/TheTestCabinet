@@ -47,8 +47,8 @@ pub const COMPACT_TOOL: &str = "compact";
 ///
 /// A compaction exists because the window is full, so a call that named forty files would refill it
 /// on the spot and trigger the next compaction immediately — the pathological case this bounds. The
-/// cap is generous relative to what a model actually needs in hand to continue, and the paths past
-/// it are reported to the model rather than silently dropped.
+/// cap is generous relative to what a model actually needs in hand to continue, and the tool schema
+/// states it so a model names no more than gg will re-read.
 pub const MAX_COMPACT_FILES: usize = 12;
 
 /// The most turn ranges one [`archive_thread`](ARCHIVE_THREAD_TOOL) call may name.
@@ -138,16 +138,14 @@ impl Tool for EvictFileViewTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             EVICT_FILE_VIEW_TOOL,
-            "Drop file contents you have read but no longer need from your context window, \
-             reclaiming space. Give a `path` to evict just that file's views, or omit it to \
-             evict every file view. This is safe: the files are unchanged on disk and you can \
-             `read_file` them again if you need them later.",
+            "Drop file contents out of your context window to reclaim space; `read_file` \
+             recovers them.",
             json!({
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Path whose file views to evict, written as you read it. Omit to evict all file views."
+                        "description": "Path to evict, spelled as you read it. Omit to evict every file view."
                     }
                 },
                 "required": [],
@@ -201,11 +199,8 @@ impl Tool for ArchiveThreadTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             ARCHIVE_THREAD_TOOL,
-            "Move whole turns of this thread out of your context window to reclaim space. Every \
-             result you have been given carries a header with its turn number and what it costs, \
-             so name the turns worth dropping: `ranges` is a list of inclusive [from, to] pairs, \
-             e.g. [[4, 19]] archives turns 4 through 19. The archived history is NOT lost — it \
-             stays searchable with `search_archive`, so you can recover any detail later.",
+            "Move whole turns out of your context window to reclaim space. Archived turns stay \
+             searchable with `search_archive`.",
             json!({
                 "type": "object",
                 "properties": {
@@ -219,7 +214,7 @@ impl Tool for ArchiveThreadTool {
                             "maxItems": 2,
                             "items": { "type": "integer", "minimum": 0 }
                         },
-                        "description": "Inclusive [from, to] turn-number pairs to archive, e.g. [[4, 19], [22, 25]]."
+                        "description": "Inclusive [from, to] pairs of the turn numbers in result headers, e.g. [[4, 19], [22, 25]]."
                     }
                 },
                 "required": ["ranges"],
@@ -331,23 +326,20 @@ impl Tool for CompactTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             COMPACT_TOOL,
-            "Compact your own context window: the detailed thread is dropped and restarted from \
-             the `summary` you write, plus a fresh read of each path in `files`. Your skills, \
-             memories and task list are kept as they are. You are asked to call this when your \
-             window is full, and every other tool is refused until you do — but everything not \
-             in your summary and not in `files` is gone, so write the summary for your future \
-             self and name the files you will actually need in hand.",
+            "Restart your context window from the `summary` you write plus a fresh read of \
+             `files`. Your skills, memories and task list are kept; the rest of the thread is \
+             dropped.",
             json!({
                 "type": "object",
                 "properties": {
                     "summary": {
                         "type": "string",
-                        "description": "The working state you need to continue: what you are building, the decisions and discoveries that matter, the files you have changed, what is in progress, and the immediate next step."
+                        "description": "The working state to continue from: what you are building, the decisions and discoveries that matter, the files you have changed, what is in progress, and the next step."
                     },
                     "files": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": format!("Paths to re-read into your context after the drop, at most {MAX_COMPACT_FILES}. Omit to carry none across; you can always read a file again later.")
+                        "description": format!("Workspace paths to re-read into the restarted context, at most {MAX_COMPACT_FILES}.")
                     }
                 },
                 "required": ["summary"],
@@ -406,15 +398,13 @@ impl Tool for SearchArchiveTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             SEARCH_ARCHIVE_TOOL,
-            "Search history you previously archived with `archive_thread` (which is out of \
-             your context window but recoverable). Returns the matching archived messages so \
-             you can recover detail without keeping the whole thread in context.",
+            "Search the turns you moved out of context with `archive_thread`.",
             json!({
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Text to find in the archived thread (case-insensitive substring)."
+                        "description": "Case-insensitive substring to match."
                     }
                 },
                 "required": ["query"],
