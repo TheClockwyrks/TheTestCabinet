@@ -142,6 +142,21 @@ pub const CAPABILITY_AUTOLOAD_SPECS: &str = "autoload-specs";
 /// unlocked arm instead would record the locked one having been asked for.
 pub const AUTOLOAD_LOCKED_IMPL: &str = "locked";
 
+/// The [`params`](GgCapabilityConfig::params) key of [`CAPABILITY_AUTOLOAD_SPECS`] that decides
+/// whether a seeded reference mockup is attached as a **picture**.
+///
+/// Off, the default, a mockup is still read and still takes its place in the seeded order: it
+/// enters the window as the file view any read produces, carrying the label, format and byte size,
+/// and the model reads the file itself when it wants to look. On, the picture rides along, and
+/// rides along again on every request for as long as the view lives.
+///
+/// The default is off because an image is charged by its dimensions rather than its prose, so a
+/// case's mockups can outweigh the specifications they illustrate. Turning it on is an arm of the
+/// study rather than a detail: does a model build better for having seen the target?
+///
+/// A model that cannot see images is never sent one, so the param decides only what gg *offers*.
+pub const AUTOLOAD_PARAM_IMAGES: &str = "images";
+
 /// The stable id of the **agent-persistence** capability: an agent profile whose instances
 /// share one **serialized identity** across the whole run instead of being independent,
 /// interchangeable workers.

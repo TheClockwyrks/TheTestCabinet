@@ -136,7 +136,7 @@ use std::time::Instant;
 use futures_util::FutureExt;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
-    ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT,
+    ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, AUTOLOAD_PARAM_IMAGES, CAPABILITY_AGENT_MANAGED_CONTEXT,
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus,
@@ -6574,6 +6574,7 @@ impl Agent {
                 tool_ctx,
                 code.language,
                 autoload.locked,
+                autoload.images,
             )
             .await
         {
@@ -8814,6 +8815,11 @@ struct AutoloadSetup {
     /// [eviction](ContextModel::evict_file_views). Off, they are ordinary ephemeral file reads that
     /// compaction may summarize and agent-managed context may evict.
     locked: bool,
+    /// Whether a seeded reference mockup is attached as a **picture**. Off (the default) it arrives
+    /// as the description any read produces — label, format, byte size — and the model reads the
+    /// file itself when it wants to look. An attached picture is charged by its dimensions and
+    /// charged again on every request the view survives.
+    images: bool,
 }
 
 impl AutoloadSetup {
@@ -8851,12 +8857,54 @@ impl AutoloadSetup {
                 false
             }
         };
-        // The switch decides whether anything is autoloaded at all; the implementation is read
-        // either way, so a typo on a profile that has the capability switched off is still a typo
-        // an operator hears about now.
+        let images = Self::resolve_images(profile, report);
+        // The switch decides whether anything is autoloaded at all; the implementation and the
+        // params are read either way, so a typo on a profile that has the capability switched off
+        // is still a typo an operator hears about now.
         Self {
             enabled,
             locked: enabled && locked,
+            images: enabled && images,
+        }
+    }
+
+    /// Whether `profile` asks autoload to attach a seeded mockup as a picture, from the
+    /// [`images`](AUTOLOAD_PARAM_IMAGES) param.
+    ///
+    /// A switch is a boolean, and a value that is not one is [reported](crate::validate) rather
+    /// than read as `false`. Reading `"true"` as *off* would seed the run's opening context with
+    /// captions on a launch that asked for pictures, and the record would name the arm that did
+    /// not run.
+    fn resolve_images(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) -> bool {
+        let Some(declared) = profile
+            .capability(CAPABILITY_AUTOLOAD_SPECS)
+            .map(|capability| &capability.params)
+            .and_then(|params| params.get(AUTOLOAD_PARAM_IMAGES))
+            .filter(|value| !value.is_null())
+        else {
+            return false;
+        };
+        match declared.as_bool() {
+            Some(images) => images,
+            None => {
+                report.report(
+                    crate::validate::LaunchDefect::run_level(
+                        crate::validate::param_locus(
+                            CAPABILITY_AUTOLOAD_SPECS,
+                            AUTOLOAD_PARAM_IMAGES,
+                        ),
+                        crate::validate::as_written(declared),
+                        format!(
+                            "the `{CAPABILITY_AUTOLOAD_SPECS}` capability's \
+                             `{AUTOLOAD_PARAM_IMAGES}` switches picture attachment on or off, so \
+                             gg reads it as `true` or `false`; reading this as `false` would seed \
+                             the opening context with captions on a run that asked for pictures."
+                        ),
+                    )
+                    .known(["true", "false"]),
+                );
+                false
+            }
         }
     }
 }
@@ -11066,6 +11114,7 @@ async fn autoload_specifications(
     tool_ctx: &ToolContext,
     language: GgProgramLanguage,
     locked: bool,
+    images: bool,
 ) -> Result<(), String> {
     if provided_files.is_empty() {
         return Ok(());
@@ -11094,6 +11143,16 @@ async fn autoload_specifications(
             ));
         }
         seeded.push((rel, outcome));
+    }
+
+    // Drop the pictures unless this profile asked for them. The read still happened and the view
+    // still arrives carrying the descriptor the read wrote — label, format, byte size — so the
+    // model knows the mockup is there and reads it itself when it wants to look. What the switch
+    // decides is whether the picture rides along on this and every later request.
+    if !images {
+        for (_, outcome) in &mut seeded {
+            outcome.images.clear();
+        }
     }
 
     if context.code_mode() {

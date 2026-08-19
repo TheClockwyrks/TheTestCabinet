@@ -6,7 +6,7 @@ use std::time::Instant;
 use serde_json::json;
 use tempfile::TempDir;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::*;
 use crate::archive::ArchiveRuntime;
@@ -588,6 +588,7 @@ fn no_autoload() -> AutoloadSetup {
     AutoloadSetup {
         enabled: false,
         locked: false,
+        images: false,
     }
 }
 
@@ -1801,6 +1802,7 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
         &ctx,
         GgProgramLanguage::TypeScript,
         false,
+        true,
     )
     .await
     .expect("every provided file is readable");
@@ -1873,6 +1875,7 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
         &ctx,
         GgProgramLanguage::TypeScript,
         false,
+        true,
     )
     .await
     .expect("every provided file is readable");
@@ -1947,6 +1950,112 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
     );
 }
 
+/// The default seeds a mockup as its description rather than its picture.
+///
+/// A picture is charged by its dimensions and charged again on every request the view survives, so
+/// the file arriving without one is what keeps the seeding's cost proportional to the brief. The
+/// view still arrives: the model has to know the mockup is there to read it.
+#[tokio::test]
+async fn autoload_seeds_a_mockup_without_its_picture_by_default() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("SPEC.md"), "# The spec\n\nBuild a game.\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("reference")).unwrap();
+    std::fs::write(dir.path().join("reference").join("title.png"), FAKE_PNG).unwrap();
+
+    let ctx = ToolContext::new(dir.path());
+    let mut context = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        false,
+    );
+
+    autoload_specifications(
+        &mut context,
+        &[
+            PathBuf::from("SPEC.md"),
+            PathBuf::from("reference/title.png"),
+        ],
+        &ctx,
+        GgProgramLanguage::TypeScript,
+        false,
+        false,
+    )
+    .await
+    .expect("every provided file is readable");
+
+    let messages = context.messages();
+    assert!(
+        messages.iter().all(|m| m.images.is_empty()),
+        "no picture is attached when the capability does not ask for one"
+    );
+    // Both files still arrive, in the order provided, so the model knows the mockup exists.
+    assert_eq!(
+        context
+            .items()
+            .iter()
+            .filter(|item| item.source() == GgContextSource::FileView)
+            .map(|item| item.label())
+            .collect::<Vec<_>>(),
+        vec![Some("SPEC.md"), Some("reference/title.png")],
+    );
+    assert!(
+        messages.iter().any(|m| m
+            .content
+            .as_deref()
+            .is_some_and(|c| c.contains("Build a game."))),
+        "the spec's contents are loaded either way"
+    );
+}
+
+/// Asking for pictures on a model the catalog declared text-only seeds the description instead.
+///
+/// The param decides what gg offers; the model decides what it can be shown. Detected up front
+/// from the declared modalities, so a text-only run wastes no request discovering it.
+#[tokio::test]
+async fn a_text_only_model_is_never_seeded_a_picture_even_when_images_are_asked_for() {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("reference")).unwrap();
+    std::fs::write(dir.path().join("reference").join("title.png"), FAKE_PNG).unwrap();
+
+    let support = Arc::new(crate::vision::VisionSupport::new(BTreeMap::from([(
+        "text-only-model".to_string(),
+        vec!["text".to_string()],
+    )])));
+    let ctx = ToolContext::new(dir.path()).with_vision("text-only-model", support);
+
+    let mut context = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        false,
+    );
+
+    autoload_specifications(
+        &mut context,
+        &[PathBuf::from("reference/title.png")],
+        &ctx,
+        GgProgramLanguage::TypeScript,
+        false,
+        true,
+    )
+    .await
+    .expect("a mockup a model cannot see is described, not a failure to read");
+
+    let messages = context.messages();
+    assert!(
+        messages.iter().all(|m| m.images.is_empty()),
+        "a model declared without image input is never sent one"
+    );
+    assert_eq!(
+        context
+            .items()
+            .iter()
+            .filter(|item| item.source() == GgContextSource::FileView)
+            .count(),
+        1,
+        "the mockup still takes its place in the seeded order"
+    );
+}
+
 /// A **locked** code-mode seed is still pinned, which is the one thing `seed_file_view` adds over
 /// the `view.openFile` path it otherwise reuses — that path hardcodes ephemeral, and `locked` is
 /// exactly the setting that must not be.
@@ -1964,6 +2073,7 @@ async fn a_locked_code_mode_seed_is_pinned() {
         &ctx,
         GgProgramLanguage::TypeScript,
         true,
+        false,
     )
     .await
     .expect("every provided file is readable");
@@ -2002,6 +2112,7 @@ async fn locked_autoload_survives_compaction() {
         &ctx,
         GgProgramLanguage::TypeScript,
         false,
+        false,
     )
     .await
     .expect("every provided file is readable");
@@ -2028,6 +2139,7 @@ async fn locked_autoload_survives_compaction() {
         &ctx,
         GgProgramLanguage::TypeScript,
         true,
+        false,
     )
     .await
     .expect("every provided file is readable");

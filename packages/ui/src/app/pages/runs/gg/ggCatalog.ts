@@ -1459,6 +1459,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     implementationLabel: "Locked",
     implementationOptions: AUTOLOAD_LOCKED_OPTIONS,
     implementationHint: AUTOLOAD_LOCKED_HINT,
+    params: [
+      {
+        key: "images",
+        label: "Attach reference images",
+        kind: "boolean",
+        hint: "On, a seeded reference mockup arrives as the picture itself. Off, it arrives as its label, format and size, and the agent reads the file when it wants to look. A picture is charged to the window by its dimensions and charged again on every request the view survives, so a case's mockups can outweigh the specifications they illustrate. A model that cannot see images is never sent one either way.",
+      },
+    ],
   },
   {
     id: "compaction",
