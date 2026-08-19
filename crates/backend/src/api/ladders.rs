@@ -46,9 +46,18 @@
 //! requesting account's own review, never the run's stored rating, which is the worst
 //! domain across every reviewer and would let a stranger wall someone else's climb.
 //!
+//! ## Feeding and reviewing are different sets of rungs
+//!
+//! A ladder only ever **launches** a climber's current rung — that is the economy that
+//! makes it a ladder. What it **offers for review**, and what occupies the review
+//! buffer, is every rung a climber has reached: the gate can decide a rung off one
+//! review of five runs, and the four nobody looked at are still paid-for evidence the
+//! reviewer owns. Tying the queue to the current rung alone would make them vanish from
+//! the board the instant the first was judged. See [`cell_sets`].
+//!
 //! Console-only reviewer tooling, like the rest of the coverage surface.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -60,7 +69,7 @@ use test_cabinet_core::test_case::TestType;
 
 use crate::auth::AuthUser;
 use crate::coverage::gate::{self, Gate, GateOutcome, GateTally, GateThreshold, RungRun};
-use crate::coverage::schedule::{CellDemand, outstanding_across, top_up as decide_top_up};
+use crate::coverage::schedule::{CellDemand, top_up as decide_top_up};
 use crate::db::{
     JobOrigin, LadderOutcomeKind, StoredLadder, StoredLadderClimber, StoredLadderOutcome,
     StoredLadderRung, combination_key,
@@ -564,11 +573,15 @@ pub struct LadderProgress {
     pub climbers_walled: u32,
     /// The runs still to trigger across every climber's current rung.
     pub runs_missing: u32,
-    /// The completed runs across those rungs the requester has not reviewed.
+    /// The completed runs the requester has not reviewed, across every rung every
+    /// climber has **reached** — not just the current ones. A rung the gate has already
+    /// decided keeps the runs nobody looked at, and they are exactly what
+    /// `GET /ladders/{id}/queue` offers, so the two always describe the same runs.
     pub runs_unreviewed: u32,
-    /// The review-buffer occupancy: in-flight jobs plus unreviewed runs. When this has
-    /// reached `bufferTarget`, a top-up deliberately enqueues nothing — which is the
-    /// difference between a finished ladder and a full one.
+    /// The review-buffer occupancy: in-flight jobs plus unreviewed runs, over the same
+    /// reached rungs [`Self::runs_unreviewed`] counts. When this has reached
+    /// `bufferTarget`, a top-up deliberately enqueues nothing — which is the difference
+    /// between a finished ladder and a full one.
     pub runs_outstanding: u32,
     /// The buffer target in force (the ladder's override, else the account's setting,
     /// else the backend default).
@@ -919,7 +932,12 @@ async fn top_up_locked(
         .iter()
         .map(|active| board.ctx.demand(active.target, &active.case, &active.combo))
         .collect();
-    let outstanding = outstanding_across(&demands);
+    // The buffer is occupied by every run the reviewer owes attention to, which is a
+    // wider set than the rungs this top-up may feed — a rung the gate has decided keeps
+    // whatever completed runs nobody has reviewed. Taking the board's total rather than
+    // re-tallying the launchable cells is also what keeps the number the dashboard
+    // shows and the number the top-up obeys from ever disagreeing.
+    let outstanding = board.progress.runs_outstanding;
     let launches = decide_top_up(&demands, buffer_target, outstanding);
 
     let cells: Vec<TopUpCell<'_>> = launches
@@ -961,13 +979,13 @@ pub async fn queue(
 ) -> Result<Json<CoverageQueue>, ApiError> {
     let board = load_board(&state, &user, &id, false).await?;
     let cells: Vec<QueueCell<'_>> = board
-        .active
+        .reviewable
         .iter()
-        .map(|active| QueueCell {
-            rung_id: Some(active.rung_id.clone()),
-            case: &active.case,
-            combo: &active.combo,
-            unreviewed: board.ctx.unreviewed_for(&active.case, &active.combo),
+        .map(|cell| QueueCell {
+            rung_id: Some(cell.rung_id.clone()),
+            case: &cell.case,
+            combo: &cell.combo,
+            unreviewed: board.ctx.unreviewed_for(&cell.case, &cell.combo),
         })
         .collect();
     Ok(Json(collect_queue(&state, &user.0.id, &cells).await?))
@@ -1202,8 +1220,8 @@ pub async fn set_outcome(
 
 // ---- The board -------------------------------------------------------------
 
-/// One climber's current rung, resolved into the cell a top-up or a queue walks.
-struct ActiveCell {
+/// One climber's rung, resolved into the cell a top-up or a queue walks.
+struct RungCell {
     /// The rung's stable id.
     rung_id: String,
     /// The rung's case, at its pinned version.
@@ -1214,14 +1232,20 @@ struct ActiveCell {
     target: u32,
 }
 
-/// Everything one ladder read produces: the board for display, the cells that are
-/// actually live (in emission order), and the loaded counts both were derived from.
+/// Everything one ladder read produces: the board for display, the cells a top-up may
+/// feed, the cells a review queue may offer, and the loaded counts all three were
+/// derived from.
 struct Board {
     /// The dashboard's view.
     progress: LadderProgress,
-    /// The climbers' current rungs, in the ladder's emission order. Only these are
-    /// ever launched or reviewed — that is what makes a ladder a ladder.
-    active: Vec<ActiveCell>,
+    /// The current rungs of the climbers still working one, in the ladder's emission
+    /// order. Only these are ever **launched** — that is what makes a ladder a ladder
+    /// rather than a plan.
+    active: Vec<RungCell>,
+    /// Every rung every climber has **reached**, in the same order — a wider set than
+    /// [`Self::active`], and the one the reviewer's backlog is measured and offered
+    /// over. See [`cell_sets`] for why the two differ.
+    reviewable: Vec<RungCell>,
     /// The counts the cells were tallied from, kept so a caller can re-derive a demand
     /// without another round-trip.
     ctx: MatrixCtx,
@@ -1275,9 +1299,10 @@ async fn load_board(
     let order = climb_order(&combos, &steering);
 
     let mut climbers: Vec<LadderClimber> = Vec::with_capacity(combos.len());
-    // Collected as `(rung position, ActiveCell)` so the rung-major axis can be produced
-    // by a stable sort on the position alone.
-    let mut active: Vec<(usize, ActiveCell)> = Vec::new();
+    // Where each climber ended up, kept so both cell sets are built from the whole
+    // board at once — in the ladder's order rather than the walk's.
+    let mut standings: Vec<(ReviewPlanCombo, ClimberStatus, Option<usize>, Vec<usize>)> =
+        Vec::with_capacity(combos.len());
     let mut climbers_topped_out = 0u32;
     let mut climbers_walled = 0u32;
     for index in order {
@@ -1297,25 +1322,12 @@ async fn load_board(
             ClimberStatus::Walled => climbers_walled += 1,
             _ => {}
         }
-        // Only a climber that is actually working a rung contributes a live cell. A
-        // held, walled, or topped-out climber is not fed, which is the whole economy of
-        // a ladder: budget goes where a model is still getting somewhere.
-        if matches!(
+        standings.push((
+            combo.clone(),
             status,
-            ClimberStatus::Climbing | ClimberStatus::AwaitingReview
-        ) && let Some(current) = &climb.current
-        {
-            let rung = &ladder.rungs[current.position];
-            active.push((
-                current.position,
-                ActiveCell {
-                    rung_id: rung.id.clone(),
-                    case: rung_case(rung),
-                    combo: combo.clone(),
-                    target: rung.runs_override.unwrap_or(ladder.runs_per_cell),
-                },
-            ));
-        }
+            climb.current.as_ref().map(|current| current.position),
+            climb.reached,
+        ));
 
         climbers.push(LadderClimber {
             key,
@@ -1331,20 +1343,32 @@ async fn load_board(
         });
     }
 
-    if schedule.outer_axis == LadderAxis::Rung {
-        // Bring the whole board up a rung before anyone moves on. A stable sort keeps
-        // the steering order within each rung, so priority still decides who goes first
-        // among the climbers standing on the same step.
-        active.sort_by_key(|(position, _)| *position);
-    }
-    let active: Vec<ActiveCell> = active.into_iter().map(|(_, cell)| cell).collect();
+    let standings: Vec<ClimberStanding<'_>> = standings
+        .iter()
+        .map(|(combo, status, current, reached)| ClimberStanding {
+            combo,
+            status: *status,
+            current: *current,
+            reached,
+        })
+        .collect();
+    let (active, reviewable) = cell_sets(&ladder, schedule.outer_axis, &standings);
 
+    // What is still to launch is asked of the cells a top-up may feed: a rung the
+    // ladder has moved past is not missing anything, whatever its runs came back as.
     let mut runs_missing = 0u32;
+    for cell in &active {
+        runs_missing += ctx.demand(cell.target, &cell.case, &cell.combo).missing();
+    }
+    // The buffer, in contrast, is measured over everything the reviewer may be asked to
+    // judge. A decided rung's unreviewed runs are still work waiting on them, and a
+    // ladder that stopped counting them the moment the gate moved on would keep
+    // launching past a reviewer who had fallen behind — which is the one thing the
+    // buffer exists to prevent.
     let mut runs_unreviewed = 0u32;
     let mut runs_outstanding = 0u32;
-    for cell in &active {
+    for cell in &reviewable {
         let demand = ctx.demand(cell.target, &cell.case, &cell.combo);
-        runs_missing += demand.missing();
         runs_unreviewed += demand.unreviewed;
         runs_outstanding += demand.outstanding();
     }
@@ -1379,8 +1403,99 @@ async fn load_board(
     Ok(Board {
         progress,
         active,
+        reviewable,
         ctx,
     })
+}
+
+/// One climber's resolved standing, as the pure cell-set builder needs it: where it
+/// stands and everywhere it has been, both as positions in the ladder's rungs.
+struct ClimberStanding<'a> {
+    /// The combination that climbed.
+    combo: &'a ReviewPlanCombo,
+    /// Where it stands, after any manual hold.
+    status: ClimberStatus,
+    /// The rung it stands on, or `None` once every rung is cleared.
+    current: Option<usize>,
+    /// Every rung it has reached, in climb order: the ones it advanced past, and the
+    /// one it stands on.
+    reached: &'a [usize],
+}
+
+/// Split the climbers' standings into the two cell sets a ladder read produces: the
+/// cells a top-up may **feed**, and the cells a review queue may **offer**.
+///
+/// The two are deliberately different sets, and collapsing them into one is the bug
+/// this seam exists to prevent. Feeding is the ladder's economy — only a climber still
+/// working a rung is worth spending on, and only on the rung it is working. Reviewing
+/// is the reviewer's backlog, and a rung the gate has decided does not hand back the
+/// completed runs nobody has looked at: under the default gate a single review of a
+/// five-run rung is enough to advance, so tying the queue to the current rung alone
+/// would drop four paid-for runs out of the only place that offers them in the
+/// ladder's own order — the moment the reviewer judged the first one.
+///
+/// Both sets come out in the ladder's emission order and deduplicated by cell, so a
+/// ladder that pins one case on two rungs counts and offers its runs once.
+fn cell_sets(
+    ladder: &StoredLadder,
+    axis: LadderAxis,
+    standings: &[ClimberStanding<'_>],
+) -> (Vec<RungCell>, Vec<RungCell>) {
+    // Collected as `(rung position, cell)` so the rung-major axis can be produced by a
+    // stable sort on the position alone.
+    let mut active: Vec<(usize, RungCell)> = Vec::new();
+    let mut reviewable: Vec<(usize, RungCell)> = Vec::new();
+    for standing in standings {
+        // Only a climber that is actually working a rung contributes a cell to feed. A
+        // held, walled, or topped-out climber is not fed, which is the whole economy of
+        // a ladder: budget goes where a model is still getting somewhere.
+        if matches!(
+            standing.status,
+            ClimberStatus::Climbing | ClimberStatus::AwaitingReview
+        ) && let Some(position) = standing.current
+            && let Some(rung) = ladder.rungs.get(position)
+        {
+            active.push((position, rung_cell(ladder, rung, standing.combo)));
+        }
+        // Everywhere it has been, whatever stopped it. A held climber's runs are still
+        // the reviewer's to judge — a hold stops spending, not reviewing — and a walled
+        // one's are the very runs a re-review would unwall it with.
+        for &position in standing.reached {
+            if let Some(rung) = ladder.rungs.get(position) {
+                reviewable.push((position, rung_cell(ladder, rung, standing.combo)));
+            }
+        }
+    }
+    (order_cells(active, axis), order_cells(reviewable, axis))
+}
+
+/// Put one set of cells into the ladder's emission order and drop repeats.
+fn order_cells(mut cells: Vec<(usize, RungCell)>, axis: LadderAxis) -> Vec<RungCell> {
+    if axis == LadderAxis::Rung {
+        // Bring the whole board up a rung before anyone moves on. A stable sort keeps
+        // the steering order within each rung, so priority still decides who goes first
+        // among the climbers standing on the same step.
+        cells.sort_by_key(|(position, _)| *position);
+    }
+    // Two rungs may pin the same case, and their runs are one cell however many rungs
+    // point at it: counting it twice would inflate the buffer, and offering it twice
+    // would ask the reviewer to judge the same run under two headings.
+    let mut seen = HashSet::new();
+    cells
+        .into_iter()
+        .map(|(_, cell)| cell)
+        .filter(|cell| seen.insert(cell_key(&cell.case, &cell.combo)))
+        .collect()
+}
+
+/// One rung, resolved into the cell its runs are counted, launched, and queued under.
+fn rung_cell(ladder: &StoredLadder, rung: &StoredLadderRung, combo: &ReviewPlanCombo) -> RungCell {
+    RungCell {
+        rung_id: rung.id.clone(),
+        case: rung_case(rung),
+        combo: combo.clone(),
+        target: rung.runs_override.unwrap_or(ladder.runs_per_cell),
+    }
 }
 
 /// The order the ladder feeds its climbers: the reviewer's steering first (higher
@@ -1426,6 +1541,11 @@ struct Climb {
     status: ClimberStatus,
     /// The rung it stands on, or `None` once every rung is cleared.
     current: Option<CurrentRung>,
+    /// Every rung it reached, by position, in climb order: the ones it advanced past
+    /// and the one it stopped on. The rungs above it were never reached and the ones
+    /// below it never stop being its own — which is what the reviewer's backlog is
+    /// drawn from.
+    reached: Vec<usize>,
     /// Its verdicts, in climb order, with superseded-version ones flagged and trailing.
     outcomes: Vec<LadderRungOutcome>,
 }
@@ -1463,9 +1583,13 @@ async fn walk_climb(
 
     let mut outcomes: Vec<LadderRungOutcome> = Vec::new();
     let mut current: Option<CurrentRung> = None;
+    let mut reached: Vec<usize> = Vec::new();
     let mut status = ClimberStatus::ToppedOut;
 
     for (position, rung) in ladder.rungs.iter().enumerate() {
+        // Reaching a rung is what the loop iterating over it means, whether the climber
+        // goes on to clear it, wall on it, or still be waiting on it.
+        reached.push(position);
         // A verdict recorded against the version the rung pins *now* governs the climb;
         // one recorded against a version it used to pin is history, appended below.
         let at_pin = mine
@@ -1544,6 +1668,7 @@ async fn walk_climb(
     Ok(Climb {
         status,
         current,
+        reached,
         outcomes,
     })
 }
