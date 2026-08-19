@@ -41,7 +41,7 @@ and can be run from anywhere, including locally:
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
-| `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package — survives the `.dockerignore` allowlist | yes |
+| `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package — survives every `.dockerignore` allowlist that can apply to it | yes |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
@@ -52,12 +52,18 @@ building one. `.dockerignore` is an **allowlist** (`*`, then explicit `!`
 re-inclusions), so a `Dockerfile` that `COPY`s a path nobody re-included fails at
 build time with `failed to compute cache key: "/path": not found` — and the image
 builds run on a GitHub workflow that only fires on `master`/`staging`, long after
-the commit that broke them. This script reads every tracked Dockerfile against the
-one `.dockerignore`, applying Docker's own matching rules, and fails on any context
-source that is missing or excluded. It has teeth: it reproduces both defects that
-have actually landed this way (the Blender image's authoring helpers, and the gg
-toolchain builder's Java installer — which broke the `-gg` variant of every
-language, not just Java's), and it self-tests its matcher before it trusts a verdict.
+the commit that broke them. This script reads every tracked Dockerfile against every
+allowlist that can apply to it, applying Docker's own matching rules, and fails on any
+context source that is missing or excluded. "Every allowlist that can apply" is not
+pedantry: `.devcontainer/ubuntu.dockerfile` carries a sibling
+`ubuntu.dockerfile.dockerignore`, BuildKit and Buildah disagree about when to reach for
+such a file, and a source admitted by one and not the other builds for whoever added it
+and fails for the next person on the other runtime. It has teeth: it reproduces all
+three defects that have actually landed this way (the Blender image's authoring
+helpers; the gg toolchain builder's Java installer, which broke the `-gg` variant of
+every language, not just Java's; and the devcontainer's `.devcontainer/` sources, which
+the root allowlist did not admit until a `podman-compose` rebuild found out), and it
+self-tests its matcher before it trusts a verdict.
 
 It also checks something no `COPY` names. The driver image's gg stage copies the
 whole context and then **compiles** the gg guest packages — `crates/gg/build.rs`

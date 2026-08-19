@@ -17,13 +17,16 @@
 # them, and the notes below say so, because a reader pruning an entry whose consumer
 # they cannot find is the mistake this file's own history records twice.
 #
-# And one build from this context answers to a DIFFERENT allowlist:
-# .devcontainer/ubuntu.dockerfile, which carries its own
-# ubuntu.dockerfile.dockerignore beside it (BuildKit prefers a per-dockerfile ignore
-# file over the context root's). It bakes the same toolchains for the devcontainer and
-# deliberately does not widen this file to do it — seven Dockerfiles here `COPY . .`,
-# so a re-inclusion for the devcontainer would recompile the asset tooling. Nothing
-# below is for it.
+# And one build from this context answers to a different allowlist ON SOME HOSTS AND
+# TO THIS ONE ON OTHERS: .devcontainer/ubuntu.dockerfile, which carries its own
+# ubuntu.dockerfile.dockerignore beside it. BuildKit prefers a per-dockerfile ignore
+# file over the context root's, so on a Docker host that file is what narrows the
+# devcontainer's context and nothing here is consulted for it. That preference is not
+# something the build can rely on being honoured — a rebuild driven by podman-compose
+# resolved THIS file instead and died on the devcontainer's first COPY — so the five
+# `!/.devcontainer/…` entries near the bottom make this allowlist sufficient on its
+# own. The block above them carries the whole argument, including what it costs the
+# seven `COPY . .` builds to admit them.
 #
 # (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
 # all: they only `COPY --from` the tooling builder. They are still built with the
@@ -32,9 +35,11 @@
 #
 # Flipping to an allowlist (rather than enumerating things to exclude) means a
 # change to anything cargo does NOT compile — the frontend, the docs, test cases,
-# k8s manifests, models, this devcontainer — can never invalidate a build layer.
-# Only a change to a file in the list below busts the `COPY . .` cache, which is
-# the whole point: those edits genuinely shouldn't trigger an image rebuild.
+# k8s manifests, models — can never invalidate a build layer. Only a change to a
+# file in the list below busts the `COPY . .` cache, which is the whole point: those
+# edits genuinely shouldn't trigger an image rebuild. The devcontainer's install
+# scripts are the one exception the list makes to that, knowingly and for a reason
+# the entry states.
 
 # Ignore everything by default…
 *
@@ -293,6 +298,67 @@
 # nothing from here. They live outside every path re-included above, so without
 # this the COPYs fail with "not found" against the allowlisted context.
 !/deployments/images/web
+
+# The DEVCONTAINER image (.devcontainer/ubuntu.dockerfile). These five entries are
+# the only ones in this file that exist for a BUILDER rather than for a Dockerfile,
+# and the difference is worth a paragraph.
+#
+# That image builds from this same context — it bakes gg's eleven program-language
+# toolchains, which are pinned by the repository rather than by .devcontainer/ — and
+# it carries a per-dockerfile allowlist beside it,
+# .devcontainer/ubuntu.dockerfile.dockerignore, narrowing that context to the ~230 kB
+# slice its COPYs actually read. BuildKit prefers that file over this one, so on a
+# Docker host it is what applies and nothing here is consulted for that build.
+#
+# THAT PREFERENCE IS NOT PORTABLE, and the failure it caused is quoted below. Buildah
+# — so Podman, so podman-compose, so the devcontainer on a rootless-Podman host, which
+# is a supported one (docker-compose.nixos.yml and .env.podman are committed and
+# .devcontainer/README.md tells a NixOS user to copy them) — resolves an ignore file
+# in this order (pkg/parse.ContainerIgnoreFile): an explicit --ignorefile, then
+# <containerfile>.containerignore, then <containerfile>.dockerignore, then
+# $CONTEXT/.containerignore, then $CONTEXT/.dockerignore. So it does have a sibling
+# rule, and it still did not reach the devcontainer's file: a rebuild driven by VS
+# Code's Dev Containers extension through podman-compose ended on the first COPY with
+#
+#     no items matching glob ".../.devcontainer/system/apt.sh" copied
+#     (1 filtered out using /…/.dockerignore): no such file or directory
+#
+# — buildah naming THIS file, by absolute path, as the one it applied. Whether that is
+# an older buildah than the sibling rule or the containerfile path podman-compose
+# hands it, the conclusion does not change and is the reason these entries are here: a
+# per-dockerfile ignore file is an optimisation the build may not assume was found, so
+# the root allowlist has to be sufficient on its own. That is also how this was found —
+# a rebuild that failed, not a prediction.
+#
+# The alternative fix — a root .containerignore, which Buildah prefers over
+# .dockerignore — would repoint EVERY image built from this context on every Podman
+# host at a second allowlist that has to be kept in step with this one. Five entries
+# here cost less than that, and cost it once.
+#
+# WHAT THEY COST THE SEVEN `COPY . .` BUILDS, honestly: those layer cache keys gain
+# ~24 small files, which is a real widening of the principle at the top of this file.
+# In practice it is close to free. Those keys already carry the whole of crates/ (904
+# commits in the last six months) and the whole of scripts/ci (68); .devcontainer's
+# install scripts moved 24 times in the same window, and the image workflows carry no
+# `paths:` filter (build-containers.yml says why), so a push touching only a
+# devcontainer script triggers no image build to bust the cache of.
+#
+# What is deliberately NOT admitted is the rest of the directory — README.md,
+# devcontainer.json, the four compose files, the Dockerfile and its ignore file. No
+# COPY reads them, and they churn harder than the scripts do. The host-specific
+# docker-compose.local.yml and .env are excluded for free by the same narrowing (the
+# per-dockerfile allowlist, which admits !/.devcontainer whole, has to re-exclude
+# them by name).
+#
+# These five entries and that per-dockerfile allowlist are ONE list with two
+# spellings, and the wider one will not fail when they drift — a new script directory
+# would work under Docker and break under Podman. scripts/ci/build-context.sh
+# therefore checks every Dockerfile against BOTH allowlists that can apply to it.
+!/.devcontainer/system
+!/.devcontainer/languages
+!/.devcontainer/tools
+!/.devcontainer/ai
+!/.devcontainer/post-install.sh
 
 # Re-exclude build outputs and scratch that can appear UNDER the re-included
 # paths, so a local `cargo build`'s target/ (or a stray node_modules) never bloats

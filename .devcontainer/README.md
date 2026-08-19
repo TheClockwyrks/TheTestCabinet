@@ -38,7 +38,11 @@ able to read the repository: its build context is the **repo root**, and
 [`ubuntu.dockerfile.dockerignore`](ubuntu.dockerfile.dockerignore) — a
 per-dockerfile allowlist that applies to this build and no other — narrows that
 context to the ~230 kB slice the installers actually read. Every `COPY` in the
-Dockerfile is therefore written relative to the repo root. The one toolchain
+Dockerfile is therefore written relative to the repo root. That per-dockerfile file is
+an *optimisation* rather than the thing that makes the build work — builders disagree
+about when to reach for it — so the root [`.dockerignore`](../.dockerignore) admits the
+same `.devcontainer/` paths as well (see the Podman note under
+[First-time setup](#first-time-setup)). The one toolchain
 outside all of this is Ruby itself, which is a distribution package and so is
 installed by `system/apt.sh`.
 
@@ -83,23 +87,39 @@ cp .env.podman .env
 
 Then run **Dev Containers: Reopen in Container** in VS Code.
 
-> **Podman and the image's ignore file.** Since the gg toolchains were baked in, this
-> image builds from the **repository root** and narrows that context with
-> [`ubuntu.dockerfile.dockerignore`](ubuntu.dockerfile.dockerignore) — a
-> *per-dockerfile* ignore file, which is a BuildKit rule. Buildah (and so Podman)
-> looks for `.containerignore`/`.dockerignore` in the **context directory** instead
-> and takes an explicit `--ignorefile`; it has no sibling-to-the-Dockerfile rule. If
-> your Podman build dies on the first `COPY` with "no such file or directory", that is
-> why, and the workaround is to build the image yourself and let compose reuse it:
+> **Podman may read a different ignore file, and both are now correct.** Since the gg
+> toolchains were baked in, this image builds from the **repository root** and narrows
+> that context with [`ubuntu.dockerfile.dockerignore`](ubuntu.dockerfile.dockerignore)
+> — a *per-dockerfile* ignore file, which is a **BuildKit** rule. Buildah has its own
+> order (`--ignorefile`, then `<containerfile>.containerignore`, then
+> `<containerfile>.dockerignore`, then the context directory's `.containerignore` and
+> `.dockerignore`), and a rebuild driven by VS Code through `podman-compose` did not
+> land on the file beside the Dockerfile: it applied the **root**
+> [`.dockerignore`](../.dockerignore) and ended the build on its first `COPY`:
+>
+> ```text
+> no items matching glob ".../.devcontainer/system/apt.sh" copied
+> (1 filtered out using /…/.dockerignore): no such file or directory
+> ```
+>
+> The root allowlist now re-includes the five `.devcontainer/` paths this Dockerfile
+> copies, so the build no longer depends on which ignore file the builder reaches for,
+> and no workaround is needed; the block in that file explains what admitting them
+> costs the images that `COPY . .`. The two builders still do not produce an identical
+> image. Podman reads the wider root allowlist, and the difference lands on the one
+> `COPY` that names a bare directory — `COPY ./packages` — so that layer carries a few
+> MB of guest-package and UI sources rather than the version files and pins the narrow
+> slice admits, and the 1.9 GB toolchain layer beneath it takes an unrelated
+> `packages/ui` edit as a cache miss. If that ever matters, build it yourself with the narrow file and let compose
+> reuse the tag:
 >
 > ```sh
 > podman build --ignorefile .devcontainer/ubuntu.dockerfile.dockerignore \
 >   -f .devcontainer/ubuntu.dockerfile -t <the tag compose expects> .
 > ```
 >
-> This has not been measured on a Podman host — nobody has run one since the change —
-> so treat it as the first thing to check rather than as a known failure. The ignore
-> file's header carries the same note and the reasoning behind it.
+> `scripts/ci/build-context.sh` checks this Dockerfile's `COPY` sources against **both**
+> allowlists, so the two cannot drift back apart unnoticed.
 
 ## Host Docker access (the local service stack)
 
