@@ -289,7 +289,8 @@ async fn notify_publish_failed(state: &AppState, publish_job_id: &str, run_id: &
 }
 
 /// Build a run's display identity from its stored row — the publish path's analogue
-/// of [`super::jobs::job_summary`], which lifts the same fields off a job row. A run
+/// of `super::jobs::job_summary`, which lifts the same fields off a job row. That one
+/// is private to its module, so this names it rather than linking it. A run
 /// row already carries its gg preset as a column, lifted from the record at ingest,
 /// so this one reads it directly rather than reparsing a capability set.
 fn run_summary(run: &run::Model) -> JobSummary {
