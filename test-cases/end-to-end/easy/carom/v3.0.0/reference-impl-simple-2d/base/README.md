@@ -1,7 +1,7 @@
 # Carom — `simple-2d` reference implementation
 
 The authored, **correct** reference build of the Carom end-to-end test case's
-`base` variant **on the [Simple 2D](../../../../../../packages/simple-2d) engine**.
+`base` variant **on the [Simple 2D](../../../../../../../packages/simple-2d) engine**.
 It is the counterpart of `../../reference-impl/base`, which is the same game with
 no engine at all, and the two exist side by side because a case that supports more
 than one engine needs a reference per engine: the build a reference demonstrates is

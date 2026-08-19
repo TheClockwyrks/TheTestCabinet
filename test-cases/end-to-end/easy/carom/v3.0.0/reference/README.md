@@ -17,7 +17,7 @@ screenshots are captured straight from them. The captured images are committed
 here and referenced from the manifest as `media` (served as-is), because there is
 no longer a mockup for the harness to render at seed time. The palette and type
 the builds implement are documented in the seeded spec
-[`../specs/overview.md`](../specs/overview.md), which is where a spec should cite
+[`../specs/overview.md.hbs`](../specs/overview.md.hbs), which is where a spec should cite
 them.
 
 The screenshots are still **rendered, not source**: what a run receives is the
@@ -74,7 +74,7 @@ a build's look changes:
 2. Serve the built `dist/` over HTTP and open it in Playwright Chromium at a
    `1280x720` viewport (device scale factor 1), then screenshot the `#stage`
    canvas. Each build exposes its live game instance as `window.__carom` for
-   exactly this headless capture (see `../specs/instrumentation.md`); it is inert
+   exactly this headless capture (see `../specs/instrumentation.md.hbs`); it is inert
    during normal play. Note that `reset()` and `step()` take the clock off the
    animation loop (`autoStep = false`) — the loop keeps *rendering* every frame,
    so the posed state is on screen, but nothing advances unless the script asks.
