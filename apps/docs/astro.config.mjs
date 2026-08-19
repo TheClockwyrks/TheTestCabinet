@@ -541,7 +541,7 @@ export default defineConfig({
             {
               label: "Simple",
               collapsed: true,
-              items: ["engines/simple/overview"],
+              items: ["engines/simple/overview", "engines/simple/simple-2d"],
             },
             {
               label: "Decoupled",

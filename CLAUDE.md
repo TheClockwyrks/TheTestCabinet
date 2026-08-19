@@ -180,16 +180,20 @@ Task-oriented walkthroughs:
   can be supplied externally). See
   [`orchestrators/README.md`](orchestrators/README.md) and the contract doc
   [`components/core/orchestrators.md`](apps/docs/src/content/docs/components/core/orchestrators.md).
-- **Engines:** the runtime a produced game is built on (frame loop and delta time,
-  input actions, audio, assets, diagnostics; some also own rendering and a
-  gameplay framework). An engine is a **run dimension selected independently of
-  the test case** — a case only declares which engines it *supports*, and the
-  engine's own docs are seeded from its package, **never** restated in a case's
-  specs. Design and catalogue:
-  [`engines/`](apps/docs/src/content/docs/engines/); the contract doc is
-  [`components/core/engines.md`](apps/docs/src/content/docs/components/core/engines.md).
-  Beware that **"engine" now names two things** — this runtime, and the wasm
-  module a model submits for a
+- **Engines:** [`engines/`](engines/) — one `engine.toml` per engine
+  (`engines/<slug>/`) declaring the runtime a produced game is built on (frame
+  loop and delta time, input actions, audio, assets, diagnostics; some also own
+  rendering and a gameplay framework). An engine is a **run dimension selected
+  independently of the test case**: a case only declares which engines it
+  *supports*, and the engine's own docs are seeded from its package rather than
+  restated in a case's specs. The runtime itself is an npm package
+  (`packages/simple-2d/` for `simple-2d`), staged into the host package store and
+  vendored into the run repo at seed time. See
+  [`engines/README.md`](engines/README.md), the contract doc
+  [`components/core/engines.md`](apps/docs/src/content/docs/components/core/engines.md),
+  and the catalogue [`engines/`](apps/docs/src/content/docs/engines/). Beware that
+  **"engine" now names two things** — this runtime, and the wasm module a model
+  submits for a
   [performance](apps/docs/src/content/docs/testing/performance/overview.md) case;
   the [glossary](apps/docs/src/content/docs/terminology.md) disambiguates them.
 - **Run-container image:** [`containers/`](containers/) — the single shared base

@@ -35,7 +35,9 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use test_cabinet_core::{LaunchBody, ONE_SHOT_SLUG, OrchestratorSelection, RunRequest};
+use test_cabinet_core::{
+    EngineSelection, LaunchBody, NONE_SLUG, ONE_SHOT_SLUG, OrchestratorSelection, RunRequest,
+};
 
 use crate::kubernetes::{KubernetesConfig, in_cluster_namespace};
 
@@ -162,8 +164,9 @@ impl Config {
     /// [`LaunchBody`], exactly as `worker submit` does: an exact, immutable
     /// version, the `one-shot` orchestrator default when none is named, built-in
     /// orchestrators only (no external `dir` — the driver has no submitter
-    /// checkout), and the base image resolved from the environment in the
-    /// orchestrator rather than from the backend.
+    /// checkout), the `none` engine default when none is named, and the base image
+    /// resolved from the environment in the orchestrator rather than from the
+    /// backend.
     pub fn run_request(&self) -> RunRequest {
         let launch = &self.launch;
         RunRequest {
@@ -178,6 +181,18 @@ impl Config {
                     .clone()
                     .unwrap_or_else(|| ONE_SHOT_SLUG.to_string()),
                 dir: None,
+            },
+            // The engine the produced build is written against. Omitted on the
+            // wire for the engineless run — exactly as `orchestrator` is omitted
+            // for `one-shot` — so a launcher that predates engines round-trips to
+            // the run it always meant. The catalogue is closed and embedded, so
+            // there is no directory arm to carry and nothing for the driver (which
+            // has no checkout) to look up.
+            engine: EngineSelection {
+                slug: launch
+                    .engine
+                    .clone()
+                    .unwrap_or_else(|| NONE_SLUG.to_string()),
             },
             max_runtime_override: launch.max_runtime_seconds,
             container_image: None,

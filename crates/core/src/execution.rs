@@ -35,6 +35,19 @@ pub const WORKSPACE_DIR: &str = "/work";
 /// through this constant so they never drift.
 pub const GAME_JAM_PRIOR_ENTRIES_DIR: &str = "previous-entries";
 
+/// The workspace-relative folder the selected [engine](crate::engine)'s own
+/// documentation is seeded into, copied out of the engine package's declared
+/// `docs` directory.
+///
+/// It sits at the run root rather than under `.tcab/` because it is material the
+/// model is *meant to read*: the engine documents itself from its own package, so
+/// a case's specs never restate it and the rendered prompt points at
+/// `/work/engine` instead. Both the seeder (which writes it) and the prompt (which
+/// points the model at it) name it through this constant so they never drift —
+/// the same reason [`GAME_JAM_PRIOR_ENTRIES_DIR`] exists. Empty of meaning for a
+/// run with no engine, which seeds nothing here.
+pub const ENGINE_DOCS_DIR: &str = "engine";
+
 /// A request to seed a run's repository.
 ///
 /// Seeding creates a fresh git repository with a clean initial commit, no
@@ -72,6 +85,24 @@ pub struct SeedRequest<'a> {
     /// and deliberately git-ignored (they are context, not part of the submission).
     /// Empty for every non-game-jam run and for a jam's first run.
     pub prior_game_jam_entries: &'a [crate::run_record::PriorGameJamEntry],
+    /// The [engine](crate::engine) this run selected — the runtime the produced
+    /// game is built on — when the caller resolved one.
+    ///
+    /// Seeding is where an engine becomes real: its package (and that package's
+    /// `@test-cabinet` closure) is vendored into
+    /// [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR), its own
+    /// documentation is copied to [`ENGINE_DOCS_DIR`], and the seeded workspace
+    /// `package.json` gains the matching `file:` dependency — the one file the
+    /// harness ever rewrites, because an engine is a run dimension the (frozen)
+    /// case cannot name for itself.
+    ///
+    /// `None` means no engine was selected, which is *exactly* what selecting
+    /// [`NONE_SLUG`](crate::engine::NONE_SLUG) means: nothing is vendored and the
+    /// seeded tree is byte-for-byte what it was before engines existed. Both
+    /// spellings reach the same place, so a caller that never consulted the
+    /// catalogue (a test standing up a repository, an older payload) need not
+    /// invent a selection to say "no runtime".
+    pub engine: Option<&'a crate::engine::ResolvedEngine>,
 }
 
 /// A seeded run repository, ready to be copied into a container.
@@ -82,6 +113,18 @@ pub struct SeededRepo {
     pub path: PathBuf,
     /// The initial commit hash of the seeded repository.
     pub initial_commit: String,
+    /// The version of the [engine](crate::engine) runtime vendored into this
+    /// repository — the `version` declared by the package staged in the host
+    /// package store — or `None` when the run selected an engine with no runtime.
+    ///
+    /// Read at seed time rather than inferred from the engine's slug, because the
+    /// slug is stable while the runtime behind it moves: two runs of the same case
+    /// under `simple-2d` months apart were built on different engines, and this is
+    /// the only thing that says so. It is recorded on the run, which is why the
+    /// seeder refuses to proceed when the staged package declares no real version
+    /// rather than recording a placeholder.
+    #[serde(default)]
+    pub engine_version: Option<String>,
 }
 
 /// Seeds fresh per-run repositories.

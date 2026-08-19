@@ -154,12 +154,17 @@ pub async fn build_asset_reference<R: CommandRunner>(
             test_case.slug
         ))
     })?;
-    let reference_dir = variant.reference_impl.as_ref().ok_or_else(|| {
-        Error::Publish(format!(
-            "variant `{}` declares no reference implementation",
-            variant.slug
-        ))
-    })?;
+    // An asset-generation case supports no engine but the engineless `none` (the
+    // `engines` key is rejected for its type), so that is the only key a variant's
+    // reference implementations can carry, and the one this asks for.
+    let reference_dir = test_case
+        .reference_impl_for(variant, crate::engine::NONE_SLUG)
+        .ok_or_else(|| {
+            Error::Publish(format!(
+                "variant `{}` declares no reference implementation",
+                variant.slug
+            ))
+        })?;
 
     let script = reference_dir.join(ASSET_REFERENCE_SCRIPT);
     if !script.is_file() {

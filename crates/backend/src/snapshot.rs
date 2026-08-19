@@ -2619,6 +2619,9 @@ fn case_metadata(
                 // The gallery snapshot shows the standing prompt only — no prior
                 // game-jam entries, so no distinctness section.
                 0,
+                // A snapshot is baked per case version, not per run, and the
+                // engine is a run dimension — so the engineless form.
+                None,
             )
             .map_err(|e| {
                 BackendError::Snapshot(format!(

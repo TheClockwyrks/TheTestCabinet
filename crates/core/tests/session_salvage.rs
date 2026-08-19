@@ -29,12 +29,13 @@ use test_cabinet_core::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLi
 use test_cabinet_core::gg_session_record::GG_SESSION_FORMAT_VERSION;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
-    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, Error as CoreError,
-    EventFormat, ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry,
-    HarnessSlug, MapCreds, MediaKind, NoopEventSink, OpenRouterPrices, OrchestratorCatalog,
-    OrchestratorSelection, OutputSink, PrerenderedReferenceRenderer, ProofFile, RenderedReference,
-    Result as CoreResult, RunCancellation, RunEngine, RunRequest, SubscriptionSpec,
-    TestCaseCatalog, TestCaseVersion, Usage, ValidationSummary, Validator, Variant,
+    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
+    EngineSelection, Error as CoreError, EventFormat, ExecOutput, FsRepoSeeder, HarnessInvocation,
+    HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink,
+    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink,
+    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
+    RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
+    Usage, ValidationSummary, Validator, Variant,
 };
 
 /// The repository's `test-cases/` directory — the real catalog, so the run is seeded from
@@ -296,6 +297,7 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
+        engines: EngineCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),
@@ -324,6 +326,7 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
         harness: HarnessSlug::Gg,
         model_id: "fake-model".to_string(),
         orchestrator: OrchestratorSelection::default(),
+        engine: EngineSelection::default(),
         max_runtime_override: Some(60),
         container_image: None,
         gg_capability_set: Some(test_cabinet_core::gg::GgCapabilitySet::default()),

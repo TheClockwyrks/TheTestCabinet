@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use anyhow::{Context, bail};
 use test_cabinet_core::backend_client::LiveItem;
 use test_cabinet_core::{
-    BackendClient, HarnessSlug, HttpBackendClient, JobState, JobStatusOut, LaunchBody,
+    BackendClient, HarnessSlug, HttpBackendClient, JobState, JobStatusOut, LaunchBody, NONE_SLUG,
     PublishedRun, RunRecord, runtime_hours_to_seconds,
 };
 
@@ -43,6 +43,13 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     // built-in slug. `one-shot` is the default the backend also assumes when the
     // field is omitted.
     let orchestrator = (args.orchestrator != "one-shot").then(|| args.orchestrator.clone());
+    // The engine is omitted at its default for the same reason: `none` is what the
+    // backend assumes when the field is absent, so an engineless launch sends the
+    // payload a launcher that predates engines sent. The slug is not checked here —
+    // the core gates it (it must resolve, and the case must declare support) before
+    // the driver spends a container on it, and doing it twice would mean two
+    // catalogues to keep in step.
+    let engine = (args.engine != NONE_SLUG).then(|| args.engine.clone());
     let body = LaunchBody {
         test_case: args.test_case.clone(),
         version: args.version.clone(),
@@ -50,6 +57,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         harness,
         model: args.model.clone(),
         orchestrator,
+        engine,
         max_runtime_seconds: args.max_runtime.map(runtime_hours_to_seconds),
         auth_mode: args.auth_mode.clone(),
         retry_count: args.retry_count,
@@ -76,6 +84,13 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     match &body.orchestrator {
         Some(slug) => println!("  orch:    {slug}"),
         None => println!("  orch:    one-shot"),
+    }
+    // Echoed even when it is the default, because the engine changes what the
+    // harness is asked to build: a reader comparing two runs needs to see which
+    // dimension this one is on without reconstructing it from the flags.
+    match &body.engine {
+        Some(slug) => println!("  engine:  {slug}"),
+        None => println!("  engine:  {NONE_SLUG} (no runtime)"),
     }
     if let Some(mode) = &body.auth_mode {
         println!("  auth:    {mode}");

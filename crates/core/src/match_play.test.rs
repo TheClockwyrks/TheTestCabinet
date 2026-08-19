@@ -74,6 +74,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::engine::NONE_SLUG.to_string()],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

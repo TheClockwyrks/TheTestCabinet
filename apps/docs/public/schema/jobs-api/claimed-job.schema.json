@@ -50,6 +50,10 @@
           "description": "Optional harness authentication mode for this run (`auto`, `subscription`,\nor `api-key`). Omitted keeps the default behavior (API-key, preferring a\nsubscription only when its credentials are available). The driver applies\nit by setting `TCAB_AUTH_MODE` before the engine resolves auth, so a console\ncan request subscription mode for a backend-driven run (the only way to run\nthe subscription-only Antigravity harness on the cluster path).",
           "type": ["string", "null"]
         },
+        "engine": {
+          "description": "Built-in [engine](crate::engine) slug the produced build is written\nagainst (e.g. `simple-2d`) — the runtime supplying its frame loop, input,\naudio, assets, and diagnostics. Omit for the `none` default, exactly as\n`orchestrator` is omitted for `one-shot`: an absent key means the launch\nwants what a run looked like before the dimension existed, so every\nlauncher that predates engines keeps working untouched.\n\nThe slug must be one the engine catalogue knows *and* one the requested\ncase version declares support for; both are checked when the run\nexecutes, not here, so a bad selection fails the run rather than being\nsilently downgraded.",
+          "type": ["string", "null"]
+        },
         "ggCapabilitySet": {
           "anyOf": [
             {

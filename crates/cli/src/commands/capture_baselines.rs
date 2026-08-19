@@ -31,8 +31,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, VALIDATION_BASELINE_DIR, Variant,
-    capture_baseline_media, find_build_output,
+    NONE_SLUG, SystemCommandRunner, TestCaseCatalog, TestCaseVersion, VALIDATION_BASELINE_DIR,
+    Variant, capture_baseline_media, find_build_output,
 };
 
 use crate::cli::CaptureBaselinesArgs;
@@ -124,15 +124,23 @@ pub(super) fn capture_variant_baseline(
     Ok(())
 }
 
-/// The reference-implementation directory of a pre-filtered target variant.
+/// The reference-implementation directory of a pre-filtered target variant, for
+/// the engineless [`NONE_SLUG`] engine.
 ///
 /// Both commands filter their targets down to variants that declare a
 /// `reference_implementation` before reaching here, so the absence of one is a
 /// programming error rather than a user-facing one.
+///
+/// A variant's reference implementations are keyed by engine, and these two
+/// commands select none: publishing a reference build and capturing validation
+/// baselines both address the engineless build, which is the only one a case is
+/// guaranteed to have. Capturing per-engine media is a separate job, and it will
+/// take the engine as an argument rather than reinterpreting this one.
 pub(super) fn reference_dir(variant: &Variant) -> &Path {
     variant
-        .reference_impl
-        .as_ref()
+        .reference_impls
+        .get(NONE_SLUG)
+        .map(PathBuf::as_path)
         .expect("targets are pre-filtered to variants with a reference_impl")
 }
 
@@ -308,7 +316,7 @@ pub(super) fn select_targets<'a>(
         let selected = test_case
             .variant(slug)
             .with_context(|| format!("selecting variant `{slug}`"))?;
-        if selected.reference_impl.is_none() {
+        if !selected.reference_impls.contains_key(NONE_SLUG) {
             bail!(
                 "variant `{slug}` of {}@{} declares no `reference_implementation`",
                 test_case.slug,
@@ -321,7 +329,7 @@ pub(super) fn select_targets<'a>(
     let targets: Vec<&Variant> = test_case
         .variants
         .iter()
-        .filter(|v| v.reference_impl.is_some())
+        .filter(|v| v.reference_impls.contains_key(NONE_SLUG))
         .collect();
     if targets.is_empty() {
         bail!(

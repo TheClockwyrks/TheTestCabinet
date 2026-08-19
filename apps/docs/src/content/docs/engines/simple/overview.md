@@ -3,8 +3,9 @@ title: Overview
 ---
 
 The Simple family provides the services a game needs around its own code and
-leaves the game itself to the model. It ships two engines, `simple-2d` and
-`simple-3d`, which differ in their spatial model, asset kinds, and touch layouts.
+leaves the game itself to the model. It covers 2D and 3D as separate engines,
+which differ in their spatial model, asset kinds, and touch layouts.
+[`simple-2d`](/engines/simple/simple-2d/) is the engine the catalogue provides.
 
 Simple owns the frame loop and the delta time it hands the game, the input action
 registry and its bindings, the audio bus, the asset loader, and the debug overlay.
@@ -17,11 +18,13 @@ dependency.
 ## What a game supplies
 
 A game written against Simple supplies its own update and its own rendering. The
-engine calls both as part of the frame, passing the update the delta time it
-computed and the rendering whatever surface the engine's dimensionality provides.
+engine calls both as part of the frame, passing the update the real elapsed time
+for that frame and the rendering whatever surface the engine's dimensionality
+provides. The engine neither accumulates nor fixes the step, so a game integrates
+against the delta time it is given.
 
-Simple provides no collision detection, no physics, and no gameplay framework, so
-a case that measures those measures them directly.
+Collision detection, physics, and gameplay structure belong to the game, so a
+case that measures those measures them directly.
 
 ## What validation gains
 

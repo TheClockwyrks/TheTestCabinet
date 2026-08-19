@@ -1697,6 +1697,7 @@ impl VersionBody {
         // never reads it (it is site-facing only).
         let changelog_path = PathBuf::from("changelog.md");
         TestCaseVersion {
+            engines: vec![crate::engine::NONE_SLUG.to_string()],
             slug: self.slug,
             version: self.version,
             name: self.name,
@@ -1807,9 +1808,9 @@ impl VersionBody {
                     // it is a host source directory that is deployed out-of-band, is
                     // never seeded, and takes no part in executing a run, so the
                     // wire `VariantBody` omits it entirely. The resolved `Variant`
-                    // records `None` — the publisher, not the driver, resolves it
-                    // from the on-disk case definition.
-                    reference_impl: None,
+                    // records none for any engine — the publisher, not the driver,
+                    // resolves them from the on-disk case definition.
+                    reference_impls: Default::default(),
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),

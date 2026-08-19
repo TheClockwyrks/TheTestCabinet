@@ -14,6 +14,7 @@ use test_cabinet_core::{
 };
 
 use crate::cli::SeedArgs;
+use crate::commands::engines;
 
 /// Seed the selected test case version into `out_dir` and report where it landed.
 ///
@@ -42,6 +43,12 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     let specs = test_case.seeded_specs(variant);
     let workspace = test_case.workspace_for(variant);
 
+    // Resolved (and checked against the case's supported set) before anything is
+    // written, so an engine this case never declared fails on the flag rather than
+    // half-way through a copy that has already created the output directory.
+    let engine = engines::resolve_for_case(&args.engine, &test_case)
+        .with_context(|| format!("selecting engine `{}`", args.engine))?;
+
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("creating output directory {}", args.out_dir.display()))?;
 
@@ -67,12 +74,28 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
             // Local inspection has no backend to source earlier game-jam entries
             // from, so none are seeded.
             prior_game_jam_entries: &[],
+            // Always passed, even for the engineless `none`, because that is what
+            // was resolved: the seeder treats a runtime-less engine and no engine
+            // at all identically, and handing it the thing the flag actually named
+            // keeps this command's output a faithful mirror of the run's.
+            engine: Some(&engine),
         })
         .context("seeding the run repository")?;
 
     println!("\nseeded repository: {}", seeded.path.display());
     println!("  initial commit: {}", seeded.initial_commit);
     println!("  variant:        {}", variant.slug);
+    // The vendored runtime's version comes back from the seeder rather than from
+    // the manifest: the slug is stable while the package behind it moves, so this
+    // is the only thing that says which engine the tree was actually built against.
+    println!(
+        "  engine:         {}{}",
+        engine.slug(),
+        match &seeded.engine_version {
+            Some(version) => format!(" (runtime {version})"),
+            None => " (no runtime vendored)".to_string(),
+        }
+    );
     println!("  specs:          {}", specs.len());
     for spec in &specs {
         println!("    {}", spec.dest.display());

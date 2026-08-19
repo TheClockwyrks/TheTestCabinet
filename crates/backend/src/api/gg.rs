@@ -171,6 +171,9 @@ impl GgRunRequest {
             // gg is its own executor; the orchestrator dimension does not apply. The
             // engine takes the gg branch and never conducts an orchestrator.
             orchestrator: None,
+            // Nor does the engine dimension: a gg run submits a program, not a
+            // browser build, so there is no runtime to vendor into a workspace.
+            engine: None,
             max_runtime_seconds: self.max_runtime_seconds,
             auth_mode: None,
             retry_count: self.retry_count,

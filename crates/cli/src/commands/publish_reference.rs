@@ -6,7 +6,8 @@
 //! `run.links.playableBuild`. Unlike a run's build it is **never seeded** into a
 //! run (the model must not see the answer); it is authored under the version
 //! folder, declared by the variant manifest's optional `reference_implementation`
-//! key (resolved onto [`Variant::reference_impl`]), built with the case's own
+//! key (resolved onto [`Variant::reference_impls`], one per engine), built with
+//! the case's own
 //! `[build]` commands, and hosted out-of-band. This command is that out-of-band
 //! hosting step:
 //!

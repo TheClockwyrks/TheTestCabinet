@@ -20,8 +20,9 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 
 - `run` enqueues a run for a test case version,
   [variant](/testing/end-to-end/overview/),
-  [harness](/components/core/harnesses/), model and
-  [orchestrator](/components/core/orchestrators/), prints the queued job id,
+  [harness](/components/core/harnesses/), model,
+  [orchestrator](/components/core/orchestrators/) and
+  [engine](/components/core/engines/), prints the queued job id,
   streams the run's live [event stream](/components/core/events/) until it
   finishes, then reads the produced [run record](/components/core/run-records/)
   back and prints its summary. `--max-runtime` overrides the case's per-run cap,
@@ -33,7 +34,8 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 
   `--harness` selects one of the third-party CLI harnesses. A
   [gg](/gg/overview/) run carries a capability set and is launched from a
-  console.
+  console. `--engine` selects the runtime the game is built on, defaulting to
+  `none`, and `seed` and `validate` take the same flag.
 - `seed` runs only the [seeding](/components/core/execution/#seeding) step for a
   chosen variant and leaves the result on disk, so the exact inputs a harness
   would receive can be inspected without launching a container.
@@ -44,8 +46,9 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 - `harnesses` lists the supported agent harnesses and whether each one's
   resolved authentication mode has the credentials it needs.
 - `orchestrators` lists the built-in orchestrators and what each one does.
+- `engines` lists the built-in engines and what each one provides.
 
-Both listings accept `--json`.
+These listings accept `--json`.
 
 ### Accounts
 

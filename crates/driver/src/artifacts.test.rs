@@ -160,6 +160,8 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
             orchestrator_slug: "one-shot".into(),
+            engine_slug: "none".into(),
+            engine_version: None,
             model_id: "anthropic/claude-opus-4".into(),
             gg_capability_set: None,
             gg_summary: None,

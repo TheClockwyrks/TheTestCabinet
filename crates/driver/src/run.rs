@@ -19,10 +19,10 @@ use test_cabinet_code_analysis::StaticCodeAnalyzer;
 use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
-    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient,
-    OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
-    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState,
-    TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
+    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog, FsRepoSeeder,
+    HttpBackendClient, OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer,
+    PriorGameJamEntry, RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest,
+    RunState, TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -301,6 +301,11 @@ where
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         orchestrators: OrchestratorCatalog::new(),
+        // Both catalogues are embedded at build time, which is what lets the driver
+        // resolve a run's engine at all: the pod has no checkout to read an
+        // `engines/` directory out of, and the engine gate runs before the sandbox
+        // is created.
+        engines: EngineCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
         // gg's capture journal is folded into the run tree's `replay.json.gz` here,
         // on the host, after the tree is collected and before validation — so a

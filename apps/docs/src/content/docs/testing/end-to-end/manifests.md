@@ -31,6 +31,7 @@ workspace = "workspaces/base" # optional starter directory, seeded into the run 
 init = "npm install"         # optional command run after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
 packages = []                # Test Cabinet packages the build imports (npm names)
+engines = ["none"]           # engines a run of this case may select (default ["none"])
 
 # Variants: an ORDERED list of paths to standalone variant files (the first is the
 # default). Exactly one variant runs per run, and its slug is recorded in the run
@@ -212,6 +213,13 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   the case's Inputs tab, tagged `Package`, with a description defined centrally
   in `core` rather than per case. See
   [Packages](/testing/end-to-end/overview/#packages).
+- `engines` names the engines a run of this case version may select. Each entry
+  must be a slug the engine catalogue knows, and an unknown one is rejected when
+  the case resolves. It defaults to `["none"]`, and `none` is supported whether
+  declared or not. A case that declares an engine providing a runtime must ship a
+  `workspace` containing a `package.json`, because the engine's dependency is
+  written into that file at seed time. It is valid for the end-to-end,
+  full-stack, and game-jam types only. See [Engines](/components/core/engines/).
 - `variants` names the builds the case offers, in order, as paths to standalone
   variant files. The first is the default and at least one is required. It is a
   root key, so it must precede the first table header. See
@@ -279,7 +287,9 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   as any verdict unit declares a `validation` script. The optional `tick_hz` is
   the case's fixed simulation rate in whole ticks per second and must be
   positive; it is what lets the validation runtime convert an exact number of
-  stepped ticks into real time. Omit it for a case whose build is clocked in
+  stepped ticks into real time, and under an
+  [engine](/components/core/engines/) it is the step the engine host's manual
+  clock takes by default. Omit it for a case whose build is clocked in
   real time. The table is reporter-side and never seeded; the seeded
   specification documents the same handle independently as an ordinary game
   debug feature.

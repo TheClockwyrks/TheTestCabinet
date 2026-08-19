@@ -236,6 +236,32 @@ export type RunSubject = {
    */
   orchestratorSlug: string;
   /**
+   * The slug of the [engine](crate::engine) the produced build was written
+   * against (for example `simple-2d`), or `none` when the build supplied its
+   * own frame loop, input, audio, assets, and diagnostics.
+   *
+   * The engine is a **run dimension**, not a property of the case: the same
+   * case version can be run on several engines, and a result is only
+   * comparable with another result on the same engine, so the selection is
+   * recorded here beside the harness and the orchestrator rather than being
+   * inferred from the case. Defaults to `none` so records written before
+   * engine selection existed — and hand-written fixtures — still deserialize,
+   * which is also the truth about them: they had no runtime.
+   */
+  engineSlug: string;
+  /**
+   * The version of the engine runtime that was vendored into the run
+   * repository, read out of the staged package at seed time.
+   *
+   * Separate from [`Self::engine_slug`] because an engine's contract moves
+   * under a stable slug: two `simple-2d` runs a release apart were given
+   * different frame, input, or host behaviour, and only the version
+   * distinguishes them. `None` for a run whose engine vendors no runtime
+   * (`none` has no package, so there is no version to read) and for records
+   * written before engine selection existed.
+   */
+  engineVersion?: string;
+  /**
    * The model ID passed to the harness, treated as an opaque string. For a gg
    * run there is no single harness model (a run binds models to slots via
    * [`Self::gg_capability_set`]); this carries the run's primary-slot model so a

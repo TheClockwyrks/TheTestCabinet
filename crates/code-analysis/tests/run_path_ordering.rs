@@ -52,12 +52,12 @@ use test_cabinet_code_analysis::StaticCodeAnalyzer;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, CODE_ANALYSIS_TREE_ARTIFACT,
     CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, EventFormat, EventSink, ExecOutput, FsRepoSeeder,
-    HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, MediaKind, NoopEventSink,
-    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
-    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
-    RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage,
-    ValidationSummary, Validator, Variant,
+    ContainerSpec, ContainerStart, EngineCatalog, EngineSelection, EventFormat, EventSink,
+    ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug,
+    MediaKind, NoopEventSink, OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection,
+    OutputSink, OutputStream, PrerenderedReferenceRenderer, ProofFile, RenderedReference,
+    Result as CoreResult, RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion,
+    TokenCounts, Usage, ValidationSummary, Validator, Variant,
 };
 
 /// The repository's `test-cases/` directory — the real catalog, so the run is seeded from
@@ -375,6 +375,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
+        engines: EngineCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),
@@ -398,6 +399,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
         harness: HarnessSlug::Claude,
         model_id: "fake-model".to_string(),
         orchestrator: OrchestratorSelection::default(),
+        engine: EngineSelection::default(),
         max_runtime_override: None,
         container_image: None,
         gg_capability_set: None,

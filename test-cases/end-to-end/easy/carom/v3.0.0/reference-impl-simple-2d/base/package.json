@@ -1,0 +1,19 @@
+{
+  "name": "carom",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Carom — a neon top-down paddle duel, built on the Simple 2D engine, that runs entirely in the browser.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "@test-cabinet/simple-2d": "file:vendor/simple-2d"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

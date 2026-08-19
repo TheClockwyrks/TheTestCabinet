@@ -22,6 +22,8 @@ fn sample_record() -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: Some("1.2.3".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "simple-2d".to_string(),
+            engine_version: Some("1.0.0".to_string()),
             model_id: "anthropic/claude-opus-4".to_string(),
             gg_capability_set: None,
             gg_summary: None,
@@ -118,6 +120,8 @@ fn serializes_to_camel_case_contract() {
             "harnessSlug": "claude",
             "harnessVersion": "1.2.3",
             "orchestratorSlug": "one-shot",
+            "engineSlug": "simple-2d",
+            "engineVersion": "1.0.0",
             "modelId": "anthropic/claude-opus-4"
         },
         "tooling": {
@@ -270,6 +274,48 @@ fn orchestrator_slug_defaults_to_one_shot_for_older_records() {
 
     let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
     assert_eq!(parsed.subject.orchestrator_slug, "one-shot");
+}
+
+#[test]
+fn engine_slug_defaults_to_none_for_older_records() {
+    // A record written before engine selection existed omits both fields. It must
+    // still deserialize, and the default has to be the truth about such a run: it
+    // was built against no runtime, which is exactly what `none` names.
+    let mut value = serde_json::to_value(sample_record()).expect("serialize");
+    let subject = value["subject"].as_object_mut().unwrap();
+    subject.remove("engineSlug");
+    subject.remove("engineVersion");
+
+    let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed.subject.engine_slug, crate::engine::NONE_SLUG);
+    assert!(parsed.subject.engine_version.is_none());
+}
+
+#[test]
+fn an_engine_selection_round_trips() {
+    // Both halves of the selection survive a write/read cycle: the slug says which
+    // engine, the version says which build of it, and a comparison between two runs
+    // is only meaningful when both agree.
+    let parsed: RunRecord =
+        serde_json::from_value(serde_json::to_value(sample_record()).expect("serialize"))
+            .expect("deserialize");
+
+    assert_eq!(parsed.subject.engine_slug, "simple-2d");
+    assert_eq!(parsed.subject.engine_version.as_deref(), Some("1.0.0"));
+}
+
+#[test]
+fn an_engine_without_a_runtime_writes_no_version() {
+    // `none` vendors no package, so there is no version to read at seed time. The
+    // key is omitted rather than written as null: a null would read as "an engine
+    // whose version could not be determined", which is a different claim.
+    let mut record = sample_record();
+    record.subject.engine_slug = crate::engine::NONE_SLUG.to_string();
+    record.subject.engine_version = None;
+
+    let value = serde_json::to_value(&record).expect("serialize");
+    assert_eq!(value["subject"]["engineSlug"], json!("none"));
+    assert!(value["subject"].get("engineVersion").is_none());
 }
 
 #[test]

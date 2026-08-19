@@ -153,7 +153,8 @@ export type ArmDiagnostics = {
  */
 export type Confound = {
   /**
-   * The control that drifted (e.g. `auth_mode`, `orchestrator`, `model`).
+   * The control that drifted (e.g. `auth_mode`, `orchestrator`, `engine`,
+   * `model`).
    */
   variable: string;
   /**
@@ -186,6 +187,26 @@ export type ComparisonControls = {
    * only built-in); a stray mismatch is surfaced as a [`Confound`].
    */
   orchestratorSlug: string;
+  /**
+   * The [engine](crate::engine) every arm runs — the runtime the produced build
+   * is written against, `none` for a build that supplies its own frame loop,
+   * input, audio, assets, and diagnostics.
+   *
+   * A control rather than a per-arm dimension, because **an A/B that varies the
+   * engine is not measuring what it claims to**: runs of one case under different
+   * engines measure different work. Under an engine the model is handed a frame
+   * loop, an input layer, an audio bus, an asset loader, and diagnostics, so it
+   * writes the game and not the runtime beneath it, and the case's available
+   * checklist points differ accordingly. Two arms that disagree on the engine
+   * would report a difference in cost, tokens, and score that belongs to the
+   * runtime rather than to the configurations under test — so a mismatch is
+   * surfaced as a [`Confound`] instead of being folded in.
+   *
+   * Defaults to `none` when absent, so a comparison stored before engine
+   * selection existed still deserializes — and reads as what it was, since every
+   * such run built against no runtime at all.
+   */
+  engineSlug: string;
   /**
    * The container/run-image build every arm runs, when pinned. `None` leaves it
    * unconstrained.

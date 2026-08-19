@@ -51,10 +51,7 @@ pub(super) async fn execute(
     if args.dry_run {
         println!("\n--dry-run: nothing was built or uploaded.");
         for variant in targets {
-            let dir = variant
-                .reference_impl
-                .as_ref()
-                .expect("targets are pre-filtered to variants with a reference_impl");
+            let dir = super::capture_baselines::reference_dir(variant);
             println!("  {}", variant.slug);
             println!("    script: {}", dir.join(ASSET_REFERENCE_SCRIPT).display());
             println!(

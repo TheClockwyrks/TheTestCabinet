@@ -72,6 +72,8 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 harness_slug: HarnessSlug::Claude,
                 harness_version: Some("1.2.3".to_string()),
                 orchestrator_slug: "one-shot".to_string(),
+                engine_slug: "none".to_string(),
+                engine_version: None,
                 model_id: "claude-sonnet-4-5".to_string(),
                 gg_capability_set: None,
                 gg_summary: None,

@@ -1039,6 +1039,9 @@ impl DefinitionStore {
             variant_name,
             variant_description,
             voxel,
+            // Rendered for display off the stored manifest, outside any run, so
+            // there is no selected engine: the engineless form.
+            None,
         )?)
     }
 

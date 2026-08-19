@@ -62,6 +62,8 @@ fn record(id: &str) -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: Some("1.2.3".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "claude-sonnet-4-5".to_string(),
             gg_capability_set: None,
             gg_summary: None,
@@ -4217,6 +4219,7 @@ fn sample_stored_comparison(id: &str) -> StoredComparison {
                 version: "v2.0.0".to_string(),
                 variant: "base".to_string(),
                 orchestrator_slug: "one-shot".to_string(),
+                engine_slug: "none".to_string(),
                 container_build: None,
             },
             arms: vec![ComparisonArm {

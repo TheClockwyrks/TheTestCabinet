@@ -33,6 +33,8 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
             harness_slug: HarnessSlug::Gg,
             harness_version: Some("0.7.0".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: model.to_string(),
             gg_capability_set: Some(GgCapabilitySet::minimal(model)),
             gg_summary: Some(GgSessionSummary {

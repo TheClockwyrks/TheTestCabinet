@@ -3,9 +3,9 @@ title: Overview
 ---
 
 The Decoupled family provides a gameplay framework a game is written inside, with
-simulation separated from rendering. It ships two engines, `decoupled-2d` and
-`decoupled-3d`, which differ in their rendering pipeline, spatial model, asset
-kinds, and touch layouts.
+simulation separated from rendering. It covers 2D and 3D as separate engines,
+which differ in their rendering pipeline, spatial model, asset kinds, and touch
+layouts.
 
 A game's simulation is authored in Rust and compiled to WebAssembly. Its
 rendering is configured declaratively and drawn by the engine's TypeScript
@@ -50,8 +50,7 @@ alone.
 ## Modules
 
 Decoupled offers modules for the game-agnostic work a case may or may not want
-provided, collision among them. A case declares the presets it supports, and the
-preset that produced a run is recorded with it.
+provided, collision among them.
 
 ## Where it fits
 

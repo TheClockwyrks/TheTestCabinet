@@ -10,8 +10,8 @@ use std::path::Path;
 use test_cabinet_core::post_run::{PostRunContext, PostRunStage};
 use test_cabinet_core::test_case::{TestCaseVersion, Variant};
 use test_cabinet_core::{
-    ArtifactCollection, CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, HarnessSlug,
-    OrchestratorSelection, RunRequest, TestCaseCatalog,
+    ArtifactCollection, CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, EngineSelection,
+    HarnessSlug, OrchestratorSelection, RunRequest, TestCaseCatalog,
 };
 
 use super::*;
@@ -41,6 +41,7 @@ fn request(case: &TestCaseVersion, variant: &Variant) -> RunRequest {
         harness: HarnessSlug::Claude,
         model_id: "some-model".to_string(),
         orchestrator: OrchestratorSelection::default(),
+        engine: EngineSelection::default(),
         max_runtime_override: None,
         container_image: None,
         gg_capability_set: None,

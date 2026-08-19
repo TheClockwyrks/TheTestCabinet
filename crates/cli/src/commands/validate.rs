@@ -9,6 +9,7 @@ use test_cabinet_core::{
 };
 
 use crate::cli::ValidateArgs;
+use crate::commands::engines;
 
 /// Run the core validation pass (load check plus any declared checks) over an
 /// already-produced implementation, summarizing the result.
@@ -31,6 +32,15 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     let variant = test_case
         .variant(&args.variant)
         .with_context(|| format!("selecting variant `{}`", args.variant))?;
+
+    // Resolving the engine is the gate: a build written against an engine is driven
+    // through that engine's host interface, so validating it as though it were on a
+    // different engine measures it against a contract it was never given. The check
+    // is the case's declared support, and it happens before anything is built,
+    // because a mismatch is a mistake in the invocation rather than a result.
+    let engine = engines::resolve_for_case(&args.engine, &test_case)
+        .with_context(|| format!("selecting engine `{}`", args.engine))?;
+    println!("  engine: {}", engine.slug());
 
     // Render the selected variant's reference baselines the declared checks
     // compare against. A check's baseline may be a common reference or one the

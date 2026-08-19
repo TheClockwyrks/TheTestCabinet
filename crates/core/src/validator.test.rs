@@ -178,7 +178,7 @@ fn base_variant() -> crate::test_case::Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
-        reference_impl: None,
+        reference_impls: Default::default(),
     }
 }
 
@@ -230,6 +230,7 @@ fn asset_version() -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::engine::NONE_SLUG.to_string()],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -482,6 +483,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::engine::NONE_SLUG.to_string()],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

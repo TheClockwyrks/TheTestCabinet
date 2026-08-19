@@ -25,13 +25,14 @@ use std::time::{Duration, Instant};
 
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
-    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EventFormat, EventSink,
-    ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug,
-    MapCreds, MediaKind, NoopEventSink, OpenRouterPrices, OrchestratorCatalog,
-    OrchestratorSelection, OutputSink, OutputStream, PostRunContext, PostRunReport, PostRunStage,
-    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
-    RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
-    TokenCounts, Usage, ValidationSummary, Validator, Variant,
+    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
+    EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation,
+    HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink,
+    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
+    PostRunContext, PostRunReport, PostRunStage, PrerenderedReferenceRenderer, ProofFile,
+    RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
+    SubscriptionSpec, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary,
+    Validator, Variant,
 };
 
 /// The repository's `test-cases/` directory — the real catalog, so the run is
@@ -315,6 +316,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
+        engines: EngineCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),
@@ -346,6 +348,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         harness: HarnessSlug::Claude,
         model_id: "fake-model".to_string(),
         orchestrator: OrchestratorSelection::default(),
+        engine: EngineSelection::default(),
         // One second for the entire run — the session, and anything the cap wraps.
         max_runtime_override: Some(RUNTIME_CAP),
         container_image: None,

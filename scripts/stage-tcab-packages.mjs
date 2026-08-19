@@ -25,17 +25,36 @@
 //
 // Usage: node scripts/stage-tcab-packages.mjs [outDir]   (default /opt/tcab-packages)
 //
-// The SHIPPABLE list below MUST stay in lockstep with the SHIPPABLE_PACKAGES
-// allowlist in crates/core/src/test_case.rs, which is what a case's `packages`
-// names are validated against.
+// The SHIPPABLE list below is the superset of the SHIPPABLE_PACKAGES allowlist in
+// crates/core/src/test_case.rs. That allowlist is what a case's manifest `packages`
+// names are validated against, so every name a case may request must appear in both
+// lists. The extra entries here are ENGINE runtimes (@test-cabinet/simple-2d).
+// They are staged into the same store, but an engine is a run dimension selected
+// per run (`tcab run --engine <slug>`) rather than something a case declares, and
+// it is seeded into `.tcab/engine/` rather than `.tcab/packages/`. So an engine
+// runtime belongs in this list and must NOT be added to SHIPPABLE_PACKAGES —
+// adding it there would let a case request the engine through `packages`, which
+// is exactly what that allowlist exists to refuse.
 
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** The packages a test case may request via its manifest `packages` key. */
-const SHIPPABLE = ["@test-cabinet/particle-runtime", "@test-cabinet/voxel-runtime"];
+/**
+ * Everything staged into the package store. The first two are the packages a test
+ * case may request via its manifest `packages` key, and those two MUST also appear
+ * in SHIPPABLE_PACKAGES in crates/core/src/test_case.rs. The third is an engine
+ * runtime: selected per run via `--engine`, seeded into `.tcab/engine/`, and never
+ * nameable by a case — so it is staged from here and is deliberately absent from
+ * that Rust allowlist.
+ */
+const SHIPPABLE = [
+  "@test-cabinet/particle-runtime",
+  "@test-cabinet/voxel-runtime",
+  // Engine runtime — staged, but not a `packages` name. See above.
+  "@test-cabinet/simple-2d",
+];
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = resolve(process.argv[2] ?? "/opt/tcab-packages");

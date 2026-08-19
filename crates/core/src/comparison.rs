@@ -45,11 +45,39 @@ pub struct ComparisonControls {
     /// The orchestrator every arm runs. Held constant (in practice `one-shot`, the
     /// only built-in); a stray mismatch is surfaced as a [`Confound`].
     pub orchestrator_slug: String,
+    /// The [engine](crate::engine) every arm runs — the runtime the produced build
+    /// is written against, `none` for a build that supplies its own frame loop,
+    /// input, audio, assets, and diagnostics.
+    ///
+    /// A control rather than a per-arm dimension, because **an A/B that varies the
+    /// engine is not measuring what it claims to**: runs of one case under different
+    /// engines measure different work. Under an engine the model is handed a frame
+    /// loop, an input layer, an audio bus, an asset loader, and diagnostics, so it
+    /// writes the game and not the runtime beneath it, and the case's available
+    /// checklist points differ accordingly. Two arms that disagree on the engine
+    /// would report a difference in cost, tokens, and score that belongs to the
+    /// runtime rather than to the configurations under test — so a mismatch is
+    /// surfaced as a [`Confound`] instead of being folded in.
+    ///
+    /// Defaults to `none` when absent, so a comparison stored before engine
+    /// selection existed still deserializes — and reads as what it was, since every
+    /// such run built against no runtime at all.
+    #[serde(default = "default_engine_slug")]
+    pub engine_slug: String,
     /// The container/run-image build every arm runs, when pinned. `None` leaves it
     /// unconstrained.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub container_build: Option<String>,
+}
+
+/// The engine a comparison stored before engine selection existed held constant:
+/// [`NONE_SLUG`](crate::engine::NONE_SLUG), because every run it aggregates was
+/// built against no runtime at all. Spelled through the catalogue's own constant so
+/// the control and the [record](crate::run_record::RunSubject::engine_slug) it is
+/// compared against cannot drift apart.
+fn default_engine_slug() -> String {
+    crate::engine::NONE_SLUG.to_string()
 }
 
 /// One arm of a comparison: **one configuration**, run `N` times. An arm is either
@@ -170,7 +198,8 @@ pub struct ArmDiagnostics {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct Confound {
-    /// The control that drifted (e.g. `auth_mode`, `orchestrator`, `model`).
+    /// The control that drifted (e.g. `auth_mode`, `orchestrator`, `engine`,
+    /// `model`).
     pub variable: String,
     /// The distinct values observed across the arm's runs.
     pub values: Vec<String>,

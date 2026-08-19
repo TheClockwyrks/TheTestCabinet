@@ -1,0 +1,23 @@
+{
+  "name": "@test-cabinet/simple-2d",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Vendored, prebuilt copy of @test-cabinet/simple-2d — the Simple 2D engine: the frame loop and its delta time, the letterboxed device-pixel-ratio-aware canvas fit, named input actions, the synthesized audio cue bus, asset resolution, the diagnostics overlay, and the driver-facing host interface. Vendored so this reference implementation installs and builds with a plain `npm ci` outside the monorepo; it is byte-for-byte the engine's compiled output (the engine depends on nothing), and a real run receives the same package instead as an injected `file:` dependency on the seeded engine.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./dist/host.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}

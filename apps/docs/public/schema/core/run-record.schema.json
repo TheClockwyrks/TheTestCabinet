@@ -1485,6 +1485,15 @@
     "RunSubject": {
       "description": "The subject of a run: what was run, with what, against which model.",
       "properties": {
+        "engineSlug": {
+          "default": "none",
+          "description": "The slug of the [engine](crate::engine) the produced build was written\nagainst (for example `simple-2d`), or `none` when the build supplied its\nown frame loop, input, audio, assets, and diagnostics.\n\nThe engine is a **run dimension**, not a property of the case: the same\ncase version can be run on several engines, and a result is only\ncomparable with another result on the same engine, so the selection is\nrecorded here beside the harness and the orchestrator rather than being\ninferred from the case. Defaults to `none` so records written before\nengine selection existed — and hand-written fixtures — still deserialize,\nwhich is also the truth about them: they had no runtime.",
+          "type": "string"
+        },
+        "engineVersion": {
+          "description": "The version of the engine runtime that was vendored into the run\nrepository, read out of the staged package at seed time.\n\nSeparate from [`Self::engine_slug`] because an engine's contract moves\nunder a stable slug: two `simple-2d` runs a release apart were given\ndifferent frame, input, or host behaviour, and only the version\ndistinguishes them. `None` for a run whose engine vendors no runtime\n(`none` has no package, so there is no version to read) and for records\nwritten before engine selection existed.",
+          "type": ["string", "null"]
+        },
         "ggCapabilitySet": {
           "anyOf": [
             {

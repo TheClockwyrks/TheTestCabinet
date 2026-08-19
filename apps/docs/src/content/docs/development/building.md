@@ -82,6 +82,12 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   thin hosts over it.
 - `packages/voxel-runtime` and `packages/particle-runtime`. The runtimes that
   pose and render a produced voxel rig and simulate a produced particle system.
+- `packages/simple-2d`: `@test-cabinet/simple-2d`. The Simple 2D
+  [engine](/components/core/engines/), providing the frame loop, input actions,
+  audio, assets, and diagnostics a produced game builds on, plus the host
+  interface a driver binds to. It is staged into the host package store and
+  vendored into the run repository at seed time, and its package version is the
+  engine version recorded on the run.
 - `packages/gg-sandbox`: the TypeScript and JavaScript arm of gg's
   responses-as-code sandbox.
 - `apps/desktop`: `@test-cabinet/desktop`. The React + Vite UI the Tauri

@@ -157,7 +157,7 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// | --- | --- |
 /// | `id`, `started`, `finished`, `state`, `published`, `rating`, `score`, `reviewCount` | identity, timing, lifecycle |
 /// | `case`, `caseVersion`, `variant`, `testType` | what was run |
-/// | `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<profileId>.model` | how it was configured |
+/// | `model`, `orchestrator`, `engine`, `harnessVersion`, `preset`, `agents`, `agent.<profileId>.model` | how it was configured |
 /// | `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<profileId>.cap.<id>` | the capability set, flattened and **typed** |
 /// | `tool.<name>` | the effective toolset (sparse — true only for offered tools) |
 /// | `status`, `mode`, `limit` | how it ended |
@@ -217,6 +217,16 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
     // --- how it was configured ---------------------------------------------------
     doc.insert("model", subject.model_id.clone());
     doc.insert("orchestrator", subject.orchestrator_slug.clone());
+    // Configuration, not identity: the [engine](crate::engine) is chosen per run
+    // beside the harness and the orchestrator, so two documents that agree on
+    // `case`/`caseVersion`/`variant` may still describe builds written against
+    // different runtimes — and grouping by `engine` is how that shows.
+    //
+    // Written unconditionally, and therefore **total** over the corpus in the sense
+    // [rule 1](crate::gg_query#the-seven-semantic-rules) cares about: an engineless
+    // run reports the honest `none` rather than an absence, so `count() by engine`
+    // accounts for every run and `engine != none` means what it reads as.
+    doc.insert("engine", subject.engine_slug.clone());
     if let Some(version) = &subject.harness_version {
         doc.insert("harnessVersion", version.clone());
     }

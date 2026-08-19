@@ -84,6 +84,8 @@ fn sample_record() -> RunRecord {
             harness_slug: HarnessSlug::Codex,
             harness_version: Some("0.139.0".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "gpt-5.4-mini".to_string(),
             gg_capability_set: None,
             gg_summary: None,

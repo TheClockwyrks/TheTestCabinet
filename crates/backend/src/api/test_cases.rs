@@ -659,6 +659,9 @@ fn render_variant_prompt(
         // The gallery preview shows the standing prompt, with no prior game-jam
         // entries in play, so it never carries the distinctness section.
         0,
+        // The gallery renders a case, not a run, and a run is what selects an
+        // engine — so the preview is the engineless form.
+        None,
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }

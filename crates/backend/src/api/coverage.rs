@@ -1736,6 +1736,9 @@ pub(super) async fn enqueue_top_up(
             harness: cell.combo.harness,
             model: launch_model.clone(),
             orchestrator: None,
+            // A plan pins no engine either, so the run gets the `none` default —
+            // the engineless build every plan scheduled before engines existed.
+            engine: None,
             max_runtime_seconds: None,
             auth_mode: None,
             retry_count: None,

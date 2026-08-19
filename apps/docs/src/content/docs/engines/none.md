@@ -20,5 +20,5 @@ build that does not expose it fails the checklist points its absence hides.
 
 ## Documentation
 
-No engine documentation is seeded, and the prompt carries no engine preamble. The
-seeded files are the case's own specification, assets, and reference media.
+The seeded files are the case's own specification, assets, and reference media,
+and the rendered prompt names no engine.

@@ -1,0 +1,21 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`. Anchored to the project
+# root so the committed, vendored `vendor/simple-2d/dist` is NOT ignored.
+/dist/
+/build/
+/out/
+
+# The repo-root .gitignore ignores any dir named `dist` anywhere; re-include the
+# vendored, prebuilt engine output so `npm ci` can resolve it on a fresh checkout
+# (it is the engine's committed dist, not build output of this project).
+!vendor/simple-2d/dist/
+!vendor/simple-2d/dist/**
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log

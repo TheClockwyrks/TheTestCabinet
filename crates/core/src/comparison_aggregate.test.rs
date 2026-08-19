@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls};
+use crate::engine::NONE_SLUG;
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::run_record::{
     AuthMode, HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
@@ -99,6 +100,8 @@ fn record(r: Run) -> RunRecord {
             harness_slug: r.harness,
             harness_version: None,
             orchestrator_slug: "one-shot".into(),
+            engine_slug: NONE_SLUG.into(),
+            engine_version: None,
             model_id: r.model.into(),
             gg_capability_set: None,
             gg_summary: None,
@@ -154,6 +157,7 @@ fn pi_vs_kilo() -> ComparisonConfig {
             version: "v2.0.0".into(),
             variant: "base".into(),
             orchestrator_slug: "one-shot".into(),
+            engine_slug: NONE_SLUG.into(),
             container_build: None,
         },
         arms: vec![
@@ -411,4 +415,102 @@ fn an_arm_with_no_present_runs_summarizes_to_nothing() {
     assert!(arms[0].cost.is_none());
     assert!(arms[0].score.is_none());
     assert!(arms[0].pass_rate.is_none());
+}
+
+/// The same run, moved onto an engine. Written as a mutation rather than another
+/// [`Run`] field because the engine is fixed for every other test in this file:
+/// only the two below vary it, and a field would put `engine: "none"` on a dozen
+/// construction sites that have nothing to say about engines.
+fn on_engine(mut record: RunRecord, slug: &str) -> RunRecord {
+    record.subject.engine_slug = slug.to_string();
+    // The version is read out of the staged package at seed time, so it exists
+    // exactly when the engine vendors a runtime.
+    record.subject.engine_version = (slug != NONE_SLUG).then(|| "1.0.0".to_string());
+    record
+}
+
+/// **The engine is a control, not a dimension an A/B may vary.**
+///
+/// Runs of one case under different engines measure different work — an engine hands
+/// the model the frame loop, input, audio, assets and diagnostics an engineless build
+/// has to write for itself — so an arm that mixes them reports a runtime difference as
+/// though it were a difference between the configurations under test. That has to read
+/// as compromised rather than being quietly folded into one distribution.
+#[test]
+fn a_run_on_a_different_engine_than_the_comparison_declares_is_a_confound() {
+    let items = [item("a", 3)];
+    let mut runs = BTreeMap::new();
+    for (id, engine) in [("pi-1", NONE_SLUG), ("pi-2", "simple-2d")] {
+        runs.insert(
+            id.to_string(),
+            on_engine(
+                record(Run {
+                    id,
+                    harness: HarnessSlug::Pi,
+                    model: "anthropic/claude-opus-4.8",
+                    cost: 0.5,
+                    tokens: 100,
+                    tool_calls: &[],
+                    scripts: vec![script("a", true)],
+                    auth: AuthMode::ApiKey,
+                }),
+                engine,
+            ),
+        );
+    }
+
+    let mut config = pi_vs_kilo();
+    config.arms.truncate(1);
+    config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
+
+    let arms = aggregate_comparison(&config, &items, &runs);
+    let confound = arms[0]
+        .confounds
+        .iter()
+        .find(|c| c.variable == "engine")
+        .expect("engine confound");
+    assert_eq!(
+        confound.values,
+        vec!["none".to_string(), "simple-2d".to_string()]
+    );
+}
+
+/// The other half of the rule: an arm whose runs all ran the engine the comparison
+/// declares is not confounded — including when that engine is not the default, because
+/// a comparison *of* `simple-2d` builds is exactly the experiment the control exists to
+/// make possible.
+#[test]
+fn an_arm_whose_runs_all_ran_the_declared_engine_is_not_confounded() {
+    let items = [item("a", 3)];
+    let mut runs = BTreeMap::new();
+    for id in ["pi-1", "pi-2"] {
+        runs.insert(
+            id.to_string(),
+            on_engine(
+                record(Run {
+                    id,
+                    harness: HarnessSlug::Pi,
+                    model: "anthropic/claude-opus-4.8",
+                    cost: 0.5,
+                    tokens: 100,
+                    tool_calls: &[],
+                    scripts: vec![script("a", true)],
+                    auth: AuthMode::ApiKey,
+                }),
+                "simple-2d",
+            ),
+        );
+    }
+
+    let mut config = pi_vs_kilo();
+    config.controls.engine_slug = "simple-2d".into();
+    config.arms.truncate(1);
+    config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
+
+    let arms = aggregate_comparison(&config, &items, &runs);
+    assert!(
+        arms[0].confounds.is_empty(),
+        "an arm that held every control constant must report nothing: {:?}",
+        arms[0].confounds
+    );
 }

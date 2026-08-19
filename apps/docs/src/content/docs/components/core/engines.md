@@ -37,29 +37,52 @@ same way.
 A case declares which engines it supports, and a run of that case is limited to
 that set. This is a compatibility gate rather than a description of the engine.
 
-## Engine structure
+## The engine catalogue
 
-An engine is a versioned package staged into the host package store and vendored
-into the run repository at seed time, the same delivery path a case's
-[packages](/testing/end-to-end/overview/#packages) use. The build imports it as an
-ordinary installed dependency.
+An engine is a directory under `engines/<slug>/` containing one manifest,
+`engine.toml`, which declares:
 
-Engine versions are immutable. A published version is retained so that the
-version recorded on a run continues to identify exactly what that run was given.
-An engine change is published as a new version rather than as an edit to an
-existing one.
+- `slug`, the stable identifier, matching the directory name;
+- `name` and `description`, shown wherever the catalogue is listed;
+- `package`, the npm package providing the runtime;
+- `handle`, the `window` property the host interface is installed on;
+- `docs`, the directory inside the package holding the engine's documentation.
+
+The last three are declared by an engine that provides a runtime. An engine
+without them supplies no runtime, which is what `none` is.
+
+The built-in engines live under `engines/` in the repo, embedded into
+`crates/core` at build time so a backend-driven worker with no checkout resolves
+them the same way the CLI does. They are catalogued under
+[Engines](/engines/overview/). The catalogue is closed: a run naming a slug
+outside it is refused rather than resolved from disk, because an engine is a
+staged package, a seeded documentation tree, and a host interface a driver binds
+to.
+
+An engine's version is the version of its npm package in the host package store,
+read at seed time and recorded on the run. A change to an engine's contract is
+published as a new package version, so the version recorded on a run continues to
+identify exactly what that run was given.
 
 An engine that carries a simulation core compiled to WebAssembly ships that
-module prebuilt inside the package. The Rust toolchain is available only while a
-run is live, so an engine's own artifacts are built before the engine is staged.
+module prebuilt inside its package, so staging and seeding copy an engine's
+artifacts rather than build them.
+
+## Delivery
+
+An engine is staged into the same host package store as a case's
+[packages](/testing/end-to-end/overview/#packages) and vendored at seed time into
+`.tcab/engine/` inside the run repository, committed with the initial seed. The
+seeded `package.json` has the dependency on that vendored copy written into it,
+so the build imports the engine by its bare name as an ordinary installed
+dependency. This is where an engine differs from a case's packages, which the
+case declares in its own `package.json` and the harness never rewrites.
 
 ## Documentation delivery
 
-An engine's documentation is seeded into the run workspace as part of the engine
-package, so it is versioned with the engine and identical for every case. The
-rendered prompt names the engine, states where its documentation is, and requires
-the build to use it. The seeded documentation is surfaced on the run's Inputs tab
-alongside the prompt, the seeded files, and the reference media.
+The engine's documentation directory is seeded into the run workspace at
+`engine/`, so it is versioned with the engine and identical for every case. The
+rendered prompt names the engine and points the build at that directory.
 
 Reading that documentation is part of the work a run measures. An engine
 documents its own contract in the depth a model needs to build against it without
@@ -67,10 +90,11 @@ seeing its source.
 
 ## The host interface
 
-An engine exposes a host interface that a driver binds to before any of the
-build's own scripts run. Through it a driver replaces the engine's clock, drives
-input actions, reads the audio and asset logs, and inspects the registered
-diagnostic sources.
+An engine installs a host interface on the `window` handle its manifest names
+when the game creates the engine. It is engine code, so every build carries it.
+It covers five surfaces: the clock and the schedule it steps on, the registered
+input actions, the audio cue log, the asset log, and the registered diagnostic
+sources. Each engine's own page documents the exact surface it provides.
 
 The host interface is engine-provided, so a driver that uses it depends on no code
 the model wrote. This is what separates an engine run from the
@@ -86,16 +110,18 @@ and the outcome is read back through an independent channel.
 
 ## The frame
 
-The engine owns the frame loop and computes the delta time it hands the game. The
-clock feeding that computation is a replaceable component: in normal play it is
-the wall clock, and under a driver it is whatever schedule the driver supplies.
+The engine owns the frame loop and hands the game the real elapsed time for the
+frame. The engine mandates no fixed timestep; what a game does with the delta
+time it is given is the game's own business.
 
-Because a driver chooses the schedule, delta-time independence is a property a
-run can check directly. Driving one scenario under several schedules and
-comparing the outcomes establishes that the build integrates against the delta
-time it is given rather than against a frame count. The tick contract belongs to
-the engine rather than to the case, so this check is engine-provided and runs for
-every case.
+The clock behind that delta time is a replaceable component. In normal play it is
+the wall clock, and under a driver it is a schedule the driver supplies, with
+`advance` running a given number of scheduled frames. A case that declares a
+`tick_hz` keeps that rate under an engine as the step the manual clock takes by
+default, so a check counted in ticks keeps its units. Driving one scenario under
+several schedules and comparing the outcomes therefore establishes directly that
+a build integrates against the delta time it is given rather than against a frame
+count.
 
 Comparisons across schedules assert on outcomes that survive a legitimate change
 in step size, such as whether an event occurred and what the resulting state was,
@@ -157,28 +183,20 @@ on that path implements the drawing itself and the engine calls it as part of th
 frame. Render modes belong to the declarative pipeline, so a game that draws
 directly supplies its own.
 
-## Modules
-
-An engine may offer modules: subsystems a run turns on or off, so one engine
-serves cases that want different amounts of game-agnostic work provided for them.
-Collision is the clearest example. A case built around writing collision detection
-runs with the module off, and a case whose difficulty lies elsewhere runs with it
-on.
-
-A module catalogue is closed. A run naming a module an engine does not ship is
-rejected at launch, and a module that fails to resolve fails the launch rather
-than falling back, so a run's recorded configuration always describes the run that
-happened.
-
-Module selections are made through named presets that a case declares support
-for. The preset that produced a run is recorded with it, so results stay
-attributable to an exact configuration.
-
 ## Declaring supported engines
 
 A test case version declares the engines it supports with the manifest's
-`engines` key. A run naming an engine outside that set is rejected when the case
-resolves, before a run is spent.
+`engines` key, which defaults to `["none"]`:
+
+```toml
+engines = ["none", "simple-2d"]
+```
+
+Every entry must be a slug the engine catalogue knows, checked when the case
+resolves, before a run is spent. `none` is supported by every case whether it is
+declared or not, and declaring it explicitly is the readable form. A case
+declaring an engine that provides a runtime ships a workspace `package.json`,
+because the engine dependency is written into that file at seed time.
 
 Support is declared per version. A case version gains engine support by adding a
 new version, because its specification carries the statements that are specific to
@@ -186,11 +204,13 @@ running under an engine.
 
 ## Selecting an engine
 
-An engine is selected per run and defaults to `none`. Both the engine slug and the
-exact engine version are recorded on the run, the version taken at seed time from
-the package store.
+An engine is selected per run with `--engine` and defaults to `none`. The engine
+must resolve in the catalogue and must be one the case supports; a run that names
+any other engine is rejected before any container work begins. Both the engine
+slug and the exact engine version are recorded on the run, the version taken at
+seed time from the package store.
 
-A run's engine is part of what makes its result comparable. Runs of one case under
-different engines measure different work and carry different available points, so
-the engine keys a [coverage](/components/backend/coverage/) cell and a
-[leaderboard](/components/site/overview/#leaderboard) row alongside the variant.
+A run's engine is part of what makes its result comparable. Runs of one case
+under different engines measure different work and carry different available
+points, so a comparison holds the engine constant and reports it as a confound
+when it differs.

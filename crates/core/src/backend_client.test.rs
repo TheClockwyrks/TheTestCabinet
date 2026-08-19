@@ -81,6 +81,7 @@ impl BackendClient for StubBackend {
             init: Some("npm install".to_string()),
             asset_paths: vec![std::path::PathBuf::from("assets/ball.png")],
             packages: Vec::new(),
+            engines: vec![crate::engine::NONE_SLUG.to_string()],
             variants: vec![Variant {
                 slug: "base".to_string(),
                 name: "Base".to_string(),
@@ -92,7 +93,7 @@ impl BackendClient for StubBackend {
                 review_items: vec![],
                 domains: vec![],
                 voxel: None,
-                reference_impl: None,
+                reference_impls: Default::default(),
             }],
             common_references: vec![ReferenceView {
                 view: "title".to_string(),
@@ -428,6 +429,8 @@ fn sample_record(id: &str) -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "anthropic/claude-opus-4".to_string(),
             gg_capability_set: None,
             gg_summary: None,

@@ -88,6 +88,11 @@ rather than a silent blank. The context exposes exactly:
   Test Cabinet, so specifications stay free of container paths.
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
+- `{{engine.slug}}`, `{{engine.name}}`, and `{{engine.docs}}` — the
+  [engine](/components/core/engines/) selected for the run, always present.
+  `slug` is `none` when no engine is selected, and `docs` is then empty;
+  otherwise `docs` is the absolute in-container path of the seeded engine
+  documentation.
 - `{{time_limit_hours}}` — the run's wall-clock budget in hours, formatted for
   prose, so a prompt can state the limit the model is working against.
 - `{{voxel}}` — the effective bounding volume of a voxel
@@ -114,6 +119,10 @@ HTML escaping disabled. Its context exposes exactly:
 - `{{version}}` — the exact test case version string, for example `v1.0.0`.
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
+- `{{engine}}` — the engine selected for the run, exposing `{{engine.slug}}`,
+  `{{engine.name}}`, and `{{engine.docs}}` exactly as in
+  [Prompt template](#prompt-template). It is always present, so a spec states
+  its engine-specific requirements in a branch on `{{engine.slug}}`.
 - `{{voxel}}` — for a voxel asset-generation case, the effective bounding volume
   for the run: the variant's `[voxel]` override when it declares one, otherwise
   the case's `[voxel]`. It exposes `{{voxel.width}}`, `{{voxel.height}}`, and
@@ -235,6 +244,26 @@ A case ships no lockfile, so a `packages` case's [init](#init) command must run
 the vendored copy and writes it into the lockfile the model then commits, after
 which the `[build]` step's `npm ci` reinstalls it reproducibly from that
 committed lockfile.
+
+## Engines
+
+An engine is the runtime a produced game is built on: the frame loop and the
+delta time it hands the game, input actions, audio, asset loading, and
+diagnostics. It is selected per run rather than declared by the case, so one case
+version can be built on each engine it supports and the results compared. The
+manifest's `engines` key lists the slugs a run of the case may select, and the
+[engine catalogue](/engines/overview/) is the set to name them from.
+
+Seeding vendors the selected engine's runtime into the run repository and writes
+its dependency into the seeded `package.json`, so the build installs and imports
+the engine by its bare package name like any other dependency. A case declaring
+an engine that provides a runtime therefore ships a [workspace](#workspace) with
+a `package.json` for that dependency to land in.
+
+The engine's own documentation is seeded at `engine/` in the run root, and that
+is what the build reads to use the engine. An engine documents its API from its
+own package, so a case's specs state only what is specific to the case, such as
+which touch layout it uses and which audio cues it plays.
 
 ## Variants
 

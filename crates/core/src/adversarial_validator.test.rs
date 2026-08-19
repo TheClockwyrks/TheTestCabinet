@@ -34,7 +34,7 @@ fn base_variant() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
-        reference_impl: None,
+        reference_impls: Default::default(),
     }
 }
 
@@ -123,6 +123,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::engine::NONE_SLUG.to_string()],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

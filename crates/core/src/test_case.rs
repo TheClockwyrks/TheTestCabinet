@@ -6,12 +6,13 @@
 //! case's identity, type, and difficulty are declared in its manifest, not
 //! inferred from its location. Each version is self-contained and immutable.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::engine::{BUILT_IN_SLUGS, EngineCatalog, EngineSelection, NONE_SLUG};
 use crate::error::{Error, Result};
 
 /// The on-disk `test-case.toml` manifest for a single version.
@@ -214,6 +215,26 @@ struct Manifest {
     /// packages.
     #[serde(default)]
     packages: Vec<String>,
+    /// The [engines](crate::engine) this version supports — the runtimes a run of
+    /// it may be built on, named by slug (for example `simple-2d`).
+    ///
+    /// This is a **compatibility gate, not a description**. An engine is a run
+    /// dimension selected independently of the case, and it documents itself from
+    /// its own package, so this list says only "a run of this version may select
+    /// that engine" — the case's specs never restate what the engine provides.
+    ///
+    /// [`NONE_SLUG`](crate::engine::NONE_SLUG) — no runtime at all — is supported
+    /// by every case whether it is listed or not, because it asks nothing of the
+    /// case; the resolved
+    /// [`TestCaseVersion::engines`] therefore always carries it, first. Listing it
+    /// explicitly is the readable form and is not an error. Every other entry must
+    /// be a slug the catalogue knows, and a case that names one must ship a
+    /// workspace `package.json`, because the engine's dependency is written into
+    /// that file at seed time. Both are checked when the version resolves, so a
+    /// mistake fails before a run is spent. Empty (the default) means the version
+    /// runs only without an engine.
+    #[serde(default)]
+    engines: Vec<String>,
     /// The variants this case offers, each as a path to a standalone variant
     /// manifest (a `[[variant]]`-shaped [`ManifestVariant`] in its own file, by
     /// convention under `variants/`), relative to the version folder. Listed in
@@ -349,6 +370,11 @@ struct GameJamManifest {
     /// [`Manifest::packages`]).
     #[serde(default)]
     packages: Vec<String>,
+    /// The engines a run of this jam may be built on (see [`Manifest::engines`]).
+    /// A jam ships a playable build like an end-to-end case does, so the same
+    /// engine selection applies to it.
+    #[serde(default)]
+    engines: Vec<String>,
     /// How the validator (and the per-run deploy) builds the produced game into a
     /// served static site — the same fixed build interface a full-stack case uses
     /// (the `[build]` table). **Required**: every jam ships a playable build.
@@ -399,6 +425,7 @@ impl GameJamManifest {
             workspace: self.workspace,
             init: self.init,
             packages: self.packages,
+            engines: self.engines,
             build: Some(self.build),
             review_items: self.review_items,
             ..Manifest::default()
@@ -941,12 +968,42 @@ struct ManifestVariant {
     /// existing `[build]` install/build commands, run from this directory, the
     /// static output landing in the same `dist/`|`build/`|`out/` a run's build
     /// produces) and deployed like a published run build, then shown on the case's
-    /// "Reference" tab as the authored answer. The value is a bare directory path;
-    /// resolution validates it exists and stays inside the version folder. `None`
-    /// leaves the variant with no reference build. It is the case-variant analogue
-    /// of a run record's `links.playableBuild`.
+    /// "Reference" tab as the authored answer. Every named directory is validated
+    /// to exist inside the version folder at resolution. `None` leaves the variant
+    /// with no reference build. It is the case-variant analogue of a run record's
+    /// `links.playableBuild`.
+    ///
+    /// Either a bare path (one implementation, standing for every engine the case
+    /// supports) or a table keyed by [engine](crate::engine) slug — see
+    /// [`ManifestReferenceImplementation`].
     #[serde(default)]
-    reference_implementation: Option<PathBuf>,
+    reference_implementation: Option<ManifestReferenceImplementation>,
+}
+
+/// A variant's `reference_implementation` key, in either of the two forms the
+/// manifest accepts.
+///
+/// The [engine](crate::engine) is a run dimension, and the build a reference
+/// implementation demonstrates genuinely differs by engine: under an engine the
+/// build hands its frame loop, input, audio, assets, and diagnostics to the
+/// runtime and keeps only the game, while the engineless build writes all of that
+/// itself. One directory cannot be both — so a case supporting more than one
+/// engine names one directory per engine.
+///
+/// Untagged, because the two forms are distinguished by TOML shape alone: a
+/// string is the shared form and a table is the per-engine form, so the readable
+/// single-engine spelling stays exactly what it always was.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+enum ManifestReferenceImplementation {
+    /// One implementation, standing for **every** engine the case supports. It is
+    /// the right form for a case whose reference build does not vary by engine,
+    /// which includes every case supporting only `none`.
+    Shared(PathBuf),
+    /// One implementation per engine slug. Must name exactly the engines the case
+    /// declares support for: naming one it does not support is a typo, and omitting
+    /// one it does would leave a run of that engine with no authored answer to show.
+    PerEngine(BTreeMap<String, PathBuf>),
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -1374,6 +1431,24 @@ pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 /// of the published repository — with no absolute path to break when it moves.
 pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
 
+/// The in-repository directory the selected [engine](crate::engine)'s runtime is
+/// vendored into at seed time (relative to the run root), when the run selects an
+/// engine that provides one. Like [`TCAB_VENDOR_DIR`], the seeded workspace
+/// depends on it through an in-repo relative `file:` path, so the tree resolves
+/// the same wherever it ends up.
+///
+/// It is deliberately **separate** from [`TCAB_VENDOR_DIR`] because the two
+/// arrive by opposite routes. A case *declares* its packages, and its own
+/// workspace `package.json` — authored in this repository and frozen with the
+/// version — already names each one; the seeder only fills the vendored copies
+/// in. An engine is a **run dimension the case never names**: it is chosen per
+/// run, so nothing in the case's tree can mention it and the seeder is what
+/// writes the dependency into `package.json`. Keeping the two trees apart keeps
+/// that distinction legible in the produced repository (and in its diff): what is
+/// under `.tcab/packages` is the case's, what is under `.tcab/engine` is the
+/// run's.
+pub const TCAB_ENGINE_DIR: &str = ".tcab/engine";
+
 /// One of the Test Cabinet's own `@test-cabinet/*` runtime libraries a case may
 /// ship into a run via the manifest's `packages` key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1399,11 +1474,19 @@ pub struct ShippablePackage {
 ///
 /// This list is the allowlist a case's `packages` names are validated against
 /// (see [`is_shippable_package`]), and it also carries each package's UI-only
-/// description (see [`shippable_package_description`]). Its **names** **must stay
-/// in lockstep** with the shippable list in `scripts/stage-tcab-packages.mjs`,
-/// which bakes exactly these into the image: a name here but not there resolves to
-/// a missing dependency at run time, and a name there but not here can never be
-/// requested. (The descriptions are UI metadata and live only here.)
+/// description (see [`shippable_package_description`]). Every name here **must
+/// also appear** in the shippable list in `scripts/stage-tcab-packages.mjs`, which
+/// is what bakes a package into the image: a name here but not there resolves to a
+/// missing dependency at run time. (The descriptions are UI metadata and live only
+/// here.)
+///
+/// The staging list is the **wider** of the two, and deliberately so: it also
+/// stages every [engine](crate::engine) runtime into the same host store, and an
+/// engine may **not** be requested through `packages`. An engine is a run
+/// dimension the case never names — it is vendored under [`TCAB_ENGINE_DIR`] and
+/// written into the seeded `package.json` by the seeder — so a name staged for an
+/// engine must stay out of this list, or a case could pin a runtime that the run's
+/// own engine selection is supposed to choose.
 pub const SHIPPABLE_PACKAGES: &[ShippablePackage] = &[
     ShippablePackage {
         name: "@test-cabinet/particle-runtime",
@@ -2880,18 +2963,25 @@ pub struct Variant {
     /// Resolve the effective volume for a variant with
     /// [`TestCaseVersion::voxel_for`].
     pub voxel: Option<VoxelSpec>,
-    /// The reference implementation's source directory on the host, when this
-    /// variant declares a `reference_implementation`: an absolute path inside the
+    /// The reference implementation's source directories on the host, keyed by
+    /// [engine](crate::engine) slug, when this variant declares a
+    /// `reference_implementation`. Each value is an absolute path inside the
     /// version folder holding a buildable static web project that is the *correct*
-    /// build of this variant. Stored as a resolved host path exactly like a
-    /// [`ReferenceView::source_path`] or a workspace source is — and, like a
-    /// reference mockup's source, it is **never seeded into a run**: it is the
+    /// build of this variant **on that engine**. Stored as resolved host paths
+    /// exactly like a [`ReferenceView::source_path`] or a workspace source is —
+    /// and, like a reference mockup's source, never seeded into a run: this is the
     /// authored answer the "Reference" tab shows, not model input. The build and
-    /// deploy that turn it into a hosted URL happen out-of-band (see the CLI's
+    /// deploy that turn one into a hosted URL happen out-of-band (see the CLI's
     /// `publish-reference` subcommand), so nothing here reads its contents; the
-    /// path is carried purely so the publisher knows which directory to build.
-    /// `None` when the variant declares no reference implementation.
-    pub reference_impl: Option<PathBuf>,
+    /// paths are carried purely so the publisher knows which directory to build.
+    ///
+    /// Keyed by engine because the engine is a run dimension and the build a
+    /// reference demonstrates differs under each. Resolution guarantees the keys
+    /// are exactly [`TestCaseVersion::engines`], so a run of any supported engine
+    /// finds an entry; read it with [`TestCaseVersion::reference_impl_for`] rather
+    /// than indexing. Empty when the variant declares no reference implementation.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reference_impls: BTreeMap<String, PathBuf>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -3603,6 +3693,22 @@ pub struct TestCaseVersion {
     /// when the case declares none. Validated against [`SHIPPABLE_PACKAGES`], and
     /// that the shipped `package.json` declares each, at resolution.
     pub packages: Vec<String>,
+    /// The [engines](crate::engine) a run of this version may be built on, from
+    /// the manifest's `engines` key, in declared order — but always led by
+    /// [`NONE_SLUG`], which every case supports whether
+    /// it declares it or not. So this is never empty: a version declaring nothing
+    /// resolves to exactly `["none"]`, the engineless run every case supports.
+    ///
+    /// It is the **compatibility gate** a run's `--engine` is checked against
+    /// (see [`Self::supports_engine`]), before any container work — not a
+    /// description of what any engine provides, which the engine documents from
+    /// its own package.
+    ///
+    /// Defaulted on the wire so a definition store or backend that predates
+    /// engines deserializes as the engineless case rather than as one supporting
+    /// nothing at all.
+    #[serde(default = "default_engines")]
+    pub engines: Vec<String>,
     /// The variants this case offers, in declared order. At least one is always
     /// present.
     pub variants: Vec<Variant>,
@@ -3658,6 +3764,23 @@ impl TestCaseVersion {
             })
     }
 
+    /// Whether a run of this version may select the engine `slug`.
+    ///
+    /// The gate a run's `--engine` is checked against, before any container is
+    /// started (see
+    /// [`Error::EngineUnsupportedForCase`]).
+    /// [`NONE_SLUG`] always passes, because resolution
+    /// puts it in [`Self::engines`] whether the manifest declared it or not.
+    ///
+    /// The slug is not resolved against the catalogue here: this answers only what
+    /// *this case* allows. An unknown slug is not supported by any case, so it
+    /// answers `false` — but the caller resolves the engine first, so an
+    /// unresolvable slug is reported as the unknown engine it is rather than as an
+    /// unsupported one.
+    pub fn supports_engine(&self, slug: &str) -> bool {
+        self.engines.iter().any(|engine| engine.as_str() == slug)
+    }
+
     /// The starter workspace files seeded for a variant: the variant's own set
     /// when it overrides the workspace, otherwise the case's common workspace.
     /// Unlike specs, a variant's workspace **replaces** the common one rather
@@ -3668,6 +3791,23 @@ impl TestCaseVersion {
             .workspace
             .as_deref()
             .unwrap_or(&self.common_workspace)
+    }
+
+    /// The reference implementation for `variant` on the engine named by `engine`:
+    /// the authored, *correct* build the case's "Reference" tab shows for that
+    /// combination.
+    ///
+    /// Keyed by engine rather than by variant alone because the build a reference
+    /// demonstrates differs under each engine — the engineless build writes its own
+    /// frame loop, input, audio, and diagnostics, while the same game on an engine
+    /// hands all four to the runtime. A variant that names a single directory has
+    /// it standing for every supported engine, so this returns that one path for
+    /// each; a variant that names a table gets that engine's own directory.
+    ///
+    /// `None` when the variant declares no reference implementation at all, or when
+    /// `engine` is not one this case supports.
+    pub fn reference_impl_for<'a>(&self, variant: &'a Variant, engine: &str) -> Option<&'a Path> {
+        variant.reference_impls.get(engine).map(PathBuf::as_path)
     }
 
     /// The effective bounding volume for a run of `variant`: the variant's own
@@ -5519,6 +5659,80 @@ impl TestCaseCatalog {
             }
         }
 
+        // Engines: the runtimes a run of this version may be built on. This is a
+        // compatibility *gate* rather than a dependency declaration — the engine is
+        // chosen per run and its package is vendored by the seeder, not by the case
+        // — but it is validated here, beside `packages`, and for the same reason: a
+        // slug that names nothing should cost a `tcab validate`, never a run.
+        //
+        // The resolved set always leads with `none`, whether the manifest declares
+        // it or not. `none` is the engineless run every case supported before
+        // engines existed, so a case can never stop supporting it; declaring it
+        // explicitly is simply the readable form, and so is not a duplicate of the
+        // implicit entry.
+        let engines = {
+            if !manifest.engines.is_empty()
+                && !matches!(
+                    test_type,
+                    TestType::EndToEnd | TestType::FullStack | TestType::GameJam
+                )
+            {
+                return Err(invalid(
+                    "`engines` is only valid for an end-to-end, full-stack, or game-jam case"
+                        .to_string(),
+                ));
+            }
+            let catalog = EngineCatalog::new();
+            let mut engines = vec![NONE_SLUG.to_string()];
+            let mut declared = HashSet::new();
+            // Whether any declared engine actually vendors a runtime. Only then does
+            // the seeder have a dependency to write, and only then does the case owe
+            // a `package.json` for it to be written into.
+            let mut vendors_runtime = false;
+            for slug in &manifest.engines {
+                // The catalogue is closed and embedded at build time, so an unknown
+                // slug is an authoring mistake in the manifest, not a missing
+                // install. Name the slugs that would have worked so the fix is one
+                // step, exactly as an unknown `packages` name does.
+                let engine = catalog
+                    .resolve(&EngineSelection::new(slug.as_str()))
+                    .map_err(|_| {
+                        invalid(format!(
+                            "engine `{slug}` is not a known engine; valid engines are: {}",
+                            BUILT_IN_SLUGS.join(", ")
+                        ))
+                    })?;
+                if !declared.insert(slug.as_str()) {
+                    return Err(invalid(format!(
+                        "engine `{slug}` is declared more than once in `engines`"
+                    )));
+                }
+                vendors_runtime |= engine.provides_runtime();
+                if slug.as_str() != NONE_SLUG {
+                    engines.push(slug.clone());
+                }
+            }
+            // The engine's `file:` dependency is written into the seeded workspace's
+            // `package.json` at seed time — the one place seeding edits that file —
+            // so a case supporting an engine with a runtime must ship one for the
+            // seeder to edit. Check the common workspace only: a variant's workspace
+            // *replaces* it, and the engine is a case-wide claim, so a case-wide file
+            // is what has to be there.
+            if vendors_runtime
+                && !common_workspace
+                    .iter()
+                    .any(|file| file.dest == Path::new("package.json"))
+            {
+                return Err(invalid(
+                    "a case that declares an engine providing a runtime must ship a workspace \
+                     containing a `package.json` at its root (the file the engine dependency is \
+                     written into when the run is seeded)"
+                        .to_string(),
+                ));
+            }
+            engines
+        };
+
         // Resolve one reference mapping. A reference is either an HTML mockup
         // rendered to a screenshot (`path`) or a static image/video served as-is
         // (`media`); exactly one must be declared. The source must exist inside the
@@ -6234,20 +6448,55 @@ impl TestCaseCatalog {
             // reference screenshot, nor a proof), so the finished game never lands in
             // a run tree. The resolved host path is carried on the `Variant` purely
             // so the publisher knows which directory to build and deploy.
-            let reference_impl = match &variant.reference_implementation {
-                Some(dir) => {
-                    let path = resolve_inside(dir, "variant reference implementation")?;
-                    if !path.is_dir() {
-                        return Err(invalid(format!(
-                            "variant `{}` reference implementation `{}` is not a directory",
-                            variant.slug,
-                            dir.display()
-                        )));
-                    }
-                    Some(path)
+            //
+            // It is keyed by engine, because the engine is a run dimension and the
+            // build a reference demonstrates differs under each. The bare-path form
+            // means "this build, for every engine the case supports"; the table form
+            // names one directory per engine and must cover the supported set
+            // exactly — an engine the case does not support is a typo, and a missing
+            // one would leave a run on that engine with no authored answer to show.
+            let mut reference_impls: BTreeMap<String, PathBuf> = BTreeMap::new();
+            let resolve_reference_impl = |dir: &PathBuf| -> Result<PathBuf> {
+                let path = resolve_inside(dir, "variant reference implementation")?;
+                if !path.is_dir() {
+                    return Err(invalid(format!(
+                        "variant `{}` reference implementation `{}` is not a directory",
+                        variant.slug,
+                        dir.display()
+                    )));
                 }
-                None => None,
+                Ok(path)
             };
+            match &variant.reference_implementation {
+                Some(ManifestReferenceImplementation::Shared(dir)) => {
+                    let path = resolve_reference_impl(dir)?;
+                    for engine in &engines {
+                        reference_impls.insert(engine.clone(), path.clone());
+                    }
+                }
+                Some(ManifestReferenceImplementation::PerEngine(by_engine)) => {
+                    for slug in by_engine.keys() {
+                        if !engines.contains(slug) {
+                            return Err(invalid(format!(
+                                "variant `{}` declares a reference implementation for engine                                  `{slug}`, which this case does not support (supported: {})",
+                                variant.slug,
+                                engines.join(", ")
+                            )));
+                        }
+                    }
+                    for engine in &engines {
+                        let dir = by_engine.get(engine).ok_or_else(|| {
+                            invalid(format!(
+                                "variant `{}` declares reference implementations per engine but                                  names none for `{engine}`; a per-engine table must cover every                                  engine the case supports ({})",
+                                variant.slug,
+                                engines.join(", ")
+                            ))
+                        })?;
+                        reference_impls.insert(engine.clone(), resolve_reference_impl(dir)?);
+                    }
+                }
+                None => {}
+            }
 
             // A variant's `[voxel]`, when declared, replaces the case's common
             // volume for this variant (the size axis behind half/base/double
@@ -6586,7 +6835,7 @@ impl TestCaseCatalog {
                 review_items,
                 domains: variant_domains,
                 voxel,
-                reference_impl,
+                reference_impls,
             });
         }
 
@@ -6765,6 +7014,7 @@ impl TestCaseCatalog {
             init: manifest.init,
             asset_paths,
             packages: manifest.packages,
+            engines,
             variants,
             common_references,
             common_proofs,
@@ -6892,6 +7142,19 @@ pub fn version_key(version: &str) -> Vec<u64> {
 /// can override it per invocation.
 fn default_max_runtime_hours() -> f64 {
     1.0
+}
+
+/// The supported-engine set a [`TestCaseVersion`] deserializes to when the wire
+/// payload carries no `engines` field at all: the engineless run every case
+/// supports.
+///
+/// Resolution never produces an empty set — it always leads with
+/// [`NONE_SLUG`](crate::engine::NONE_SLUG) — so the only way the field can be
+/// missing is a producer that predates engines. Defaulting to `["none"]` rather
+/// than to nothing keeps such a payload meaning "runs the way it always did"
+/// instead of "supports no engine at all", which would refuse every run of it.
+fn default_engines() -> Vec<String> {
+    vec![NONE_SLUG.to_string()]
 }
 
 /// The default `[canvas] background` applied when an asset-generation manifest

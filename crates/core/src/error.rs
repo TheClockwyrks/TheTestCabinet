@@ -262,6 +262,36 @@ pub enum Error {
         test_type: crate::test_case::TestType,
     },
 
+    /// An [engine](crate::engine) could not be resolved: the requested slug is
+    /// not one this build carries. The detail names the slug and every built-in,
+    /// so a typo on `--engine` is fixable from the message alone.
+    #[error("engine error: {0}")]
+    Engine(String),
+
+    /// An engine was requested that the test case version does not support.
+    ///
+    /// A case declares the engines it supports as a **compatibility gate**: its
+    /// specs carry the statements specific to building under those engines, and
+    /// its validation drives their host interfaces. Running it under an engine it
+    /// never declared would score a build against checks written for a different
+    /// runtime, so the run is refused before any container is started. The
+    /// message names the engines the case *does* support, so the fix is one step.
+    #[error(
+        "engine `{slug}` is not supported by test case `{test_case}` {version} \
+         (supported engines: {supported_list})",
+        supported_list = supported.join(", ")
+    )]
+    EngineUnsupportedForCase {
+        /// The requested engine slug.
+        slug: String,
+        /// The test case that does not support it.
+        test_case: String,
+        /// The case version whose manifest declares the supported set.
+        version: String,
+        /// The engines that version does declare, in manifest order.
+        supported: Vec<String>,
+    },
+
     /// A **gg** run was misconfigured: the gg configuration invariant does not
     /// hold. A gg run (harness [`Gg`](crate::run_record::HarnessSlug::Gg)) must
     /// carry a [capability set](crate::gg::GgCapabilitySet), and a non-gg run must

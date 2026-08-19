@@ -13,6 +13,7 @@ fn sample_config() -> ComparisonConfig {
             version: "v2.0.0".into(),
             variant: "base".into(),
             orchestrator_slug: "one-shot".into(),
+            engine_slug: "none".into(),
             container_build: None,
         },
         arms: vec![ComparisonArm {

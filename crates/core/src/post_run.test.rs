@@ -85,6 +85,7 @@ fn version() -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::engine::NONE_SLUG.to_string()],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -109,7 +110,7 @@ fn variant() -> Variant {
         review_items: Vec::new(),
         domains: Vec::new(),
         voxel: None,
-        reference_impl: None,
+        reference_impls: Default::default(),
     }
 }
 
@@ -124,6 +125,7 @@ async fn drive(stages: &[&dyn PostRunStage]) -> PostRunReport {
         harness: crate::HarnessSlug::Gg,
         model_id: "some-model".to_string(),
         orchestrator: crate::OrchestratorSelection::default(),
+        engine: crate::EngineSelection::default(),
         max_runtime_override: None,
         container_image: None,
         gg_capability_set: None,

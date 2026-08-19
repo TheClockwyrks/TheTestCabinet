@@ -518,6 +518,7 @@ fn gg_request(model: &str) -> RunRequest {
         harness: HarnessSlug::Gg,
         model_id: model.to_string(),
         orchestrator: crate::OrchestratorSelection::default(),
+        engine: crate::EngineSelection::default(),
         max_runtime_override: None,
         container_image: None,
         gg_capability_set: Some(GgCapabilitySet::minimal(model)),

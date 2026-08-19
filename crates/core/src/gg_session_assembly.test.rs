@@ -827,6 +827,7 @@ fn request(harness: crate::HarnessSlug) -> crate::RunRequest {
         harness,
         model_id: "some/model".to_string(),
         orchestrator: crate::OrchestratorSelection::default(),
+        engine: crate::EngineSelection::default(),
         max_runtime_override: None,
         container_image: None,
         gg_capability_set: None,

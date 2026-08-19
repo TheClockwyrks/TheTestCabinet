@@ -110,6 +110,9 @@ fn carom_instrumentation_renders_per_variant_ball_count() {
                 references: &references,
                 live_preview: None,
                 prior_game_jam_entries: &[],
+                // These seeding tests exercise the engineless run: no engine is selected,
+                // so nothing is vendored and the workspace `package.json` is untouched.
+                engine: None,
             })
             .expect("seed carom v2.0.0");
 
@@ -364,6 +367,9 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             references: &references,
             live_preview: None,
             prior_game_jam_entries: &[],
+            // These seeding tests exercise the engineless run: no engine is selected,
+            // so nothing is vendored and the workspace `package.json` is untouched.
+            engine: None,
         })
         .expect("seed carom");
 
@@ -475,6 +481,9 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
             references: &[],
             live_preview: None,
             prior_game_jam_entries: &[],
+            // These seeding tests exercise the engineless run: no engine is selected,
+            // so nothing is vendored and the workspace `package.json` is untouched.
+            engine: None,
         })
         .expect("seed demo");
 
