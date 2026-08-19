@@ -30,9 +30,9 @@ The specs are read whole, regardless of the run's `read_file`
 [line cap](/gg/filesystem/#read-modes), because the capability's promise is the
 full specification. The line cap still governs the reads the model makes itself.
 
-A text spec arrives as text. A reference mockup arrives as a picture when this
-agent's model [can see images](/gg/filesystem/#reading-images), and as a
-description otherwise, on the same terms as any read.
+A text spec arrives as text. A reference mockup arrives as a description of the
+file, and as the picture itself when the [`images`](#images) param is on and
+this agent's model [can see images](/gg/filesystem/#reading-images).
 
 Every file on that list has to arrive. gg reads them once the run is seeded and
 before the first turn, and a file it cannot read ends the run there, naming the
@@ -78,6 +78,33 @@ The reads run first, and the program holds one call per file that was read.
 Every one of those views is present in the same opening context, since the run
 ends on a file gg cannot read. A program listing a call whose view never arrived
 would teach the model that opening a file view sometimes does nothing.
+
+## Images
+
+The `images` param decides whether an autoloaded reference mockup is attached as
+a picture. It is off by default, so the seeding costs what its text costs.
+
+A picture is charged to the window by its
+[dimensions](/gg/filesystem/#what-this-costs-the-context-window), and it is
+charged again on every request for as long as it stays in the window. A test
+case's mockups are large enough that seeding three of them into the first turn
+outweighs the specifications they illustrate. Turning the param on is therefore
+a deliberate arm of the study: does the model build a better game for having
+seen the target rather than read it?
+
+Off, the mockup still arrives. It is read, it takes its place in the seeded
+order, and it enters the window as the same file view with the label, format and
+byte size any read produces. The model knows the file exists and reads it with
+`read_file` when it wants to look.
+
+The param governs the seeding alone. A read the model makes for itself attaches
+the picture on the ordinary terms `read_file` sets.
+
+A model that cannot see images is never sent one, so this agent's model decides
+the outcome as much as the param does. gg resolves that in two stages, described
+under [models that cannot see images](/gg/filesystem/#models-that-cannot-see-images).
+With the param on and the model declared text-only, the mockup arrives as its
+description and no request is wasted.
 
 ## Locked
 

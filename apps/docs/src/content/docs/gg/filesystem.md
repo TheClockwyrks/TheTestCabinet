@@ -162,9 +162,11 @@ thing [`gg.context.evictFileView`](/gg/agent-managed-context/) targets. An
 attached image is part of the same view, so evicting the view reclaims the
 picture too.
 
-An image's cost is estimated. Every provider charges images by its own tiling of
-the decoded dimensions, which gg does not decode, so the figure is a coarse
-stand-in whose job is to stop an attached mockup being accounted as free. A
+An image's cost is estimated from its dimensions. gg reads the width and height
+out of the image header and charges the tile count a picture of that size costs,
+so an attached mockup weighs close to what the provider bills for it. Providers
+tile differently and a header gg cannot read falls back to a charge derived from
+the file's size, so the figure remains an estimate. A
 capped read puts only the window it returned into the context, so `default-cap`
 and eviction are two answers to the same problem: one rations what enters the
 window, the other reclaims it afterwards. They compose.
