@@ -12,6 +12,13 @@ import { useNavigate } from "react-router";
 import { useFindModel } from "../data/useModels";
 import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
 import { useRunKill } from "../data/useRunKill";
+import { isPublishable, useRunPublish } from "../data/useRunPublish";
+import {
+  useConfirm,
+  type AlertOptions,
+  type ConfirmApi,
+  type ConfirmOptions,
+} from "./ConfirmDialog";
 import { routes } from "../routes";
 import type { SelectableRun } from "./RunSelect";
 import styles from "./RunContextMenu.module.scss";
@@ -140,6 +147,8 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
   const findModel = useFindModel();
   const { canDelete, deleteRun } = useRunDeletion();
   const { canKill, killRun } = useRunKill();
+  const { canPublish, publishRun } = useRunPublish();
+  const { confirm, alert } = useConfirm();
 
   useImperativeHandle(
     ref,
@@ -229,11 +238,25 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
 
     const onDelete = async () => {
       close();
-      if (!window.confirm(CONFIRM_DELETE_RUN)) return;
+      if (!(await confirm(CONFIRM_DELETE_RUN))) return;
       try {
         await deleteRun(run.id);
       } catch (e) {
-        window.alert(`Could not delete run: ${String(e)}`);
+        await alert({
+          title: "Could not delete run",
+          message: String(e),
+        });
+      }
+    };
+
+    const onPublish = async () => {
+      close();
+      if (!(await confirm(confirmPublish(1)))) return;
+      try {
+        await publishRun(run.id);
+        await alert(PUBLISH_ENQUEUED_ONE);
+      } catch (e) {
+        await alert({ title: "Could not publish run", message: String(e) });
       }
     };
 
@@ -296,6 +319,19 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
         >
           {copied ? "Copied!" : "Copy link"}
         </button>
+        {canPublish && isPublishable(run) && (
+          <>
+            <div className={styles.separator} role="separator" />
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.item}
+              onClick={onPublish}
+            >
+              Publish run
+            </button>
+          </>
+        )}
         {canDelete(run.id) && (
           <>
             <div className={styles.separator} role="separator" />
@@ -326,39 +362,61 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
     // Only in-progress runs can be killed, and only where the host allows it.
     const killable = canKill ? runs.filter((run) => run.killable) : [];
     const deletable = runs.filter((run) => canDelete(run.id));
+    // The runs in the selection that would actually release — a mixed selection
+    // (some already public, some unreviewed) publishes the eligible ones and the
+    // label says how many, rather than offering a publish that half-refuses.
+    const publishable = canPublish ? runs.filter((run) => run.publishable) : [];
+
+    const onPublish = async () => {
+      close();
+      if (!(await confirm(confirmPublish(publishable.length)))) return;
+      // Enqueue only: each release runs for minutes in its own Job. See
+      // `useRunPublish` for why the batch hands off rather than waiting.
+      const outcomes = await Promise.allSettled(
+        publishable.map((run) => publishRun(run.id)),
+      );
+      await reportPublishEnqueued(outcomes, alert);
+      onBatchActed?.();
+    };
 
     const onKill = async () => {
       close();
       if (
-        !window.confirm(
-          `Kill ${plural(killable.length, "run")}? They stop immediately and ` +
+        !(await confirm({
+          title: `Kill ${plural(killable.length, "run")}`,
+          message:
+            `Kill ${plural(killable.length, "run")}? They stop immediately and ` +
             "are recorded as canceled. This cannot be undone.",
-        )
+          confirmLabel: "Kill runs",
+        }))
       ) {
         return;
       }
       const outcomes = await Promise.allSettled(
         killable.map((run) => killRun(run.id)),
       );
-      reportFailures(outcomes, "kill");
+      await reportFailures(outcomes, "kill", alert);
       onBatchActed?.();
     };
 
     const onDelete = async () => {
       close();
       if (
-        !window.confirm(
-          `Delete ${plural(deletable.length, "run")} permanently? Their ` +
+        !(await confirm({
+          title: `Delete ${plural(deletable.length, "run")}`,
+          message:
+            `Delete ${plural(deletable.length, "run")} permanently? Their ` +
             "records, reviews, and stored media are removed. This cannot be " +
             "undone.",
-        )
+          confirmLabel: "Delete runs",
+        }))
       ) {
         return;
       }
       const outcomes = await Promise.allSettled(
         deletable.map((run) => deleteRun(run.id)),
       );
-      reportFailures(outcomes, "delete");
+      await reportFailures(outcomes, "delete", alert);
       onBatchActed?.();
     };
 
@@ -422,6 +480,19 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
         >
           {copied ? "Copied!" : "Copy links"}
         </button>
+        {publishable.length > 0 && (
+          <>
+            <div className={styles.separator} role="separator" />
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.item}
+              onClick={onPublish}
+            >
+              {`Publish ${plural(publishable.length, "run")}`}
+            </button>
+          </>
+        )}
         {(killable.length > 0 || deletable.length > 0) && (
           <div className={styles.separator} role="separator" />
         )}
@@ -451,12 +522,74 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
 }
 
 // Surface a batch mutation's failures: how many of the requests rejected, if any.
-function reportFailures(
+// The reporter is passed in rather than reached for, because the themed dialog is
+// a hook off context and this runs outside the component.
+async function reportFailures(
   outcomes: PromiseSettledResult<unknown>[],
   verb: "kill" | "delete",
-): void {
+  alert: ConfirmApi["alert"],
+): Promise<void> {
   const failed = outcomes.filter((o) => o.status === "rejected").length;
-  if (failed > 0) {
-    window.alert(`Could not ${verb} ${failed} of ${outcomes.length} runs.`);
+  if (failed === 0) return;
+  await alert({
+    title: `Could not ${verb} every run`,
+    message: `${failed} of ${outcomes.length} runs could not be ${verb === "kill" ? "killed" : "deleted"}.`,
+  });
+}
+
+// The confirmation shown before publishing, for one run or a whole selection.
+// Publishing is the only action in this menu that puts something on the open
+// internet, and a published run can never be unpublished or deleted — so it
+// confirms even though it is not destructive in the kill/delete sense.
+function confirmPublish(count: number): ConfirmOptions {
+  const noun = plural(count, "run");
+  return {
+    title: count === 1 ? "Publish run" : `Publish ${noun}`,
+    message:
+      `Publish ${count === 1 ? "this run" : noun}? Each one's generated source ` +
+      "is released to its own public repository and its build is deployed " +
+      "publicly. A published run cannot be unpublished or deleted.",
+    confirmLabel: count === 1 ? "Publish run" : "Publish runs",
+    // Consequential and irreversible, but not destructive: it releases work
+    // rather than discarding it, so it takes the accented primary.
+    destructive: false,
+  };
+}
+
+// What a queued release actually means, said once so the single and batch paths
+// agree. This is reported on *success*, unlike every other action in this menu,
+// because a publish is the one that leaves nothing to see: the release runs for
+// minutes in its own Job, the rows do not change, and silence would read as a
+// click that did nothing.
+const PUBLISH_ENQUEUED_ONE: AlertOptions = {
+  title: "Publishing",
+  message:
+    "The run is queued for release. It leaves the Unpublished list once the " +
+    "release lands; if it fails, a notification says so.",
+};
+
+// The batch analogue: how many releases were queued, plus how many the backend
+// refused outright (a gate the console thought was clear, or a transport fault).
+async function reportPublishEnqueued(
+  outcomes: PromiseSettledResult<unknown>[],
+  alert: ConfirmApi["alert"],
+): Promise<void> {
+  const failed = outcomes.filter((o) => o.status === "rejected").length;
+  const queued = outcomes.length - failed;
+  if (queued === 0) {
+    await alert({
+      title: "Could not publish",
+      message: `None of the ${plural(outcomes.length, "run")} could be queued for release.`,
+    });
+    return;
   }
+  const refused =
+    failed > 0 ? ` ${failed} of ${outcomes.length} could not be queued.` : "";
+  await alert({
+    title: "Publishing",
+    message:
+      `${plural(queued, "run")} queued for release. Each leaves the Unpublished ` +
+      "list once its release lands; any that fails raises a notification." +
+      refused,
+  });
 }

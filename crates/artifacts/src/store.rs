@@ -61,6 +61,20 @@ pub trait ArtifactStore: Send + Sync {
     /// a missing tree to a `404`.
     fn run_dir(&self, id: &str) -> PathBuf;
 
+    /// A directory the service may spool an in-flight upload into before unpacking
+    /// it, on the **same filesystem** as the run trees.
+    ///
+    /// Same filesystem is the requirement, not a preference: the spooled tarball and
+    /// the tree it unpacks into draw on one pool of free space, so a store with room
+    /// for the tree has room for the archive of it, and neither can be exhausted by
+    /// the other's volume filling independently. It also keeps the unpack a local
+    /// read rather than a copy across mounts.
+    ///
+    /// This exists so `store_run` can be fed from a file instead of a buffer — see
+    /// the upload handler in `api.rs` for why holding an upload in memory is the one
+    /// allocation this service must not make.
+    fn scratch_dir(&self) -> PathBuf;
+
     /// Remove run `id`'s entire artifact tree (`<root>/<id>/`). Idempotent: a run
     /// that was never uploaded (no directory) is treated as already gone. Called
     /// when the control plane deletes a run, so the data plane drops its build and
@@ -140,6 +154,13 @@ impl LocalFsStore {
 }
 
 impl ArtifactStore for LocalFsStore {
+    fn scratch_dir(&self) -> PathBuf {
+        // The store root itself: every run tree is a subdirectory of it, so it is by
+        // construction the same filesystem. A spooled upload is an unnamed temp file,
+        // so it adds no entry here for `run_dir` lookups to trip over.
+        self.root.clone()
+    }
+
     fn store_run(&self, id: &str, tar: &mut dyn Read) -> Result<(), StoreError> {
         let run_dir = self.run_dir(id);
         // Replace any prior tree for this id so a re-upload is clean rather than a

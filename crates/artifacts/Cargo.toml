@@ -37,6 +37,13 @@ tracing = { workspace = true }
 opentelemetry = { workspace = true }
 http = { workspace = true }
 bytes = { workspace = true }
+# Spooling an in-flight upload to disk instead of buffering it (`api.rs`):
+# `futures-util` drives the request body's chunk stream, and `tempfile` provides the
+# unnamed scratch file it is written into — unnamed so a partial upload, or one
+# refused for exceeding the cap, is reclaimed by the kernel with nothing left to
+# collect.
+futures-util = { workspace = true }
+tempfile = { workspace = true }
 # The HTTP client the service verifies a driver's per-job token with against the
 # backend's internal verify endpoint. rustls (no system OpenSSL), `json` for the
 # body — see `crates/core`.

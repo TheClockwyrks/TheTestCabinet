@@ -4,16 +4,10 @@ import { BrowserRouter } from "react-router";
 import { GalleryApp, GalleryDataProvider } from "@test-cabinet/ui/app";
 import { useStaticGallery } from "./staticGallery";
 
-// The gallery ships as a single static bundle with no server-side routing, so a
-// deep link such as /runs/<id> arrives as a 404. `public/404.html` stashes the
-// requested path and redirects to the app root; restore it here, before the
-// router mounts, so the deep link resolves client-side.
-const spaPath = sessionStorage.getItem("spaPath");
-if (spaPath) {
-  sessionStorage.removeItem("spaPath");
-  window.history.replaceState(null, "", spaPath);
-}
-
+// A deep link such as /runs/<id> arrives at its own URL: with no `404.html` in the
+// build, Cloudflare Pages answers an unmatched path with the app shell and a 200
+// at the requested URL (see `public/_redirects`), so the router reads the real
+// location and nothing has to be restored here before it mounts.
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("Missing #root element");

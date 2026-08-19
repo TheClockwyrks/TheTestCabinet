@@ -36,23 +36,24 @@ const RECENT_LIMIT = 20;
 export function HomePage() {
   const {
     canExecute,
-    producedSummaries,
     localIds,
     writeups: localWriteups,
     queryRunSummaries,
   } = useGalleryData();
   const { token } = useAuth();
   const findReview = useFindReview();
-  const [published, setPublished] = useState<RunSummary[]>([]);
+  const [recentRuns, setRecentRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // The most recent published runs, newest first — a single page-0 query rather
-  // than the whole cabinet.
+  // The most recent runs, newest first — a single page-0 query rather than the
+  // whole cabinet. The consoles draw from the union slice so a produced (still
+  // unpublished) run takes its place in that recent window by date, exactly as it
+  // does in the runs index; the public gallery holds only published runs.
   useEffect(() => {
     let active = true;
     setLoading(true);
     queryRunSummaries({
-      state: "published",
+      state: "any",
       sort: "date",
       dir: "desc",
       offset: 0,
@@ -60,12 +61,12 @@ export function HomePage() {
     })
       .then((res) => {
         if (!active) return;
-        setPublished(res.summaries);
+        setRecentRuns(res.summaries);
         setLoading(false);
       })
       .catch(() => {
         if (!active) return;
-        setPublished([]);
+        setRecentRuns([]);
         setLoading(false);
       });
     return () => {
@@ -73,16 +74,11 @@ export function HomePage() {
     };
   }, [queryRunSummaries]);
 
-  // Produced (local) runs lead the recent list, ahead of the queried published
-  // window (the numbered listing never returns unpublished runs), then everything
-  // sorted newest first.
+  // The queried window is already the newest runs of whichever slice this host
+  // draws from; re-sort defensively so the hero and the log agree on "latest".
   const recent = useMemo(
-    () =>
-      [
-        ...producedSummaries,
-        ...published.filter((s) => !localIds.has(s.id)),
-      ].sort(byRecencyDesc),
-    [producedSummaries, published, localIds],
+    () => [...recentRuns].sort(byRecencyDesc),
+    [recentRuns],
   );
   // The hero spotlights the latest *completed* run: a failed run produced no
   // stats or rating, so featuring it would lead with zeros. Failed runs still
@@ -142,7 +138,10 @@ export function HomePage() {
             {featured && (
               <FeaturedRun
                 run={featured}
-                local={localIds.has(featured.id)}
+                // Unpublished per the console's produced worklist OR per the card
+                // itself (a queried run carries no publish timestamp until it is
+                // published), mirroring the run log's own tag.
+                local={localIds.has(featured.id) || !featured.publishedAt}
                 rating={featuredRating}
                 grade={featuredGrade}
               />

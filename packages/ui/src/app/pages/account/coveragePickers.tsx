@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  CoverageAxis,
   ReviewPlanCase,
   ReviewPlanCombo,
 } from "@test-cabinet/run-record/coverage";
@@ -21,6 +22,7 @@ import { useTestCases } from "../../data/useTestCases";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { ModelCombobox } from "../../components/ModelCombobox";
+import { SettingRow } from "../../components/SettingRow";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -30,6 +32,147 @@ import styles from "./Coverage.module.scss";
 // entries as pills grouped by section and an add-a-row control, and reports the new
 // array back through `onChange`. Lifted out of the old single-plan config page so
 // the plan editor and group editor stay byte-for-byte identical.
+//
+// It also holds the small controls over a plan's *schedule* (the ordering axis and
+// the review-buffer override), which the editor renders and the dashboard has to be
+// able to name — one home for them means the two surfaces can never call the same
+// ordering by two different names.
+
+/**
+ * How each ordering axis is described to a reviewer.
+ *
+ * The wire calls them `case` and `combination`, but a reviewer is not choosing a
+ * traversal — they are choosing what they will be able to compare side by side when
+ * the runs land. "One case at a time" finishes every model on a case before moving
+ * on (so a case's results are reviewable together); "One model at a time" walks one
+ * combination through every case first (so a model's results are). The
+ * depth-first/breadth-first vocabulary is deliberately absent: it describes the
+ * implementation and answers none of the reviewer's question.
+ */
+export const AXIS_LABELS: Readonly<Record<CoverageAxis, string>> = {
+  case: "One case at a time",
+  combination: "One model at a time",
+};
+
+/** The longer form shown under the picker, saying what the choice buys. */
+const AXIS_HINTS: Readonly<Record<CoverageAxis, string>> = {
+  case: "Every model runs a case before the next case starts, so a case's runs arrive together and can be judged against each other.",
+  combination:
+    "One model climbs the whole case list before the next model starts, so a model's runs arrive together.",
+};
+
+/** The order runs will arrive in, named the way the console names it everywhere. */
+export function axisLabel(axis: CoverageAxis): string {
+  return AXIS_LABELS[axis];
+}
+
+/**
+ * The ordering control: two mutually exclusive pills over {@link AXIS_LABELS}.
+ *
+ * The choice is real and not cosmetic — a top-up emits whole cells in this order,
+ * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
+ * order shown here *is* the order the runs execute and therefore the order they
+ * become reviewable in.
+ */
+export function AxisPicker({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: CoverageAxis;
+  onChange: (next: CoverageAxis) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <>
+      <div className={styles.kindRow} role="radiogroup" aria-label="Run order">
+        {(Object.keys(AXIS_LABELS) as CoverageAxis[]).map((axis) => (
+          <button
+            key={axis}
+            type="button"
+            role="radio"
+            aria-checked={value === axis}
+            disabled={disabled}
+            className={`${styles.groupPick} ${
+              value === axis ? styles.groupPickOn : ""
+            }`}
+            onClick={() => onChange(axis)}
+          >
+            {AXIS_LABELS[axis]}
+          </button>
+        ))}
+      </div>
+      <p className={styles.fieldHint}>{AXIS_HINTS[value]}</p>
+    </>
+  );
+}
+
+/**
+ * The review-buffer override: how many runs this plan or ladder may leave outstanding
+ * (in flight, or finished and unreviewed by you) before a top-up stops.
+ *
+ * Empty is not zero, and the field is built around that distinction: empty means
+ * "no opinion — use my account default", while `0` means "never top this one up",
+ * which is a different instruction the reviewer is entitled to give. So the value is
+ * a nullable number, the placeholder shows the account default that an empty field
+ * inherits, and the row's reset control drops the override rather than making the
+ * reviewer delete digits until the input happens to be blank.
+ */
+export function BufferTargetField({
+  value,
+  accountDefault,
+  onChange,
+  subject = "plan",
+}: {
+  /** The override, or null to inherit the account default. */
+  value: number | null;
+  /** The account-wide default an empty field falls back to. */
+  accountDefault: number;
+  onChange: (next: number | null) => void;
+  /** What the override belongs to, so the row names it. */
+  subject?: "plan" | "ladder";
+}) {
+  const description =
+    value === null
+      ? `Empty inherits your account default of ${accountDefault} outstanding runs.`
+      : value === 0
+        ? `0 stops this ${subject} topping itself up at all, which is different from empty, where it inherits your account default.`
+        : `This ${subject} keeps ${value} run${value === 1 ? "" : "s"} outstanding before a top-up stops.`;
+  return (
+    <SettingRow
+      label="Review buffer"
+      description={description}
+      modified={value !== null}
+      onReset={() => onChange(null)}
+    >
+      {(id) => (
+        <span className={styles.settingNumber}>
+          <input
+            id={id}
+            className={exec.input}
+            type="number"
+            min={0}
+            max={500}
+            step={1}
+            value={value ?? ""}
+            placeholder={String(accountDefault)}
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              if (raw === "") {
+                onChange(null);
+                return;
+              }
+              const n = Math.floor(Number(raw));
+              onChange(
+                Number.isFinite(n) ? Math.min(Math.max(n, 0), 500) : null,
+              );
+            }}
+          />
+        </span>
+      )}
+    </SettingRow>
+  );
+}
 
 /** Combination pills grouped under their harness, each carrying its original index
  *  so removal targets the right entry after grouping/sorting (from the old config

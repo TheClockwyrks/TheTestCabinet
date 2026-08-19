@@ -45,11 +45,18 @@
 }
 
 // Per-outcome palette, shared by the arc stroke and the legend swatch (which fills
-// with `currentColor`). Completed reads positive, harness errors as the alert red,
-// timeouts as amber, and hangs as muted — nothing happened, so nothing shouts.
+// with `currentColor`). Completed reads positive, a catastrophic build as the hot
+// red-orange (the model produced nothing runnable — the severest outcome it owns),
+// harness errors as the alert red, timeouts as amber, and hangs as muted — nothing
+// happened, so nothing shouts.
 .success {
   stroke: t.$color-positive;
   color: t.$color-positive;
+}
+
+.catastrophic {
+  stroke: t.$color-accent-2;
+  color: t.$color-accent-2;
 }
 
 .harnessError {

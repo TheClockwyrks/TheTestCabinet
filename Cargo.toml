@@ -203,6 +203,12 @@ which = "8"
 reqwest = { version = "0.12", default-features = false, features = [
 	"json",
 	"rustls-tls",
+	# `stream` enables `Body::wrap_stream`, which is how the driver uploads a
+	# produced run tree without holding the tarball in memory (see
+	# `driver/src/artifacts.rs`). A driver killed for exceeding its memory ceiling
+	# mid-upload destroys a run that has already paid for every one of its harness
+	# API calls, so the upload body is read off disk a chunk at a time.
+	"stream",
 ] }
 
 # The wasm host for the Foray adversarial case (`crates/foray-host`). wasmtime is
@@ -223,12 +229,19 @@ tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 
 # Backend HTTP server. Axum is the settled web framework; `tower-http` supplies
-# the request-tracing/limit middleware and the CORS layer the browser UIs need to
-# reach the backend on a different localhost port. The backend, auth, and artifact
-# services are the socket-binding crates, so these stay out of the leaner crates.
+# the request-tracing/limit middleware, the CORS layer the browser UIs need to
+# reach the backend on a different localhost port, and the response compression
+# the run listings need (their JSON runs to megabytes, which is punishing over a
+# slow link). The backend, auth, and artifact services are the socket-binding
+# crates, so these stay out of the leaner crates.
 axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "limit", "cors"] }
+tower-http = { version = "0.6", features = [
+    "trace",
+    "limit",
+    "cors",
+    "compression-gzip",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # The backend's system of record, accessed through SeaORM so one connection URL
@@ -284,6 +297,11 @@ rand = "0.8"
 # so naming them here adds no new fetch.
 futures-util = "0.3"
 bytes = "1"
+# `tokio-util`'s `io` feature carries `ReaderStream`, which turns the driver's
+# finished tarball file into the `Stream` `reqwest::Body::wrap_stream` consumes —
+# the read side of the same "never buffer a whole run tree" rule. Already in the
+# graph transitively (via reqwest/hyper), so naming it here adds no new fetch.
+tokio-util = { version = "0.7", features = ["io"] }
 
 # OpenTelemetry. These crates move in lockstep across the `opentelemetry`
 # ecosystem and are pinned together here so the whole workspace shares one

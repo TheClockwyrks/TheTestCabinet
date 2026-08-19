@@ -256,6 +256,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.6.3",
             "changelogs/v0.6.2",
             "changelogs/v0.6.1",
             "changelogs/v0.6.0",
@@ -330,6 +331,8 @@ export default defineConfig({
               items: [
                 "components/backend/overview",
                 "components/backend/api",
+                "components/backend/coverage",
+                "components/backend/ladders",
                 "components/backend/snapshot",
               ],
             },

@@ -45,8 +45,12 @@ no `make`, and no manually-run services — only a container runtime (see
   list (its spinner row links straight to the live monitor), and get a
   notification — a toast, with a bell and a slide-out list of unread alerts —
   when a run completes, even while working elsewhere in the console. The alert
-  links to the finished run, and opening it dismisses the alert. Notifications
-  are pushed from the backend (no polling), streamed over SSE.
+  links to the finished run, and opening it dismisses the alert. Both the alerts
+  and the in-flight list are pushed from the backend over the multiplexed
+  [console stream](/components/backend/api/#the-console-stream) (SSE); the list
+  advances as each run does, and nothing polls. The active list is re-read only
+  when the stream says it might have missed something — see
+  [staying current without polling](/components/backend/api/#staying-current-without-polling).
 - **Read the specs.** Browse the [specification](/testing/end-to-end/overview/) a
   run was built from, so the produced implementation can be judged against what
   was actually asked for.

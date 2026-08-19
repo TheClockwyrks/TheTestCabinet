@@ -32,6 +32,7 @@ import {
   type ColumnMenuHandle,
 } from "../../../components/ColumnMenu";
 import { useColumnVisibility } from "../../../components/useColumnVisibility";
+import { LoadingState } from "../../../components/LoadingState";
 import { formatCompact, formatUsd, totalTokens } from "../../../format";
 import styles from "./TestCaseLeaderboardPage.module.scss";
 
@@ -98,7 +99,10 @@ function scoreCell(value: number, total: number): ReactNode {
 // The board's rating cell adapts to the case: a game jam carries a whole-game
 // overall grade in place of a domain rating, so its badge is the grade; every
 // other case shows its rating. An entry never carries both.
-function ratingCell(rating: Rating | null, grade: GradeStatus | null): ReactNode {
+function ratingCell(
+  rating: Rating | null,
+  grade: GradeStatus | null,
+): ReactNode {
   return (
     <span>
       {grade ? (
@@ -248,7 +252,9 @@ function ReviewLeaderboard({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { summaries, localWriteups } = useCaseRunSummaries(testCase.slug);
+  const { summaries, localWriteups, loading } = useCaseRunSummaries(
+    testCase.slug,
+  );
   const findReview = useFindReview();
   const findModel = useFindModel();
 
@@ -392,6 +398,17 @@ function ReviewLeaderboard({
     specificVersion,
   ]);
 
+  // The case's runs drain over several requests, so an unqualified empty board
+  // would claim "no scored runs yet" before any had arrived. Wait for the drain
+  // to settle before reading anything into an empty entry list.
+  if (loading) {
+    return (
+      <section className={styles.section}>
+        <LoadingState size="section" label="Loading leaderboard…" />
+      </section>
+    );
+  }
+
   // The control stays mounted alongside the empty state: a scope that filtered
   // every run away must still be adjustable, or the visitor is stuck on an empty
   // board with no way back.
@@ -498,7 +515,7 @@ function PerformanceLeaderboard({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { summaries } = useCaseRunSummaries(testCase.slug);
+  const { summaries, loading } = useCaseRunSummaries(testCase.slug);
   const findModel = useFindModel();
 
   // One exact version, not the review board's widening scope: a fuel cohort is
@@ -519,6 +536,16 @@ function PerformanceLeaderboard({
       ),
     [summaries, findModel, testCase.slug, version, variant.slug],
   );
+
+  // As on the review board, an empty entry list means nothing until the case's
+  // runs have finished draining.
+  if (loading) {
+    return (
+      <section className={styles.section}>
+        <LoadingState size="section" label="Loading leaderboard…" />
+      </section>
+    );
+  }
 
   // As on the review board, the picker stays mounted alongside the empty state
   // so a version with no correct runs is not a dead end. The empty state names
@@ -574,7 +601,9 @@ function PerformanceLeaderboard({
                 <span className={styles.rank}>{index + 1}</span>
                 <span className={styles.model}>{entry.modelName}</span>
                 <span className={styles.cell} data-label="Best fuel">
-                  <span className={styles.num}>{formatCompact(entry.bestFuel)}</span>
+                  <span className={styles.num}>
+                    {formatCompact(entry.bestFuel)}
+                  </span>
                 </span>
                 <span className={styles.cell} data-label="Runs">
                   <span className={styles.num}>{entry.runCount}</span>

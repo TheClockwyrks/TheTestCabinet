@@ -1,5 +1,9 @@
 import { Link } from "react-router";
-import { sectionReturnTo, type BackSection } from "./backReturn";
+import {
+  sectionReturnLabel,
+  sectionReturnTo,
+  type BackSection,
+} from "./backReturn";
 import styles from "./BackChevron.module.scss";
 
 // A quiet "back" affordance sat to the left of a detail-page title: a single
@@ -18,7 +22,11 @@ export function BackChevron({
    * over this route; otherwise this is the fallback (e.g. a fresh deep link).
    */
   to: string;
-  /** Accessible label / tooltip for the icon-only link. */
+  /**
+   * Accessible label / tooltip for the icon-only link. A cross-section claim (see
+   * `backReturn`) supplies its own, because such a claim has redirected the control
+   * somewhere this page's wording does not describe.
+   */
   label?: string;
   /**
    * The tabbed section this detail belongs to. Set it so back returns to the
@@ -28,8 +36,14 @@ export function BackChevron({
   section?: BackSection;
 }) {
   const target = sectionReturnTo(section, to);
+  const announced = sectionReturnLabel(section, label);
   return (
-    <Link className={styles.back} to={target} aria-label={label} title={label}>
+    <Link
+      className={styles.back}
+      to={target}
+      aria-label={announced}
+      title={announced}
+    >
       <span aria-hidden>&lsaquo;</span>
     </Link>
   );

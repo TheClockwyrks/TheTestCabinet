@@ -16,7 +16,6 @@ import type {
   ProgressCallback,
   StoredReview,
   StoredRun,
-  TestCase,
   VersionInfo,
 } from "../../client/types";
 import { frameReviews } from "../data/frameReview";
@@ -34,6 +33,7 @@ import type {
   ChangelogEntry,
   ErrataEntry,
   SeededInput,
+  TestCaseDetail,
   TestCaseSummary,
 } from "../data/testCases";
 import { useRunsRuntime } from "./runsRuntime";
@@ -44,8 +44,12 @@ import { useRunsRuntime } from "./runsRuntime";
 // is no longer drained whole: pages fetch a page at a time through
 // {@link queryRunSummaries} (the backend's numbered offset endpoint), so this only
 // reads the small produced-but-unpublished worklist from the active worker (flagged
-// local so it reads as unpublished and becomes editable on the Verdict tab, and
-// pinned ahead of the queried published window). The catalog (test cases, models)
+// local so it reads as unpublished and becomes editable on the Verdict tab, and so
+// its in-progress writeup and reviews are on hand). The listings themselves no
+// longer merge that worklist in — they query the backend's `any` slice, which
+// carries produced and published runs in one sorted, paged order — but the
+// case-scoped leaderboard/metrics views still fold it into their bounded set. The
+// catalog (test cases, models)
 // still comes from the active backend. It re-reads produced runs whenever the runs
 // runtime bumps its refresh token (e.g. a launched run finishes). Operations a
 // transport doesn't support are treated as "none" so the rest of the gallery still
@@ -126,13 +130,14 @@ async function fetchSeededInputs(
   }
 }
 
-async function toTestCaseSummary(
+async function toTestCaseDetail(
   backend: BackendClient,
-  tc: TestCase,
+  /** The case's published versions, newest first. */
+  versions: string[],
   info: VersionInfo,
   changelog: ChangelogEntry[],
   errata: ErrataEntry[],
-): Promise<TestCaseSummary> {
+): Promise<TestCaseDetail> {
   const variants = await Promise.all(
     info.variants.map(async (v) => ({
       slug: v.slug,
@@ -214,8 +219,8 @@ async function toTestCaseSummary(
     description: info.description ?? null,
     changelog,
     errata,
-    versions: tc.versions,
-    latestVersion: tc.versions[0] ?? info.version,
+    versions,
+    latestVersion: versions[0] ?? info.version,
     variants,
     domains: info.domains.map((d) => ({
       id: d.id,
@@ -233,46 +238,76 @@ async function toTestCaseSummary(
   };
 }
 
+// A case's versions as the catalog presents them: newest first. The backend lists
+// them oldest-first, and both the summary and the detail order them the other way.
+function newestFirst(versions: readonly string[]): string[] {
+  return [...versions].sort((a, b) =>
+    b.localeCompare(a, undefined, { numeric: true }),
+  );
+}
+
+// The catalog listing: ONE request. `GET /test-cases` carries each case's display
+// metadata (name, type, difficulty, tags, summary) alongside its versions, which
+// is the whole of what a listing renders — so nothing else is fetched here.
+//
+// This used to resolve every version of every case and then, for each case's
+// latest version, every variant's rendered spec bodies — a request per stored
+// version (176 of them here) plus one per latest-version variant, several hundred
+// in total and megabytes of manifests, paid at app boot on *every* route, to draw
+// grids that show a name, a difficulty, and a summary. A case's detail is now
+// fetched per slug by `readTestCase` when a visitor opens one.
 async function fetchTestCases(
   backend: BackendClient,
 ): Promise<TestCaseSummary[]> {
   const cases = await backend.listTestCases();
-  return Promise.all(
-    cases
-      .filter((tc) => tc.versions.length > 0)
-      .map(async (tc) => {
-        // The backend lists a case's versions oldest-first; the catalog presents
-        // them newest-first (see TestCaseSummary.versions), so sort before use.
-        // The newest then supplies the case's display metadata and variants, and
-        // resolving in this order yields the changelog newest-first — each version
-        // contributing its own entry (every version declares a changelog).
-        const versions = [...tc.versions].sort((a, b) =>
-          b.localeCompare(a, undefined, { numeric: true }),
-        );
-        const infos = await Promise.all(
-          versions.map((version) => backend.resolveVersion(tc.slug, version)),
-        );
-        const changelog: ChangelogEntry[] = infos.map((info) => ({
-          version: info.version,
-          body: info.changelog,
-        }));
-        // Errata, aggregated newest-version-first like the changelog, but only for
-        // versions that actually record any (a version with none is omitted).
-        const errata: ErrataEntry[] = infos
-          .filter((info) => (info.errata ?? []).length > 0)
-          .map((info) => ({
-            version: info.version,
-            errata: info.errata ?? [],
-          }));
-        return toTestCaseSummary(
-          backend,
-          { ...tc, versions },
-          infos[0]!,
-          changelog,
-          errata,
-        );
-      }),
+  return cases
+    .filter((tc) => tc.versions.length > 0)
+    .map((tc) => {
+      const versions = newestFirst(tc.versions);
+      return {
+        slug: tc.slug,
+        name: tc.name,
+        testType: tc.testType,
+        assetKind: tc.assetKind ?? null,
+        difficulty: tc.difficulty,
+        tags: tc.tags,
+        summary: tc.summary,
+        versions,
+        latestVersion: versions[0]!,
+      };
+    });
+}
+
+// One case in full, for the detail surfaces: every version resolved (the
+// changelog and errata tabs cover all of them) plus the latest version's variants
+// with their rendered spec bodies. This is the expensive half of the catalog —
+// roughly one request per version and one per variant — which is exactly why it is
+// scoped to the single case being viewed rather than paid for the whole catalog.
+async function fetchTestCase(
+  backend: BackendClient,
+  slug: string,
+): Promise<TestCaseDetail | null> {
+  const versions = newestFirst(await backend.listVersions(slug));
+  if (versions.length === 0) return null;
+  // Resolving newest-first yields the changelog newest-first too — each version
+  // contributing its own entry (every version declares a changelog) — and the
+  // newest supplies the case's display metadata and variants.
+  const infos = await Promise.all(
+    versions.map((version) => backend.resolveVersion(slug, version)),
   );
+  const changelog: ChangelogEntry[] = infos.map((info) => ({
+    version: info.version,
+    body: info.changelog,
+  }));
+  // Errata, aggregated newest-version-first like the changelog, but only for
+  // versions that actually record any (a version with none is omitted).
+  const errata: ErrataEntry[] = infos
+    .filter((info) => (info.errata ?? []).length > 0)
+    .map((info) => ({
+      version: info.version,
+      errata: info.errata ?? [],
+    }));
+  return toTestCaseDetail(backend, versions, infos[0]!, changelog, errata);
 }
 
 // The host supplies its own arena capability (the consoles wire one when a worker
@@ -532,12 +567,28 @@ export function useLiveGallery(
     };
   }, [backend, refreshToken]);
 
+  // Resolve one case in full by slug, for a detail surface that needs more than
+  // the listing-level card the catalog carries. Kept off the boot path on
+  // purpose: the whole point of the summary/detail split is that this cost — a
+  // request per version plus one per variant's specs — is paid for the single
+  // case a visitor opens, not for all of them. `useTestCase` caches on this
+  // callback, so a switched backend gets a fresh cache and the several detail
+  // surfaces of one page share one request.
+  const readTestCase = useCallback(
+    async (slug: string): Promise<TestCaseDetail | null> => {
+      if (!backend) return null;
+      return fetchTestCase(backend, slug);
+    },
+    [backend],
+  );
+
   // Answer one page of a filtered/sorted/windowed summary query from the backend's
   // numbered-pager endpoint. Forcing an `offset` (defaulting to 0) selects the
   // backend's offset path, so it returns the matching `total` used to size the
-  // console's pager. Only published runs are listed here; a page pins the console's
-  // produced summaries separately. With no backend configured the query resolves
-  // empty.
+  // console's pager. Which runs are in scope is the caller's `state`: the console
+  // listings pass `any`, so produced (unpublished) runs are returned — and sorted
+  // and paged — alongside the published ones. With no backend configured the query
+  // resolves empty.
   const queryRunSummaries = useCallback(
     async (query: RunQuery): Promise<RunQueryResult> => {
       if (!backend) return { summaries: [], total: 0 };
@@ -629,6 +680,7 @@ export function useLiveGallery(
     runsLoading,
     testCases,
     testCasesStatus,
+    readTestCase,
     models,
     modelsStatus,
     canExecute: true,

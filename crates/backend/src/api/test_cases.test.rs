@@ -285,3 +285,46 @@ fn a_graded_review_item_carries_its_graded_flag_to_the_wire() {
     assert_eq!(item.id, "fun");
     assert!(item.graded);
 }
+
+#[test]
+fn a_catalog_entry_carries_the_metadata_a_listing_card_renders() {
+    // The whole point of putting metadata on the listing is that a client can
+    // render the catalog grid from `GET /test-cases` alone. If any of these
+    // fields stops travelling, every console falls back to resolving each case's
+    // versions just to draw a card — which is the fan-out this endpoint exists to
+    // remove — so each is asserted individually rather than as a blob.
+    let mut manifest = manifest();
+    manifest.name = "Carom".to_string();
+    manifest.difficulty = "easy".to_string();
+    manifest.tags = vec!["arcade".to_string(), "physics".to_string()];
+    manifest.summary = Some("A duel of angles.".to_string());
+
+    let entry = catalog_case(
+        "carom".to_string(),
+        vec!["v1.0.0".to_string(), "v1.0.1".to_string()],
+        &manifest,
+    );
+
+    assert_eq!(entry.slug, "carom");
+    assert_eq!(entry.versions, vec!["v1.0.0", "v1.0.1"]);
+    assert_eq!(entry.name, "Carom");
+    assert_eq!(entry.test_type, TestType::EndToEnd);
+    assert_eq!(entry.difficulty, "easy");
+    assert_eq!(entry.tags, vec!["arcade", "physics"]);
+    assert_eq!(entry.summary.as_deref(), Some("A duel of angles."));
+}
+
+#[test]
+fn a_catalog_entry_carries_the_asset_shape_the_catalog_tabs_partition_on() {
+    // The catalog's 2D / 3D / Particle / Audio tabs are chosen from `assetKind`.
+    // It rides on the listing for the same reason the rest of the metadata does:
+    // deciding which tab a case belongs under must not require resolving it.
+    let mut manifest = manifest();
+    manifest.test_type = TestType::AssetGeneration;
+    manifest.asset_kind = AssetKind::SpriteSheet;
+
+    let entry = catalog_case("dash".to_string(), vec!["v1.0.0".to_string()], &manifest);
+
+    assert_eq!(entry.test_type, TestType::AssetGeneration);
+    assert_eq!(entry.asset_kind, AssetKind::SpriteSheet);
+}

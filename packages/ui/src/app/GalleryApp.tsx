@@ -1,4 +1,5 @@
 import { Backdrop } from "./components/Backdrop";
+import { ConfirmDialogProvider } from "./components/ConfirmDialog";
 import { NotificationsLayer } from "./components/NotificationsLayer";
 import { useGalleryData } from "./data/galleryContext";
 import { AppRoutes } from "./pages/router";
@@ -20,11 +21,14 @@ export function GalleryApp() {
   // which the layer reads, isn't provided there).
   const { canExecute } = useGalleryData();
   return (
-    <>
+    // Every page asks its destructive questions through the themed dialog rather
+    // than the browser's own `confirm()`, so the provider wraps the whole routed
+    // app — including the portalled run context menu, which raises one too.
+    <ConfirmDialogProvider>
       {/* Neon grid + scanline atmosphere, painted behind the routed pages. */}
       <Backdrop />
       <AppRoutes />
       {canExecute && <NotificationsLayer />}
-    </>
+    </ConfirmDialogProvider>
   );
 }

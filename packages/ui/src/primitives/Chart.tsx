@@ -48,12 +48,38 @@ export function Chart({ spec, title, className }: ChartProps) {
     render();
     const observer = new ResizeObserver(render);
     observer.observe(container);
+
+    // Touch has no hover to leave. Plot raises a bar's tooltip on tap (the tap
+    // arrives as a pointermove) but only takes it down again on a *mouse*
+    // pointerleave, so on a phone the tip sticks to the bar with no gesture to
+    // clear it — tapping elsewhere in the chart only moves it to another bar,
+    // since the charts point by column with a wide radius. Restore the
+    // dismissal a touch user expects — tap anywhere off the chart — by handing
+    // Plot the mouse-shaped leave event it is waiting for. Listening at the
+    // document (capturing) is what makes taps landing on unrelated elements, or
+    // on a sibling chart, count as "away".
+    const dismissTipOnTapAway = (event: PointerEvent) => {
+      // A mouse dismisses by leaving the chart, and its click-to-stick tip by
+      // clicking again; don't cut either short.
+      if (event.pointerType === "mouse") return;
+      if (container.contains(event.target as Node)) return;
+      for (const svg of container.querySelectorAll("svg")) {
+        svg.dispatchEvent(
+          new PointerEvent("pointerleave", { pointerType: "mouse" }),
+        );
+      }
+    };
+    document.addEventListener("pointerdown", dismissTipOnTapAway, true);
+
     return () => {
+      document.removeEventListener("pointerdown", dismissTipOnTapAway, true);
       observer.disconnect();
       container.replaceChildren();
     };
   }, [spec]);
 
   const cls = className ? `${styles.chart} ${className}` : styles.chart;
-  return <div ref={containerRef} className={cls} role="img" aria-label={title} />;
+  return (
+    <div ref={containerRef} className={cls} role="img" aria-label={title} />
+  );
 }

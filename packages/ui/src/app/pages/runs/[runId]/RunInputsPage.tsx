@@ -1,5 +1,6 @@
 import { Panel } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
+import { LoadingState } from "../../../components/LoadingState";
 import {
   VariantInputsView,
   type RunSeededInput,
@@ -28,7 +29,15 @@ export function RunInputsPage() {
 }
 
 function RunInputsBody({ run }: { run: RunRecord }) {
-  const variant = useRunVariant(run.subject);
+  const { variant, status } = useRunVariant(run.subject);
+  // The inputs are resolved from the catalog, which is fetched independently of
+  // the run record — so this body commonly renders while that fetch is still in
+  // flight. Show the branded loading state for that wait; "not available" is
+  // reserved for a catalog that has finished loading without the case, which is
+  // the only state a visitor can do nothing about.
+  if (status === "loading") {
+    return <LoadingState size="section" label="Loading inputs…" />;
+  }
   return variant ? (
     // Keyed by run so moving between two runs of the same variant collapses the
     // panels again rather than leaving one open over a different run's entry.

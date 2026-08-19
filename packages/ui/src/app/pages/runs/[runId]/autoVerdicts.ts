@@ -65,3 +65,69 @@ export function overriddenAutoVerdictIds(
   }
   return out;
 }
+
+/**
+ * One line of the "what would change" list a restore is confirmed against: the
+ * point in the reviewer's own vocabulary, what they answered, and what
+ * validation decided.
+ */
+export interface RestoreChange {
+  /** The verdict id being put back. */
+  id: string;
+  /** The point's own title — a sub-item's, or a whole item's. */
+  title: string;
+  /** The category a sub-item sits under. Empty for a whole item. */
+  category: string;
+  /** The reviewer's current answer, or `""` where they left the point unanswered. */
+  from: VerdictStatus | "";
+  /** What this run's validation decided, and so what the restore would set. */
+  to: VerdictStatus;
+}
+
+/**
+ * Spell out, point by point, exactly what restoring `ids` would change.
+ *
+ * The bulk restore discards the reviewer's own calls wholesale, and the count
+ * alone ("restore 7 verdicts") does not tell them whether that is the correction
+ * they meant — a reviewer who has worked through forty points cannot hold which
+ * seven they overrode, nor which way each would flip. Enumerating them makes the
+ * confirmation answerable rather than a leap.
+ *
+ * Ordered as `ids` is (the checklist's own order), and skipping any id validation
+ * did not decide, since there is nothing to restore it to.
+ */
+export function describeAutoVerdictRestore(
+  items: ReviewItem[],
+  auto: Map<string, AutoVerdictInfo>,
+  verdicts: Record<string, VerdictDraft>,
+  ids: string[],
+): RestoreChange[] {
+  // Verdict id → where that point sits, so a line reads "Controls work › Keyboard"
+  // rather than the raw `controls.kb`. `verdictIdsForItem` emits sub-item ids in
+  // `subItems` order, which is what lets the two be zipped.
+  const labels = new Map<string, { title: string; category: string }>();
+  for (const item of items) {
+    const subItems = item.subItems ?? [];
+    verdictIdsForItem(item).forEach((vid, i) => {
+      labels.set(vid, {
+        title: subItems[i]?.title ?? item.title,
+        category: subItems.length > 0 ? item.title : "",
+      });
+    });
+  }
+
+  const changes: RestoreChange[] = [];
+  for (const id of ids) {
+    const decided = auto.get(id);
+    if (!decided) continue;
+    const label = labels.get(id);
+    changes.push({
+      id,
+      title: label?.title ?? id,
+      category: label?.category ?? "",
+      from: verdicts[id]?.status ?? "",
+      to: decided.status,
+    });
+  }
+  return changes;
+}

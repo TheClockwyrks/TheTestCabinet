@@ -21,7 +21,9 @@ The dispatcher runs a single control loop forever:
 
 1. **Claim** the next claimable job from the backend (`POST /jobs/next`),
    authenticating with a shared **service token**. The claim is atomic, so the
-   backend hands each job to exactly one dispatcher. The backend — not the
+   backend hands each job to exactly one dispatcher. Selection is **FIFO by enqueue
+   order** across harnesses (see [Queue order](#queue-order)), skipping any job held
+   back. The backend — not the
    dispatcher — enforces each harness's **maximum parallelism** here: it only hands
    back a job whose harness has fewer than its configured limit of runs already in
    flight, holding the rest in the `pending` state until a slot frees (see
@@ -64,6 +66,51 @@ queue and the cluster's scheduler.
   which the backend also holds); each driver authenticates its own streaming with
   the per-job token the backend minted at enqueue and the dispatcher passed in.
 
+## Queue order
+
+The backend hands jobs back in the order they were **enqueued**. Each job takes a
+monotonic queue position (`job.queue_seq`) when it is inserted, and the claim orders
+by that position — not by the enqueue timestamp, which cannot order a batch (every
+run of one `POST /jobs/batch` shares a single timestamp) and, being stored as an
+RFC 3339 string with a variable-length subsecond part, does not always compare
+chronologically either.
+
+The practical consequence is that **a batch runs in the order the console listed
+it**, and it is the whole mechanism by which anything upstream controls execution
+order: nothing in the dispatcher, the driver, or the queue needs to know why a run
+was enqueued, because emitting is choosing.
+
+Both consoles exploit that by emitting a case's repeats together — the new-run form
+fans each harness/model combination out over its "runs each" count before moving to
+the next combination, and a [coverage plan](/components/backend/coverage/) emits each
+cell's missing runs together — so three runs each of three cases start as three of
+the first case, then three of the second, then three of the third, and finish in
+roughly that order. That is what makes a repeated set reviewable a case at a time
+instead of arriving interleaved. A caller that wants a different execution order
+submits the runs in that order.
+
+Which axis a coverage plan puts **outside** that per-cell grouping is **configurable
+per plan**, not fixed: `outerAxis: "case"` (the default, and the historical
+behaviour) finishes one case across every combination before starting the next,
+while `outerAxis: "combination"` takes one model through every case first. A
+[ladder](/components/backend/ladders/) makes the same choice between advancing every
+climber one rung and taking one climber as far as it gets. Both settings are purely
+a decision about the order cells are handed to `POST /jobs/batch`; the dispatcher's
+behaviour is identical either way.
+
+A plan or ladder also does not enqueue its whole matrix at once. It keeps a bounded
+[review buffer](/components/backend/coverage/#the-review-buffer) of outstanding runs
+and refills it as they are reviewed, so the queue this dispatcher drains is normally
+a short, deliberately ordered slice rather than an entire sweep.
+
+Ordering governs when a run *starts*, not when it finishes: runs still execute
+concurrently up to the caps below, so a slow early run can finish after a fast later
+one. The one queue the backend fully serializes is a **game jam per model**, for the
+reason in step 1 above.
+
+An automatic retry is a fresh enqueue, so it goes to the **back** of the queue rather
+than jumping ahead of work queued while it was running.
+
 ## Sandbox reaping
 
 The [driver](/components/driver/overview/) normally deletes its own sandbox pod, but
@@ -91,6 +138,43 @@ The driver pod also carries small resource **requests**
 `BestEffort` QoS class, which is what made it the first thing evicted and
 OOM-killed. Limits are deliberately unset by default: a memory limit would
 re-introduce the same `SIGKILL` from the container's own cgroup.
+
+## Surviving the cluster autoscaler
+
+Reaping an orphaned sandbox limits the damage from a killed driver; it does not stop
+the run from dying. The cluster autoscaler is a standing source of exactly that kill,
+and by default it has every reason to pick a driver:
+
+- A driver pod is a `Job` pod, so the autoscaler treats it as **replaceable** — for an
+  ordinary `Job` a new pod would simply appear elsewhere. These `Job`s are
+  `backoffLimit: 0`, so there is no replacement. Evicting one destroys the run it is
+  conducting, mid flight, along with whatever model spend the run had already incurred.
+- Those deliberately small requests make the driver's node look **idle**. The run's
+  real reservation belongs to the sandbox, which is a separate pod and frequently on a
+  separate node, so a node whose only tenant is a driver sits under the autoscaler's
+  utilization threshold for the entire length of the run — precisely the profile it
+  consolidates away.
+
+So every pod the dispatcher and driver create — driver `Job`s, publish `Job`s, and
+sandbox pods — carries
+`cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`. A node running one lingers
+until the work on it finishes. The sandbox carries the annotation even though the
+autoscaler already spares controller-less pods: that exemption is a property of the
+cluster's configuration rather than of the manifest, and it would silently invert if
+anything ever gave the sandbox an owner.
+
+This is a **scale-down** guard only. It does not pin the pod against a node the
+operator drains, a spot reclaim, or kubelet node-pressure eviction — the sandbox
+reaping above, and the driver's own `activeDeadlineSeconds` backstop, remain the
+answer for those.
+
+When a driver *is* disrupted anyway, the death report says so. The dispatcher reads
+the pod's `DisruptionTarget` condition ahead of its container state, because an
+evicted driver's container reports the `SIGTERM` it received — describing how it died
+and not why — which would otherwise read as an ordinary crash. If the pod is gone
+entirely, the report distinguishes "the `Job` never started a pod" from "a pod ran and
+was deleted out from under the run" using the `Job`'s own `status.failed` count, which
+outlives the pod.
 
 ## RBAC
 

@@ -3,21 +3,48 @@
 @use "../../styles/surfaces" as s;
 @use "../../styles/breakpoints" as bp;
 
-// The runs section's tab bar, mirroring the Settings / About / detail-page tab
-// strips: a row of underlined pills riding a hairline baseline, the active one
-// glowing in the accent. Sits between the section header and the page body.
+// The runs section's control bar: the tab strip on the leading edge and the global
+// stop controls on the trailing one, both riding a shared hairline baseline. Sits
+// between the section header and the page body.
+.bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+  border-bottom: t.$border-hairline solid t.$color-border;
+
+  // On narrow screens the tab strip becomes a swipeable scroller (below), and a
+  // scroller cannot share a row with an action cluster without either squeezing
+  // the cluster off-screen behind the strip's fade or pushing the bar itself
+  // sideways. So the two stack: the strip keeps its row, the actions take their
+  // own beneath it. Nothing collapses into a menu — these are three destructive
+  // global controls, and hiding them behind an extra tap is exactly the wrong
+  // trade for the one class of control a user reaches for in a hurry.
+  @include bp.below(t.$bp-md) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: t.$space-sm;
+    // The baseline moves onto the strip itself (below) so the active tab's
+    // underline still meets a rule once the actions sit under the bar.
+    border-bottom: 0;
+  }
+}
+
+// The row of tab links. Wraps on wide viewports; on narrow it reads as a single
+// swipeable strip rather than wrapping, matching the other tab strips.
 .tabs {
   display: flex;
   flex-wrap: wrap;
   gap: t.$space-sm;
-  margin-bottom: t.$space-md;
-  border-bottom: t.$border-hairline solid t.$color-border;
+  // Let the strip give way to the action cluster instead of shouldering it out of
+  // the bar; without this the flex item refuses to shrink below its content width.
+  min-width: 0;
 
-  // On narrow screens the tabs read as a single swipeable strip rather than
-  // wrapping, matching the other tab strips. The row (and its baseline border)
-  // scrolls horizontally; the negative inline margins bleed it to the content
-  // edges so the first and last tabs aren't clipped by the page gutter, and the
-  // padding restores the gutter inside the scroller.
+  // The row (and its baseline border) scrolls horizontally; the negative inline
+  // margins bleed it to the content edges so the first and last tabs aren't
+  // clipped by the page gutter, and the padding restores the gutter inside the
+  // scroller.
   @include bp.below(t.$bp-md) {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -25,6 +52,7 @@
     scrollbar-width: none;
     margin-inline: calc(-1 * t.$space-md);
     padding-inline: t.$space-md;
+    border-bottom: t.$border-hairline solid t.$color-border;
 
     &::-webkit-scrollbar {
       display: none;
@@ -66,4 +94,81 @@
   color: t.$color-accent;
   text-shadow: var(--ttc-glow);
   border-bottom-color: t.$color-accent;
+}
+
+// The global stop cluster. Sits just clear of the hairline so the buttons don't
+// appear to rest on it, and wraps rather than overflows when the labels and a
+// result line together outgrow the space left beside the tabs.
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: t.$space-sm;
+  padding-bottom: t.$space-sm;
+
+  // Below the strip now, so there is no hairline to clear; the buttons share the
+  // full width evenly and wrap onto a second line only when even that is too
+  // tight, which keeps all three reachable without a horizontal scroll.
+  @include bp.below(t.$bp-md) {
+    padding-bottom: 0;
+
+    .action {
+      flex: 1 1 auto;
+    }
+  }
+}
+
+// A muted destructive button, matching the run-kill and run-delete controls so
+// every negative affordance in the runs section reads as one family. All three
+// share the one treatment: they differ in reach, not in kind, and the two that
+// throw work away are guarded by a confirmation that names the count rather than
+// by shouting in the bar.
+.action {
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  cursor: pointer;
+  @include h.halo;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+    background: color-mix(in srgb, t.$color-negative 8%, transparent);
+  }
+
+  // Disabled means there is nothing in that state to cancel (or another sweep is
+  // in flight) — not a permissions problem, so it dims rather than disappears.
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// What the last sweep actually cancelled. Reported inline beside the buttons
+// instead of in a transient toast: the count is the whole point of pressing one.
+.status {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+
+  // The region is mounted before it has anything to say (so a screen reader is
+  // already watching it); take it out of the flex flow until it does, or its
+  // gap would open a hole beside the buttons.
+  &:empty {
+    display: none;
+  }
+}
+
+.error {
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+  @include h.halo;
 }

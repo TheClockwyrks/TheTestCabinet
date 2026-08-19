@@ -57,12 +57,13 @@ export const routes = {
   testCaseReference: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/reference`,
   models: (): string => "/models",
+  // The model detail index — its Overview tab, which reports the model one test
+  // case at a time. The `?case=`/`?variant=` parameters the tab writes select
+  // which cohort it opens on, so a specific reading is linkable.
   modelDetail: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}`,
   modelStats: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/stats`,
-  modelPricing: (modelId: string): string =>
-    `/models/${encodeURIComponent(modelId)}/pricing`,
   modelRuns: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/runs`,
   // The add/edit model config form (consoles only; the static site is read-only
@@ -88,6 +89,7 @@ export const routes = {
   settingsAppearance: (): string => "/settings/appearance",
   settingsConnections: (): string => "/settings/connections",
   settingsHarnesses: (): string => "/settings/harnesses",
+  settingsReviewing: (): string => "/settings/reviewing",
   // Account routes (consoles only; the static site is read-only and never links
   // to them). The account view shows the signed-in user and a sign-out control;
   // login/register are their own pages. `login`/`register` take an optional
@@ -110,6 +112,17 @@ export const routes = {
     `/account/coverage/${planId}`,
   accountCoveragePlanEdit: (planId: string): string =>
     `/account/coverage/${planId}/edit`,
+  // The account section's ladders tab (consoles only): the reviewer's ladders — an
+  // ordered climb of version-pinned cases each harness/model combination advances
+  // through on its own, gated on that account's own reviews. A sibling of coverage,
+  // not a mode of it, so it gets its own routes rather than a query parameter.
+  accountLadders: (): string => "/account/ladders",
+  // Create a new ladder, and open / edit an existing one by id. `new` is a static
+  // segment so it ranks above the dynamic `:ladderId`.
+  accountLadderNew: (): string => "/account/ladders/new",
+  accountLadder: (ladderId: string): string => `/account/ladders/${ladderId}`,
+  accountLadderEdit: (ladderId: string): string =>
+    `/account/ladders/${ladderId}/edit`,
   // The account section's coverage-groups tab: the reusable model/case groups
   // plans reference, plus their create/edit pages.
   accountGroups: (): string => "/account/groups",
@@ -124,6 +137,11 @@ export const routes = {
   // reviewer surface the static site never links to. Static segment beside
   // `/runs/:runId`, like `/runs/new`.
   runUnreviewed: (): string => "/runs/unreviewed",
+  // The publish worklist (consoles only): runs that have cleared the publish gate
+  // but have not been released yet, so a reviewer can find and batch-publish them
+  // instead of hunting through the all-runs listing. Nothing on the public gallery
+  // could appear here by definition.
+  runUnpublished: (): string => "/runs/unpublished",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
   // a test case lands on the new-run form with that case already chosen.
@@ -223,7 +241,6 @@ export const routePatterns = {
   modelNew: "/models/new",
   modelDetail: "/models/:modelId",
   modelStats: "/models/:modelId/stats",
-  modelPricing: "/models/:modelId/pricing",
   modelEdit: "/models/:modelId/edit",
   modelRuns: "/models/:modelId/runs",
   about: "/about",
@@ -233,6 +250,7 @@ export const routePatterns = {
   settingsAppearance: "/settings/appearance",
   settingsConnections: "/settings/connections",
   settingsHarnesses: "/settings/harnesses",
+  settingsReviewing: "/settings/reviewing",
   account: "/account",
   login: "/login",
   register: "/register",
@@ -244,12 +262,20 @@ export const routePatterns = {
   accountCoveragePlanNew: "/account/coverage/new",
   accountCoveragePlan: "/account/coverage/:planId",
   accountCoveragePlanEdit: "/account/coverage/:planId/edit",
+  // The ladder surfaces, laid out exactly as the plan ones: `new` (static) ranks
+  // above the dynamic `:ladderId`, and `:ladderId/edit` is more specific than the
+  // bare detail, so react-router matches them correctly.
+  accountLadders: "/account/ladders",
+  accountLadderNew: "/account/ladders/new",
+  accountLadder: "/account/ladders/:ladderId",
+  accountLadderEdit: "/account/ladders/:ladderId/edit",
   accountGroups: "/account/groups",
   accountGroupNew: "/account/groups/new",
   accountGroupEdit: "/account/groups/:groupId/edit",
   runs: "/runs",
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",
+  runUnpublished: "/runs/unpublished",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
@@ -274,3 +300,54 @@ export const routePatterns = {
   gameJamMetrics: "/game-jams/:slug/metrics",
   tournamentDetail: "/tournaments/:id",
 } as const;
+
+// A path's non-empty segments. Leading, trailing, and repeated slashes collapse
+// away, which matches how react-router treats them.
+function segmentsOf(path: string): string[] {
+  return path.split("/").filter(Boolean);
+}
+
+// Every pattern above, pre-split into path segments, for `isKnownRoute`.
+const PATTERN_SEGMENTS: ReadonlyArray<readonly string[]> =
+  Object.values(routePatterns).map(segmentsOf);
+
+/**
+ * Whether a path is addressed by any route in {@link routePatterns}.
+ *
+ * This exists for whatever **serves** the app, not for the app itself: the gallery
+ * is a client-routed single-page app served from one `index.html`, so a static host
+ * answers every path with the shell and a `200` — including paths the app has no
+ * route for. A server that holds this table can tell an unrecognized URL apart from
+ * a real page and answer the former with a `404`. Nothing in the app needs it; the
+ * router's own catch-all renders the not-found *page* regardless of status.
+ *
+ * No host calls it today — the gallery is still served as a static bundle. It is
+ * exported and tested here so the table stays a single source of truth for the
+ * server that will.
+ *
+ * A `:param` segment matches any one segment, so this answers whether the path is
+ * *shaped* like a route, not whether the thing it names exists. Whether a run id
+ * addresses a real run is a separate question, answerable only from the published
+ * set.
+ *
+ * **It deliberately ignores the host gates.** Several patterns mount only where
+ * the host can execute runs (`/runs/new`, the whole account section, the
+ * console-only settings tabs), and that gating lives in each section's
+ * `router.tsx` — where it belongs, next to the elements it gates. Duplicating it
+ * here would be a second source of truth that drifts. The cost is that a
+ * console-only path requested on the gallery is answered `200` with the
+ * router's not-found page rather than a `404`. It renders correctly either way,
+ * and it is not a URL anything links to; being coarse here beats being wrong
+ * about the whole table later.
+ */
+export function isKnownRoute(pathname: string): boolean {
+  const segments = segmentsOf(pathname);
+  return PATTERN_SEGMENTS.some(
+    (pattern) =>
+      pattern.length === segments.length &&
+      pattern.every(
+        (segment, index) =>
+          segment.startsWith(":") || segment === segments[index],
+      ),
+  );
+}

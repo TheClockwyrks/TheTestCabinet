@@ -17,6 +17,9 @@ import {
   useGalleryData,
   type ValidationMedia,
 } from "../../../data/galleryContext";
+import { useTestCase } from "../../../data/useTestCase";
+import { topUpAfterReview } from "../../account/CoveragePlanPage";
+import { topUpLaddersAfterReview } from "../../account/LadderPage";
 import { MediaView } from "../../../components/MediaView";
 import { ReviewItemAssets } from "./AssetResultSection";
 import { DebugScriptList } from "./DebugScriptList";
@@ -43,9 +46,11 @@ import {
 import { ReviewList } from "./ReviewList";
 import {
   autoVerdictMap,
+  describeAutoVerdictRestore,
   overriddenAutoVerdictIds,
   type VerdictDraft,
 } from "./autoVerdicts";
+import { useConfirm } from "../../../components/ConfirmDialog";
 import styles from "../RunExec.module.scss";
 
 const STATUSES: VerdictStatus[] = ["pass", "fail"];
@@ -195,16 +200,20 @@ export function RunReviewEditor({
   // the editor offers a single Publish action there.
   const solo = worker?.local ?? false;
   const { account, token } = useAuth();
+  const { confirm } = useConfirm();
   // The checklist items are catalog data: read them from the backend, keyed by
   // the run's case identity — the worker doesn't serve the catalog.
   const { client: backend } = useBackend();
   const gallery = useGalleryData();
-  // The case's scoring domains, rated independently; the run's overall rating is
-  // the worst across them. Resolved from the catalog the host holds.
-  const domains = useMemo(
-    () => gallery.reviewModelFor(subject).domains,
-    [gallery, subject],
+  // The run's case, fetched by slug — the source of both the scoring domains
+  // (rated independently; the run's overall rating is the worst across them) and
+  // the variant's reference media below.
+  const { testCase } = useTestCase(subject.testCaseSlug);
+  const variant = useMemo(
+    () => testCase?.variants.find((v) => v.slug === subject.variant),
+    [testCase, subject.variant],
   );
+  const domains = variant?.domains ?? testCase?.domains ?? [];
   // The current account's own prior review (when any) among the run's reviews —
   // the seed for re-reviewing. The reviews arrive from the run-detail layout,
   // fetched with the record.
@@ -248,14 +257,12 @@ export function RunReviewEditor({
   // The expected reference media (by view) and the submitted proof media (by id)
   // for this run, resolved from the gallery data so each question can show both.
   const referencesByView = useMemo(() => {
-    const tc = gallery.testCases.find((c) => c.slug === subject.testCaseSlug);
-    const variant = tc?.variants.find((v) => v.slug === subject.variant);
     const map = new Map<string, ReferenceShot>();
     for (const ref of variant?.referenceScreenshots ?? []) {
       map.set(ref.view, { view: ref.view, kind: ref.kind, url: ref.url });
     }
     return map;
-  }, [gallery.testCases, subject.testCaseSlug, subject.variant]);
+  }, [variant]);
 
   const proofsById = useMemo(() => {
     const map = new Map<string, ProofMedia>();
@@ -517,15 +524,53 @@ export function RunReviewEditor({
   // Restore every overridden point at once, from the rail. Confirmed first because
   // it discards the reviewer's own calls wholesale — the mirror image of "Mark
   // unplayable", which overwrites them wholesale.
-  function restoreAllAutoVerdicts() {
+  //
+  // The confirmation enumerates every point it would change and which way each
+  // would flip, because by the time a reviewer reaches for the rail's bulk restore
+  // they have worked through the whole checklist and cannot be expected to hold
+  // which of their own calls the machine disagrees with. The list is rendered in
+  // the dialog's capped, scrollable detail region, so a case with a hundred points
+  // asks the question the same way a case with three does.
+  async function restoreAllAutoVerdicts() {
     const n = overriddenIds.length;
     if (n === 0) return;
-    if (
-      !window.confirm(
-        `Restore ${n} overridden ${n === 1 ? "verdict" : "verdicts"} to what this run's automated validation decided? Your own Pass/Fail on ${n === 1 ? "that point" : "those points"} will be discarded; notes are kept.`,
-      )
-    )
-      return;
+    const changes = describeAutoVerdictRestore(
+      items,
+      auto,
+      verdicts,
+      overriddenIds,
+    );
+    const confirmed = await confirm({
+      title: "Restore validator verdicts",
+      message: `Restore ${n} overridden ${n === 1 ? "verdict" : "verdicts"} to what this run's automated validation decided? Your own Pass/Fail on ${n === 1 ? "that point" : "those points"} will be discarded; notes are kept.`,
+      confirmLabel: n === 1 ? "Restore verdict" : `Restore ${n} verdicts`,
+      details: (
+        <ul className={styles.restoreList}>
+          {changes.map((change) => (
+            <li key={change.id} className={styles.restoreRow}>
+              <span className={styles.restorePoint}>
+                {change.category && (
+                  <span className={styles.restoreCategory}>
+                    {change.category} ›{" "}
+                  </span>
+                )}
+                {change.title}
+              </span>
+              <span className={styles.restoreFlip}>
+                <span className={styles.restoreFrom}>
+                  {change.from ? VERDICT_META[change.from].label : "Unanswered"}
+                </span>
+                <span aria-hidden="true"> → </span>
+                <span className={styles.restoreTo}>
+                  {VERDICT_META[change.to].label}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ),
+    });
+    if (!confirmed) return;
     restoreAutoVerdicts(overriddenIds);
   }
 
@@ -706,15 +751,15 @@ export function RunReviewEditor({
   // step without walking each question. Purely local state — it flows through the
   // normal buildReview()/submit path and fills the submit gate. Confirmed first
   // because it overwrites every verdict and rating already recorded.
-  function markUnplayable() {
-    if (
-      !window.confirm(
-        jam
-          ? "Mark this run unplayable? Every category and the overall grade will be set to 💩 Broken."
-          : "Mark this run unplayable? Every checklist item will be set to Fail and every rating to Broken.",
-      )
-    )
-      return;
+  async function markUnplayable() {
+    const confirmed = await confirm({
+      title: "Mark run unplayable",
+      message: jam
+        ? "Mark this run unplayable? Every category and the overall grade will be set to 💩 Broken."
+        : "Mark this run unplayable? Every checklist item will be set to Fail and every rating to Broken.",
+      confirmLabel: "Mark unplayable",
+    });
+    if (!confirmed) return;
     // A jam grades every category (and the overall) as the worst tier, `broken`; a
     // domain-scored case fails every item and rates every domain the worst tier.
     const worst: VerdictStatus = jam ? "broken" : "fail";
@@ -825,6 +870,14 @@ export function RunReviewEditor({
     runAction(ownReview ? "Review updated." : "Review submitted.", async () => {
       await client!.submitReview(runId, buildReview(), token!);
       setSubmittedThisSession(true);
+      // This review is what frees a review-buffer slot, and on a ladder it *is* the
+      // rung's verdict — so a plan or ladder with auto-top-up on is refilled here,
+      // at the only moment its shortfall can have changed. Deliberately not awaited
+      // and deliberately silent on failure: the review has already been recorded,
+      // and a slow or failing top-up must never make a successful submit look
+      // broken. Both helpers no-op unless the account has opted a plan or ladder in.
+      void topUpAfterReview(backend, token);
+      void topUpLaddersAfterReview(backend, token);
       setEditNote("");
       // Collapse back to the summary; the just-submitted review now shows there.
       setEditing(false);
@@ -1142,7 +1195,7 @@ export function RunReviewEditor({
                 <button
                   type="button"
                   className={styles.unplayable}
-                  onClick={markUnplayable}
+                  onClick={() => void markUnplayable()}
                   disabled={busy}
                   title={
                     jam
@@ -1165,7 +1218,7 @@ export function RunReviewEditor({
                   <button
                     type="button"
                     className={styles.restoreAuto}
-                    onClick={restoreAllAutoVerdicts}
+                    onClick={() => void restoreAllAutoVerdicts()}
                     disabled={busy || overriddenIds.length === 0}
                     title={
                       overriddenIds.length === 0

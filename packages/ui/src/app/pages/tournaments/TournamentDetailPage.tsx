@@ -6,11 +6,14 @@ import type {
   Standing,
   TournamentRecord,
 } from "@test-cabinet/run-record";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { BackChevron } from "../../components/BackChevron";
 import { useControllerName } from "../../data/useControllerName";
 import { useGalleryData, type ArenaApi } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { routes } from "../../routes";
 import { ReplayOverlay } from "../runs/[runId]/AdversarialReplaySection";
 import styles from "./TournamentDetailPage.module.scss";
 
@@ -20,6 +23,7 @@ import styles from "./TournamentDetailPage.module.scss";
 export function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { arena } = useGalleryData();
+  const testCaseName = useTestCaseName();
   const [record, setRecord] = useState<TournamentRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,6 +58,22 @@ export function TournamentDetailPage() {
         command="--tournament"
         comment={<>// standings &amp; matches</>}
       />
+      {/* The subject line is this page's title, so the back chevron sits beside
+          it as it does on the test-case, jam, run, and model detail pages. It is
+          rendered in every state — including while loading and where the arena
+          is unavailable — so a deep link can always get back to the list. */}
+      <div className={styles.titleRow}>
+        <BackChevron
+          to={routes.otherTournaments()}
+          section="other"
+          label="All tournaments"
+        />
+        <h1 className={styles.caption}>
+          {record
+            ? `${testCaseName(record.testCaseSlug)} ${record.testCaseVersion} · ${record.variant}`
+            : "Tournament"}
+        </h1>
+      </div>
       {!arena ? (
         <Panel>
           <p className={styles.empty}>This tournament is not available here.</p>
@@ -64,7 +84,7 @@ export function TournamentDetailPage() {
         </Panel>
       ) : loading || !record ? (
         <Panel>
-          <p className={styles.empty}>Loading tournament…</p>
+          <LoadingState size="section" label="Loading tournament…" />
         </Panel>
       ) : (
         <TournamentBody arena={arena} record={record} />
@@ -82,7 +102,6 @@ function TournamentBody({
 }) {
   // The match whose replay overlay is open, by match id (null when none is).
   const [openMatch, setOpenMatch] = useState<MatchSummary | null>(null);
-  const testCaseName = useTestCaseName();
   const controllerName = useControllerName();
 
   const labelFor = (id: string) => {
@@ -97,11 +116,6 @@ function TournamentBody({
 
   return (
     <>
-      <p className={styles.caption}>
-        {testCaseName(record.testCaseSlug)} {record.testCaseVersion} ·{" "}
-        {record.variant}
-      </p>
-
       <section className={styles.section}>
         <h2 className={styles.heading}>Standings</h2>
         <Panel>

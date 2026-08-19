@@ -564,6 +564,22 @@ fn sandbox_pod_active_deadline_is_configurable_and_disablable() {
 }
 
 #[test]
+fn sandbox_pod_is_pinned_against_autoscaler_eviction() {
+    // A sandbox holds the only copy of the run's working tree; evicting it destroys
+    // the run. The autoscaler spares it today only because it is a bare pod, which is
+    // a fact about cluster policy rather than about this manifest — so state it here.
+    let pod = build_run_pod("tcab-run-abc", &spec("img"), &KubernetesConfig::default());
+    let annotations = pod.metadata.annotations.expect("annotations");
+
+    assert_eq!(
+        annotations
+            .get("cluster-autoscaler.kubernetes.io/safe-to-evict")
+            .map(String::as_str),
+        Some("false"),
+    );
+}
+
+#[test]
 fn sandbox_pod_managed_by_matches_what_the_dispatcher_reaps_on() {
     // The dispatcher's sandbox reaper selects on this literal
     // (`dispatcher::job::SANDBOX_MANAGED_BY`). The two crates do not depend on each

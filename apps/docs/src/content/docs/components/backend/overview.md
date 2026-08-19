@@ -137,6 +137,33 @@ keeps the operation idempotent: re-running it converges on the same snapshot.
 Both of these mutations require a bearer token (see [Accounts](#accounts));
 reviews are attributed to the account the token resolves to.
 
+## Review Scheduling
+
+The backend also holds the **reviewer scheduling** state — what runs an account
+wants to exist, and how fast it wants them arriving. This is per-account, private,
+console-only data: it never reaches the public snapshot and no runner consults it.
+
+- A [coverage plan](/components/backend/coverage/) declares version-pinned cases
+  crossed with harness+model combinations and a target run count per cell. The
+  backend expands it into a matrix, counts what exists against it, and enqueues what
+  is missing.
+- A [ladder](/components/backend/ladders/) applies the same machinery to an
+  *ordered* series of cases, which each combination climbs until a gate stops it.
+
+Two properties of that design are the backend's to enforce, and both follow from it
+being the single central entity:
+
+- **Run counts stay global while judgement stays per-account.** A run someone else
+  produced satisfies a plan's target and is never re-requested, but "unreviewed"
+  means unreviewed *by the requesting account* and a ladder's gate reads only that
+  account's own review. Two reviewers therefore share the cabinet's runs without
+  sharing each other's worklists.
+- **Enqueueing is bounded and serialized.** A plan holds a bounded review buffer
+  rather than firing its whole matrix, and refilling it is an endpoint the console
+  calls — there is no background daemon. The backend serializes each plan's or
+  ladder's top-up with a claim on its row, so two console tabs cannot both observe
+  the same shortfall and both enqueue for it.
+
 ## Public Snapshot
 
 The public site must show published runs to anonymous visitors without depending

@@ -164,6 +164,29 @@ jobs:
       - script: ./scripts/ci/web-build.sh
         displayName: Build website
 
+  # The front-end unit suites. Its own job rather than steps on `web`, so a failing
+  # assertion reports as a failing test rather than as a failing build, and so it
+  # runs in parallel with it: the tests need only the small workspace runtime
+  # packages, not the app bundles.
+  - job: webtest
+    displayName: "Front ends: unit tests (vitest)"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: UseNode@1
+        displayName: Use Node 22
+        inputs:
+          version: 22.23.1
+      - task: Cache@2
+        displayName: Cache npm
+        inputs:
+          key: 'npm | "$(Agent.OS)" | package-lock.json'
+          restoreKeys: |
+            npm | "$(Agent.OS)"
+          path: $(HOME)/.npm
+      - script: ./scripts/ci/web-test.sh
+        displayName: Test front ends
+
   - job: specs
     displayName: "Specs: markdown & spelling"
     steps:

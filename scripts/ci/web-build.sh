@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
 # Installs the npm workspace and builds the front ends: the gallery (apps/site),
-# the operator web console (apps/web), and the developer docs (apps/docs).
+# the operator web console (apps/web), and the developer docs (apps/docs). The
+# unit tests are `web-test.sh`, a job of its own.
 #
 # Each `build` script runs `tsc -b` (type-checking) before `vite build`, so this
 # both type-checks and produces the static bundle in one step (the docs are an
-# Astro Starlight build that type-checks as it builds). The run-record package is
-# built first because the site and console both import its compiled types and JS,
-# followed by voxel-runtime and particle-runtime, whose `./three` subpaths the
-# `@test-cabinet/ui` library imports (their typings only resolve once
-# `dist/three/` exists). The `ui` library itself is consumed from source, so it
-# needs no separate build step.
-# This is the critical front-end validation that both Azure DevOps and GitHub
-# run.
+# Astro Starlight build that type-checks as it builds).
+#
+# The gallery is built through the root `build:site` script rather than
+# `-w @test-cabinet/site`, because the site does not build on its own: it and the
+# `@test-cabinet/ui` library it consumes from source import several workspace
+# runtime packages that publish their types only from a built `dist/`, so those
+# have to be built first, in dependency order. That order is the root script's job
+# to know — see `apps/docs/src/content/docs/development/releasing.md`, which names
+# it the single source of truth, and note that Cloudflare's git-connected gallery
+# build runs the very same script. Duplicating the list here is how it went stale:
+# `run-stats` was added to the root script and not to this one, leaving CI building
+# the site against a package it had never built.
+#
+# The console and docs follow, and reuse those same built packages.
+#
+# The site is deliberately built with **no `TCAB_SNAPSHOT_URL`**, which is the
+# empty-published-dataset path a fresh deployment takes. That is not merely
+# tolerated, it is the point: it is the only place that path is exercised.
+#
+# This is the critical front-end validation that both Azure DevOps and GitHub run.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -19,17 +32,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 log "npm ci"
 npm ci
 
-log "build @test-cabinet/run-record"
-npm run build -w @test-cabinet/run-record
-
-log "build @test-cabinet/voxel-runtime"
-npm run build -w @test-cabinet/voxel-runtime
-
-log "build @test-cabinet/particle-runtime"
-npm run build -w @test-cabinet/particle-runtime
-
-log "build @test-cabinet/site"
-npm run build -w @test-cabinet/site
+log "build @test-cabinet/site (and the runtime packages it depends on)"
+npm run build:site
 
 log "build @test-cabinet/web"
 npm run build -w @test-cabinet/web

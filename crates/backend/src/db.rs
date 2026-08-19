@@ -17,27 +17,30 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::{CaseStatement, Expr, Func, OnConflict, SimpleExpr};
+use sea_orm::sea_query::{CaseStatement, Expr, Func, IntoCondition, OnConflict, SimpleExpr};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectOptions, ConnectionTrait, Database,
-    DatabaseBackend, DatabaseConnection, EntityTrait, IntoActiveModel, JoinType, Order,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select, TransactionTrait,
+    DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait, IntoActiveModel,
+    JoinType, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::reference_lock::ReferenceBuildEntry;
-use test_cabinet_core::review::{DomainRating, ReviewDiff, ReviewRevision, ReviewVerdict};
+use test_cabinet_core::review::{DomainRating, Rating, ReviewDiff, ReviewRevision, ReviewVerdict};
 use test_cabinet_core::run_record::{
     HarnessFamily, HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord,
 };
-use test_cabinet_core::test_case::TestType;
+use test_cabinet_core::test_case::{TestType, version_key};
 use test_cabinet_entities::{
-    case_reference_build, case_reference_sheet, coverage_group, coverage_plan, harness_config, job,
-    model, model_alias, model_price, publish_job, review, review_plan, review_revision, run,
-    run_link, snapshot_state, tournament,
+    case_reference_build, case_reference_sheet, coverage_group, coverage_plan, coverage_settings,
+    harness_config, job, ladder, ladder_climber, ladder_outcome, ladder_rung, model, model_alias,
+    model_price, publish_job, review, review_plan, review_revision, run, run_link, snapshot_state,
+    tournament,
 };
 
+use crate::coverage::gate::{Gate, GateOutcome, GateThreshold, RungRun};
 use crate::error::{BackendError, Result};
 
 /// The non-terminal job states — a run the queue still owns, from enqueue through
@@ -52,6 +55,37 @@ const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "startin
 /// Job has been (or is being) created for them. Used to enforce a harness's maximum
 /// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count.
 const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+
+/// The in-flight job states that have **cost nothing yet**: the job is waiting to be
+/// claimed (`queued`) or deliberately held back behind a cap or a same-model game jam
+/// (`pending`), and no driver exists for it. Cancelling one throws away nothing.
+///
+/// This is what the common halting controls sweep — a plan's or ladder's `halt`, and
+/// the Runs page's "Clear pending" — which is why they need no confirmation. Together
+/// with [`CANCELABLE_ACTIVE_STATES`] this partitions `IN_FLIGHT_STATES`.
+pub const CANCELABLE_WAITING_STATES: [&str; 2] = ["queued", "pending"];
+
+/// The in-flight job states that are **already spending**: a driver Job exists and is
+/// being created, starting up, or executing, so the tokens for that run are partly or
+/// wholly paid for.
+///
+/// Cancelling these discards work in progress, which is why the controls that reach
+/// them — `halt all`, the Runs page's "Kill active" — are the rare ones and confirm
+/// first. Same members as `ACTIVE_SLOT_STATES`, different question: that one asks
+/// which jobs hold a parallelism slot, this one asks which are expensive to cancel.
+pub const CANCELABLE_ACTIVE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+
+/// How long a top-up claim on a coverage plan or ladder stays valid before another
+/// caller may take it over.
+///
+/// Top-up is an endpoint the console calls, not a background daemon, so the claim
+/// marker (`coverage_plan.topping_up_at` / `ladder.topping_up_at`) is released by the
+/// very request that took it — and a request that dies in between leaves it set. The
+/// lease bounds that: a marker older than this is treated as abandoned, so a crashed
+/// top-up costs one stalled interval instead of wedging the plan forever. A top-up is
+/// a handful of reads and one batch insert, so a couple of minutes is already orders
+/// of magnitude longer than it can legitimately take.
+const TOP_UP_LEASE: time::Duration = time::Duration::minutes(2);
 
 /// The job states a backend restart must reap: a driver was executing them (or
 /// being created for them) and went down with the backend, so the job can never
@@ -667,6 +701,17 @@ impl Db {
         Ok(self.assemble(vec![run]).await?.into_iter().next())
     }
 
+    /// Fetch one run's **row** by id — the lifted columns only, without decoding
+    /// its `record_json` blob or joining its reviews and links. For a caller that
+    /// needs a run's identity rather than its record (the publish-failure
+    /// notification, which describes the run it could not release); use
+    /// [`Db::get_run`] when the record itself is wanted.
+    pub async fn get_run_row(&self, id: &str) -> Result<Option<run::Model>> {
+        Ok(run::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
     /// List **published** runs newest-first (by `published_at`), paginated by a
     /// `published_at` cursor. This is the public read side; pending runs never
     /// appear. Returns at most `limit` runs and the next cursor when more remain.
@@ -834,15 +879,20 @@ impl Db {
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredRun>, usize)> {
+        // Resolve the current-version allowlist once (it costs its own query) and
+        // hand it to both halves below, so COUNT and page share one predicate.
+        let scope = self.resolve_version_scope(filter).await?;
+        let scope = scope.as_deref();
+
         // The same predicate drives both the COUNT and the page; count first (no
         // limit/offset), then order + window the page.
-        let total = summary_query(filter).count(&self.conn()).await? as usize;
+        let total = summary_query(filter, scope).count(&self.conn()).await? as usize;
 
         let order = match dir {
             SortDir::Asc => Order::Asc,
             SortDir::Desc => Order::Desc,
         };
-        let rows = apply_summary_sort(summary_query(filter), sort, order.clone())
+        let rows = apply_summary_sort(summary_query(filter, scope), sort, order.clone())
             // A stable final tiebreak on the primary key so paging is deterministic
             // even when the sort column ties.
             .order_by(run::Column::Id, order)
@@ -853,6 +903,45 @@ impl Db {
 
         let runs = self.assemble(rows).await?;
         Ok((runs, total))
+    }
+
+    /// The per-case current-version allowlist a filter asks for, or `None` when it
+    /// does not (the toggle is off, or an exact [`SummaryFilter::version`] overrides
+    /// it — see that field).
+    async fn resolve_version_scope(
+        &self,
+        filter: &SummaryFilter,
+    ) -> Result<Option<Vec<CaseVersions>>> {
+        let exact = filter.version.as_deref().is_some_and(|s| !s.is_empty());
+        if !filter.latest_versions || exact {
+            return Ok(None);
+        }
+        Ok(Some(self.current_case_versions(filter.state).await?))
+    }
+
+    /// For every test case with a run in the `state` slice, the versions sharing
+    /// that case's greatest `major.minor` — the allowlist a
+    /// [`SummaryFilter::latest_versions`] listing is narrowed to.
+    ///
+    /// The current version is read off the **runs**, not the definition store, for
+    /// two reasons: a listing can then say "the newest spec anyone has actually run"
+    /// rather than emptying itself the moment a new version is authored but not yet
+    /// run, and the static gallery — which has no store, only its run index — can
+    /// answer the identical question from the same data (see the console UI's
+    /// `runSummaryPage`). Both hosts therefore page identically.
+    ///
+    /// One `SELECT DISTINCT (test_case_slug, test_case_version)` covered by
+    /// `idx_run_case`; the result is one row per case/version, not per run.
+    pub async fn current_case_versions(&self, state: SummaryState) -> Result<Vec<CaseVersions>> {
+        let pairs: Vec<(String, String)> = state_slice(state)
+            .select_only()
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::TestCaseVersion)
+            .distinct()
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(current_versions(pairs))
     }
 
     /// List the runs an account has reviewed, newest-first by *when they reviewed*
@@ -1632,11 +1721,19 @@ impl Db {
         Ok(Some(coverage_plan_from_row(row)?))
     }
 
-    /// Insert a new coverage plan (id already minted by the handler).
+    /// Insert a new coverage plan (id already minted by the handler) with the
+    /// [schedule](CoveragePlanSchedule) it starts under.
+    ///
+    /// The schedule is a separate argument rather than part of the plan because the
+    /// two are edited apart (see [`CoveragePlanSchedule`]) — but a *create* has to
+    /// state one, so it is required here. A caller with no opinion passes
+    /// [`CoveragePlanSchedule::default`], which reproduces the behaviour plans had
+    /// before they could be scheduled at all.
     pub async fn insert_coverage_plan(
         &self,
         user_id: &str,
         plan: &crate::api::CoveragePlan,
+        schedule: &CoveragePlanSchedule,
     ) -> Result<()> {
         coverage_plan::ActiveModel {
             id: Set(plan.id.clone()),
@@ -1647,6 +1744,13 @@ impl Db {
             case_group_ids_json: Set(serde_json::to_string(&plan.case_group_ids)?),
             combos_json: Set(serde_json::to_string(&plan.combos)?),
             cases_json: Set(serde_json::to_string(&plan.cases)?),
+            outer_axis: Set(schedule.outer_axis.clone()),
+            paused: Set(schedule.paused),
+            auto_top_up: Set(schedule.auto_top_up),
+            buffer_target: Set(schedule.buffer_target.map(|target| target as i32)),
+            // A fresh plan is nobody's claim: the marker is only ever set by a top-up
+            // taking the plan, and cleared when it lets go.
+            topping_up_at: Set(None),
             updated_at: Set(plan.updated_at.clone()),
         }
         .insert(&self.conn())
@@ -1656,6 +1760,12 @@ impl Db {
 
     /// Update a coverage plan in place, scoped to the owning account. Returns whether
     /// a row matched.
+    ///
+    /// Writes the plan's **declaration** only — its members and target. The
+    /// [schedule](CoveragePlanSchedule) columns are deliberately untouched, so saving
+    /// an edit to a plan's model list can never un-pause it or silently reset its
+    /// buffer target under a reviewer who paused it thirty seconds earlier; those
+    /// travel through [`Self::set_coverage_plan_schedule`].
     pub async fn update_coverage_plan(
         &self,
         user_id: &str,
@@ -1703,6 +1813,165 @@ impl Db {
             .exec(&self.conn())
             .await?;
         Ok(res.rows_affected > 0)
+    }
+
+    /// One plan's [schedule](CoveragePlanSchedule), scoped to the owning account
+    /// (`None` when the id is unknown or owned by someone else).
+    pub async fn coverage_plan_schedule(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<CoveragePlanSchedule>> {
+        Ok(coverage_plan::Entity::find_by_id(id.to_string())
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .one(&self.conn())
+            .await?
+            .map(|row| CoveragePlanSchedule {
+                outer_axis: row.outer_axis,
+                paused: row.paused,
+                auto_top_up: row.auto_top_up,
+                buffer_target: row.buffer_target.map(|target| target.max(0) as u32),
+            }))
+    }
+
+    /// Replace a plan's [schedule](CoveragePlanSchedule), scoped to the owning
+    /// account. Returns whether a row matched.
+    ///
+    /// The counterpart to [`Self::update_coverage_plan`]'s declaration-only write: the
+    /// pause toggle, the outer-axis picker and the buffer override all land here
+    /// without re-sending (or racing) the plan's member lists. `topping_up_at` is not
+    /// part of the schedule — it is a claim the store owns, not a setting — so
+    /// changing the schedule never disturbs a top-up already in progress.
+    pub async fn set_coverage_plan_schedule(
+        &self,
+        user_id: &str,
+        id: &str,
+        schedule: &CoveragePlanSchedule,
+    ) -> Result<bool> {
+        let res = coverage_plan::Entity::update_many()
+            .col_expr(
+                coverage_plan::Column::OuterAxis,
+                Expr::value(schedule.outer_axis.clone()),
+            )
+            .col_expr(coverage_plan::Column::Paused, Expr::value(schedule.paused))
+            .col_expr(
+                coverage_plan::Column::AutoTopUp,
+                Expr::value(schedule.auto_top_up),
+            )
+            .col_expr(
+                coverage_plan::Column::BufferTarget,
+                Expr::value(schedule.buffer_target.map(|target| target as i32)),
+            )
+            .filter(coverage_plan::Column::Id.eq(id))
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Take the top-up claim on a coverage plan, returning whether this caller got it.
+    ///
+    /// Top-up is an endpoint the console calls rather than a background daemon, so two
+    /// tabs — or one fast double review-submit — otherwise both observe the same
+    /// shortfall and both enqueue for it, filling the buffer twice over. A caller must
+    /// hold this claim across the whole read-decide-enqueue sequence and
+    /// [release](Self::release_coverage_plan_top_up) it afterwards, whatever the
+    /// outcome.
+    ///
+    /// The claim is a compare-and-swap on `topping_up_at`: the update matches only
+    /// while the column still holds the value this call read, so a racing caller that
+    /// read the same value finds zero rows affected and backs off. PostgreSQL
+    /// re-evaluates the predicate after the row lock it blocked on is released, and
+    /// SQLite serializes writers outright, so neither backend can let both win.
+    ///
+    /// A claim older than `TOP_UP_LEASE` is treated as abandoned and taken over —
+    /// which is the whole reason the marker is a timestamp rather than a flag. The
+    /// staleness comparison is made on **parsed instants**, never on the stored
+    /// strings: an RFC 3339 subsecond part is variable-length, so lexicographic order
+    /// is not reliably chronological order.
+    pub async fn claim_coverage_plan_top_up(
+        &self,
+        user_id: &str,
+        id: &str,
+        now: &str,
+    ) -> Result<bool> {
+        let txn = self.conn().begin().await?;
+        let Some(plan) = coverage_plan::Entity::find_by_id(id.to_string())
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .one(&txn)
+            .await?
+        else {
+            txn.commit().await?;
+            return Ok(false);
+        };
+        if !top_up_claim_is_available(plan.topping_up_at.as_deref(), now) {
+            txn.commit().await?;
+            return Ok(false);
+        }
+        let mut update = coverage_plan::Entity::update_many()
+            .col_expr(coverage_plan::Column::ToppingUpAt, Expr::value(now))
+            .filter(coverage_plan::Column::Id.eq(id));
+        update = match plan.topping_up_at {
+            Some(held) => update.filter(coverage_plan::Column::ToppingUpAt.eq(held)),
+            None => update.filter(coverage_plan::Column::ToppingUpAt.is_null()),
+        };
+        let claimed = update.exec(&txn).await?.rows_affected > 0;
+        txn.commit().await?;
+        Ok(claimed)
+    }
+
+    /// Release the top-up claim on a coverage plan, whether or not this caller took
+    /// it. Unconditional by design: the lease already bounds a claim nobody releases,
+    /// and a release that could fail would just be another way to wedge the plan.
+    pub async fn release_coverage_plan_top_up(&self, id: &str) -> Result<()> {
+        coverage_plan::Entity::update_many()
+            .col_expr(
+                coverage_plan::Column::ToppingUpAt,
+                Expr::value(None::<String>),
+            )
+            .filter(coverage_plan::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// An account's chosen default buffer target, or `None` when they have never set
+    /// one.
+    ///
+    /// `None` is deliberately not `0`: an account with no row has expressed no
+    /// opinion, and the caller applies the backend's compiled-in default rather than
+    /// the store materializing a row on read. An explicit `0` — "never top me up
+    /// automatically" — is a different, storable instruction.
+    pub async fn coverage_buffer_target(&self, user_id: &str) -> Result<Option<u32>> {
+        Ok(coverage_settings::Entity::find_by_id(user_id.to_string())
+            .one(&self.conn())
+            .await?
+            .map(|row| row.buffer_target.max(0) as u32))
+    }
+
+    /// Set an account's default buffer target, creating its settings row on first use.
+    pub async fn set_coverage_buffer_target(
+        &self,
+        user_id: &str,
+        buffer_target: u32,
+        now: &str,
+    ) -> Result<()> {
+        coverage_settings::Entity::insert(coverage_settings::ActiveModel {
+            user_id: Set(user_id.to_string()),
+            buffer_target: Set(buffer_target as i32),
+            updated_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::column(coverage_settings::Column::UserId)
+                .update_columns([
+                    coverage_settings::Column::BufferTarget,
+                    coverage_settings::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
     }
 
     /// The legacy single-per-account plans that the startup backfill has not yet
@@ -1801,6 +2070,243 @@ impl Db {
             .await?;
         Ok(cell_counts(rows))
     }
+
+    /// Count, per coverage cell, the completed runs **the given account has not
+    /// reviewed** — keyed exactly like the other two grouped counts, absent for a cell
+    /// with none.
+    ///
+    /// This is the second half of "outstanding" (the first being the in-flight jobs
+    /// [`Self::count_in_flight_jobs_by_cell`] tallies), and the only per-account number
+    /// in the coverage picture. Counts stay global — a run someone else produced still
+    /// satisfies a cell's target and is never re-requested — but *judgement* does not:
+    /// a finished run is only outstanding for the person who has not looked at it,
+    /// which is precisely what stops a plan racing ahead of the reviewer feeding it.
+    ///
+    /// The automatically graded types are excluded on the same grounds
+    /// [`Self::list_unreviewed`] excludes them: no reviewer can ever clear them, so
+    /// counting them would permanently occupy buffer slots that never free.
+    ///
+    /// `exclude_unloaded` leaves out runs whose build never loaded. A ladder whose gate
+    /// counts an unloaded build as broken decides those without a reviewer, so they
+    /// must not hold a slot; a coverage plan has no gate and still wants a human to
+    /// look, so it passes `false`.
+    pub async fn count_unreviewed_runs_by_cell(
+        &self,
+        slugs: &[String],
+        reviewer_user_id: &str,
+        exclude_unloaded: bool,
+    ) -> Result<CellCounts> {
+        if slugs.is_empty() {
+            return Ok(CellCounts::new());
+        }
+        let mut query = run::Entity::find()
+            .select_only()
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::TestCaseVersion)
+            .column(run::Column::Variant)
+            .column(run::Column::HarnessSlug)
+            .column(run::Column::ModelId)
+            .column_as(run::Column::Id.count(), "cnt")
+            // Left-join *this account's* review and keep the rows that found none.
+            // Narrowing on the join rather than in the `WHERE` is what makes it "no
+            // review by this reviewer" instead of "no review by anyone": a run another
+            // account has reviewed still has no row on this side of the join.
+            .join(
+                JoinType::LeftJoin,
+                run::Relation::Review.def().on_condition({
+                    let reviewer = reviewer_user_id.to_string();
+                    move |_run, review| {
+                        Expr::col((review, review::Column::ReviewerUserId))
+                            .eq(reviewer.clone())
+                            .into_condition()
+                    }
+                }),
+            )
+            .filter(review::Column::Id.is_null())
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES))
+            .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)));
+        if exclude_unloaded {
+            query = query.filter(run::Column::Loaded.eq(true));
+        }
+        let rows: Vec<(String, String, String, String, String, i64)> = query
+            .group_by(run::Column::TestCaseSlug)
+            .group_by(run::Column::TestCaseVersion)
+            .group_by(run::Column::Variant)
+            .group_by(run::Column::HarnessSlug)
+            .group_by(run::Column::ModelId)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(cell_counts(rows))
+    }
+
+    /// The requesting account's own verdict on every completed run of one cell, oldest
+    /// first — the evidence a ladder's rung gate is evaluated from.
+    ///
+    /// `cell` is the same `(slug, version, variant, harness, launched model)` identity
+    /// the grouped counts are keyed by, so a caller builds it exactly as it builds the
+    /// key it looks a count up with. The model segment is the id the run was
+    /// **launched** with (a provider-routed harness carries an `openrouter/` prefix the
+    /// plan's canonical model omits); matching on anything else silently reads zero.
+    ///
+    /// Only `completed` runs are returned. A failed or canceled job is an
+    /// infrastructure problem that retries (`job.attempt`) and must never be mistaken
+    /// for a wall, so it has no place in a gate's evidence.
+    ///
+    /// The rating is derived from that one account's review, never from `run.rating` —
+    /// see [`CellRunRating::rating`].
+    pub async fn cell_run_ratings(
+        &self,
+        cell: &CellKey,
+        reviewer_user_id: &str,
+    ) -> Result<Vec<CellRunRating>> {
+        let (slug, version, variant, harness, model) = cell;
+        let rows: Vec<(String, bool, Option<String>)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::Loaded)
+            .column(review::Column::Ratings)
+            // The same narrowed left join the unreviewed count uses: this account's
+            // review if it wrote one, and nothing at all if it did not — never another
+            // reviewer's row.
+            .join(
+                JoinType::LeftJoin,
+                run::Relation::Review.def().on_condition({
+                    let reviewer = reviewer_user_id.to_string();
+                    move |_run, review| {
+                        Expr::col((review, review::Column::ReviewerUserId))
+                            .eq(reviewer.clone())
+                            .into_condition()
+                    }
+                }),
+            )
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::TestCaseSlug.eq(slug))
+            .filter(run::Column::TestCaseVersion.eq(version))
+            .filter(run::Column::Variant.eq(variant))
+            .filter(run::Column::HarnessSlug.eq(harness))
+            .filter(run::Column::ModelId.eq(model))
+            .order_by_asc(run::Column::FinishedAt)
+            .order_by_asc(run::Column::Id)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(run_id, loaded, ratings)| {
+                // A review whose stored ratings no longer parse, and one that rated no
+                // domain at all (a game jam is graded on categories, not domains),
+                // both read as "no rating" — which the gate treats as unjudged rather
+                // than as a bad result. Guessing either way would decide a climb on
+                // something nobody wrote down.
+                let ratings: Vec<DomainRating> = ratings
+                    .and_then(|json| serde_json::from_str(&json).ok())
+                    .unwrap_or_default();
+                CellRunRating {
+                    run_id,
+                    loaded,
+                    rating: test_cabinet_core::review::aggregate_rating([ratings.as_slice()]),
+                }
+            })
+            .collect())
+    }
+}
+
+/// How a coverage plan is **fed**, as opposed to what it declares: the order it emits
+/// its cells in, whether it is suspended, whether a submitted review tops it up, and
+/// its override of the account's buffer target.
+///
+/// Held apart from the plan's declaration ([`crate::api::CoveragePlan`]) because the
+/// two are edited independently — the members and the runs-per-cell target are the
+/// plan's *definition*, while these are the controls a reviewer reaches for while it
+/// is running — and so that saving an edit to one can never silently overwrite the
+/// other. See [`Db::set_coverage_plan_schedule`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoveragePlanSchedule {
+    /// Which axis the cell loop nests on: `"case"` (finish one case across every
+    /// combination) or `"combination"` (finish one combination across every case).
+    ///
+    /// The transport owns this vocabulary and validates it; the store round-trips
+    /// whatever it was handed, exactly as it does for a coverage group's `kind`.
+    pub outer_axis: String,
+    /// Whether topping up is suspended. The mildest halting control: it stops new runs
+    /// being emitted and leaves everything already queued alone.
+    pub paused: bool,
+    /// Whether submitting a review re-runs this plan's top-up automatically.
+    pub auto_top_up: bool,
+    /// This plan's override of the account's buffer target, or `None` to inherit
+    /// [`Db::coverage_buffer_target`]. `None` and `Some(0)` are different
+    /// instructions — "no opinion" versus "never top up".
+    pub buffer_target: Option<u32>,
+}
+
+impl Default for CoveragePlanSchedule {
+    /// The behaviour a plan had before it could be scheduled at all: cases outer, not
+    /// paused, never topping itself up, and no opinion on the buffer target. These
+    /// match the columns' database defaults, so a plan created with this schedule and
+    /// one created before the columns existed are indistinguishable.
+    fn default() -> Self {
+        Self {
+            outer_axis: "case".to_string(),
+            paused: false,
+            auto_top_up: false,
+            buffer_target: None,
+        }
+    }
+}
+
+/// One completed run of a coverage cell, reduced to what a ladder's rung gate reads.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CellRunRating {
+    /// The run's id, so a ladder dashboard can link to the evidence a verdict was
+    /// decided from.
+    pub run_id: String,
+    /// Whether the produced build loaded (the lifted `run.loaded`). A gate may count a
+    /// run that never loaded as broken without waiting for a review — there is nothing
+    /// to play, so waiting only stalls the climb.
+    pub loaded: bool,
+    /// The requesting account's overall rating for the run: the worst domain within
+    /// *that one account's* review, or `None` when they have not reviewed it (which is
+    /// not the same as a bad rating).
+    ///
+    /// Emphatically **not** the lifted `run.rating`, which is the worst domain across
+    /// every reviewer. Gating on that would let a stranger's harsher review wall
+    /// someone else's climb.
+    pub rating: Option<Rating>,
+}
+
+impl CellRunRating {
+    /// This run as [`gate`](crate::coverage::gate) sees it, so the two never drift
+    /// apart in how they name the same two facts.
+    pub fn as_rung_run(&self) -> RungRun {
+        RungRun {
+            rating: self.rating,
+            loaded: self.loaded,
+        }
+    }
+}
+
+/// Whether a top-up claim marked at `held` may be taken now: it is free (`None`) or
+/// its [lease](TOP_UP_LEASE) has expired.
+///
+/// A marker that cannot be parsed is treated as **expired**. It can only have got
+/// there by hand or from a future format, and refusing to take an uninterpretable
+/// claim would wedge the plan permanently — the far worse of the two failures, since
+/// the only cost of taking it wrongly is one duplicated top-up.
+fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
+    let Some(held) = held else {
+        return true;
+    };
+    use time::format_description::well_known::Rfc3339;
+    let (Ok(held), Ok(now)) = (
+        time::OffsetDateTime::parse(held, &Rfc3339),
+        time::OffsetDateTime::parse(now, &Rfc3339),
+    ) else {
+        return true;
+    };
+    now - held > TOP_UP_LEASE
 }
 
 /// A coverage cell's identity: `(slug, version, variant, harness, model)` — the
@@ -1896,6 +2402,829 @@ fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::Cover
     })
 }
 
+// ---- Ladders --------------------------------------------------------------
+
+/// The canonical key a ladder identifies one harness+model combination by:
+/// `harness|model|provider`, with an empty trailing segment when the harness is not
+/// provider-routed.
+///
+/// It encodes exactly the `(harness, model, provider)` triple the coverage resolver
+/// de-dupes members on, so a key built here and a member resolved there are the same
+/// combination by construction. `|` separates because a model id routinely contains
+/// `/` (`anthropic/claude-opus-4.8`) and a separator that can appear inside a segment
+/// is not a separator.
+///
+/// The **canonical** model is used, not the launched one: this key names a member of
+/// the ladder, not a row in the `run` table, and the two differ for provider-routed
+/// harnesses (see [`Db::cell_run_ratings`], which does want the launched id).
+pub fn combination_key(combo: &crate::api::ReviewPlanCombo) -> String {
+    format!(
+        "{}|{}|{}",
+        combo.harness.as_str(),
+        combo.model,
+        combo.provider.as_deref().unwrap_or_default()
+    )
+}
+
+/// A reviewer's ladder as stored: an ordered climb through a series of test cases,
+/// and the combinations that climb it.
+///
+/// This is the ladder's **declaration** — what it is, not how it is being fed; the
+/// latter is [`LadderSchedule`], exactly as a coverage plan splits into
+/// [`crate::api::CoveragePlan`] and [`CoveragePlanSchedule`].
+///
+/// Progress is deliberately absent. How far a combination has climbed is derived from
+/// its [`StoredLadderOutcome`] rows, never from a pointer on the ladder, which is what
+/// lets a model added to a standing ladder next month start at rung 1 while the models
+/// already halfway up carry on. Per-combination steering lives in
+/// [`StoredLadderClimber`].
+///
+/// Not `PartialEq`: its combinations are [`crate::api::ReviewPlanCombo`]s, which are
+/// wire types and carry no equality. Compare the parts that matter instead — two
+/// ladders being "equal" is not a question the store ever has to answer.
+#[derive(Debug, Clone)]
+pub struct StoredLadder {
+    /// The ladder's opaque id (minted by the handler, as a plan's is).
+    pub id: String,
+    /// The reviewer-chosen display name.
+    pub name: String,
+    /// The default target number of runs for each `rung × combination` cell; a rung
+    /// may raise it for itself via [`StoredLadderRung::runs_override`].
+    pub runs_per_cell: u32,
+    /// The single parameterised rule every rung is judged by. Stored per ladder rather
+    /// than per rung because a ladder asks *one* question of an ordered series of
+    /// cases; only how many runs it takes to answer varies by rung.
+    pub gate: Gate,
+    /// The referenced combination groups' ids — the same `coverage_group`
+    /// (`kind = "combo"`) pointers a plan uses, so one saved set of models can drive
+    /// both and editing it reshapes both.
+    pub combo_group_ids: Vec<String>,
+    /// One-off combinations pinned directly on the ladder, unioned with the groups.
+    pub combos: Vec<crate::api::ReviewPlanCombo>,
+    /// The rungs, low to high. The order **is** the climb: see
+    /// [`StoredLadderRung`] for why position is not a field.
+    pub rungs: Vec<StoredLadderRung>,
+    /// RFC 3339 of when the ladder was last saved.
+    pub updated_at: String,
+}
+
+/// One rung of a [`StoredLadder`]: exactly one test case, pinned to an exact version
+/// and variant.
+///
+/// The rung's position is deliberately **not** a field — it is the rung's index in
+/// [`StoredLadder::rungs`], written to the `position` column on save and used to order
+/// the read. Carrying both would let the two disagree about the same climb.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredLadderRung {
+    /// The rung's stable opaque id, minted when the rung is added and never reused.
+    ///
+    /// It survives both a reorder and a version bump, and every recorded outcome
+    /// references it, which is the point: a positional identifier would silently
+    /// reattribute a combination's verdicts to a different case the moment the ladder
+    /// was reordered.
+    pub id: String,
+    /// The test-case slug.
+    pub slug: String,
+    /// The pinned, exact version. A gate outcome records the version it was decided
+    /// against, so bumping this neither erases the old verdict nor inherits it.
+    pub version: String,
+    /// The variant to climb.
+    pub variant: String,
+    /// This rung's override of [`StoredLadder::runs_per_cell`], or `None` to inherit
+    /// it — so one pivotal step can demand more evidence without making the whole
+    /// climb more expensive.
+    pub runs_override: Option<u32>,
+}
+
+/// How a ladder is **fed**: the order it emits its cells in, whether it is suspended,
+/// whether a submitted review tops it up, and its override of the account's buffer
+/// target. The ladder's counterpart to [`CoveragePlanSchedule`], split from the
+/// declaration for the same reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LadderSchedule {
+    /// Which axis the emission loop nests on: `"rung"` (finish a rung across every
+    /// climber before anyone moves up) or `"combination"` (send one climber as far up
+    /// as it gets before starting the next). The transport owns and validates this
+    /// vocabulary; the store round-trips what it was handed.
+    pub outer_axis: String,
+    /// Whether topping up is suspended.
+    pub paused: bool,
+    /// Whether submitting a review re-runs this ladder's top-up automatically.
+    pub auto_top_up: bool,
+    /// This ladder's override of the account's buffer target, or `None` to inherit
+    /// [`Db::coverage_buffer_target`].
+    pub buffer_target: Option<u32>,
+}
+
+impl Default for LadderSchedule {
+    /// A new ladder climbs a rung at a time, is not paused, never tops itself up
+    /// unasked, and has no opinion on the buffer target. These match the columns'
+    /// database defaults.
+    fn default() -> Self {
+        Self {
+            outer_axis: "rung".to_string(),
+            paused: false,
+            auto_top_up: false,
+            buffer_target: None,
+        }
+    }
+}
+
+/// A reviewer's steering of one combination on one ladder: climb this one first,
+/// watch it, stop it. Never progress — that lives in [`StoredLadderOutcome`], so there
+/// is exactly one source of truth for how far a climber has got.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredLadderClimber {
+    /// The steered combination's [`combination_key`].
+    pub combination_key: String,
+    /// Climb-order weight; higher goes first, `0` is the default. Pushes one model to
+    /// the front without reordering the ladder, which would change what every *other*
+    /// climber is measured against.
+    pub priority: i32,
+    /// The reviewer's "watch this one" flag, and the tiebreak between equal
+    /// priorities.
+    pub focused: bool,
+    /// The manual downward override: stop this combination where it stands whatever
+    /// its gates say. Clearing it resumes the climb from exactly where it was, because
+    /// the automatic outcomes underneath were never touched.
+    pub held: bool,
+    /// RFC 3339 of when this steering was last changed.
+    pub updated_at: String,
+}
+
+/// A resolved gate verdict as stored in `ladder_outcome`.
+///
+/// [`GateOutcome::Undecided`] has no token because it has no row: a rung still
+/// climbing, or still waiting on this account's reviews, is *unrecorded* rather than
+/// recorded as undecided, so "no verdict yet" can never be confused with "a verdict of
+/// nothing".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LadderOutcomeKind {
+    /// The rung was cleared; the climber moved up.
+    Advanced,
+    /// The rung was failed; the climber stopped there.
+    Walled,
+}
+
+impl LadderOutcomeKind {
+    /// The stored token.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LadderOutcomeKind::Advanced => "advanced",
+            LadderOutcomeKind::Walled => "walled",
+        }
+    }
+
+    /// Parse a stored token, erroring on an unknown value (a corrupt row) rather than
+    /// guessing — a verdict quietly read as its opposite would move a climb for
+    /// reasons nobody could reconstruct.
+    pub fn parse(token: &str) -> Result<Self> {
+        match token {
+            "advanced" => Ok(LadderOutcomeKind::Advanced),
+            "walled" => Ok(LadderOutcomeKind::Walled),
+            other => Err(BackendError::Internal(format!(
+                "unknown ladder outcome: {other}"
+            ))),
+        }
+    }
+
+    /// The storable form of a freshly evaluated gate, or `None` for
+    /// [`GateOutcome::Undecided`] — which is recorded by writing no row at all.
+    pub fn from_gate(outcome: GateOutcome) -> Option<Self> {
+        match outcome {
+            GateOutcome::Advance => Some(LadderOutcomeKind::Advanced),
+            GateOutcome::Wall => Some(LadderOutcomeKind::Walled),
+            GateOutcome::Undecided => None,
+        }
+    }
+}
+
+/// One combination's recorded verdict on one rung, at one pinned case version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredLadderOutcome {
+    /// The rung this verdict is about, by its stable id.
+    pub rung_id: String,
+    /// The combination this verdict is about, by its [`combination_key`].
+    pub combination_key: String,
+    /// The exact case version the verdict was decided against. Part of the row's
+    /// identity, so bumping a rung to a newer version neither erases the verdict
+    /// earned on the old one nor silently inherits it, and re-pinning back restores
+    /// it. A rung's *current* verdict is the row whose version matches its present
+    /// pin.
+    pub decided_version: String,
+    /// What the gate computed. Recomputable at any time from this account's reviews.
+    pub outcome: LadderOutcomeKind,
+    /// The reviewer's manual override of that result, or `None` for none.
+    ///
+    /// Kept beside the automatic outcome rather than replacing it so a recompute can
+    /// never silently undo a human decision, and so clearing it reverses the override
+    /// exactly — see [`Self::effective`].
+    pub override_outcome: Option<LadderOutcomeKind>,
+    /// RFC 3339 of when the override was applied, or `None` when there is none.
+    pub override_at: Option<String>,
+    /// RFC 3339 of when the automatic outcome was last computed.
+    pub decided_at: String,
+}
+
+impl StoredLadderOutcome {
+    /// The verdict that actually governs the climb: the reviewer's override when they
+    /// made one, else what the gate computed.
+    pub fn effective(&self) -> LadderOutcomeKind {
+        self.override_outcome.unwrap_or(self.outcome)
+    }
+}
+
+/// Ladders: the ordered, gated sibling of a coverage plan.
+///
+/// A ladder itself is per-account (keyed by the auth-service `user_id`) and every
+/// read/write of one is scoped by it. Its child tables — rungs, climbers, outcomes —
+/// are keyed by `ladder_id` alone and **inherit** that scoping: a caller reaches them
+/// only after resolving the ladder through [`Db::get_ladder`], which is where
+/// ownership is checked. The alternative, re-verifying the owner on every outcome
+/// write, would put a query in front of each row of a recompute that walks the whole
+/// board.
+///
+/// As with plans, run and job counting stays global; only *judgement* — whose reviews
+/// a gate reads — is per account.
+impl Db {
+    /// Every ladder the account owns, ordered by display name, each with its rungs in
+    /// climb order. The rungs are fetched in one further query and bucketed, so
+    /// listing N ladders costs two round-trips rather than N + 1.
+    pub async fn list_ladders(&self, user_id: &str) -> Result<Vec<StoredLadder>> {
+        let rows = ladder::Entity::find()
+            .filter(ladder::Column::UserId.eq(user_id))
+            .order_by_asc(ladder::Column::Name)
+            .all(&self.conn())
+            .await?;
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<String> = rows.iter().map(|row| row.id.clone()).collect();
+        let mut rungs_by_ladder: HashMap<String, Vec<StoredLadderRung>> = HashMap::new();
+        for rung in ladder_rung::Entity::find()
+            .filter(ladder_rung::Column::LadderId.is_in(ids))
+            .order_by_asc(ladder_rung::Column::Position)
+            .all(&self.conn())
+            .await?
+        {
+            rungs_by_ladder
+                .entry(rung.ladder_id.clone())
+                .or_default()
+                .push(stored_ladder_rung(rung));
+        }
+        rows.into_iter()
+            .map(|row| {
+                let rungs = rungs_by_ladder.remove(&row.id).unwrap_or_default();
+                stored_ladder(row, rungs)
+            })
+            .collect()
+    }
+
+    /// One ladder by id with its rungs in climb order, scoped to the owning account
+    /// (`None` when the id is unknown or owned by someone else).
+    pub async fn get_ladder(&self, user_id: &str, id: &str) -> Result<Option<StoredLadder>> {
+        let Some(row) = ladder::Entity::find_by_id(id.to_string())
+            .filter(ladder::Column::UserId.eq(user_id))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        let rungs = self.list_ladder_rungs(id).await?;
+        Ok(Some(stored_ladder(row, rungs)?))
+    }
+
+    /// One ladder's rungs in climb order. Exposed on its own for the paths that need
+    /// the climb but not the ladder's own settings (a top-up walking the rungs, a
+    /// recompute of every outcome).
+    pub async fn list_ladder_rungs(&self, ladder_id: &str) -> Result<Vec<StoredLadderRung>> {
+        Ok(ladder_rung::Entity::find()
+            .filter(ladder_rung::Column::LadderId.eq(ladder_id))
+            .order_by_asc(ladder_rung::Column::Position)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(stored_ladder_rung)
+            .collect())
+    }
+
+    /// Insert a new ladder (ids already minted by the handler) with its rungs and the
+    /// [schedule](LadderSchedule) it starts under. The ladder row and every rung land
+    /// in one transaction, so a ladder never exists with half a climb.
+    pub async fn insert_ladder(
+        &self,
+        user_id: &str,
+        stored: &StoredLadder,
+        schedule: &LadderSchedule,
+    ) -> Result<()> {
+        let (gate_floor, gate_threshold_kind, gate_threshold_value) = gate_columns(&stored.gate);
+        let txn = self.conn().begin().await?;
+        ladder::ActiveModel {
+            id: Set(stored.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(stored.name.clone()),
+            outer_axis: Set(schedule.outer_axis.clone()),
+            runs_per_cell: Set(stored.runs_per_cell as i32),
+            gate_floor: Set(gate_floor),
+            gate_threshold_kind: Set(gate_threshold_kind),
+            gate_threshold_value: Set(gate_threshold_value),
+            early_stop: Set(stored.gate.early_stop),
+            count_unloaded_as_broken: Set(stored.gate.unloaded_counts_as_broken),
+            paused: Set(schedule.paused),
+            auto_top_up: Set(schedule.auto_top_up),
+            buffer_target: Set(schedule.buffer_target.map(|target| target as i32)),
+            // A fresh ladder is nobody's claim; only a top-up ever sets this.
+            topping_up_at: Set(None),
+            combo_group_ids_json: Set(serde_json::to_string(&stored.combo_group_ids)?),
+            combos_json: Set(serde_json::to_string(&stored.combos)?),
+            updated_at: Set(stored.updated_at.clone()),
+        }
+        .insert(&txn)
+        .await?;
+        write_ladder_rungs(&txn, &stored.id, &stored.rungs).await?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    /// Update a ladder's **declaration** in place, scoped to the owning account, and
+    /// reconcile its rungs to the supplied list. Returns whether a row matched.
+    ///
+    /// The [schedule](LadderSchedule) columns are untouched for the same reason
+    /// [`Self::update_coverage_plan`] leaves a plan's alone: editing the climb must not
+    /// un-pause a ladder somebody paused. They travel through
+    /// [`Self::set_ladder_schedule`].
+    ///
+    /// Rungs are **reconciled, never replaced**. Rewriting them wholesale would delete
+    /// every rung row, and `ladder_outcome` cascades from `ladder_rung` — so saving a
+    /// rename would silently erase every climber's recorded progress. Instead a rung
+    /// still present is updated in place under its stable id (keeping its outcomes), a
+    /// new one is inserted, and only a rung genuinely removed from the climb takes its
+    /// verdicts with it, which is what removing it means.
+    pub async fn update_ladder(&self, user_id: &str, stored: &StoredLadder) -> Result<bool> {
+        let (gate_floor, gate_threshold_kind, gate_threshold_value) = gate_columns(&stored.gate);
+        let txn = self.conn().begin().await?;
+        let res = ladder::Entity::update_many()
+            .col_expr(ladder::Column::Name, Expr::value(stored.name.clone()))
+            .col_expr(
+                ladder::Column::RunsPerCell,
+                Expr::value(stored.runs_per_cell as i32),
+            )
+            .col_expr(ladder::Column::GateFloor, Expr::value(gate_floor))
+            .col_expr(
+                ladder::Column::GateThresholdKind,
+                Expr::value(gate_threshold_kind),
+            )
+            .col_expr(
+                ladder::Column::GateThresholdValue,
+                Expr::value(gate_threshold_value),
+            )
+            .col_expr(
+                ladder::Column::EarlyStop,
+                Expr::value(stored.gate.early_stop),
+            )
+            .col_expr(
+                ladder::Column::CountUnloadedAsBroken,
+                Expr::value(stored.gate.unloaded_counts_as_broken),
+            )
+            .col_expr(
+                ladder::Column::ComboGroupIdsJson,
+                Expr::value(serde_json::to_string(&stored.combo_group_ids)?),
+            )
+            .col_expr(
+                ladder::Column::CombosJson,
+                Expr::value(serde_json::to_string(&stored.combos)?),
+            )
+            .col_expr(
+                ladder::Column::UpdatedAt,
+                Expr::value(stored.updated_at.clone()),
+            )
+            .filter(ladder::Column::Id.eq(stored.id.clone()))
+            .filter(ladder::Column::UserId.eq(user_id))
+            .exec(&txn)
+            .await?;
+        if res.rows_affected == 0 {
+            txn.commit().await?;
+            return Ok(false);
+        }
+
+        let mut drop_removed = ladder_rung::Entity::delete_many()
+            .filter(ladder_rung::Column::LadderId.eq(stored.id.clone()));
+        if !stored.rungs.is_empty() {
+            let kept: Vec<String> = stored.rungs.iter().map(|rung| rung.id.clone()).collect();
+            drop_removed = drop_removed.filter(ladder_rung::Column::Id.is_not_in(kept));
+        }
+        drop_removed.exec(&txn).await?;
+        write_ladder_rungs(&txn, &stored.id, &stored.rungs).await?;
+
+        txn.commit().await?;
+        Ok(true)
+    }
+
+    /// Delete a ladder, scoped to the owning account. Returns whether a row was
+    /// removed.
+    ///
+    /// Its rungs, climbers, and outcomes all carry `ON DELETE CASCADE` back to the
+    /// ladder (and foreign keys are enforced on both backends — see
+    /// [`Self::connect`]), so the whole climb goes with it and nothing is orphaned.
+    /// Jobs the ladder launched are *not* touched: a job is a run in its own right, it
+    /// records the ladder only as its `origin`, and deleting the plan you launched
+    /// from is not a reason to throw away runs that already cost money. Halt first if
+    /// that is what you meant.
+    pub async fn delete_ladder(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = ladder::Entity::delete_many()
+            .filter(ladder::Column::Id.eq(id))
+            .filter(ladder::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// One ladder's [schedule](LadderSchedule), scoped to the owning account.
+    pub async fn ladder_schedule(&self, user_id: &str, id: &str) -> Result<Option<LadderSchedule>> {
+        Ok(ladder::Entity::find_by_id(id.to_string())
+            .filter(ladder::Column::UserId.eq(user_id))
+            .one(&self.conn())
+            .await?
+            .map(|row| LadderSchedule {
+                outer_axis: row.outer_axis,
+                paused: row.paused,
+                auto_top_up: row.auto_top_up,
+                buffer_target: row.buffer_target.map(|target| target.max(0) as u32),
+            }))
+    }
+
+    /// Replace a ladder's [schedule](LadderSchedule), scoped to the owning account.
+    /// Returns whether a row matched. The ladder's counterpart to
+    /// [`Self::set_coverage_plan_schedule`].
+    pub async fn set_ladder_schedule(
+        &self,
+        user_id: &str,
+        id: &str,
+        schedule: &LadderSchedule,
+    ) -> Result<bool> {
+        let res = ladder::Entity::update_many()
+            .col_expr(
+                ladder::Column::OuterAxis,
+                Expr::value(schedule.outer_axis.clone()),
+            )
+            .col_expr(ladder::Column::Paused, Expr::value(schedule.paused))
+            .col_expr(ladder::Column::AutoTopUp, Expr::value(schedule.auto_top_up))
+            .col_expr(
+                ladder::Column::BufferTarget,
+                Expr::value(schedule.buffer_target.map(|target| target as i32)),
+            )
+            .filter(ladder::Column::Id.eq(id))
+            .filter(ladder::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Take the top-up claim on a ladder, returning whether this caller got it. The
+    /// ladder's counterpart to [`Self::claim_coverage_plan_top_up`], with the same
+    /// compare-and-swap and the same `TOP_UP_LEASE`; see that method for why
+    /// both exist and how the race is closed.
+    pub async fn claim_ladder_top_up(&self, user_id: &str, id: &str, now: &str) -> Result<bool> {
+        let txn = self.conn().begin().await?;
+        let Some(row) = ladder::Entity::find_by_id(id.to_string())
+            .filter(ladder::Column::UserId.eq(user_id))
+            .one(&txn)
+            .await?
+        else {
+            txn.commit().await?;
+            return Ok(false);
+        };
+        if !top_up_claim_is_available(row.topping_up_at.as_deref(), now) {
+            txn.commit().await?;
+            return Ok(false);
+        }
+        let mut update = ladder::Entity::update_many()
+            .col_expr(ladder::Column::ToppingUpAt, Expr::value(now))
+            .filter(ladder::Column::Id.eq(id));
+        update = match row.topping_up_at {
+            Some(held) => update.filter(ladder::Column::ToppingUpAt.eq(held)),
+            None => update.filter(ladder::Column::ToppingUpAt.is_null()),
+        };
+        let claimed = update.exec(&txn).await?.rows_affected > 0;
+        txn.commit().await?;
+        Ok(claimed)
+    }
+
+    /// Release the top-up claim on a ladder. Unconditional, for the same reason
+    /// [`Self::release_coverage_plan_top_up`] is.
+    pub async fn release_ladder_top_up(&self, id: &str) -> Result<()> {
+        ladder::Entity::update_many()
+            .col_expr(ladder::Column::ToppingUpAt, Expr::value(None::<String>))
+            .filter(ladder::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Every steering row on one ladder, ordered so the reviewer's own priority is the
+    /// climb order: focused and highest-priority first, then by key for a stable tie.
+    ///
+    /// Combinations with no row are absent — an un-steered climber writes nothing —
+    /// so the caller unions this against the ladder's resolved members rather than
+    /// treating it as the member list.
+    pub async fn list_ladder_climbers(&self, ladder_id: &str) -> Result<Vec<StoredLadderClimber>> {
+        Ok(ladder_climber::Entity::find()
+            .filter(ladder_climber::Column::LadderId.eq(ladder_id))
+            .order_by_desc(ladder_climber::Column::Priority)
+            .order_by_desc(ladder_climber::Column::Focused)
+            .order_by_asc(ladder_climber::Column::CombinationKey)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| StoredLadderClimber {
+                combination_key: row.combination_key,
+                priority: row.priority,
+                focused: row.focused,
+                held: row.held,
+                updated_at: row.updated_at,
+            })
+            .collect())
+    }
+
+    /// Set one combination's steering on a ladder, creating the row on first use.
+    ///
+    /// Steering is written whole because it is one small decision — "climb this one
+    /// first and watch it" — rather than three independent settings, and a whole write
+    /// cannot leave a combination focused-but-forgotten by a partial update.
+    pub async fn set_ladder_climber(
+        &self,
+        ladder_id: &str,
+        climber: &StoredLadderClimber,
+    ) -> Result<()> {
+        ladder_climber::Entity::insert(ladder_climber::ActiveModel {
+            ladder_id: Set(ladder_id.to_string()),
+            combination_key: Set(climber.combination_key.clone()),
+            priority: Set(climber.priority),
+            focused: Set(climber.focused),
+            held: Set(climber.held),
+            updated_at: Set(climber.updated_at.clone()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                ladder_climber::Column::LadderId,
+                ladder_climber::Column::CombinationKey,
+            ])
+            .update_columns([
+                ladder_climber::Column::Priority,
+                ladder_climber::Column::Focused,
+                ladder_climber::Column::Held,
+                ladder_climber::Column::UpdatedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Every recorded verdict on one ladder — one climber's whole progress and the
+    /// board's at once — ordered by combination then rung for a stable read.
+    ///
+    /// A rung with no row for a combination is *undecided*: still climbing, or still
+    /// waiting on this account's reviews.
+    pub async fn list_ladder_outcomes(&self, ladder_id: &str) -> Result<Vec<StoredLadderOutcome>> {
+        ladder_outcome::Entity::find()
+            .filter(ladder_outcome::Column::LadderId.eq(ladder_id))
+            .order_by_asc(ladder_outcome::Column::CombinationKey)
+            .order_by_asc(ladder_outcome::Column::RungId)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| {
+                Ok(StoredLadderOutcome {
+                    rung_id: row.rung_id,
+                    combination_key: row.combination_key,
+                    decided_version: row.decided_version,
+                    outcome: LadderOutcomeKind::parse(&row.outcome)?,
+                    override_outcome: row
+                        .override_outcome
+                        .as_deref()
+                        .map(LadderOutcomeKind::parse)
+                        .transpose()?,
+                    override_at: row.override_at,
+                    decided_at: row.decided_at,
+                })
+            })
+            .collect()
+    }
+
+    /// Record the gate's automatic verdict for one combination on one rung, at the
+    /// case version it was decided against.
+    ///
+    /// Idempotent: re-deciding the same rung updates the verdict and its timestamp. It
+    /// writes **only** the automatic columns — a reviewer's
+    /// [override](Self::set_ladder_outcome_override) on the same row survives a
+    /// recompute untouched, which is the whole reason the two live in separate
+    /// columns.
+    ///
+    /// `decided_version` is part of the row's identity, so bumping a rung's pin later
+    /// leaves this verdict recorded against the version that actually earned it rather
+    /// than silently transferring it to different content.
+    pub async fn record_ladder_outcome(
+        &self,
+        ladder_id: &str,
+        rung_id: &str,
+        combination_key: &str,
+        decided_version: &str,
+        outcome: LadderOutcomeKind,
+        now: &str,
+    ) -> Result<()> {
+        ladder_outcome::Entity::insert(ladder_outcome::ActiveModel {
+            ladder_id: Set(ladder_id.to_string()),
+            rung_id: Set(rung_id.to_string()),
+            combination_key: Set(combination_key.to_string()),
+            decided_version: Set(decided_version.to_string()),
+            outcome: Set(outcome.as_str().to_string()),
+            // Only ever applied on a first insert: the conflict path below updates the
+            // automatic columns alone, so an existing override is never cleared here.
+            override_outcome: Set(None),
+            override_at: Set(None),
+            decided_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                ladder_outcome::Column::LadderId,
+                ladder_outcome::Column::RungId,
+                ladder_outcome::Column::CombinationKey,
+                ladder_outcome::Column::DecidedVersion,
+            ])
+            .update_columns([
+                ladder_outcome::Column::Outcome,
+                ladder_outcome::Column::DecidedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Apply (or, with `None`, clear) the reviewer's manual override of one recorded
+    /// verdict — a `promote` past a wall the runs failed, or its reversal. Returns
+    /// whether a row matched.
+    ///
+    /// It updates an existing verdict rather than creating one, so an override is
+    /// always recorded *alongside* the automatic outcome it disagrees with and the
+    /// disagreement stays legible. A rung the gate has not resolved has nothing to
+    /// promote past yet and returns `false`; the downward direction of manual control
+    /// is [`StoredLadderClimber::held`], which stops a climber wherever it stands
+    /// without pretending a rung was decided.
+    ///
+    /// Clearing passes `None` for both columns at once, restoring exactly what the gate
+    /// itself says.
+    pub async fn set_ladder_outcome_override(
+        &self,
+        ladder_id: &str,
+        rung_id: &str,
+        combination_key: &str,
+        decided_version: &str,
+        override_outcome: Option<LadderOutcomeKind>,
+        now: &str,
+    ) -> Result<bool> {
+        let res = ladder_outcome::Entity::update_many()
+            .col_expr(
+                ladder_outcome::Column::OverrideOutcome,
+                Expr::value(override_outcome.map(|outcome| outcome.as_str())),
+            )
+            .col_expr(
+                ladder_outcome::Column::OverrideAt,
+                Expr::value(override_outcome.map(|_| now)),
+            )
+            .filter(ladder_outcome::Column::LadderId.eq(ladder_id))
+            .filter(ladder_outcome::Column::RungId.eq(rung_id))
+            .filter(ladder_outcome::Column::CombinationKey.eq(combination_key))
+            .filter(ladder_outcome::Column::DecidedVersion.eq(decided_version))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+}
+
+/// Write a ladder's rungs, stamping each with its index in the list as its `position`
+/// so the stored order is the list order by construction.
+///
+/// Upserts on the rung's stable id: a rung already stored is updated in place — which
+/// is what keeps its `ladder_outcome` rows, since those cascade from it — and a new one
+/// is inserted. Removing rungs is the caller's job ([`Db::update_ladder`] does it in
+/// the same transaction), because only the caller knows whether an absent rung was
+/// deleted or simply not being written this time.
+async fn write_ladder_rungs(
+    txn: &DatabaseTransaction,
+    ladder_id: &str,
+    rungs: &[StoredLadderRung],
+) -> Result<()> {
+    if rungs.is_empty() {
+        return Ok(());
+    }
+    let models = rungs
+        .iter()
+        .enumerate()
+        .map(|(position, rung)| ladder_rung::ActiveModel {
+            id: Set(rung.id.clone()),
+            ladder_id: Set(ladder_id.to_string()),
+            position: Set(position as i32),
+            slug: Set(rung.slug.clone()),
+            version: Set(rung.version.clone()),
+            variant: Set(rung.variant.clone()),
+            runs_override: Set(rung.runs_override.map(|runs| runs as i32)),
+        });
+    ladder_rung::Entity::insert_many(models)
+        .on_conflict(
+            OnConflict::column(ladder_rung::Column::Id)
+                .update_columns([
+                    ladder_rung::Column::Position,
+                    ladder_rung::Column::Slug,
+                    ladder_rung::Column::Version,
+                    ladder_rung::Column::Variant,
+                    ladder_rung::Column::RunsOverride,
+                ])
+                .to_owned(),
+        )
+        .exec(txn)
+        .await?;
+    Ok(())
+}
+
+/// Convert a stored ladder row and its already-ordered rungs into the in-memory
+/// [`StoredLadder`], decoding the JSON member columns and rebuilding the gate.
+fn stored_ladder(row: ladder::Model, rungs: Vec<StoredLadderRung>) -> Result<StoredLadder> {
+    Ok(StoredLadder {
+        gate: gate_from_row(&row)?,
+        id: row.id,
+        name: row.name,
+        runs_per_cell: row.runs_per_cell.max(0) as u32,
+        combo_group_ids: serde_json::from_str(&row.combo_group_ids_json)?,
+        combos: serde_json::from_str(&row.combos_json)?,
+        rungs,
+        updated_at: row.updated_at,
+    })
+}
+
+/// Convert a stored rung row into its in-memory form. The `position` column is dropped
+/// on the way in: it has already done its job ordering the read, and
+/// [`StoredLadderRung`] deliberately carries no copy of it.
+fn stored_ladder_rung(row: ladder_rung::Model) -> StoredLadderRung {
+    StoredLadderRung {
+        id: row.id,
+        slug: row.slug,
+        version: row.version,
+        variant: row.variant,
+        runs_override: row.runs_override.map(|runs| runs.max(0) as u32),
+    }
+}
+
+/// The `(gate_floor, gate_threshold_kind, gate_threshold_value)` column triple for a
+/// gate.
+///
+/// One threshold column serves both kinds because a gate only ever has one threshold;
+/// `f64` represents the small whole numbers of the `count` form exactly. The kind
+/// tokens match [`GateThreshold`]'s serde tags, so a stored ladder and a gate on the
+/// wire always name the same rule.
+fn gate_columns(gate: &Gate) -> (String, String, f64) {
+    let (kind, value) = match gate.threshold {
+        GateThreshold::Count { runs } => ("count", f64::from(runs)),
+        GateThreshold::Fraction { fraction } => ("fraction", fraction),
+    };
+    (gate.floor.as_str().to_string(), kind.to_string(), value)
+}
+
+/// Rebuild a [`Gate`] from a stored ladder row.
+///
+/// An unrecognized floor or threshold kind is a corrupt row and surfaces as an error
+/// rather than degrading into some other rule: a gate that quietly changed shape would
+/// wall or advance climbers for reasons nobody could reconstruct afterwards. A
+/// negative stored count clamps to zero, which is a gate that always advances — the
+/// harmless direction for a value that cannot be written through the API at all.
+fn gate_from_row(row: &ladder::Model) -> Result<Gate> {
+    let floor = Rating::parse(&row.gate_floor).ok_or_else(|| {
+        BackendError::Internal(format!("unknown ladder gate floor: {}", row.gate_floor))
+    })?;
+    let threshold = match row.gate_threshold_kind.as_str() {
+        "count" => GateThreshold::Count {
+            runs: row.gate_threshold_value.max(0.0) as u32,
+        },
+        "fraction" => GateThreshold::Fraction {
+            fraction: row.gate_threshold_value,
+        },
+        other => {
+            return Err(BackendError::Internal(format!(
+                "unknown ladder gate threshold kind: {other}"
+            )));
+        }
+    };
+    Ok(Gate {
+        floor,
+        threshold,
+        unloaded_counts_as_broken: row.count_unloaded_as_broken,
+        early_stop: row.early_stop,
+    })
+}
+
 /// The lifted `run.rating` column value: the aggregate rating as its lowercase
 /// wire token, or `None` when the run carries no reviews.
 fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
@@ -1928,11 +3257,29 @@ pub enum SummaryState {
     Failures,
     /// Every unpublished run whatever its terminal state — the "produced" worklist.
     Unpublished,
+    /// The unpublished runs that would **publish right now** — the subset of
+    /// [`Self::Unpublished`] that clears the publish gate (`gate_publishable`, the
+    /// rule [`Db::ensure_publishable`] enforces): a reviewed completed run, or a
+    /// publishable failure tier (which needs no review). Never an infrastructure
+    /// failure, whatever reviews it carries.
+    ///
+    /// This is the console's publish worklist. It is deliberately narrower than
+    /// [`Self::Unpublished`], which also holds the runs nobody has reviewed yet and
+    /// the infrastructure failures that can never go public — listing those in a
+    /// worklist whose whole purpose is "select these and publish them" would offer
+    /// rows the backend is about to refuse.
+    Publishable,
     /// Completed runs no account has reviewed yet (`review_count = 0`) — the
     /// reviewer's "needs a first pass" worklist, a subset of [`Self::Review`].
     /// Excludes the automatically-graded types, which no reviewer can clear (see
     /// `AUTO_GRADED_TEST_TYPES`).
     Unreviewed,
+    /// **Every** stored run — published and unpublished alike, whatever its
+    /// terminal state. The union of [`Self::Published`] and [`Self::Unpublished`],
+    /// for the consoles' run listings, where an unpublished (and therefore
+    /// unreviewed) run must take its place in the *same* sorted, paged listing as
+    /// the published ones rather than being pinned ahead of them client-side.
+    Any,
 }
 
 /// The filter for [`Db::list_summaries`]: a lifecycle `state` slice, optional
@@ -1948,9 +3295,41 @@ pub struct SummaryFilter {
     pub model: Option<String>,
     /// Restrict to one harness (`harness_slug`).
     pub harness: Option<String>,
+    /// Restrict to one variant (`variant`). Paired with [`Self::test_case`] this is
+    /// the case-detail Runs tab's slice — a variant slug is only unique within its
+    /// case.
+    pub variant: Option<String>,
+    /// Restrict to one exact test-case version (`test_case_version`). A version
+    /// string is only meaningful within a case, so this is normally paired with
+    /// [`Self::test_case`] — but it is a plain equality filter, so on its own it
+    /// selects that version of *every* case.
+    pub version: Option<String>,
+    /// Restrict every run to its case's **current** version — the greatest
+    /// `major.minor` that case has a run for within this filter's
+    /// [`state`](Self::state) slice (see [`Db::current_case_versions`]). This is
+    /// the listings' "only show runs against the current spec" toggle: a case is
+    /// frozen once it has runs, so an older `major.minor` is a different spec whose
+    /// runs are not comparable with the current one's.
+    ///
+    /// Ignored when [`Self::version`] names an exact version — an explicit version
+    /// is the more specific instruction, and AND'ing the two would silently empty
+    /// the listing whenever the picked version is not the current one.
+    pub latest_versions: bool,
     /// Free-text query matched case-insensitively (LIKE `%q%`) across
     /// `test_case_slug`, `model_id`, `harness_slug`, and `variant`.
     pub q: Option<String>,
+}
+
+/// One case's in-scope versions for a [`SummaryFilter::latest_versions`] query:
+/// every version of `slug` sharing its greatest `major.minor` (a case can carry
+/// several revisions of one minor, e.g. `v1.2.0` and `v1.2.1`, and all of them are
+/// the same spec).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaseVersions {
+    /// The test-case slug.
+    pub slug: String,
+    /// Its current versions, ascending.
+    pub versions: Vec<String>,
 }
 
 /// The sort column for [`Db::list_summaries`], mapped to a lifted `run` column (or,
@@ -1991,23 +3370,56 @@ pub enum SortDir {
     Asc,
 }
 
-/// Build the filtered `run` query shared by [`Db::list_summaries`]'s COUNT and its
-/// page: the lifecycle-state predicate AND'd with the optional equality filters and
-/// the free-text query. No ordering, limit, or offset — the caller adds those.
-fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
-    let mut query = run::Entity::find();
-    query = match filter.state {
+/// The `run` query narrowed to one lifecycle slice and nothing else — the base
+/// both [`summary_query`] and the current-version resolution start from, so the
+/// versions a `latest_versions` query is measured against come from exactly the
+/// slice that query lists.
+fn state_slice(state: SummaryState) -> Select<run::Entity> {
+    let query = run::Entity::find();
+    match state {
         SummaryState::Published => query.filter(run::Column::Published.eq(true)),
         SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
         SummaryState::Failures => {
             query.filter(run::Column::RunState.is_in(publishable_failure_states()))
         }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
+        // Mirrors `gate_publishable` as a query: not already public, never an
+        // infrastructure failure, and either a publishable failure tier (no review
+        // required) or a run someone has reviewed. Kept in step with the gate by
+        // `publishable_slice_matches_the_publish_gate`.
+        SummaryState::Publishable => query
+            .filter(run::Column::Published.eq(false))
+            .filter(run::Column::RunState.ne("infrastructure"))
+            .filter(
+                Condition::any()
+                    .add(run::Column::RunState.is_in(publishable_failure_states()))
+                    .add(run::Column::ReviewCount.gt(0)),
+            ),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::ReviewCount.eq(0))
             .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES)),
-    };
+        // Every stored run: no lifecycle predicate at all.
+        SummaryState::Any => query,
+    }
+}
+
+/// Build the filtered `run` query shared by [`Db::list_summaries`]'s COUNT and its
+/// page: the lifecycle-state predicate AND'd with the optional equality filters and
+/// the free-text query. No ordering, limit, or offset — the caller adds those.
+///
+/// `scope` is the already-resolved [`SummaryFilter::latest_versions`] allowlist
+/// ([`Db::current_case_versions`]), or `None` when the caller did not ask for one.
+/// It is passed in rather than resolved here because resolving it costs a query,
+/// and this builder is called twice (COUNT, then page) per listing.
+fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Select<run::Entity> {
+    let mut query = state_slice(filter.state);
+    if let Some(scope) = scope {
+        query = query.filter(current_versions_condition(scope));
+    }
+    if let Some(version) = filter.version.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::TestCaseVersion.eq(version));
+    }
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));
     }
@@ -2016,6 +3428,9 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
     }
     if let Some(harness) = filter.harness.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::HarnessSlug.eq(harness));
+    }
+    if let Some(variant) = filter.variant.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::Variant.eq(variant));
     }
     if let Some(q) = filter.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         // Lower both sides so the match is case-insensitive on any backend (SQLite's
@@ -2030,6 +3445,64 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
         query = query.filter(text);
     }
     query
+}
+
+/// The `latest_versions` predicate: a run is in scope when its
+/// `(test_case_slug, test_case_version)` pair appears in `scope` — an OR of one
+/// per-case term, each pinning a slug to its current versions.
+///
+/// An empty `scope` means the slice holds no runs at all, so the condition is a
+/// literal false rather than an empty (and therefore vacuously true) `OR`.
+fn current_versions_condition(scope: &[CaseVersions]) -> Condition {
+    if scope.is_empty() {
+        return Condition::all().add(Expr::value(false));
+    }
+    scope.iter().fold(Condition::any(), |condition, case| {
+        condition.add(
+            Condition::all()
+                .add(run::Column::TestCaseSlug.eq(case.slug.as_str()))
+                .add(run::Column::TestCaseVersion.is_in(case.versions.iter().map(String::as_str))),
+        )
+    })
+}
+
+/// A version's `(major, minor)` pair, using the catalog's own component-wise
+/// [`version_key`] so `v1.10.0` orders after `v1.9.0` (a lexical compare gets that
+/// backwards). Missing or non-numeric components read as `0`, matching
+/// [`version_key`]'s own tolerance.
+fn major_minor(version: &str) -> (u64, u64) {
+    let key = version_key(version);
+    (
+        key.first().copied().unwrap_or(0),
+        key.get(1).copied().unwrap_or(0),
+    )
+}
+
+/// Group `(slug, version)` pairs into each case's **current** versions: those
+/// sharing the greatest `major.minor` the case has a pair for. Pure, so the
+/// grouping is covered without a database.
+fn current_versions(pairs: Vec<(String, String)>) -> Vec<CaseVersions> {
+    let mut by_case: HashMap<String, Vec<String>> = HashMap::new();
+    for (slug, version) in pairs {
+        by_case.entry(slug).or_default().push(version);
+    }
+    let mut scope: Vec<CaseVersions> = by_case
+        .into_iter()
+        .map(|(slug, mut versions)| {
+            let current = versions
+                .iter()
+                .map(|v| major_minor(v))
+                .max()
+                .unwrap_or((0, 0));
+            versions.retain(|version| major_minor(version) == current);
+            versions.sort_by(|a, b| version_key(a).cmp(&version_key(b)).then_with(|| a.cmp(b)));
+            CaseVersions { slug, versions }
+        })
+        .collect();
+    // `HashMap` iteration is unordered; sort so the built condition (and anything
+    // asserting on it) is deterministic.
+    scope.sort_by(|a, b| a.slug.cmp(&b.slug));
+    scope
 }
 
 /// Apply the primary sort key (in `order`) to a summary query. The caller appends
@@ -2125,6 +3598,91 @@ fn sqlite_file_path(url: &str) -> Option<PathBuf> {
     Some(Path::new(path).to_path_buf())
 }
 
+/// What launched a job, as stored in `job.origin`. A run launched by hand from the
+/// new-run form has no origin at all, which is represented by `None` at the call sites
+/// rather than by a variant here — "launched by nothing in particular" is the absence
+/// of an origin, not a kind of one.
+///
+/// This is what makes a scoped halt safe. `halt` cancels exactly the plan's or
+/// ladder's own waiting jobs; without an origin there would be no way to tell those
+/// from the manual run someone kicked off in another tab, and a job with no origin is
+/// never swept up by a scoped halt.
+///
+/// Deliberately invisible to coverage counting, which stays global: a run counts
+/// toward its cell's target whoever launched it and whatever launched it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JobOrigin {
+    /// A coverage plan's top-up, by the plan's id.
+    Plan(String),
+    /// A ladder's top-up, by the ladder's id.
+    Ladder(String),
+}
+
+impl JobOrigin {
+    /// The stored token: `plan:<id>` or `ladder:<id>`. Prefixed rather than bare so a
+    /// plan and a ladder cannot halt each other's runs — their ids are minted
+    /// independently and nothing stops them colliding.
+    pub fn as_token(&self) -> String {
+        match self {
+            JobOrigin::Plan(id) => format!("plan:{id}"),
+            JobOrigin::Ladder(id) => format!("ladder:{id}"),
+        }
+    }
+
+    /// Parse a stored token, returning `None` for anything that is not one of the two
+    /// forms — including the empty string and a token from a future kind of owner.
+    /// Unrecognized is treated as unattributed rather than as an error: an origin is a
+    /// label on a job, and a job nobody can attribute is still a perfectly good job.
+    pub fn parse(token: &str) -> Option<Self> {
+        if let Some(id) = token.strip_prefix("plan:") {
+            return (!id.is_empty()).then(|| JobOrigin::Plan(id.to_string()));
+        }
+        let id = token.strip_prefix("ladder:")?;
+        (!id.is_empty()).then(|| JobOrigin::Ladder(id.to_string()))
+    }
+}
+
+/// Everything one claim pass changed: the job it handed to the dispatcher, and the
+/// waiting jobs whose display state it reconciled on the way past.
+///
+/// The two are separate because they mean different things to a caller. `claimed` is
+/// the *answer* — the job to dispatch, or `None` when nothing is claimable — while
+/// `reconciled` is a side effect the pass performs on the rest of the queue. A
+/// dispatcher acts on the first and ignores the second; the console stream announces
+/// both, because both changed a row somebody may be looking at.
+#[derive(Debug, Clone, Default)]
+pub struct ClaimOutcome {
+    /// The job moved to `dispatched`, if any was claimable.
+    pub claimed: Option<job::Model>,
+    /// The waiting jobs this pass moved between `queued` and `pending`, each with its
+    /// new state. Empty when every waiting job's display state was already correct.
+    pub reconciled: Vec<job::Model>,
+}
+
+/// Which jobs a bulk cancel reaches: the in-flight states to sweep, optionally narrowed
+/// to one plan/ladder and/or one account.
+///
+/// Every field narrows, and the default — no origin, no account — is the global
+/// Runs-page control, which is deliberately scoped to nothing. States outside the
+/// in-flight set are ignored rather than rejected, so no filter can move a job back out
+/// of a terminal state.
+#[derive(Debug, Clone, Default)]
+pub struct JobCancelFilter<'a> {
+    /// The job states to cancel — normally [`CANCELABLE_WAITING_STATES`] (the jobs that
+    /// have cost nothing yet), or both that and [`CANCELABLE_ACTIVE_STATES`] for the
+    /// confirmed "stop everything" controls.
+    pub states: &'a [&'a str],
+    /// Restrict to the jobs one plan or ladder launched. `None` sweeps every job in the
+    /// chosen states whatever launched it, **including manual launches**, which is why
+    /// only the explicitly global controls leave it unset.
+    pub origin: Option<&'a JobOrigin>,
+    /// Restrict to the jobs one account launched. `None` sweeps every account's — jobs
+    /// enqueued before attribution existed carry no `user_id`, so a filter set here
+    /// silently skips them, which is correct for "cancel *my* runs" and wrong for
+    /// "cancel everything".
+    pub user_id: Option<&'a str>,
+}
+
 /// A run to enqueue: the minted id and token, the verbatim launch request, and
 /// the identity columns lifted out of it for the active-run list.
 #[derive(Clone)]
@@ -2151,16 +3709,46 @@ pub struct NewJob {
     /// Which attempt this job is: `0` for a console launch, `n > 0` for the backend's
     /// `n`th automatic retry after a terminal infrastructure/catastrophic failure.
     pub attempt: i32,
-    /// RFC 3339 of enqueue (the claim-ordering key, also the initial update time).
+    /// The account launching the run, or `None` when it is not known (which is how
+    /// every row enqueued before attribution existed reads). A retry carries the
+    /// original launcher, not whoever the retry ran as — the run is still theirs.
+    pub user_id: Option<String>,
+    /// What is launching the run, or `None` for a launch by hand. See [`JobOrigin`];
+    /// this is what a scoped halt cancels by.
+    pub origin: Option<JobOrigin>,
+    /// RFC 3339 of enqueue (also the initial update time). The queue's ordering key
+    /// is [`job::Model::queue_seq`], minted at insert — not this.
     pub created_at: String,
 }
 
-/// Build the `queued` `job` row for a run to enqueue. Shared by the single
-/// ([`Db::enqueue_job`]) and batch ([`Db::enqueue_jobs`]) insert paths so a job is
-/// materialized identically however it was submitted.
-fn new_job_model(new: NewJob) -> job::ActiveModel {
+/// The queue position to mint for the next job enqueued: one past the highest ever
+/// handed out. Read inside the enqueue's own transaction, so a committed enqueue's
+/// positions are never reused and a batch's block of positions stays contiguous.
+///
+/// Deriving it from the table rather than a database sequence keeps the store
+/// portable across SQLite and Postgres, which is the same reason the schema is built
+/// from SeaORM's portable builder. Two enqueues that genuinely race on Postgres can
+/// read the same maximum and tie; the claim's `created_at`-then-`id` tiebreakers make
+/// that deterministic, and it only ever mis-orders the two racing submissions against
+/// each other — never a batch's runs among themselves, which is what this fixes.
+async fn next_queue_seq(txn: &DatabaseTransaction) -> Result<i64> {
+    let highest: Option<i64> = job::Entity::find()
+        .select_only()
+        .column_as(job::Column::QueueSeq.max(), "highest")
+        .into_tuple::<Option<i64>>()
+        .one(txn)
+        .await?
+        .flatten();
+    Ok(highest.unwrap_or(0) + 1)
+}
+
+/// Build the `queued` `job` row for a run to enqueue, at queue position `queue_seq`.
+/// Shared by the single ([`Db::enqueue_job`]) and batch ([`Db::enqueue_jobs`]) insert
+/// paths so a job is materialized identically however it was submitted.
+fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
     job::ActiveModel {
         id: Set(new.id),
+        queue_seq: Set(queue_seq),
         state: Set("queued".to_string()),
         request_json: Set(new.request_json),
         test_case_slug: Set(new.test_case_slug),
@@ -2173,6 +3761,8 @@ fn new_job_model(new: NewJob) -> job::ActiveModel {
         record_id: Set(None),
         detail: Set(None),
         attempt: Set(new.attempt),
+        user_id: Set(new.user_id),
+        origin: Set(new.origin.as_ref().map(JobOrigin::as_token)),
         created_at: Set(new.created_at.clone()),
         updated_at: Set(new.created_at),
     }
@@ -2196,11 +3786,15 @@ pub struct NewPublishJob {
 /// the lifecycle of a requested run; the produced [`RunRecord`] lands via
 /// [`Db::push`] like any other.
 impl Db {
-    /// Enqueue a run: insert it in the `queued` state for the dispatcher to claim.
+    /// Enqueue a run: insert it in the `queued` state for the dispatcher to claim, at
+    /// the back of the queue — it takes the next [`job::Model::queue_seq`].
     pub async fn enqueue_job(&self, new: NewJob) -> Result<()> {
-        job::Entity::insert(new_job_model(new))
-            .exec(&self.conn())
+        let txn = self.conn().begin().await?;
+        let seq = next_queue_seq(&txn).await?;
+        job::Entity::insert(new_job_model(new, seq))
+            .exec(&txn)
             .await?;
+        txn.commit().await?;
         Ok(())
     }
 
@@ -2209,19 +3803,42 @@ impl Db {
     /// `POST /jobs/batch`. Rows are inserted in bounded chunks so a large fan-out
     /// (a whole coverage plan's missing runs) never exceeds the backing database's
     /// bind-parameter ceiling. An empty batch is a no-op.
+    ///
+    /// The batch takes a **contiguous run of queue positions in the order it was
+    /// submitted**, so the dispatcher starts the runs in the order the console listed
+    /// them: a console that fans a case out over its repeats before moving to the
+    /// next case gets all of that case's repeats started first. The whole batch is
+    /// one transaction, so it never interleaves with a concurrent enqueue's
+    /// positions and a failed chunk leaves nothing behind.
     pub async fn enqueue_jobs(&self, jobs: Vec<NewJob>) -> Result<()> {
-        // Each row binds ~13 columns; a 1000-row chunk is ~13k parameters, well
+        if jobs.is_empty() {
+            return Ok(());
+        }
+        // Each row binds ~16 columns; a 1000-row chunk is ~16k parameters, well
         // under both SQLite's (32766) and Postgres's (65535) per-statement limits.
         const CHUNK: usize = 1000;
-        for chunk in jobs.chunks(CHUNK) {
-            let models = chunk.iter().cloned().map(new_job_model);
-            job::Entity::insert_many(models).exec(&self.conn()).await?;
+        let txn = self.conn().begin().await?;
+        let first = next_queue_seq(&txn).await?;
+        for (chunk_index, chunk) in jobs.chunks(CHUNK).enumerate() {
+            let base = first + (chunk_index * CHUNK) as i64;
+            let models = chunk
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, new)| new_job_model(new, base + i as i64));
+            job::Entity::insert_many(models).exec(&txn).await?;
         }
+        txn.commit().await?;
         Ok(())
     }
 
-    /// Atomically claim the oldest claimable job, flipping it to `dispatched`, and
-    /// return it (or `None` when nothing is claimable). Enforces each harness's
+    /// Atomically claim the first claimable job in queue order, flipping it to
+    /// `dispatched`, and return it (or `None` when nothing is claimable). Selection
+    /// is FIFO across harnesses by [`job::Model::queue_seq`] — the position minted at
+    /// enqueue — skipping any job held back. So a batch of repeated runs is
+    /// dispatched in the order it was submitted, and a console that fans one case out
+    /// over its repeats before moving to the next case gets all of the first case's
+    /// runs started (and so finished) before the next case's. Enforces each harness's
     /// configured maximum parallelism: a job is claimable only when its harness has
     /// fewer than its limit of runs already occupying a parallelism slot
     /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`). A harness with
@@ -2242,12 +3859,16 @@ impl Db {
     /// its cap, or because it is a jam run waiting its turn behind the same model's
     /// earlier entry — is moved to `pending` (visible as such), and one that is
     /// claimable again is released to `queued`. So an operator sees exactly which
-    /// waiting runs are deliberately held versus merely next in line. Selection stays
-    /// FIFO (oldest `created_at`, then `id`) across harnesses, skipping any held back.
+    /// waiting runs are deliberately held versus merely next in line.
     ///
     /// The select-then-updates run in one transaction; SQLite serializes writers
     /// (single-writer WAL), so two dispatchers cannot claim the same job.
-    pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
+    /// Both halves of the pass are reported, because both are state changes a
+    /// console is showing: the claim moves one run to `dispatched`, and the
+    /// reconciliation moves any number of others between `queued` and `pending`.
+    /// Returning only the claim would leave every held-back run's row stale until
+    /// something else re-read the queue.
+    pub async fn claim_next(&self, now: &str) -> Result<ClaimOutcome> {
         use std::collections::{HashMap, HashSet};
 
         let txn = self.conn().begin().await?;
@@ -2288,12 +3909,14 @@ impl Db {
         // run reads as `pending` and a now-claimable one as `queued`.
         let waiting = job::Entity::find()
             .filter(job::Column::State.is_in(["queued", "pending"]))
+            .order_by_asc(job::Column::QueueSeq)
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
             .all(&txn)
             .await?;
 
         let mut claimed: Option<job::Model> = None;
+        let mut reconciled: Vec<job::Model> = Vec::new();
         for job in waiting {
             let active = active_by_harness
                 .get(&job.harness_slug)
@@ -2325,17 +3948,30 @@ impl Db {
             }
 
             // Not claimed: make its display state match whether its harness has room.
+            // Only a job that actually moved is reported — the common case is a queue
+            // whose display states are already correct, and re-announcing those every
+            // claim pass would be pure noise on the console stream.
             let target = if has_room { "queued" } else { "pending" };
             if job.state != target {
                 let mut active_model = job.into_active_model();
                 active_model.state = Set(target.to_string());
                 active_model.updated_at = Set(now.to_string());
-                active_model.update(&txn).await?;
+                reconciled.push(active_model.update(&txn).await?);
             }
         }
 
         txn.commit().await?;
-        Ok(claimed)
+        Ok(ClaimOutcome {
+            claimed,
+            reconciled,
+        })
+    }
+
+    /// Claim, reporting only what was claimed — the convenience form of
+    /// [`Db::claim_next`] for callers that care which job was picked and not about
+    /// the display states the same pass reconciled around it.
+    pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
+        Ok(self.claim_next(now).await?.claimed)
     }
 
     /// Every stored per-harness config row (harnesses with no overrides are absent).
@@ -2400,6 +4036,57 @@ impl Db {
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
+    }
+
+    /// Cancel every in-flight job matching `filter` in one statement, moving each to
+    /// the terminal `canceled` state with `detail` as its reason, and return how many
+    /// were cancelled.
+    ///
+    /// This backs both the scoped halts (a plan's or ladder's own waiting runs, via
+    /// [`JobCancelFilter::origin`]) and the Runs page's global controls, which differ
+    /// only in how the filter is built.
+    ///
+    /// The transition is exactly [`Self::cancel_job`]'s, deliberately reused rather
+    /// than reimplemented: only a job still in an in-flight state moves, so one that
+    /// reached a terminal state a moment ago is left alone and a driver's already-final
+    /// report can never be overwritten. It is a single `UPDATE … WHERE`, so the set it
+    /// sweeps is chosen atomically by the database rather than read-then-written a job
+    /// at a time — a run that finishes mid-halt is either cancelled or finished, never
+    /// both.
+    ///
+    /// The count is the point, not a nicety. A halt that reports nothing is the
+    /// difference between "the queue was already empty" and "the origin filter is
+    /// wrong", and the reviewer cannot tell those apart from a silent success.
+    pub async fn cancel_jobs(
+        &self,
+        filter: &JobCancelFilter<'_>,
+        now: &str,
+        detail: &str,
+    ) -> Result<u64> {
+        // Narrow to the states a cancel may legally touch. Silently dropping the rest
+        // (rather than erroring) means a caller can pass a state set without first
+        // knowing which of them are terminal.
+        let states: Vec<&str> = filter
+            .states
+            .iter()
+            .copied()
+            .filter(|state| IN_FLIGHT_STATES.contains(state))
+            .collect();
+        if states.is_empty() {
+            return Ok(0);
+        }
+        let mut update = job::Entity::update_many()
+            .col_expr(job::Column::State, Expr::value("canceled"))
+            .col_expr(job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(job::Column::Detail, Expr::value(detail))
+            .filter(job::Column::State.is_in(states));
+        if let Some(origin) = filter.origin {
+            update = update.filter(job::Column::Origin.eq(origin.as_token()));
+        }
+        if let Some(user_id) = filter.user_id {
+            update = update.filter(job::Column::UserId.eq(user_id));
+        }
+        Ok(update.exec(&self.conn()).await?.rows_affected)
     }
 
     /// Advance a job to a new state, stamping `updated_at` and — when supplied —
@@ -2467,12 +4154,16 @@ impl Db {
     }
 
     /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
-    /// `running`), oldest-first by enqueue time. This is the console's active-run
-    /// list: a run it is watching survives a page reload because the backend
-    /// remembers it — including one held back (`pending`) or spinning up (`starting`).
+    /// `running`), in queue order. This is the console's active-run list: a run it is
+    /// watching survives a page reload because the backend remembers it — including
+    /// one held back (`pending`) or spinning up (`starting`). Ordering it by queue
+    /// position rather than enqueue time means the list reads in the order the runs
+    /// will actually start, which for a batch of repeats is the order they were
+    /// requested in.
     pub async fn active_jobs(&self) -> Result<Vec<job::Model>> {
         Ok(job::Entity::find()
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .order_by_asc(job::Column::QueueSeq)
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
             .all(&self.conn())
@@ -3034,11 +4725,20 @@ impl Db {
     /// price is unavailable has its cost set to unknown rather than left at the
     /// misleading `$0.00` a free tag produces. Idempotent (an already-stripped run
     /// is unchanged) and best-effort per row. Returns how many runs were rewritten.
+    ///
+    /// Only rows whose `model_id` actually carries a `:` are loaded — the same
+    /// predicate [`Self::has_free_tag_candidates`] gates on. A `:`-free model id can
+    /// never be rewritten here, and pulling every run's `record_json` off disk to
+    /// discover that made a startup backfill cost the whole run corpus for what is
+    /// almost always zero work.
     pub async fn normalize_free_model_ids(
         &self,
         base_prices: &std::collections::HashMap<String, TokenPrices>,
     ) -> Result<usize> {
-        let rows = run::Entity::find().all(&self.conn()).await?;
+        let rows = run::Entity::find()
+            .filter(run::Column::ModelId.contains(":"))
+            .all(&self.conn())
+            .await?;
         let mut rewritten = 0usize;
         for row in rows {
             let harness = parse_harness_slug(&row.harness_slug);

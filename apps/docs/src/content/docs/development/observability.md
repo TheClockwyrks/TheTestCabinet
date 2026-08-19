@@ -54,6 +54,75 @@ The core has no service name of its own because it is a library that runs
 in-process inside whichever runner launched it (the CLI, the desktop app, or the
 driver); its spans are emitted under that host's service name.
 
+## Cluster resource metrics
+
+Everything in the table above is telemetry our own processes *push*. It says
+nothing about what a container actually consumed — and that is the data needed to
+decide whether a run pod's memory limit is a safe ceiling or a scheduled OOM kill.
+
+So in a Kubernetes deployment the LGTM stack's Prometheus also **scrapes** each
+node's kubelet cAdvisor endpoint. This is configured in
+[`components/observability/prometheus.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/components/observability/prometheus.yaml),
+mounted over the image's own copy the same way `loki-config.yaml` is (the
+`grafana/otel-lgtm` image ships Prometheus as a pure OTLP sink with no scrape jobs
+at all). It is the reason the LGTM ServiceAccount holds one narrow cluster-scoped
+grant — `nodes` list/watch and `nodes/metrics` get, and deliberately **not**
+`nodes/proxy`, which would also expose `/exec` on every node.
+
+Only nine series per container are kept; cAdvisor exposes several hundred, and
+per-run pods churn their names constantly, so the rest would be TSDB weight nobody
+queries. What is kept, and why:
+
+| Series | Answers |
+| --- | --- |
+| `container_memory_max_usage_bytes` | The **cgroup's own high-water mark**, maintained continuously by the kernel — so it catches a spike that happened between two scrapes. This is the sizing number. |
+| `container_memory_working_set_bytes` | What the kubelet actually evicts on. |
+
+Read those first two together rather than picking one. `max_usage` includes
+reclaimable page cache, which the kernel drops under pressure instead of OOM-killing
+for, so it *overstates* the footprint that actually decides a kill — it is a safe
+upper bound. `working_set` is the quantity eviction and the OOM killer act on, but it
+is only sampled each scrape, so a spike between two scrapes is invisible to it — it
+is a lower bound. A ceiling picked above the `max_usage` peak is certainly safe; one
+picked from the `working_set` peak alone is not. Where they diverge sharply the gap is
+page cache, which is normal for a container that just wrote a build tree to disk.
+
+| `container_spec_memory_limit_bytes` | What the pod was configured with, so peaks can be compared to the ceiling without cross-referencing manifests. |
+| `container_cpu_usage_seconds_total` | Real CPU draw. |
+| `container_cpu_cfs_{periods,throttled_periods,throttled_seconds}_total` | Whether CPU oversubscription is actually costing anything. |
+| `container_spec_cpu_{quota,shares}` | The configured CPU limit and request. |
+
+Prod keeps metrics for **30 days** while logs and traces keep 3
+([`patch-lgtm-retention.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/overlays/azure-prod/patch-lgtm-retention.yaml)).
+The windows differ because the questions do: a trace answers "what happened in this
+run" and is read within days, whereas a peak-memory figure is only trustworthy over
+a window wide enough to contain the rare heavy test case.
+
+Useful queries, in Grafana *Explore* against the Prometheus datasource:
+
+```promql
+# The largest memory any run pod has ever reached — what a global limit must clear.
+max_over_time(container_memory_max_usage_bytes{container="run"}[30d])
+
+# The distribution of per-run peaks, to see how far the tail really goes.
+quantile(0.99, max_over_time(container_memory_max_usage_bytes{container="run"}[30d]))
+
+# How close runs come to their configured ceiling (1.0 would be an OOM kill).
+max_over_time(container_memory_working_set_bytes{container="run"}[30d])
+  / on(pod) container_spec_memory_limit_bytes{container="run"}
+
+# Whether CPU oversubscription is actually throttling runs.
+  rate(container_cpu_cfs_throttled_periods_total{container="run"}[5m])
+/ rate(container_cpu_cfs_periods_total{container="run"}[5m])
+```
+
+One limit worth knowing: cAdvisor labels series with `pod`, `namespace` and
+`container` only — never a pod's own labels. So these group by *pod*, not by test
+case, and a run pod's name carries no case identity. Global figures (the queries
+above) are exactly right for sizing one cluster-wide limit; per-case sizing would
+need `kube-state-metrics` deployed to join `kube_pod_labels` against the run's
+`tcab.dev/job-id`.
+
 ## Trace topology
 
 A single user action produces one distributed trace that threads through every

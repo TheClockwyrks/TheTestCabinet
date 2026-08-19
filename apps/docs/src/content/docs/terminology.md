@@ -41,6 +41,48 @@ tokens.
 The term "catalog" is used to refer to The Test Cabinet's full set of test
 cases.
 
+## Climber
+
+A climber is one [combination](#combination) enrolled on a
+[ladder](#ladder) — the thing that actually does the climbing. Each climber's
+progress is tracked **separately**, so a model added to a standing ladder starts at
+[rung](#rung) one while the others carry on from wherever they had reached. Its
+status is one of *climbing*, *awaiting review*, [*walled*](#wall), *held* (stopped by
+hand), or [*topped out*](#topped-out). "Climber" and "combination" name the same
+harness+model pair; the first is the role it plays on a ladder, the second is what it
+is.
+
+## Combination
+
+A combination is one **harness + model** pair (plus a provider, for a
+provider-routed harness) — the thing a run is executed *by*, as opposed to the test
+case it is executed *on*. It is the unit a [coverage](#coverage) plan crosses with
+its cases to form a cell, the unit a [ladder](#ladder) enrolls as a
+[climber](#climber), and the unit a reusable coverage group holds. On a ladder a
+combination is also called a climber.
+
+## Coverage
+
+"Coverage" carries two meanings in The Test Cabinet, and they are not the same
+thing:
+
+1. **The measurement.** How much of a declared matrix actually has runs: a
+   **coverage plan** declares version-pinned test cases crossed with
+   [combinations](#combination) and a target run count per cell, and its coverage is
+   how many of those cells have met their target. This is the older and narrower
+   sense. See [Coverage plans](/components/backend/coverage/).
+2. **The feature area.** The reviewer scheduling surface as a whole — plans,
+   [ladders](#ladder), the reusable groups both draw their members from, the
+   account-wide [review buffer](#review-buffer), and the pause/halt controls. This is
+   the sense in which the console has a Coverage section and the backend has a
+   coverage API, and it includes ladders, which are *not* plans and do not aim at a
+   matrix at all.
+
+So "a ladder is part of coverage" and "a ladder has no coverage target" are both
+true, in the two different senses. When it matters, say **coverage plan** for the
+first and **the coverage surface** for the second. Neither sense has anything to do
+with code coverage, which The Test Cabinet does not measure.
+
 ## Domain
 
 A scoring domain is a facet of a test case the reviewer rates independently —
@@ -95,6 +137,17 @@ game play back automatically. Joints are **model-invented**: a case does **not**
 declare joints — the model devises whatever joints its rig needs to carry the
 required animations. See
 [Voxel models and rigs](/testing/asset-generation/overview/#the-rig-parts-and-joints).
+
+## Ladder
+
+A ladder is an ordered series of test cases that [climbers](#climber) ascend one
+[rung](#rung) at a time, stopping at the first rung they cannot clear — so the rung a
+model stops at *is* the result. Where a [coverage](#coverage) plan asks "have I run
+this yet?" and treats its cells as an unordered set, a ladder asks "how far does this
+model get?" and treats its steps as a sequence in which each is harder than the last.
+Whether a climber advances is decided by the ladder's **gate**, a single rule
+parameterised by a [rating](#rating) floor and a threshold. See
+[Ladders](/components/backend/ladders/).
 
 ## Leaderboard
 
@@ -174,6 +227,17 @@ reviews — one per account** — typically from people other than the operator 
 produced it; the verdicts and item [weights](#score) produce each review's
 numeric score, which are then averaged across reviews for the run.
 
+## Review Buffer
+
+The review buffer is how many runs a [coverage](#coverage) plan or [ladder](#ladder)
+is allowed to leave waiting on **you** before it stops enqueueing: everything in
+flight, plus everything finished that you have not [reviewed](#review). The size is a
+property of the reviewer (an account-wide setting, overridable per plan or ladder),
+not of any one plan, because it describes how much work you want to come back to. It
+exists so the first few reviews can still steer a plan — firing an entire matrix at
+once spends the whole budget before anyone has looked at a single run. Refilling it
+is called a **top-up**.
+
 ## Reviewer Checklist
 
 A test case may declare a reviewer checklist: a list of major, observable
@@ -204,6 +268,15 @@ the review viewer and real games.
 A run record is produced each time a test case runs to completion. This records
 all information from the run, such as its run time, version information, and
 token/cost data.
+
+## Rung
+
+A rung is one step of a [ladder](#ladder): exactly one test case, pinned to an exact
+version and [variant](#variant), with an optional override of how many runs it takes
+to judge. The rungs' order is the climb. Each rung carries a **stable opaque id**
+rather than being identified by its position, because rungs get reordered and
+re-pinned and every recorded verdict references that id — a positional identifier
+would silently reattribute a [climber](#climber)'s history to a different case.
 
 ## Runners
 
@@ -236,6 +309,14 @@ from this snapshot, so the gallery keeps no live dependency on the backend.
 
 Test cases provide the scenarios used for testing. Each test case represents
 some isolated task that a harness/model must perform.
+
+## Topped Out
+
+A [climber](#climber) has topped out when it has cleared **every** [rung](#rung) of
+its [ladder](#ladder): there is nothing left to climb, and the ladder has no further
+question to ask of that [combination](#combination). It is the only one of the five
+climber states that is nobody's move — the opposite end of the ladder from a
+[wall](#wall), and distinct from *held*, which is a stop the reviewer chose.
 
 ## User / Account
 
@@ -278,6 +359,17 @@ preview; the validator
 parses and validates that emitted data rather than regenerating it, and the
 frontend renders an interactive 3D model with three.js. See
 [Voxel models and rigs](/testing/asset-generation/overview/#voxel-models-and-rigs).
+
+## Wall
+
+A wall is the [rung](#rung) a [climber](#climber) failed and therefore stopped at —
+"walled at rung four" is a ladder's headline result for one model. It is a verdict the
+gate computed from **your** [reviews](#review) of that rung's runs, so it is an
+opinion rather than a fact about the model: a reviewer can promote a climber past a
+wall by hand, and the automatic verdict is kept underneath rather than overwritten so
+clearing the override restores exactly what the gate said. A failed or canceled
+*job* is never a wall — infrastructure failures are retried, and only completed runs
+are evidence.
 
 ## Web Console
 

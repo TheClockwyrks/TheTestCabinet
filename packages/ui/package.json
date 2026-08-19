@@ -10,6 +10,7 @@
     "./tokens.css": "./src/styles/tokens.css",
     "./client": "./src/client/index.ts",
     "./app": "./src/app/index.ts",
+    "./routes": "./src/app/routes.ts",
     "./transport": "./src/transport/index.ts"
   },
   "scripts": {
@@ -20,11 +21,16 @@
     "dev:preview": "vite --config preview/vite.config.ts"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@observablehq/plot": "^0.6.16",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@test-cabinet/particle-runtime": "*",
     "@test-cabinet/run-record": "*",
+    "@test-cabinet/run-stats": "*",
     "@test-cabinet/voxel-runtime": "*",
     "gifenc": "^1.0.3",
     "react-markdown": "^10.1.0",

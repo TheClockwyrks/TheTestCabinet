@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
-import { describe, expect, it, vi } from "vitest";
-import type { VariantSummary } from "../../../data/testCases";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RunVariantState } from "../../../data/useRunVariant";
 import { RunInputsPage } from "./RunInputsPage";
 
 // The tab under test is the accordion of inputs; the surrounding run chrome
@@ -17,8 +17,8 @@ vi.mock("../../../layouts/runs/RunDetailLayout", () => ({
 }));
 // The variant comes from the injected catalog; stub it rather than stand up a
 // gallery data provider, since these tests are about the run's own inputs.
-vi.mock("../../../data/useRunVariant", () => ({
-  useRunVariant: (): VariantSummary => ({
+const RESOLVED: RunVariantState = {
+  variant: {
     slug: "base",
     name: "Base",
     description: null,
@@ -30,8 +30,19 @@ vi.mock("../../../data/useRunVariant", () => ({
     domains: [],
     referenceBuild: null,
     referenceSheet: null,
-  }),
+  },
+  status: "ready",
+};
+// What the stubbed hook resolves to for the test in hand, so the loading and
+// genuinely-unavailable states can be driven independently of the resolved one.
+let variantState: RunVariantState = RESOLVED;
+vi.mock("../../../data/useRunVariant", () => ({
+  useRunVariant: (): RunVariantState => variantState,
 }));
+
+beforeEach(() => {
+  variantState = RESOLVED;
+});
 
 // A game-jam run briefed with two earlier entries of the same model, oldest
 // first — the order they were seeded in.
@@ -88,5 +99,31 @@ describe("RunInputsPage", () => {
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("run-older")).toBeNull();
     expect(screen.queryByText("run-newer")).toBeNull();
+  });
+
+  // The catalog the inputs are resolved from is fetched separately from the run
+  // record, so this tab routinely renders before it lands. A wait is not a dead
+  // end: it gets the loading mark, never the unavailable copy.
+  it("shows the loading mark while the catalog is still loading", () => {
+    variantState = { variant: undefined, status: "loading" };
+
+    render(<RunInputsPage />);
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByText("Loading inputs…")).toBeInTheDocument();
+    expect(screen.queryByText(/are not available/)).toBeNull();
+  });
+
+  // Only a settled catalog with no such case is genuinely unavailable — that is
+  // the one state the visitor can do nothing about, so it keeps the message.
+  it("reports the inputs unavailable once the catalog has settled without them", () => {
+    variantState = { variant: undefined, status: "ready" };
+
+    render(<RunInputsPage />);
+
+    expect(
+      screen.getByText(/The inputs for this run’s test case are not available/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

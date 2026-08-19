@@ -58,3 +58,105 @@ fn terminal_run_state_falls_back_when_no_record() {
         RunState::Infrastructure
     );
 }
+
+// --- Attribution ------------------------------------------------------------
+
+/// A signed-in account to attribute a launch to.
+fn account(id: &str) -> AuthUser {
+    AuthUser(test_cabinet_core::Account {
+        id: id.to_string(),
+        username: "reviewer".to_string(),
+        display_name: "Reviewer".to_string(),
+        picture_updated_at: None,
+    })
+}
+
+/// The launch request the attribution tests enqueue; the body itself is irrelevant
+/// to them, only the columns lifted alongside it.
+fn launch_body() -> LaunchBody {
+    serde_json::from_str(
+        r#"{"testCase":"pong","version":"v1.0.0","variant":"base","harness":"claude","model":"m"}"#,
+    )
+    .expect("the fixture launch body parses")
+}
+
+#[test]
+fn a_manual_launch_records_the_account_but_no_origin() {
+    let attribution = attribution(&account("acct-1"), &LaunchQuery::default())
+        .expect("no origin is not an error");
+    let job = build_new_job(
+        &launch_body(),
+        TestType::EndToEnd,
+        "2026-08-15T00:00:00Z",
+        &attribution,
+    )
+    .expect("the fixture body is valid");
+
+    // The account is recorded — it used to be discarded — while the absent origin is
+    // what keeps a hand-launched run out of every plan's and ladder's scoped halt.
+    assert_eq!(job.user_id.as_deref(), Some("acct-1"));
+    assert_eq!(job.origin, None);
+}
+
+#[test]
+fn a_top_up_launch_records_the_plan_or_ladder_that_asked_for_it() {
+    for (token, expected) in [
+        ("plan:p-1", JobOrigin::Plan("p-1".to_string())),
+        ("ladder:l-1", JobOrigin::Ladder("l-1".to_string())),
+    ] {
+        let query = LaunchQuery {
+            origin: Some(token.to_string()),
+        };
+        let attribution = attribution(&account("acct-1"), &query).expect("a valid origin parses");
+        let job = build_new_job(
+            &launch_body(),
+            TestType::EndToEnd,
+            "2026-08-15T00:00:00Z",
+            &attribution,
+        )
+        .expect("the fixture body is valid");
+        assert_eq!(job.origin, Some(expected));
+    }
+}
+
+#[test]
+fn an_unparseable_origin_is_rejected_rather_than_dropped() {
+    // Silently dropping it would enqueue runs the plan can never halt, and the fault
+    // would only surface much later as a plan that will not stop.
+    for token in ["", "plan:", "sweep:1", "p-1"] {
+        let query = LaunchQuery {
+            origin: Some(token.to_string()),
+        };
+        let error = attribution(&account("acct-1"), &query)
+            .expect_err("an origin that is present must be understood");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    }
+}
+
+// --- The console stream's wire names ----------------------------------------
+
+#[test]
+fn stream_event_names_are_the_ones_clients_listen_for() {
+    // These strings are the wire contract for `GET /notifications`, and unlike the
+    // JSON payloads they are *not* generated — the TypeScript transport hardcodes
+    // the same five literals in its `addEventListener` calls. Nothing links the two
+    // sides, so renaming one here would silently stop every console receiving that
+    // frame: SSE never dispatches to a listener for a name the server no longer
+    // sends, with no error anywhere. Pinning them means a rename has to be a
+    // deliberate change in both places.
+    assert_eq!(STREAM_EVENT_HELLO, "stream");
+    assert_eq!(STREAM_EVENT_NOTIFICATION, "notification");
+    assert_eq!(STREAM_EVENT_RUN, "run");
+    assert_eq!(STREAM_EVENT_RESYNC, "resync");
+    assert_eq!(STREAM_EVENT_HEARTBEAT, "heartbeat");
+}
+
+#[test]
+fn the_stream_heartbeat_stays_under_the_usual_idle_timeouts() {
+    // The heartbeat is what lets a client tell a healthy idle stream from a dead
+    // one, so it has to arrive well inside the ~60s idle timeouts proxies and
+    // WKWebView impose — otherwise the connection is torn down between beats and
+    // the signal never lands. It must also stay comfortably under the client's own
+    // staleness window, or a healthy stream would be reopened for no reason.
+    assert!(STREAM_HEARTBEAT <= std::time::Duration::from_secs(30));
+}

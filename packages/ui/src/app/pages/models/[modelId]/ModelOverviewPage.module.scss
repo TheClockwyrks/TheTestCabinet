@@ -1,0 +1,209 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/halo" as h;
+@use "../../../styles/breakpoints" as bp;
+@use "../../../styles/forms" as f;
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// The cohort pickers sit above the version scope control as one control stack,
+// wrapping onto a second line on narrow screens.
+.pickers {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  // Enough width for a long case name without the select collapsing on a phone.
+  min-width: 14rem;
+  flex: 1 1 14rem;
+}
+
+// Matches the version picker's label treatment so the whole control row reads as
+// one family of fields.
+.pickerLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}
+
+.select {
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-sm;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+}
+
+// One vertical band of the report (the cohort's figures, its rings, the
+// comparison), separated by the same rhythm the other detail tabs use.
+.block {
+  margin-bottom: t.$space-xl;
+}
+
+.blockTitle {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text;
+  @include h.halo;
+}
+
+// The cohort's headline figures, laid out as a responsive grid of labelled
+// cells — the same tile treatment the Stats tab uses.
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: t.$space-md;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 28%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.tileLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.tileValue {
+  font-size: t.$font-lg;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+// Cancels the value's glow on missing figures, matching the Stats tab.
+.muted {
+  color: t.$color-text-muted;
+  text-shadow: none;
+}
+
+// The caveat under the tiles, naming which runs the means were taken over.
+.note {
+  margin: t.$space-md 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The two rings share a row on a wide viewport and stack below it.
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: t.$space-lg;
+}
+
+.comparisons {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.sectionLede {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// One measured figure's placement in the field: its name and value on one line,
+// the meter beneath, and the sentence that reads the meter under that.
+.standing {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.standingHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+}
+
+.standingLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}
+
+.standingValue {
+  font-size: t.$font-lg;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+}
+
+// A single-hue magnitude meter: the track is the whole field, the fill is the
+// share of it this model is above. One measure, one axis — the value is direct-
+// labelled beside it, so it carries no legend.
+.meter {
+  position: relative;
+  height: 0.5rem;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-text-muted 22%, transparent);
+  overflow: hidden;
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: t.$radius-sm;
+  background: t.$color-accent;
+  box-shadow: var(--ttc-glow);
+}
+
+.standingCaption {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The percentage the sentence turns on, lifted out of the muted caption ink so
+// the figure is findable at a glance.
+.standingPercent {
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+}
+
+@include bp.below(t.$bp-sm) {
+  .picker {
+    flex-basis: 100%;
+  }
+
+  .standingHead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: t.$space-2xs;
+  }
+}

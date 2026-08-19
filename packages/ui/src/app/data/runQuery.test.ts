@@ -10,6 +10,7 @@ function summary(
   fields: {
     startedAt?: string;
     testCase?: string;
+    version?: string;
     model?: string;
     harness?: string;
     variant?: string;
@@ -27,7 +28,7 @@ function summary(
     finishedAt: "2026-01-01T00:01:00Z",
     subject: {
       testCaseSlug: fields.testCase ?? "carom",
-      testCaseVersion: "1.0.0",
+      testCaseVersion: fields.version ?? "v1.0.0",
       testType: "end-to-end",
       variant: fields.variant ?? "base",
       harnessSlug: fields.harness ?? "claude",
@@ -79,6 +80,89 @@ describe("runSummaryPage", () => {
     expect(runSummaryPage(runs, { testCase: "" }).total).toBe(3);
   });
 
+  it("equality-filters by variant, alone and paired with its case", () => {
+    const runs = [
+      summary("a", { testCase: "carom", variant: "base" }),
+      summary("b", { testCase: "carom", variant: "gyre" }),
+      summary("c", { testCase: "siege", variant: "base" }),
+    ];
+    expect(ids(runSummaryPage(runs, { variant: "base" })).sort()).toEqual([
+      "a",
+      "c",
+    ]);
+    // A variant slug is unique only within its case, so the pair narrows to one.
+    expect(
+      ids(runSummaryPage(runs, { testCase: "carom", variant: "base" })),
+    ).toEqual(["a"]);
+    expect(runSummaryPage(runs, { variant: "" }).total).toBe(3);
+  });
+
+  it("equality-filters by exact test-case version", () => {
+    const runs = [
+      summary("a", { testCase: "carom", version: "v1.0.0" }),
+      summary("b", { testCase: "carom", version: "v2.0.0" }),
+      summary("c", { testCase: "siege", version: "v1.0.0" }),
+    ];
+    // A bare version selects that version of every case…
+    expect(ids(runSummaryPage(runs, { version: "v1.0.0" })).sort()).toEqual([
+      "a",
+      "c",
+    ]);
+    // …and paired with a case, exactly that case's version.
+    expect(
+      ids(runSummaryPage(runs, { testCase: "carom", version: "v2.0.0" })),
+    ).toEqual(["b"]);
+    expect(runSummaryPage(runs, { version: "" }).total).toBe(3);
+  });
+
+  it("latestVersions keeps each case's current major.minor", () => {
+    const runs = [
+      summary("a", { testCase: "carom", version: "v1.0.0" }),
+      // Two revisions of carom's current minor: both are the same spec.
+      summary("b", { testCase: "carom", version: "v1.2.0" }),
+      summary("c", { testCase: "carom", version: "v1.2.1" }),
+      summary("d", { testCase: "siege", version: "v2.0.0" }),
+      summary("e", { testCase: "siege", version: "v3.0.0" }),
+    ];
+    const page = runSummaryPage(runs, { latestVersions: true });
+    expect(ids(page).sort()).toEqual(["b", "c", "e"]);
+    // The total counts the same filtered set, so a pager built on it stays honest.
+    expect(page.total).toBe(3);
+  });
+
+  it("latestVersions orders version components numerically, not lexically", () => {
+    const runs = [
+      summary("a", { version: "v1.9.0" }),
+      summary("b", { version: "v1.10.0" }),
+    ];
+    expect(ids(runSummaryPage(runs, { latestVersions: true }))).toEqual(["b"]);
+  });
+
+  it("latestVersions is measured before the other filters narrow the set", () => {
+    // Scoping to one model must not promote that model's newest run to "current"
+    // — the cohort is the case's, so a model that never ran v2 shows nothing.
+    const runs = [
+      summary("a", { testCase: "carom", version: "v1.0.0", model: "m1" }),
+      summary("b", { testCase: "carom", version: "v2.0.0", model: "m2" }),
+    ];
+    expect(
+      runSummaryPage(runs, { latestVersions: true, model: "m1" }).total,
+    ).toBe(0);
+    expect(
+      ids(runSummaryPage(runs, { latestVersions: true, model: "m2" })),
+    ).toEqual(["b"]);
+  });
+
+  it("an exact version overrides latestVersions", () => {
+    const runs = [
+      summary("a", { testCase: "carom", version: "v1.0.0" }),
+      summary("b", { testCase: "carom", version: "v2.0.0" }),
+    ];
+    expect(
+      ids(runSummaryPage(runs, { latestVersions: true, version: "v1.0.0" })),
+    ).toEqual(["a"]);
+  });
+
   it("free-text q matches case-insensitively across identity columns", () => {
     const runs = [
       summary("a", { testCase: "carom", model: "anthropic/claude" }),
@@ -101,6 +185,9 @@ describe("runSummaryPage", () => {
     expect(runSummaryPage(runs, { state: "review" }).total).toBe(0);
     expect(runSummaryPage(runs, { state: "unpublished" }).summaries).toEqual([]);
     expect(runSummaryPage(runs, { state: "published" }).total).toBe(2);
+    // `any` is the published + unpublished union, and the static index is entirely
+    // published — so it collapses to the published slice rather than matching none.
+    expect(runSummaryPage(runs, { state: "any" }).total).toBe(2);
   });
 
   it("sorts by date, desc default and asc, with id tiebreak", () => {

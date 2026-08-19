@@ -240,6 +240,14 @@ pub async fn delete(
 /// state (completed, every failure tier, including the never-publishable
 /// infrastructure failures), ordered by finish time — the console's "produced"
 /// worklist, disjoint from the default published listing.
+/// `state=publishable` narrows that to the unpublished runs that would publish
+/// right now — the ones clearing the publish gate — for the console's Unpublished
+/// worklist, where every listed run is meant to be selectable and published.
+///
+/// `state=any` returns **every** stored run, published and unpublished alike — the
+/// consoles' run listings, where an unpublished run must sort and page alongside the
+/// published ones. It and `publishable` are offered only on the numbered-pager path
+/// below (the cursor listings walk one lifecycle slice at a time).
 ///
 /// `fields=summary` returns bounded [`RunSummary`] cards (the lightweight shape
 /// the console's run log and list pages consume) instead of full
@@ -263,6 +271,9 @@ pub async fn list(
             test_case: params.test_case.clone(),
             model: params.model.clone(),
             harness: params.harness.clone(),
+            variant: params.variant.clone(),
+            version: params.version.clone(),
+            latest_versions: params.latest_versions.unwrap_or(false),
             q: params.q.clone(),
         };
         let sort = parse_sort(params.sort.as_deref());
@@ -660,6 +671,19 @@ pub struct ListParams {
     model: Option<String>,
     /// Filter to one harness slug (summary + offset path only).
     harness: Option<String>,
+    /// Filter to one variant slug (summary + offset path only). Paired with
+    /// `testCase` — a variant slug is only unique within its case.
+    variant: Option<String>,
+    /// Filter to one exact test-case version (summary + offset path only).
+    /// Normally paired with `testCase`, since a version only means something
+    /// within a case.
+    version: Option<String>,
+    /// Restrict every run to its case's current `major.minor` — the newest one
+    /// that case has a run for in the selected `state` slice (summary + offset
+    /// path only). Ignored when `version` names an exact version. Wire:
+    /// `latestVersions`.
+    #[serde(rename = "latestVersions")]
+    latest_versions: Option<bool>,
     /// Case-insensitive free-text query across the lifted identity columns (summary
     /// + offset path only).
     q: Option<String>,
@@ -696,12 +720,18 @@ pub struct SummaryListResponse {
 
 /// Map the `state` query param to the summary listing's lifecycle slice, mirroring
 /// the cursor path's `state` handling (`review`/`all` → the reviewer worklist).
+///
+/// `any` and `publishable` have no cursor-path equivalent: both are summary-listing
+/// slices only the numbered pager needs — the published + unpublished union
+/// ([`SummaryState::Any`]) and the publish worklist ([`SummaryState::Publishable`]).
 fn summary_state(state: Option<&str>) -> SummaryState {
     match state {
         Some("review") | Some("all") => SummaryState::Review,
         Some("failures") => SummaryState::Failures,
         Some("unpublished") => SummaryState::Unpublished,
+        Some("publishable") => SummaryState::Publishable,
         Some("unreviewed") => SummaryState::Unreviewed,
+        Some("any") => SummaryState::Any,
         _ => SummaryState::Published,
     }
 }

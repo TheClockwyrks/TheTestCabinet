@@ -1,15 +1,14 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
 import { RunsTabs } from "./RunsTabs";
-import {
-  usePagedSearchParams,
-  useResetPageOnChange,
-} from "../../components/usePagedSearchParams";
+import { RunFilters } from "../../components/RunFilters";
+import { useRunFilters } from "../../components/useRunFilters";
+import { useResetPageOnChange } from "../../components/usePagedSearchParams";
 import { useFindModel } from "../../data/useModels";
 import type { ModelSummary } from "../../data/models";
 import { useGalleryData, type InProgressRun } from "../../data/galleryContext";
@@ -24,25 +23,23 @@ import exec from "./RunExec.module.scss";
 // rendering hundreds of rows at once across the whole cabinet.
 const PAGE_SIZE = 20;
 
-// The all-runs index: every published (and locally produced) run, newest first,
-// in the same dense run log the home page leads with — but here the full history
-// is browsable a page at a time. Each page is a server query (the console's backend
-// offset endpoint, the static site's in-memory index), so only one page of
-// summaries is ever held: a header sort re-queries in that order, and the search
-// narrows by test case, harness, or model. Produced (local, unpublished) and
-// in-progress runs lead the first page, pinned so they don't repeat across pages.
+// The all-runs index: every recorded run — published and produced-but-unpublished
+// alike — newest first, in the same dense run log the home page leads with, but
+// here the full history is browsable a page at a time. Each page is a server query
+// (the console's backend offset endpoint, the static site's in-memory index), so
+// only one page of summaries is ever held: a header sort re-queries in that order,
+// and the filter bar's debounced search and equality facets narrow server-side. An
+// unpublished (and so unreviewed) run takes its place in that one sorted, paged
+// order — the consoles draw from the backend's `any` slice rather than merging a
+// locally-held worklist in ahead of it. Only in-progress runs, which have no record
+// to list yet, are still pinned to the first page.
 export function RunsPage() {
-  const {
-    canExecute,
-    producedSummaries,
-    localIds,
-    writeups,
-    queryRunSummaries,
-  } = useGalleryData();
-  const { inProgress } = useRunsRuntime();
+  const { canExecute, localIds, writeups, queryRunSummaries } =
+    useGalleryData();
+  const { inProgress, refreshToken } = useRunsRuntime();
   const findModel = useFindModel();
-  const { page, setPage, query, setQuery, committedQuery } =
-    usePagedSearchParams();
+  const filters = useRunFilters();
+  const { page, setPage, committedQuery, facets, latestVersions } = filters;
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -51,37 +48,29 @@ export function RunsPage() {
 
   const needle = committedQuery.trim().toLowerCase();
 
-  // Produced (local) runs matching the search, pinned to the first page ahead of
-  // the queried published window (the backend's numbered listing never returns
-  // them). Off the first page they are omitted so they don't repeat.
-  const produced = useMemo(() => {
-    if (!needle) return producedSummaries;
-    return producedSummaries.filter((run) =>
-      searchText(run, findModel).includes(needle),
-    );
-  }, [producedSummaries, needle, findModel]);
-
-  // Runs still executing, narrowed by the same search so it behaves uniformly.
-  // Only the consoles have these (the static site's runtime is always empty).
+  // Runs still executing, narrowed by the same search and facets so the list
+  // behaves uniformly. Only the consoles have these (the static site's runtime is
+  // always empty).
+  //
+  // The current-version toggle is deliberately not applied: an in-progress run has
+  // no recorded cohort to measure against, and a run launched a minute ago —
+  // whatever version it targets — is exactly what this list exists to show.
   const activeRuns = useMemo(() => {
     if (!canExecute) return [];
-    if (!needle) return inProgress;
-    return inProgress.filter((run) =>
-      activeSearchText(run, findModel).includes(needle),
+    return inProgress.filter(
+      (run) =>
+        (!needle || activeSearchText(run, findModel).includes(needle)) &&
+        (!facets.testCase || run.testCaseSlug === facets.testCase) &&
+        (!facets.version || run.testCaseVersion === facets.version) &&
+        (!facets.harness || run.harnessSlug === facets.harness) &&
+        (!facets.model || run.modelId === facets.model),
     );
-  }, [canExecute, inProgress, needle, findModel]);
-
-  // On the first page the local/produced runs lead the server window; off it, only
-  // the server page (the local runs stay pinned to page 0).
-  const displayed = useMemo<RunSummary[]>(
-    () => (page === 0 ? [...produced, ...result.summaries] : result.summaries),
-    [page, produced, result.summaries],
-  );
+  }, [canExecute, inProgress, needle, findModel, facets]);
 
   // The table renders the server-ordered page as-is (externalOrder) but still owns
   // the sort state, so its headers drive the re-query below.
   const table = useRunTable({
-    runs: displayed,
+    runs: result.summaries,
     localIds,
     localWriteups: writeups,
     externalOrder: true,
@@ -90,14 +79,29 @@ export function RunsPage() {
 
   // Fetch one page whenever the search, the active sort, or the page changes. The
   // prior rows stay on screen until the new page resolves (no empty flash).
+  //
+  // Re-queried on `refreshToken` as well as the usual inputs, the same as the
+  // Unpublished and Failures tabs: a run that finishes leaves the in-flight list
+  // above and becomes a record that belongs in this listing, and without this the
+  // row would simply vanish until the next navigation went and looked. That token
+  // is bumped by the console stream's `finished` run events, so a completed run now
+  // takes its place in the list as it happens.
   useEffect(() => {
     let active = true;
     setLoading(true);
     queryRunSummaries({
-      state: "published",
+      // Every run this host holds — published and produced-but-unpublished alike —
+      // so an unreviewed run sorts and pages with the rest. On the public gallery
+      // that is simply the published index.
+      state: "any",
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
       q: needle || undefined,
+      testCase: facets.testCase || undefined,
+      version: facets.version || undefined,
+      harness: facets.harness || undefined,
+      model: facets.model || undefined,
+      latestVersions,
       sort,
       dir,
     })
@@ -114,11 +118,20 @@ export function RunsPage() {
     return () => {
       active = false;
     };
-  }, [queryRunSummaries, page, needle, sort, dir]);
+  }, [
+    queryRunSummaries,
+    page,
+    needle,
+    facets,
+    latestVersions,
+    sort,
+    dir,
+    refreshToken,
+  ]);
 
-  // A new search resets to the first page inside the paged-params hook (it drops
-  // the page param as it commits the filter); a re-sort of the whole history
-  // reshapes the result set the same way, so jump back to the first page here.
+  // A new search or facet resets to the first page as it is committed (both drop
+  // the page param); a re-sort of the whole history reshapes the result set the
+  // same way, so jump back to the first page here.
   useResetPageOnChange(setPage, `${sort}:${dir}`);
 
   const pageCount = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
@@ -134,7 +147,7 @@ export function RunsPage() {
 
   // In-progress runs lead the list, pinned to the first page so they don't repeat.
   const showActive = activeRuns.length > 0 && current === 0;
-  const hasContent = displayed.length > 0 || showActive;
+  const hasContent = result.summaries.length > 0 || showActive;
 
   return (
     <PageLayout>
@@ -158,23 +171,21 @@ export function RunsPage() {
 
       <div className={styles.controls}>
         <RunsTabs active="runs" />
-        <input
-          className={styles.search}
-          type="search"
-          placeholder="Search by test case, harness, or model…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search runs"
+        <RunFilters
+          state={filters}
+          facets={["testCase", "version", "harness", "model"]}
+          searchPlaceholder="Search by test case, harness, or model…"
+          searchLabel="Search runs"
         />
       </div>
 
       {!hasContent ? (
         loading ? (
-          <p className={styles.empty}>Loading runs…</p>
+          <LoadingState size="section" label="Loading runs…" />
         ) : (
           <p className={styles.empty}>
-            {needle
-              ? "No runs match that search."
+            {filters.activeCount > 0
+              ? "No runs match those filters."
               : "No runs have been published yet."}
           </p>
         )
@@ -200,29 +211,10 @@ export function RunsPage() {
   );
 }
 
-// Case-insensitive haystack for a single run: its test case (display name and
-// slug), harness, and model (catalog name and raw id). Only these three subjects
-// are searchable — difficulty and tags are deliberately absent here.
-function searchText(
-  run: RunSummary,
-  findModel: (id: string, harness?: string) => ModelSummary | undefined,
-): string {
-  const { subject } = run;
-  const model = findModel(subject.modelId, subject.harnessSlug);
-  return [
-    formatSlug(subject.testCaseSlug),
-    subject.testCaseSlug,
-    subject.harnessSlug,
-    model?.name ?? "",
-    subject.modelId,
-  ]
-    .join(" ")
-    .toLowerCase();
-}
-
-// Case-insensitive haystack for an in-progress run: the same three subjects as a
-// finished row (test case, harness, model) plus its variant, so the search
-// narrows live and finished runs alike.
+// Case-insensitive haystack for an in-progress run: its test case (display name
+// and slug), harness, model (catalog name and raw id), and variant. Finished rows
+// are narrowed by the server's own free-text match over the recorded identity
+// columns; an in-progress run has no record to query, so it is matched here.
 function activeSearchText(
   run: InProgressRun,
   findModel: (id: string, harness?: string) => ModelSummary | undefined,

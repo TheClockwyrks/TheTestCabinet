@@ -77,9 +77,12 @@ spec:
             - name: state
               mountPath: /state
           resources:
+            # MEMORY REQUEST == LIMIT, and the ceiling raised from 128Mi to 256Mi —
+            # same reasoning as the prod overlay's copy of this patch, and staging is
+            # where the 82Mi peak that motivated it was actually measured.
             requests:
               cpu: 10m
-              memory: 32Mi
+              memory: 256Mi
             limits:
               cpu: 250m
-              memory: 128Mi
+              memory: 256Mi

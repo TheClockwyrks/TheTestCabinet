@@ -1,11 +1,16 @@
 {
   "$defs": {
     "NotificationKind": {
-      "description": "The kind of a [`Notification`]. Only [`Self::RunCompleted`] exists today;\nmodeled as an enum so it is part of the generated contract and the console can\nswitch on it as more are added.",
+      "description": "The kind of a [`Notification`] — which event in a run's life it announces. The\nconsole switches on it, because the kinds mean different things about the same\nrun: a completion changes the in-flight list, a publish failure does not.",
       "oneOf": [
         {
           "const": "run-completed",
           "description": "A run reached a terminal state (produced a record, or failed before one).",
+          "type": "string"
+        },
+        {
+          "const": "publish-failed",
+          "description": "A run's **publish** failed — the release Job reported a terminal failure.\n\nPublishing is asynchronous and the console typically navigates away from\nthe live publish stream as soon as it is enqueued (the whole point of\nenqueuing it), so without this alert a failed release — a transient GitHub\n5xx, say — is invisible: the run simply stays unpublished and the operator\nfinds out much later. The durable record of the failure is the publish job\nrow; this is how a reviewer *learns* about it.",
           "type": "string"
         }
       ]
@@ -28,19 +33,19 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/jobs-api/notification.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A worker-wide notification that a run reached a terminal state. Carries the\nrun's display identity (flattened to the console's notification shape) plus\nhow it ended. Delivered over `GET /notifications` (SSE).",
+  "description": "A worker-wide notification about a run: that it reached a terminal state, or\nthat publishing it failed. Carries the run's display identity (flattened to the\nconsole's notification shape) plus how it ended. Delivered over\n`GET /notifications` (SSE).",
   "properties": {
     "harnessSlug": {
       "description": "The harness driving the run, as its slug string.",
       "type": "string"
     },
     "jobId": {
-      "description": "The job id the run was observed under.",
+      "description": "The job the notification is about — the **run** job for `run-completed`,\nthe **publish** job for `publish-failed`. It identifies the attempt rather\nthan the run, so a run that fails to publish twice raises two alerts.",
       "type": "string"
     },
     "kind": {
       "$ref": "#/$defs/NotificationKind",
-      "description": "The notification kind. Only `run-completed` exists today."
+      "description": "Which event this announces."
     },
     "message": {
       "description": "A human-readable failure reason, present when `outcome` is `failed`.",
@@ -55,7 +60,7 @@
       "description": "How the run ended."
     },
     "recordId": {
-      "description": "The persisted run record's id the console links the alert to: the produced\nrecord's id for a `completed` run, the job id for a `failed` one.",
+      "description": "The persisted run record's id the console links the alert to: the produced\nrecord's id for a `completed` run, the job id for a `failed` one, and the\nrun that could not be released for a `publish-failed` one.",
       "type": ["string", "null"]
     },
     "testCaseSlug": {

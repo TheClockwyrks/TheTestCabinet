@@ -11,7 +11,12 @@ const STROKE = 16;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /** The visual tone of a segment, mapped to a palette color in the stylesheet. */
-export type ReliabilityTone = "success" | "harnessError" | "hung" | "timeout";
+export type ReliabilityTone =
+  | "success"
+  | "catastrophic"
+  | "timeout"
+  | "harnessError"
+  | "hung";
 
 /** One outcome slice of the ring: its share is `value / totalRuns`. */
 export interface ReliabilitySegment {
@@ -43,12 +48,17 @@ function formatPercent(fraction: number): string {
 }
 
 // A multi-segment ring gauge of a model's run outcomes: each segment (completed,
-// harness error, timeout) is an arc sized by its share of the model's runs, drawn
-// consecutively from 12 o'clock, with a legend giving each raw tally. The center
-// shows the total. Only *published* runs count — the same set the model page shows
-// — so this reads as the model's published reliability breakdown. Any run whose
-// state is not one of the segments (e.g. a catastrophic build) is the uncolored
-// remainder of the track.
+// catastrophic, timeout, harness error, hang) is an arc sized by its share of the
+// model's runs, drawn consecutively from 12 o'clock, with a legend giving each raw
+// tally. The center shows the total. Only *published* runs count — the same set the
+// model page shows — so this reads as the model's published reliability breakdown.
+//
+// Callers are expected to pass a segment per publishable state, which is every
+// `RunState` except `infrastructure` (the Test Cabinet's own failures, never
+// publishable and excluded from every model statistic). The legend tallies then sum
+// to the center total. A run in some state the caller passed no segment for is the
+// uncolored remainder of the track, which is a gap in the caller rather than a
+// designed slice: it silently drops runs out of a breakdown that claims to be one.
 export function ReliabilityRingWidget({
   title,
   segments,
