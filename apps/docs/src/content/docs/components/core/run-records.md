@@ -46,6 +46,9 @@ A run record must capture at least the following.
 - The resolved slug of the [orchestrator](/components/core/orchestrators/) that
   conducted the run's harness sessions. For an external orchestrator directory
   this is the directory's own manifest slug.
+- The slug of the [engine](/components/core/engines/) the build was produced
+  against and the exact engine version resolved for the run. A run with no engine
+  records the slug `none` and no version.
 - The model ID that was used. A [gg](/gg/overview/) run binds models to slots,
   so it records its primary slot's model as its representative identity.
 

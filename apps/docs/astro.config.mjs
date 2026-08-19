@@ -288,6 +288,7 @@ export default defineConfig({
                 "components/core/execution",
                 "components/core/harnesses",
                 "components/core/orchestrators",
+                "components/core/engines",
                 "components/core/events",
                 "components/core/metrics",
                 "components/core/validation",
@@ -527,6 +528,27 @@ export default defineConfig({
           label: "Orchestrators",
           collapsed: true,
           items: ["orchestrators/overview", "orchestrators/one-shot"],
+        },
+        // The engines — the runtimes a produced game is built on. The catalogue
+        // overview lists every engine; each family then has its own section for
+        // the pages specific to it. The contract they implement lives under Core.
+        {
+          label: "Engines",
+          collapsed: true,
+          items: [
+            "engines/overview",
+            "engines/none",
+            {
+              label: "Simple",
+              collapsed: true,
+              items: ["engines/simple/overview"],
+            },
+            {
+              label: "Decoupled",
+              collapsed: true,
+              items: ["engines/decoupled/overview"],
+            },
+          ],
         },
         // gg is The Test Cabinet's own first-party harness. It has its own
         // top-level section rather than an entry under Harnesses: we own both

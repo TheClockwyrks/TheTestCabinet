@@ -180,6 +180,18 @@ Task-oriented walkthroughs:
   can be supplied externally). See
   [`orchestrators/README.md`](orchestrators/README.md) and the contract doc
   [`components/core/orchestrators.md`](apps/docs/src/content/docs/components/core/orchestrators.md).
+- **Engines:** the runtime a produced game is built on (frame loop and delta time,
+  input actions, audio, assets, diagnostics; some also own rendering and a
+  gameplay framework). An engine is a **run dimension selected independently of
+  the test case** — a case only declares which engines it *supports*, and the
+  engine's own docs are seeded from its package, **never** restated in a case's
+  specs. Design and catalogue:
+  [`engines/`](apps/docs/src/content/docs/engines/); the contract doc is
+  [`components/core/engines.md`](apps/docs/src/content/docs/components/core/engines.md).
+  Beware that **"engine" now names two things** — this runtime, and the wasm
+  module a model submits for a
+  [performance](apps/docs/src/content/docs/testing/performance/overview.md) case;
+  the [glossary](apps/docs/src/content/docs/terminology.md) disambiguates them.
 - **Run-container image:** [`containers/`](containers/) — the single shared base
   image every run executes in (harnesses install into it at run time). See
   [`containers/README.md`](containers/README.md).
