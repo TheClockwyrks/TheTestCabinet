@@ -1,5 +1,11 @@
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +20,11 @@ import {
 } from "../../data/galleryContext";
 import type { RunQuery, RunQueryResult } from "../../data/runQuery";
 import { runSummaryPage } from "../../data/runQuery";
-import { RunsRuntimeProvider, useRunsRuntime } from "../../runtime/runsRuntime";
+import {
+  RunsRuntimeProvider,
+  useRunsRuntime,
+  type RunsRuntime,
+} from "../../runtime/runsRuntime";
 import type { TestCaseSummary } from "../../data/testCases";
 import { RunsPage } from "./RunsPage";
 
@@ -421,5 +431,103 @@ describe("RunsPage global stop controls", () => {
 
     await waitFor(() => expect(cancelActiveRuns).toHaveBeenCalledWith("tok"));
     await screen.findByText("Canceled 1 executing run.");
+  });
+});
+
+// --- A run finishing while the listing is filtered ---
+
+// The runs runtime as the console's notification layer holds it, captured from
+// inside the provider so a test can drive exactly what a completion push does:
+// prune the finished run from the in-progress list, then ask the data source to
+// re-read.
+function CaptureRuntime({ into }: { into: { current: RunsRuntime | null } }) {
+  into.current = useRunsRuntime();
+  return null;
+}
+
+// A cabinet the test mutates: the host answers every query off this array, so a
+// run "landing" server-side is a push rather than a re-render of fixed data.
+function liveGalleryValue(
+  cabinet: RunSummary[],
+  queries: RunQuery[],
+): GalleryDataInput {
+  return {
+    producedSummaries: [],
+    localIds: new Set<string>(),
+    writeups: {},
+    reviews: {},
+    runsLoading: false,
+    queryRunSummaries: async (query: RunQuery): Promise<RunQueryResult> => {
+      queries.push(query);
+      return runSummaryPage(cabinet, { ...query, state: "published" });
+    },
+    testCases: TEST_CASES,
+    testCasesStatus: "ready",
+    models: [],
+    modelsStatus: "ready",
+    canExecute: true,
+  } as unknown as GalleryDataInput;
+}
+
+// The one in-flight run, on the case the listing is filtered to.
+const ALPHA_ACTIVE = [
+  {
+    ...active("j-alpha", "running"),
+    testCaseSlug: "alpha",
+    testCaseVersion: "v2.0.0",
+  },
+];
+
+// The record that run leaves behind once it finishes.
+const ALPHA_FINISHED = summary("r-alpha-live", "alpha", {
+  published: false,
+  startedAt: "2026-01-05T00:00:00Z",
+  version: "v2.0.0",
+});
+
+// Every run link the log is currently showing, as its href.
+function rowLinks(): string[] {
+  return screen
+    .getAllByRole("link")
+    .map((link) => link.getAttribute("href") ?? "");
+}
+
+describe("RunsPage with a filter applied", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("keeps a run in the list when it finishes", async () => {
+    const cabinet: RunSummary[] = [];
+    const queries: RunQuery[] = [];
+    const runtime = { current: null as RunsRuntime | null };
+    render(
+      <MemoryRouter initialEntries={["/runs?case=alpha"]}>
+        <RunsRuntimeProvider>
+          <CaptureRuntime into={runtime} />
+          <SeedActive runs={ALPHA_ACTIVE} />
+          <GalleryDataProvider value={liveGalleryValue(cabinet, queries)}>
+            <RunsPage />
+          </GalleryDataProvider>
+        </RunsRuntimeProvider>
+      </MemoryRouter>,
+    );
+
+    // The filtered listing holds nothing yet; the in-flight run leads it, linked
+    // to its live monitor.
+    await waitFor(() => expect(rowLinks()).toContain("/runs/j-alpha/live"));
+    expect(queries[0]).toMatchObject({ testCase: "alpha" });
+
+    // The run finishes: its record lands in the cabinet, the notification layer
+    // prunes it from the in-progress list and asks the data source to re-read.
+    await act(async () => {
+      cabinet.push(ALPHA_FINISHED);
+      runtime.current!.remove("j-alpha");
+      runtime.current!.requestRefresh();
+    });
+
+    // It must not vanish: the pinned live row gives way to the recorded row, still
+    // inside the same filtered query rather than only after a reload.
+    await waitFor(() => expect(rowLinks()).toContain("/runs/r-alpha-live"));
+    expect(rowLinks()).not.toContain("/runs/j-alpha/live");
+    expect(queries.at(-1)).toMatchObject({ state: "any", testCase: "alpha" });
   });
 });

@@ -78,15 +78,20 @@ export function RunsPage() {
   });
   const { sort, dir } = sortStateToQuery(table.controls.sort);
 
-  // Fetch one page whenever the search, the active sort, or the page changes. The
-  // prior rows stay on screen until the new page resolves (no empty flash).
+  // Fetch one page whenever the search, the active sort, or the page changes — and
+  // whenever the runs runtime bumps its refresh token, which is what a run
+  // FINISHING does. The prior rows stay on screen until the new page resolves (no
+  // empty flash).
   //
-  // Re-queried on `refreshToken` as well as the usual inputs, the same as the
-  // Unpublished and Failures tabs: a run that finishes leaves the in-flight list
-  // above and becomes a record that belongs in this listing, and without this the
-  // row would simply vanish until the next navigation went and looked. That token
-  // is bumped by the console stream's `finished` run events, so a completed run now
-  // takes its place in the list as it happens.
+  // That last dependency is load-bearing, not a nicety. The listing is entirely
+  // server-paged, while a run still executing exists only in the runtime's
+  // in-progress list — so the moment it completes the runtime prunes it from that
+  // list and the run lives solely in the record this query returns. Without the
+  // re-query it vanishes from the page it was just on until a reload, which is
+  // exactly what a filtered listing made obvious: the live row matching the filter
+  // disappeared on completion rather than settling into place as a finished one.
+  // The same token also fires on a publish, a kill, and a delete, each of which
+  // reshapes this listing too.
   useEffect(() => {
     let active = true;
     setLoading(true);

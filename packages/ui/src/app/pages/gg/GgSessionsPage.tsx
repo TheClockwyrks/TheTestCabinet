@@ -9,6 +9,7 @@ import {
   useResetPageOnChange,
 } from "../../components/usePagedSearchParams";
 import { useGalleryData } from "../../data/galleryContext";
+import { useRunsRuntime } from "../../runtime/runsRuntime";
 import type { RunQueryResult } from "../../data/runQuery";
 import { GG_CHROME } from "./ggChrome";
 import runExec from "../runs/RunExec.module.scss";
@@ -42,6 +43,7 @@ export function GgSessionsPage() {
   const { localIds, writeups, queryRunSummaries } = useGalleryData();
   const { page, setPage, query, setQuery, committedQuery } =
     usePagedSearchParams();
+  const { refreshToken } = useRunsRuntime();
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -59,6 +61,8 @@ export function GgSessionsPage() {
   });
   const { sort, dir } = sortStateToQuery(table.controls.sort);
 
+  // Re-queried on the runs runtime's refresh token as well as on the page, search,
+  // and sort, so a gg session that finishes lands in this list without a reload.
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -84,7 +88,7 @@ export function GgSessionsPage() {
     return () => {
       active = false;
     };
-  }, [queryRunSummaries, page, needle, sort, dir]);
+  }, [queryRunSummaries, page, needle, sort, dir, refreshToken]);
 
   useResetPageOnChange(setPage, `${sort}:${dir}`);
 

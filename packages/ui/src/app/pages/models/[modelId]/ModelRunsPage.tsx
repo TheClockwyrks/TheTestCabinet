@@ -13,6 +13,7 @@ import type { ModelSummary } from "../../../data/models";
 import { useGalleryData } from "../../../data/galleryContext";
 import type { RunQueryResult } from "../../../data/runQuery";
 import { ModelDetailLayout } from "../../../layouts/models/ModelDetailLayout";
+import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import styles from "./ModelRunsPage.module.scss";
 
 // How many runs to show per page before paging kicks in. Keeps the list from
@@ -38,6 +39,7 @@ export function ModelRunsPage() {
 
 function RunsContent({ model }: { model: ModelSummary }) {
   const { localIds, writeups, queryRunSummaries } = useGalleryData();
+  const { refreshToken } = useRunsRuntime();
 
   // The server filters runs by a single model id, so scope to this model's primary
   // covered id. (A model that covers several ids may under-count runs recorded under
@@ -66,7 +68,9 @@ function RunsContent({ model }: { model: ModelSummary }) {
   });
   const { sort, dir } = sortStateToQuery(table.controls.sort);
 
-  // Fetch one page whenever the model, the active sort, or the page changes.
+  // Fetch one page whenever the model, the active sort, or the page changes — and
+  // whenever the runs runtime bumps its refresh token, so a run of this model that
+  // finishes appears here rather than waiting on a reload.
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -107,6 +111,7 @@ function RunsContent({ model }: { model: ModelSummary }) {
     latestVersions,
     sort,
     dir,
+    refreshToken,
   ]);
 
   // Navigating to a different model swaps the whole run set, and re-sorting

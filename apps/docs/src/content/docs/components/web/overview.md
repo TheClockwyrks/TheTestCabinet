@@ -83,6 +83,10 @@ slice, so a produced run, unpublished and therefore unreviewed, sorts and pages
 among the published ones rather than being pinned ahead of them. Only
 in-progress runs, which have no record to list yet, still lead the first page.
 
+A listing re-queries whenever a run finishes, is published, is killed, or is
+deleted, so a run that completes moves from the in-progress rows into the listing
+under the filters and sort already applied.
+
 The home page fetches a recent window, and the case-scoped leaderboard and
 metrics views fetch one bounded, case-scoped summary set. A model's Overview tab
 fetches two such sets: a model-scoped one, which its case and variant picker is

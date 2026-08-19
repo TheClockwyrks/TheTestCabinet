@@ -20,6 +20,7 @@ import {
 import { useGalleryData } from "../../data/galleryContext";
 import { useFindReview } from "../../data/writeups";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { routes } from "../../routes";
 import { formatRunTime, formatTokenTotal, formatUsd } from "../../format";
 import styles from "./HomePage.module.scss";
@@ -41,6 +42,7 @@ export function HomePage() {
     queryRunSummaries,
   } = useGalleryData();
   const { token } = useAuth();
+  const { refreshToken } = useRunsRuntime();
   const findReview = useFindReview();
   const [recentRuns, setRecentRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +51,10 @@ export function HomePage() {
   // whole cabinet. The consoles draw from the union slice so a produced (still
   // unpublished) run takes its place in that recent window by date, exactly as it
   // does in the runs index; the public gallery holds only published runs.
+  //
+  // Re-queried on the runs runtime's refresh token as well, so a run that finishes
+  // takes its place in this window without a reload (the static site, whose runtime
+  // is the inert default, never bumps it).
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -72,7 +78,7 @@ export function HomePage() {
     return () => {
       active = false;
     };
-  }, [queryRunSummaries]);
+  }, [queryRunSummaries, refreshToken]);
 
   // The queried window is already the newest runs of whichever slice this host
   // draws from; re-sort defensively so the hero and the log agree on "latest".

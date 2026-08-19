@@ -8,6 +8,7 @@ import { RunsTabs } from "./RunsTabs";
 import { usePagedSearchParams } from "../../components/usePagedSearchParams";
 import { useGalleryData } from "../../data/galleryContext";
 import type { RunQueryResult } from "../../data/runQuery";
+import { useRunsRuntime } from "../../runtime/runsRuntime";
 import styles from "./RunsPage.module.scss";
 
 // How many runs to show per page — matches the all-runs list.
@@ -22,6 +23,7 @@ const PAGE_SIZE = 20;
 export function UnreviewedPage() {
   const { queryRunSummaries, localIds, writeups } = useGalleryData();
   const { page, setPage } = usePagedSearchParams();
+  const { refreshToken } = useRunsRuntime();
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -36,6 +38,9 @@ export function UnreviewedPage() {
   });
   const { sort, dir } = sortStateToQuery(table.controls.sort);
 
+  // Re-queried on the runs runtime's refresh token as well as on the page and
+  // sort, so a run that finishes (or is reviewed, published, or deleted elsewhere
+  // in the console) joins or leaves this worklist without a reload.
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -59,7 +64,7 @@ export function UnreviewedPage() {
     return () => {
       active = false;
     };
-  }, [queryRunSummaries, page, sort, dir]);
+  }, [queryRunSummaries, page, sort, dir, refreshToken]);
 
   const pageCount = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);

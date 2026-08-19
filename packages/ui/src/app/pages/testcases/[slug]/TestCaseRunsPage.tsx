@@ -13,6 +13,7 @@ import { useGalleryData } from "../../../data/galleryContext";
 import type { RunQueryResult } from "../../../data/runQuery";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
+import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import styles from "./TestCaseRunsPage.module.scss";
 
 // How many runs to show per page before paging kicks in. Keeps the list from
@@ -49,6 +50,7 @@ export function RunsContent({
   variant: VariantSummary;
 }) {
   const { localIds, writeups, queryRunSummaries } = useGalleryData();
+  const { refreshToken } = useRunsRuntime();
   const filters = useRunFilters({ testCase: testCase.slug });
   const { page, setPage, committedQuery, facets, latestVersions } = filters;
   const [result, setResult] = useState<RunQueryResult>({
@@ -70,7 +72,9 @@ export function RunsContent({
   });
   const { sort, dir } = sortStateToQuery(table.controls.sort);
 
-  // Fetch one page whenever the case/variant, the active sort, or the page changes.
+  // Fetch one page whenever the case/variant, the active sort, or the page changes
+  // — and whenever the runs runtime bumps its refresh token, so a run of this case
+  // that finishes appears here rather than waiting on a reload.
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -113,6 +117,7 @@ export function RunsContent({
     latestVersions,
     sort,
     dir,
+    refreshToken,
   ]);
 
   // Switching cases or variants swaps the whole run set, and re-sorting reshapes
