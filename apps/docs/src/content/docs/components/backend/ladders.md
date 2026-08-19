@@ -282,7 +282,10 @@ order mechanism a plan uses:
   The board advances as a column, and answers "how far does *this* model get?"
   soonest. The console calls it **"Model by model"**.
 
-Everything else is shared: whole cells, the account-wide buffer target with a
+Everything else is shared: whole cells, the
+[harness-parallelism preference](/components/backend/coverage/#harness-parallelism-comes-first)
+that keeps one throttled harness from spending the whole buffer while a climber on
+another sits idle, the account-wide buffer target with a
 per-ladder override, the per-ladder claim that serializes concurrent top-ups,
 `autoTopUp` firing on review submit (see [above](#a-ladder-starts-disabled) for what
 differs — when it is on by default, and what it cannot start), and
