@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use base64::Engine as _;
+
 use serde_json::json;
 
 use super::*;
@@ -1292,10 +1294,22 @@ fn an_attached_image_is_charged_to_the_window() {
 }
 
 #[test]
-fn estimate_image_scales_with_size_and_has_a_floor() {
-    assert!(estimate_image(1024 * 1024) > estimate_image(64 * 1024));
+fn a_larger_picture_is_charged_more_and_a_tiny_one_is_still_charged() {
+    let picture = |width: u32, height: u32| {
+        let mut bytes = Vec::from(b"\x89PNG\r\n\x1a\n");
+        bytes.extend_from_slice(&13u32.to_be_bytes());
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&width.to_be_bytes());
+        bytes.extend_from_slice(&height.to_be_bytes());
+        ImageContent::new(
+            "image/png",
+            base64::engine::general_purpose::STANDARD.encode(bytes),
+            4096,
+        )
+    };
+    assert!(estimate_image(&picture(1280, 720)) > estimate_image(&picture(320, 240)));
     // Even a tiny icon is charged something rather than nothing.
-    assert!(estimate_image(0) > 0);
+    assert!(estimate_image(&picture(1, 1)) > 0);
 }
 
 #[test]

@@ -133,7 +133,7 @@ fn a_file_view_carries_its_region_and_its_pictures() {
     assert_eq!(item.message().images.len(), 1);
     // A picture is not a third view kind — it is a file view of an image file, so it is charged to
     // the same item and reclaimed with it.
-    assert!(opened.tokens > estimate_image(4096));
+    assert!(opened.tokens > estimate_image(&item.message().images[0]));
     // The file heading stays the bare word: the read's own body already names the path.
     assert_eq!(
         item.message().content.as_deref(),

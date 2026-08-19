@@ -496,31 +496,9 @@ pub trait TokenEstimator: Send + Sync {
         if let Some(id) = &message.tool_call_id {
             text.push_str(id);
         }
-        let images: usize = message
-            .images
-            .iter()
-            .map(|image| estimate_image(image.bytes))
-            .sum();
+        let images: usize = message.images.iter().map(estimate_image).sum();
         MESSAGE_FRAMING_TOKENS + self.estimate_str(&text) + images
     }
-}
-
-/// Estimate the tokens an inline image of `bytes` occupies.
-///
-/// Not a `TokenEstimator` method, because an image is not text and no tokenizer can
-/// answer it: every provider charges images by its own tiling of the decoded
-/// **dimensions**, which gg does not decode. This is a deliberately coarse stand-in —
-/// roughly the tile count a ~1024×1024 picture costs at the common ~750 tokens, scaled
-/// by file size — and its job is only to keep an attached mockup from being accounted as
-/// *free*, which would let a run's fullness figure drift below the truth and delay
-/// compaction. It is floored so even a tiny icon is charged something.
-pub fn estimate_image(bytes: u64) -> usize {
-    /// Tokens charged per KiB of encoded image, chosen so a typical few-hundred-KB
-    /// reference mockup lands in the high hundreds of tokens.
-    const TOKENS_PER_KIB: u64 = 2;
-    /// The floor: no image is cheaper than this, however small the file.
-    const MIN_TOKENS: u64 = 85;
-    ((bytes / 1024) * TOKENS_PER_KIB).max(MIN_TOKENS) as usize
 }
 
 /// The default [`TokenEstimator`]: a real BPE tokenizer (`o200k_base`, the base OpenAI's
@@ -2549,6 +2527,11 @@ pub fn tool_output_source(tool_name: &str) -> GgContextSource {
         _ => GgContextSource::ToolOutput,
     }
 }
+
+#[path = "context.images.rs"]
+mod images;
+
+pub use images::estimate_image;
 
 #[cfg(test)]
 #[path = "context.test.rs"]
