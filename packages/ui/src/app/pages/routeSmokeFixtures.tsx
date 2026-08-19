@@ -338,6 +338,11 @@ function workerClient(): WorkerClient {
     readRunEvents: () => Promise.resolve(null),
     subscribeToRun: () => () => {},
     subscribeToNotifications: () => () => {},
+    // The console stream's run-lifecycle topic, which every page showing an
+    // in-flight list turns on for as long as it is mounted (the Runs tabs, a run's
+    // live monitor, a ladder's board). A stub that omits it takes those pages down
+    // on mount, which is precisely what this suite is here to catch.
+    setRunLifecycleEnabled: () => Promise.resolve(),
   } as unknown as WorkerClient;
 }
 

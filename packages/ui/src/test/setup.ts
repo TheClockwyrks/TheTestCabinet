@@ -8,18 +8,6 @@ if (!Element.prototype.scrollTo) {
   Element.prototype.scrollTo = () => {};
 }
 
-// jsdom has no ResizeObserver; the responsive `<Chart>` primitive observes its
-// container to re-render at the measured width. Provide a no-op so chart-bearing
-// components (e.g. the gg context-fill graph) mount under test — jsdom reports
-// zero sizes anyway, and no test asserts on drawn plot geometry.
-if (typeof globalThis.ResizeObserver === "undefined") {
-  globalThis.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-}
-
 // jsdom implements no media queries at all, so `window.matchMedia` is simply
 // absent — and the app's chrome calls it on mount (the backdrop honours
 // `prefers-reduced-motion`). Report "this query does not match" for everything,
@@ -52,6 +40,42 @@ if (typeof window !== "undefined" && !window.matchMedia) {
 // getContext already effectively yielded "unavailable" here; this just does it
 // quietly.
 HTMLCanvasElement.prototype.getContext = () => null;
+
+// Three gaps jsdom leaves that <Chart> and Observable Plot fall into. Each stub
+// gives back the answer a layout-less DOM should give, so the charts' behavior
+// (re-plotting, pointing, tooltip dismissal) can be asserted under test.
+
+// The chart re-plots when its container's width changes; jsdom measures every
+// element as zero-sized, so there is nothing for a real observer to report. The
+// no-op is what lets every chart-bearing component (the gg context-fill graph
+// among them) mount under test; no test asserts on drawn plot geometry.
+if (!("ResizeObserver" in globalThis)) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+// Plot measures a tooltip's text with getBBox to size and orient its box. jsdom
+// does no layout, so report an empty box — the tip still renders, it just lands
+// at the origin, which is all a behavioral assertion needs.
+if (!SVGGraphicsElement.prototype.getBBox) {
+  SVGGraphicsElement.prototype.getBBox = () => new DOMRect(0, 0, 0, 0);
+}
+
+// Plot's pointer interaction — and the chart's touch tooltip dismissal, which
+// hands Plot a synthetic mouse `pointerleave` — branch on `pointerType`, the
+// only field these paths read off the event.
+if (!("PointerEvent" in globalThis)) {
+  globalThis.PointerEvent = class extends MouseEvent {
+    readonly pointerType: string;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerType = init.pointerType ?? "";
+    }
+  } as unknown as typeof PointerEvent;
+}
 
 // react-virtuoso virtualizes off real element measurements, which jsdom reports
 // as zero — so it would render no rows under test. Replace it with a plain list

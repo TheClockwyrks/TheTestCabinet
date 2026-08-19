@@ -24,8 +24,13 @@ tournaments are CPU-bound wasm played in-process by the embedded core.
   [harness](/components/core/harnesses/), and a model, then launch it and watch
   the live [harness event](/components/core/events/) stream.
 - Track runs in progress. Return to any executing run from the Runs list, and
-  receive a notification when a run completes. Notifications are pushed from the
-  backend rather than polled.
+  receive a notification when a run completes. A notification raises a toast and
+  files an alert under the topbar bell, whose slide-out list holds the alerts
+  received so far and marks the unread ones. The alert links to the finished run,
+  and opening it marks the alert read. Both the alerts and the in-flight list are
+  pushed over the backend's multiplexed
+  [console stream](/components/backend/api/#the-console-stream), and the active
+  list is re-read only when that stream reports it may have missed something.
 - Read the specs. Browse the [specification](/testing/end-to-end/overview/) a
   run was built from, so the produced implementation can be judged against what
   was asked for.

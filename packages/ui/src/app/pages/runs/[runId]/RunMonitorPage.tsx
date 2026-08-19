@@ -13,6 +13,7 @@ import { PromptHeader } from "../../../components/PromptHeader";
 import { useTestCase } from "../../../data/useTestCase";
 import { routes } from "../../../routes";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
+import { useLiveRunUpdates } from "../../../runtime/useLiveRunUpdates";
 import { useAppSettings } from "../../../store/appSettings";
 import tabStyles from "../../../layouts/runs/RunDetailLayout.module.scss";
 import styles from "../RunExec.module.scss";
@@ -37,6 +38,10 @@ export function RunMonitorPage() {
   const { runId } = useParams<{ runId: string }>();
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
+  // The monitor reads this run's phase out of the in-flight list (below), so it
+  // needs that list kept current for as long as it is open — the run's own event
+  // stream carries harness output, not the job's lifecycle.
+  useLiveRunUpdates();
   const [events, setEvents] = useState<HarnessEvent[]>([]);
   // The latest live drawing frame per frame index, for an asset-generation run,
   // plus the frame last drawn into. Empty for every other run type.

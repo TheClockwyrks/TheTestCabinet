@@ -732,6 +732,17 @@ impl Db {
         Ok(self.assemble(vec![run]).await?.into_iter().next())
     }
 
+    /// Fetch one run's **row** by id — the lifted columns only, without decoding
+    /// its `record_json` blob or joining its reviews and links. For a caller that
+    /// needs a run's identity rather than its record (the publish-failure
+    /// notification, which describes the run it could not release); use
+    /// [`Db::get_run`] when the record itself is wanted.
+    pub async fn get_run_row(&self, id: &str) -> Result<Option<run::Model>> {
+        Ok(run::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
     /// List **published** runs newest-first (by `published_at`), paginated by a
     /// `published_at` cursor. This is the public read side; pending runs never
     /// appear. Returns at most `limit` runs and the next cursor when more remain.
@@ -4068,6 +4079,18 @@ pub enum SummaryState {
     Failures,
     /// Every unpublished run whatever its terminal state — the "produced" worklist.
     Unpublished,
+    /// The unpublished runs that would **publish right now** — the subset of
+    /// [`Self::Unpublished`] that clears the publish gate (`gate_publishable`, the
+    /// rule [`Db::ensure_publishable`] enforces): a reviewed completed run, or a
+    /// publishable failure tier (which needs no review). Never an infrastructure
+    /// failure, whatever reviews it carries.
+    ///
+    /// This is the console's publish worklist. It is deliberately narrower than
+    /// [`Self::Unpublished`], which also holds the runs nobody has reviewed yet and
+    /// the infrastructure failures that can never go public — listing those in a
+    /// worklist whose whole purpose is "select these and publish them" would offer
+    /// rows the backend is about to refuse.
+    Publishable,
     /// Completed runs no account has reviewed yet (`review_count = 0`) — the
     /// reviewer's "needs a first pass" worklist, a subset of [`Self::Review`].
     /// Excludes the automatically-graded types, which no reviewer can clear (see
@@ -4190,6 +4213,18 @@ fn state_slice(state: SummaryState) -> Select<run::Entity> {
             query.filter(run::Column::RunState.is_in(publishable_failure_states()))
         }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
+        // Mirrors `gate_publishable` as a query: not already public, never an
+        // infrastructure failure, and either a publishable failure tier (no review
+        // required) or a run someone has reviewed. Kept in step with the gate by
+        // `publishable_slice_matches_the_publish_gate`.
+        SummaryState::Publishable => query
+            .filter(run::Column::Published.eq(false))
+            .filter(run::Column::RunState.ne("infrastructure"))
+            .filter(
+                Condition::any()
+                    .add(run::Column::RunState.is_in(publishable_failure_states()))
+                    .add(run::Column::ReviewCount.gt(0)),
+            ),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::ReviewCount.eq(0))
@@ -4476,6 +4511,23 @@ impl JobOrigin {
     }
 }
 
+/// Everything one claim pass changed: the job it handed to the dispatcher, and the
+/// waiting jobs whose display state it reconciled on the way past.
+///
+/// The two are separate because they mean different things to a caller. `claimed` is
+/// the *answer* — the job to dispatch, or `None` when nothing is claimable — while
+/// `reconciled` is a side effect the pass performs on the rest of the queue. A
+/// dispatcher acts on the first and ignores the second; the console stream announces
+/// both, because both changed a row somebody may be looking at.
+#[derive(Debug, Clone, Default)]
+pub struct ClaimOutcome {
+    /// The job moved to `dispatched`, if any was claimable.
+    pub claimed: Option<job::Model>,
+    /// The waiting jobs this pass moved between `queued` and `pending`, each with its
+    /// new state. Empty when every waiting job's display state was already correct.
+    pub reconciled: Vec<job::Model>,
+}
+
 /// Which jobs a bulk cancel reaches: the in-flight states to sweep, optionally narrowed
 /// to one plan/ladder and/or one account.
 ///
@@ -4684,7 +4736,12 @@ impl Db {
     ///
     /// The select-then-updates run in one transaction; SQLite serializes writers
     /// (single-writer WAL), so two dispatchers cannot claim the same job.
-    pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
+    /// Both halves of the pass are reported, because both are state changes a
+    /// console is showing: the claim moves one run to `dispatched`, and the
+    /// reconciliation moves any number of others between `queued` and `pending`.
+    /// Returning only the claim would leave every held-back run's row stale until
+    /// something else re-read the queue.
+    pub async fn claim_next(&self, now: &str) -> Result<ClaimOutcome> {
         use std::collections::{HashMap, HashSet};
 
         let txn = self.conn().begin().await?;
@@ -4732,6 +4789,7 @@ impl Db {
             .await?;
 
         let mut claimed: Option<job::Model> = None;
+        let mut reconciled: Vec<job::Model> = Vec::new();
         for job in waiting {
             let active = active_by_harness
                 .get(&job.harness_slug)
@@ -4763,17 +4821,30 @@ impl Db {
             }
 
             // Not claimed: make its display state match whether its harness has room.
+            // Only a job that actually moved is reported — the common case is a queue
+            // whose display states are already correct, and re-announcing those every
+            // claim pass would be pure noise on the console stream.
             let target = if has_room { "queued" } else { "pending" };
             if job.state != target {
                 let mut active_model = job.into_active_model();
                 active_model.state = Set(target.to_string());
                 active_model.updated_at = Set(now.to_string());
-                active_model.update(&txn).await?;
+                reconciled.push(active_model.update(&txn).await?);
             }
         }
 
         txn.commit().await?;
-        Ok(claimed)
+        Ok(ClaimOutcome {
+            claimed,
+            reconciled,
+        })
+    }
+
+    /// Claim, reporting only what was claimed — the convenience form of
+    /// [`Db::claim_next`] for callers that care which job was picked and not about
+    /// the display states the same pass reconciled around it.
+    pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
+        Ok(self.claim_next(now).await?.claimed)
     }
 
     /// Every stored per-harness config row (harnesses with no overrides are absent).

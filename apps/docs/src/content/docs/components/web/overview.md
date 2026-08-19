@@ -23,8 +23,10 @@ finished record on the backend, so the console has no push step.
 
 The console is bound to exactly one [backend](/components/backend/overview/) at
 a time. That backend is the source of truth for the test-case catalog, the run
-queue, produced and published runs, and the completion notification stream, all
-reached over the [backend HTTP API](/components/backend/api/).
+queue, produced and published runs, and the [console
+stream](/components/backend/api/#the-console-stream) of completion notifications
+and run-lifecycle events, all reached over the [backend HTTP
+API](/components/backend/api/).
 
 Three further services are called directly, and the backend reports the base URL
 of each from `GET /config`:
@@ -90,6 +92,41 @@ places the model against. Only a run's detail page loads that run's full
 time](/components/backend/api/#get-runsid). Lightweight `RunSummary` cards back
 every list, card, leaderboard, and metric.
 
+## The runs section
+
+`/runs` is a strip of linkable tabs, each its own route. Tests is the all-runs
+index above and Comparisons lists the signed-in account's
+[comparisons](/comparisons/overview/), published or not; both render on every
+host, and the read-only static site lists the published set off its snapshot. The
+other three are console-only worklists whose routes the public gallery leaves
+unmounted, since it holds nothing unreviewed or unpublished.
+
+- Failures: the produced
+  [publishable failures](/components/core/results/#publish) awaiting publish, each
+  showing its failure tier and recorded detail, so a real model failure can be told
+  from a subscription auth-token refresh before it is released.
+- Unreviewed: completed runs no account has reviewed yet
+  ([`state=unreviewed`](/components/backend/api/#get-runs)), the queue that needs a
+  first pass.
+- Unpublished: runs that have cleared the publish gate but have not been released
+  ([`state=publishable`](/components/backend/api/#get-runs)), which is the publish
+  backlog.
+
+The publish backlog has a tab because a publish is asynchronous and can fail: a
+release that did not land leaves the run exactly as it was, which in the all-runs
+listing reads the same as a run nobody has got round to publishing. Those runs
+collect here instead. The list is the same dense run log with the same filter bar,
+so a backlog can be narrowed to one case or model, and its rows are selectable:
+check them and right-click to publish the whole selection. The slice is the publish
+gate rather than everything unpublished, so a worklist whose purpose is "select
+these and publish them" offers only rows the backend will accept.
+
+A batch publish enqueues each release and stops there. A release takes minutes in
+its own Job, and awaiting them would hold a live stream open per run and pin the
+person to the page. A refused gate surfaces immediately, and a release that starts
+and then fails arrives as a
+[publish-failed notification](/components/core/results/#publish).
+
 ## Planning and steering runs
 
 The console's Account section is where a reviewer declares what they want run
@@ -113,6 +150,14 @@ Because reviewing is the loop these dashboards exist to close, opening a run
 from one and pressing back returns to that dashboard rather than to the global
 run list: the shared back-return machinery records the coverage section as the
 place to come back to.
+
+A ladder's board closes that loop on the page itself. Expanding a climber lists
+its rungs, and expanding a rung lists that rung's own runs inline, in-flight ones
+included, in the same dense run log the runs section uses. A rung's verdict is an
+argument about its runs, so the runs sit under the rung rather than behind a link
+to a pre-filtered listing. The board holds the console stream's [`runs`
+topic](/components/backend/api/#topics) open while it is on screen, which is what
+keeps the tallies and verdicts moving as runs finish under it.
 
 The Runs page carries the global counterparts to a plan's halt on the trailing
 edge of its tab bar: Clear pending, Kill active, and Stop all. These are scoped

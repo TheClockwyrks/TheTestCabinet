@@ -78,6 +78,16 @@ queries. What is kept, and why:
 | `container_cpu_cfs_{periods,throttled_periods,throttled_seconds}_total` | Whether CPU oversubscription is actually costing anything. |
 | `container_spec_cpu_{quota,shares}` | The configured CPU limit and request. |
 
+Read the first two together rather than picking one. `max_usage` includes
+reclaimable page cache, which the kernel drops under pressure instead of
+OOM-killing for, so it overstates the footprint that actually decides a kill and
+is a safe upper bound. `working_set` is the quantity eviction and the OOM killer
+act on, but it is sampled only each scrape, so a spike between two scrapes is
+invisible to it and it is a lower bound. A ceiling picked above the `max_usage`
+peak is certainly safe; one picked from the `working_set` peak alone is not.
+Where the two diverge sharply the gap is page cache, which is normal for a
+container that has just written a build tree to disk.
+
 Prod keeps metrics for **30 days** while logs and traces keep 3
 ([`patch-lgtm-retention.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/overlays/azure-prod/patch-lgtm-retention.yaml)).
 The windows differ because the questions do: a trace answers "what happened in this

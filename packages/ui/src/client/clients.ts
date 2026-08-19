@@ -22,6 +22,7 @@ import type {
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  PublishEnqueued,
   PublishProgress,
   PublishResult,
   ReviewItem,
@@ -29,6 +30,7 @@ import type {
   ReviewVerdict,
   RunEventStreams,
   RunJob,
+  RunLifecycleEvent,
   RunNotification,
   RunOutcome,
   RunPage,
@@ -792,14 +794,23 @@ export interface RunSubscription {
   onError?: (error: unknown) => void;
 }
 
-// Handlers for the worker-wide notification subscription. `onNotification` fires
-// once per run completion across the whole worker; `onError` reports a transport
+// Handlers for the worker-wide console stream. `onNotification` fires once per
+// alert (a run completing, a publish failing) across the whole worker; `onRunLifecycle`
+// fires per run-lifecycle transition, but only while the "runs" topic is enabled
+// (see {@link WorkerClient.setRunLifecycleEnabled}); `onError` reports a transport
 // fault (the web `EventSource` reconnects on its own afterward); `onOpen` fires
-// each time the channel (re)connects. The feed is live-only (no backlog), so a
-// completion that fired during a gap is never replayed — `onOpen` lets the console
-// reconcile against the active list on every (re)connect to recover it.
+// each time the channel (re)connects.
+//
+// The feed is live-only (no backlog), so anything published during a gap is never
+// replayed — `onOpen` lets the console reconcile against the authoritative lists on
+// every (re)connect to recover it. `onResync` is the same recovery for the case a
+// reconnect does *not* cover: the connection stayed up but this client fell behind
+// far enough that the backend dropped messages for it. Without that signal a lagged
+// console would show a stale list indefinitely, with no error to notice.
 export interface NotificationSubscription {
   onNotification: (notification: RunNotification) => void;
+  onRunLifecycle?: (event: RunLifecycleEvent) => void;
+  onResync?: () => void;
   onError?: (error: unknown) => void;
   onOpen?: () => void;
 }
@@ -897,12 +908,33 @@ export interface WorkerClient {
   listActiveRuns(): Promise<InProgressRun[]>;
 
   /**
-   * Subscribe to the worker-wide run-completion stream (`GET /notifications`),
-   * for raising completion alerts without polling or a per-run subscription.
-   * Returns an unsubscribe function. The stream is live-only — it does not replay
-   * completions that happened before connecting.
+   * Subscribe to the worker-wide console stream (`GET /notifications`), for
+   * raising completion alerts and maintaining the in-flight run list without
+   * polling or a per-run subscription. Returns an unsubscribe function. The
+   * stream is live-only — it does not replay anything published before connecting.
+   *
+   * Opened once per worker for the whole session, not per page: the alerts must
+   * arrive wherever the user is, and reopening the stream on every navigation
+   * would drop them and cost a reconnect each time. What varies per page is the
+   * *topic* set — see {@link WorkerClient.setRunLifecycleEnabled}.
    */
   subscribeToNotifications(handlers: NotificationSubscription): () => void;
+
+  /**
+   * Turn the stream's run-lifecycle topic on or off, on the already-open
+   * subscription (`PUT /notifications/{stream}/topics`).
+   *
+   * This is what makes the single always-on stream affordable. Run events are far
+   * noisier than alerts — every enqueue, every phase change, every run of a bulk
+   * cancel — and most of the console shows no in-flight list, so the topic is off
+   * by default and turned on only while such a page is mounted.
+   *
+   * Safe to call before the stream has connected, and idempotent: the transport
+   * remembers what was last asked for and re-applies it to the stream whenever the
+   * `EventSource` reconnects under a new id. A call with no stream open therefore
+   * records the intent rather than failing.
+   */
+  setRunLifecycleEnabled(enabled: boolean): Promise<void>;
 
   /**
    * Finished runs this worker produced that are awaiting review/publish. May
@@ -1003,6 +1035,21 @@ export interface WorkerClient {
     token: string,
     onProgress?: (progress: PublishProgress) => void,
   ): Promise<PublishResult>;
+
+  /**
+   * Enqueue a publish (`POST /runs/{id}/publish`, Bearer) and resolve as soon as
+   * the backend has accepted it — the gate half of {@link publish} without the
+   * wait for the release. It rejects on a refused gate (a run with no reviews, an
+   * infrastructure failure) exactly as {@link publish} does, so a caller still
+   * learns immediately that a run *cannot* be published; what it does not learn
+   * is whether the release later succeeded.
+   *
+   * This is what a **batch** publish uses. Awaiting each release instead would
+   * hold one live NDJSON stream open per selected run for minutes, and the whole
+   * point of the batch is to hand the work off and move on — the backend's
+   * `publish-failed` notification is what reports a release that did not land.
+   */
+  enqueuePublish(id: string, token: string): Promise<PublishEnqueued>;
 
   /**
    * Permanently delete a produced run (`DELETE /runs/{id}`, Bearer): remove its

@@ -169,6 +169,40 @@ Sandbox pods need no inbound access beyond the driver's `exec` and preview
 connections, which Kubernetes routes over the API server and the pod network.
 Their egress is the model APIs and package registries a run needs.
 
+## Memory ceilings
+
+Every container a deployment creates carries a memory limit equal to its memory
+request. The sum of a node's limits is then knowable, which is what lets the
+deployment guarantee that no pod is killed to satisfy another's growth, and one
+unbounded container gives that guarantee up. The sandbox pod and driver ceilings
+are sized in
+[Run plane](/deployment/kubernetes/run-plane/#sizing-sandbox-pods).
+
+| Container | Ceiling | Why |
+| --- | --- | --- |
+| `backend` | `2Gi` | around 2.4x the anonymous memory plus slab a snapshot refresh reaches, which materializes every run record at once |
+| `lgtm` | `4Gi` | a collector, three TSDBs and Grafana under bursty load, since validating a test case drives far more telemetry than a quiet week |
+| `artifacts` | `1536Mi` | its resident set plus one `tree.tar` or `archive.tar.gz` build, which is still assembled in memory |
+| `ingest` sidecar | `256Mi` | around 3x its peak, and it runs a git checkout whose cost grows with the catalog |
+| `arena` | `512Mi` | sized for concurrent wasm matches rather than for an idle week |
+| `auth`, `dispatcher`, `web` | `256Mi` | around 32x their peaks, and the headroom costs a node almost nothing |
+| `publisher` (per publish `Job`) | `1Gi` | several times the largest run tree it pulls from the artifact service |
+
+CPU is treated differently. A container over its CPU limit is throttled rather
+than killed, so the failure mode is latency instead of a lost pod, and CPU limits
+are set loosely as a runaway backstop or left off entirely.
+
+Size a ceiling against anonymous memory plus slab rather than against a peak. A
+cgroup's high-water mark counts page cache, which cgroup v2 reclaims under limit
+pressure, so a peak overstates the figure that actually decides a kill. Read the
+numbers from the environment being sized, since prod and staging differ by orders
+of magnitude:
+
+```sh
+kubectl -n <ns> exec <pod> -c <container> -- \
+  sh -c 'cat /sys/fs/cgroup/memory.peak; grep -E "^(anon|file|slab) " /sys/fs/cgroup/memory.stat'
+```
+
 ## Per-environment differences
 
 Staging and prod apply the same base manifests, so staging rehearses prod. Only

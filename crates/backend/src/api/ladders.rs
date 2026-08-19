@@ -143,11 +143,21 @@ pub struct LadderSchedule {
     /// Which axis the emission loop nests on.
     #[serde(default)]
     pub outer_axis: LadderAxis,
-    /// Whether topping up is suspended.
+    /// Whether topping up is suspended — the console calls this ladder **disabled**.
+    ///
+    /// A ladder is created suspended and enqueues nothing at all until the reviewer
+    /// enables it: a climb is declared long before it is meant to start spending, and a
+    /// ladder that launched runs the moment it was saved would have spent a buffer's
+    /// worth of tokens before its author had finished reading it back.
     #[serde(default)]
     pub paused: bool,
-    /// Whether submitting a review re-runs this ladder's top-up automatically. Off by
-    /// default, so an existing ladder never silently starts enqueueing.
+    /// Whether submitting a review re-runs this ladder's top-up automatically.
+    ///
+    /// **On** by default, because it is the only thing that moves an enabled ladder
+    /// along: a review is the verdict that decides a rung, and the moment it frees a
+    /// buffer slot is exactly the moment the next rung's runs should be asked for.
+    /// Enqueueing is already gated on the ladder being enabled at all, so this cannot
+    /// make an untouched ladder start spending.
     #[serde(default)]
     pub auto_top_up: bool,
     /// This ladder's override of the account's review-buffer target, or null to
@@ -159,14 +169,18 @@ pub struct LadderSchedule {
 }
 
 impl Default for LadderSchedule {
-    /// A new ladder climbs a rung at a time, is not paused, never tops itself up
-    /// unasked, and has no opinion on the buffer target. These match the columns'
-    /// database defaults.
+    /// A new ladder climbs a rung at a time, starts **disabled**, tops itself up on
+    /// every review once it is enabled, and has no opinion on the buffer target.
+    ///
+    /// The two halves are one decision: enabling is the single gesture that starts a
+    /// climb, and from then on the reviews the reviewer is already submitting keep it
+    /// moving. Splitting them — enabled but inert until someone finds the top-up
+    /// button — is the shape that makes a ladder look broken.
     fn default() -> Self {
         Self {
             outer_axis: LadderAxis::Rung,
-            paused: false,
-            auto_top_up: false,
+            paused: true,
+            auto_top_up: true,
             buffer_target: None,
         }
     }
@@ -659,6 +673,11 @@ pub async fn get(
 /// `POST /ladders` — create a ladder. Targets are clamped, the gate is sanitized, and
 /// every rung's case type is checked so a rung that could never resolve is refused up
 /// front rather than stalling a climb weeks later.
+///
+/// Creating a ladder enqueues **nothing**: an absent schedule is
+/// [`LadderSchedule::default`], which is disabled. Saving a climb is describing the
+/// question, not asking it — the ladder starts spending when it is enabled, and never
+/// before.
 pub async fn create(
     State(state): State<AppState>,
     user: AuthUser,
@@ -957,7 +976,13 @@ pub async fn queue(
 // ---- Halting ---------------------------------------------------------------
 
 /// `POST /ladders/{id}/pause` — suspend (or resume) topping this ladder up, leaving
-/// the queue untouched. 404 when the id is not the caller's.
+/// the queue untouched. This is the ladder's **disable / enable** control, and a new
+/// ladder starts on the suspended side of it. 404 when the id is not the caller's.
+///
+/// Enabling deliberately does not enqueue anything by itself: it says the ladder *may*
+/// spend, and the caller that enabled it follows with a top-up. Keeping the two apart is
+/// what keeps top-up the one endpoint that launches runs, so there is exactly one place
+/// where a ladder can start costing money.
 pub async fn pause(
     State(state): State<AppState>,
     user: AuthUser,

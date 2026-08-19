@@ -3,6 +3,7 @@ import { routePatterns } from "../../routes";
 import { RunsPage } from "./RunsPage";
 import { RunFailuresPage } from "./RunFailuresPage";
 import { UnreviewedPage } from "./UnreviewedPage";
+import { UnpublishedPage } from "./UnpublishedPage";
 import { NewRunPage } from "./NewRunPage";
 import { RunCodePage } from "./[runId]/RunCodePage";
 import { RunEventsPage } from "./[runId]/RunEventsPage";
@@ -74,6 +75,16 @@ export function runsRoutes(canExecute: boolean) {
         <Route
           path={routePatterns.runUnreviewed}
           element={<UnreviewedPage />}
+        />
+      )}
+      {/* The publish worklist — reviewed-but-unreleased runs, batch-published
+          from here. Console-only for the same reason: the static site holds no
+          unpublished runs at all. Static path, so it outranks the
+          `/runs/:runId` dynamic route. */}
+      {canExecute && (
+        <Route
+          path={routePatterns.runUnpublished}
+          element={<UnpublishedPage />}
         />
       )}
       {canExecute && (

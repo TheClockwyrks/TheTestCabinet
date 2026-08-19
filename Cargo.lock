@@ -6891,6 +6891,7 @@ dependencies = [
  "bytes",
  "dotenvy",
  "flate2",
+ "futures-util",
  "http",
  "opentelemetry",
  "reqwest 0.12.28",
@@ -7171,6 +7172,7 @@ dependencies = [
  "thiserror 2.0.18",
  "time",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

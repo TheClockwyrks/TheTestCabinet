@@ -210,6 +210,17 @@ is retried through GitHub's brief permission-propagation lag on a freshly
 created organization repository, settling briefly before the first push and then
 retrying with backoff, so a transient post-create `403` self-heals.
 
+A release that does not land records its reason on the publish job and raises a
+publish-failed notification on the console's worker-wide feed, as a toast and an
+entry in the notifications bell, linking to the run it could not release.
+Publishing is asynchronous, so enqueuing a release and moving on to the next run
+is the intended workflow, and this notification is what reports a release that
+failed after the console stopped watching it. Publishing the run again is the
+recovery, admitted as soon as the failed publish job is terminal, and the run
+waits in the console's
+[Unpublished worklist](/components/web/overview/#the-runs-section) until a
+release lands.
+
 The public snapshot, and therefore the gallery, contains only published runs. A
 published catastrophic or timeout failure shows its generated source and has no
 playable build, and its outcome is reported as a per-model statistic separate
@@ -217,10 +228,10 @@ from the score that ranks workable runs. A published `harness_error` or `hung`
 run shows no source and no build at all and is purely a per-model statistic.
 
 The model page's reliability ring turns these into a breakdown of the model's
-published runs: completed against the publishable failure tiers, namely harness
-errors, hangs, and timeouts. `infrastructure` and `canceled` runs are absent
-from the ring and from every other model statistic, since neither is a model
-outcome.
+published runs: completed against the publishable failure tiers, namely
+catastrophic failures, timeouts, harness errors, and hangs. `infrastructure` and
+`canceled` runs are absent from the ring and from every other model statistic,
+since neither is a model outcome.
 
 The backend performs publish and the snapshot regeneration it triggers as the
 synchronized half of the lifecycle. A single entity does both, so two operators

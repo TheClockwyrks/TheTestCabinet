@@ -879,7 +879,7 @@ export function CoveragePlanPage() {
               Runs in this order:{" "}
               <strong>{axisLabel(coverage.outerAxis)}</strong>
             </span>
-            <label className={styles.controlToggle}>
+            <label className={`${styles.controlToggle} ${styles.controlEnd}`}>
               <input
                 type="checkbox"
                 checked={plan?.autoTopUp ?? false}

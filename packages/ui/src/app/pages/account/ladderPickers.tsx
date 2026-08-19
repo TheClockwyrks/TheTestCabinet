@@ -1,4 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+  type UniqueIdentifier,
+} from "@dnd-kit/core";
+import {
+  restrictToParentElement,
+  restrictToVerticalAxis,
+} from "@dnd-kit/modifiers";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type {
   Gate,
   GateThreshold,
@@ -15,6 +38,8 @@ import {
 import { useTestCases } from "../../data/useTestCases";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useCatalog } from "../../runtime/useCatalog";
+import { SettingRow } from "../../components/SettingRow";
+import { Switch } from "../../components/Switch";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 import ladder from "./Ladder.module.scss";
@@ -25,6 +50,21 @@ import ladder from "./Ladder.module.scss";
 // pickers do — the editor renders them and the dashboard has to be able to *name*
 // what they mean, and one home for them is what stops the two surfaces describing
 // the same rule two different ways.
+
+/**
+ * The gate a new ladder starts with, mirroring the Rust `Gate::default`.
+ *
+ * The gentlest rule that still stops a hopeless climb: a climber advances as long as
+ * one run was playable at all, and is walled only when the whole rung came back
+ * broken. It is also the value every gate control resets to, which is how the editor
+ * shows where the defaults are without captioning each control with its own.
+ */
+export const DEFAULT_GATE: Gate = {
+  floor: "scuffed",
+  threshold: { kind: "count", runs: 1 },
+  unloadedCountsAsBroken: true,
+  earlyStop: false,
+};
 
 /**
  * How each ladder ordering axis is described to a reviewer.
@@ -41,9 +81,9 @@ export const LADDER_AXIS_LABELS: Readonly<Record<LadderAxis, string>> = {
   combination: "Model by model",
 };
 
-/** The longer form shown under the picker, saying what the choice buys. */
+/** The longer form shown beside the picker, saying what the choice buys. */
 const LADDER_AXIS_HINTS: Readonly<Record<LadderAxis, string>> = {
-  rung: "Every climber comes up a rung before anyone moves on, so a rung's runs arrive together and the models can be judged against each other on the same case.",
+  rung: "Every climber comes up a rung before anyone moves on, so a rung's runs arrive together and can be judged against each other.",
   combination:
     "One climber goes as high as it can before the next one starts, so you find out how far a single model gets soonest.",
 };
@@ -53,8 +93,17 @@ export function ladderAxisLabel(axis: LadderAxis): string {
   return LADDER_AXIS_LABELS[axis];
 }
 
+/** The order a new ladder starts in, and the one the picker resets to. */
+export const DEFAULT_LADDER_AXIS: LadderAxis = "rung";
+
 /**
- * The ordering control: two mutually exclusive pills over {@link LADDER_AXIS_LABELS}.
+ * The ordering setting: a dropdown over {@link LADDER_AXIS_LABELS}, described by what
+ * the selected order buys.
+ *
+ * A dropdown rather than a pair of pills, because this is one setting with one answer
+ * sitting in a column of other settings — the row's control column should read as a
+ * value ("Rung by rung") the same way the gate's floor does, not as two buttons of
+ * which one happens to be lit.
  *
  * The choice is real and not cosmetic — a top-up emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
@@ -71,30 +120,30 @@ export function LadderAxisPicker({
   disabled?: boolean;
 }) {
   return (
-    <>
-      <div
-        className={styles.kindRow}
-        role="radiogroup"
-        aria-label="Climb order"
-      >
-        {(Object.keys(LADDER_AXIS_LABELS) as LadderAxis[]).map((axis) => (
-          <button
-            key={axis}
-            type="button"
-            role="radio"
-            aria-checked={value === axis}
+    <SettingRow
+      label="Climb order"
+      description={LADDER_AXIS_HINTS[value]}
+      modified={value !== DEFAULT_LADDER_AXIS}
+      onReset={() => onChange(DEFAULT_LADDER_AXIS)}
+    >
+      {(id) => (
+        <span className={styles.settingSelect}>
+          <select
+            id={id}
+            className={exec.select}
+            value={value}
             disabled={disabled}
-            className={`${styles.groupPick} ${
-              value === axis ? styles.groupPickOn : ""
-            }`}
-            onClick={() => onChange(axis)}
+            onChange={(e) => onChange(e.target.value as LadderAxis)}
           >
-            {LADDER_AXIS_LABELS[axis]}
-          </button>
-        ))}
-      </div>
-      <p className={styles.fieldHint}>{LADDER_AXIS_HINTS[value]}</p>
-    </>
+            {(Object.keys(LADDER_AXIS_LABELS) as LadderAxis[]).map((axis) => (
+              <option key={axis} value={axis}>
+                {LADDER_AXIS_LABELS[axis]}
+              </option>
+            ))}
+          </select>
+        </span>
+      )}
+    </SettingRow>
   );
 }
 
@@ -115,6 +164,14 @@ export function requiredRuns(threshold: GateThreshold, total: number): number {
   // computed in binary floating point, where a product that is whole in decimal need
   // not be, and rounding that up would demand a run that can never exist.
   return Math.max(0, Math.ceil(fraction * total - 1e-9));
+}
+
+/** Whether two thresholds demand the same thing, so a control knows it has moved. */
+function sameThreshold(a: GateThreshold, b: GateThreshold): boolean {
+  if (a.kind === "count" && b.kind === "count") return a.runs === b.runs;
+  if (a.kind === "fraction" && b.kind === "fraction")
+    return a.fraction === b.fraction;
+  return false;
 }
 
 /** A rating named as the reviewer sees it ("Passable"), never as the wire spells it. */
@@ -159,11 +216,11 @@ export function gateExample(gate: Gate, runsPerCell: number): string {
   const need = Math.min(requiredRuns(gate.threshold, total), total);
   const floor = `rated ${ratingLabel(gate.floor)} or better`;
   if (need <= 0) {
-    return `At ${total} runs a rung, this gate demands nothing: every climber advances past every rung. Raise the threshold to make the ladder able to stop anyone.`;
+    return `At ${total} runs a rung, this gate demands nothing: every climber advances past every rung. Raise the threshold to let the ladder stop anyone.`;
   }
   const decides = gate.earlyStop
-    ? "The rung is decided as soon as the outcome is certain, and its remaining runs are cancelled."
-    : "The rung still finishes all of its runs either way — the evidence is worth having even once the outcome is certain.";
+    ? "Its remaining runs are cancelled once the outcome is certain."
+    : "The rung still finishes all of its runs either way.";
   return (
     `At ${total} runs a rung: a climber advances once ${need} of its ${total} runs ` +
     `${need === 1 ? "is" : "are"} ${floor}, and is walled when ` +
@@ -207,106 +264,129 @@ export function GateEditor({
 
   return (
     <>
-      <div className={ladder.gateRow}>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Counts as clearing the rung</span>
-          <select
-            className={exec.select}
-            value={gate.floor}
-            onChange={(e) =>
-              onChange({ ...gate, floor: e.target.value as Rating })
+      <SettingRow
+        label="Counts as clearing the rung"
+        help={describeGate(gate)}
+        modified={gate.floor !== DEFAULT_GATE.floor}
+        onReset={() => onChange({ ...gate, floor: DEFAULT_GATE.floor })}
+      >
+        {(id) => (
+          <span className={styles.settingSelect}>
+            <select
+              id={id}
+              className={exec.select}
+              value={gate.floor}
+              onChange={(e) =>
+                onChange({ ...gate, floor: e.target.value as Rating })
+              }
+            >
+              {RATINGS.map((rating) => (
+                <option key={rating} value={rating}>
+                  {ratingLabel(rating)} or better
+                </option>
+              ))}
+            </select>
+          </span>
+        )}
+      </SettingRow>
+
+      <SettingRow
+        label="How many must clear it"
+        description={gateExample(gate, runsPerCell)}
+        modified={!sameThreshold(threshold, DEFAULT_GATE.threshold)}
+        onReset={() => setThreshold(DEFAULT_GATE.threshold)}
+      >
+        {(id) => (
+          <>
+            <span className={styles.settingNumber}>
+              <input
+                id={id}
+                className={exec.input}
+                type="number"
+                min={isCount ? 1 : 0}
+                max={100}
+                step={isCount ? 1 : 5}
+                value={amount}
+                onChange={(e) => {
+                  const n = Math.floor(Number(e.target.value));
+                  if (!Number.isFinite(n)) return;
+                  setThreshold(
+                    isCount
+                      ? { kind: "count", runs: Math.min(Math.max(n, 1), 100) }
+                      : {
+                          kind: "fraction",
+                          fraction: Math.min(Math.max(n, 0), 100) / 100,
+                        },
+                  );
+                }}
+              />
+            </span>
+            <span className={styles.settingUnit}>
+              <select
+                className={exec.select}
+                aria-label="Measured as"
+                value={gate.threshold.kind}
+                // Switching unit re-seeds the amount rather than reinterpreting it:
+                // "50" means half as a percentage and fifty runs as a count, and
+                // silently carrying the number across would change the gate by an
+                // order of magnitude on a control the reviewer only meant to
+                // relabel.
+                onChange={(e) =>
+                  setThreshold(
+                    e.target.value === "count"
+                      ? { kind: "count", runs: 1 }
+                      : { kind: "fraction", fraction: 0.5 },
+                  )
+                }
+              >
+                <option value="count">runs</option>
+                <option value="fraction">
+                  % of the rung&rsquo;s completed runs
+                </option>
+              </select>
+            </span>
+          </>
+        )}
+      </SettingRow>
+
+      <SettingRow
+        label="Count a run whose build never loaded as broken"
+        help="A build that does not load leaves a reviewer nothing to judge, so counting it at once keeps it from holding up the climb and from taking a slot in your review buffer."
+        modified={
+          gate.unloadedCountsAsBroken !== DEFAULT_GATE.unloadedCountsAsBroken
+        }
+        onReset={() =>
+          onChange({
+            ...gate,
+            unloadedCountsAsBroken: DEFAULT_GATE.unloadedCountsAsBroken,
+          })
+        }
+      >
+        {(id) => (
+          <Switch
+            id={id}
+            checked={gate.unloadedCountsAsBroken}
+            onChange={(next) =>
+              onChange({ ...gate, unloadedCountsAsBroken: next })
             }
-          >
-            {RATINGS.map((rating) => (
-              <option key={rating} value={rating}>
-                {ratingLabel(rating)} or better
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={exec.runCountField}>
-          <span className={exec.fieldLabel}>How many must clear it</span>
-          <input
-            className={exec.input}
-            type="number"
-            min={isCount ? 1 : 0}
-            max={100}
-            step={isCount ? 1 : 5}
-            value={amount}
-            onChange={(e) => {
-              const n = Math.floor(Number(e.target.value));
-              if (!Number.isFinite(n)) return;
-              setThreshold(
-                isCount
-                  ? { kind: "count", runs: Math.min(Math.max(n, 1), 100) }
-                  : {
-                      kind: "fraction",
-                      fraction: Math.min(Math.max(n, 0), 100) / 100,
-                    },
-              );
-            }}
           />
-        </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Measured as</span>
-          <select
-            className={exec.select}
-            value={gate.threshold.kind}
-            // Switching unit re-seeds the amount rather than reinterpreting it: "50"
-            // means half as a percentage and fifty runs as a count, and silently
-            // carrying the number across would change the gate by an order of
-            // magnitude on a control the reviewer only meant to relabel.
-            onChange={(e) =>
-              setThreshold(
-                e.target.value === "count"
-                  ? { kind: "count", runs: 1 }
-                  : { kind: "fraction", fraction: 0.5 },
-              )
-            }
-          >
-            <option value="count">runs</option>
-            <option value="fraction">
-              % of the rung&rsquo;s completed runs
-            </option>
-          </select>
-        </label>
-      </div>
-      <p className={ladder.gateExample}>
-        {describeGate(gate)} {gateExample(gate, runsPerCell)}
-      </p>
+        )}
+      </SettingRow>
 
-      <label className={styles.controlToggle}>
-        <input
-          type="checkbox"
-          checked={gate.unloadedCountsAsBroken}
-          onChange={(e) =>
-            onChange({ ...gate, unloadedCountsAsBroken: e.target.checked })
-          }
-        />
-        Count a run whose build never loaded as broken, without a review
-      </label>
-      <p className={styles.fieldHint}>
-        On by default. There is nothing for a reviewer to judge in a build that
-        does not load, so counting it immediately keeps it from blocking the
-        climb and from occupying a slot in your review buffer. Turn it off only
-        if you want to look at every one of them yourself.
-      </p>
-
-      <label className={styles.controlToggle}>
-        <input
-          type="checkbox"
-          checked={gate.earlyStop}
-          onChange={(e) => onChange({ ...gate, earlyStop: e.target.checked })}
-        />
-        Decide a rung early and cancel its remaining runs
-      </label>
-      <p className={styles.fieldHint}>
-        Off by default: a rung <strong>completes all of its runs</strong> even
-        once the verdict is certain, because those runs are evidence in their
-        own right — five runs of a case on a model are worth having in full.
-        Turn this on when you are spending real money to find a wall and do not
-        need the rest.
-      </p>
+      <SettingRow
+        label="Decide a rung early and cancel its remaining runs"
+        help="A rung's runs are evidence as well as a verdict, so leaving this off keeps the full record of every rung. Turn it on to stop paying for runs whose outcome is already certain."
+        modified={gate.earlyStop !== DEFAULT_GATE.earlyStop}
+        onReset={() => onChange({ ...gate, earlyStop: DEFAULT_GATE.earlyStop })}
+      >
+        {(id) => (
+          <Switch
+            id={id}
+            checked={gate.earlyStop}
+            onChange={(next) => onChange({ ...gate, earlyStop: next })}
+          />
+        )}
+      </SettingRow>
     </>
   );
 }
@@ -331,11 +411,149 @@ const RUNG_CATEGORIES = CATALOG_CATEGORIES.filter(
 );
 
 /**
+ * The identity a rung is tracked by while the draft is being edited.
+ *
+ * A saved rung has a server id, which is the thing the save reconciles on. One added
+ * in this session has none yet, so it falls back to the coordinates that make it the
+ * rung it is — and those are unique within a climb because {@link RungListEditor}
+ * refuses to add a case at a version and variant the climb already holds.
+ */
+function rungKey(rung: LadderRungInput): string {
+  return rung.id ?? `${rung.slug}@${rung.version}@${rung.variant}`;
+}
+
+/**
+ * One row of the climb: a drag handle, the rung's ordinal and case, its run-count
+ * override, and the move/remove controls.
+ *
+ * Dragging and the ▲▼ buttons are deliberately both here rather than one replacing
+ * the other. Dragging is how a reviewer reorders a climb they are reading — it moves
+ * a rung several places in one gesture, which is what building a climb easiest-first
+ * actually involves — while the buttons remain the precise, always-visible way to
+ * nudge one step, and are what a reviewer reaches for on a trackpad or without a
+ * pointer at all. The handle is a real `<button>` so it takes focus and dnd-kit's
+ * keyboard sensor can lift it too.
+ */
+function SortableRung({
+  id,
+  rung,
+  index,
+  total,
+  label,
+  runsPerCell,
+  onMove,
+  onRunsChange,
+  onRemove,
+}: {
+  id: string;
+  rung: LadderRungInput;
+  index: number;
+  /** How many rungs the climb has, so the ends know not to offer a move off it. */
+  total: number;
+  /** The rung's case named as a reviewer sees it, for the row and its drag handle. */
+  label: string;
+  /** The ladder's default target, shown as this rung's inherited placeholder. */
+  runsPerCell: number;
+  onMove: (to: number) => void;
+  onRunsChange: (runs: number | undefined) => void;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  return (
+    <li
+      ref={setNodeRef}
+      className={`${ladder.rungEditItem} ${
+        isDragging ? ladder.rungEditItemDragging : ""
+      }`}
+      style={{
+        // Translate rather than the full transform: a sorting list only ever needs to
+        // slide rows past each other, and scaling a row mid-drag would resize the
+        // number field the reviewer is dragging past.
+        transform: CSS.Translate.toString(transform),
+        transition,
+      }}
+    >
+      <button
+        type="button"
+        className={ladder.rungDragHandle}
+        {...attributes}
+        {...listeners}
+        aria-label={`Reorder rung ${index + 1}, ${label}`}
+      >
+        ⠿
+      </button>
+      <span className={ladder.rungEditIndex}>{index + 1}</span>
+      <span className={ladder.rungEditName}>
+        {label} · {rung.variant} · {rung.version}
+      </span>
+      <label className={ladder.rungEditRuns}>
+        runs
+        <input
+          className={exec.input}
+          type="number"
+          min={1}
+          max={100}
+          step={1}
+          aria-label={`Runs for rung ${index + 1}`}
+          placeholder={String(runsPerCell)}
+          value={rung.runs ?? ""}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            const n = Math.floor(Number(raw));
+            onRunsChange(
+              raw === "" || !Number.isFinite(n)
+                ? undefined
+                : Math.min(Math.max(n, 1), 100),
+            );
+          }}
+        />
+      </label>
+      <span className={ladder.rungEditActions}>
+        <button
+          type="button"
+          className={ladder.rungMove}
+          aria-label={`Move rung ${index + 1} up`}
+          disabled={index === 0}
+          onClick={() => onMove(index - 1)}
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          className={ladder.rungMove}
+          aria-label={`Move rung ${index + 1} down`}
+          disabled={index === total - 1}
+          onClick={() => onMove(index + 1)}
+        >
+          ▼
+        </button>
+        <button
+          type="button"
+          className={styles.chipRemove}
+          aria-label={`Remove rung ${index + 1}`}
+          onClick={onRemove}
+        >
+          ✕
+        </button>
+      </span>
+    </li>
+  );
+}
+
+/**
  * The ordered rung list: the climb itself.
  *
  * Unlike a plan's case picker this is a *sequence*, not a set, so it is rendered as a
- * numbered list with explicit move controls rather than as pills — the order is the
- * only thing that makes a ladder a ladder, and a picker that hid it would be
+ * numbered list that can be dragged into order rather than as pills — the order is
+ * the only thing that makes a ladder a ladder, and a picker that hid it would be
  * describing a coverage plan. Each rung carries its own optional run-count override
  * so one pivotal step can demand more evidence without making the whole climb more
  * expensive.
@@ -434,11 +652,52 @@ export function RungListEditor({
 
   function move(from: number, to: number) {
     if (to < 0 || to >= rungs.length) return;
-    const next = [...rungs];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved!);
-    onChange(next);
+    onChange(arrayMove(rungs, from, to));
   }
+
+  // A short drag threshold so the handle can still be clicked, focused, and
+  // keyboard-lifted without a stray pixel of pointer movement starting a drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  function onDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return;
+    const from = rungs.findIndex((r) => rungKey(r) === active.id);
+    const to = rungs.findIndex((r) => rungKey(r) === over.id);
+    if (from < 0 || to < 0) return;
+    onChange(arrayMove(rungs, from, to));
+  }
+
+  // Where a rung is going is the whole content of this interaction, and a reviewer
+  // driving it from the keyboard cannot see the rows slide. dnd-kit's stock
+  // announcements name opaque droppable ids; these name the case and the position it
+  // would land at, which is what the list is showing everyone else.
+  const announcements = useMemo<Announcements>(() => {
+    const position = (id: UniqueIdentifier) =>
+      rungs.findIndex((r) => rungKey(r) === id) + 1;
+    const named = (id: UniqueIdentifier) => {
+      const rung = rungs.find((r) => rungKey(r) === id);
+      return rung ? testCaseName(rung.slug) : "rung";
+    };
+    return {
+      onDragStart: ({ active }) =>
+        `Picked up ${named(active.id)} at rung ${position(active.id)} of ${rungs.length}.`,
+      onDragOver: ({ active, over }) =>
+        over
+          ? `${named(active.id)} would become rung ${position(over.id)} of ${rungs.length}.`
+          : undefined,
+      onDragEnd: ({ active, over }) =>
+        over
+          ? `${named(active.id)} is now rung ${position(over.id)} of ${rungs.length}.`
+          : `${named(active.id)} was left where it was.`,
+      onDragCancel: ({ active }) =>
+        `Reordering cancelled. ${named(active.id)} is still rung ${position(active.id)}.`,
+    };
+  }, [rungs, testCaseName]);
 
   function addRung() {
     if (!selectionShown || !sel.slug || !sel.version || !sel.variant) return;
@@ -465,39 +724,35 @@ export function RungListEditor({
     <>
       {rungs.length === 0 ? (
         <p className={styles.empty}>
-          No rungs yet. Add the cases you want climbed, easiest first — the
-          order is the climb, and a model that walls on one rung never reaches
-          the next.
+          No rungs yet. Add the cases to be climbed, easiest first.
         </p>
       ) : (
-        <ol className={ladder.rungEditList}>
-          {rungs.map((rung, index) => (
-            <li
-              key={rung.id ?? `${rung.slug}@${rung.version}@${rung.variant}`}
-              className={ladder.rungEditItem}
-            >
-              <span className={ladder.rungEditIndex}>{index + 1}</span>
-              <span className={ladder.rungEditName}>
-                {testCaseName(rung.slug)} · {rung.variant} · {rung.version}
-              </span>
-              <label className={ladder.rungEditRuns}>
-                runs
-                <input
-                  className={exec.input}
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  aria-label={`Runs for rung ${index + 1}`}
-                  placeholder={String(runsPerCell)}
-                  value={rung.runs ?? ""}
-                  onChange={(e) => {
-                    const raw = e.target.value.trim();
-                    const n = Math.floor(Number(raw));
-                    const runs =
-                      raw === "" || !Number.isFinite(n)
-                        ? undefined
-                        : Math.min(Math.max(n, 1), 100);
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          // A rung can only ever change its place in the climb, so the drag is pinned
+          // to the list's own axis and bounds: nothing is dropped anywhere else, and
+          // a row dragged sideways off the editor would only suggest otherwise.
+          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+          onDragEnd={onDragEnd}
+          accessibility={{ announcements }}
+        >
+          <SortableContext
+            items={rungs.map(rungKey)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ol className={ladder.rungEditList}>
+              {rungs.map((rung, index) => (
+                <SortableRung
+                  key={rungKey(rung)}
+                  id={rungKey(rung)}
+                  rung={rung}
+                  index={index}
+                  total={rungs.length}
+                  label={testCaseName(rung.slug)}
+                  runsPerCell={runsPerCell}
+                  onMove={(to) => move(index, to)}
+                  onRunsChange={(runs) =>
                     onChange(
                       rungs.map((r, i) =>
                         i === index
@@ -508,41 +763,14 @@ export function RungListEditor({
                             : { ...r, runs }
                           : r,
                       ),
-                    );
-                  }}
+                    )
+                  }
+                  onRemove={() => onChange(rungs.filter((_, i) => i !== index))}
                 />
-              </label>
-              <span className={ladder.rungEditActions}>
-                <button
-                  type="button"
-                  className={ladder.rungMove}
-                  aria-label={`Move rung ${index + 1} up`}
-                  disabled={index === 0}
-                  onClick={() => move(index, index - 1)}
-                >
-                  ▲
-                </button>
-                <button
-                  type="button"
-                  className={ladder.rungMove}
-                  aria-label={`Move rung ${index + 1} down`}
-                  disabled={index === rungs.length - 1}
-                  onClick={() => move(index, index + 1)}
-                >
-                  ▼
-                </button>
-                <button
-                  type="button"
-                  className={styles.chipRemove}
-                  aria-label={`Remove rung ${index + 1}`}
-                  onClick={() => onChange(rungs.filter((_, i) => i !== index))}
-                >
-                  ✕
-                </button>
-              </span>
-            </li>
-          ))}
-        </ol>
+              ))}
+            </ol>
+          </SortableContext>
+        </DndContext>
       )}
 
       <div className={styles.inputRow}>
@@ -616,13 +844,6 @@ export function RungListEditor({
           + Add rung
         </button>
       </div>
-      <p className={styles.fieldHint}>
-        Performance cases and game jams cannot be rungs: the first is graded
-        automatically and never reaches a reviewer, the second is scored on the
-        graded category scale and records no rating — so a gate over either
-        could never resolve and the climber would stall with nothing looking
-        wrong.
-      </p>
     </>
   );
 }

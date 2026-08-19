@@ -26,15 +26,17 @@ export interface RunQuery {
    * its terminal state; that union is what the consoles' listings want (an
    * unpublished, and so unreviewed, run must sort and page alongside the
    * published ones) and what a listing scoped to something other than the publish
-   * lifecycle wants (the gg analysis section's Sessions tab). The static site only
-   * holds published runs, so `any` is `published` there and every *narrower*
-   * non-`published` state matches nothing. */
+   * lifecycle wants (the gg analysis section's Sessions tab). `publishable` is the
+   * narrower publish worklist: unpublished and clearing the backend's publish
+   * gate. The static site only holds published runs, so `any` is `published` there
+   * and every narrower non-`published` state matches nothing. */
   state?:
     | "published"
     | "any"
     | "review"
     | "failures"
     | "unpublished"
+    | "publishable"
     | "unreviewed";
   /** Filter to one test-case slug (an empty string is ignored). */
   testCase?: string;

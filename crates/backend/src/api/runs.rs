@@ -239,12 +239,16 @@ pub async fn delete(
 /// state (completed, every failure tier, including the never-publishable
 /// infrastructure failures), ordered by finish time — the console's "produced"
 /// worklist, disjoint from the default published listing.
-/// `state=any` (summary + offset path only) applies **no** lifecycle predicate at
-/// all: every recorded run, published or not, in any terminal state. That is what
-/// the consoles' run listings need — an unpublished run has to sort and page
-/// alongside the published ones — and what a listing scoped by something other than
-/// the publish lifecycle needs (the gg analysis section's Sessions tab, narrowed by
-/// `harness=gg`). It is offered only on the numbered-pager path below; the cursor
+/// `state=publishable` narrows that to the unpublished runs that would publish
+/// right now — the ones clearing the publish gate — for the console's Unpublished
+/// worklist, where every listed run is meant to be selectable and published.
+///
+/// `state=any` applies **no** lifecycle predicate at all: every recorded run,
+/// published or not, in any terminal state. That is what the consoles' run listings
+/// need — an unpublished run has to sort and page alongside the published ones —
+/// and what a listing scoped by something other than the publish lifecycle needs
+/// (the gg analysis section's Sessions tab, narrowed by `harness=gg`). It and
+/// `publishable` are offered only on the numbered-pager path below; the cursor
 /// listings walk one lifecycle slice at a time.
 ///
 /// `fields=summary` returns bounded [`RunSummary`] cards (the lightweight shape
@@ -719,14 +723,15 @@ pub struct SummaryListResponse {
 /// Map the `state` query param to the summary listing's lifecycle slice, mirroring
 /// the cursor path's `state` handling (`review`/`all` → the reviewer worklist).
 ///
-/// `any` has no cursor-path equivalent: it is the summary listing's union slice
-/// (published + unpublished), which only the numbered pager needs — see
-/// [`SummaryState::Any`].
+/// `any` and `publishable` have no cursor-path equivalent: both are summary-listing
+/// slices only the numbered pager needs — the published + unpublished union
+/// ([`SummaryState::Any`]) and the publish worklist ([`SummaryState::Publishable`]).
 fn summary_state(state: Option<&str>) -> SummaryState {
     match state {
         Some("review") | Some("all") => SummaryState::Review,
         Some("failures") => SummaryState::Failures,
         Some("unpublished") => SummaryState::Unpublished,
+        Some("publishable") => SummaryState::Publishable,
         Some("unreviewed") => SummaryState::Unreviewed,
         Some("any") => SummaryState::Any,
         _ => SummaryState::Published,

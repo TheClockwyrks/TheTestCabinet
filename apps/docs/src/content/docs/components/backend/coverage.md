@@ -142,6 +142,10 @@ is no ticker quietly spending money while nobody is looking: a plan enqueues whe
 you open its dashboard, when you press *Top up now*, or — if `autoTopUp` is on —
 when you submit a review, which is precisely the moment a buffer slot frees.
 
+A [ladder](/components/backend/ladders/#a-ladder-starts-disabled) is fed by the same
+endpoint but not by the same moments: it is created *disabled*, opening its dashboard
+enqueues nothing, and enabling it is what starts the climb.
+
 The algorithm is the same for plans and ladders:
 
 1. Walk the cells in the plan's configured [outer-axis order](#emission-order-is-execution-order).
@@ -250,6 +254,13 @@ stays out of every scoped halt by construction.
 An automatic retry inherits the **original** launcher and origin rather than taking
 the retrier's, so a retried run stays inside the buffer that asked for it and remains
 reachable by that plan's halt.
+
+It is also **withheld while that plan or ladder is paused**. A retry is a fresh queued
+job, and one appearing minutes after a reviewer halted the queue and watched it empty
+is the same surprise as a top-up nobody asked for — worse, because there is no control
+in the console that appears to have caused it. Runs already in flight when the pause
+landed still finish, which is exactly what a pause promises; only the next attempt is
+withheld. A run launched by hand has no plan speaking for it and retries as always.
 
 **Coverage counting ignores both columns.** They exist for halting and for
 attribution, and folding them into the counts would quietly re-introduce the

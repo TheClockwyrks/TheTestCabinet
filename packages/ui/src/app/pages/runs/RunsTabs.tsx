@@ -10,31 +10,41 @@ import {
   type ConfirmOptions,
 } from "../../components/ConfirmDialog";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
+import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import type { InProgressRun } from "../../../client/types";
 import { routes } from "../../routes";
 import styles from "./RunsTabs.module.scss";
 
 // Which runs surface the rendering page represents, so its tab reads as active.
-export type RunsTab = "runs" | "comparisons" | "failures" | "unreviewed";
+export type RunsTab =
+  | "runs"
+  | "comparisons"
+  | "failures"
+  | "unreviewed"
+  | "unpublished";
 
 // The shared control bar across the runs section's index surfaces: the tab strip
 // on the leading edge, the global stop controls on the trailing one. Each tab is
 // its own route (so a surface is linkable), mirroring the Settings section's tab
-// bar. The default **Tests** tab (the run log) and **Comparisons** are both
-// rendered on every host — a published comparison is public, read-only off the
-// snapshot on the static site. Failures and Unreviewed are console-only reviewer
-// tooling — their routes aren't mounted on the static site — so the public gallery
-// sees just Tests and Comparisons. (The coverage dashboard moved to the account
-// section's Coverage tab.)
+// bar. The default Tests tab (the run log) and Comparisons are both rendered on
+// every host — a published comparison is public, read-only off the snapshot on the
+// static site. Failures, Unreviewed, and Unpublished are console-only reviewer
+// tooling — their routes aren't mounted on the static site, and the public gallery
+// holds nothing unreviewed or unpublished by definition — so it sees just Tests and
+// Comparisons. (The coverage dashboard moved to the account section's Coverage tab.)
 //
 // The whole bar is one `<nav>` rather than a wrapper around one: the runs index's
 // own stylesheet owns the gap between this bar and the filter bar beneath it via
 // a `> nav` child selector, so the element the page sees must stay the nav.
 export function RunsTabs({ active }: { active: RunsTab }) {
   const { canExecute } = useGalleryData();
+  // The whole Runs section depends on a live in-flight list — the Runs tab lists
+  // those runs, and the stop controls below size themselves from the same list —
+  // so the run-lifecycle topic is declared here, once, rather than by each tab.
+  useLiveRunUpdates();
   // Remember this surface so a run's detail back-control returns to the tab the
-  // user was on (Tests / Comparisons / Failures / Unreviewed), not always the
-  // default Tests tab. Recorded unconditionally, even where the bar itself is
+  // user was on (Tests / Comparisons / Failures / Unreviewed / Unpublished), not
+  // always the default Tests tab. Recorded unconditionally, even where the bar itself is
   // dropped below.
   useRecordSectionIndex("runs");
   const tabs: { key: RunsTab; label: string; to: string }[] = [
@@ -55,6 +65,11 @@ export function RunsTabs({ active }: { active: RunsTab }) {
             key: "unreviewed" as const,
             label: "Unreviewed",
             to: routes.runUnreviewed(),
+          },
+          {
+            key: "unpublished" as const,
+            label: "Unpublished",
+            to: routes.runUnpublished(),
           },
         ]
       : []),
@@ -213,10 +228,11 @@ function StopRunsControls() {
       setStatus(describeSweep(await control.sweep()));
       // The swept jobs are moving to `canceled`. Nudge the data source to re-read
       // produced runs so they reappear as finished records; the in-flight list is
-      // deliberately left to the runtime's own reconcile poll rather than pruned
-      // optimistically here, because emptying it locally would switch that poll
-      // off (it only runs while runs are in flight) and strand anything the sweep
-      // raced past.
+      // deliberately left to the console stream rather than pruned optimistically
+      // here, because the backend publishes a `finished` run event per job the
+      // sweep actually ended — which is the authoritative set, and a smaller one
+      // than "everything this page was showing" whenever a run finished on its own
+      // as the sweep raced past it.
       runtime.requestRefresh();
     } catch (e) {
       setError(String(e));

@@ -671,6 +671,17 @@ export interface PublishResult {
   playableBuild: string | null;
 }
 
+// The acknowledgement of an **enqueued** publish (`202` from
+// `POST /runs/{id}/publish`): the queued publish job and where its release can be
+// watched. This is the whole of a publish the caller is guaranteed to see
+// synchronously — the release itself runs minutes later in its own Job. Watching
+// it is optional (see `WorkerClient.publish`); a caller that does not raises no
+// alert of its own and relies on the backend's `publish-failed` notification.
+export interface PublishEnqueued {
+  publishJobId: string;
+  liveUrl: string;
+}
+
 // A human-readable progress line streamed while a publish runs, surfaced so a
 // console can show "Publishing…" advance (creating repo → pushing → deploying)
 // rather than a frozen spinner. Mirrors the Rust `PublishProgress`
@@ -813,14 +824,21 @@ export interface HarnessConfigEntry {
   maxParallelism: number | null;
 }
 
-// A worker-wide run-completion notification, pushed to the console without
-// polling (SSE over `GET /notifications` on web; a global Tauri event on desktop).
-// Mirrors the worker's `WorkerNotification` / desktop `RunNotification` field for
-// field, so both transports deserialize into this one type. `recordId` (the run to
-// open) is present when `outcome` is "completed"; `message` (the reason) when
-// "failed".
+// A worker-wide notification about a run, pushed to the console without polling
+// (SSE over `GET /notifications`). Mirrors the backend's `Notification` field for
+// field. Two kinds arrive here:
+//
+//   - "run-completed" — the run reached a terminal state. `recordId` (the run to
+//     open) is present when `outcome` is "completed"; `message` (the reason) when
+//     "failed". `jobId` is the run job, so the console prunes it from the
+//     in-flight list.
+//   - "publish-failed" — the run's release did not land (`outcome` is always
+//     "failed"). `jobId` is the *publish* job, `recordId` the run that stayed
+//     unpublished, and `message` the publisher's reason. Publishing is
+//     asynchronous and the console rarely stays on the live stream, so this is
+//     how a failed release becomes visible at all.
 export interface RunNotification {
-  kind: "run-completed";
+  kind: "run-completed" | "publish-failed";
   jobId: string;
   testCaseSlug: string;
   variant: string;
@@ -829,6 +847,51 @@ export interface RunNotification {
   outcome: "completed" | "failed";
   recordId?: string | null;
   message?: string | null;
+}
+
+// A run-lifecycle event on the console stream's "runs" topic (SSE over
+// `GET /notifications`). Mirrors the backend's `RunEvent` field for field.
+//
+// Named `RunLifecycleEvent` here, not `RunEvent`, because in this codebase "run
+// events" already means a run's *harness* event stream — the timeline behind
+// `useRunEvents`, `RunEventsPage`, and `RunEventStreams`. This is the coarse job
+// lifecycle of *every* run instead, and the two are unrelated. (The same boundary
+// rename the backend's `Notification` gets as `RunNotification`.)
+//
+// This is list maintenance, not an alert. Where a `RunNotification` is something a
+// person is shown, these are every transition the in-flight list must reflect —
+// including the ones nobody wants a toast for (a run held back to "pending", a
+// driver reaching "starting", forty runs ending at once under a bulk cancel). The
+// two ride the same stream under separate topics, and the console subscribes to
+// this one only while it is showing a list that depends on it.
+//
+//   - "enqueued" — the run joined the queue; add it to the list.
+//   - "state-changed" — patch its phase in place, without reordering the list.
+//   - "finished" — it reached `state` ("succeeded" | "failed" | "canceled") and
+//     leaves the list. A run that produced a record also makes the produced-run
+//     listing stale, which is a separate re-read.
+//
+// `state` is the backend's fine-grained job state, not the console's coarser
+// phase; `runEventPhase` maps it.
+export interface RunLifecycleEvent {
+  kind: "enqueued" | "state-changed" | "finished";
+  runId: string;
+  testCaseSlug: string;
+  testCaseVersion: string;
+  variant: string;
+  harnessSlug: string;
+  modelId: string;
+  state:
+    | "queued"
+    | "pending"
+    | "dispatched"
+    | "starting"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "canceled";
+  recordId?: string | null;
+  detail?: string | null;
 }
 
 // --- Service identity (for the backend-consistency check) ---
