@@ -2,10 +2,10 @@
 title: Engines
 ---
 
-A test case is implemented by driving a [harness](/harnesses/overview/) through an
-[orchestrator](/orchestrators/overview/). An engine is what the resulting game is
-built on: the runtime that owns the frame loop, input, audio, assets, and
-diagnostics, and in some engines rendering and a gameplay framework as well.
+A test case is implemented by driving a [harness](/harnesses/overview/) through
+an [orchestrator](/orchestrators/overview/). An engine is what the resulting
+game is built on: the runtime that owns the frame loop, input, audio, assets,
+and diagnostics, and in some engines rendering and a gameplay framework as well.
 
 An engine is independent of the test case. It is selected per run alongside the
 test case, variant, harness, and model, and its slug and version are recorded on
@@ -23,22 +23,31 @@ A run selects one of these engines.
 | Engine | Slug | What it provides |
 | --- | --- | --- |
 | [None](/engines/none/) | `none` | No runtime. The build supplies everything. The default. |
-| [Simple 2D](/engines/simple/simple-2d/) | `simple-2d` | Frame, input, audio, assets, and diagnostics for a 2D game that writes its own simulation and rendering. |
+| [Simple 2D](/engines/simple-2d/overview/) | `simple-2d` | Frame, input, audio, assets, and diagnostics for a 2D game that writes its own simulation and rendering. |
+
+The remaining engines are designed and awaiting implementation, so they document
+their intent and stay outside the set a run selects from: [Simple
+3D](/engines/simple-3d/overview/), [Decoupled
+2D](/engines/decoupled-2d/overview/), and [Decoupled
+3D](/engines/decoupled-3d/overview/).
 
 ## Families and dimensionality
 
-An engine belongs to a family. [Simple](/engines/simple/overview/) provides the
-services a game needs around its own code and leaves the simulation and the
-drawing to the game. [Decoupled](/engines/decoupled/overview/) provides a gameplay
-framework the game is written inside, separates simulation from rendering, and
-owns the rendering itself.
+Each engine belongs to a family, which fixes how much of a game the runtime
+owns. The Simple family provides the services a game needs around its own code
+and leaves the simulation and the drawing to the game. The Decoupled family
+provides a gameplay framework the game is written inside, separates simulation
+from rendering, and owns the rendering itself.
 
 A family covers 2D and 3D as separate selectable engines rather than as one
 engine with a mode. The spatial model, the rendering pipeline, the asset kinds,
-and the touch layouts all differ between them, so a game targets one or the other
-from the start and a case supports whichever suits it. Each family page describes
-the engines that family is designed to cover; the catalogue above is what a run
-may select today.
+and the touch layouts all differ between them, so a game targets one or the
+other from the start and a case supports whichever suits it.
+
+Each engine documents itself in full, so the section for one engine states its
+whole contract rather than deferring to a sibling. An engine's pages are split
+four ways: the APIs it must expose, the concepts behind its internals, how a
+build uses it, and how a validator drives it.
 
 ## Selecting an engine
 

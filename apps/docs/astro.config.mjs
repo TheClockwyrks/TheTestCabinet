@@ -530,8 +530,10 @@ export default defineConfig({
           items: ["orchestrators/overview", "orchestrators/one-shot"],
         },
         // The engines — the runtimes a produced game is built on. The catalogue
-        // overview lists every engine; each family then has its own section for
-        // the pages specific to it. The contract they implement lives under Core.
+        // overview lists every engine; each engine then has its own section,
+        // split into the APIs it exposes, the concepts behind its internals, how
+        // a build uses it, and how a validator drives it. The contract they all
+        // implement lives under Core.
         {
           label: "Engines",
           collapsed: true,
@@ -539,15 +541,69 @@ export default defineConfig({
             "engines/overview",
             "engines/none",
             {
-              label: "Simple",
+              label: "Simple 2D",
               collapsed: true,
-              items: ["engines/simple/overview", "engines/simple/simple-2d"],
+              items: [
+                "engines/simple-2d/overview",
+                {
+                  label: "APIs",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/apis/overview",
+                    "engines/simple-2d/apis/engine",
+                    "engines/simple-2d/apis/frame",
+                    "engines/simple-2d/apis/input",
+                    "engines/simple-2d/apis/audio",
+                    "engines/simple-2d/apis/assets",
+                    "engines/simple-2d/apis/diagnostics",
+                    "engines/simple-2d/apis/host",
+                  ],
+                },
+                {
+                  label: "Concepts",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/concepts/overview",
+                    "engines/simple-2d/concepts/frame",
+                    "engines/simple-2d/concepts/viewport",
+                    "engines/simple-2d/concepts/input",
+                    "engines/simple-2d/concepts/audio",
+                    "engines/simple-2d/concepts/assets",
+                    "engines/simple-2d/concepts/diagnostics",
+                    "engines/simple-2d/concepts/host",
+                  ],
+                },
+                {
+                  label: "Usage",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/usage/overview",
+                    "engines/simple-2d/usage/creating-the-engine",
+                    "engines/simple-2d/usage/the-game-loop",
+                    "engines/simple-2d/usage/drawing",
+                    "engines/simple-2d/usage/actions",
+                    "engines/simple-2d/usage/audio-and-assets",
+                    "engines/simple-2d/usage/diagnostics",
+                  ],
+                },
+                {
+                  label: "Validators",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/validators/overview",
+                    "engines/simple-2d/validators/the-host",
+                    "engines/simple-2d/validators/clock",
+                    "engines/simple-2d/validators/input",
+                    "engines/simple-2d/validators/observations",
+                  ],
+                },
+              ],
             },
-            {
-              label: "Decoupled",
-              collapsed: true,
-              items: ["engines/decoupled/overview"],
-            },
+            // Designed and awaiting implementation: one overview each until their
+            // runtimes exist and their four sections can be written.
+            "engines/simple-3d/overview",
+            "engines/decoupled-2d/overview",
+            "engines/decoupled-3d/overview",
           ],
         },
         // gg is The Test Cabinet's own first-party harness. It has its own

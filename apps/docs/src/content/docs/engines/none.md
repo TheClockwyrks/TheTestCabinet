@@ -13,10 +13,11 @@ provided.
 ## Instrumentation
 
 Because no engine host exists, a `none` run is driven through the
-[instrumentation](/testing/end-to-end/instrumentation/) the case mandates: a debug
-API on a case-specific global, a deterministic core beneath it, and a read-only
-debug overlay. That contract is written by the model, so it is load-bearing. A
-build that does not expose it fails the checklist points its absence hides.
+[instrumentation](/testing/end-to-end/instrumentation/) the case mandates:
+a debug API on a case-specific global, a deterministic core beneath it, and a
+read-only debug overlay. That contract is written by the model, so it is
+load-bearing. A build that does not expose it fails the checklist points its
+absence hides.
 
 ## Documentation
 
