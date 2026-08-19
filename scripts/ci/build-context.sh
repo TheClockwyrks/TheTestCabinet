@@ -21,15 +21,23 @@
 #   1. the source path exists in the repository, and
 #   2. the allowlist that applies to THAT Dockerfile leaves it in the context.
 #
-# WHICH ALLOWLIST APPLIES. Almost every image here is built from the repository root
-# and answers to the root `.dockerignore`. One is not: BuildKit reads
+# WHICH ALLOWLIST APPLIES — and the answer is "every one that can", because which file
+# a builder reaches is not something a Dockerfile gets to decide. BuildKit reads
 # `<dockerfile-path>.dockerignore` in preference to the context root's whenever that
-# file exists, and `.devcontainer/ubuntu.dockerfile` has one — it builds from the repo
-# root too (it bakes gg's toolchains, which are pinned by the repository) but must not
-# widen the root allowlist to do it, because seven Dockerfiles that `COPY . .` share
-# that one. So this gate resolves the ignore file per Dockerfile, the way Docker does.
-# Evaluating a per-dockerfile context against the root allowlist would report a dozen
-# failures that no build has.
+# file exists. Buildah has a comparable rule and a different order, and in practice
+# does not always land on the same answer: a devcontainer rebuild driven by
+# podman-compose on a NixOS host read the ROOT allowlist and died on the first COPY —
+# `no items matching glob ".../apt.sh" copied (1 filtered out using .dockerignore)` —
+# which is how the root file came to carry `!/.devcontainer/…` entries at all.
+#
+# `.devcontainer/ubuntu.dockerfile` is the one Dockerfile here with a sibling ignore
+# file, so it can answer to ITS file or to the ROOT one depending on who builds it, and
+# a source admitted by one and not the other is a build that works for whoever added it
+# and fails for the next person on the other runtime.
+#
+# So this gate checks every Dockerfile against the root allowlist, and additionally
+# against its sibling one where it has it. The failure message names the file that
+# rejected the source, which is the file to widen.
 #
 # Whole-context copies (`COPY . .`) are inspected for neither of the two checks: they
 # take whatever the allowlist admits, which is exactly the question the allowlist
@@ -276,17 +284,14 @@ mapfile -t dockerfiles < <(git ls-files '*Dockerfile' '*.Dockerfile' '*.dockerfi
 	exit 1
 }
 
-loaded_ignore=""
-for dockerfile in "${dockerfiles[@]}"; do
-	# Docker's own rule: a `<dockerfile-path>.dockerignore` beside the Dockerfile
-	# replaces the context root's for that build. Loading is memoised because the
-	# list is sorted and all but one Dockerfile answers to the same root file.
-	ignore_file=".dockerignore"
-	[[ -f "$REPO_ROOT/$dockerfile.dockerignore" ]] && ignore_file="$dockerfile.dockerignore"
-	if [[ "$ignore_file" != "$loaded_ignore" ]]; then
-		load_dockerignore "$REPO_ROOT/$ignore_file"
-		loaded_ignore="$ignore_file"
-	fi
+# Check one Dockerfile's context-reading COPY/ADD sources against the allowlist that
+# is currently loaded. Both are named in every message: which Dockerfile, and which
+# allowlist rejected the source — the caller runs this once per allowlist that can
+# apply to that Dockerfile, so "which one" is the actionable half.
+check_dockerfile() {
+	local dockerfile="$1" ignore_file="$2"
+	local lineno instruction arg source normalized from_stage
+	local -a args positional
 
 	while read -r lineno instruction; do
 		[[ -n "$instruction" ]] || continue
@@ -342,6 +347,24 @@ for dockerfile in "${dockerfiles[@]}"; do
 			fi
 		done
 	done < <(copy_instructions "$dockerfile")
+}
+
+# Pass one: the root allowlist, which can apply to every Dockerfile here — to all but
+# one because it is the only ignore file their context has, and to that one because a
+# builder may not reach its sibling file. Loaded once, being the same file for all.
+load_dockerignore "$REPO_ROOT/.dockerignore"
+for dockerfile in "${dockerfiles[@]}"; do
+	check_dockerfile "$dockerfile" ".dockerignore"
+done
+
+# Pass two: the sibling allowlists, which BuildKit prefers for the Dockerfiles that
+# have one. A separate pass rather than a per-Dockerfile switch so that the root file
+# is parsed once rather than once per alternation.
+for dockerfile in "${dockerfiles[@]}"; do
+	sibling="$dockerfile.dockerignore"
+	[[ -f "$REPO_ROOT/$sibling" ]] || continue
+	load_dockerignore "$REPO_ROOT/$sibling"
+	check_dockerfile "$dockerfile" "$sibling"
 done
 
 # --- what a COPY cannot tell you --------------------------------------------
@@ -369,10 +392,12 @@ done
 # ANYTHING) would pass a package admitted only through the devcontainer's
 # `*-version.sh` glob and still leave the build without an `src`.
 #
-# Root allowlist only. This is a statement about the builds that compile gg, all of
-# which are built from the repository root; `.devcontainer/ubuntu.dockerfile` bakes
+# Root allowlist only, and here that phrase means what it says rather than "the file
+# that happened to be loaded": this is a statement about the builds that COMPILE gg,
+# every one of which reads the root allowlist. `.devcontainer/ubuntu.dockerfile` bakes
 # toolchains from pins and compiles none of this, and its own narrower allowlist is
-# correct to keep the sources out.
+# correct to keep the arms' sources out — which is why the check below is not run
+# against that file.
 load_dockerignore "$REPO_ROOT/.dockerignore"
 mapfile -t guest_packages < <(
 	git ls-files 'packages/gg-sandbox*' | cut -d/ -f1-2 | sort -u |
@@ -400,4 +425,6 @@ done
 	exit 1
 }
 
-echo "$checked context source(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles — are all in the build context."
+# A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
+# allowlist has its sources checked against both, which is the point.
+echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles — all survive."

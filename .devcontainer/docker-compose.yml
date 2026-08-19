@@ -22,8 +22,12 @@ services:
       # it. What keeps that from meaning "send the whole repository" is
       # ubuntu.dockerfile.dockerignore, a per-dockerfile allowlist that narrows it to
       # ~230 kB and applies to this build alone; its header explains why it exists
-      # rather than re-includes in the root .dockerignore. Every COPY in the
-      # Dockerfile is therefore written relative to the repository root.
+      # rather than re-includes in the root .dockerignore. That narrowing is an
+      # optimisation, not the thing that makes the build work: which ignore file a
+      # builder reaches differs between BuildKit and Buildah, and a podman-compose
+      # rebuild read the ROOT .dockerignore instead — which is why that file
+      # re-includes the five .devcontainer/ paths the COPYs below read. Every COPY in
+      # the Dockerfile is therefore written relative to the repository root.
       context: ..
       dockerfile: ./.devcontainer/ubuntu.dockerfile
     # Keep the container alive after the build's entrypoint exits.

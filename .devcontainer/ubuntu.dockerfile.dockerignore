@@ -12,18 +12,26 @@
 # the context moved up to the repository root (see `docker-compose.yml`'s
 # `context: ..`).
 #
-# WHY THAT SLICE IS NOT SIMPLY ADDED TO THE ROOT `.dockerignore`. Read that file's
-# opening paragraph: it is an allowlist rather than a list of exclusions precisely
-# so "a change to anything cargo does NOT compile — the frontend, the docs, test
-# cases, k8s manifests, models, this devcontainer — can never invalidate a build
-# layer". Seven Dockerfiles built from that context do `COPY . .` (the shared
+# WHY THIS FILE IS NOT THE ONLY PLACE THE SLICE IS DESCRIBED. Read the root
+# `.dockerignore`'s opening paragraph: it is an allowlist rather than a list of
+# exclusions precisely so "a change to anything cargo does NOT compile — the
+# frontend, the docs, test cases, k8s manifests, models — can never invalidate a
+# build layer". Seven Dockerfiles built from that context do `COPY . .` (the shared
 # asset-tooling builder that compiles ~20 Rust binaries, the adversarial and
 # performance run images, the web console image and all three service targets), so
-# re-including `/.devcontainer` there would mean editing this comment recompiled
-# the asset tooling from scratch. The root file already refuses to admit
-# `scripts/` as a whole for exactly that reason. A per-dockerfile ignore gets the
-# devcontainer the slice it needs with zero blast radius: the sibling Dockerfiles
-# keep reading the root allowlist, unchanged and unaffected.
+# every path admitted there lands in seven layer cache keys. This file exists to keep
+# the devcontainer's slice — in particular the narrow `packages` and `scripts/ci`
+# patterns that feed a 1.9 GB layer — out of those keys, and on a Docker host it
+# succeeds completely: the sibling Dockerfiles read the root allowlist, unchanged and
+# unaffected.
+#
+# It does NOT get that for free on every host, and the paragraph below is why: the
+# root allowlist now carries five `!/.devcontainer/…` entries, because a builder that
+# has never heard of this file has to be able to build the image too. Those entries
+# and this file are one list with two spellings — this one admits `!/.devcontainer`
+# whole, the root one names the five directories the Dockerfile's COPYs read — so a
+# new script directory works here and fails there. `scripts/ci/build-context.sh`
+# checks this Dockerfile against BOTH allowlists for that reason.
 #
 # HOW DOCKER FINDS THIS FILE. BuildKit looks for `<dockerfile-path>.dockerignore`
 # beside the Dockerfile and uses it INSTEAD OF the context root's when it exists —
@@ -35,30 +43,52 @@
 # back, at which point it builds.
 #
 # THIS REQUIRES BUILDKIT. The classic builder (`DOCKER_BUILDKIT=0`) does not know
-# about per-dockerfile ignore files: it silently falls back to the root allowlist and
-# stops at the first COPY with `COPY failed: file not found in build context or
-# excluded by .dockerignore`. Docker has defaulted to BuildKit since 23 and the
-# devcontainer's own `docker` client ships `buildx`, so this is a statement of a
-# requirement rather than a caveat — if a build of this image ever reports a missing
-# `.devcontainer/...` file, check that first.
+# about per-dockerfile ignore files: it silently falls back to the root allowlist.
+# Docker has defaulted to BuildKit since 23 and the devcontainer's own `docker` client
+# ships `buildx`, so that is a statement of a requirement rather than a caveat. It is
+# no longer a way to BREAK the build, though, because the root allowlist now admits
+# this image's `.devcontainer/` sources too — see the next paragraph for why it had to.
 #
-# AND IT IS A REQUIREMENT THIS REPOSITORY DOES NOT MEET ON EVERY SUPPORTED HOST.
-# `docker-compose.nixos.yml` and `.env.podman` are committed, and `README.md` tells a
-# NixOS user to copy them, so ROOTLESS PODMAN is a configuration somebody is expected
-# to build this image with. Podman does not go through BuildKit: Buildah resolves an
-# ignore file from the CONTEXT directory — `$CONTEXT/.containerignore`, then
-# `$CONTEXT/.dockerignore` — with `--ignorefile` as the only override, and implements
-# no sibling-to-the-Dockerfile rule. On such a host the ROOT allowlist is what applies
-# to this build, and it never admits `/.devcontainer`, so the first COPY fails with
-# "no such file or directory". Not verified here, because there is no podman in this
-# container to verify it with; it is stated as the thing to check first rather than as
-# a measurement.
+# AND ROOTLESS PODMAN DOES NOT RELIABLY REACH THIS FILE — which is not hypothetical:
+# `docker-compose.nixos.yml` and `.env.podman` are committed and `README.md` tells a
+# NixOS user to copy them, and a rebuild on such a host is what reported it. Podman
+# does not go through BuildKit. Buildah resolves an ignore file in its own order
+# (`pkg/parse.ContainerIgnoreFile`): an explicit `--ignorefile`, then
+# `<containerfile>.containerignore`, then `<containerfile>.dockerignore`, then
+# `$CONTEXT/.containerignore`, then `$CONTEXT/.dockerignore`. So it does have a
+# sibling rule, and by that order it ought to find this very file — and it did not.
+# The build, driven by VS Code's Dev Containers extension through `podman-compose`,
+# ended on its first COPY with
 #
-# There is no mechanism both builders honour, which is why this is documented instead
-# of solved: a root `.containerignore` would be preferred by Buildah for EVERY image
-# built from this context, which is precisely the blast radius the paragraph above
-# refuses. The workaround is one flag, and it has to go on a `podman build` rather than
-# on compose:
+#     no items matching glob ".../.devcontainer/system/apt.sh" copied
+#     (1 filtered out using /…/.dockerignore): no such file or directory
+#
+# naming the ROOT allowlist, by absolute path, as the one it applied. An older buildah
+# than the sibling rule and a containerfile path `podman-compose` hands it that the
+# lookup cannot join back to this directory are both consistent with that, and the two
+# are not worth distinguishing, because either way the lesson is the same one: THIS
+# FILE IS AN OPTIMISATION AND MAY SIMPLY NOT BE FOUND.
+#
+# SO THE BUILD IS MADE TO WORK IN THE ROOT ALLOWLIST, NOT HERE. It re-includes the five
+# `.devcontainer/` paths this Dockerfile COPYs, and its own block there argues the
+# cost (~24 files in seven `COPY . .` cache keys, against the whole of `crates/` and
+# `scripts/ci` those keys already carry) and the alternative that was rejected (a root
+# `.containerignore`, which Buildah prefers over `.dockerignore` for EVERY image built
+# from this context, on every Podman host).
+#
+# So both builders now build this image, and they do not build it identically. Docker
+# reads this file and gets the ~230 kB slice. Podman reads the root allowlist, and the
+# difference lands on exactly ONE of the Dockerfile's COPYs: the bare
+# `COPY ./packages`. Every other one names files or globs them (`install-*.sh`,
+# `gg-*.sh`, `rust-toolchain.toml`), so a wider allowlist cannot widen what they take
+# — but a directory copy takes whatever survives, and the root allowlist admits the
+# guest packages whole (the driver image compiles them) plus `ui`, `run-record`,
+# `run-stats` and the two runtimes (the web image bundles them). So on a Podman host
+# that layer carries a few MB rather than the nine `*-version.sh` files and the seven
+# pins named below it, and the 1.9 GB
+# toolchain layer beneath it takes an unrelated `packages/ui` edit as a cache miss.
+# Correct either way; cheaper under Docker. If that ever matters enough to fix, the fix
+# is `podman build --ignorefile` (below), not a narrowing of the root file:
 #
 #     podman build --ignorefile .devcontainer/ubuntu.dockerfile.dockerignore \
 #       -f .devcontainer/ubuntu.dockerfile -t <the tag compose expects> .

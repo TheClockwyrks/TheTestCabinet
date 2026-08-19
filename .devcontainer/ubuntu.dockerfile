@@ -21,7 +21,10 @@ ARG TZ
 # repository rather than in this directory. `.devcontainer/ubuntu.dockerfile.dockerignore`
 # is what keeps that context to the ~230 kB slice these COPYs actually read, and its
 # header explains why the slice is defined there rather than in the root
-# `.dockerignore`.
+# `.dockerignore`. That narrowing is an optimisation rather than a load-bearing rule:
+# BuildKit and Buildah do not agree on which ignore file to reach for, and a
+# podman-compose rebuild applied the ROOT allowlist to this build instead — which is
+# why that file re-includes the five `.devcontainer/` paths copied below.
 
 # Install apt packages, base OS configuration, and the container user.
 COPY ./.devcontainer/system/apt.sh ./.devcontainer/system/system-config.sh ./.devcontainer/system/init-user.sh /tmp/scripts/
