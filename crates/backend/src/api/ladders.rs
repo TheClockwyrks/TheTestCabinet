@@ -938,7 +938,12 @@ async fn top_up_locked(
     // re-tallying the launchable cells is also what keeps the number the dashboard
     // shows and the number the top-up obeys from ever disagreeing.
     let outstanding = board.progress.runs_outstanding;
-    let launches = decide_top_up(&demands, buffer_target, outstanding);
+    let launches = decide_top_up(
+        &demands,
+        board.ctx.harness_capacity(),
+        buffer_target,
+        outstanding,
+    );
 
     let cells: Vec<TopUpCell<'_>> = launches
         .iter()
