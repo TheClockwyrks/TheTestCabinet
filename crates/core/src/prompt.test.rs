@@ -30,6 +30,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
 /// that decides whether the asset-generation quality preamble is prepended.
 fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
@@ -74,7 +75,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         init: None,
         asset_paths: vec![],
         packages: Vec::new(),
-        engines: vec![crate::engine::NONE_SLUG.to_string()],
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: vec![],
         common_references: vec![],
         common_proofs: vec![],

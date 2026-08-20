@@ -185,6 +185,7 @@ fn base_variant() -> crate::test_case::Variant {
 /// A minimal asset-generation version drawing on a 4x4 transparent canvas.
 fn asset_version() -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "sprite".to_string(),
         version: "v1.0.0".to_string(),
@@ -230,7 +231,7 @@ fn asset_version() -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
-        engines: vec![crate::engine::NONE_SLUG.to_string()],
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -430,6 +431,7 @@ use crate::test_case::{ContractSpec, SandboxSpec, SimulationSpec};
 /// is `module_rel` (relative to the run root).
 fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
@@ -483,7 +485,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
-        engines: vec![crate::engine::NONE_SLUG.to_string()],
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

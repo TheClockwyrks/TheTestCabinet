@@ -130,6 +130,25 @@ A point excluded from scoring for the version, through an
 [erratum](/testing/end-to-end/manifests/) that links its verdict id, is still
 driven and its media still captured, but a failed drive costs it nothing.
 
+## The toolchain gate
+
+A case declaring a
+[`[toolchain]`](/testing/end-to-end/manifests/#the-typescript-toolchain) table has
+its TypeScript commands run over the collected tree after the run's container is
+gone, together with a smoke check that builds the implementation and opens it in a
+headless browser. Each command's outcome and a bounded excerpt of its output are
+recorded on the run record's own `toolchain` block, beside the validation summary.
+
+A `typecheck` that ran and exited non-zero gates the run: it is rated `broken` and
+scored zero, because code that does not compile is not reviewable. The gate is
+applied where a run's overall rating and score are derived from its reviews, so
+reviewer verdicts are stored as written. Every other toolchain command is recorded
+and gates nothing, and a typecheck that never ran leaves the run ungated.
+
+The run stays reviewable. A gated run is published with its results and the
+compiler output, and a reviewer may still play and score the build; the gate
+decides the badge the run carries, not whether it can be judged.
+
 ## Results
 
 Validation output is summarized into the [run

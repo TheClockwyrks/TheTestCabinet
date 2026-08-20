@@ -123,6 +123,14 @@ pub struct PostRunReport {
     /// every stage that is not the analyzer, and from an analyzer that had nothing to
     /// measure.
     pub code_analysis: Option<crate::code_analysis::CodeAnalysisSummary>,
+    /// The [toolchain summary](crate::toolchain::ToolchainSummary) destined for
+    /// [`RunRecord::toolchain`](crate::RunRecord::toolchain), when a stage ran the
+    /// case's `[toolchain]` commands.
+    ///
+    /// `None` from every stage that is not the toolchain stage, and from a toolchain
+    /// stage whose case declares no `[toolchain]` table — which the record's `Option`
+    /// reports as *not checked*, distinct from *checked and clean*.
+    pub toolchain: Option<crate::toolchain::ToolchainSummary>,
 }
 
 impl PostRunReport {
@@ -137,6 +145,7 @@ impl PostRunReport {
         Self {
             artifacts: vec![path.into()],
             code_analysis: None,
+            toolchain: None,
         }
     }
 
@@ -150,6 +159,18 @@ impl PostRunReport {
         Self {
             artifacts: vec![path.into()],
             code_analysis: Some(summary),
+            toolchain: None,
+        }
+    }
+
+    /// A report for the stage that ran the case's
+    /// [`[toolchain]`](crate::toolchain) commands: it writes no artifact and
+    /// contributes only the bounded summary destined for the record.
+    pub fn toolchain(summary: crate::toolchain::ToolchainSummary) -> Self {
+        Self {
+            artifacts: Vec::new(),
+            code_analysis: None,
+            toolchain: Some(summary),
         }
     }
 
@@ -165,6 +186,9 @@ impl PostRunReport {
         if self.code_analysis.is_none() {
             self.code_analysis = other.code_analysis;
         }
+        if self.toolchain.is_none() {
+            self.toolchain = other.toolchain;
+        }
     }
 }
 
@@ -173,9 +197,22 @@ impl PostRunReport {
 /// Implementations are supplied by the host that assembles the
 /// [`RunEngine`](crate::RunEngine) and are invoked once per run, at the single
 /// seam this module documents. A stage may read the produced tree and write
-/// artifacts into the run directory; it must not execute anything the run
-/// produced, and it must not judge the run — no figure a stage computes may
-/// influence a run's score or verdict.
+/// artifacts into the run directory.
+///
+/// **A stage does not judge the run.** It measures, and it records what it
+/// measured; the run's rating and score are decided elsewhere, from the reviews.
+/// The one exception is deliberate, narrow and named in the manifest: the
+/// [toolchain stage](crate::toolchain_stage) runs the commands the case's
+/// `[toolchain]` table declares over the produced implementation, and a `typecheck`
+/// that ran and exited non-zero
+/// [gates](crate::toolchain::ToolchainSummary::gates) the run — code that does not
+/// compile is not reviewable. Even there the stage renders no verdict of its own:
+/// it records the exit status, and the gate is applied where the aggregate rating
+/// and score are computed ([`crate::review::gated_rating`]), so no reviewer's
+/// stored marks are ever rewritten by it. Any *new* stage that wants to influence
+/// a run's score needs the same treatment — a documented manifest declaration and
+/// an explicit gate at the aggregation seam — rather than a figure quietly folded
+/// into a score.
 #[async_trait::async_trait]
 pub trait PostRunStage: Send + Sync {
     /// A short, stable name for the stage, used in the log line that reports what

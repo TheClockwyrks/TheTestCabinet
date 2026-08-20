@@ -199,6 +199,15 @@ cuid2 = "0.1"
 dotenvy = "0.15"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 toml = "0.8"
+# Semantic-version parsing and ordering. A test case declares, per engine it
+# supports, the range of engine versions it was written against (`[[engine]]`'s
+# `min_version`/`max_version`), and the run gate compares the catalogue's staged
+# engine version against that range before any container work. Ordering versions
+# is exactly the problem semver solves — precedence rules, numeric identifier
+# comparison, pre-release ordering — and getting it wrong silently admits or
+# refuses runs, so it is not hand-rolled. Already in the lock file transitively,
+# so naming it here adds no new fetch.
+semver = { version = "1", features = ["serde"] }
 # Renders each test case's `prompt.hbs` template into the instruction handed to
 # the harness, interpolating the in-container workspace and seeded spec paths so
 # they are never hard-coded into a specification.

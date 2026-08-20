@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use test_cabinet_code_analysis::StaticCodeAnalyzer;
+use test_cabinet_core::ToolchainStage;
 use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
@@ -321,6 +322,11 @@ where
         // pass is harness-agnostic), it writes the run tree's
         // `code-analysis.json.gz`, and the summary it hands back rides on the record.
         analyzer: Some(Box::new(StaticCodeAnalyzer)),
+        // …and the case's TypeScript toolchain runs last in the seam, because unlike
+        // the two above it *writes* to the collected tree: it installs the
+        // dependencies its commands need and runs the build its smoke check serves.
+        // A `typecheck` that ran and failed is what gates the run.
+        toolchain: Some(Box::new(ToolchainStage)),
         validator: DispatchValidator::new(screenshot_dir),
         prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),

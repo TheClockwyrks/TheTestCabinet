@@ -82,11 +82,18 @@ a capability an engine gained in a known version. The maximum pins a case to the
 versions it was verified under, which is what a case states once a later engine
 version changes behavior its checks depend on.
 
-Both ends are enforced before work is spent. Resolving a case rejects a declared
-range the catalogue cannot satisfy, so a case naming versions that do not exist
-fails at resolution. Selecting an engine for a run compares the catalogue's
-version of that engine against the case's range and refuses a run outside it
-before any container work begins.
+Both ends are enforced before work is spent. Resolving a case rejects a range it
+could never admit an engine under, so a malformed range fails at resolution.
+Selecting an engine for a run compares the version the host would stage against
+the case's range and refuses a run outside it before any container work begins.
+A case that declares a range the host has no staged version to check against is
+refused the same way, because a range is a statement that only some versions are
+safe.
+
+Resolution does not consult the host package store, so a case resolves on a host
+that stages nothing. That is what lets a case be listed, prompted and reviewed
+away from the machines that run it, and it keeps a case pinned below the version
+the store now holds resolvable rather than unreadable.
 
 ## Delivery
 
@@ -201,10 +208,10 @@ engine versions it supports, in its manifest. A case that declares nothing
 supports `none` alone. The
 [manifest format](/testing/end-to-end/manifests/) carries the grammar.
 
-Every entry names a slug the engine catalogue knows and a version range the
-catalogue can satisfy, both checked when the case resolves, before a run is
-spent. `none` is supported by every case whether it is declared or not, and
-declaring it explicitly is the readable form. A case declaring an engine that
+Every entry names a slug the engine catalogue knows and a well-formed version
+range, both checked when the case resolves, before a run is spent. `none` is
+supported by every case whether it is declared or not, and declaring it
+explicitly is the readable form. A case declaring an engine that
 provides a runtime ships a workspace `package.json`, because the engine
 dependency is written into that file at seed time.
 

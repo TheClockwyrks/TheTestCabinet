@@ -305,6 +305,7 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
         // the same stage a completed one does, producing the same artifact.
         session_assembler: Some(Box::new(GgSessionAssembler)),
         analyzer: None,
+        toolchain: None,
         validator: UnreachableValidator,
         prices: OpenRouterPrices::new(),
         output_dir: out_dir.path().to_path_buf(),

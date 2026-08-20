@@ -611,7 +611,18 @@ impl Db {
             .into_iter()
             .map(stored_review)
             .collect::<Result<Vec<_>>>()?;
-        let rating = lifted_rating(&reviews);
+        // The gate is a fact about the run record, not about the reviews, so the
+        // record is read back here to compose it with the freshly-recomputed
+        // aggregate. A record that will not deserialize cannot gate: a storage
+        // problem must not silently mark a run broken.
+        let gate_record = serde_json::from_str::<RunRecord>(&run.record_json).ok();
+        let rating = match &gate_record {
+            Some(record) => lifted_rating(record, &reviews),
+            None => test_cabinet_core::review::aggregate_rating(
+                reviews.iter().map(|review| review.ratings.as_slice()),
+            )
+            .map(|rating| rating.as_str().to_string()),
+        };
         let review_count = reviews.len() as i64;
 
         let published = run.published;
@@ -1789,11 +1800,22 @@ fn lifted_gg_preset(record: &RunRecord) -> Option<String> {
 /// or `None` when the run carries no reviews. The single source of truth for the
 /// lifted `run.rating` column and the snapshot's summary cards; wraps the core
 /// [`aggregate_rating`](test_cabinet_core::review::aggregate_rating).
+///
+/// The record is taken as well as the reviews because a run can be rated `broken`
+/// *without* any reviewer saying so: a case's gating `typecheck` that ran and failed
+/// disqualifies the run (see
+/// [`RunRecord::gated_broken`](test_cabinet_core::RunRecord::gated_broken)). The gate
+/// is composed over the reviews here, at the single seam that derives a run's one
+/// overall rating, rather than written into any reviewer's stored marks.
 pub(crate) fn aggregate_review_rating(
+    record: &RunRecord,
     reviews: &[StoredReview],
 ) -> Option<test_cabinet_core::review::Rating> {
-    test_cabinet_core::review::aggregate_rating(
-        reviews.iter().map(|review| review.ratings.as_slice()),
+    test_cabinet_core::review::gated_rating(
+        record.gated_broken(),
+        test_cabinet_core::review::aggregate_rating(
+            reviews.iter().map(|review| review.ratings.as_slice()),
+        ),
     )
 }
 
@@ -4049,8 +4071,8 @@ fn gate_from_row(row: &ladder::Model) -> Result<Gate> {
 
 /// The lifted `run.rating` column value: the aggregate rating as its lowercase
 /// wire token, or `None` when the run carries no reviews.
-fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
-    aggregate_review_rating(reviews).map(|rating| rating.as_str().to_string())
+fn lifted_rating(record: &RunRecord, reviews: &[StoredReview]) -> Option<String> {
+    aggregate_review_rating(record, reviews).map(|rating| rating.as_str().to_string())
 }
 
 /// The test types graded automatically, which therefore never await a human
@@ -5756,7 +5778,7 @@ impl Db {
             };
             let lifted = lifted_run_metrics(&record);
             let reviews = review_map.get(&row.id).map(Vec::as_slice).unwrap_or(&[]);
-            let rating = lifted_rating(reviews);
+            let rating = lifted_rating(&record, reviews);
             let review_count = reviews.len() as i64;
 
             let id = row.id.clone();

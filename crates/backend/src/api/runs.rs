@@ -361,7 +361,7 @@ fn summary_cards(store: &DefinitionStore, runs: &[StoredRun]) -> Vec<RunSummary>
                     .ok()
             });
             if let Some(manifest) = manifest {
-                card.score = run_summary_score(manifest, &subject.variant, &run.reviews);
+                card.score = run_summary_score(manifest, &run.record, &run.reviews);
             }
             card
         })

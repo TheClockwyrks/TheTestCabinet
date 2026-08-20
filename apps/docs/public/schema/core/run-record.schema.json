@@ -1803,6 +1803,165 @@
       },
       "type": "object"
     },
+    "ToolchainCommandResult": {
+      "description": "What one toolchain command did.\n\n[`ran`](Self::ran) distinguishes *the command exited non-zero* from *the command\nwas never started* — a declared command whose prerequisite install failed did not\nfail the check, it never got the chance, and reporting that as a failure would be\na fabricated verdict. Only a command that ran and exited non-zero can gate.",
+      "properties": {
+        "command": {
+          "description": "The command as the manifest declared it, run verbatim through `sh -c`.",
+          "type": "string"
+        },
+        "detail": {
+          "description": "Why the command did not run, when it did not. `None` for a command that ran,\nwhatever it exited with.",
+          "type": ["string", "null"]
+        },
+        "exitCode": {
+          "description": "The process exit status, or `None` when the command never ran (or was killed\nby a signal, which leaves no code).",
+          "format": "int32",
+          "type": ["integer", "null"]
+        },
+        "output": {
+          "description": "A bounded excerpt of the command's combined output, capped at\n[`TOOLCHAIN_OUTPUT_LIMIT`] bytes. Empty when the command produced none.",
+          "type": "string"
+        },
+        "ran": {
+          "description": "Whether the command was started at all. `false` when a prerequisite step\nfailed, when no shell could be spawned, or when the stage ran out of time.",
+          "type": "boolean"
+        },
+        "succeeded": {
+          "description": "Whether the command ran and exited zero.",
+          "type": "boolean"
+        },
+        "truncated": {
+          "description": "Whether [`output`](Self::output) is an excerpt rather than the whole of what\nthe command printed.",
+          "type": "boolean"
+        }
+      },
+      "required": ["command", "ran", "succeeded", "output", "truncated"],
+      "type": "object"
+    },
+    "ToolchainSmokeResult": {
+      "description": "The build smoke check: does the site the build produced actually boot?\n\nDistinct from — and weaker than — validation's load check, which decides review\npoints. This one answers a single question at the moment the toolchain ran: the\nbuilt site was served, opened in headless Chromium, and either painted a first\nframe with a clean console or it did not.",
+      "properties": {
+        "booted": {
+          "description": "Whether the page loaded and its scripts got as far as a first animation\nframe.",
+          "type": "boolean"
+        },
+        "consoleErrors": {
+          "description": "Console errors and uncaught page errors observed while the page booted, each\ntruncated to a readable length and capped in number. Empty is the clean case.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "detail": {
+          "description": "Why the check could not run, or what went wrong while it did.",
+          "type": ["string", "null"]
+        },
+        "painted": {
+          "description": "Whether that first frame drew anything — a canvas with more than one distinct\npixel, or a laid-out DOM.",
+          "type": "boolean"
+        },
+        "ran": {
+          "description": "Whether the check could be performed at all: the build produced an output\ndirectory and a browser was available to open it. `false` degrades — a host\nwith no Node, Playwright or Chromium reports *not checked*, never *failed*.",
+          "type": "boolean"
+        }
+      },
+      "required": ["ran", "booted", "painted"],
+      "type": "object"
+    },
+    "ToolchainSummary": {
+      "description": "Everything the [toolchain stage](crate::toolchain_stage) recorded for a run,\ndestined for [`RunRecord::toolchain`](crate::run_record::RunRecord::toolchain).\n\nAbsent from a run whose case declares no `[toolchain]` table, and from a run\nwhose tree never reached the host — absence means *not checked*, which the\nrecord's `Option` is what encodes.",
+      "properties": {
+        "format": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainCommandResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional format check's result, when the case declared one."
+        },
+        "install": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The dependency install the stage ran before the commands, so that each\ncommand had the dependencies it needs. Reported in its own right because a\nfailed install is why every command below it reports `ran: false`."
+        },
+        "lint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainCommandResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional lint command's result, when the case declared one."
+        },
+        "smoke": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainSmokeResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The build the smoke check served, and the check itself. `None` when the stage\ndid not get as far as building."
+        },
+        "test": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainTestRun"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional test command's result and figures, when the case declared one."
+        },
+        "typecheck": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The gating typecheck. Always present when the case declares a toolchain,\neven when it never ran — *why* it did not run is the whole point of\n[`ToolchainCommandResult::ran`]."
+        }
+      },
+      "required": ["install", "typecheck"],
+      "type": "object"
+    },
+    "ToolchainTestRun": {
+      "description": "The optional `test` command's result, plus the figures its output reported.\n\nThe counts and the coverage are parsed **defensively** out of whatever the\ncommand printed: a runner that reports neither is not a failure, it is a runner\nthat reports neither, and every figure here is therefore an `Option` whose\nabsence means *not reported* rather than *zero*. A zero here is only ever a zero\nthe tool actually printed.",
+      "properties": {
+        "coveragePercent": {
+          "description": "Line coverage as a percentage (`0.0..=100.0`), read from the coverage\nsummary table's `All files` row, when the command printed one.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "result": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The command, its exit status and its bounded output."
+        },
+        "testsFailed": {
+          "description": "How many failed, when the output said.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "testsPassed": {
+          "description": "How many passed, when the output said.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "testsTotal": {
+          "description": "How many tests ran in total, when the output said.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["result"],
+      "type": "object"
+    },
     "UiElementResult": {
       "description": "The validation result for one element of a `ui` run: its emitted flattened PNG,\nits decoded dimensions, and any authored nine-slice.",
       "properties": {
@@ -2034,6 +2193,17 @@
       },
       "description": "How many times each tool the harness's agent invoked was called over the\nrun, keyed by lowercased raw tool name — **including** tools recognized and\nconsumed without emitting an event (the todo tools). Lifted from\n[`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so\na harness comparison can diagnose tool-call behavior (a re-reading or\nover-shelling harness shows here) that a count derived from the event stream\nalone would miss. Defaulted and omitted when\nempty so records written before the field existed still deserialize, and a\ngg run — whose per-tool detail comes from its own telemetry — carries none.",
       "type": "object"
+    },
+    "toolchain": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolchainSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the case's [`[toolchain]`](crate::toolchain) commands did when they were\nrun over the produced implementation at the\n[post-run seam](crate::post_run), together with the build smoke check.\n\n**This is the one analysis block that can influence a run's rating**, and it\ndoes so through exactly one field: a `typecheck` that ran and exited non-zero\n[gates](crate::toolchain::ToolchainSummary::gates) the run, which rates it\n`broken` and scores it zero, because code that does not compile is not\nreviewable. The lint, format and test results are recorded and gate nothing.\nThe gate is applied where the aggregate rating and score are computed\n([`crate::review::gated_rating`]), never by rewriting a reviewer's marks.\n\nAbsent for a run whose case declares no `[toolchain]` table, for a canceled\nrun, for a run whose tree never reached the host, and for every record written\nbefore the field existed. Absence is *not checked*, and it never gates — the\ndistinction the `Option` exists to keep."
     },
     "tooling": {
       "$ref": "#/$defs/RunTooling",

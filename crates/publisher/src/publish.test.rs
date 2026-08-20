@@ -139,6 +139,7 @@ fn sample_record() -> RunRecord {
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
         code_analysis: None,
+        toolchain: None,
     }
 }
 

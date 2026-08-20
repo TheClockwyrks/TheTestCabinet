@@ -28,6 +28,9 @@
 //! validator drives. An engine supplied from outside the repository would satisfy
 //! none of those, so an unknown slug is refused rather than looked for on disk.
 
+use std::path::{Path, PathBuf};
+
+use semver::Version;
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
@@ -124,18 +127,49 @@ impl EngineSelection {
     }
 }
 
-/// A resolved engine: its validated manifest, ready for the seeder, the prompt
-/// renderer, and the run record.
+/// A resolved engine: its validated manifest and the version of the package the
+/// catalog would stage, ready for the seeder, the prompt renderer, the run
+/// record, and the case's version gate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedEngine {
     /// The parsed and validated manifest.
     pub manifest: EngineManifest,
+    /// The version of this engine's package in the host package store, read from
+    /// the staged `package.json`. See [`Self::version`] for what `None` means.
+    version: Option<Version>,
 }
 
 impl ResolvedEngine {
     /// This engine's slug, as recorded on the run.
     pub fn slug(&self) -> &str {
         &self.manifest.slug
+    }
+
+    /// The version of this engine, or `None` when it has none to report.
+    ///
+    /// An engine's version is the `version` of its npm package in the host
+    /// package store — the *same* file [`seeding`](crate::seeding) reads when it
+    /// vendors the package into the run repository and records the version on the
+    /// run, so the number a case's range is checked against and the number the run
+    /// records come from one source of truth. It deliberately does **not** live in
+    /// `engine.toml`: a manifest copy would be a second place to bump and would go
+    /// stale the moment the package was rebuilt without it.
+    ///
+    /// `None` means one of two things, distinguished by
+    /// [`Self::provides_runtime`]:
+    ///
+    /// - the engine vendors no runtime ([`NONE_SLUG`]), so there is no package and
+    ///   no version — the honest answer, not a missing one;
+    /// - the engine *does* vendor a runtime but the host package store holds no
+    ///   readable, semver-shaped version for it. Resolution stays tolerant of that
+    ///   because a catalogue lookup happens in places that never seed anything (a
+    ///   `tcab engines` listing, a case resolving its declared slugs, a
+    ///   `tcab validate` on a host that has staged nothing), and a store fault is
+    ///   reported where it can be acted on: [`seeding`](crate::seeding) refuses the
+    ///   run with the restaging instructions, and the run gate refuses a case that
+    ///   declared a version range it now cannot check.
+    pub fn version(&self) -> Option<&Version> {
+        self.version.as_ref()
     }
 
     /// Whether this engine vendors a runtime into the run repository.
@@ -169,15 +203,47 @@ impl ResolvedEngine {
 
 /// Resolves an [`EngineSelection`] into a [`ResolvedEngine`].
 ///
-/// Every engine is built in and embedded at build time, so this is stateless and
-/// infallible except for the one thing that is genuinely user input: the slug.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct EngineCatalog;
+/// Every engine's *manifest* is built in and embedded at build time, so the only
+/// thing that is genuinely user input is the slug. An engine's *version* is not
+/// embedded: it is the version of the engine's package in the host package store,
+/// so the catalog carries the store path in order to answer
+/// [`ResolvedEngine::version`] from the same file the seeder reads. That is what
+/// lets the run gate compare a case's declared range against the version a run
+/// would actually be given, before any container work.
+#[derive(Debug, Clone)]
+pub struct EngineCatalog {
+    /// The host package store engine packages are staged into — the same
+    /// directory [`FsRepoSeeder`](crate::seeding::FsRepoSeeder) vendors from, so
+    /// the version this reports is the version that run would be seeded with.
+    package_store: PathBuf,
+}
+
+impl Default for EngineCatalog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl EngineCatalog {
-    /// Build a catalog. The built-ins are embedded, so this is stateless.
+    /// Build a catalog reading versions from the default host package store (the
+    /// `TCAB_PACKAGE_STORE` override when set, otherwise the baked-image default),
+    /// exactly as [`FsRepoSeeder::new`](crate::seeding::FsRepoSeeder::new) does.
     pub fn new() -> Self {
-        Self
+        Self {
+            package_store: crate::seeding::package_store_dir(),
+        }
+    }
+
+    /// Build a catalog reading versions from an explicit package store rather than
+    /// the default one. The counterpart of
+    /// [`FsRepoSeeder::with_package_store`](crate::seeding::FsRepoSeeder::with_package_store),
+    /// for tests and for a caller staging packages somewhere of its own; pair the
+    /// two so the version a case's range is checked against is the version the run
+    /// is seeded with.
+    pub fn with_package_store(package_store: impl Into<PathBuf>) -> Self {
+        Self {
+            package_store: package_store.into(),
+        }
     }
 
     /// Resolve a selection into a loaded engine.
@@ -198,9 +264,9 @@ impl EngineCatalog {
                 BUILT_IN_SLUGS.join(", ")
             ))
         })?;
-        Ok(ResolvedEngine {
-            manifest: load_built_in(slug, manifest_toml),
-        })
+        let manifest = load_built_in(slug, manifest_toml);
+        let version = staged_version(&self.package_store, &manifest);
+        Ok(ResolvedEngine { manifest, version })
     }
 
     /// Every built-in engine's manifest, in [`BUILT_IN_SLUGS`] order, for a CLI
@@ -216,6 +282,27 @@ impl EngineCatalog {
             })
             .collect()
     }
+}
+
+/// The version of an engine's package in `package_store`, or `None` when the
+/// engine vendors no package or the store holds nothing usable for it.
+///
+/// Reads the very file [`seeding`](crate::seeding) reads when it vendors the
+/// package and records the version on the run, so there is exactly one source of
+/// truth for an engine's version and no way for a gate to be checked against a
+/// number a run would not receive.
+///
+/// Every failure collapses to `None` rather than to an error, because a catalogue
+/// lookup is not a run: `tcab engines`, a case resolving its declared slugs, and a
+/// `tcab validate` on a host that has staged nothing all resolve engines without
+/// ever seeding one. The two places a missing version actually matters both refuse
+/// loudly on their own — the seeder with the restaging instructions, and
+/// `resolve_engine` with the range it could not check — so swallowing it here
+/// costs no diagnosis.
+fn staged_version(package_store: &Path, manifest: &EngineManifest) -> Option<Version> {
+    let package = manifest.package.as_deref()?;
+    let raw = crate::seeding::staged_package_version(&package_store.join(package), package).ok()?;
+    Version::parse(&raw).ok()
 }
 
 /// Parse and validate one embedded manifest, panicking with the reason if it is

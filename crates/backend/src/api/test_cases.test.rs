@@ -21,6 +21,7 @@ fn manifest() -> StoredManifest {
         voxel: None,
     };
     StoredManifest {
+        toolchain: None,
         slug: "carom".to_string(),
         version: "v1.0.1".to_string(),
         name: "Carom".to_string(),

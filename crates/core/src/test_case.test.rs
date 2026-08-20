@@ -139,7 +139,7 @@ fn only_asset_generation_releases_no_source_repo() {
 
 /// A complete, valid asset-generation manifest. Tests clone this and mutate one
 /// thing to exercise a single validation rule.
-const VALID_ASSET_MANIFEST: &str = "\
+pub(super) const VALID_ASSET_MANIFEST: &str = "\
 slug = \"sprite\"\n\
 name = \"Sprite\"\n\
 difficulty = \"medium\"\n\
@@ -159,7 +159,7 @@ variants = [\"variants/base.toml\"]\n\
 /// return the catalog. An asset-generation case has no target image, so none is
 /// written. No operations schema is written either — the binary's `--help` is the
 /// contract.
-fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("asset-generation/medium/sprite/v1.0.0");
     fs::create_dir_all(version.join("specs")).expect("specs dir");
@@ -1519,7 +1519,7 @@ fn every_shippable_package_carries_a_ui_description() {
 /// the whole manifest, so it can place top-level keys (`workspace`, `init`)
 /// before the `[build]` table, and can seed the workspace directory the manifest
 /// points at.
-fn catalog_with_files(
+pub(super) fn catalog_with_files(
     manifest: &str,
     files: &[(&str, &str)],
 ) -> (tempfile::TempDir, TestCaseCatalog) {
@@ -1554,7 +1554,7 @@ fn catalog_with_files(
 /// keys and tables) spliced in between so a test can declare `workspace`/`init`
 /// before the build table and append specs/tables after it. A test needing more
 /// than the one `base` variant builds its manifest directly instead.
-fn manifest_with(body: &str, after_build: &str) -> String {
+pub(super) fn manifest_with(body: &str, after_build: &str) -> String {
     format!(
         "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          changelog = \"changelog.md\"\n\
@@ -1710,7 +1710,8 @@ fn packages_are_end_to_end_only() {
 /// into at seed time. Its contents are irrelevant to the engine checks — unlike
 /// `packages`, the case does not declare the engine dependency itself — so it is
 /// the emptiest object that parses.
-const ENGINE_WORKSPACE_FILES: &[(&str, &str)] = &[("workspaces/base/package.json", "{}")];
+pub(super) const ENGINE_WORKSPACE_FILES: &[(&str, &str)] =
+    &[("workspaces/base/package.json", "{}")];
 
 #[test]
 fn engines_default_to_the_engineless_run() {
@@ -1719,7 +1720,7 @@ fn engines_default_to_the_engineless_run() {
     let manifest = manifest_with("", "");
     let (_dir, catalog) = catalog_with_files(&manifest, &[]);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
-    assert_eq!(version.engines, vec!["none".to_string()]);
+    assert_eq!(version.engine_slugs(), vec!["none".to_string()]);
 }
 
 #[test]
@@ -1733,7 +1734,7 @@ fn engines_resolve_with_none_first_when_it_is_declared() {
     let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(
-        version.engines,
+        version.engine_slugs(),
         vec!["none".to_string(), "simple-2d".to_string()]
     );
 }
@@ -1749,7 +1750,7 @@ fn engines_lead_with_none_even_when_it_is_not_declared() {
     let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(
-        version.engines,
+        version.engine_slugs(),
         vec!["none".to_string(), "simple-2d".to_string()]
     );
 }
@@ -1830,7 +1831,7 @@ fn engines_declaring_only_none_need_no_workspace_at_all() {
     let manifest = manifest_with("engines = [\"none\"]\n", "");
     let (_dir, catalog) = catalog_with_files(&manifest, &[]);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
-    assert_eq!(version.engines, vec!["none".to_string()]);
+    assert_eq!(version.engine_slugs(), vec!["none".to_string()]);
 }
 
 #[test]
@@ -1859,8 +1860,8 @@ fn supports_engine_agrees_with_the_resolved_set() {
     // Implicit, and still a supported selection.
     assert!(version.supports_engine("none"));
     assert!(!version.supports_engine("not-an-engine"));
-    for slug in &version.engines {
-        assert!(version.supports_engine(slug), "should support `{slug}`");
+    for slug in version.engine_slugs() {
+        assert!(version.supports_engine(&slug), "should support `{slug}`");
     }
 }
 
@@ -2565,7 +2566,7 @@ fn a_bare_reference_implementation_stands_for_every_supported_engine() {
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     let base = version.variant("base").expect("base variant");
     let expected = Some(version_dir.join("reference-impl/base"));
-    for engine in &version.engines {
+    for engine in &version.engine_slugs() {
         assert_eq!(
             version
                 .reference_impl_for(base, engine)

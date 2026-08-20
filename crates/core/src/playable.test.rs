@@ -505,6 +505,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
         code_analysis: None,
+        toolchain: None,
     };
     fs::write(
         dir.path().join("run-record.json"),

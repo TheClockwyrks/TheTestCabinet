@@ -868,6 +868,25 @@
       "required": ["binary", "preview"],
       "type": "object"
     },
+    "ToolchainOut": {
+      "description": "The case's declared TypeScript toolchain, served so a backend-driven run can run\nit: the gating `typecheck` and the recorded `lint`/`format`/`test`.",
+      "properties": {
+        "format": {
+          "type": ["string", "null"]
+        },
+        "lint": {
+          "type": ["string", "null"]
+        },
+        "test": {
+          "type": ["string", "null"]
+        },
+        "typecheck": {
+          "type": "string"
+        }
+      },
+      "required": ["typecheck"],
+      "type": "object"
+    },
     "UiElementSpec": {
       "description": "A resolved `[[ui.element]]`: one named element of a UI kit, its size, and an\noptional fixed nine-slice.",
       "properties": {
@@ -1308,6 +1327,17 @@
           "type": "null"
         }
       ]
+    },
+    "toolchain": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolchainOut"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The case's TypeScript toolchain commands, when it declares a `[toolchain]`\ntable. Absent for every version that predates it, which is what leaves those\nversions unchecked and ungated."
     },
     "ui": {
       "anyOf": [

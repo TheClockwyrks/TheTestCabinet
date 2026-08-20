@@ -49,6 +49,7 @@ impl PostRunStage for RecordingStage {
 /// looks at it, and a stage under test here does not either.
 fn version() -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "carom".to_string(),
         version: "v1.0.0".to_string(),
@@ -85,7 +86,7 @@ fn version() -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
-        engines: vec![crate::engine::NONE_SLUG.to_string()],
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

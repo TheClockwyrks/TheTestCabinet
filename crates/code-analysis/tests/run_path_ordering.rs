@@ -382,6 +382,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
         session_assembler: None,
         // The subject of this test: the real analyzer, wired exactly as a host wires it.
         analyzer: Some(Box::new(StaticCodeAnalyzer)),
+        toolchain: None,
         validator: FakeValidator {
             steps: Arc::clone(&steps),
             collected: Arc::clone(&collected),

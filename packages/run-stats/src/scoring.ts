@@ -429,3 +429,75 @@ export function aggregateOverallGrade(
   }
   return worstGrade(grades);
 }
+
+/**
+ * **The automated toolchain gate, applied to a run's aggregate rating.**
+ *
+ * A run whose case declares a gating `typecheck` and whose typecheck ran and
+ * exited non-zero is `broken`, whatever its reviewers said, because code that does
+ * not compile is not reviewable. `gated` is the run record's `toolchain` block
+ * answering {@link isToolchainGated}; `reviewed` is what {@link aggregateRating}
+ * produced.
+ *
+ * The gate is applied *here*, over the aggregate, and never written into a
+ * reviewer's stored verdicts: those are evidence, they are edited by their author,
+ * and a run re-evaluated with the gate lifted must recover the reviewers' real
+ * conclusion unchanged. A gated run is `broken` even with no reviews at all — the
+ * gate is a statement about the build, not an average of opinions.
+ *
+ * Mirrors `gated_rating` in the Rust core.
+ */
+export function gatedRating(
+  gated: boolean,
+  reviewed: Rating | null,
+): Rating | null {
+  return gated ? "broken" : reviewed;
+}
+
+/**
+ * **The automated toolchain gate, applied to a run's aggregate score.**
+ *
+ * A gated run scores zero and keeps its denominator, so it reads as `0 / total`
+ * rather than as unscored. A gated run with no reviews stays null: the score is
+ * defined over reviews, so there is no denominator to report a zero against, and
+ * its `broken` rating is the signal instead. Mirrors `gated_score` in the Rust
+ * core.
+ */
+export function gatedScore(
+  gated: boolean,
+  reviewed: AggregateScore | null,
+): AggregateScore | null {
+  if (!gated || reviewed === null) return reviewed;
+  return { ...reviewed, earned: 0 };
+}
+
+/**
+ * **The automated toolchain gate, applied to a game jam's overall grade.**
+ *
+ * A jam has no scoring domains — its badge is the reviewers' whole-game grade — so
+ * the gate forces the worst tier there instead. Mirrors `gated_overall_grade` in
+ * the Rust core.
+ */
+export function gatedOverallGrade(
+  gated: boolean,
+  reviewed: GradeStatus | null,
+): GradeStatus | null {
+  return gated ? "broken" : reviewed;
+}
+
+/**
+ * The gate predicate itself: whether a run record's toolchain block disqualifies
+ * the run. Exactly `typecheck.ran && !typecheck.succeeded` — a typecheck that never
+ * ran has learned nothing about whether the code compiles and must not gate.
+ * Mirrors `ToolchainSummary::gates` in the Rust core.
+ */
+export function isToolchainGated(
+  toolchain:
+    | { typecheck: { ran: boolean; succeeded: boolean } }
+    | null
+    | undefined,
+): boolean {
+  return toolchain
+    ? toolchain.typecheck.ran && !toolchain.typecheck.succeeded
+    : false;
+}

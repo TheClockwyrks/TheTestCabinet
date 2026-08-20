@@ -114,6 +114,11 @@ pub struct StoredManifest {
     /// manifest carries no null build.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build: Option<StoredBuild>,
+    /// The TypeScript toolchain commands the case declares. `Some` only for a case
+    /// that ships a `[toolchain]` table; absent for every version stored before it
+    /// existed, which is what keeps those versions ungated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolchain: Option<StoredToolchain>,
     /// The canvas an asset-generation case draws on. `Some` only for
     /// asset-generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -311,6 +316,23 @@ pub struct StoredBuild {
     /// build carries no null module.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub module: Option<String>,
+}
+
+/// The TypeScript toolchain commands persisted in a [`StoredManifest`], from the
+/// case's `[toolchain]` table. `typecheck` gates a run; the rest are recorded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredToolchain {
+    /// The gating typecheck command.
+    pub typecheck: String,
+    /// The optional lint command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lint: Option<String>,
+    /// The optional format check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// The optional test command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test: Option<String>,
 }
 
 /// The submission contract of an adversarial or performance case persisted in a

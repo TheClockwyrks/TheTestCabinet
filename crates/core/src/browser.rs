@@ -285,6 +285,83 @@ pub fn drive_script(
     serde_json::from_slice(&bytes).map_err(|err| format!("parsing script drive result: {err}"))
 }
 
+/// The result of the [build smoke check](smoke_check), parsed from the JSON the
+/// smoke-mode driver writes.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmokeDriveResult {
+    /// Whether the page's scripts got as far as a first animation frame.
+    #[serde(default)]
+    pub booted: bool,
+    /// Whether that first frame drew anything.
+    #[serde(default)]
+    pub painted: bool,
+    /// Console errors and uncaught page errors seen while booting.
+    #[serde(default)]
+    pub console_errors: Vec<String>,
+    /// What went wrong while loading, when something did.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// Open a served build in the headless browser and report whether it boots.
+///
+/// This is the single browser question the [toolchain
+/// stage](crate::toolchain_stage) asks: the built site loads, reaches a first
+/// animation frame, paints something, and logs nothing to the error console.
+///
+/// Returns `Err` only when the driver itself could not run — no Node, no
+/// Playwright, no Chromium — which the caller degrades to *not checked*, exactly as
+/// [`capture`] and [`drive_script`] do. A build that fails to boot comes back as an
+/// `Ok` result with `booted: false`, which is a fact about the build rather than
+/// about the host.
+#[instrument(name = "browser.smoke_check", fields(url = %url), err)]
+pub fn smoke_check(url: &str) -> std::result::Result<SmokeDriveResult, String> {
+    let driver = driver_path().ok_or_else(|| {
+        format!("browser driver not found (set {DRIVER_ENV} or run from the repository root)")
+    })?;
+
+    // The result file sits in a private temp dir: the smoke check must not add a
+    // file to the produced tree, which is copied verbatim into the published
+    // implementation.
+    let temp = tempfile::tempdir().map_err(|err| format!("creating smoke temp dir: {err}"))?;
+    let result_path = temp.path().join("smoke-result.json");
+
+    let mut command = Command::new("node");
+    command.arg(&driver).args([
+        "--mode",
+        "smoke",
+        "--url",
+        url,
+        "--result",
+        &result_path.to_string_lossy(),
+        "--width",
+        &VIEWPORT.0.to_string(),
+        "--height",
+        &VIEWPORT.1.to_string(),
+    ]);
+    if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
+        command.env("TRACEPARENT", traceparent);
+    }
+    let output = command
+        .output()
+        .map_err(|err| format!("running browser driver via node: {err}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let message: String = stderr
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.chars().any(|c| c.is_ascii_alphanumeric()))
+            .take(4)
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("browser driver failed: {message}"));
+    }
+    let bytes =
+        std::fs::read(&result_path).map_err(|err| format!("reading smoke result: {err}"))?;
+    serde_json::from_slice(&bytes).map_err(|err| format!("parsing smoke result: {err}"))
+}
+
 /// A minimal blocking static file server used to serve builds for capture.
 ///
 /// It serves files from a root directory and falls back to `index.html` so that

@@ -1603,6 +1603,11 @@ struct VersionBody {
     test_type: TestType,
     #[serde(default)]
     build: Option<BuildBody>,
+    /// The case's TypeScript toolchain commands, when it declares a `[toolchain]`
+    /// table. Absent for a version served by a backend that predates the field, and
+    /// for a case that declares none — either way the run is unchecked and ungated.
+    #[serde(default)]
+    toolchain: Option<ToolchainBody>,
     #[serde(default)]
     canvas: Option<CanvasBody>,
     #[serde(default)]
@@ -1697,7 +1702,7 @@ impl VersionBody {
         // never reads it (it is site-facing only).
         let changelog_path = PathBuf::from("changelog.md");
         TestCaseVersion {
-            engines: vec![crate::engine::NONE_SLUG.to_string()],
+            engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
             slug: self.slug,
             version: self.version,
             name: self.name,
@@ -1722,6 +1727,14 @@ impl VersionBody {
                 build: build.build,
                 module: build.module.map(PathBuf::from),
             }),
+            toolchain: self
+                .toolchain
+                .map(|toolchain| crate::toolchain::ToolchainCommands {
+                    typecheck: toolchain.typecheck,
+                    lint: toolchain.lint,
+                    format: toolchain.format,
+                    test: toolchain.test,
+                }),
             // The debug-API handle a case's builds install their automation surface
             // on. Reporter-side and never seeded, but the validator needs it to drive
             // the build's debug API, so the backend serves it in the resolved
@@ -1971,6 +1984,18 @@ fn content_type_for_file(file: &str) -> &'static str {
         "json" => "application/json",
         _ => "application/octet-stream",
     }
+}
+
+/// The `[toolchain]` half of a served version definition.
+#[derive(Debug, Clone, Deserialize)]
+struct ToolchainBody {
+    typecheck: String,
+    #[serde(default)]
+    lint: Option<String>,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    test: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -255,9 +255,10 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   `build/`, or `out/`. Both steps are reported in the run's validation results.
   A `module` key belongs to the adversarial and performance types and is
   rejected here.
-- `[toolchain]` is required and declares the TypeScript commands validation runs
-  over the produced implementation once it is installed: a required `typecheck`
-  and the optional `lint`, `format`, and `test`. See
+- `[toolchain]` is required of a new case version and declares the TypeScript
+  commands run over the produced implementation once it is installed: a required
+  `typecheck` and the optional `lint`, `format`, and `test`. A version that
+  declares none is neither checked nor gated. See
   [The TypeScript toolchain](#the-typescript-toolchain).
 - `[[spec]]` declares a common spec, seeded for every variant, mapping a
   `source` inside the version folder onto a `dest` in the run workspace. `dest`
@@ -419,19 +420,40 @@ test = "npx vitest run --coverage"
 
 Each declared command must be non-empty and runs from the implementation's
 repository root once the `[build]` install has completed, so the dependencies it
-needs are present. Each is reported as its own validation result carrying its
-exit status and its output, beside the install and build results.
+needs are present. The commands run over the collected tree after the run's
+container is gone, alongside the run's other post-run analysis, so a slow suite
+costs the test case none of its runtime budget.
 
-A failing `typecheck` earns the run a `broken` overall rating and a score of
-zero, because code that does not compile is not reviewable. The run is still
-published with its results and the compiler output, so the failure is legible
-rather than silent. The other three commands are recorded and leave the run's
-rating and score to validation and the reviewer.
+Each command is recorded on the run record's `toolchain` block with the command
+itself, whether it ran, its exit code and a bounded excerpt of its output. The
+excerpt is capped per command so a compiler emitting thousands of diagnostics
+stays within a record every run listing deserializes. A command that could not be
+started, because the install ahead of it failed or because it outran its
+wall-clock cap, is recorded as not having run, with the reason.
+
+A `typecheck` that ran and exited non-zero earns the run a `broken` overall
+rating and a score of zero, because code that does not compile is not reviewable.
+The run is still published with its results and the compiler output, so the
+failure is legible. The gate is applied where a run's overall rating and score
+are derived from its reviews, so a reviewer's own verdicts are recorded as
+written and a run re-evaluated with the gate lifted recovers them. A typecheck
+that never ran leaves the run ungated: a host that could not install dependencies
+has learned nothing about whether the code compiles. The other three commands are
+recorded and leave the run's rating and score to validation and the reviewer.
 
 `test` runs the produced implementation's own test suite. The number of tests
-that ran, the number that failed, and the coverage the command measured are
-recorded with the run and shown beside its validation results, so a build that
-ships a tested implementation is distinguishable from one that ships none.
+that ran, the number that failed, and the coverage the command measured are read
+from what the command printed and recorded with the run, so a build that ships a
+tested implementation is distinguishable from one that ships none. A runner
+reporting no counts or no coverage records their absence.
+
+The same pass builds the implementation and opens the built site in a headless
+browser as a smoke check, recording whether it booted, whether it painted a first
+frame, and any console errors it logged. A host with no browser records the check
+as not run.
+
+A case version that declares no `[toolchain]` table is neither checked nor gated,
+which is what keeps versions frozen before the table existed resolving unchanged.
 
 ## Variant keys
 

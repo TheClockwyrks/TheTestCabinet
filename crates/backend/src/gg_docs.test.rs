@@ -85,6 +85,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
         code_analysis: None,
+        toolchain: None,
     }
 }
 
@@ -144,6 +145,7 @@ fn item(id: &str, weight: u32) -> StoredReviewItem {
 /// a count of ticks.
 fn manifest() -> StoredManifest {
     StoredManifest {
+        toolchain: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         name: "Carom".to_string(),

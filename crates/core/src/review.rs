@@ -717,6 +717,69 @@ pub fn aggregate_overall_grade<'a>(
     }))
 }
 
+/// **The automated gate, applied to a run's aggregate rating.**
+///
+/// A run whose case declares a gating [`typecheck`](crate::toolchain::ToolchainCommands)
+/// and whose typecheck ran and exited non-zero is `broken`, whatever its reviewers
+/// said, because code that does not compile is not reviewable. `gated` is
+/// [`RunRecord::gated_broken`](crate::run_record::RunRecord::gated_broken); `reviewed`
+/// is the aggregate the reviews produced ([`aggregate_rating`]).
+///
+/// # Why the gate lives *here*, and not in the reviews
+///
+/// A reviewer's stored verdicts and ratings are what that reviewer wrote, and nothing
+/// automated may rewrite them: they are evidence, they are edited by their author, and
+/// a run whose gate is later re-evaluated must recover the reviewers' real conclusions
+/// unchanged. So the gate is applied at the *aggregation* seam — the one place a run's
+/// single overall rating is derived — where it composes with the reviews instead of
+/// overwriting them. The console's `markUnplayable` action is the other direction and
+/// stays a human one: a person choosing to write `broken` into their own checklist.
+///
+/// A gated run is `broken` **even with no reviews at all**. The gate is a statement
+/// about the build, not an average of opinions, and a run that does not compile does
+/// not become unrated by nobody having looked at it yet.
+pub fn gated_rating(gated: bool, reviewed: Option<Rating>) -> Option<Rating> {
+    if gated {
+        return Some(Rating::Broken);
+    }
+    reviewed
+}
+
+/// **The automated gate, applied to a run's aggregate score.**
+///
+/// A gated run scores zero: every point its reviewers awarded is withdrawn, and the
+/// denominator — the points the case's checklist made available — is kept, so the run
+/// reads as `0 / total` rather than as unscored. As with [`gated_rating`] the stored
+/// reviews are untouched; this is the aggregate the gate composes with.
+///
+/// A gated run with **no** reviews stays `None`. The score is defined over reviews, so
+/// there is no denominator to report a zero against, and inventing one would fabricate
+/// a checklist the case may not even declare. Its rating is still `broken`, which is
+/// the signal that matters.
+pub fn gated_score(gated: bool, reviewed: Option<AggregateScore>) -> Option<AggregateScore> {
+    match (gated, reviewed) {
+        (true, Some(score)) => Some(AggregateScore {
+            earned: 0.0,
+            ..score
+        }),
+        (_, other) => other,
+    }
+}
+
+/// **The automated gate, applied to a game jam's overall grade.**
+///
+/// A jam has no scoring domains — its badge is the reviewers' whole-game grade — so
+/// the gate lands on that grade instead, forcing the worst tier
+/// ([`VerdictStatus::Broken`]) exactly as [`gated_rating`] forces [`Rating::Broken`].
+/// A gated jam run with no reviews is graded `broken` for the same reason a gated
+/// domain-scored run is rated `broken`.
+pub fn gated_overall_grade(gated: bool, reviewed: Option<VerdictStatus>) -> Option<VerdictStatus> {
+    if gated {
+        return Some(VerdictStatus::Broken);
+    }
+    reviewed
+}
+
 /// Parse a `writeup.md` file: its per-domain `rating.<domain>` frontmatter and
 /// its prose body.
 ///
@@ -862,3 +925,7 @@ fn split_frontmatter(raw: &str) -> Result<(&str, &str)> {
 #[cfg(test)]
 #[path = "review.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "review.gate.test.rs"]
+mod gate_tests;

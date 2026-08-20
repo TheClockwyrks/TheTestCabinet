@@ -30,7 +30,7 @@ fn engineless_case() -> TestCaseVersion {
 #[test]
 fn the_engineless_run_is_supported_by_a_case_that_declares_no_engines() {
     let test_case = engineless_case();
-    assert_eq!(test_case.engines, vec!["none".to_string()]);
+    assert_eq!(test_case.engine_slugs(), vec!["none".to_string()]);
 
     let engine = resolve_for_case("none", &test_case).expect("every case supports `none`");
     assert_eq!(engine.slug(), "none");

@@ -25,7 +25,7 @@ use test_cabinet_core::{
     accounts as acct, code_analysis as code, comparison as cmp, comparison_stats as cstats,
     event as ev, gg, gg_query as ggq, gg_reference as ggref, gg_session_record as ggr,
     match_play as mp, metrics as m, review as rv, run_record as rr, test_case as tc,
-    validation as val,
+    toolchain as tch, validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -103,6 +103,10 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "PerformanceCaseResult",
     "PerformanceCaseKind",
     "PerformanceSnapshotCheck",
+    "ToolchainSummary",
+    "ToolchainCommandResult",
+    "ToolchainTestRun",
+    "ToolchainSmokeResult",
 ];
 
 /// The code-analysis schema's `$defs`: every type in the `CodeAnalysisDocument` tree
@@ -316,7 +320,10 @@ fn main() -> Result<()> {
                 val::AdversarialResult, val::PerformanceCaseKind, val::PerformanceCaseResult,
                 val::PerformanceResult, val::PerformanceSnapshotCheck,
                 mp::ControllerKind, mp::ControllerRef, mp::MatchSummary, mp::Standing,
-                mp::TournamentRecord, val::ValidationSummary, rr::RunLinks, rr::RunStatus,
+                mp::TournamentRecord, val::ValidationSummary,
+                tch::ToolchainCommandResult, tch::ToolchainTestRun, tch::ToolchainSmokeResult,
+                tch::ToolchainSummary,
+                rr::RunLinks, rr::RunStatus,
                 rr::PriorGameJamEntry, rr::RunRecord,
             ],
         },

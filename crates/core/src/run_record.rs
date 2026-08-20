@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::code_analysis::CodeAnalysisSummary;
 use crate::gg::{GgCapabilitySet, GgSessionSummary};
 use crate::metrics::RunMetrics;
+use crate::toolchain::ToolchainSummary;
 use crate::validation::ValidationSummary;
 
 /// A stable slug identifying an agent harness — a run's subject.
@@ -715,6 +716,38 @@ pub struct RunRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub code_analysis: Option<CodeAnalysisSummary>,
+    /// What the case's [`[toolchain]`](crate::toolchain) commands did when they were
+    /// run over the produced implementation at the
+    /// [post-run seam](crate::post_run), together with the build smoke check.
+    ///
+    /// **This is the one analysis block that can influence a run's rating**, and it
+    /// does so through exactly one field: a `typecheck` that ran and exited non-zero
+    /// [gates](crate::toolchain::ToolchainSummary::gates) the run, which rates it
+    /// `broken` and scores it zero, because code that does not compile is not
+    /// reviewable. The lint, format and test results are recorded and gate nothing.
+    /// The gate is applied where the aggregate rating and score are computed
+    /// ([`crate::review::gated_rating`]), never by rewriting a reviewer's marks.
+    ///
+    /// Absent for a run whose case declares no `[toolchain]` table, for a canceled
+    /// run, for a run whose tree never reached the host, and for every record written
+    /// before the field existed. Absence is *not checked*, and it never gates — the
+    /// distinction the `Option` exists to keep.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub toolchain: Option<ToolchainSummary>,
+}
+
+impl RunRecord {
+    /// **The gate predicate for a whole run.** Whether an automated check
+    /// disqualified this run from being rated by its reviews.
+    ///
+    /// Today there is exactly one such check — the case's gating `typecheck` — and
+    /// this is the single place the rest of the system asks about it, so a second
+    /// one lands here rather than in every consumer. A record with no toolchain
+    /// block never gates.
+    pub fn gated_broken(&self) -> bool {
+        self.toolchain.as_ref().is_some_and(ToolchainSummary::gates)
+    }
 }
 
 /// One earlier game-jam run's gameplay README, as served back to a new run of the

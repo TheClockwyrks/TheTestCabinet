@@ -70,6 +70,7 @@ fn entry(result: ReplayResult, decided: Decided) -> AdversarialReplay {
 /// is `module_rel` (relative to the run root).
 fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
@@ -123,7 +124,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
-        engines: vec![crate::engine::NONE_SLUG.to_string()],
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

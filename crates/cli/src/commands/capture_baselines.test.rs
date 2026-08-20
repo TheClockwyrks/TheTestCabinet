@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use test_cabinet_core::{AssetKind, NONE_SLUG, TestType};
+use test_cabinet_core::{AssetKind, EngineSupport, NONE_SLUG, TestType};
 
 use super::*;
 
@@ -19,6 +19,7 @@ use super::*;
 /// validator tests use).
 fn test_case(variants: &[(&str, bool)]) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         slug: "carom".to_string(),
         version: "v1.0.0".to_string(),
         name: "Carom".to_string(),
@@ -58,7 +59,7 @@ fn test_case(variants: &[(&str, bool)]) -> TestCaseVersion {
         // The engineless run every case supports, which is what resolution puts
         // here for a manifest that declares no `engines`; baseline selection does
         // not read it.
-        engines: vec![NONE_SLUG.to_string()],
+        engines: vec![EngineSupport::unbounded(NONE_SLUG)],
         variants: variants.iter().map(|v| variant(v.0, v.1)).collect(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

@@ -58,6 +58,8 @@ pub mod run_record;
 pub mod salvage;
 pub mod seeding;
 pub mod test_case;
+pub mod toolchain;
+pub mod toolchain_stage;
 pub mod validation;
 pub mod validator;
 
@@ -164,12 +166,18 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, Instrumentation, MatchSpec,
-    MediaKind, ModelSpec, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec,
-    ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSequence, SheetSpec,
-    SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseCatalog, TestCaseVersion,
-    TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile, shippable_package_description,
+    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
+    Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile, ReferenceKind,
+    ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec,
+    SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase,
+    TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile,
+    shippable_package_description,
 };
+pub use toolchain::{
+    TOOLCHAIN_OUTPUT_LIMIT, ToolchainCommandResult, ToolchainCommands, ToolchainSmokeResult,
+    ToolchainSummary, ToolchainTestRun,
+};
+pub use toolchain_stage::ToolchainStage;
 pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
     CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
@@ -365,7 +373,7 @@ impl RunRequest {
     }
 }
 
-/// Resolve the [engine](crate::engine) a run selected, and refuse a case that
+/// Resolve the [engine] a run selected, and refuse a case that
 /// does not support it.
 ///
 /// The two halves are one step because both belong at the same place: the very
@@ -388,15 +396,56 @@ fn resolve_engine(
     test_case: &TestCaseVersion,
 ) -> Result<ResolvedEngine> {
     let engine = engines.resolve(&request.engine)?;
-    if engine.slug() != NONE_SLUG && !test_case.supports_engine(engine.slug()) {
+    ensure_engine_supported(test_case, &engine)?;
+    Ok(engine)
+}
+
+/// Hold an already-resolved engine against what `test_case` declares: first that
+/// the case supports the engine at all, then that the version the host would stage
+/// falls inside the range the case declared for it.
+///
+/// Split out of the run gate so the local commands (`tcab seed`,
+/// `tcab validate`, `tcab prompt`), which resolve an engine for a case without a
+/// [`RunRequest`], apply the *same* gate rather than a re-stated approximation of
+/// it — a second copy is how the two drift and how a `tcab seed` starts producing
+/// a tree a run would have refused.
+///
+/// [`NONE_SLUG`] short-circuits: every case supports the engineless run whether or
+/// not its manifest said so, and there is no version to check because there is no
+/// package. An engine declared with no range short-circuits the version half for
+/// the same reason — the case asked for no constraint, so an unreadable package
+/// store costs it nothing.
+pub fn ensure_engine_supported(test_case: &TestCaseVersion, engine: &ResolvedEngine) -> Result<()> {
+    if engine.slug() == NONE_SLUG {
+        return Ok(());
+    }
+    let Some(support) = test_case.engine_support(engine.slug()) else {
         return Err(Error::EngineUnsupportedForCase {
             slug: engine.slug().to_string(),
             test_case: test_case.slug.clone(),
             version: test_case.version.clone(),
-            supported: test_case.engines.clone(),
+            supported: test_case.engine_slugs(),
         });
+    };
+    if !support.is_bounded() {
+        return Ok(());
     }
-    Ok(engine)
+    match engine.version() {
+        Some(version) if support.accepts(version) => Ok(()),
+        Some(version) => Err(Error::EngineVersionUnsupportedForCase {
+            slug: engine.slug().to_string(),
+            engine_version: version.to_string(),
+            test_case: test_case.slug.clone(),
+            version: test_case.version.clone(),
+            range: support.range_display(),
+        }),
+        None => Err(Error::EngineVersionUnknown {
+            slug: engine.slug().to_string(),
+            test_case: test_case.slug.clone(),
+            version: test_case.version.clone(),
+            range: support.range_display(),
+        }),
+    }
 }
 
 /// Convert a runtime cap expressed in **hours** — the unit test-case manifests
@@ -459,6 +508,17 @@ where
     /// because keeping it out of core keeps its parser dependencies out of every
     /// binary that links core. `None` runs no analysis.
     pub analyzer: Option<Box<dyn PostRunStage>>,
+    /// Runs the case's [`[toolchain]`](crate::toolchain) commands over the produced
+    /// implementation and smoke-checks the site they build, at the [post-run stage
+    /// seam](crate::post_run) — **last**, after the analyzer, because it is the one
+    /// stage that writes to the tree the others read (it installs dependencies and
+    /// runs a build).
+    ///
+    /// Injected rather than always-on so that a host with no Node toolchain, and
+    /// every test that does not care, simply runs none — a case's toolchain then
+    /// goes unchecked, which the record's absent `toolchain` block reports honestly
+    /// and which gates nothing.
+    pub toolchain: Option<Box<dyn PostRunStage>>,
     /// Runs the validation pass.
     pub validator: V,
     /// Looks up model prices for the comparable cost.
@@ -1542,9 +1602,17 @@ where
         let run_dir = self.output_dir.join(run_id);
         std::fs::create_dir_all(&run_dir)?;
         let post_run = post_run::run_stages(
-            [self.session_assembler.as_deref(), self.analyzer.as_deref()]
-                .into_iter()
-                .flatten(),
+            [
+                self.session_assembler.as_deref(),
+                self.analyzer.as_deref(),
+                // Last, and the ordering is load-bearing: this stage installs
+                // dependencies and runs a build *in* the collected tree, so anything
+                // that measures "the code the model wrote" must have measured it
+                // already.
+                self.toolchain.as_deref(),
+            ]
+            .into_iter()
+            .flatten(),
             &post_run::PostRunContext {
                 run_id,
                 run_dir: &run_dir,
@@ -1659,6 +1727,12 @@ where
             // field off the record entirely, which is the honest encoding of "this run
             // was never analysed" as distinct from "this run measured nothing".
             code_analysis: post_run.code_analysis,
+            // What the case's `[toolchain]` commands did, when it declares any. This
+            // is the one post-run block a run's rating depends on: a `typecheck` that
+            // ran and failed gates the run (see `RunRecord::gated_broken`). It is
+            // still only *recorded* here — the engine renders no verdict from it, and
+            // the terminal state below is decided exactly as it was before.
+            toolchain: post_run.toolchain,
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1907,6 +1981,7 @@ fn build_failed_record(
         // post-run seam it would have been analysed at is downstream of the failure.
         // Absent, never an empty measurement.
         code_analysis: None,
+        toolchain: None,
     }
 }
 

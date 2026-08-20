@@ -42,6 +42,17 @@
 // docs for the contract. Infra failures (no Playwright,
 // no Chromium) exit non-zero so the caller degrades; a build/script failure is
 // reported in the result with `ran: false` and exits zero (the caller gates on it).
+//
+// A third mode is the **build smoke check** the toolchain stage runs:
+//   node driver.mjs --mode smoke --url <url> --result <json-path>
+//                   [--width <px>] [--height <px>] [--settle <ms>]
+//
+// It opens the served build, waits for a first animation frame, decides whether
+// that frame drew anything, and writes `{ booted, painted, consoleErrors, detail }`.
+// It answers one question — did the built site boot cleanly — and judges nothing
+// else, so it needs neither a debug handle nor a script. Infra failures exit
+// non-zero exactly as the script mode's do; a build that fails to boot is reported
+// in the result and exits zero.
 
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -740,10 +751,128 @@ async function runScript(args) {
   writeResult(result);
 }
 
+/**
+ * Load a built site and report whether it boots: a first animation frame, whether
+ * that frame drew anything, and every console/page error seen along the way.
+ *
+ * "Painted" is answered from the page itself rather than from a screenshot, so the
+ * driver needs no image decoder: a canvas build passes when its largest canvas
+ * holds more than one distinct pixel, and a DOM build passes when the body has laid
+ * out a non-empty box. A canvas that reads back as a single flat color is a blank
+ * frame however large it is, which is exactly the failure this check exists to see.
+ */
+async function runSmoke(args) {
+  if (!args.url || !args.result) {
+    throw new Error("both --url and --result are required in --mode smoke");
+  }
+  const width = Number(args.width) || 1280;
+  const height = Number(args.height) || 720;
+  const settle = args.settle === undefined ? 1000 : Number(args.settle);
+  const writeResult = (result) =>
+    fs.writeFileSync(args.result, JSON.stringify(result));
+
+  // Playwright/Chromium missing is an infra failure: let it throw so the caller
+  // degrades to "not checked" rather than recording a boot failure that never
+  // happened.
+  const chromium = await importChromium();
+  const browser = await launchBrowser(chromium);
+  const consoleErrors = [];
+  let booted = false;
+  let painted = false;
+  let detail = null;
+  try {
+    const page = await browser.newPage({
+      viewport: { width, height },
+      deviceScaleFactor: 1,
+    });
+    page.on("console", (msg) => {
+      if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+    page.on("pageerror", (err) =>
+      consoleErrors.push(String(err?.message || err)),
+    );
+    try {
+      await page.goto(args.url, { waitUntil: "load", timeout: 30_000 });
+      // A first animation frame is the boot signal: it means the page's scripts
+      // ran to the point of asking the compositor for a frame.
+      booted = await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(false), 10_000);
+            requestAnimationFrame(() => {
+              clearTimeout(timer);
+              resolve(true);
+            });
+          }),
+      );
+      if (settle > 0) await page.waitForTimeout(settle);
+      painted = await page.evaluate(() => {
+        const canvases = Array.from(document.querySelectorAll("canvas"));
+        const biggest = canvases.sort(
+          (a, b) => b.width * b.height - a.width * a.height,
+        )[0];
+        if (biggest && biggest.width > 0 && biggest.height > 0) {
+          try {
+            const ctx = biggest.getContext("2d");
+            if (ctx && typeof ctx.getImageData === "function") {
+              const data = ctx.getImageData(
+                0,
+                0,
+                biggest.width,
+                biggest.height,
+              ).data;
+              for (let i = 4; i < data.length; i += 4) {
+                if (
+                  data[i] !== data[0] ||
+                  data[i + 1] !== data[1] ||
+                  data[i + 2] !== data[2] ||
+                  data[i + 3] !== data[3]
+                ) {
+                  return true;
+                }
+              }
+            } else {
+              // A WebGL/WebGPU canvas has no readable 2D context. Its presence at
+              // a non-zero size after a frame is the most this check can honestly
+              // assert, and asserting less would fail every 3D build.
+              return true;
+            }
+          } catch {
+            return true;
+          }
+        }
+        const body = document.body;
+        if (!body) return false;
+        const box = body.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && body.children.length > 0;
+      });
+    } catch (err) {
+      detail = String(err?.message || err);
+    }
+  } finally {
+    await browser.close();
+  }
+  writeResult({
+    ran: true,
+    booted,
+    painted,
+    // Bounded here as well as on the Rust side: a build looping on an error can
+    // fill this array as fast as the event loop turns.
+    consoleErrors: consoleErrors
+      .slice(0, 25)
+      .map((line) => String(line).slice(0, 2000)),
+    detail,
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.mode === "script") {
     await runScript(args);
+    return;
+  }
+  if (args.mode === "smoke") {
+    await runSmoke(args);
     return;
   }
   if (!args.url || !args.out) {

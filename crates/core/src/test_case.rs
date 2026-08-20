@@ -10,7 +10,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use semver::Version;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::engine::{BUILT_IN_SLUGS, EngineCatalog, EngineSelection, NONE_SLUG};
 use crate::error::{Error, Result};
@@ -142,6 +143,17 @@ struct Manifest {
     /// [`Self::test_type`] at resolution rather than defaulted.
     #[serde(default)]
     build: Option<ManifestBuild>,
+    /// The TypeScript commands run over the produced implementation (the
+    /// `[toolchain]` table): a required `typecheck` and the optional `lint`,
+    /// `format` and `test`. Valid only for the types that ship a TypeScript build
+    /// (end-to-end, full-stack, game jam).
+    ///
+    /// Optional on disk even though the manifest format calls it required, because
+    /// every case version frozen before the table existed declares none and a frozen
+    /// version cannot be edited. A case that declares none is not toolchain-checked
+    /// and not gated.
+    #[serde(default)]
+    toolchain: Option<ManifestToolchain>,
     /// The image an asset-generation case's model draws on (the `[canvas]`
     /// table). Required for asset-generation, forbidden otherwise.
     #[serde(default)]
@@ -223,7 +235,7 @@ struct Manifest {
     /// its own package, so this list says only "a run of this version may select
     /// that engine" — the case's specs never restate what the engine provides.
     ///
-    /// [`NONE_SLUG`](crate::engine::NONE_SLUG) — no runtime at all — is supported
+    /// [`NONE_SLUG`] — no runtime at all — is supported
     /// by every case whether it is listed or not, because it asks nothing of the
     /// case; the resolved
     /// [`TestCaseVersion::engines`] therefore always carries it, first. Listing it
@@ -235,6 +247,19 @@ struct Manifest {
     /// runs only without an engine.
     #[serde(default)]
     engines: Vec<String>,
+    /// The engines this version supports **with a version range**, declared as
+    /// repeated `[[engine]]` tables — the second of the two forms the grammar
+    /// offers, and the one a case uses when its specification and its validators
+    /// were written against a particular engine contract.
+    ///
+    /// The bare [`Self::engines`] list is the same statement without a range, so
+    /// the two are merged at resolution into one set of
+    /// [`EngineSupport`] entries and a slug may appear in only
+    /// one of them. Both forms are kept because the bare list is what every
+    /// shipped (frozen) case declares and what a case pinning nothing should still
+    /// be able to write.
+    #[serde(default, rename = "engine")]
+    engine_tables: Vec<ManifestEngine>,
     /// The variants this case offers, each as a path to a standalone variant
     /// manifest (a `[[variant]]`-shaped [`ManifestVariant`] in its own file, by
     /// convention under `variants/`), relative to the version folder. Listed in
@@ -438,6 +463,31 @@ impl GameJamManifest {
     }
 }
 
+/// One `[[engine]]` table in the manifest: an engine this version supports,
+/// together with the range of engine versions it supports.
+///
+/// The version-carrying half of the engine grammar; the bare `engines` list is the
+/// other. `min_version` is required because a table exists precisely to state one
+/// — a case with nothing to pin belongs in the bare list — and `max_version` is
+/// optional because a range is unbounded above by default: a case that names only
+/// a floor accepts every later engine version the catalogue offers. Both are
+/// authored as strings and parsed into [`semver::Version`] at resolution, so a
+/// malformed version costs a `tcab validate` rather than a run.
+///
+/// Unknown keys are rejected: a misspelled `max-version` that silently did nothing
+/// would leave a case pinned by a ceiling it believes it declared.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestEngine {
+    /// The engine slug, which must be one the catalogue knows.
+    slug: String,
+    /// The lowest engine version a run of this case may select, **inclusive**.
+    min_version: String,
+    /// The version support stops at, **exclusive**. Unbounded when omitted.
+    #[serde(default)]
+    max_version: Option<String>,
+}
+
 /// The `[build]` table in the manifest: the commands the validator runs to turn
 /// a produced implementation into the case's scored artifact. `install` and
 /// `build` are required for every case that declares the table (an end-to-end
@@ -457,6 +507,27 @@ struct ManifestBuild {
     /// an end-to-end build emits a static site and declares none.
     #[serde(default)]
     module: Option<PathBuf>,
+}
+
+/// The `[toolchain]` table in the manifest: the TypeScript commands validation runs
+/// over the produced implementation once its dependencies are installed.
+///
+/// `typecheck` gates the run; the other three are recorded. Each is a shell line run
+/// verbatim from the implementation's repository root, exactly like the `[build]`
+/// commands beside it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestToolchain {
+    /// The gating typecheck (for example `npx tsc --noEmit`). Required.
+    typecheck: String,
+    /// The optional lint command (for example `npx eslint .`).
+    #[serde(default)]
+    lint: Option<String>,
+    /// The optional format check (for example `npx prettier --check .`).
+    #[serde(default)]
+    format: Option<String>,
+    /// The optional test command (for example `npx vitest run --coverage`).
+    #[serde(default)]
+    test: Option<String>,
 }
 
 /// The `[contract]` table of an adversarial or performance case: the interface
@@ -3533,6 +3604,132 @@ pub struct Erratum {
 // never arithmetic'd, so treating them as `Eq` is sound here.
 impl Eq for CheckAction {}
 
+/// One engine a test case version supports, with the range of engine versions it
+/// supports.
+///
+/// The resolved form of both manifest spellings: a bare entry in the `engines`
+/// list resolves to an *unbounded* support (no floor, no ceiling — any version the
+/// catalogue offers), and an `[[engine]]` table resolves to one carrying its
+/// range. Merging the two forms here rather than keeping them apart is what lets
+/// every consumer — [`TestCaseVersion::supports_engine`], the run gate, the CLI —
+/// ask one question of one set.
+///
+/// The range is half-open by design: `min_version` is **inclusive** (the earliest
+/// contract the case's specs and validators were written against, which the case
+/// does support) and `max_version` is **exclusive** (the version whose behaviour
+/// changed, which it does not). That is the shape a case actually means when it
+/// pins a runtime, and it makes two adjacent case versions tile without a gap or
+/// an overlap.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineSupport {
+    /// The engine slug, one the [catalogue](crate::engine::EngineCatalog) knows.
+    pub slug: String,
+    /// The lowest engine version a run may select, **inclusive**. `None` when the
+    /// case declared the engine as a bare slug and pinned no floor.
+    pub min_version: Option<Version>,
+    /// The version support stops at, **exclusive**. `None` when the range is
+    /// unbounded above, which is the default.
+    pub max_version: Option<Version>,
+}
+
+impl EngineSupport {
+    /// Support for `slug` at any version — the bare `engines`-list form, and the
+    /// implicit entry every case carries for [`NONE_SLUG`].
+    pub fn unbounded(slug: impl Into<String>) -> Self {
+        Self {
+            slug: slug.into(),
+            min_version: None,
+            max_version: None,
+        }
+    }
+
+    /// Whether this entry constrains the version at all.
+    ///
+    /// The run gate reads it to decide whether it needs a version to check
+    /// against: an unbounded entry accepts whatever the catalogue staged, so a
+    /// store it cannot read a version out of costs it nothing, while a bounded one
+    /// cannot answer without the number and refuses rather than guessing.
+    pub fn is_bounded(&self) -> bool {
+        self.min_version.is_some() || self.max_version.is_some()
+    }
+
+    /// Whether `version` falls inside this entry's range: at or above the
+    /// inclusive minimum and strictly below the exclusive maximum.
+    pub fn accepts(&self, version: &Version) -> bool {
+        self.min_version.as_ref().is_none_or(|min| version >= min)
+            && self.max_version.as_ref().is_none_or(|max| version < max)
+    }
+
+    /// The range in the words a person can act on, for an error message: the
+    /// half-open interval, or the fact that there is no constraint at all.
+    pub fn range_display(&self) -> String {
+        match (&self.min_version, &self.max_version) {
+            (Some(min), Some(max)) => format!(">= {min}, < {max}"),
+            (Some(min), None) => format!(">= {min}"),
+            (None, Some(max)) => format!("< {max}"),
+            (None, None) => "any version".to_string(),
+        }
+    }
+}
+
+/// The wire shape of a bounded [`EngineSupport`]: the table form, in the
+/// `camelCase` every other resolved type is serialized in.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EngineSupportRepr {
+    slug: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min_version: Option<Version>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_version: Option<Version>,
+}
+
+/// Either spelling of an engine entry on the wire: a bare slug or the table.
+///
+/// A resolved [`TestCaseVersion`] is serialized into the backend's definition
+/// store and read back, so the *stored* form has to keep accepting the plain
+/// string array every record written before engine ranges existed carries. Reading
+/// both spellings here is the same accommodation resolution makes for the manifest,
+/// and it costs one enum.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum EngineSupportWire {
+    Slug(String),
+    Table(EngineSupportRepr),
+}
+
+impl Serialize for EngineSupport {
+    /// An unbounded entry serializes back to the bare slug it was read from, so a
+    /// case that pins nothing round-trips through the definition store unchanged
+    /// and older readers keep understanding it. Only an entry that actually
+    /// carries a range needs the table.
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        if self.is_bounded() {
+            EngineSupportRepr {
+                slug: self.slug.clone(),
+                min_version: self.min_version.clone(),
+                max_version: self.max_version.clone(),
+            }
+            .serialize(serializer)
+        } else {
+            serializer.serialize_str(&self.slug)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EngineSupport {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        Ok(match EngineSupportWire::deserialize(deserializer)? {
+            EngineSupportWire::Slug(slug) => Self::unbounded(slug),
+            EngineSupportWire::Table(repr) => Self {
+                slug: repr.slug,
+                min_version: repr.min_version,
+                max_version: repr.max_version,
+            },
+        })
+    }
+}
+
 /// A resolved, exact test case version.
 ///
 /// Holds the on-disk location and the manifest of what the version contains.
@@ -3597,6 +3794,13 @@ pub struct TestCaseVersion {
     /// serialized shape is unchanged apart from the new discriminator.
     #[serde(default)]
     pub build: Option<BuildCommands>,
+    /// The TypeScript toolchain commands run over the produced implementation
+    /// (from the manifest's `[toolchain]` table). `Some` only for a case that
+    /// declares the table; `None` — the case for every version frozen before it
+    /// existed — means the run is neither toolchain-checked nor
+    /// [gated](crate::toolchain::ToolchainSummary::gates).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolchain: Option<crate::toolchain::ToolchainCommands>,
     /// The case's debug-API contract — the `window` handle every build installs its
     /// automation surface on — when the case mandates
     /// [instrumentation](Instrumentation). Host-only and **not serialized**
@@ -3693,22 +3897,27 @@ pub struct TestCaseVersion {
     /// when the case declares none. Validated against [`SHIPPABLE_PACKAGES`], and
     /// that the shipped `package.json` declares each, at resolution.
     pub packages: Vec<String>,
-    /// The [engines](crate::engine) a run of this version may be built on, from
-    /// the manifest's `engines` key, in declared order — but always led by
-    /// [`NONE_SLUG`], which every case supports whether
-    /// it declares it or not. So this is never empty: a version declaring nothing
-    /// resolves to exactly `["none"]`, the engineless run every case supports.
+    /// The [engines](crate::engine) a run of this version may be built on, each
+    /// with the range of engine versions this version supports — from the
+    /// manifest's `engines` list and its `[[engine]]` tables, in declared order,
+    /// but always led by [`NONE_SLUG`], which every case supports whether it
+    /// declares it or not. So this is never empty: a version declaring nothing
+    /// resolves to exactly unbounded support for `none`, the engineless run every
+    /// case supports.
     ///
     /// It is the **compatibility gate** a run's `--engine` is checked against
-    /// (see [`Self::supports_engine`]), before any container work — not a
+    /// (see [`Self::supports_engine`] for the slug and
+    /// [`Self::engine_support`] for the range), before any container work — not a
     /// description of what any engine provides, which the engine documents from
     /// its own package.
     ///
     /// Defaulted on the wire so a definition store or backend that predates
     /// engines deserializes as the engineless case rather than as one supporting
-    /// nothing at all.
+    /// nothing at all, and each entry deserializes from either a bare slug or a
+    /// range-carrying object so records written before ranges existed keep
+    /// reading.
     #[serde(default = "default_engines")]
-    pub engines: Vec<String>,
+    pub engines: Vec<EngineSupport>,
     /// The variants this case offers, in declared order. At least one is always
     /// present.
     pub variants: Vec<Variant>,
@@ -3778,7 +3987,31 @@ impl TestCaseVersion {
     /// unresolvable slug is reported as the unknown engine it is rather than as an
     /// unsupported one.
     pub fn supports_engine(&self, slug: &str) -> bool {
-        self.engines.iter().any(|engine| engine.as_str() == slug)
+        self.engine_support(slug).is_some()
+    }
+
+    /// This version's support entry for the engine `slug` — its declared version
+    /// range — or `None` when the version does not support that engine at all.
+    ///
+    /// The range half of the gate [`Self::supports_engine`] answers the slug half
+    /// of. A caller that has already resolved the engine reads the entry once and
+    /// asks it both questions, which is what keeps "unsupported engine" and "engine
+    /// version outside the declared range" two distinct, separately-worded refusals
+    /// rather than one vague one.
+    pub fn engine_support(&self, slug: &str) -> Option<&EngineSupport> {
+        self.engines.iter().find(|engine| engine.slug == slug)
+    }
+
+    /// The slugs of every engine this version supports, in resolved order.
+    ///
+    /// What a refusal names so the fix is one step, and what a listing shows. The
+    /// ranges are deliberately left out: a caller that needs one asks
+    /// [`Self::engine_support`] for the engine it is actually holding.
+    pub fn engine_slugs(&self) -> Vec<String> {
+        self.engines
+            .iter()
+            .map(|engine| engine.slug.clone())
+            .collect()
     }
 
     /// The starter workspace files seeded for a variant: the variant's own set
@@ -4286,6 +4519,51 @@ impl TestCaseCatalog {
                     install: build.install,
                     build: build.build,
                     module: Some(module),
+                })
+            }
+        };
+
+        // The `[toolchain]` table declares the TypeScript checks run over the
+        // produced implementation. It belongs to the types that ship a TypeScript
+        // build; a wasm or asset-generation submission has no TypeScript to check,
+        // so declaring one there is a mistake worth rejecting rather than ignoring.
+        //
+        // It is accepted as ABSENT for every type: the manifest format calls it
+        // required, but every case version frozen before it existed declares none
+        // and a frozen version cannot be edited. Absence means "not checked and not
+        // gated", which is what those versions have always been.
+        let toolchain = match manifest.toolchain {
+            None => None,
+            Some(toolchain) => {
+                if !matches!(
+                    test_type,
+                    TestType::EndToEnd | TestType::FullStack | TestType::GameJam
+                ) {
+                    return Err(invalid(
+                        "the [toolchain] table is only valid for a case that ships a \
+                         TypeScript build"
+                            .to_string(),
+                    ));
+                }
+                // A blank command would silently skip the check it names — and for
+                // `typecheck`, silently ungate the run — so each declared one must
+                // say something.
+                if toolchain.typecheck.trim().is_empty() {
+                    return Err(invalid("toolchain.typecheck must not be empty".to_string()));
+                }
+                let optional = |value: Option<String>, key: &str| -> Result<Option<String>> {
+                    match value {
+                        Some(command) if command.trim().is_empty() => Err(invalid(format!(
+                            "toolchain.{key} must not be empty when declared"
+                        ))),
+                        other => Ok(other),
+                    }
+                };
+                Some(crate::toolchain::ToolchainCommands {
+                    typecheck: toolchain.typecheck,
+                    lint: optional(toolchain.lint, "lint")?,
+                    format: optional(toolchain.format, "format")?,
+                    test: optional(toolchain.test, "test")?,
                 })
             }
         };
@@ -5671,7 +5949,7 @@ impl TestCaseCatalog {
         // explicitly is simply the readable form, and so is not a duplicate of the
         // implicit entry.
         let engines = {
-            if !manifest.engines.is_empty()
+            if (!manifest.engines.is_empty() || !manifest.engine_tables.is_empty())
                 && !matches!(
                     test_type,
                     TestType::EndToEnd | TestType::FullStack | TestType::GameJam
@@ -5683,33 +5961,91 @@ impl TestCaseCatalog {
                 ));
             }
             let catalog = EngineCatalog::new();
-            let mut engines = vec![NONE_SLUG.to_string()];
+            let mut engines = vec![EngineSupport::unbounded(NONE_SLUG)];
             let mut declared = HashSet::new();
             // Whether any declared engine actually vendors a runtime. Only then does
             // the seeder have a dependency to write, and only then does the case owe
             // a `package.json` for it to be written into.
             let mut vendors_runtime = false;
-            for slug in &manifest.engines {
+            // The two spellings are one declaration: a bare slug is support at any
+            // version, an `[[engine]]` table is support over a range. Resolution
+            // merges them into one set, checks each slug against the closed
+            // catalogue once, and holds a slug to appearing in only one of them —
+            // two entries for one engine would be two answers to the same question.
+            let declarations = manifest
+                .engines
+                .iter()
+                .map(|slug| (slug.as_str(), None))
+                .chain(
+                    manifest
+                        .engine_tables
+                        .iter()
+                        .map(|table| (table.slug.as_str(), Some(table))),
+                );
+            for (slug, table) in declarations {
                 // The catalogue is closed and embedded at build time, so an unknown
                 // slug is an authoring mistake in the manifest, not a missing
                 // install. Name the slugs that would have worked so the fix is one
                 // step, exactly as an unknown `packages` name does.
-                let engine = catalog
-                    .resolve(&EngineSelection::new(slug.as_str()))
-                    .map_err(|_| {
-                        invalid(format!(
-                            "engine `{slug}` is not a known engine; valid engines are: {}",
-                            BUILT_IN_SLUGS.join(", ")
-                        ))
-                    })?;
-                if !declared.insert(slug.as_str()) {
+                let engine = catalog.resolve(&EngineSelection::new(slug)).map_err(|_| {
+                    invalid(format!(
+                        "engine `{slug}` is not a known engine; valid engines are: {}",
+                        BUILT_IN_SLUGS.join(", ")
+                    ))
+                })?;
+                if !declared.insert(slug) {
                     return Err(invalid(format!(
-                        "engine `{slug}` is declared more than once in `engines`"
+                        "engine `{slug}` is declared more than once across `engines` and \
+                         `[[engine]]`"
                     )));
                 }
                 vendors_runtime |= engine.provides_runtime();
-                if slug.as_str() != NONE_SLUG {
-                    engines.push(slug.clone());
+                let support = match table {
+                    None => EngineSupport::unbounded(slug),
+                    Some(table) => {
+                        // `none` supplies no runtime, so there is no package and no
+                        // version for a range to be about. A `[[engine]]` table
+                        // always carries a `min_version`, so naming `none` in one is
+                        // always a range over nothing: refuse it and point at the
+                        // spelling that says what the author meant.
+                        if slug == NONE_SLUG {
+                            return Err(invalid(
+                                "engine `none` supplies no runtime and therefore carries no \
+                                 version, so it cannot declare a version range; list it in \
+                                 `engines` instead"
+                                    .to_string(),
+                            ));
+                        }
+                        let min = parse_engine_version(slug, "min_version", &table.min_version)
+                            .map_err(&invalid)?;
+                        let max = table
+                            .max_version
+                            .as_deref()
+                            .map(|raw| parse_engine_version(slug, "max_version", raw))
+                            .transpose()
+                            .map_err(&invalid)?;
+                        // The ceiling is exclusive, so a `max_version` equal to the
+                        // floor admits nothing at all and one below it is worse than
+                        // nothing. Either is an authoring slip that would otherwise
+                        // surface as every run of the case being refused.
+                        if let Some(max) = &max
+                            && max <= &min
+                        {
+                            return Err(invalid(format!(
+                                "engine `{slug}` declares `max_version` {max}, which is not \
+                                 above its inclusive `min_version` {min}; the maximum is \
+                                 exclusive, so the range supports no version at all"
+                            )));
+                        }
+                        EngineSupport {
+                            slug: slug.to_string(),
+                            min_version: Some(min),
+                            max_version: max,
+                        }
+                    }
+                };
+                if slug != NONE_SLUG {
+                    engines.push(support);
                 }
             }
             // The engine's `file:` dependency is written into the seeded workspace's
@@ -5732,6 +6068,10 @@ impl TestCaseCatalog {
             }
             engines
         };
+        // The supported *slugs*, in resolved order — what a per-engine table is
+        // held against and what a refusal lists. The ranges are irrelevant to both:
+        // a reference implementation answers for an engine, not for a version of it.
+        let engine_slugs: Vec<String> = engines.iter().map(|engine| engine.slug.clone()).collect();
 
         // Resolve one reference mapping. A reference is either an HTML mockup
         // rendered to a screenshot (`path`) or a static image/video served as-is
@@ -6470,26 +6810,26 @@ impl TestCaseCatalog {
             match &variant.reference_implementation {
                 Some(ManifestReferenceImplementation::Shared(dir)) => {
                     let path = resolve_reference_impl(dir)?;
-                    for engine in &engines {
+                    for engine in &engine_slugs {
                         reference_impls.insert(engine.clone(), path.clone());
                     }
                 }
                 Some(ManifestReferenceImplementation::PerEngine(by_engine)) => {
                     for slug in by_engine.keys() {
-                        if !engines.contains(slug) {
+                        if !engine_slugs.contains(slug) {
                             return Err(invalid(format!(
                                 "variant `{}` declares a reference implementation for engine                                  `{slug}`, which this case does not support (supported: {})",
                                 variant.slug,
-                                engines.join(", ")
+                                engine_slugs.join(", ")
                             )));
                         }
                     }
-                    for engine in &engines {
+                    for engine in &engine_slugs {
                         let dir = by_engine.get(engine).ok_or_else(|| {
                             invalid(format!(
                                 "variant `{}` declares reference implementations per engine but                                  names none for `{engine}`; a per-engine table must cover every                                  engine the case supports ({})",
                                 variant.slug,
-                                engines.join(", ")
+                                engine_slugs.join(", ")
                             ))
                         })?;
                         reference_impls.insert(engine.clone(), resolve_reference_impl(dir)?);
@@ -6992,6 +7332,7 @@ impl TestCaseCatalog {
             test_type,
             experimental: manifest.experimental,
             build,
+            toolchain,
             instrumentation,
             canvas,
             tool,
@@ -7149,12 +7490,30 @@ fn default_max_runtime_hours() -> f64 {
 /// supports.
 ///
 /// Resolution never produces an empty set — it always leads with
-/// [`NONE_SLUG`](crate::engine::NONE_SLUG) — so the only way the field can be
+/// [`NONE_SLUG`] — so the only way the field can be
 /// missing is a producer that predates engines. Defaulting to `["none"]` rather
 /// than to nothing keeps such a payload meaning "runs the way it always did"
 /// instead of "supports no engine at all", which would refuse every run of it.
-fn default_engines() -> Vec<String> {
-    vec![NONE_SLUG.to_string()]
+/// Parse one authored engine version out of an `[[engine]]` table, reporting the
+/// engine and the key when it is not a semantic version.
+///
+/// Returns the failure *detail* rather than an `Error` so the caller wraps it in
+/// its own `InvalidTestCase`, which already carries the case slug and version.
+/// The message quotes what was written and names the shape expected, because the
+/// usual mistake is a two-component `"1.0"` or a `"v1.0.0"` — both of which npm
+/// tolerates in places and semver does not.
+fn parse_engine_version(slug: &str, key: &str, raw: &str) -> std::result::Result<Version, String> {
+    Version::parse(raw).map_err(|err| {
+        format!(
+            "engine `{slug}` declares `{key} = \"{raw}\"`, which is not a semantic version \
+             ({err}); engine versions are the versions of the engine's npm package, so they \
+             carry all three components (for example `1.0.0`)"
+        )
+    })
+}
+
+fn default_engines() -> Vec<EngineSupport> {
+    vec![EngineSupport::unbounded(NONE_SLUG)]
 }
 
 /// The default `[canvas] background` applied when an asset-generation manifest
@@ -7788,3 +8147,11 @@ fn escapes_folder(rel: &Path) -> bool {
 #[cfg(test)]
 #[path = "test_case.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "test_case.engines.test.rs"]
+mod engine_tests;
+
+#[cfg(test)]
+#[path = "test_case.toolchain.test.rs"]
+mod toolchain_tests;

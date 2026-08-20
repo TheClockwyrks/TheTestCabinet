@@ -23,6 +23,7 @@ fn stamp_mtime(store: &DefinitionStore, slug: &str, version: &str, unix_secs: u6
 
 fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
     StoredManifest {
+        toolchain: None,
         slug: slug.to_string(),
         version: version.to_string(),
         name: "Sample".to_string(),

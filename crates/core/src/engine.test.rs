@@ -113,3 +113,75 @@ fn kebab_case_accepts_slugs_and_rejects_the_shapes_a_slug_must_not_take() {
     assert!(!is_kebab_case("simple_2d"));
     assert!(!is_kebab_case("simple 2d"));
 }
+
+// --- staged versions --------------------------------------------------------
+
+/// A package store holding one staged package `name` whose `package.json`
+/// declares `version` verbatim (so a test can stage a version that is not a
+/// version at all).
+fn store_with(name: &str, version: &str) -> tempfile::TempDir {
+    let store = tempfile::tempdir().expect("temp store");
+    let dir = store.path().join(name);
+    std::fs::create_dir_all(&dir).expect("create staged package dir");
+    std::fs::write(
+        dir.join("package.json"),
+        format!("{{\"name\":\"{name}\",\"version\":\"{version}\"}}"),
+    )
+    .expect("write staged package.json");
+    store
+}
+
+#[test]
+fn a_resolved_engine_reports_the_version_of_its_staged_package() {
+    // The version is the *staged package's*, not a number copied into
+    // `engine.toml` — the same file the seeder reads when it vendors the package
+    // and records the version on the run, so the gate and the record can never
+    // disagree.
+    let store = store_with("@test-cabinet/simple-2d", "1.4.2");
+    let engine = EngineCatalog::with_package_store(store.path())
+        .resolve(&EngineSelection::new("simple-2d"))
+        .expect("`simple-2d` resolves");
+
+    assert_eq!(
+        engine.version(),
+        Some(&Version::parse("1.4.2").expect("version"))
+    );
+}
+
+#[test]
+fn the_engineless_engine_reports_no_version() {
+    // Not a missing version: `none` vendors no package, so there is nothing to
+    // have a version.
+    let store = store_with("@test-cabinet/simple-2d", "1.4.2");
+    let engine = EngineCatalog::with_package_store(store.path())
+        .resolve(&EngineSelection::none())
+        .expect("`none` resolves");
+
+    assert!(!engine.provides_runtime());
+    assert_eq!(engine.version(), None);
+}
+
+#[test]
+fn an_engine_missing_from_the_store_resolves_without_a_version() {
+    // A catalogue lookup is not a run: `tcab engines`, a case resolving its
+    // declared slugs, and a `tcab validate` on a host that has staged nothing all
+    // resolve engines without ever seeding one, so an empty store is not an error
+    // here. The two places it matters refuse on their own.
+    let store = tempfile::tempdir().expect("temp store");
+    let engine = EngineCatalog::with_package_store(store.path())
+        .resolve(&EngineSelection::new("simple-2d"))
+        .expect("resolution does not depend on the store");
+
+    assert!(engine.provides_runtime());
+    assert_eq!(engine.version(), None);
+}
+
+#[test]
+fn a_staged_version_that_is_not_a_semantic_version_reports_none() {
+    let store = store_with("@test-cabinet/simple-2d", "nightly");
+    let engine = EngineCatalog::with_package_store(store.path())
+        .resolve(&EngineSelection::new("simple-2d"))
+        .expect("resolution does not depend on the store");
+
+    assert_eq!(engine.version(), None);
+}

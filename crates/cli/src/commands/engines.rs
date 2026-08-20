@@ -10,7 +10,8 @@
 
 use anyhow::Result;
 use test_cabinet_core::{
-    EngineCatalog, EngineManifest, EngineSelection, Error, ResolvedEngine, TestCaseVersion,
+    EngineCatalog, EngineManifest, EngineSelection, ResolvedEngine, TestCaseVersion,
+    ensure_engine_supported,
 };
 
 use crate::cli::EnginesArgs;
@@ -46,21 +47,15 @@ pub async fn execute(args: EnginesArgs) -> Result<()> {
 /// looking in the wrong place. Only a slug that *is* an engine is then held
 /// against the case's declared set.
 ///
-/// The unsupported-engine failure reuses the core's own
-/// [`Error::EngineUnsupportedForCase`] rather than phrasing its own, so a local
+/// The case-side half is the core's own
+/// [`ensure_engine_supported`] rather than a re-statement of it, so a local
 /// `tcab seed` and a backend-driven run refuse the same pairing with the same
-/// words.
+/// words — and so the *version* half of the gate (a case's declared
+/// `[[engine]]` range against the version the host package store holds) applies
+/// here too, without this module having to know it exists.
 pub fn resolve_for_case(slug: &str, test_case: &TestCaseVersion) -> Result<ResolvedEngine> {
     let engine = EngineCatalog::new().resolve(&EngineSelection::new(slug))?;
-    if !test_case.supports_engine(engine.slug()) {
-        return Err(Error::EngineUnsupportedForCase {
-            slug: engine.slug().to_string(),
-            test_case: test_case.slug.clone(),
-            version: test_case.version.clone(),
-            supported: test_case.engines.clone(),
-        }
-        .into());
-    }
+    ensure_engine_supported(test_case, &engine)?;
     Ok(engine)
 }
 

@@ -463,6 +463,15 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                 .as_ref()
                 .map(|module| module.to_string_lossy().replace('\\', "/")),
         }),
+        toolchain: resolved
+            .toolchain
+            .as_ref()
+            .map(|toolchain| crate::store::StoredToolchain {
+                typecheck: toolchain.typecheck.clone(),
+                lint: toolchain.lint.clone(),
+                format: toolchain.format.clone(),
+                test: toolchain.test.clone(),
+            }),
         canvas: resolved.canvas.as_ref().map(|canvas| StoredCanvas {
             width: canvas.width,
             height: canvas.height,

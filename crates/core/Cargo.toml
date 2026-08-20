@@ -26,6 +26,9 @@ async-trait = { workspace = true }
 cuid2 = { workspace = true }
 time = { workspace = true }
 toml = { workspace = true }
+# Semantic-version ordering for the engine version ranges a test case declares
+# (`[[engine]]`) and the run gate enforces (`resolve_engine`).
+semver = { workspace = true }
 handlebars = { workspace = true }
 tempfile = { workspace = true }
 # Gzip framing for the run-tree analysis artifacts core assembles on the host

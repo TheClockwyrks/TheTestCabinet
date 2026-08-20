@@ -325,6 +325,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
             observed: Arc::clone(&observed),
         })),
         analyzer: None,
+        toolchain: None,
         validator: FakeValidator {
             steps: Arc::clone(&steps),
         },
