@@ -30,8 +30,17 @@
 #
 # (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
 # all: they only `COPY --from` the tooling builder. They are still built with the
-# repo root as their context for consistency, and it costs nothing because this
-# allowlist keeps it to ~100kB.)
+# repo root as their context for consistency, and it costs them nothing because they
+# read none of it.)
+#
+# WHAT THIS ALLOWLIST ACTUALLY WEIGHS, because this paragraph used to say "~100kB" and
+# was wrong by three orders of magnitude for years: ~35 MB across ~2,300 files, nearly
+# all of it the Rust workspace's sources (crates/ is ~22 MB, the eleven guest packages
+# ~13 MB) — real build inputs, every one of them compiled or reflected by some image.
+# The figure is worth keeping honest because it is the unit of the `COPY . .` snapshot
+# each of the seven whole-context builds materialises on a cache miss. It was ~113 MB
+# until the re-exclusions at the foot of this file went in; 78 MB of the difference was
+# a directory git had never seen (see the `crates/desktop/binaries/` entry).
 #
 # Flipping to an allowlist (rather than enumerating things to exclude) means a
 # change to anything cargo does NOT compile — the frontend, the docs, test cases,
@@ -388,3 +397,48 @@
 # are left, which are enough on their own: a context that does not carry a file the
 # build is about to rewrite, and a layer cache that does not churn on it.
 /packages/gg-sandbox-rust/src/bindings.rs
+
+# The desktop app's SIDECAR BINARIES, which are 78 MB of the ~113 MB this context
+# used to weigh — two thirds of it, for a crate no image in this repository compiles.
+# `crates/desktop/binaries/` holds the `k3d` and `kubectl` builds the Tauri app
+# bundles; they are fetched at build time by scripts/fetch-desktop-sidecars.mjs (the
+# release workflow runs it), never committed, and platform-specific — the pair on the
+# machine this entry was written on are `*-aarch64-apple-darwin`, which no Linux image
+# could execute even if one wanted to. The directory's own .gitignore is `*` plus
+# `!.gitignore`, so git has never seen them and neither had this file: they arrived
+# under `!/crates` like every other path below it.
+#
+# WHAT THEY COST is not the transfer, which BuildKit does incrementally, but the
+# `COPY . .` snapshot every one of the seven whole-context builds materialises on a
+# cache miss — 78 MB of it, unpacked into a layer, for `-p test-cabinet-artifacts`.
+# A developer who has ever run the desktop app pays it on every service image build;
+# one who has not pays nothing, which is exactly why this went unnoticed for so long.
+/crates/desktop/binaries/
+# And Tauri's generated schema tree, `crates/desktop/gen/` — gitignored output of the
+# desktop crate's build script, regenerated whenever that crate is built. Small (~420 kB)
+# and here for the churn rather than the size: it is a build output living inside a
+# re-included source tree, which is the shape the block above exists to keep out.
+/crates/desktop/gen/
+
+# TypeScript's incremental build state. `packages/ui/tsconfig.tsbuildinfo` is gitignored
+# output that lands inside `!/packages/ui` — re-included for the web console image, which
+# reads that package's sources — and it is REWRITTEN by every local `tsc -b`. So a
+# type-check on the host changes the context, which changes the `COPY . .` cache key, which
+# recompiles the whole Rust workspace in an image that does not contain a line of
+# TypeScript. As a glob rather than the one path, because the next package to gain a
+# composite tsconfig should not have to rediscover this.
+**/*.tsbuildinfo
+
+# macOS Finder metadata, and the entry most likely to be the reason a `make images` you
+# expected to be cached was not. `.DS_Store` files exist wherever a directory has been
+# opened in Finder — this repository has them at its root and under crates/, packages/,
+# scripts/, harnesses/, orchestrators/ and containers/, six of which sit inside allowlisted
+# trees — and Finder rewrites them for reasons that have nothing to do with the repository:
+# a window resized, a view mode changed, a folder scrolled. Each rewrite changes the
+# `COPY . .` cache key of every build from this context, and the build stage's first act on
+# a miss is to touch the tree and hand cargo a workspace it must compile from scratch. The
+# symptom is a full ~19-crate rebuild with no source change, blamed on the Dockerfile.
+#
+# This is not hypothetical here: the primary development host is macOS running the tree
+# through a Linux VM's shared mount, so Finder and the builder see the same directories.
+**/.DS_Store

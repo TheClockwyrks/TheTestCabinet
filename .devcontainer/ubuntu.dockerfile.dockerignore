@@ -180,3 +180,14 @@
 # These come last so they win.
 /.devcontainer/docker-compose.local.yml
 /.devcontainer/.env
+
+# And macOS Finder metadata, which rides in under the same `!/.devcontainer`
+# re-inclusion for the same reason and is worse: those two files at least only change
+# when a developer edits them, while a `.DS_Store` is rewritten because a window was
+# resized or a folder scrolled — churn with no edit behind it at all. Every rewrite
+# changes this image's `COPY` cache key, so a devcontainer rebuild re-runs the
+# toolchain installs it would otherwise have skipped. The primary development host is
+# macOS sharing this tree into a Linux VM, so Finder and the builder see the same
+# directories. The root allowlist carries the same entry; this is the half of that
+# pair that scripts/ci/build-context.sh checks against THIS file.
+**/.DS_Store
