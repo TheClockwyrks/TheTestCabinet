@@ -576,19 +576,6 @@ export default defineConfig({
                   ],
                 },
                 {
-                  label: "Usage",
-                  collapsed: true,
-                  items: [
-                    "engines/simple-2d/usage/overview",
-                    "engines/simple-2d/usage/creating-the-engine",
-                    "engines/simple-2d/usage/the-game-loop",
-                    "engines/simple-2d/usage/drawing",
-                    "engines/simple-2d/usage/actions",
-                    "engines/simple-2d/usage/audio-and-assets",
-                    "engines/simple-2d/usage/diagnostics",
-                  ],
-                },
-                {
                   label: "Examples",
                   collapsed: true,
                   items: [
@@ -599,6 +586,19 @@ export default defineConfig({
                     "engines/simple-2d/examples/diagnostics-and-overlay",
                     "engines/simple-2d/examples/validating-a-game",
                     "engines/simple-2d/examples/scripted-clocks",
+                  ],
+                },
+                {
+                  label: "Usage",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/usage/overview",
+                    "engines/simple-2d/usage/creating-the-engine",
+                    "engines/simple-2d/usage/the-game-loop",
+                    "engines/simple-2d/usage/drawing",
+                    "engines/simple-2d/usage/actions",
+                    "engines/simple-2d/usage/audio-and-assets",
+                    "engines/simple-2d/usage/diagnostics",
                   ],
                 },
                 {
