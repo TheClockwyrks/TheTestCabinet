@@ -1,62 +1,95 @@
-## The case supports the Simple 2D engine
+## Carom is a TypeScript project built on the Simple 2D engine
 
-A run now selects an **engine** — the runtime the produced game is built on —
-alongside its model, harness, and variant, and this version declares two:
-`none`, the runtime-less baseline every earlier version of Carom assumed, and
-`simple-2d`. What the case declares is support and nothing else. An engine is not
-part of the game: it ships its own documentation from its own package, seeded
-into the run beside the specs, so nothing under this version describes an
-engine's API and nothing here falls out of date when one changes.
+This version stops asking a model for a self-contained HTML page and asks it for
+one module of a real project instead. A run is seeded with a complete TypeScript
+workspace — Vite, `tsc`, ESLint, Prettier and Vitest already configured, an
+`index.html` holding the canvas, and the three case-owned modules the checks read
+through — and the model writes `src/game.ts`. Everything the specification fixes
+as a number now has a name in `src/constants.ts`, and the specs cite those names
+rather than restating the figures.
 
-Under `none` the case asks for exactly the game `v2.1.0` asked for. The build
-writes its own frame loop, reads its own keyboard events, drives its own Web
-Audio graph, and draws its own debug overlay, and the rendered prompt is
-unchanged to the byte.
+The runtime is the [Simple 2D](/engines/simple-2d/) engine, declared as
+`[[engine]] slug = "simple-2d"` with `min_version = "1.0.0"`. The engine owns the
+frame loop (which hands the game the real elapsed time of each frame, never a
+mandated fixed timestep), keyboard input as named actions, audio as named cues,
+and the debug overlay. What stays the build's is the game.
 
-## What the engine owns, and what the build still owns
+## This version does not support the engineless run
 
-Under `simple-2d` four surfaces the build used to write for itself belong to the
-engine instead: the frame loop, which hands the game the real elapsed time of
-each frame rather than the mandated fixed timestep; keyboard input, registered as
-named actions and read as held values and consumed edges rather than out of key
-events; audio, played as named cues on the engine's bus rather than through a
-hand-built oscillator graph; and the debug overlay, drawn by the engine from the
-diagnostic sources the game registers.
+Earlier versions of Carom ran under no engine at all, and `v3.0.0` does not. The
+seeded workspace's `package.json` depends on the engine package, which only an
+engine run vendors in, so an engineless run could not install — let alone build.
+The manifest therefore declares `simple-2d` alone, and `none` is no longer folded
+into a case's supported set once the case has declared an engine. Runs recorded
+against `v2.1.0` and earlier are untouched: those versions are frozen and still
+resolve, and still support the engineless run they were written for.
 
-What stays the build's is the game. `window.__carom` still carries `reset`,
-`snapshot`, and the control operations that pose a scenario — `startMatch`,
-`serve`, `setScore`, `setPaddle`, `setBall`, `setAiControl`, and gyre's
-`setObstacleClock` — because each of those speaks about Carom's own world, which
-no engine can know about. What they no longer sit beside are `step`,
-`setAutoStep`, `keyDown`, `keyUp`, and `press`: the engine's host interface
-drives the clock and the actions, so the build is not asked for them twice.
+## The produced code is type-checked, linted, formatted and tested
 
-## A tick means the same thing under both engines
+A `[toolchain]` table declares four commands run over the produced tree once it
+is installed: `npx tsc --noEmit`, `npx eslint .`, `npx prettier --check .`, and
+`npx vitest run --coverage`. They run against the code the model wrote, and their
+results are carried on the run.
 
-`tick_hz` stays 120, and the sameness is the point. Under `none` it is the fixed
-simulation timestep the specification mandates. Under `simple-2d` the engine
-mandates no timestep at all, and 120 Hz is the rate the engine host's manual
-clock steps at by default, so one step is one scheduled frame of 1/120 of a
-second. Holding the two equal is what keeps every tick-counted assertion in this
-case's validation saying the same thing whichever runtime is underneath: 120
-steps is a second of game time either way.
+## Objective points are decided by validators, not by a browser
+
+Every one of this version's objective review points names a **validator**: a
+TypeScript test file under `validation/`, run by Vitest **in process** against the
+game the build produced. A validator imports the engine and the build's own
+`src/game.ts`, stands an engine up over an `@napi-rs/canvas` canvas with a clock
+of its own, and steps it an exact number of frames. It reads behavior from the
+game's state, audio from the engine's `cue:played` event, and drawing from either
+pixel readback or a recording wrapper around the 2D context.
+
+Nothing drives a browser and no wall-clock time passes, so a scenario is
+synchronous and reproducible: a check asks for a number of frames and gets exactly
+that number, at exactly the deltas its clock supplied. The `tick_hz` key is gone
+with the browser driver that read it — each validator states its own step by
+constructing its own clock, so a single case-wide rate could only ever be wrong
+for some of them.
+
+`window.__carom` keeps `reset`, `snapshot`, and the control operations that pose a
+scenario — `startMatch`, `serve`, `setScore`, `setPaddle`, `setBall`,
+`setAiControl`, and gyre's `setObstacleClock` — because each speaks about Carom's
+own world, which no engine can know. What they no longer sit beside are `step`,
+`setAutoStep`, `keyDown`, `keyUp` and `press`: the engine owns the clock and the
+actions, so the build is not asked for them twice.
+
+## Reference mockups and proof captures are retired
+
+This version declares no `[[reference]]` views, no `[[proof]]` artifacts and no
+`[[check]]` comparisons, and seeds no `specs/proof.md`. Every screen is left to
+the model's design and graded by a person; the objective points are decided by the
+validators above, which reach the state a check would have had to drive a browser
+into and assert on it directly. Media for a reviewer is captured by the validators
+from a scenario the case controls, rather than requested from the build.
+
+## The multi-ball variant is not carried forward
+
+`v3.0.0` offers two variants, `base` and `gyre`. The `multi` variant of `v2.1.0`
+is **not** carried forward, and this is a deliberate omission rather than an
+oversight.
+
+Multi's three independently-served balls contradict points this case grades
+**commonly**, across every variant: a scored point does not return multi to the
+pre-serve countdown ("the other two balls carry on uninterrupted, and the field is
+not frozen"), and its launches are random over the full circle rather than aimed
+at a receiver. The scoring, match-end and countdown points — and the validators
+behind them — are written against base's single, globally gated, receiver-directed
+serve. A variant may only **add** to a common review item, never replace the
+validator behind one, so carrying multi forward means moving those points out of
+the common set and declaring them per variant: a change to how the case is graded
+rather than a port of the variant, and one that belongs to a version of its own.
+
+`v2.1.0` still offers multi, is frozen, and still resolves, so every run already
+recorded against it is unaffected.
 
 ## Scoring
 
-No review item, weight, domain, reference, or proof was added, removed, or
-renumbered, so this version's total declared weight is `v2.1.0`'s and a score
-recorded under `simple-2d` is computed against exactly the checklist a score
-under `none` is. The seeded specification branches on the selected engine, but
-only to say which of these surfaces the build itself supplies; what the finished
-game must do is unchanged, and so is what a reviewer grades it against.
-
-## The reference implementation is addressed per engine
-
-The build a reference implementation demonstrates is a genuinely different build
-under each engine, so the variant key is now keyed by engine slug. The `base`
-variant carries both: `reference-impl/base`, carried forward unchanged, for
-`none`, and a new `reference-impl-simple-2d/base` written against the engine.
-Validation baselines follow the same split, captured from the engine's own
-reference implementation. `gyre` and `multi` have their `none` builds only for
-now and keep the single-implementation form until their engine builds are
-authored.
+The common checklist is unchanged in shape from `v2.1.0`: no common review item,
+weight or domain was added, removed or renumbered, and the serve-direction points
+moved from the common set onto `base` and `gyre` without changing what either
+variant is worth. `gyre` keeps its own three-point `gyre` category. A score
+recorded against a `v3.0.0` variant is therefore computed against the same
+checklist that variant had before, minus the reference and proof media a reviewer
+used to see beside it.

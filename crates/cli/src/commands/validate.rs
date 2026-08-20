@@ -53,9 +53,10 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     // validator records whether each is present in the produced tree.
     let proofs = test_case.proofs_for(variant);
 
-    let artifacts = ArtifactCollection {
-        repo_path: args.implementation,
-    };
+    // The tree is described by the engine it was built on, which is what decides
+    // whether the case's validators run as a vitest project or its instrumentation is
+    // driven in a browser. Nothing has installed this tree, so validation installs it.
+    let artifacts = ArtifactCollection::new(args.implementation).built_on(Some(engine.clone()));
     // Validation runs entirely on the host against an existing implementation
     // directory (nothing is bind-mounted into a runtime VM), so the screenshot
     // scratch can live in the system temp directory.

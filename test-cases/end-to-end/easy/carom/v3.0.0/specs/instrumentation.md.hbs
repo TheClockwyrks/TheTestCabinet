@@ -1,231 +1,170 @@
-# Carom — Debug and automation API
+# Carom — Debug and automation surface
 
-Carom ships a small debugging and automation surface so the game can be driven
-and inspected from code, without touching the keyboard or waiting on real time.
-It is what you use to iterate on the physics, reproduce a specific rally, script a
-scenario, and capture clean screenshots of an exact game state. This file defines
-that surface. Implement all of it, on the same footing as the game itself.
+Carom carries a small debugging and automation surface, `window.__carom`, so the
+game can be driven and inspected from code without touching the keyboard or
+waiting on real time. It is what reproduces a specific rally, scripts a scenario,
+and puts the game into an exact state.
 
-{{#if (eq engine.slug "simple-2d")}}
-Nothing here changes how a person plays. The debug API is inert during normal
-play, doing nothing until something calls it.
-{{else}}
-Nothing here changes how a person plays. The debug API is inert during normal
-play, doing nothing until something calls it, and the debug overlay is off until
-toggled.
-{{/if}}
+The surface is supplied. `src/debug.ts` holds it, already written, and
+`src/main.ts` installs it on `window.__carom` as soon as the engine has
+initialized. You neither write it nor install it, and both files are ones you must
+not edit.
+
+What this file asks of you is the other half: the game's state must hold what the
+surface reads, and the game must honor the state the surface poses. Every
+operation is a read or a write of `CaromState`. None of them fabricates an
+outcome; each arranges the world, and the game's own `update` — the real
+collision, the real serve, the real AI — is what runs from there on the next
+frame. Read `src/debug.ts` alongside this file: it is the exact behavior
+described here.
+
+Nothing here changes how a person plays. The surface is inert during normal play,
+doing nothing until something calls it.
 
 ## A deterministic core
 
-{{#if (eq engine.slug "simple-2d")}}
-The whole surface rests on the simulation being deterministic, which the physics
-loop in `specs/balls.md` already requires: every rate integrated against the delta
-time the game is given, so an interval of game time reaches the same state however
-it was divided into frames. Two more properties make it driveable from code:
+The surface rests on the simulation being deterministic, which the physics loop in
+`specs/balls.md` already requires: every rate integrated against the delta time
+the game is given, so an interval of game time reaches the same state however it
+was divided into frames. Two more properties make it driveable from code:
 
 - Render-free core. Game state advances from the elapsed time the game is handed
   and must not depend on a canvas, on `requestAnimationFrame`, or on wall-clock
   time to make progress. The dependency runs one way: the simulation never reads
   from, waits on, or is driven by the renderer.
-- Seeded randomness. Any randomness the game uses, such as a random serve or
-  launch angle, runs off a seedable generator, so reseeding and replaying the same
-  calls reproduces the same result exactly. A build with no randomness satisfies
-  this trivially.
+- Seeded randomness. Any randomness the game uses runs off a generator seeded from
+  `state.rngState`, and it keeps its whole generator state in that field, so
+  reseeding and replaying the same calls reproduces the same result exactly. A
+  build that uses no randomness simply never reads it.
 
-Given the same seed and the same sequence of API calls and elapsed game time, the
-game reaches the same state every time.
+Given the same seed and the same sequence of calls and elapsed game time, the game
+reaches the same state every time.
 
 ## What the engine provides instead
 
 The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
-which documents them at `{{engine.docs}}`. Carom defines none of them here, and
-`window.__carom` carries no operation for any of them:
+which documents them at `{{engine.docs}}`. Carom defines none of them, and
+`window.__carom` carries no operation for any of them: the engine advances the
+game frame by frame and can take it off real time, the engine drives the actions
+the game registers, and the engine draws and toggles the debug overlay. What the
+overlay shows is Carom's, under [Diagnostics](#diagnostics) below.
 
-- Advancing the game frame by frame, and taking it off real time, is the engine's.
-  There is no `step` and no `setAutoStep` on `window.__carom`.
-- Driving the controls is the engine's, through the actions the game registers.
-  `specs/modes/single-player.md` and `specs/modes/versus.md` name those actions
-  and the keys bound to them. There is no `keyDown`, `keyUp`, or `press` on
-  `window.__carom`.
-- Drawing the debug overlay and toggling it are the engine's. What the overlay
-  shows is Carom's, under [Diagnostics](#diagnostics) below.
-{{else}}
-The whole surface rests on the simulation being deterministic and steppable,
-which the physics loop in `specs/balls.md` already requires: a fixed timestep,
-integrated in whole steps, decoupled from rendering. Two more properties make it
-driveable from code:
+## The driver
 
-- Render-free core. Game state advances by stepping the simulation and must not
-  depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
-  progress. The dependency runs one way: the simulation never reads from, waits
-  on, or is driven by the renderer.
-- Seeded randomness. Any randomness the game uses, such as a random serve or
-  launch angle, runs off a seedable generator, so reseeding and replaying the same
-  calls reproduces the same result exactly. A build with no randomness satisfies
-  this trivially.
+`state.driver` is how the surface takes the paddles from the player, and honoring
+it is the one behavior the whole surface depends on.
 
-Given the same seed and the same sequence of API calls and steps, the game
-reaches the same state every time.
+- While `driver.paddles` is `false`, the game plays normally: the registered
+  actions move the human paddles and, in Solo, the AI moves the right one.
+- Every operation except `snapshot` and `reset` sets `driver.paddles` to `true`.
+  From then on both paddles move at the held velocities `driver.vy.left` and
+  `driver.vy.right`, in px/s, integrated against the frame's delta time and
+  clamped to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` exactly as a played paddle is.
+  Neither the input actions nor the AI move a paddle while it is `true`.
+- The exception is `driver.ai`. In Solo, while `driver.paddles` and `driver.ai`
+  are both `true`, the right paddle is driven by the real AI opponent from
+  `specs/modes/single-player.md` while the left paddle stays on its held velocity.
+- `reset()` sets `driver.paddles` and `driver.ai` back to `false` and both held
+  velocities to `0`, handing the paddles back.
 
-The game advances on a fixed timestep — 120 Hz, so one step is exactly 1/120 of a
-second of game time — that the animation loop normally supplies from the wall
-clock, so it plays in real time for a person at the keyboard. The debug API can
-drive that timestep manually instead: `step(ticks)` advances the simulation by
-exactly that many fixed steps, and `reset()` and `step()` switch the game to
-manual stepping so the wall clock stops feeding it — from there `step()` is the
-only thing that moves the simulation, and a scripted scenario is exact and
-reproducible whatever else the machine is doing. `setAutoStep(true)` hands the
-clock back to the animation loop so the game runs in real time again (handy for
-watching a rally play out or recording a motion clip).
-{{/if}}
+A paddle's `vy` field always reports its actual vertical velocity for the frame,
+whoever moved it, because that is what the spin mechanic in `specs/balls.md` reads
+at contact. A paddle pinned against a bound therefore reports `0` even while a
+movement action is held or a driver velocity is set.
 
-## The `window.__carom` object
+## The operations
 
-Expose the API as a single object on the global `window.__carom`, installed once
-the game is running. It carries a `version` number (use `1`) and the operations
-below. Values are plain numbers, strings, and booleans so a caller can read them
-directly; coordinates and velocities are in the logical-pixel space of
-`specs/overview.md`.
+`window.__carom` carries `version` (`CAROM_DEBUG_VERSION`, `1`) and the operations
+below. Values are plain numbers, strings, and booleans; coordinates and velocities
+are in the logical-pixel space of `specs/overview.md`.
 
-### Core operations
+### `reset(options)`
 
-- `reset(options)` returns the game to its initial title state. `options` is
-  optional, and `options.seed` (a number) seeds all of the game's randomness so a
-  scenario replays identically. After `reset`, the keyboard and (in Solo) the AI
-  resume control of the paddles until a control operation below takes over.
-{{#if (ne engine.slug "simple-2d")}}
-  Calling `reset` also switches the game to manual stepping — the animation loop
-  stops advancing the sim from the wall clock — so from here `step` is the only
-  thing that moves the simulation.
-- `step(ticks)` advances the simulation by exactly `ticks` fixed steps
-  immediately, running the fixed-timestep update internally rather than waiting
-  for real frames. The unit is whole simulation ticks, not seconds: the timestep
-  is 120 Hz, so one tick is 1/120 of a second, `step(1)` runs a single physics
-  step and `step(120)` advances one second of game time. Nothing is rounded or
-  approximated — the number of steps asked for is the number of steps run.
-  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing,
-  while a fractional or negative value is invalid and the call fails loudly rather
-  than guessing what was meant. This runs the real physics forward from a set-up
-  state to see where it lands. Stepping only advances the live field (a rally or
-  its countdown) and has no effect on a menu screen. Calling `step` (or `reset`)
-  also switches the game to manual stepping, so successive steps advance the
-  simulation by exactly the number of ticks asked for, with no stray wall-clock
-  frames creeping in between calls.
-- `setAutoStep(enabled)` chooses who advances the clock. `setAutoStep(true)` hands
-  the clock back to the animation loop so the game runs itself in real time again
-  (for watching a posed rally play out, or recording a live motion clip);
-  `setAutoStep(false)` returns to manual stepping via `step`. `reset` and `step`
-  already switch to manual on their own, so this is only needed to go back to real
-  time. It never changes any game state, only which clock drives it.
-{{/if}}
-- `snapshot()` returns a plain, JSON-serializable object describing the current
-  game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
-  changes anything.
+Restores every declared field of `CaromState` to its title-screen value: the title
+screen with `menuIndex` at `0`, both scores `0`, no winner, `receiver` back to
+`"left"`, `holdTimer` at `0`, both paddles centered at `FIELD_CY`, the ball parked
+motionless and spinless at `(FIELD_CX, FIELD_CY)`, an empty trail, `simTime` at
+`0`, and the driver cleared. `options.seed` seeds `rngState`, defaulting to
+`DEFAULT_SEED` (`1`).
 
-### Control operations
+`muted` is deliberately untouched: muting is a player preference the engine owns.
 
-These set up a specific situation. Each one routes through the same systems normal
-play uses, arranging the world rather than faking outcomes. Calling any of them
-puts the paddles under the caller's control: both paddles then follow the
-velocities set through `setPaddle` (defaulting to stationary) instead of the
-keyboard or the AI, until the next `reset` — except that in Solo `setAiControl`
-(below) can hand the AI's paddle back to the computer opponent so a scenario can
-exercise it.
+Because it restores exactly the declared fields, any state of your own that a
+frame depends on must be derivable from them. Anything authoritative held only in
+a field of your own would survive a reset and stop a scenario replaying
+identically.
 
-- `startMatch(mode)` starts a real match, with `mode` being `"solo"` or
-  `"versus"`, exactly as choosing it from the menu would. The match opens on the
-  pre-serve countdown.
-- `serve()` launches the ball now, ending the pre-serve countdown immediately
-  instead of waiting it out. On a live rally it re-serves.
-- `setScore(p1, p2)` sets the two scores directly, as a precondition; the win and
-  deuce rules still resolve through real play, so drive a real point to end a
-  match.
-- `setPaddle(side, state)` poses or moves a paddle. `side` is `"left"` or
-  `"right"`; `state` may set `cy` (center y) and/or `vy` (vertical velocity in
-  px/s). `vy` persists across steps, so the paddle is moving when it strikes the
-  ball, which is what drives the spin mechanic.
-{{#if (eq variant.slug "multi")}}
-- `setBall(index, state)` places and aims a ball. `index` selects one of the three
-  balls, numbered in play order from `0`. `state` may set any of `x`, `y`, `vx`,
-  `vy`, and `spin`. Posing a ball takes it into live play, so a scenario can drive
-  one ball while parking the others out of the way.
-{{else}}
-- `setBall(index, state)` places and aims a ball. `index` is `0`, selecting the
-  single ball in play. `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`.
-{{/if}}
-{{#if (eq engine.slug "simple-2d")}}
-- `setAiControl(enabled)` hands the AI-controlled (right) paddle back to the
-  computer opponent for the rest of the driven scenario, so advancing the game runs
-  the real AI against the posed ball while the left paddle and ball stay under the
-  caller's control. This is how a scenario exercises the opponent: pose the ball's
-  approach and the AI paddle's start with `setBall` and `setPaddle`, call
-  `setAiControl(true)`, then advance the game and read where the AI moved its
-  paddle. It applies only in Solo (the mode with an AI); `false` is the default and
-  restores full driver control of both paddles. A `reset` clears it.
-{{else}}
-- `setAiControl(enabled)` hands the AI-controlled (right) paddle back to the
-  computer opponent for the rest of the driven scenario, so `step` runs the real AI
-  against the posed ball while the left paddle and ball stay under the caller's
-  control. This is how a scenario exercises the opponent: pose the ball's approach
-  and the AI paddle's start with `setBall` and `setPaddle`, call `setAiControl(true)`,
-  then `step` and read where the AI moved its paddle. It applies only in Solo (the
-  mode with an AI); `false` is the default and restores full driver control of both
-  paddles. A `reset` clears it.
-{{/if}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under
+[Snapshot shape](#snapshot-shape). It never changes anything.
+
+### `startMatch(mode)`
+
+Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
+exactly as choosing it from the menu would: `screen` becomes `"countdown"`,
+`holdTimer` becomes `HOLD_TIME`, both scores `0`, `winner` `null`, `receiver`
+`"left"`, both paddles centered, and the ball parked. It does not reset `simTime`.
+
+The game runs from there: the countdown ticks down against the delta time and the
+serve happens through the game's own code.
+
+### `serve()`
+
+Ends the pre-serve hold immediately instead of waiting it out, by setting
+`holdTimer` to `0`. From a live rally it re-parks the ball, clears the trail, and
+returns `screen` to `"countdown"` first, so a re-serve and a first serve behave
+identically. It does nothing on any screen other than `"countdown"` or
+`"playing"`.
+
+The launch itself is yours: on the next frame the game advances, an elapsed
+`holdTimer` launches the ball at `SERVE_SPEED` toward `state.receiver`, exactly as
+`specs/balls.md` describes. Nothing else may launch it.
+
+### `setScore(p1, p2)`
+
+Sets the two scores directly, as a precondition. The win and deuce rules still
+resolve through real play, so a match ends only when a real point is driven.
+
+### `setPaddle(side, state)`
+
+Poses or moves a paddle. `side` is `"left"` or `"right"`; `state` may set `cy`
+(center y) and `vy` (vertical velocity in px/s). A `vy` set here is written to
+both the paddle and `driver.vy[side]`, so it persists across frames and the paddle
+is still moving when it strikes the ball, which is what drives the spin mechanic.
+
+### `setBall(index, state)`
+
+Places and aims a ball. `index` is `0`, selecting the single ball in play. `state`
+may set any of `x`, `y`, `vx`, `vy`, and `spin`.
+
+### `setAiControl(enabled)`
+
+Sets `driver.ai`, handing the right paddle back to the computer opponent for the
+rest of the driven scenario, so advancing the game runs the real AI against the
+posed ball while the left paddle and the ball stay on their posed values. This is
+how a scenario exercises the opponent: pose the ball's approach and the AI
+paddle's start, enable it, advance the game, and read where the AI moved its
+paddle. It applies only in Solo; `false` is the default, and `reset()` clears it.
 {{#if (eq variant.slug "gyre")}}
-- `setObstacleClock(t)` poses the obstacles by setting the obstacle clock to `t`
-  seconds and holding them there. `t = 0` is upright at the base centers; a larger
-  `t` sways and rotates them exactly as normal play would at that moment. While the
-  game is under a control operation's paddle control, the obstacle clock is held
-  still (it does not advance {{#if (eq engine.slug "simple-2d")}}as the game runs{{else}}with `step`{{/if}}), so a scenario faces a chosen, known
-  obstacle orientation rather than obstacles sweeping through the shot. A `reset`
-  returns to normal, moving obstacles.
+
+### `setObstacleClock(t)`
+
+Poses the obstacles by setting the obstacle clock to `t` seconds and holding them
+there. `t = 0` is upright at the base centers; a larger `t` sways and rotates them
+exactly as normal play would at that moment. While `driver.paddles` is `true` the
+obstacle clock is held still rather than advancing with the frame, so a scenario
+faces a chosen, known obstacle orientation rather than obstacles sweeping through
+the shot. `reset()` returns to normal, moving obstacles.
 {{/if}}
 
-{{#if (eq engine.slug "simple-2d")}}
-A typical scenario calls `startMatch("versus")`, `serve()`, then `setPaddle` and
-`setBall` to arrange the exact contact wanted, advances the game a handful of
-frames through the engine to run the real collision, and reads the result from
-`snapshot()`.
-{{else}}
-A typical scenario calls `startMatch("versus")`, `serve()`, then `setPaddle` and
-`setBall` to arrange the exact contact wanted, `step()` a handful of ticks to run
-the real collision, and reads the result from `snapshot()`.
-{{/if}}
+A typical scenario calls `startMatch("versus")`, then `setPaddle` and `setBall` to
+arrange the exact contact wanted, advances the game a handful of frames through
+the engine to run the real collision, and reads the result from `snapshot()`.
 
-{{#if (ne engine.slug "simple-2d")}}
-### Input operations
-
-The control operations above pose the world directly. The API can also inject
-keyboard input, so a caller can drive the game the way a player does: navigate the
-menus, start a match from the title, pause, toggle mute, and move a paddle by
-holding a movement key. Injected input flows through the same handling the real
-keyboard feeds, exercising the actual key bindings the game defines
-(`specs/ui.md` for the menus, `specs/modes/single-player.md` and
-`specs/modes/versus.md` for playing a match) rather than a parallel path. Unlike the control operations, injecting input does not hand
-paddle control to a driver: a held movement key moves the paddle through the
-game's normal play code, so this is how a caller drives the controls themselves.
-
-- `keyDown(code)` presses a key down. `code` is a standard `KeyboardEvent.code`
-  (for example `"ArrowUp"`, `"ArrowDown"`, `"KeyW"`, `"KeyS"`, `"Enter"`,
-  `"Space"`, `"Escape"`, `"KeyP"`, `"KeyM"`). The key becomes held, so a movement
-  key drives its paddle while it is held and the simulation is stepped, and any
-  one-shot action the key triggers on the current screen (a menu move, a confirm,
-  a pause, a mute toggle) is applied immediately.
-- `keyUp(code)` releases a previously pressed key, ending its held state.
-- `press(code)` is a convenience tap, a `keyDown` immediately followed by
-  `keyUp`. This is the usual way to trigger a one-shot action (moving a menu
-  selection, confirming it, pausing, muting) without leaving the key held.
-
-The usual shape for an input-driven scenario is to `press` through the menu to
-start a match, then `keyDown` a movement key and `step` (or let real time pass) so
-the paddle moves, then `keyUp` to release it, reading `snapshot()` to see where
-the paddle and ball ended up.
-
-{{/if}}
 ## Snapshot shape
 
-`snapshot()` returns an object with at least these fields:
+`snapshot()` returns:
 
 ```js
 {
@@ -239,17 +178,11 @@ the paddle and ball ended up.
     left:  { cy: <number>, vy: <number> },
     right: { cy: <number>, vy: <number> },
   },
-{{#if (eq variant.slug "multi")}}
-  // All three balls, in play order.
-  balls: [
-    { x: <number>, y: <number>, vx: <number>, vy: <number>,
-      speed: <number>, spin: <number>, held: <boolean> },
-  ],
-{{else}}
+
   // The single ball in play.
   ball: { x: <number>, y: <number>, vx: <number>, vy: <number>,
           speed: <number>, spin: <number>, held: <boolean> },
-{{/if}}
+
 {{#if (eq variant.slug "gyre")}}
   // Each obstacle's live pose: its center and its rotation (radians), the same
   // values that drive its oriented collision.
@@ -261,37 +194,30 @@ the paddle and ball ended up.
 }
 ```
 
-`held` is `true` while a ball is parked for its pre-serve countdown rather than in
-flight. `speed` is the ball's current speed, the magnitude of its velocity.
-`muted` reflects the mute toggle, so pressing the mute key updates it.
-{{#if (eq variant.slug "gyre")}}
-Each entry of `obstacles` is the current pose of one obstacle — its center
-(`cx`, `cy`) and its rotation `theta` in radians — the same values that drive its
-oriented collision.
-{{/if}}
+Every field is read straight off `CaromState`, so what the snapshot reports is
+exactly what the game holds. Two are derived rather than stored: `speed` is
+`hypot(vx, vy)`, and `held` is true while a ball's pre-serve countdown is still
+running, which stays true through a pause.
 
-{{#if (eq engine.slug "simple-2d")}}
+Three fields therefore need the game to keep them honest every frame:
+
+- `muted` mirrors the engine's mute bit. Refresh it from `api.audio.muted()` in
+  every `update`, since the engine owns muting and this is the game's readable
+  copy of it.
+- `simTime` accumulates the delta time of every frame the match simulation
+  advances.
+
+- `holdTimer` counts down from `HOLD_TIME` to `0` and sits at `0` during a live
+  rally.
+
 ## Diagnostics
 
 The engine's debug overlay shows the values the game registers with it as
-diagnostic sources. Register at least: the current `screen` and `mode`, both
-scores, each ball's position, velocity, speed, and spin, and each paddle's center
-and velocity, the same facts `snapshot()` reports. Keep each one short enough to
-read on a line, and keep every source a pure read, so watching the overlay never
-changes what the simulation does.
+diagnostic sources, from `InitApi.diagnostics`. Register at least the current
+`screen` and `mode`, both scores, each ball's position, velocity, speed, and spin,
+and each paddle's center and velocity, the same facts `snapshot()` reports. Keep
+each one short enough to read on a line, and keep every source a pure read, so
+watching the overlay never changes what the simulation does.
 
 Registering those values is the whole of Carom's part. Drawing the panel, toggling
 it, and keeping it read-only are the engine's.
-{{else}}
-## The debug overlay
-
-Provide a read-only on-screen overlay showing the game's live internal state, so
-you can watch what the simulation is doing while you play. It is toggled with the
-backtick key (`` ` ``), off by default, and never changes gameplay; it only draws.
-
-When on, it draws over the running game, legibly, in the game's monospace type, at
-least: the current `screen` and `mode`, both scores, each ball's position,
-velocity, speed, and spin, and each paddle's center and velocity, the same facts
-`snapshot()` reports. It is a diagnostic layer rather than part of the game's
-presentation, so keep it visually plain and clearly separate from the HUD.
-{{/if}}

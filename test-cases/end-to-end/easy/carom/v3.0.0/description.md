@@ -27,8 +27,10 @@ can be measured.
 
 ## What a model is given
 
-A run receives the self-contained specification and the rendered reference
-screenshots that act as visual targets — the title screen, gameplay, and the
-game-over screen. The reference *source* mockups are withheld, so the look has
-to be rebuilt from the specification rather than copied. There are no assets to
-provide: Carom's visuals are simple enough to draw entirely in code.
+A run receives the self-contained specification and a complete TypeScript
+project to build inside: the Vite, Vitest, ESLint, and Prettier configuration,
+the page and its canvas, and the case-owned modules that name every figure the
+specification fixes and carry the debug surface. What is missing is the game
+itself, one module the run implements and tests. There are no assets and no
+visual targets: the look is rebuilt from the palette and measurements the
+specification fixes, drawn entirely in code.

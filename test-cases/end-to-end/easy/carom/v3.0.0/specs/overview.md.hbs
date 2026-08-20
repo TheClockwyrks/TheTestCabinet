@@ -4,12 +4,12 @@
 
 Carom is a neon, top-down paddle duel for the browser. Two paddles face each
 other across a dark field while a ball ricochets between them, off the top and
-bottom walls, and off a pair of fixed obstacles in the middle of the field. A
-player scores when the ball passes the far edge behind their opponent's paddle.
+bottom walls, and off a pair of obstacles in the middle of the field. A player
+scores when the ball passes the far edge behind their opponent's paddle.
 
 Carom is a duel of angles. Its defining mechanic is spin: the motion of a paddle
 at the moment it strikes the ball curves the ball's flight afterward, so skilled
-play is about shaping the ball's path rather than simply blocking it. The fixed
+play is about shaping the ball's path rather than simply blocking it. The
 obstacles turn the open field into a bank-shot puzzle.
 
 Carom has its own name, look, spin mechanic, and obstacle layout. Do not
@@ -20,8 +20,8 @@ reproduce the assets, branding, or design of any existing game.
 This specification is split across several files that cross-reference each other
 by name. Read all of them and build the game they describe as one cohesive whole.
 
-- `specs/overview.md` — this file: the overview, requirements, coordinate
-  system, and visual design.
+- `specs/overview.md` — this file: the overview, the project you build in, the
+  coordinate system, and the visual design.
 - `specs/playfield.md` — the playfield, paddles, obstacles, and ball, including
   how the obstacles behave and how the ball collides with them.
 - `specs/balls.md` — the balls and serving, and the physics: how many balls are
@@ -32,19 +32,97 @@ by name. Read all of them and build the game they describe as one cohesive whole
 - `specs/modes/single-player.md` — the Solo way to play: its controls, the HUD,
   and the AI opponent.
 - `specs/modes/versus.md` — the Versus way to play: its controls and the HUD.
-{{#if (eq engine.slug "simple-2d")}}
-- `specs/instrumentation.md` — the `window.__carom` debugging and automation API
-  and the deterministic core it rests on.
+- `specs/instrumentation.md` — the `window.__carom` debugging and automation
+  surface, and what the game's state must hold for it to work.
 
 The game is built on the {{engine.name}} engine, which documents itself at
-`{{engine.docs}}` rather than in this specification. Read it alongside these
-files: it defines the frame loop and the delta time the game is given, input
-actions, audio cues, asset loading, and the debug overlay. This specification
-states only what is specific to Carom.
-{{else}}
-- `specs/instrumentation.md` — the `window.__carom` debugging and automation API,
-  the debug overlay, and the deterministic, steppable core they rest on.
-{{/if}}
+`{{engine.docs}}` rather than in this specification. Read it before you start: it
+defines the frame loop and the delta time the game is given, input actions,
+audio cues, asset loading, the debug overlay, and how a game built on it is
+tested. This specification states only what is specific to Carom.
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its `README.md`
+describes it. It is a TypeScript project built with Vite, tested with Vitest,
+linted with ESLint, and formatted with Prettier. That toolchain is fixed and
+supplied: it is not a choice, and it is not yours to change.
+
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<CaromState>`: `initialize` builds the state
+once, `update` advances it against the frame's delta time in seconds, and `render`
+draws it. All three throw `"not implemented"` as they stand. Implement them, and
+split the work across new files under `src/` however suits you.
+
+`CaromState`, declared in full in `src/game.ts`, is a contract. Keep every field
+under its declared name, type, and meaning. You may add fields, but only for data
+you can rebuild from the declared ones: the declared fields are the whole of the
+authoritative state, and they are what `specs/instrumentation.md` reads and poses.
+Hold no game state anywhere else — no module-level variables, no closures over
+mutable data.
+
+### What you must not edit
+
+- `src/main.ts` — the entry point. It creates the engine over the page's canvas,
+  binds `game` to it, installs the debug surface, and runs.
+- `src/constants.ts` — every figure this specification fixes.
+- `src/debug.ts` — the `window.__carom` surface described in
+  `specs/instrumentation.md`, supplied already written.
+- `index.html` — the page and the canvas the engine fits the field into.
+- The configuration: `package.json`, `tsconfig.json`, `vite.config.ts`,
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
+
+Add a dependency to `package.json` if you genuinely need one, and commit the
+updated `package-lock.json`. Leave the existing entries and scripts alone.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, color, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Do not restate a figure as a
+literal in your own code, and do not derive a second copy of one.
+
+Where a spec states a value it also names the constant that holds it, and the
+constant is authoritative. Anything this specification does not name is yours to
+decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. There is no browser and no DOM: a test builds the engine over its own
+canvas and clock and steps the game with `engine.advance`, exactly as the engine's
+documentation at `{{engine.docs}}` shows. Cover the parts of the game a person
+cannot see at a glance — the collision resolution, the paddle bounce and spin, the
+serve, the scoring and match rules, and the AI.
+
+### The checks run over what you deliver
+
+Four commands run over the finished repository, and their results are recorded
+with the run:
+
+| Command | Effect |
+| --- | --- |
+| `npx tsc --noEmit` | Gating. Code that does not compile scores zero. |
+| `npx eslint .` | Recorded. |
+| `npx prettier --check .` | Recorded. |
+| `npx vitest run --coverage` | Recorded, with the test count and the coverage. |
+
+They run on the repository as you leave it, so leave it type-clean, lint-clean,
+and formatted, with your tests passing. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site, with no
+further manual step, into `dist/` at the repository root, with an `index.html` at
+the root of that directory as the entry point. That directory runs correctly when
+served as-is at the root of any static file server, since it is deployed to static
+hosting exactly that way. The scripts that do this are already in `package.json`.
 
 ## Goal of this build
 
@@ -55,132 +133,78 @@ mode. Aim for a game a person would enjoy playing, not a tech demo.
 
 ### Hard requirements
 
-{{#if (eq engine.slug "simple-2d")}}
-- Build on the {{engine.name}} engine. It is already a dependency of the seeded
-  project, and the build must use it rather than write its own frame loop, input
-  handling, audio, or debug overlay. Its contract is documented at
-  `{{engine.docs}}`.
+- Build on the {{engine.name}} engine. The build must use it rather than write
+  its own frame loop, input handling, audio, or debug overlay. Its contract is
+  documented at `{{engine.docs}}`.
 - Render real graphics, drawing the game through the engine. A text-only or ASCII
   rendering does not satisfy this requirement.
-{{else}}
-- Render real graphics. Draw the game with Canvas 2D, WebGL/WebGPU, or
-  positioned DOM elements. A text-only or ASCII rendering does not satisfy this
-  requirement.
-{{/if}}
+- Draw everything in code. The build ships no art or audio files and fetches
+  nothing at runtime.
 - Run in the browser with no backend. No server, accounts, database, or network
   calls at runtime. Everything needed to play is self-contained.
 - No API keys or credentials of any kind to build, run, or play.
-- Ship an npm-driven static build. The project is a Node project with a
-  `package.json` at its root, buildable with only Node.js and npm-installed
-  dependencies and no separately installed language toolchain. Commit a
-  `package-lock.json`, since the build is installed with `npm ci`. Running
-  `npm ci` and then `npm run build` produces the complete static site, with no
-  further manual step, into one of `dist/`, `build/`, or `out/` at the project
-  root, with an `index.html` at the root of that directory as the entry point.
-  That output directory runs correctly when served as-is at the root of any
-  static file server, since it is deployed to static hosting exactly that way.
-{{#if (eq engine.slug "simple-2d")}}
-  You choose the language, framework, and bundler behind this interface; only the
-  `npm ci` and `npm run build` commands and where the build output lands are
-  fixed.
-{{else}}
-  You choose the language, framework, bundler, and rendering approach behind this
-  interface; only the `npm ci` and `npm run build` commands and where the build
-  output lands are fixed.
-{{/if}}
-- Include a `README.md` in the produced repository explaining what the game is,
-  how to install dependencies, how to run it in development, how to produce the
-  static production build, and the controls.
-{{#if (eq engine.slug "simple-2d")}}
-- Expose the `window.__carom` API described in `specs/instrumentation.md`, backed
-  by the deterministic core `specs/balls.md` requires, and register on the
-  engine's debug overlay the values `specs/instrumentation.md` lists. This is a
-  required part of the build.
-{{else}}
-- Expose the `window.__carom` API and the read-only debug overlay described in
-  `specs/instrumentation.md`, backed by the deterministic, steppable core
-  `specs/balls.md` requires. This is a required part of the build.
-{{/if}}
-
-### Free choices
-
-{{#if (eq engine.slug "simple-2d")}}
-You choose the language, framework, and bundler, subject to the requirements
-above. Plain TypeScript over the engine is sufficient; a framework is not
-required. Favor a clean, well-structured codebase over any particular technology.
-{{else}}
-You choose the language, framework, bundler, and rendering approach, subject to
-the requirements above. Plain TypeScript with Canvas 2D is sufficient; a
-framework is not required. Favor a clean, well-structured codebase over any
-particular technology.
-{{/if}}
+- Hold the game's whole state in `CaromState`, so the surface in
+  `specs/instrumentation.md` can pose and read it.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
 
 ## Coordinate system and presentation
 
-All positions, sizes, and speeds in this document are given in logical pixels on
-a fixed `1280 x 720` play area (16:9). The origin `(0, 0)` is the top-left; `x`
-increases to the right and `y` increases downward.
+All positions, sizes, and speeds in this specification are given in logical pixels
+on a fixed play area of `FIELD_W x FIELD_H` (`1280 x 720`, 16:9). The origin
+`(0, 0)` is the top-left; `x` increases to the right and `y` increases downward.
+The field center is `(FIELD_CX, FIELD_CY)` (`640, 360`).
 
-{{#if (eq engine.slug "simple-2d")}}
-- `1280 x 720` is the game's logical design size. Fitting it to the browser
-  window — the uniform scale that preserves the 16:9 aspect ratio, the
-  letterboxed centering on the background color, and the device pixel ratio — is
-  the engine's, so the complete field is on screen at every window size, on load
-  and at any pixel density, without the build doing anything about it.
+- `FIELD_W x FIELD_H` is the game's logical design size. Fitting it to the browser
+  window — the uniform scale that preserves the aspect ratio, the letterboxed
+  centering on the background color, and the device pixel ratio — is the engine's,
+  so the complete field is on screen at every window size, on load and at any
+  pixel density, without the build doing anything about it.
 - Draw in logical pixels, and never read the canvas element's own size.
 - Gameplay logic operates in logical-pixel space, independent of the rendered
   scale.
-{{else}}
-- The play area scales uniformly to fit the browser window while preserving its
-  16:9 aspect ratio, letterboxed with the background color on the remaining
-  space. The game stays correct and centered at any window size.
-- Gameplay logic operates in logical-pixel space, independent of the rendered
-  scale.
-- The whole field is on screen at every window size: the complete `1280 x 720`
-  area is visible at once, including both paddles, the score, every menu item,
-  and all four edges, fitted to the window and centered with nothing clipped or
-  pushed past the edges. The build fits correctly on load, before any input, and
-  at any pixel density.
-{{/if}}
+
+Every rate in this specification is per second and every duration is in seconds,
+integrated against the delta time the engine hands each update. Nothing in this
+game counts frames.
 
 ## Visual design
 
-The look is neon-on-charcoal. Match the palette and type defined below.
+The look is neon-on-charcoal. Every color below is exported from
+`src/constants.ts` on the `COLOR` object.
 
-| Element                | Color     |
-| ---------------------- | --------- |
-| Field background       | `#0b0e14` |
-| Player one paddle      | `#3ae7c4` |
-| Player two / AI paddle | `#ff5c8a` |
-| Ball                   | `#f2f5f7` |
-| Obstacles              | `#ffb454` |
-| Center net             | `#243044` |
-| Primary text           | `#e6edf3` |
-| Secondary text         | `#8a94a6` |
+| Element | Constant | Color |
+| --- | --- | --- |
+| Field background | `COLOR.bg` | `#0b0e14` |
+| Raised panel fill | `COLOR.bgRaised` | `#11151f` |
+| Player one paddle | `COLOR.p1` | `#3ae7c4` |
+| Player two / AI paddle | `COLOR.p2` | `#ff5c8a` |
+| Ball | `COLOR.ball` | `#f2f5f7` |
+| Obstacles | `COLOR.obstacle` | `#ffb454` |
+| Center net | `COLOR.net` | `#243044` |
+| Primary text | `COLOR.text` | `#e6edf3` |
+| Secondary text | `COLOR.textDim` | `#8a94a6` |
+| Faint text | `COLOR.textFaint` | `#4a5567` |
+| Panel border | `COLOR.panelBorder` | `#20283a` |
 
-- Use a monospace type family for all text (scores, menus, labels). Do not depend
-  on a web font that must be downloaded; use a system monospace stack so the game
-  renders identically offline.
-- Paddles, the ball, and obstacles have a soft neon glow. The center net is a
-  dashed vertical line at `x = 640`.
+- Draw all text in the `MONO` font stack. It is a system monospace stack, so the
+  game renders identically offline with no downloaded web font.
+- Paddles, the ball, and obstacles have a soft neon glow, each drawn in its color
+  above. The interior of each of those shapes is that exact color, so the glow is
+  a halo around a solid body rather than a wash over it.
+- The center net is a dashed vertical line at `x = NET_X` (`640`), drawn in
+  `COLOR.net`. It is decoration and has no collision.
 - The ball leaves a motion trail. Behind the moving ball, draw a fading tail that
   traces its recent path, so it visibly curves whenever spin curves the flight.
   It reads as one continuous streak, a smooth comet rather than a row of discrete
   dots, and tapers from the ball: widest and brightest where it meets the ball,
   then narrowing and fading smoothly to nothing at its oldest end. The trail
-  represents a fixed slice of recent travel time, on the order of `0.1` to
-  `0.15 s` of motion, so its length is proportional to the ball's current speed.
-  It stretches as the ball speeds up, shortens as it slows, and collapses to
-  almost nothing during the pre-serve hold while the ball is still. Draw it in the
-  ball color. The trail is what makes the ball's speed and spin legible in motion.
+  represents `TRAIL_TIME` (`0.13`) seconds of recent travel, so its length is
+  proportional to the ball's current speed. It stretches as the ball speeds up,
+  shortens as it slows, and collapses to almost nothing during the pre-serve hold
+  while the ball is still. Draw it in `COLOR.ball`. The trail is what makes the
+  ball's speed and spin legible in motion.
 - The title screen, the in-match view, and the match-over screen are described in
   full under the screens in `specs/ui.md`. Implement each in this palette and
   type.
-
-## Reference images
-
-The `reference/` folder holds screenshots of the title, gameplay, and game-over
-screens. Treat them as illustrative examples rather than targets to reproduce:
-they show one way the screens can look, but design your own menus and layout. The
-firm requirement is that every menu and navigation path this specification
-mandates is present, rendered in this palette and type.

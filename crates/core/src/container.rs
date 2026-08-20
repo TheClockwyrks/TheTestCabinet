@@ -571,7 +571,7 @@ impl ArtifactCollector for CliArtifactCollector {
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
-        Ok(ArtifactCollection { repo_path: dest })
+        Ok(ArtifactCollection::new(dest))
     }
 
     async fn collect_file(

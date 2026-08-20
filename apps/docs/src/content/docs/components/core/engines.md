@@ -210,10 +210,12 @@ supports `none` alone. The
 
 Every entry names a slug the engine catalogue knows and a well-formed version
 range, both checked when the case resolves, before a run is spent. `none` is
-supported by every case whether it is declared or not, and declaring it
-explicitly is the readable form. A case declaring an engine that
-provides a runtime ships a workspace `package.json`, because the engine
-dependency is written into that file at seed time.
+what a version that declares nothing supports; once a version declares any
+engine, its supported set is exactly what it declares, so a case built against a
+runtime may leave `none` out and a case that builds both ways lists it alongside.
+A case declaring an engine that provides a runtime ships a workspace
+`package.json`, because the engine dependency is written into that file at seed
+time.
 
 Support is declared per version. A case version gains engine support by adding a
 new version, because its specification carries the statements that are specific to

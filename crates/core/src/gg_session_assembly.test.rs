@@ -887,9 +887,7 @@ async fn drive_stage(
 ) -> Result<PostRunReport> {
     let (version, variant) = case();
     let request = request(harness);
-    let artifacts = crate::execution::ArtifactCollection {
-        repo_path: repo_path.to_path_buf(),
-    };
+    let artifacts = crate::execution::ArtifactCollection::new(repo_path.to_path_buf());
     GgSessionAssembler
         .run(&PostRunContext {
             run_id: "run-1",

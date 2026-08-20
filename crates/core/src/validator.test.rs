@@ -2,9 +2,52 @@
 
 use std::io::BufWriter;
 
-use super::{Image, decode_png, image_similarity, score, script_verdicts, validation_media_name};
+use super::{
+    Image, ScriptedValidation, decode_png, image_similarity, score, script_verdicts,
+    scripted_validation, validation_media_name,
+};
 use crate::browser::ScriptVerdict;
+use crate::engine::{EngineCatalog, EngineSelection};
+use crate::execution::ArtifactCollection;
 use crate::test_case::MediaKind;
+
+/// The engine `slug` resolves to.
+fn resolved(slug: &str) -> crate::engine::ResolvedEngine {
+    EngineCatalog::default()
+        .resolve(&EngineSelection::new(slug))
+        .unwrap_or_else(|err| panic!("`{slug}` is a built-in engine: {err}"))
+}
+
+#[test]
+fn a_tree_built_on_an_engine_runtime_has_its_validators_run_as_a_vitest_project() {
+    let engine = resolved("simple-2d");
+    let artifacts = ArtifactCollection::new("/runs/impl").built_on(Some(engine.clone()));
+
+    assert_eq!(
+        scripted_validation(&artifacts),
+        ScriptedValidation::Vitest(&engine),
+        "an engine that vendors a runtime routes to the vitest runner",
+    );
+}
+
+#[test]
+fn a_tree_built_on_no_runtime_is_driven_in_a_browser() {
+    // Both spellings of "no runtime" are the same answer: a run that explicitly
+    // selected `none`, and a tree that recorded no selection at all (a republish, a
+    // `tcab validate` predating engines). Every frozen case version is one of these.
+    let selected_none =
+        ArtifactCollection::new("/runs/impl").built_on(Some(resolved(crate::engine::NONE_SLUG)));
+    let nothing_recorded = ArtifactCollection::new("/runs/impl");
+
+    assert_eq!(
+        scripted_validation(&selected_none),
+        ScriptedValidation::Browser
+    );
+    assert_eq!(
+        scripted_validation(&nothing_recorded),
+        ScriptedValidation::Browser,
+    );
+}
 
 #[test]
 fn validation_media_name_is_flat() {
@@ -157,7 +200,6 @@ fn score_of_identical_pngs_is_one() {
 // --- asset-generation validation -------------------------------------------
 
 use super::AssetGenValidator;
-use crate::execution::ArtifactCollection;
 use crate::test_case::{
     AssetKind, CanvasSpec, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion, TestType,
     ToolSpec,
@@ -267,9 +309,7 @@ fn asset_validation_regenerates_and_detects_no_cheating() {
         .validate(
             &asset_version(),
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -342,9 +382,7 @@ fn asset_validation_regenerates_each_sheet_frame_independently() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -389,7 +427,7 @@ fn asset_validation_flags_drawing_outside_the_tool() {
         .validate(
             &asset_version(),
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -413,7 +451,7 @@ fn asset_validation_without_an_action_log_fails_to_load() {
         .validate(
             &asset_version(),
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -512,7 +550,7 @@ fn dispatch_routes_an_adversarial_case_to_the_adversarial_validator() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )

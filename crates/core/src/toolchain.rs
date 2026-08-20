@@ -141,6 +141,33 @@ impl ToolchainCommandResult {
     }
 }
 
+impl From<&ToolchainCommandResult> for crate::validation::StepResult {
+    /// Report a toolchain command as a validation build step.
+    ///
+    /// Validation reports the case's install as a [`StepResult`](crate::validation::StepResult),
+    /// and the [toolchain stage](crate::toolchain_stage) runs that same install as a
+    /// toolchain command. This is how the one recorded outcome reaches the validation
+    /// summary when the stage got there first, so the summary carries the step that
+    /// actually ran rather than a second one describing it.
+    fn from(result: &ToolchainCommandResult) -> Self {
+        // A failure says why: the reason it never started, or the output it printed
+        // when it ran and exited non-zero. A step that succeeded needs no detail.
+        let detail = (!result.succeeded)
+            .then(|| {
+                result
+                    .detail
+                    .clone()
+                    .or_else(|| (!result.output.trim().is_empty()).then(|| result.output.clone()))
+            })
+            .flatten();
+        Self {
+            command: result.command.clone(),
+            succeeded: result.succeeded,
+            detail,
+        }
+    }
+}
+
 /// The optional `test` command's result, plus the figures its output reported.
 ///
 /// The counts and the coverage are parsed **defensively** out of whatever the

@@ -1,11 +1,15 @@
-// Carom — physics, collision, and the spin mechanic.
+// Carom — physics, collision, and the spin mechanic (specs/balls.md).
 //
-// One `step()` advances the ball by a fixed dt: it curves the velocity by the
-// current spin, decays the spin, then integrates and resolves collisions. To
-// guarantee the ball never tunnels through a paddle, wall, or obstacle at high
-// speed, the integration is split into sub-steps small enough (<= MAX_SUBSTEP
-// px) that the ball center can never skip past an object in one move; collisions
-// are resolved after each sub-step. See specs/physics.md.
+// `step()` advances the ball by one frame's elapsed SECONDS: it curves the
+// velocity by the current spin, decays the spin, then integrates and resolves
+// collisions. Every rate it uses is per second and is multiplied by `dt`, so the
+// same interval of game time reaches the same state however it was divided into
+// frames — which is the property the debug API in `src/debug.ts` leans on.
+//
+// To guarantee the ball never tunnels through a paddle, wall, or obstacle at high
+// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP px
+// of travel) that the ball's center can never skip past an object in one move, and
+// collisions are resolved after each sub-step.
 
 import {
   BALL_R,
@@ -20,19 +24,31 @@ import {
   SPIN_HALFLIFE,
   type Rect,
 } from "./constants";
-import { clamp, type Ball, type Paddle } from "./entities";
-import type { Side, StepEvents } from "./types";
+import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
+import type { BallState, PaddleState, Side } from "./game";
 
-const MAX_SUBSTEP = 4; // px of travel per collision sub-step
+/** Px of travel per collision sub-step. Below the smallest object half-extent. */
+const MAX_SUBSTEP = 4;
 
-// A circle-vs-AABB overlap test using the Minkowski expansion (grow the rect by
-// the ball radius, test the ball center against it). Returns the minimal
-// separating axis, the outward normal direction, and where to place the ball so
-// it rests exactly against that face — or null when there is no overlap.
+/** What one step's collisions did, so the caller can play a cue per event. */
+export interface StepEvents {
+  paddle: boolean;
+  wall: boolean;
+  obstacle: boolean;
+}
+
+/**
+ * A circle-vs-AABB overlap, by the Minkowski expansion: grow the rectangle by the
+ * ball radius and test the ball's center against it. The result is the minimal
+ * separating axis, the outward direction along it, and where to place the ball so
+ * it rests exactly against that face — or `null` when there is no overlap.
+ */
 interface Hit {
   axis: "x" | "y";
-  normal: -1 | 1; // direction to push the ball out along `axis`
-  place: number; // resolved ball center coordinate on that axis
+  /** The direction the ball is pushed out along `axis`. */
+  normal: -1 | 1;
+  /** The resolved ball-center coordinate on that axis. */
+  place: number;
 }
 
 function collideCircleRect(
@@ -54,49 +70,66 @@ function collideCircleRect(
   return { axis: "y", normal: 1, place: rect.y1 + r };
 }
 
-function paddleRect(p: Paddle): Rect {
-  return { x0: p.x0, y0: p.cy - PADDLE_HALF, x1: p.x1, y1: p.cy + PADDLE_HALF };
-}
-
-// The signature paddle bounce: reflection angle from the contact point, a small
-// speed multiply capped at SPEED_CAP, and spin imparted by the paddle's motion.
-function bounceOffPaddle(ball: Ball, p: Paddle, side: Side): void {
-  const offset = clamp((ball.y - p.cy) / PADDLE_HALF, -1, 1);
+/**
+ * The signature paddle bounce (specs/balls.md): the outgoing angle comes from the
+ * contact point, the speed multiplies once and is capped, and the paddle's own
+ * vertical motion at contact imparts spin.
+ */
+function bounceOffPaddle(
+  ball: BallState,
+  paddle: PaddleState,
+  side: Side,
+): void {
+  const offset = clamp((ball.y - paddle.cy) / PADDLE_HALF, -1, 1);
   const theta = offset * MAX_BOUNCE_ANGLE;
-  const speed = Math.min(ball.speed * SPEED_MULT, SPEED_CAP);
+  const speed = Math.min(ballSpeed(ball) * SPEED_MULT, SPEED_CAP);
   const dir = side === "left" ? 1 : -1; // horizontal, toward the opponent
   ball.vx = dir * speed * Math.cos(theta);
   ball.vy = speed * Math.sin(theta);
-  ball.spin = clamp(ball.spin + p.vy * SPIN_FROM_PADDLE, -SPIN_CLAMP, SPIN_CLAMP);
-  // Place the ball just off the front face so it cannot re-trigger.
-  ball.x = side === "left" ? p.frontX + BALL_R : p.frontX - BALL_R;
+  ball.spin = clamp(
+    ball.spin + paddle.vy * SPIN_FROM_PADDLE,
+    -SPIN_CLAMP,
+    SPIN_CLAMP,
+  );
+  // Placed just off the front face so the same contact cannot re-trigger.
+  const front = paddleFrontX(side);
+  ball.x = side === "left" ? front + BALL_R : front - BALL_R;
 }
 
 function resolvePaddle(
-  ball: Ball,
-  p: Paddle,
+  ball: BallState,
+  paddle: PaddleState,
   side: Side,
   events: StepEvents,
 ): void {
-  const hit = collideCircleRect(ball.x, ball.y, BALL_R, paddleRect(p));
+  const hit = collideCircleRect(
+    ball.x,
+    ball.y,
+    BALL_R,
+    paddleRect(side, paddle.cy),
+  );
   if (!hit) return;
   if (hit.axis === "x") {
-    // Front-face contact: apply the spin/angle mechanic.
-    bounceOffPaddle(ball, p, side);
+    // Front-face contact: the angle, speed, and spin mechanic.
+    bounceOffPaddle(ball, paddle, side);
     events.paddle = true;
   } else {
-    // A rare hit against the rounded top/bottom cap: reflect like a wall.
+    // The rare hit against a paddle's top or bottom cap: reflect like a wall.
     ball.y = hit.place;
     if (ball.vy * hit.normal < 0) ball.vy = -ball.vy;
     events.wall = true;
   }
 }
 
-function resolveObstacle(ball: Ball, rect: Rect, events: StepEvents): void {
+function resolveObstacle(
+  ball: BallState,
+  rect: Rect,
+  events: StepEvents,
+): void {
   const hit = collideCircleRect(ball.x, ball.y, BALL_R, rect);
   if (!hit) return;
-  // Reflect the velocity component normal to the struck face; push out. Speed
-  // and spin are preserved (spin keeps curving the ball after the bounce).
+  // Reflect the velocity component normal to the struck face and push out. Speed
+  // and spin are preserved, so the spin keeps curving the ball after the bounce.
   if (hit.axis === "x") {
     ball.x = hit.place;
     if (ball.vx * hit.normal < 0) ball.vx = -ball.vx;
@@ -107,7 +140,7 @@ function resolveObstacle(ball: Ball, rect: Rect, events: StepEvents): void {
   events.obstacle = true;
 }
 
-function resolveWalls(ball: Ball, events: StepEvents): void {
+function resolveWalls(ball: BallState, events: StepEvents): void {
   if (ball.y - BALL_R < 0 && ball.vy < 0) {
     ball.y = BALL_R;
     ball.vy = -ball.vy;
@@ -119,40 +152,53 @@ function resolveWalls(ball: Ball, events: StepEvents): void {
   }
 }
 
+/** Advance the ball by `dt` seconds and resolve every collision it makes. */
 export function step(
-  ball: Ball,
-  left: Paddle,
-  right: Paddle,
+  ball: BallState,
+  left: PaddleState,
+  right: PaddleState,
   dt: number,
 ): StepEvents {
   const events: StepEvents = { paddle: false, wall: false, obstacle: false };
 
-  // 1. Spin curves the flight. Applying spin as a rotation of the velocity
-  //    vector (angular rate = spin / speed) turns the path without changing the
-  //    speed, exactly as a lateral acceleration of magnitude |spin| would.
-  const speed = ball.speed;
-  if (speed > 1e-6 && ball.spin !== 0) {
-    const dTheta = (ball.spin / speed) * dt;
-    const c = Math.cos(dTheta);
-    const s = Math.sin(dTheta);
-    const vx = ball.vx * c - ball.vy * s;
-    const vy = ball.vx * s + ball.vy * c;
-    ball.vx = vx;
-    ball.vy = vy;
-  }
-  // Spin decays exponentially: half its magnitude every SPIN_HALFLIFE seconds.
-  ball.spin *= Math.pow(0.5, dt / SPIN_HALFLIFE);
-
-  // 2 + 3. Integrate in small sub-steps, resolving collisions after each.
-  const substeps = Math.max(1, Math.ceil((ball.speed * dt) / MAX_SUBSTEP));
+  // The frame is cut into sub-steps short enough that the ball's center cannot
+  // skip past an object in one move. Every part of the step below — the spin, the
+  // integration, and the collisions — happens per SUB-step rather than per frame,
+  // so the curve the ball actually travels is resolved to MAX_SUBSTEP px however
+  // long the frame was. That is what keeps a rally on a 30 Hz display and the same
+  // rally on a 240 Hz one landing in the same place.
+  const substeps = Math.max(1, Math.ceil((ballSpeed(ball) * dt) / MAX_SUBSTEP));
   const h = dt / substeps;
+  // Half the magnitude every SPIN_HALFLIFE seconds. Compounding this per sub-step
+  // is exactly the same decay as applying it once over `dt`, because the factors
+  // multiply: 0.5^(h/H) taken `substeps` times is 0.5^(dt/H).
+  const decay = Math.pow(0.5, h / SPIN_HALFLIFE);
+
   for (let i = 0; i < substeps; i++) {
+    // 1. Spin curves the flight. Rotating the velocity vector at an angular rate
+    //    of `spin / speed` turns the path without changing the speed, which is
+    //    exactly what a lateral acceleration of magnitude |spin| does.
+    const speed = ballSpeed(ball);
+    if (speed > 1e-6 && ball.spin !== 0) {
+      const dTheta = (ball.spin / speed) * h;
+      const c = Math.cos(dTheta);
+      const s = Math.sin(dTheta);
+      const vx = ball.vx * c - ball.vy * s;
+      const vy = ball.vx * s + ball.vy * c;
+      ball.vx = vx;
+      ball.vy = vy;
+    }
+    ball.spin *= decay;
+
+    // 2. Advance the position by the elapsed time.
     ball.x += ball.vx * h;
     ball.y += ball.vy * h;
+
+    // 3. Resolve every collision the move could have made.
     resolveWalls(ball, events);
     resolvePaddle(ball, left, "left", events);
     resolvePaddle(ball, right, "right", events);
-    for (const obs of OBSTACLES) resolveObstacle(ball, obs, events);
+    for (const obstacle of OBSTACLES) resolveObstacle(ball, obstacle, events);
   }
 
   return events;

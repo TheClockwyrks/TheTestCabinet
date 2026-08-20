@@ -29,10 +29,15 @@
 //! The collected tree carries no `node_modules` (the collector
 //! [skips it](crate::SKIPPED_DIRS), and a lockfile install reproduces it exactly),
 //! so this stage runs the case's own `install` command first and reports it as its
-//! own result. Validation runs its install again afterwards, against a tree this
-//! stage has warmed; that duplicated work is the price of keeping the gate's
-//! evidence independent of validation, and it is bounded by
-//! [`INSTALL_TIMEOUT`].
+//! own result, bounded by [`INSTALL_TIMEOUT`].
+//!
+//! Validation runs that same install. When this stage's succeeded, it reports the
+//! install it completed on its [report](crate::PostRunReport::prepared_install), the
+//! engine stamps that onto the
+//! [tree's description](crate::ArtifactCollection::prepared_install), and validation
+//! reports the recorded step rather than clearing `node_modules` and rebuilding it
+//! from the same lockfile. An install that failed prepares nothing, so validation
+//! installs for itself and reaches its own verdict about the tree.
 //!
 //! # Every step is bounded, and every failure is a recorded fact
 //!

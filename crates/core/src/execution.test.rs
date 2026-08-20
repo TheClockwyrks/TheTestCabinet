@@ -12,9 +12,7 @@ struct TreeOnlyCollector;
 #[async_trait::async_trait]
 impl ArtifactCollector for TreeOnlyCollector {
     async fn collect(&self, _container: &ContainerHandle) -> Result<ArtifactCollection> {
-        Ok(ArtifactCollection {
-            repo_path: PathBuf::from("/tmp/tree"),
-        })
+        Ok(ArtifactCollection::new(PathBuf::from("/tmp/tree")))
     }
 }
 

@@ -576,6 +576,48 @@ fn an_engine_the_case_does_not_support_is_refused_before_any_container_work() {
     );
 }
 
+/// The engineless run is held to the case's declared set like any other engine.
+///
+/// A version built against a runtime does not support it: its workspace
+/// `package.json` depends on the engine package, which only an engine run vendors
+/// in, so an engineless run would seed a tree whose install cannot succeed. The
+/// gate has to say so here — before anything is rendered, seeded, pulled, or
+/// started — rather than let the run reach a failing `npm ci` in a container.
+#[test]
+fn the_engineless_run_is_refused_by_a_case_built_against_an_engine() {
+    let case = TestCaseVersion {
+        engines: vec![EngineSupport::unbounded("simple-2d")],
+        ..version_with_cap(1800)
+    };
+    // `EngineSelection::default()` is the engineless run, which is what a request
+    // naming no engine resolves to.
+    let err = resolve_engine(&EngineCatalog::new(), &request_with_override(None), &case)
+        .expect_err("the case declares simple-2d alone");
+
+    match &err {
+        Error::EngineUnsupportedForCase {
+            slug, supported, ..
+        } => {
+            assert_eq!(slug, NONE_SLUG);
+            assert_eq!(supported, &vec!["simple-2d".to_string()]);
+        }
+        other => panic!("expected EngineUnsupportedForCase, got {other:?}"),
+    }
+}
+
+/// A version that declares `none` alongside an engine still admits the engineless
+/// run, so declaring both is how a case that genuinely builds either way says so.
+#[test]
+fn the_engineless_run_is_admitted_by_a_case_that_declares_it_alongside_an_engine() {
+    let engine = resolve_engine(
+        &EngineCatalog::new(),
+        &request_with_override(None),
+        &version_supporting_simple_2d(),
+    )
+    .expect("the case declares the engineless run alongside simple-2d");
+    assert_eq!(engine.slug(), NONE_SLUG);
+}
+
 /// A slug no build carries is reported as the unknown engine it is — naming the
 /// engines that would have worked — rather than as one this case happens not to
 /// support, because the catalogue is consulted before the case's gate.

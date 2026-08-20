@@ -13,6 +13,7 @@ use std::process::Command;
 
 use crate::adversarial_validator::AdversarialValidator;
 use crate::browser::{self, ScriptOutputSpec, StaticServer};
+use crate::engine::ResolvedEngine;
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
@@ -98,7 +99,17 @@ impl Validator for BuildValidator {
         // The two required build steps run in order and are each reported in the
         // summary. Install runs first; if it fails the build step is never
         // reached, so it stays `None`.
-        let install = run_step(repo, &build_commands.install);
+        //
+        // A [post-run stage](crate::post_run) may already have run this exact install
+        // over this exact tree, in which case the tree carries the step it recorded
+        // and that step is reported here verbatim. Running the command again would
+        // clear `node_modules` and rebuild it from the same lockfile, which is the
+        // state the tree is already in. Every other caller — `tcab validate` against
+        // an implementation directory foremost — finds nothing prepared and installs.
+        let install = match artifacts.prepared_install_for(&build_commands.install) {
+            Some(prepared) => prepared.step.clone(),
+            None => run_step(repo, &build_commands.install),
+        };
         if !install.succeeded {
             let detail = install.detail.clone().unwrap_or_default();
             return Ok(failed_load(&detail, Some(install), None, proof_results));
@@ -130,11 +141,24 @@ impl Validator for BuildValidator {
         // The build succeeded and produced output: the load signal is positive.
         // Running the declared checks is best-effort on top of that.
         let (checks, detail) = self.run_checks(test_case, &output_dir, references);
-        // Drive the case's debug scripts (if any) against the served build to
-        // decide the objective review items and synthesize their proof media. A
-        // script that could not be driven fails the checklist point it backs (see
-        // `script_verdicts`); it no longer affects the run's terminal state.
-        let debug_scripts = self.run_debug_scripts(test_case, variant, repo, &output_dir);
+        // Decide the case's scripted review items and synthesize their evidence. Which
+        // path does that is a property of the tree in hand: a tree built on an engine
+        // runtime has the case's validators run over it as a vitest project, and a tree
+        // built on no runtime has its instrumentation driven in a browser. A script or
+        // validator that could not be run against a conformant build fails the checklist
+        // point it backs; neither affects the run's terminal state.
+        let debug_scripts = match scripted_validation(artifacts) {
+            ScriptedValidation::Vitest(engine) => crate::vitest_validator::run_vitest_suites(
+                test_case,
+                variant,
+                engine,
+                artifacts,
+                &build_commands.install,
+            ),
+            ScriptedValidation::Browser => {
+                self.run_debug_scripts(test_case, variant, repo, &output_dir)
+            }
+        };
         Ok(ValidationSummary {
             loaded: true,
             detail,
@@ -372,6 +396,31 @@ impl BuildValidator {
     }
 }
 
+/// Which path decides a case's scripted review points for a given collected tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ScriptedValidation<'a> {
+    /// The run was built on an [engine](crate::engine) that vendors a runtime. The
+    /// case's validators for that engine are a vitest project run in process against
+    /// the build's own modules (see [`crate::vitest_validator`]).
+    Vitest(&'a ResolvedEngine),
+    /// The run vendored no runtime. The build is served as a static site and its
+    /// [instrumentation](crate::test_case::Instrumentation) driven in a browser.
+    Browser,
+}
+
+/// The scripted-validation path for `artifacts`.
+///
+/// The selection is read off the tree's own description rather than passed in,
+/// because the tree is what the engine was vendored into. A tree that records no
+/// engine, and a tree whose engine vendors no runtime, are the same answer: drive the
+/// build in a browser, exactly as every case predating engines is validated.
+pub(crate) fn scripted_validation(artifacts: &ArtifactCollection) -> ScriptedValidation<'_> {
+    match artifacts.engine_runtime() {
+        Some(engine) => ScriptedValidation::Vitest(engine),
+        None => ScriptedValidation::Browser,
+    }
+}
+
 /// The auto verdicts a driven script contributes to the checklist.
 ///
 /// A script that ran contributes whatever it decided. A script that did NOT run
@@ -491,22 +540,64 @@ pub struct ScriptedOutput {
 /// One scripted verdict unit to drive: a whole review item (validated as a whole) or
 /// one of its sub-items, resolved to its verdict id, display title, and validation
 /// driver. Borrows the driver from the caller's `review_items_for` list.
-struct DriveUnit<'a> {
-    item_id: String,
-    sub_item_id: Option<String>,
+pub(crate) struct DriveUnit<'a> {
+    pub(crate) item_id: String,
+    pub(crate) sub_item_id: Option<String>,
     /// The verdict id (`<item>` or `<item>.<sub>`) that keys the auto verdict and media.
-    verdict_id: String,
+    pub(crate) verdict_id: String,
     /// The unit's own display title (the sub-item's, or the item's), no category prefix.
-    title: String,
+    pub(crate) title: String,
     /// The backing category/item's title, for grouping under its category.
-    category_title: String,
+    pub(crate) category_title: String,
     /// Whether this unit is scored: `true` for an ordinary point, `false` when the
     /// backing review point is excluded from scoring for the version (see
     /// [`ReviewItem::scored`] / [`SubReviewItem::scored`](crate::test_case::SubReviewItem::scored)). Carried onto the
     /// [`DebugScriptResult`], where an excluded point costs nothing when it fails to
     /// run because it is not scored at all.
-    gates: bool,
-    validation: &'a ReviewValidation,
+    pub(crate) gates: bool,
+    pub(crate) validation: &'a ReviewValidation,
+}
+
+/// Flatten `items` into the verdict units a case's automated validation decides.
+///
+/// An item validated as a whole contributes one unit keyed by its own id; an item
+/// with sub-items contributes one unit per validated sub-item keyed by
+/// `<item>.<sub>`. Item-level validation and sub-items are mutually exclusive, so at
+/// most one branch fires per item. Both validation paths — the browser drive and the
+/// [vitest runner](crate::vitest_validator) — read their work list from here, so the
+/// set of points an engine-backed run decides is exactly the set a no-engine run
+/// would.
+pub(crate) fn drive_units(items: &[ReviewItem]) -> Vec<DriveUnit<'_>> {
+    items
+        .iter()
+        .flat_map(|item| {
+            let own = item.validation.as_ref().map(|validation| DriveUnit {
+                item_id: item.id.clone(),
+                sub_item_id: None,
+                verdict_id: item.id.clone(),
+                title: item.title.clone(),
+                category_title: item.title.clone(),
+                gates: item.scored,
+                validation,
+            });
+            let subs = item.sub_items.iter().filter_map(|sub| {
+                sub.validation.as_ref().map(|validation| DriveUnit {
+                    item_id: item.id.clone(),
+                    sub_item_id: Some(sub.id.clone()),
+                    verdict_id: ReviewItem::sub_item_verdict_id(&item.id, &sub.id),
+                    // The unit's own title is the sub-item's; the category (the item)
+                    // groups the sub-items in the reviewer UI, so no prefix here.
+                    title: sub.title.clone(),
+                    category_title: item.title.clone(),
+                    // A sub-item gates only if both it and its parent category are
+                    // scored — excluding the whole category also un-gates its points.
+                    gates: item.scored && sub.scored,
+                    validation,
+                })
+            });
+            own.into_iter().chain(subs)
+        })
+        .collect()
 }
 
 /// Drive every scripted verdict unit of `variant` against the served build at `url`,
@@ -539,40 +630,7 @@ pub fn drive_scripted_items(
 ) -> Option<Vec<ScriptedItemDrive>> {
     let instrumentation = test_case.instrumentation.as_ref()?;
     let items = test_case.review_items_for(variant);
-    // Flatten items into verdict units: an item validated as a whole contributes one
-    // unit keyed by its own id; an item with sub-items contributes one unit per
-    // validated sub-item keyed by `<item>.<sub>` (item-level validation and sub-items
-    // are mutually exclusive, so at most one branch fires per item).
-    let units: Vec<DriveUnit> = items
-        .iter()
-        .flat_map(|item| {
-            let own = item.validation.as_ref().map(|validation| DriveUnit {
-                item_id: item.id.clone(),
-                sub_item_id: None,
-                verdict_id: item.id.clone(),
-                title: item.title.clone(),
-                category_title: item.title.clone(),
-                gates: item.scored,
-                validation,
-            });
-            let subs = item.sub_items.iter().filter_map(|sub| {
-                sub.validation.as_ref().map(|validation| DriveUnit {
-                    item_id: item.id.clone(),
-                    sub_item_id: Some(sub.id.clone()),
-                    verdict_id: ReviewItem::sub_item_verdict_id(&item.id, &sub.id),
-                    // The unit's own title is the sub-item's; the category (the item)
-                    // groups the sub-items in the reviewer UI, so no prefix here.
-                    title: sub.title.clone(),
-                    category_title: item.title.clone(),
-                    // A sub-item gates only if both it and its parent category are
-                    // scored — excluding the whole category also un-gates its points.
-                    gates: item.scored && sub.scored,
-                    validation,
-                })
-            });
-            own.into_iter().chain(subs)
-        })
-        .collect();
+    let units = drive_units(&items);
     if units.is_empty() {
         return None;
     }
@@ -3129,3 +3187,7 @@ fn image_similarity(a: &Image, b: &Image) -> f64 {
 #[cfg(test)]
 #[path = "validator.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "validator.install.test.rs"]
+mod install_tests;

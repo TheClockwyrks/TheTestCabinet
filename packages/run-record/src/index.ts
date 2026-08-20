@@ -501,8 +501,9 @@ export type StepResult = {
  * is synthesized for it, pre-filled into the review like any auto verdict and
  * overridable by the reviewer — rather than failing the whole run: a build with a
  * broken debug API is still reviewed, and is scored down by exactly the points its
- * checks could not answer. A script the host could not run *at all* (no browser) is
- * not recorded here — that degrades like a [check](CheckResult).
+ * checks could not answer. A check the host could not run *at all* decided nothing
+ * about the build and is held apart by
+ * [`precondition_unmet`](Self::precondition_unmet).
  */
 export type DebugScriptResult = {
   /**
@@ -552,16 +553,24 @@ export type DebugScriptResult = {
    */
   ran: boolean;
   /**
-   * Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than
-   * a debug-API contract failure.
+   * Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather
+   * than a contract failure the build earned.
    *
-   * A script's `arrange` often searches the model's own world for a spot to pose
-   * its scenario — a blind corner in an invented maze, a legal build tile. That
-   * search can come up empty against a fully conformant build: every call was
-   * answered correctly, there was simply no such spot. That is INCONCLUSIVE about
-   * the model, so it is held apart from a genuine contract failure: no failed
-   * verdict is synthesized for it and the point is left for the reviewer to decide
-   * by hand. Only ever `true` alongside `ran == false`.
+   * Two outcomes set it, and both leave the point unanswered: no failed verdict is
+   * synthesized, [scoring](crate::comparison::automated_only_score) skips the point
+   * entirely, and the reviewer decides it by hand.
+   *
+   * The first is an UNMET PRECONDITION. A check often searches the model's own
+   * world for a spot to pose its scenario — a blind corner in an invented maze, a
+   * legal build tile. That search can come up empty against a fully conformant
+   * build: every call was answered correctly, there was simply no such spot. A
+   * [vitest validator](crate::vitest_validator) says the same thing by skipping
+   * every check in its suite.
+   *
+   * The second is a check the host could not execute at all, such as a validator
+   * project with no vitest to run it or a suite run that exceeded its cap. The
+   * [`detail`](Self::detail) names the reason. Only ever `true` alongside
+   * `ran == false`.
    */
   preconditionUnmet: boolean;
   /**

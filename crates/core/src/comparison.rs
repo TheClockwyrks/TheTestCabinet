@@ -291,15 +291,16 @@ pub struct Comparison {
 /// - A script that suffered a contract failure ([`ran`](crate::validation::DebugScriptResult::ran)
 ///   `== false`) with no decided verdict still **fails** its backing point, so a `Fail`
 ///   is synthesized for its verdict id and the point is covered.
-/// - A script whose [precondition went unmet](crate::validation::DebugScriptResult::precondition_unmet)
-///   is inconclusive: it is skipped entirely and contributes to neither the numerator
-///   nor the denominator (the point is left for a human).
+/// - A script recorded [inconclusive](crate::validation::DebugScriptResult::precondition_unmet)
+///   — an unmet precondition, or a check the host could not execute — is skipped
+///   entirely and contributes to neither the numerator nor the denominator (the point
+///   is left for a human).
 pub fn automated_only_score(items: &[ReviewItem], debug_scripts: &[DebugScriptResult]) -> Score {
     let mut covered: BTreeSet<String> = BTreeSet::new();
     let mut verdicts: Vec<ReviewVerdict> = Vec::new();
     for script in debug_scripts {
-        // An unmet precondition is inconclusive about the model — leave the point for
-        // a human and count it toward neither side.
+        // An inconclusive check says nothing about the model — leave the point for a
+        // human and count it toward neither side.
         if script.precondition_unmet {
             continue;
         }

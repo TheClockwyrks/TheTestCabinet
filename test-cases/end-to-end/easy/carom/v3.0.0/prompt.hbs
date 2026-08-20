@@ -1,30 +1,45 @@
 Build **Carom**, a neon top-down paddle duel that runs entirely in the browser.
 
-Your project root is `{{workspace}}`. Create the game there.
+Your project root is `{{workspace}}`. Build the game there.
 
 ## Your starting point
 
-A starter project is already in place at `{{workspace}}`: a `package.json` that
-pins **Playwright** as a dev dependency. Its dependencies have already been
-installed for you — `node_modules/` is populated and Playwright's headless
-**Chromium** is downloaded — so you can build right away (see "Playwright and
-Chromium" below for what they are there for). Build on this project rather than
-replacing it: keep the `package.json`, add your framework, bundler, and a `build`
-script on top of it, and keep the lockfile in sync (see below).
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints it,
+Prettier formats it, and `src/main.ts` already creates the engine over the page's
+canvas and runs the game.
 
-{{#if (ne engine.slug "none")}}
+**What is missing is the game itself: `src/game.ts`.** It exports `game`, a
+`Game<CaromState>` whose `initialize`, `update`, and `render` all throw
+`"not implemented"`. Implement those three functions, splitting the work across
+new modules under `src/` however suits you.
+
+Four files and the project's configuration are the case's and **must not be
+edited**: `src/main.ts` (the entry point), `src/constants.ts` (every figure the
+specification fixes), `src/debug.ts` (the `window.__carom` automation surface),
+`index.html`, and `package.json`, `tsconfig.json`, `vite.config.ts`,
+`vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+and `.gitignore`.
+
+`CaromState`, declared in full in `src/game.ts`, is a contract: keep every field
+under its declared name, type, and meaning, and hold no game state anywhere else.
+`src/constants.ts` is the single source of every number, color, key binding, cue
+name, and piece of screen copy the specification fixes — import them, and never
+restate one as a literal.
+
 ## The {{engine.name}} engine
 
-This build runs on the **{{engine.name}}** engine. It is already installed as a
-dependency of the starter project at `{{workspace}}`, so import it by its bare
-package name; there is nothing to add to `package.json` for it and nothing to
-install.
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
 
 The engine's own documentation is at `{{engine.docs}}`. Read all of it before you
-start. It is the authoritative description of the engine's API — the
-specification in `specs/` describes the game and does not restate the engine — so
-work from those pages rather than from assumptions about how such a runtime
-usually behaves.
+start. It is the authoritative description of the engine's API — the specification
+in `specs/` describes the game and does not restate the engine — so work from
+those pages rather than from assumptions about how such a runtime usually behaves.
+They also carry a complete worked example of unit-testing a game built on it,
+which is the shape your own tests should take.
 
 Build the game **on** the engine rather than beside it. The engine owns the frame
 loop and the delta time it hands your update, the input actions the player drives
@@ -32,54 +47,53 @@ the game with, the audio, asset loading, and the on-screen debug overlay: do not
 write your own frame loop, read keyboard events yourself, drive the Web Audio API
 yourself, or draw the overlay yourself. Register what the game needs with the
 engine and use what it gives back. What remains yours is the game itself — its
-simulation, everything it draws, and the debugging and automation surface the
-specification asks you for.
+simulation and everything it draws.
 
-{{/if}}
 ## What to read first
 
 The full specification is in the `specs/` directory at `{{workspace}}`, already
 present in your project. Read all of it before you start, and produce an
 implementation that matches the specification exactly.
 
-## Build requirements
+## What is checked
 
-Deliver a complete, polished, playable game, not a tech demo. The **hard
-requirements** — real graphics drawn in code (no art files or runtime fetches),
-no backend or credentials, the palette and type, a `README.md`, the game states,
-and the `window.__carom` debugging and automation API and debug overlay
-(`specs/instrumentation.md`) — are stated in full in `specs/overview.md` (and the
-files it points to).
-That specification is authoritative; build to it rather than to a summary here.
-Two things bear restating, because the harness depends on them:
+Deliver a complete, polished, playable game, not a tech demo. The hard
+requirements — real graphics drawn in code, no backend or credentials, the palette
+and type, the game states, a `README.md`, and a state that `window.__carom`
+(`specs/instrumentation.md`) can pose and read — are stated in full in
+`specs/overview.md` and the files it points to. That specification is
+authoritative; build to it rather than to a summary here. Four things bear
+restating, because they are checked mechanically after the run:
 
-- **The fixed build/serve interface.** The project stays a **Node project** built
-  with only Node.js and npm-installed dependencies. Extend the provided
-  `package.json` at `{{workspace}}` and **commit a `package-lock.json`** (run
-  `npm install` after you change dependencies so the lockfile matches). `npm ci`
-  then `npm run build` must produce the static site — with no other manual step —
-  into one of `dist/`, `build/`, or `out/` at the project root, with an
-  `index.html` at the root of that directory. Serving that directory as-is at the
-  root of any static file server must run the game; it is deployed to static
-  hosting exactly that way. `specs/overview.md` states this in full; follow it
-  exactly.
-- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are illustrative examples of the title, gameplay, and
-  game-over screens, not targets to reproduce — design your own menus and layout
-  from the specification; the images only illustrate the intended look, palette,
-  and type.
+- **Your code must type-check.** `npx tsc --noEmit` is run over the repository you
+  leave behind, and code that does not compile scores zero.
+- **Your code must lint and be formatted.** `npx eslint .` and
+  `npx prettier --check .` are run over it too, and both results are recorded.
+- **Write your own unit tests**, beside your sources as `src/**/*.test.ts`.
+  `npx vitest run --coverage` is run over the repository and its test count and
+  coverage are recorded. Cover the collision resolution, the paddle bounce and
+  spin, the serve, the scoring and match rules, and the AI.
+- **The build interface is fixed.** `npm ci` then `npm run build` must produce the
+  static site — with no other manual step — into `dist/` at the project root, with
+  an `index.html` at the root of that directory. Serving that directory as-is at
+  the root of any static file server must run the game; it is deployed to static
+  hosting exactly that way. The scripts that do this are already in
+  `package.json`. Add a dependency only if you genuinely need one, and run
+  `npm install` afterward so the committed `package-lock.json` matches.
 
-## Playwright and Chromium
+`npm run typecheck`, `npm run lint`, `npm run format`, `npm test`, and
+`npm run build` run the same commands locally. Leave the repository passing all
+five.
 
-The project's **Playwright** and its headless **Chromium** are installed, and the
-container has network access, so you can drive the built game in a real browser.
-Using them to validate your build as you go — serving it, driving a round, watching
-for console errors, exercising the `window.__carom` API — is a good way to catch
-problems, but whether and how far to do so is your call. (You will separately need
-them for the proof-of-implementation captures that `specs/proof.md` asks for.)
+## Driving the game in a browser
 
-Whenever you do launch the browser, use the project's own Playwright: import it from
-your project (for example `import { chromium } from "playwright"`) or run the
+The project's **Playwright** and its headless **Chromium** are installed, so you
+can serve the built game and drive it in a real browser to watch a rally, check
+for console errors, or exercise `window.__carom`. Whether and how far to do so is
+your call; your unit tests are the faster loop.
+
+Whenever you do launch the browser, use the project's own Playwright: import it
+from your project (for example `import { chromium } from "playwright"`) or run the
 project-local CLI with `npx playwright`. There is **no** global Playwright on
 `PATH` — it lives in your project's `node_modules`, like any other dependency.
 Launch Chromium with the `--no-sandbox` argument — this container has no Chromium
@@ -93,7 +107,7 @@ implementation is published directly from this repository's commits, so work you
 leave uncommitted is **not** published. When the build is complete and verified,
 commit everything: run `git add -A` then `git commit`, and confirm `git status`
 reports a clean working tree with nothing uncommitted or untracked. A
-`.gitignore` already excludes `node_modules/` and the build output
-(`dist/`/`build/`/`out/`), so a clean tree does not mean committing those — but
-it does mean committing your source, your `package-lock.json`, your `README.md`,
-and the `proof/` artifacts.
+`.gitignore` already excludes `node_modules/`, the build output, and coverage
+reports, so a clean tree does not mean committing those — but it does mean
+committing your source, your tests, your `package-lock.json`, and your
+`README.md`.

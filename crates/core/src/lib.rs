@@ -62,6 +62,7 @@ pub mod toolchain;
 pub mod toolchain_stage;
 pub mod validation;
 pub mod validator;
+pub mod vitest_validator;
 
 #[cfg(test)]
 #[path = "lib.test.rs"]
@@ -120,8 +121,8 @@ pub use event::{
 };
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream, RawOutputLine, RepoSeeder,
-    SeedRequest, SeededRepo, WORKSPACE_DIR,
+    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream, PreparedInstall,
+    RawOutputLine, RepoSeeder, SeedRequest, SeededRepo, WORKSPACE_DIR,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
@@ -410,15 +411,15 @@ fn resolve_engine(
 /// it — a second copy is how the two drift and how a `tcab seed` starts producing
 /// a tree a run would have refused.
 ///
-/// [`NONE_SLUG`] short-circuits: every case supports the engineless run whether or
-/// not its manifest said so, and there is no version to check because there is no
-/// package. An engine declared with no range short-circuits the version half for
-/// the same reason — the case asked for no constraint, so an unreadable package
+/// [`NONE_SLUG`] is held to the case's declared set like any other slug — a
+/// version built against a runtime does not support the engineless run, because
+/// its workspace `package.json` depends on a package an engineless run vendors
+/// nothing into, so admitting it would seed a tree whose install cannot succeed.
+/// Only the VERSION half short-circuits for it: `none` supplies no package, so
+/// there is nothing to compare. An engine declared with no range short-circuits
+/// that half too — the case asked for no constraint, so an unreadable package
 /// store costs it nothing.
 pub fn ensure_engine_supported(test_case: &TestCaseVersion, engine: &ResolvedEngine) -> Result<()> {
-    if engine.slug() == NONE_SLUG {
-        return Ok(());
-    }
     let Some(support) = test_case.engine_support(engine.slug()) else {
         return Err(Error::EngineUnsupportedForCase {
             slug: engine.slug().to_string(),
@@ -427,7 +428,7 @@ pub fn ensure_engine_supported(test_case: &TestCaseVersion, engine: &ResolvedEng
             supported: test_case.engine_slugs(),
         });
     };
-    if !support.is_bounded() {
+    if engine.slug() == NONE_SLUG || !support.is_bounded() {
         return Ok(());
     }
     match engine.version() {
@@ -1171,9 +1172,7 @@ where
             );
             return;
         }
-        let artifacts = ArtifactCollection {
-            repo_path: scratch.path().to_path_buf(),
-        };
+        let artifacts = ArtifactCollection::new(scratch.path().to_path_buf());
         let report = post_run::run_stages(
             std::iter::once(stage),
             &post_run::PostRunContext {
@@ -1545,7 +1544,7 @@ where
             SystemStage::Teardown,
             SystemStatus::Completed,
         ));
-        let artifacts = artifacts?;
+        let mut artifacts = artifacts?;
 
         // The measured run duration excludes any time the run pod spent queued
         // for cluster capacity before it started: that is wall-clock the run was
@@ -1631,6 +1630,22 @@ where
                 "post-run analysis wrote the run's artifacts",
             );
         }
+
+        // A stage that ran the case's install over this very tree says so here, and
+        // the tree's description carries it into validation, which runs the same
+        // install. A lockfile install clears `node_modules` and rebuilds it from the
+        // lockfile, so a second one only reproduces the state the first left; the
+        // recorded step is reported instead. The stamp is made here, on the value
+        // about to be validated, so it can only ever describe the tree in hand.
+        artifacts.prepared_install = post_run.prepared_install.clone();
+
+        // …and the engine the tree was built on, stamped on the same value for the
+        // same reason. The engine is vendored into the seeded tree, so which runtime a
+        // build was written against is a property of the tree rather than of the call
+        // that validates it, and validation reads it from here to decide whether the
+        // case's validators run as a vitest project or its instrumentation is driven
+        // in a browser.
+        artifacts.engine = Some(engine.clone());
 
         // The proof-of-implementation artifacts requested for this variant; the
         // validator records whether each turned up in the produced tree.

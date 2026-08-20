@@ -68,9 +68,7 @@ async fn stage_for(
 ) -> test_cabinet_core::post_run::PostRunReport {
     let (case, variant) = catalog_case();
     let request = request(&case, &variant);
-    let artifacts = ArtifactCollection {
-        repo_path: tree.to_path_buf(),
-    };
+    let artifacts = ArtifactCollection::new(tree.to_path_buf());
     StaticCodeAnalyzer
         .run(&PostRunContext {
             run_id: "run-1",

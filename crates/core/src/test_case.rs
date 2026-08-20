@@ -5943,11 +5943,14 @@ impl TestCaseCatalog {
         // — but it is validated here, beside `packages`, and for the same reason: a
         // slug that names nothing should cost a `tcab validate`, never a run.
         //
-        // The resolved set always leads with `none`, whether the manifest declares
-        // it or not. `none` is the engineless run every case supported before
-        // engines existed, so a case can never stop supporting it; declaring it
-        // explicitly is simply the readable form, and so is not a duplicate of the
-        // implicit entry.
+        // A version that declares no engine at all supports `none` alone — the
+        // engineless run every case was before engines existed, which is what keeps
+        // every version predating this key resolving unchanged. Once a version
+        // declares *any* engine, its supported set is exactly what it declares: a
+        // case whose workspace is written against a runtime (its `package.json`
+        // depending on the vendored engine) could not build engineless at all, so
+        // being held to offering that run would be a promise the case cannot keep.
+        // A case that genuinely builds both ways lists `none` alongside.
         let engines = {
             if (!manifest.engines.is_empty() || !manifest.engine_tables.is_empty())
                 && !matches!(
@@ -5961,7 +5964,12 @@ impl TestCaseCatalog {
                 ));
             }
             let catalog = EngineCatalog::new();
-            let mut engines = vec![EngineSupport::unbounded(NONE_SLUG)];
+            let declares_nothing = manifest.engines.is_empty() && manifest.engine_tables.is_empty();
+            let mut engines = if declares_nothing {
+                vec![EngineSupport::unbounded(NONE_SLUG)]
+            } else {
+                Vec::new()
+            };
             let mut declared = HashSet::new();
             // Whether any declared engine actually vendors a runtime. Only then does
             // the seeder have a dependency to write, and only then does the case owe
@@ -6044,9 +6052,7 @@ impl TestCaseCatalog {
                         }
                     }
                 };
-                if slug != NONE_SLUG {
-                    engines.push(support);
-                }
+                engines.push(support);
             }
             // The engine's `file:` dependency is written into the seeded workspace's
             // `package.json` at seed time — the one place seeding edits that file —

@@ -8,12 +8,14 @@ obstacles (`specs/playfield.md`), the balls, serving, and physics
 Versus (`specs/modes/versus.md`) are otherwise the same game and differ only in
 who controls the right paddle — the AI here, a second human there.
 
-## Controls
-{{#if (eq engine.slug "simple-2d")}}
+Every figure below is exported from `src/constants.ts` under the name it is given
+here.
 
-Keyboard only. The controls are registered engine actions on the `dual-vertical`
-touch layout. Carom registers that layout's own four actions, plus the menu
-vocabulary every layout carries, bound to these keys:
+## Controls
+
+Keyboard only. The controls are registered engine actions on the `LAYOUT`
+(`dual-vertical`) touch layout. Register exactly the eight names in `ACTIONS`, in
+that order, each bound to the keys `BINDINGS` gives it:
 
 | Action | Keys | Does |
 | --- | --- | --- |
@@ -23,48 +25,40 @@ vocabulary every layout carries, bound to these keys:
 | `p2-down` | `ArrowDown` | Also moves it down: Solo has no player two. |
 | `confirm` | `Enter`, `Space` | Accepts the selected menu item. |
 | `back` | `Escape` | Goes back a screen. |
-| `pause` | `KeyP`, `Escape` | Pauses at any time (the Paused screen in `specs/ui.md`). |
+| `pause` | `KeyP`, `Escape` | Pauses at any time (the `paused` screen in `specs/ui.md`). |
 | `mute` | `KeyM` | Toggles mute. |
 
 - `W`/`S` and `Up`/`Down` therefore both move the human's paddle, which moves at
-  the constant speed defined in `specs/playfield.md` while a movement action is
-  held, and is otherwise stationary.
+  `PADDLE_SPEED` while a movement action is held and is otherwise stationary
+  (`specs/playfield.md`).
 - `back` and `pause` share the `Escape` key. Read `pause` while a match is live
   and `back` on the menus, so `Escape` pauses in a match and goes back on a menu.
-{{else}}
-
-Keyboard only.
-
-- The human moves player one (the left paddle) with `W`/`S` or `Up`/`Down`. The
-  paddle moves at the constant speed defined in `specs/playfield.md` while a
-  movement key is held, and is otherwise stationary.
-- `Esc` or `P` pauses at any time (the Paused screen in `specs/ui.md`).
-- `M` toggles mute.
-{{/if}}
 
 The right paddle is not player-controlled in Solo; the AI drives it (below).
 
 ## HUD
 
-- The two scores sit near the top of the field in large monospace digits (about
-  76 px tall): player one's score centered near `x = 520` and player two's near
-  `x = 760`, with their tops near `y = 40`.
-- A small, dim mode label (`SOLO`) sits in the top-left during a match.
+- The two scores sit near the top of the field in monospace digits `SCORE_FONT_PX`
+  (`76`) tall, drawn in `COLOR.text`: player one's score centered on
+  `x = SCORE_P1_X` (`520`) and player two's on `x = SCORE_P2_X` (`760`), with
+  their tops at `y = SCORE_TOP_Y` (`40`).
+- The mode label `MODE_LABEL.solo` (`SOLO`) sits small and dim, in
+  `COLOR.textDim`, in the top-left of the field during a match.
 
 ## AI opponent
 
 The AI controls the right paddle in Solo. It is a competent but beatable
 opponent, not a perfect wall.
 
-- The AI moves its paddle vertically at a maximum of 560 px/s, deliberately
-  slower than the human's 720 px/s, so a well-placed or well-curved shot can beat
-  it.
+- The AI moves its paddle vertically at a maximum of `AI_SPEED` (`560`) px/s,
+  deliberately slower than the human's `PADDLE_SPEED` (`720`), so a well-placed or
+  well-curved shot can beat it.
 - When the ball is moving toward the AI, it tracks the ball's `y`, reacting with
-  a short delay of about `0.12 s` and stopping when the paddle center is within a
-  small 10 px deadzone of the target. It does not perfectly account for spin
+  the lag time constant `AI_REACT` (`0.12` s) and stopping when the paddle center
+  is within `AI_DEADZONE` (`10`) px of the target. It does not account for spin
   curvature, so a curving shot can get past it.
-- When the ball is moving away, the AI eases back toward the vertical center
-  (`y = 360`).
+- When the ball is moving away, the AI eases back toward `AI_HOME_Y` (`360`, the
+  vertical center).
 
 The AI must stay clearly beatable by a skilled player while remaining clearly
 capable of punishing weak play.

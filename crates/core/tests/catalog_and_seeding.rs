@@ -270,19 +270,20 @@ fn resolves_carom_from_its_manifest() {
             .is_some_and(|s| s.contains("paddle duel")),
         "the inline site-facing summary should be surfaced from the manifest"
     );
-    // Three variants are offered: base (fixed obstacles, one ball), multi (three
-    // independent balls), and gyre (swaying, rotating obstacles).
+    // Two variants are offered: base (fixed obstacles) and gyre (swaying, rotating
+    // obstacles). The multi-ball variant of v2 is not carried forward — see this
+    // version's `changelog.md` and the note above `variants` in its manifest.
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
-    assert_eq!(variant_slugs, ["base", "multi", "gyre"]);
+    assert_eq!(variant_slugs, ["base", "gyre"]);
     // Under the decomposed layout no variant seeds a spec of its own: the rules
-    // that differ per variant (multi's three balls, gyre's moving obstacles) are
-    // branches inside the common `.hbs` specs, rendered for the selected variant
-    // before they land. So multi's ball rules ride the common `specs/balls.md`
-    // (rendered from `specs/balls.md.hbs`) rather than a variant-specific file.
-    let multi = version.variant("multi").expect("multi variant");
+    // that differ per variant (gyre's moving obstacles) are branches inside the
+    // common `.hbs` specs, rendered for the selected variant before they land. So
+    // gyre's obstacle rules ride the common `specs/playfield.md` (rendered from
+    // `specs/playfield.md.hbs`) rather than a variant-specific file.
+    let gyre = version.variant("gyre").expect("gyre variant");
     assert!(
-        multi.specs.is_empty(),
-        "multi seeds no spec of its own; its rules branch inside the common .hbs specs"
+        gyre.specs.is_empty(),
+        "gyre seeds no spec of its own; its rules branch inside the common .hbs specs"
     );
     assert!(
         version
@@ -291,46 +292,70 @@ fn resolves_carom_from_its_manifest() {
             .any(|spec| spec.dest == Path::new("specs/balls.md")),
         "the common balls spec seeds to specs/balls.md for every variant"
     );
-    // What multi actually adds over the common case is its reviewer checklist: the
-    // `multi-ball` category (three balls, distinct spawns, ball-to-ball collision,
-    // …) rides along only when multi is the selected variant.
+    // What gyre actually adds over the common case is its reviewer checklist: the
+    // `gyre` category (swaying obstacles, spinning obstacles, oriented bounces)
+    // rides along only when gyre is the selected variant.
     assert!(
         version
-            .review_items_for(multi)
+            .review_items_for(gyre)
             .iter()
-            .any(|item| item.id == "multi-ball"),
-        "multi contributes its multi-ball review category"
+            .any(|item| item.id == "gyre"),
+        "gyre contributes its gyre review category"
     );
-    // The `gameplay` and `game-over` views are common to every variant; the
-    // `title` view is variant-specific because the main menu differs per variant,
-    // so each variant declares its own `title` reference rather than the common
-    // set carrying it.
-    let common_views: Vec<&str> = version
-        .common_references
-        .iter()
-        .map(|v| v.view.as_str())
-        .collect();
-    assert_eq!(common_views, ["gameplay", "game-over"]);
+    // This version retires the reference views along with the mockups behind them:
+    // every screen is left to the model's design and reviewed by a person, so
+    // neither the case nor a variant declares one.
     assert!(
-        multi.references.iter().any(|v| v.view == "title"),
-        "multi should declare its own title reference"
+        version.common_references.is_empty(),
+        "carom v3 declares no common reference views"
     );
-    // The full reference set for a variant is the common references plus its own,
-    // so every variant still offers the three views — with its variant-specific
-    // title menu.
-    let multi_views: Vec<String> = version
-        .references_for(multi)
-        .iter()
-        .map(|v| v.view.clone())
-        .collect();
-    assert_eq!(multi_views, ["gameplay", "game-over", "title"]);
+    assert!(
+        version
+            .variants
+            .iter()
+            .all(|variant| variant.references.is_empty()),
+        "carom v3 declares no per-variant reference views"
+    );
     // Validation is opt-in, and this version declares no reference-similarity
-    // checks: the reference screenshots are seeded as illustrative examples of the
-    // screens rather than layouts to reproduce, so every screen is left to the
-    // model's design and reviewed by a human rather than scored against a baseline.
+    // checks: with no reference views there is no baseline to score a screenshot
+    // against, and the objective points are decided by the vitest validators the
+    // review items name instead.
     assert!(
         version.checks.is_empty(),
         "carom declares no opt-in reference-similarity checks"
+    );
+    // Every objective point this version grades names a validator, and each one is
+    // a TypeScript test file that exists on disk — the property the whole rewrite
+    // turns on, asserted over the real catalog rather than a fixture.
+    // Carom grades on the categorized checklist (`[review] format = 2`), so a
+    // resolved `ReviewItem` is a CATEGORY and the graded points are its sub-items.
+    // Both levels are walked, because either may carry a validator.
+    let mut scripted = 0usize;
+    for variant in &version.variants {
+        for item in version.review_items_for(variant) {
+            let validations = item.validation.iter().map(|v| (item.id.clone(), v)).chain(
+                item.sub_items
+                    .iter()
+                    .filter_map(|sub| sub.validation.as_ref().map(|v| (sub.id.clone(), v))),
+            );
+            for (id, validation) in validations {
+                assert!(
+                    validation.script.is_file(),
+                    "carom point `{id}` names a validator that is not a file: {}",
+                    validation.script.display()
+                );
+                assert!(
+                    validation.script_rel.ends_with(".test.ts"),
+                    "carom point `{id}` should be decided by a vitest validator, not `{}`",
+                    validation.script_rel
+                );
+                scripted += 1;
+            }
+        }
+    }
+    assert!(
+        scripted >= 70,
+        "carom should decide its objective points with validators, found {scripted}"
     );
 }
 
@@ -1206,12 +1231,21 @@ fn every_frozen_version_still_resolves_unchecked_and_ungated() {
 
 /// Every case in the catalog must pass the real run gate for every engine it
 /// declares — the same `ensure_engine_supported` a run applies before any
-/// container work.
+/// container work — and must refuse the engines it does not.
 ///
 /// The engine catalogue is resolved with its **default** package store, which on a
-/// host that has staged nothing holds no version for `simple-2d`. That is the
-/// point: a case declaring no version range must be admitted regardless, so a
-/// frozen bare-slug case still runs on a machine that has never staged a package.
+/// host that has staged nothing holds no version for `simple-2d`. A case declaring
+/// no version range must be admitted regardless, so a frozen bare-slug case still
+/// runs on a machine that has never staged a package; a case declaring a RANGE is
+/// checked against the staged version, and where the host has staged nothing that
+/// half of the gate has nothing to answer with, which is not the case's fault and
+/// is skipped here rather than asserted either way.
+///
+/// The engineless run is asserted per case rather than universally: a version that
+/// declares no engine supports it, and a version built against a runtime does not
+/// (its workspace `package.json` depends on a package an engineless run vendors
+/// nothing into). Both halves are checked, so the gate is held to the resolved set
+/// rather than to a blanket rule.
 #[test]
 fn every_catalog_version_passes_the_engine_gate_for_the_engines_it_declares() {
     let catalog = TestCaseCatalog::new(catalog_root());
@@ -1224,16 +1258,27 @@ fn every_catalog_version_passes_the_engine_gate_for_the_engines_it_declares() {
                 .resolve(&case.slug, version_name)
                 .unwrap_or_else(|err| panic!("resolve {}@{version_name}: {err:?}", case.slug));
 
-            // The engineless run every case supports, declared or not.
+            // The engineless run: admitted exactly when the resolved set carries it.
             let none = engines
                 .resolve(&EngineSelection::none())
                 .expect("resolve the engineless engine");
-            ensure_engine_supported(&version, &none).unwrap_or_else(|err| {
-                panic!(
-                    "{}@{version_name} refuses the engineless run: {err:?}",
+            let engineless = ensure_engine_supported(&version, &none);
+            if version.supports_engine(test_cabinet_core::NONE_SLUG) {
+                engineless.unwrap_or_else(|err| {
+                    panic!(
+                        "{}@{version_name} supports the engineless run but the gate \
+                         refuses it: {err:?}",
+                        case.slug
+                    )
+                });
+            } else {
+                assert!(
+                    engineless.is_err(),
+                    "{}@{version_name} does not support the engineless run, so the gate \
+                     must refuse it",
                     case.slug
-                )
-            });
+                );
+            }
 
             for support in &version.engines {
                 let engine = engines
@@ -1245,6 +1290,13 @@ fn every_catalog_version_passes_the_engine_gate_for_the_engines_it_declares() {
                             case.slug, support.slug
                         )
                     });
+                // A declared RANGE is answered from the host package store. Where the
+                // host has staged nothing there is no version to compare, so the gate
+                // reports the version as unknown — a property of this machine, not of
+                // the manifest, and the half this walk cannot assert.
+                if support.is_bounded() && engine.version().is_none() {
+                    continue;
+                }
                 ensure_engine_supported(&version, &engine).unwrap_or_else(|err| {
                     panic!(
                         "{}@{version_name} declares engine `{}` but the run gate refuses \
@@ -1270,12 +1322,15 @@ fn every_catalog_version_passes_the_engine_gate_for_the_engines_it_declares() {
 /// definition store already holds.
 ///
 /// The backend serializes a resolved `TestCaseVersion` into its definition store
-/// and reads it back, so the two fields the manifest grammar just grew have to be
-/// invisible on the wire for every case that does not use them: `engines` must
-/// still serialize as the plain string array it has always been, and `toolchain`
-/// must be absent rather than written as an explicit null. Serializing the real
-/// catalog — rather than a hand-built literal — is what makes this a statement
-/// about the definitions actually shipped.
+/// and reads it back, so the two fields the manifest grammar grew have to be
+/// invisible on the wire for every case that does not use them: an unbounded
+/// `engines` entry must still serialize as the plain slug string it has always
+/// been, and `toolchain` must be absent rather than written as an explicit null.
+/// A version that DOES use them is held to the round trip instead — what it wrote
+/// must read back as what it was — so the new spellings are proved to survive the
+/// store without pretending nothing in the catalog uses them. Serializing the real
+/// catalog rather than a hand-built literal is what makes this a statement about
+/// the definitions actually shipped.
 #[test]
 fn the_stored_shape_of_every_committed_version_is_unchanged() {
     let catalog = TestCaseCatalog::new(catalog_root());
@@ -1292,26 +1347,32 @@ fn the_stored_shape_of_every_committed_version_is_unchanged() {
                 .as_object()
                 .expect("a version serializes to an object");
 
-            // No committed manifest declares a `[toolchain]` table, so the key must
-            // not appear at all — a stored definition gains no field.
-            assert!(
-                !object.contains_key("toolchain"),
-                "{}@{version_name} writes a `toolchain` key into the definition store",
+            // A version that declares no `[toolchain]` table must not gain the key at
+            // all — a stored definition of an untouched case gains no field.
+            assert_eq!(
+                object.contains_key("toolchain"),
+                version.toolchain.is_some(),
+                "{}@{version_name} stores a `toolchain` key that does not match what it \
+                 declared",
                 case.slug
             );
 
-            // Every committed manifest declares its engines as bare slugs, so each
-            // entry must still be a JSON string rather than a range object.
+            // An engine declared with no version range must still serialize as the
+            // bare slug string a pre-range store holds; only a declared RANGE may
+            // widen into an object.
             let engines = object
                 .get("engines")
                 .and_then(|value| value.as_array())
                 .unwrap_or_else(|| panic!("{}@{version_name} stores no engines array", case.slug));
-            for entry in engines {
-                assert!(
+            assert_eq!(engines.len(), version.engines.len());
+            for (entry, support) in engines.iter().zip(&version.engines) {
+                assert_eq!(
                     entry.is_string(),
-                    "{}@{version_name} stores engine entry {entry} as something other \
-                     than the bare slug string a pre-range store holds",
-                    case.slug
+                    !support.is_bounded(),
+                    "{}@{version_name} stores engine entry {entry} in a shape that does \
+                     not match whether `{}` declared a version range",
+                    case.slug,
+                    support.slug
                 );
             }
 
@@ -1323,7 +1384,13 @@ fn the_stored_shape_of_every_committed_version_is_unchanged() {
                 "{}@{version_name} does not survive the definition store round trip",
                 case.slug
             );
-            assert!(round_tripped.toolchain.is_none());
+            assert_eq!(
+                round_tripped.toolchain.is_some(),
+                version.toolchain.is_some(),
+                "{}@{version_name} loses its toolchain across the definition store round \
+                 trip",
+                case.slug
+            );
             checked += 1;
         }
     }

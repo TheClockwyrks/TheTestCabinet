@@ -1740,19 +1740,21 @@ fn engines_resolve_with_none_first_when_it_is_declared() {
 }
 
 #[test]
-fn engines_lead_with_none_even_when_it_is_not_declared() {
-    // Omitting `none` cannot drop support for it, so the resolved set is identical
-    // to the one the readable form produces.
+fn a_version_declaring_an_engine_supports_exactly_what_it_declares() {
+    // Once a version declares ANY engine, its supported set is exactly what it
+    // declares — `none` is not folded back in. A case whose workspace is written
+    // against a runtime (its `package.json` depending on the vendored engine)
+    // could not build engineless at all, so being held to offering that run would
+    // be a promise the case cannot keep. A case that genuinely builds both ways
+    // lists `none` alongside, which is
+    // `engines_resolve_with_none_first_when_it_is_declared` above.
     let manifest = manifest_with(
         "workspace = \"workspaces/base\"\nengines = [\"simple-2d\"]\n",
         "",
     );
     let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
-    assert_eq!(
-        version.engine_slugs(),
-        vec!["none".to_string(), "simple-2d".to_string()]
-    );
+    assert_eq!(version.engine_slugs(), vec!["simple-2d".to_string()]);
 }
 
 #[test]
@@ -1851,18 +1853,32 @@ fn engines_are_end_to_end_only() {
 #[test]
 fn supports_engine_agrees_with_the_resolved_set() {
     let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"none\", \"simple-2d\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.supports_engine("simple-2d"));
+    assert!(version.supports_engine("none"));
+    assert!(!version.supports_engine("not-an-engine"));
+    for slug in version.engine_slugs() {
+        assert!(version.supports_engine(&slug), "should support `{slug}`");
+    }
+}
+
+#[test]
+fn supports_engine_refuses_the_engineless_run_a_version_left_out() {
+    // The gate a run applies reads the same resolved set, so a version built
+    // against a runtime refuses `--engine none` rather than seeding a workspace
+    // whose `package.json` names a package nothing would vendor.
+    let manifest = manifest_with(
         "workspace = \"workspaces/base\"\nengines = [\"simple-2d\"]\n",
         "",
     );
     let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert!(version.supports_engine("simple-2d"));
-    // Implicit, and still a supported selection.
-    assert!(version.supports_engine("none"));
-    assert!(!version.supports_engine("not-an-engine"));
-    for slug in version.engine_slugs() {
-        assert!(version.supports_engine(&slug), "should support `{slug}`");
-    }
+    assert!(!version.supports_engine("none"));
 }
 
 #[test]

@@ -120,9 +120,7 @@ async fn drive(
     let version = version(toolchain, build);
     let variant = variant();
     let request = request(&version, &variant);
-    let artifacts = ArtifactCollection {
-        repo_path: repo.to_path_buf(),
-    };
+    let artifacts = ArtifactCollection::new(repo.to_path_buf());
     let run_dir = tempfile::tempdir().expect("run dir");
     let seed_commit = "0".repeat(40);
     let context = crate::post_run::PostRunContext {

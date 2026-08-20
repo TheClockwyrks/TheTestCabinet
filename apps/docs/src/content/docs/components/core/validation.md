@@ -34,6 +34,20 @@ renders. Validation must:
 
 A run that cannot load is the clearest possible signal and is recorded as such.
 
+### The dependency install
+
+The case's install command is run once per collected tree. The
+[toolchain gate](#the-toolchain-gate) runs it ahead of validation so its commands
+have their dependencies, and where that install succeeded validation reports the
+recorded step as its own install result. A lockfile install rebuilds the dependency
+tree from the lockfile, so running it a second time reproduces the state the first
+one left.
+
+Validation runs the install itself for any tree that carries no successful install of
+that same command. `tcab validate` against an implementation directory is that case,
+as is a tree whose earlier install failed. The summary reports the install as its own
+step on both paths, so a reader sees one shape.
+
 ## Validators
 
 A case that supports an [engine](/components/core/engines/) ships a validator per
@@ -68,11 +82,35 @@ vocabulary, so a case supporting several engines ships a validator per verdict
 unit per engine.
 
 Each validator produces an auto verdict, decided from a list of assertions and
-passing only when every assertion passed, together with the media outputs it
-declares. Media is captured from the model's build as the actual result; the
-matching baseline is captured once by running the same validator against the
-case's reference implementation and is served case-scoped, so a reviewer sees the
-two side by side.
+passing only when every assertion passed.
+
+### Running the validators
+
+The validators for the run's engine are a vitest project of the case's own,
+separate from the build's. Deciding the run's points means running that project:
+
+- Stage the case's `validation/<engine>/` directory into the collected tree at
+  `validation/`. The sibling layout is what the case's project requires, since its
+  config derives its root from its own location so a validator resolves the build's
+  modules by the paths the build itself uses. Staging happens after everything that
+  measures the code the model wrote has already measured it.
+- Run vitest over that project from the implementation's repository root, naming
+  the project's config explicitly so the build's own config is never the one that
+  runs, and reading the outcome from the JSON reporter written to a file.
+- Reuse the dependency install the tree already carries, and install only a tree
+  nothing prepared.
+
+Each test file maps back to the review point whose `validation` path declared it,
+by the path the file was staged to. A file whose checks all passed earns its point
+a passing verdict; a file with any failing check fails its point, and the verdict
+carries a bounded excerpt naming which checks failed and what they said.
+
+The whole suite run is capped at wall-clock minutes and the output retained per
+suite at kilobytes, so a validator that never terminates costs the run the cap and
+nothing more.
+
+A validator captures no media. Its evidence is the assertions it recorded, so a
+result from an engine-backed run declares no outputs at all.
 
 ## Checks
 
@@ -107,24 +145,38 @@ a state snapshot and the rendered canvas.
 
 A script runs per verdict unit, meaning a whole review item or an individual
 sub-item, so each independently graded point gets its own script and its own
-evidence. Each script produces an auto verdict and media outputs exactly as a
-validator does.
+evidence. Each script produces an auto verdict exactly as a validator does, plus
+the media outputs it declares. Media is captured from the model's build as the
+actual result; the matching baseline is captured once by running the same script
+against the case's reference implementation and is served case-scoped, so a
+reviewer sees the two side by side.
 
 ### Validation that fails to complete
 
 A validator or script that could be run but did not complete against a conformant
 build fails the checklist point it backs. The case mandates the surface it drives,
 so a missing module, a call that threw, a malformed return, or a declared output
-the build never produced synthesizes a failed verdict for that point. The verdict
-is pre-filled into the review like any auto verdict and the reviewer may override
-it. The run itself stays reviewable: a build that loads is scored down by exactly
-the points its checks could not answer.
+the build never produced synthesizes a failed verdict for that point. A validator
+suite that raised before running any check is this case: the module contract it
+imports is one the case requires of every build. The verdict is pre-filled into the
+review like any auto verdict and the reviewer may override it. The run itself stays
+reviewable: a build that loads is scored down by exactly the points its checks could
+not answer.
 
-An unmet precondition is held apart. A setup often searches the model's own world
+Two outcomes are held apart, and both leave the point unanswered for the reviewer
+to decide by hand rather than synthesizing a verdict.
+
+The first is an unmet precondition. A setup often searches the model's own world
 for a place to pose its scenario, such as a blind corner in an invented maze or a
 legal build tile, and that search can come up empty against a fully conformant
-build. That outcome is inconclusive, so no verdict is synthesized and the reviewer
-decides the point by hand.
+build. A validator says this by skipping its checks: a suite whose checks were all
+skipped reports an unmet precondition.
+
+The second is a check that never ran at all. A validator project the run's engine
+has none of, a tree with no vitest to run one, a suite run that exceeded its cap,
+or a report that could not be read are facts about the host or the case, so every
+point they left undecided is reported as not having run, with the reason, and
+costs the build nothing.
 
 A point excluded from scoring for the version, through an
 [erratum](/testing/end-to-end/manifests/) that links its verdict id, is still
@@ -162,8 +214,9 @@ The summary therefore covers the install and the build alongside whether the
 implementation loaded. It also carries:
 
 - A validation result per verdict unit: the item and sub-item ids, the validator
-  or script that ran, whether it ran, whether it gates, its auto verdicts and
-  their assertions, and its captured outputs.
+  or script that ran, whether it ran and whether a negative answer was
+  inconclusive, whether it gates, its auto verdicts and their assertions, and any
+  captured outputs.
 - A check result per declared check, carrying its display name as well as its
   view slug so the site can label it without re-deriving one.
 - A proof result per declared proof: its id, display name, media kind, expected

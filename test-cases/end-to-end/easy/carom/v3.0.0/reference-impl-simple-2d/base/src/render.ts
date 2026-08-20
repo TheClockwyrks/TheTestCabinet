@@ -4,25 +4,41 @@
 // aware transform for the fixed design size, so nothing here scales, translates,
 // letterboxes, or looks at the canvas element. The look is neon-on-charcoal,
 // matching the palette in specs/overview.md.
+//
+// Rendering is a pure read of `CaromState`: nothing below writes to it.
 
 import {
+  BALL_R,
   COLOR,
+  FIELD_CX,
+  FIELD_CY,
   FIELD_H,
   FIELD_W,
+  HOLD_TIME,
+  MATCHOVER_ITEMS,
+  MODE_LABEL,
   MONO,
+  NET_X,
   OBSTACLES,
   PADDLE_HALF,
   PADDLE_W,
-  BALL_R,
+  PAUSE_ITEMS,
+  SCORE_FONT_PX,
   SCORE_P1_X,
   SCORE_P2_X,
   SCORE_TOP_Y,
+  TAGLINE_TEXT,
+  TITLE_ITEMS,
+  TITLE_TEXT,
 } from "./constants";
-import type { Game } from "./game";
-import { OVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./game";
+import { paddleBounds } from "./entities";
+import type { CaromState } from "./game";
+import { ribbon } from "./trail";
 
-// The canvas 2D context, with the (widely-supported, sometimes untyped)
-// letterSpacing property available.
+/**
+ * The canvas 2D context, with the widely supported (and, in some lib versions,
+ * untyped) `letterSpacing` property available.
+ */
 type Ctx = CanvasRenderingContext2D & { letterSpacing: string };
 
 interface TextOpts {
@@ -44,8 +60,10 @@ function setFont(ctx: Ctx, o: TextOpts): void {
   ctx.letterSpacing = `${o.spacing ?? 0}px`;
 }
 
-// Centered text with letter-spacing gains a trailing gap after the last glyph,
-// nudging the visual center right; compensate by half the spacing.
+/**
+ * Centered text with letter-spacing gains a trailing gap after the last glyph,
+ * nudging the visual center right; compensate by half the spacing.
+ */
 function centerShift(o: TextOpts): number {
   return (o.align ?? "center") === "center" ? (o.spacing ?? 0) / 2 : 0;
 }
@@ -120,8 +138,8 @@ function glowRect(
 function drawNet(ctx: Ctx): void {
   ctx.save();
   ctx.fillStyle = COLOR.net;
-  const x = 638;
-  for (let y = 24; y < 696; y += 30) {
+  const x = NET_X - 2;
+  for (let y = 24; y < FIELD_H - 24; y += 30) {
     ctx.fillRect(x, y, 4, 16);
   }
   ctx.restore();
@@ -143,11 +161,11 @@ function drawObstacles(ctx: Ctx): void {
   }
 }
 
-function drawPaddles(ctx: Ctx, game: Game): void {
+function drawPaddles(ctx: Ctx, state: CaromState): void {
   glowRect(
     ctx,
-    game.left.x0,
-    game.left.cy - PADDLE_HALF,
+    paddleBounds("left").x0,
+    state.paddles.left.cy - PADDLE_HALF,
     PADDLE_W,
     PADDLE_HALF * 2,
     8,
@@ -157,8 +175,8 @@ function drawPaddles(ctx: Ctx, game: Game): void {
   );
   glowRect(
     ctx,
-    game.right.x0,
-    game.right.cy - PADDLE_HALF,
+    paddleBounds("right").x0,
+    state.paddles.right.cy - PADDLE_HALF,
     PADDLE_W,
     PADDLE_HALF * 2,
     8,
@@ -168,28 +186,29 @@ function drawPaddles(ctx: Ctx, game: Game): void {
   );
 }
 
-// The motion trail: a single tapering, fading comet following the ball's recent
-// (curving) path. Built as one filled ribbon whose half-width tapers to zero at
-// the oldest end, filled with a head->tail gradient so it reads as a smooth
-// streak rather than discrete dots. Length is proportional to speed because the
-// samples span a fixed slice of time.
-function drawTrail(ctx: Ctx, game: Game): void {
+/**
+ * The motion trail: a single tapering, fading comet following the ball's recent
+ * (curving) path. It is built as one filled ribbon whose half-width tapers to zero
+ * at the oldest end, filled with a head-to-tail gradient so it reads as a smooth
+ * streak rather than as discrete dots. Its length is proportional to speed,
+ * because the samples span a fixed slice of time.
+ */
+function drawTrail(ctx: Ctx, state: CaromState): void {
   // Newest first, and the newest sample IS where the ball is: the update records
   // the ball's position at the end of every frame, and the frame the engine draws
   // is the frame it just updated. There is no interpolation to do — a variable
   // step means the renderer never draws between two simulation states.
-  const pts = game.trail.ribbon(game.simTime);
+  const pts = ribbon(state.trail);
   if (pts.length < 2) return;
 
   const head = pts[0];
   const tail = pts[pts.length - 1];
-  const totalLen = Math.hypot(head.x - tail.x, head.y - tail.y);
-  if (totalLen < 3) return; // collapsed (e.g. during the pre-serve hold)
+  if (Math.hypot(head.x - tail.x, head.y - tail.y) < 3) return; // collapsed
 
   const n = pts.length;
   const headHalf = 8;
-  const left: Array<{ x: number; y: number }> = [];
-  const right: Array<{ x: number; y: number }> = [];
+  const left: { x: number; y: number }[] = [];
+  const right: { x: number; y: number }[] = [];
   for (let i = 0; i < n; i++) {
     const p = pts[i];
     const prev = pts[Math.max(i - 1, 0)];
@@ -202,7 +221,7 @@ function drawTrail(ctx: Ctx, game: Game): void {
     // Perpendicular to the local tangent.
     const nx = -ty;
     const ny = tx;
-    const f = i / (n - 1); // 0 at head, 1 at tail
+    const f = i / (n - 1); // 0 at the head, 1 at the tail
     const hw = headHalf * (1 - f);
     left.push({ x: p.x + nx * hw, y: p.y + ny * hw });
     right.push({ x: p.x - nx * hw, y: p.y - ny * hw });
@@ -226,12 +245,7 @@ function drawTrail(ctx: Ctx, game: Game): void {
   ctx.restore();
 }
 
-function drawBall(
-  ctx: Ctx,
-  game: Game,
-  x = game.ball.x,
-  y = game.ball.y,
-): void {
+function drawBall(ctx: Ctx, x: number, y: number): void {
   ctx.save();
   ctx.shadowColor = "rgba(242, 245, 247, 0.8)";
   ctx.shadowBlur = 16;
@@ -244,28 +258,30 @@ function drawBall(
 
 function drawVignette(ctx: Ctx): void {
   const g = ctx.createRadialGradient(
-    FIELD_W / 2,
-    FIELD_H / 2,
+    FIELD_CX,
+    FIELD_CY,
     FIELD_H * 0.35,
-    FIELD_W / 2,
-    FIELD_H / 2,
+    FIELD_CX,
+    FIELD_CY,
     FIELD_H * 0.75,
   );
-  g.addColorStop(0, "rgba(0,0,0,0)");
-  g.addColorStop(1, "rgba(0,0,0,0.45)");
+  g.addColorStop(0, "rgba(0, 0, 0, 0)");
+  g.addColorStop(1, "rgba(0, 0, 0, 0.45)");
   ctx.save();
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, FIELD_W, FIELD_H);
   ctx.restore();
 }
 
-// The full field furniture (net, obstacles, paddles). `alpha` dims it behind a
-// menu overlay. `includePaddles` can be turned off so the match scene can lift
-// the paddles above the vignette (see drawMatchScene) rather than let the
-// vignette darken them at the field edges where they live.
+/**
+ * The field furniture (net, obstacles, paddles). `alpha` dims it behind a menu
+ * overlay. `includePaddles` can be turned off so the match scene can lift the
+ * paddles above the vignette (see drawMatchScene) rather than let the vignette
+ * darken them at the field edges where they live.
+ */
 function drawField(
   ctx: Ctx,
-  game: Game,
+  state: CaromState,
   alpha = 1,
   includePaddles = true,
 ): void {
@@ -273,7 +289,7 @@ function drawField(
   ctx.globalAlpha = alpha;
   drawNet(ctx);
   drawObstacles(ctx);
-  if (includePaddles) drawPaddles(ctx, game);
+  if (includePaddles) drawPaddles(ctx, state);
   ctx.restore();
 }
 
@@ -283,20 +299,19 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
-function drawHud(ctx: Ctx, game: Game): void {
+function drawHud(ctx: Ctx, state: CaromState): void {
   const scoreOpts: TextOpts = {
-    size: 76,
+    size: SCORE_FONT_PX,
     weight: 700,
     color: COLOR.text,
     spacing: 4,
     align: "center",
     baseline: "top",
   };
-  drawText(ctx, pad2(game.scoreP1), SCORE_P1_X, SCORE_TOP_Y, scoreOpts);
-  drawText(ctx, pad2(game.scoreP2), SCORE_P2_X, SCORE_TOP_Y, scoreOpts);
+  drawText(ctx, pad2(state.score.p1), SCORE_P1_X, SCORE_TOP_Y, scoreOpts);
+  drawText(ctx, pad2(state.score.p2), SCORE_P2_X, SCORE_TOP_Y, scoreOpts);
 
-  const label = game.mode === "solo" ? "SOLO" : "VERSUS";
-  drawText(ctx, label, 32, 28, {
+  drawText(ctx, MODE_LABEL[state.mode], 32, 28, {
     size: 18,
     color: COLOR.textFaint,
     spacing: 6,
@@ -307,12 +322,14 @@ function drawHud(ctx: Ctx, game: Game): void {
 
 // ---- Menus --------------------------------------------------------------
 
-// A vertical menu with a highlighted selection. The selected item is bright and
-// flanked by triangle markers in the accent color; others are dim. Markers are
-// drawn beside the measured text so they never overlap it.
+/**
+ * A vertical menu with a highlighted selection. The selected item is bright and
+ * flanked by triangle markers in the accent color; the others are dim. Markers are
+ * drawn beside the measured text so they never overlap it.
+ */
 function drawMenu(
   ctx: Ctx,
-  items: string[],
+  items: readonly string[],
   selected: number,
   centerX: number,
   startY: number,
@@ -332,34 +349,32 @@ function drawMenu(
       baseline: "middle",
     };
     drawText(ctx, items[i], centerX, y, opts);
-    if (isSel) {
-      const w = measure(ctx, items[i], opts) - centerShift(opts);
-      const markerOpts: TextOpts = {
-        size: itemSize,
-        color: accent,
-        align: "center",
-        baseline: "middle",
-        glow: accent,
-        glowBlur: 12,
-      };
-      const gap = 26;
-      drawText(ctx, "▸", centerX - w / 2 - gap, y, markerOpts);
-      drawText(ctx, "◂", centerX + w / 2 + gap, y, markerOpts);
-    }
+    if (!isSel) continue;
+    const w = measure(ctx, items[i], opts) - centerShift(opts);
+    const markerOpts: TextOpts = {
+      size: itemSize,
+      color: accent,
+      align: "center",
+      baseline: "middle",
+      glow: accent,
+      glowBlur: 12,
+    };
+    const gap = 26;
+    drawText(ctx, "▸", centerX - w / 2 - gap, y, markerOpts);
+    drawText(ctx, "◂", centerX + w / 2 + gap, y, markerOpts);
   }
 }
 
 // ---- Screens ------------------------------------------------------------
 
-function drawTitle(ctx: Ctx, game: Game): void {
-  drawField(ctx, game, 0.28);
-  // A posed decorative ball, off in the open field to the lower right so it
-  // clears the title, subtitle, and menu text (it previously sat dead-center
-  // over the "NEON PADDLE DUEL" subtitle and made it hard to read).
-  drawBall(ctx, game, 968, 470);
+function drawTitle(ctx: Ctx, state: CaromState): void {
+  drawField(ctx, state, 0.28);
+  // A posed decorative ball, off in the open field to the lower right so it clears
+  // the title, the tagline, and the menu text.
+  drawBall(ctx, 968, 470);
   drawVignette(ctx);
 
-  drawText(ctx, "CAROM", FIELD_W / 2, 246, {
+  drawText(ctx, TITLE_TEXT, FIELD_CX, 246, {
     size: 132,
     weight: 700,
     color: COLOR.p1,
@@ -367,7 +382,7 @@ function drawTitle(ctx: Ctx, game: Game): void {
     glow: "rgba(58, 231, 196, 0.55)",
     glowBlur: 24,
   });
-  drawText(ctx, "NEON PADDLE DUEL", FIELD_W / 2, 344, {
+  drawText(ctx, TAGLINE_TEXT, FIELD_CX, 344, {
     size: 22,
     color: COLOR.textDim,
     spacing: 14,
@@ -375,8 +390,8 @@ function drawTitle(ctx: Ctx, game: Game): void {
   drawMenu(
     ctx,
     TITLE_ITEMS,
-    game.menuIndex,
-    FIELD_W / 2,
+    state.menuIndex,
+    FIELD_CX,
     430,
     52,
     30,
@@ -384,19 +399,21 @@ function drawTitle(ctx: Ctx, game: Game): void {
     COLOR.p1,
   );
 
-  const hint = game.muted ? "▲ ▼ MOVE    ENTER SELECT    M UNMUTE" : "▲ ▼ MOVE    ENTER SELECT    M MUTE";
-  drawText(ctx, hint, FIELD_W / 2, FIELD_H - 34, {
+  const hint = state.muted
+    ? "▲ ▼ MOVE    ENTER SELECT    M UNMUTE"
+    : "▲ ▼ MOVE    ENTER SELECT    M MUTE";
+  drawText(ctx, hint, FIELD_CX, FIELD_H - 34, {
     size: 16,
     color: COLOR.textFaint,
     spacing: 8,
   });
 }
 
-function drawHowTo(ctx: Ctx, game: Game): void {
-  drawField(ctx, game, 0.16);
+function drawHowTo(ctx: Ctx, state: CaromState): void {
+  drawField(ctx, state, 0.16);
   drawVignette(ctx);
 
-  drawText(ctx, "HOW TO PLAY", FIELD_W / 2, 96, {
+  drawText(ctx, "HOW TO PLAY", FIELD_CX, 96, {
     size: 46,
     weight: 700,
     color: COLOR.p1,
@@ -405,13 +422,19 @@ function drawHowTo(ctx: Ctx, game: Game): void {
     glowBlur: 18,
   });
 
-  const rows: Array<[string, string]> = [
+  const rows: [string, string][] = [
     ["MOVE", "Solo: W / S  or  ↑ / ↓"],
     ["", "Versus: P1 uses W / S,  P2 uses ↑ / ↓"],
     ["SPIN", "Swing your paddle as you strike to curve the ball."],
     ["", "Up and down swings curve it opposite ways; spin fades in ~2 s."],
-    ["OBSTACLES", "Two mid-field blocks bounce the ball — bank shots around them."],
-    ["SCORE", "Send the ball past your opponent's edge. First to 11, win by 2."],
+    [
+      "OBSTACLES",
+      "Two mid-field blocks bounce the ball — bank shots around them.",
+    ],
+    [
+      "SCORE",
+      "Send the ball past your opponent's edge. First to 11, win by 2.",
+    ],
     ["PAUSE", "Esc or P.   Mute with M."],
   ];
   let y = 190;
@@ -436,35 +459,44 @@ function drawHowTo(ctx: Ctx, game: Game): void {
     y += label ? 58 : 40;
   }
 
-  drawText(ctx, "ESC / ENTER  —  BACK", FIELD_W / 2, FIELD_H - 44, {
+  drawText(ctx, "ESC / ENTER  —  BACK", FIELD_CX, FIELD_H - 44, {
     size: 18,
     color: COLOR.textFaint,
     spacing: 8,
   });
 }
 
-function drawMatchScene(ctx: Ctx, game: Game): void {
-  // Net and obstacles sit under the vignette (atmospheric edge darkening); the
-  // ball, its trail, and the paddles are drawn on top of it so the moving
-  // pieces keep full neon brightness everywhere on the field. Under the
-  // vignette the ball dimmed as it crossed toward the edges — reading as a
-  // brightness pulse — and the edge-hugging paddles looked permanently muted.
-  drawField(ctx, game, 1, false);
+function drawMatchScene(ctx: Ctx, state: CaromState): void {
+  // The net and the obstacles sit under the vignette (atmospheric edge
+  // darkening); the ball, its trail, and the paddles are drawn on top of it so the
+  // moving pieces keep full neon brightness everywhere on the field.
+  drawField(ctx, state, 1, false);
   drawVignette(ctx);
-  drawTrail(ctx, game);
-  drawBall(ctx, game);
-  drawPaddles(ctx, game);
-  drawHud(ctx, game);
+  drawTrail(ctx, state);
+  drawBall(ctx, state.ball.x, state.ball.y);
+  drawPaddles(ctx, state);
+  drawHud(ctx, state);
 }
 
-function drawCountdownOverlay(ctx: Ctx, game: Game): void {
-  const num = game.countdownNumber();
-  const phase = game.countdownPhase(); // 1 -> 0 across each digit
-  const pop = 0.7 + 0.3 * phase; // gentle scale-in per digit
+/** The countdown digit: a snappy 3-2-1 rendered across the HOLD_TIME hold. */
+export function countdownNumber(holdTimer: number): number {
+  return Math.min(3, Math.max(1, Math.ceil((holdTimer / HOLD_TIME) * 3)));
+}
+
+/** Progress `0..1` within the current countdown digit, for the pop animation. */
+export function countdownPhase(holdTimer: number): number {
+  const third = HOLD_TIME / 3;
+  return (holdTimer % third) / third;
+}
+
+function drawCountdownOverlay(ctx: Ctx, state: CaromState): void {
+  const num = countdownNumber(state.holdTimer);
+  const phase = countdownPhase(state.holdTimer); // 1 -> 0 across each digit
+  const pop = 0.7 + 0.3 * phase; // a gentle scale-in per digit
   const alpha = 0.35 + 0.65 * Math.min(1, phase * 1.6);
 
   ctx.save();
-  ctx.translate(FIELD_W / 2, FIELD_H / 2 + 10);
+  ctx.translate(FIELD_CX, FIELD_CY + 10);
   ctx.scale(pop, pop);
   drawText(ctx, `${num}`, 0, 0, {
     size: 150,
@@ -477,22 +509,18 @@ function drawCountdownOverlay(ctx: Ctx, game: Game): void {
   });
   ctx.restore();
 
-  drawText(ctx, "GET READY", FIELD_W / 2, FIELD_H / 2 - 92, {
+  drawText(ctx, "GET READY", FIELD_CX, FIELD_CY - 92, {
     size: 22,
     color: COLOR.textDim,
     spacing: 12,
   });
 }
 
-function drawPanel(
-  ctx: Ctx,
-  w: number,
-  h: number,
-): { x: number; y: number } {
-  const x = FIELD_W / 2 - w / 2;
-  const y = FIELD_H / 2 - h / 2;
+function drawPanel(ctx: Ctx, w: number, h: number): { x: number; y: number } {
+  const x = FIELD_CX - w / 2;
+  const y = FIELD_CY - h / 2;
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
   ctx.shadowBlur = 60;
   ctx.shadowOffsetY = 24;
   ctx.fillStyle = COLOR.bgRaised;
@@ -515,20 +543,18 @@ function drawOverlay(ctx: Ctx, opacity: number): void {
   ctx.restore();
 }
 
-function drawPause(ctx: Ctx, game: Game): void {
-  drawMatchScene(ctx, game);
+function drawPause(ctx: Ctx, state: CaromState): void {
+  drawMatchScene(ctx, state);
   drawOverlay(ctx, 0.72);
 
-  const w = 520;
-  const h = 400;
-  const { y } = drawPanel(ctx, w, h);
-  drawText(ctx, "PAUSED", FIELD_W / 2, y + 56, {
+  const { y } = drawPanel(ctx, 520, 400);
+  drawText(ctx, "PAUSED", FIELD_CX, y + 56, {
     size: 18,
     color: COLOR.textDim,
     spacing: 10,
     baseline: "middle",
   });
-  drawText(ctx, "CAROM", FIELD_W / 2, y + 110, {
+  drawText(ctx, TITLE_TEXT, FIELD_CX, y + 110, {
     size: 48,
     weight: 700,
     color: COLOR.p1,
@@ -540,8 +566,8 @@ function drawPause(ctx: Ctx, game: Game): void {
   drawMenu(
     ctx,
     PAUSE_ITEMS,
-    game.menuIndex,
-    FIELD_W / 2,
+    state.menuIndex,
+    FIELD_CX,
     y + 200,
     52,
     26,
@@ -550,34 +576,32 @@ function drawPause(ctx: Ctx, game: Game): void {
   );
 }
 
-function drawMatchOver(ctx: Ctx, game: Game): void {
-  drawField(ctx, game, 0.32);
+function drawMatchOver(ctx: Ctx, state: CaromState): void {
+  drawField(ctx, state, 0.32);
   drawVignette(ctx);
   drawOverlay(ctx, 0.72);
 
-  const w = 560;
-  const h = 420;
-  const { y } = drawPanel(ctx, w, h);
+  const { y } = drawPanel(ctx, 560, 420);
 
-  const winnerIsP1 = game.winner === "left";
+  const winnerIsP1 = state.winner === "left";
   const winColor = winnerIsP1 ? COLOR.p1 : COLOR.p2;
   const winGlow = winnerIsP1
     ? "rgba(58, 231, 196, 0.5)"
     : "rgba(255, 92, 138, 0.5)";
   let winnerText: string;
-  if (game.mode === "solo") {
+  if (state.mode === "solo") {
     winnerText = winnerIsP1 ? "YOU WIN" : "AI WINS";
   } else {
     winnerText = winnerIsP1 ? "PLAYER ONE WINS" : "PLAYER TWO WINS";
   }
 
-  drawText(ctx, "MATCH OVER", FIELD_W / 2, y + 52, {
+  drawText(ctx, "MATCH OVER", FIELD_CX, y + 52, {
     size: 18,
     color: COLOR.textDim,
     spacing: 10,
     baseline: "middle",
   });
-  drawText(ctx, winnerText, FIELD_W / 2, y + 116, {
+  drawText(ctx, winnerText, FIELD_CX, y + 116, {
     size: winnerText.length > 10 ? 44 : 52,
     weight: 700,
     color: winColor,
@@ -586,23 +610,17 @@ function drawMatchOver(ctx: Ctx, game: Game): void {
     glowBlur: 18,
     baseline: "middle",
   });
-  drawText(
-    ctx,
-    `${game.scoreP1}  –  ${game.scoreP2}`,
-    FIELD_W / 2,
-    y + 182,
-    {
-      size: 40,
-      color: COLOR.text,
-      spacing: 10,
-      baseline: "middle",
-    },
-  );
+  drawText(ctx, `${state.score.p1}  –  ${state.score.p2}`, FIELD_CX, y + 182, {
+    size: 40,
+    color: COLOR.text,
+    spacing: 10,
+    baseline: "middle",
+  });
   drawMenu(
     ctx,
-    OVER_ITEMS,
-    game.menuIndex,
-    FIELD_W / 2,
+    MATCHOVER_ITEMS,
+    state.menuIndex,
+    FIELD_CX,
     y + 268,
     52,
     26,
@@ -613,30 +631,37 @@ function drawMatchOver(ctx: Ctx, game: Game): void {
 
 // ---- Entry point --------------------------------------------------------
 
-// The engine clears the frame to the background color before calling this, so the
-// first thing drawn is the field furniture rather than a background fill.
-export function render(ctx2d: CanvasRenderingContext2D, game: Game): void {
+/**
+ * Draw one frame.
+ *
+ * The engine clears the frame to the background color before calling this, so the
+ * first thing drawn is the field furniture rather than a background fill.
+ */
+export function renderGame(
+  state: CaromState,
+  ctx2d: CanvasRenderingContext2D,
+): void {
   const ctx = ctx2d as Ctx;
 
-  switch (game.state) {
+  switch (state.screen) {
     case "title":
-      drawTitle(ctx, game);
+      drawTitle(ctx, state);
       break;
     case "howto":
-      drawHowTo(ctx, game);
+      drawHowTo(ctx, state);
       break;
     case "playing":
-      drawMatchScene(ctx, game);
+      drawMatchScene(ctx, state);
       break;
     case "countdown":
-      drawMatchScene(ctx, game);
-      drawCountdownOverlay(ctx, game);
+      drawMatchScene(ctx, state);
+      drawCountdownOverlay(ctx, state);
       break;
     case "paused":
-      drawPause(ctx, game);
+      drawPause(ctx, state);
       break;
     case "matchover":
-      drawMatchOver(ctx, game);
+      drawMatchOver(ctx, state);
       break;
   }
 }

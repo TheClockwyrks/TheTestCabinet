@@ -31,7 +31,7 @@ workspace = "workspaces/base" # optional starter directory, seeded into the run 
 init = "npm install"         # optional command run after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
 packages = []                # Test Cabinet packages the build imports (npm names)
-engines = ["none"]           # supported engines carrying no version range (default ["none"])
+engines = ["none"]           # supported engines, no version range (omit for ["none"])
 
 # Variants: an ORDERED list of paths to standalone variant files (the first is the
 # default). Exactly one variant runs per run, and its slug is recorded in the run
@@ -231,10 +231,10 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   in `core` rather than per case. See
   [Packages](/testing/end-to-end/overview/#packages).
 - `engines` names the engines a run of this case version may select as bare
-  slugs, each carrying no version range. It defaults to `["none"]`, and `none`
-  is supported whether declared or not. It is valid for the end-to-end,
-  full-stack, and game-jam types only. See
-  [Supported engines](#supported-engines).
+  slugs, each carrying no version range. A case version that declares no engine
+  at all — neither here nor in an `[[engine]]` table — supports `none`, and
+  nothing else. It is valid for the end-to-end, full-stack, and game-jam types
+  only. See [Supported engines](#supported-engines).
 - `variants` names the builds the case offers, in order, as paths to standalone
   variant files. The first is the default and at least one is required. It is a
   root key, so it must precede the first table header. See
@@ -381,8 +381,15 @@ resolves, before a run is spent. A `max_version` at or below `min_version` is
 rejected there too.
 
 `none` supplies no runtime and therefore carries no version, so it is declared
-in the `engines` list. It is supported whether it is declared or not, and
-declaring it explicitly is the readable form.
+in the `engines` list and never in an `[[engine]]` table.
+
+A case version that declares no engine at all supports `none` alone: that is the
+engineless run every case was before engines existed, and it is what keeps every
+version predating this key resolving unchanged. Once a version declares *any*
+engine, its supported set is exactly what it declares — so a case whose
+`workspace` is written against a runtime may leave `none` out and stop offering
+a run it could not build, while a case that genuinely builds both ways lists
+`none` alongside the engine it also supports.
 
 A case declaring an engine that provides a runtime ships a `workspace`
 containing a `package.json`, because the engine dependency is written into that
@@ -519,12 +526,25 @@ may declare them under the same rules. See
 
 ## Automated validation
 
-A case that mandates [instrumentation](/testing/end-to-end/instrumentation/) can
-mark a review item as automatically validated: The Test Cabinet drives a
-reporter-side debug script against the build's debug API to decide the item's
-verdict and synthesize its proof media. The case declares its
-`[instrumentation]` handle, and the verdict unit declares a `validation` table
-naming the script and the media outputs it produces.
+A case can mark a review item as automatically validated: The Test Cabinet
+decides the item's verdict from a reporter-side script and synthesizes its media
+from the same run. The verdict unit declares a `validation` table naming the
+script and the media outputs it produces.
+
+The script's shape follows the run's [engine](/components/core/engines/), and the
+two are documented at [Validation](/components/core/validation/):
+
+- Under an **engine**, the script is a **validator** — a `.test.ts` file run by
+  vitest **in process**, importing the engine and the build's own modules. A case
+  keeps one directory of validators per engine it supports, because a validator
+  speaks one engine's vocabulary; the directory for the run's engine is staged
+  into the built workspace at `validation/`.
+- Under **no engine**, the script drives the case's
+  [instrumentation](/testing/end-to-end/instrumentation/) in a browser, against
+  the debug API the build installs on the case's `[instrumentation]` handle.
+
+A new case version decides its objective points with validators. The
+instrumentation path remains supported for the versions written against it.
 
 Validation attaches to the graded unit. An item graded as a whole carries it
 directly; an item broken into sub-items is verdicted per sub-item, so its
@@ -588,8 +608,10 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   The reviewer sees expected and observed media side by side, beside the verdict
   each backs.
 - A `validation` table requires the case to declare an `[instrumentation]`
-  handle, and may not sit on a graded [game-jam](/testing/game-jam/overview/)
-  category, which has no pass/fail to decide. Weights and sub-item scoring are
+  handle — the surface the engineless path drives, and the seam a validator poses
+  a scenario through under an engine — and may not sit on a graded
+  [game-jam](/testing/game-jam/overview/) category, which has no pass/fail to
+  decide. Weights and sub-item scoring are
   unchanged: automation pre-decides the same verdicts a human would, in a
   distinguishable color the reviewer can override.
 

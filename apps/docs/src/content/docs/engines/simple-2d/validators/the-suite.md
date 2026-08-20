@@ -30,31 +30,43 @@ workspace/
 
 ## The vitest project
 
-The workspace's vitest config declares two projects, one over the build's own
-tests and one over the case's suites.
+The case's suites are a vitest project of their OWN, declared by a config the
+case ships beside them rather than by the build's `vitest.config.ts`. The two
+configs never mix: the build's names `src/**/*.test.ts` and measures coverage
+over `src/`, and the case's names `validation/**/*.test.ts` and measures none.
 
 ```ts
+// validation/vitest.config.ts — the case's, staged in with the suites
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // The workspace, not this directory, so a validator resolves the build's
+  // modules by the same relative paths the build itself uses.
+  root: fileURLToPath(new URL("..", import.meta.url)),
   test: {
-    projects: [
-      { test: { name: "game", include: ["src/**/*.test.ts"] } },
-      {
-        test: {
-          name: "validators",
-          include: ["validation/**/*.test.ts"],
-          environment: "node",
-        },
-      },
-    ],
+    name: "validation",
+    include: ["validation/**/*.test.ts"],
+    environment: "node",
+    // A missing validator is a broken suite, not a passing one.
+    passWithNoTests: false,
+    coverage: { enabled: false },
   },
 });
 ```
 
-Validation runs `vitest run --project validators`, so the verdict rests on the
-case's checks alone and a build's own test file cannot reach it. The build runs
-`vitest run --project game` for itself.
+The two suites are therefore two commands:
+
+```sh
+npx vitest run                                       # the build's own tests
+npx vitest run --config validation/vitest.config.ts  # the case's validators
+```
+
+The config belongs to the case for the same reason the suites do. A build that
+had to keep a `validators` project in its own config could delete or narrow it,
+and the verdict would quietly stop being decided; a build cannot reach the
+verdict by writing a test, and a case's check cannot flatter the build's
+coverage.
 
 The environment is `node`. The engine takes every measurement it needs from the
 surface the harness supplies, so the suites need no DOM.
@@ -140,18 +152,35 @@ it wants without testing for a value that has yet to load.
 Call `engine.destroy()` when a suite is finished with an engine, which drops the
 listeners it attached and releases the canvas.
 
+## An unmet precondition
+
+A suite sometimes cannot construct its scenario against a fully conformant build,
+because the setup searched the world the build invented and found no place to pose
+it. That says nothing about the build, so a suite reports it by skipping: a suite
+whose checks were all skipped leaves its point unanswered for the reviewer to
+decide by hand rather than failing it.
+
+```ts
+it.skipIf(corner === undefined)("rebounds out of a blind corner", () => {
+  // …
+});
+```
+
+A suite that skips only some of its checks still decides its point from the checks
+that ran.
+
 ## The module contract
 
 A suite imports the build, so a case fixes four module paths and what each one
 exports. That contract is stated in the case's specification and is what gives
 every build of the case the same shape to check.
 
-| Module | Supplied by | Holds |
-| --- | --- | --- |
-| `src/constants.ts` | The case | The logical design size, the palette, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
-| `src/game.ts` | The build | The `State` type the case declares and the `Game<State>` the engine drives. |
-| `src/debug.ts` | The case | The scenario operations, each a function over `State`, that pose a situation through the same systems play uses. |
-| `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it. |
+| Module             | Supplied by | Holds                                                                                                                                     |
+| ------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/constants.ts` | The case    | The logical design size, the palette, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
+| `src/game.ts`      | The build   | The `State` type the case declares and the `Game<State>` the engine drives.                                                               |
+| `src/debug.ts`     | The case    | The scenario operations, each a function over `State`, that pose a situation through the same systems play uses.                          |
+| `src/main.ts`      | The case    | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it.                                          |
 
 A suite imports `constants.ts` for the numbers and names its assertions are
 stated in, `game.ts` for the game it drives, and `debug.ts` for the scenarios it

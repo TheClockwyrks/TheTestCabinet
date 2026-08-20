@@ -242,9 +242,7 @@ struct FakeCollector {
 impl ArtifactCollector for FakeCollector {
     async fn collect(&self, _container: &ContainerHandle) -> CoreResult<ArtifactCollection> {
         self.steps.lock().expect("steps").push("collect");
-        Ok(ArtifactCollection {
-            repo_path: self.repo_path.clone(),
-        })
+        Ok(ArtifactCollection::new(self.repo_path.clone()))
     }
 }
 
@@ -289,7 +287,12 @@ fn references(test_case: &TestCaseVersion, variant: &Variant) -> Vec<RenderedRef
 async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_the_runtime_cap() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let test_case = catalog
-        .resolve_latest("carom")
+        // Pinned to a FROZEN version rather than `resolve_latest`, so this test's
+        // fixture cannot drift as the case is revised. It also has to be a version
+        // that supports the engineless run, which is what these fakes drive: a
+        // version built against an engine refuses `EngineSelection::default()`
+        // before any of the ordering below happens.
+        .resolve("carom", "v2.1.0")
         .expect("resolve the bundled carom case");
     let variant = test_case.variant("base").expect("carom's base variant");
 

@@ -151,7 +151,7 @@ fn a_missing_submission_module_is_a_forfeit_loss() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -180,7 +180,7 @@ fn a_missing_baseline_opponent_is_a_failed_load() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -223,9 +223,7 @@ fn validate_writes_a_replay_per_opponent_and_records_them() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )

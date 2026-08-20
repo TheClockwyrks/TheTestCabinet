@@ -1,487 +1,556 @@
-// Carom — the game: state machine, match flow, and the per-frame update.
+// Carom — the game: the state contract, the state machine, the per-frame update,
+// and the binding of the three functions the engine drives.
 //
-// Rendering lives in render.ts and reads this object's public fields. main.ts
-// hands `update` and `render` to the engine's frame loop, so this object is
-// driven by exactly one call per frame: `update(dt)`, with `dt` the real elapsed
-// seconds the engine measured for that frame.
+// A `Game<S>` is three functions and a state type. `initialize` runs once, when
+// the engine is initialized, and returns the state. `update` and `render` then run
+// once each per frame — `update` first, with the frame's delta time in SECONDS,
+// then `render`. The state is the only channel between them.
 //
-// There is no fixed timestep and no accumulator. Every rate in constants.ts is per
-// second and every one of them is multiplied by `dt`, which is what makes the
-// simulation depend on how much TIME has passed rather than on how many frames
-// have gone by: the same second of play reaches the same state whether it arrived
-// as one long step, as a hundred short ones, or as an uneven mixture. That is the
-// property specs/balls.md requires and the property a driver leans on when it
-// replaces the engine's clock with a schedule of its own.
+// There is no fixed timestep here and no accumulator. Every rate in
+// `src/constants.ts` is per second and every one of them is multiplied by `dt`,
+// which is what makes the simulation depend on how much TIME has passed rather
+// than on how many frames have gone by: the same second of play reaches the same
+// state whether it arrived as one long step, as a hundred short ones, or as an
+// uneven mixture. That is the property specs/balls.md requires and the property
+// the debug API in `src/debug.ts` leans on.
+//
+// THE STATE SHAPE BELOW IS A CONTRACT. It is what the debug API reads and poses,
+// and what this case's checks read back. So:
+//
+//   * Every field is declared here, under its declared name, with its declared
+//     type and meaning.
+//   * `initialize` builds the whole state in one go, which is why no field is
+//     optional: by the time any frame can observe the state, every field is
+//     present.
+//   * Nothing authoritative lives anywhere else. There is no module-level game
+//     state in this build and no closure over mutable data — every module beside
+//     this one is arithmetic over the record below. `reset()` on the debug API
+//     restores exactly these fields, so a scenario replays identically.
 
-import { AI } from "./ai";
-import { CUES } from "./audio";
 import {
+  FIELD_CX,
+  FIELD_CY,
   HOLD_TIME,
+  MATCHOVER_ITEMS,
   PADDLE_SPEED,
+  PAUSE_ITEMS,
   SERVE_ANGLE,
   SERVE_SPEED,
+  TITLE_ITEMS,
   WIN_LEAD,
   WIN_SCORE,
   BALL_R,
+  CUES,
   FIELD_W,
 } from "./constants";
-import { Ball, Paddle } from "./entities";
-import { Controls } from "./input";
+import { defineCues } from "./audio";
+import { DEFAULT_SEED } from "./debug";
+import { registerDiagnostics } from "./diagnostics";
+import { integratePaddle, parkBall } from "./entities";
+import { updateAi } from "./ai";
+import {
+  back,
+  confirm,
+  menuDown,
+  menuUp,
+  mute,
+  p1Axis,
+  p2Axis,
+  pause,
+  registerActions,
+  soloAxis,
+} from "./input";
 import { step } from "./physics";
-import { Trail } from "./trail";
-import type { AppState, Mode, Side } from "./types";
-import type { Engine } from "@test-cabinet/simple-2d";
+import { renderGame } from "./render";
+import { nextSign } from "./rng";
+import { recordTrail } from "./trail";
+import type {
+  Game,
+  InitApi,
+  RenderApi,
+  UpdateApi,
+} from "@test-cabinet/simple-2d";
 
-export const TITLE_ITEMS = ["SOLO", "VERSUS", "HOW TO PLAY"];
-export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"];
-export const OVER_ITEMS = ["PLAY AGAIN", "MENU"];
+/**
+ * The top-level state machine (specs/ui.md). `countdown` and `playing` both
+ * render the live field; the rest are menu or overlay screens.
+ */
+export type Screen =
+  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
 
-export class Game {
-  private readonly engine: Engine;
-  private readonly controls: Controls;
+/** The two ways to play (specs/modes/). */
+export type Mode = "solo" | "versus";
 
-  state: AppState = "title";
-  mode: Mode = "solo";
-  menuIndex = 0;
+/** Which side of the field a paddle or player is on. Player one is the left. */
+export type Side = "left" | "right";
 
-  readonly left = new Paddle("left");
-  readonly right = new Paddle("right");
-  readonly ball = new Ball();
-  readonly trail = new Trail();
-  private readonly ai = new AI();
-
-  scoreP1 = 0;
-  scoreP2 = 0;
-  winner: Side | null = null;
-
-  holdTimer = 0; // counts down during the pre-serve hold
-  private receiver: Side = "left"; // side the next serve travels toward
-  private serveSign = 1; // alternates the serve's vertical direction
-  private resumeState: AppState = "playing"; // state to return to from pause
-
-  simTime = 0; // accumulated simulation time (seconds)
-
-  // ---- Debug / automation state (see debug.ts; inert in normal play) ----
-  // When non-null, the debug driver is controlling the paddles: both follow these
-  // velocities and neither the input actions nor the AI move them, so a scenario
-  // can be driven deterministically from code. Set by the control operations,
-  // cleared by reset(). Null during normal play.
-  driverVel: { left: number; right: number } | null = null;
-  // When true (Solo only), the AI drives its right paddle even while the driver
-  // poses the left paddle and ball, so a scenario can exercise the computer
-  // opponent against a set-up shot. Set by setAiControl, cleared by reset(); off
-  // during normal play.
-  driverAi = false;
-
-  constructor(engine: Engine) {
-    this.engine = engine;
-    this.controls = new Controls(engine);
-    this.toTitle();
-  }
-
+/** One paddle. `x` is fixed by the side, so only the vertical axis is state. */
+export interface PaddleState {
+  /** Center y, in logical pixels. Clamped to [PADDLE_MIN_CY, PADDLE_MAX_CY]. */
+  cy: number;
   /**
-   * Whether audio is muted. The flag itself is the engine's — the game only asks
-   * the bus to flip it (see handleInput) and reports what it says, so the HUD hint
-   * and `snapshot()` cannot drift from what the player actually hears.
+   * The paddle's actual vertical velocity this frame, in px/s. This is what the
+   * spin mechanic reads at contact, so a paddle pinned against a bound reports
+   * zero even while a movement action is held.
    */
-  get muted(): boolean {
-    return this.engine.audio.muted();
-  }
-
-  // ---- State transitions ------------------------------------------------
-
-  private toTitle(): void {
-    this.state = "title";
-    this.menuIndex = 0;
-    this.winner = null;
-    // Pose the field furniture attractively behind the dimmed menu.
-    this.left.cy = 305;
-    this.left.vy = 0;
-    this.right.cy = 435;
-    this.right.vy = 0;
-    this.ball.x = 700;
-    this.ball.y = 330;
-    this.ball.vx = 0;
-    this.ball.vy = 0;
-    this.ball.spin = 0;
-    this.trail.reset();
-  }
-
-  private startMatch(mode: Mode): void {
-    this.mode = mode;
-    this.scoreP1 = 0;
-    this.scoreP2 = 0;
-    this.winner = null;
-    this.left.cy = 360;
-    this.left.vy = 0;
-    this.right.cy = 360;
-    this.right.vy = 0;
-    this.ai.reset();
-    this.serveSign = 1;
-    // The very first serve of a match always travels toward player one.
-    this.respawn("left");
-  }
-
-  // Park the ball at center and begin the pre-serve hold; `receiver` is the
-  // side the upcoming serve will travel toward.
-  private respawn(receiver: Side): void {
-    this.receiver = receiver;
-    this.ball.hold();
-    this.trail.reset();
-    this.holdTimer = HOLD_TIME;
-    this.state = "countdown";
-  }
-
-  private serve(): void {
-    const dir = this.receiver === "left" ? -1 : 1;
-    this.ball.x = 640;
-    this.ball.y = 360;
-    this.ball.spin = 0;
-    this.ball.vx = dir * SERVE_SPEED * Math.cos(SERVE_ANGLE);
-    this.ball.vy = this.serveSign * SERVE_SPEED * Math.sin(SERVE_ANGLE);
-    this.serveSign = -this.serveSign;
-    this.trail.reset();
-    this.state = "playing";
-  }
-
-  private pause(): void {
-    this.resumeState = this.state;
-    this.state = "paused";
-    this.menuIndex = 0;
-  }
-
-  private resume(): void {
-    this.state = this.resumeState;
-  }
-
-  // ---- The frame --------------------------------------------------------
-
-  /**
-   * One frame: consume this frame's input edges, then advance the simulation by
-   * the elapsed time.
-   *
-   * The order matters. Edges are news for exactly one frame — the engine discards
-   * whatever was not consumed — so they are read first, at the top of the frame
-   * that they belong to, and the state they may have changed is the state the rest
-   * of the frame advances.
-   */
-  update(dt: number): void {
-    this.handleInput();
-    this.advance(dt);
-  }
-
-  // ---- Edge input (once per frame) --------------------------------------
-
-  /**
-   * Read this frame's one-shot actions and act on them.
-   *
-   * Every edge read in Carom happens here, once, which is what the engine's
-   * consume-on-read edges ask for: two readers of the same action in one frame
-   * would split one press between them.
-   */
-  private handleInput(): void {
-    const c = this.controls;
-
-    // Mute works on every screen, so it is read before the per-screen switch.
-    if (c.mute()) this.engine.audio.setMuted(!this.engine.audio.muted());
-
-    switch (this.state) {
-      case "title":
-        this.menuInput(TITLE_ITEMS.length, (i) => this.selectTitle(i));
-        break;
-      case "howto": {
-        // `back` and `confirm` both leave; read both so neither is left armed.
-        const confirm = c.confirm();
-        const back = c.back();
-        if (confirm || back) this.toTitle();
-        break;
-      }
-      case "countdown":
-      case "playing":
-        // A match is live, so Escape means `pause` rather than `back`.
-        if (c.pause()) this.pause();
-        break;
-      case "paused":
-        // A menu is up, so Escape means `back` — which here is "resume".
-        if (c.back()) this.resume();
-        else this.menuInput(PAUSE_ITEMS.length, (i) => this.selectPause(i));
-        break;
-      case "matchover":
-        this.menuInput(OVER_ITEMS.length, (i) => this.selectOver(i));
-        break;
-    }
-  }
-
-  private menuInput(count: number, onConfirm: (index: number) => void): void {
-    const c = this.controls;
-    // All three are read before any is acted on, so exactly one press moves the
-    // selection or accepts it and nothing is left armed for a later frame.
-    const up = c.menuUp();
-    const down = c.menuDown();
-    const confirm = c.confirm();
-    if (up) {
-      this.menuIndex = (this.menuIndex + count - 1) % count;
-    } else if (down) {
-      this.menuIndex = (this.menuIndex + 1) % count;
-    } else if (confirm) {
-      onConfirm(this.menuIndex);
-    }
-  }
-
-  private selectTitle(i: number): void {
-    if (i === 0) this.startMatch("solo");
-    else if (i === 1) this.startMatch("versus");
-    else this.state = "howto";
-  }
-
-  private selectPause(i: number): void {
-    if (i === 0) this.resume();
-    else if (i === 1) this.startMatch(this.mode);
-    else this.toTitle();
-  }
-
-  private selectOver(i: number): void {
-    if (i === 0) this.startMatch(this.mode);
-    else this.toTitle();
-  }
-
-  // ---- Simulation -------------------------------------------------------
-
-  /**
-   * Advance the simulation by `dt` seconds of elapsed time.
-   *
-   * `dt` is whatever the frame took — it is never assumed to be any particular
-   * value, and nothing here counts frames. A menu screen advances nothing but the
-   * clock; the paused screen freezes the field entirely.
-   */
-  private advance(dt: number): void {
-    if (this.state === "playing" || this.state === "countdown") {
-      this.updatePaddles(dt);
-    }
-
-    if (this.state === "countdown") {
-      this.holdTimer -= dt;
-      // Ball is held at center; record so the (collapsed) trail stays in sync.
-      this.trail.record(this.ball.x, this.ball.y, this.simTime);
-      if (this.holdTimer <= 0) this.serve();
-    } else if (this.state === "playing") {
-      const events = step(this.ball, this.left, this.right, dt);
-      // One cue per event that actually happened. A frame long enough to contain
-      // two different kinds of bounce plays both, because each is its own event
-      // and each has its own cue (specs/ui.md).
-      if (events.paddle) this.engine.audio.play(CUES.paddleHit);
-      if (events.wall) this.engine.audio.play(CUES.wallBounce);
-      if (events.obstacle) this.engine.audio.play(CUES.obstacleBounce);
-      this.trail.record(this.ball.x, this.ball.y, this.simTime);
-      this.checkGoals();
-    }
-
-    this.simTime += dt;
-  }
-
-  private updatePaddles(dt: number): void {
-    // Debug driver override: when a driver is controlling the build, both paddles
-    // follow the driver's set velocities through the real integrator, and neither
-    // the input actions nor the AI move them. Inert in normal play (driverVel null).
-    if (this.driverVel) {
-      this.left.vy = this.driverVel.left;
-      this.left.integrate(dt);
-      // In Solo a scenario can hand the right paddle back to the AI (setAiControl),
-      // so the computer opponent plays its own side against the posed ball while the
-      // left paddle and ball stay driver-posed — the only way to exercise the AI from
-      // a set-up state. Otherwise the driver moves the right paddle too.
-      if (this.driverAi && this.mode === "solo") {
-        this.ai.update(this.right, this.ball, this.state === "playing", dt);
-      } else {
-        this.right.vy = this.driverVel.right;
-        this.right.integrate(dt);
-      }
-      return;
-    }
-
-    const c = this.controls;
-    // Player one (left). Solo has no player two, so both sliders drive this paddle.
-    const p1 = this.mode === "solo" ? c.soloAxis() : c.p1Axis();
-    this.left.vy = p1 * PADDLE_SPEED;
-    this.left.integrate(dt);
-
-    // Right paddle: AI in solo, second human in versus.
-    if (this.mode === "solo") {
-      this.ai.update(this.right, this.ball, this.state === "playing", dt);
-    } else {
-      this.right.vy = c.p2Axis() * PADDLE_SPEED;
-      this.right.integrate(dt);
-    }
-  }
-
-  private checkGoals(): void {
-    if (this.ball.x - BALL_R > FIELD_W) {
-      this.score("left"); // ball past the right edge -> player one scores
-    } else if (this.ball.x + BALL_R < 0) {
-      this.score("right"); // ball past the left edge -> player two scores
-    }
-  }
-
-  private score(scorer: Side): void {
-    if (scorer === "left") this.scoreP1++;
-    else this.scoreP2++;
-    this.engine.audio.play(CUES.score);
-
-    const winner = this.checkWin();
-    if (winner) {
-      this.winner = winner;
-      this.state = "matchover";
-      this.menuIndex = 0;
-      return;
-    }
-    // The next serve goes to the player who was just scored on (the receiver).
-    this.respawn(scorer === "left" ? "right" : "left");
-  }
-
-  private checkWin(): Side | null {
-    if (this.scoreP1 >= WIN_SCORE && this.scoreP1 - this.scoreP2 >= WIN_LEAD) {
-      return "left";
-    }
-    if (this.scoreP2 >= WIN_SCORE && this.scoreP2 - this.scoreP1 >= WIN_LEAD) {
-      return "right";
-    }
-    return null;
-  }
-
-  // Countdown digit (a snappy 3-2-1 rendered across the 1.0 s hold).
-  countdownNumber(): number {
-    return Math.min(3, Math.max(1, Math.ceil((this.holdTimer / HOLD_TIME) * 3)));
-  }
-
-  // Progress 0..1 within the current countdown digit, for a pop animation.
-  countdownPhase(): number {
-    const third = HOLD_TIME / 3;
-    return (this.holdTimer % third) / third;
-  }
-
-  // ---- Debug driver surface (used by debug.ts; inert in normal play) --------
-  //
-  // Each control method routes through the same transitions and state the game
-  // uses in normal play — they set up a situation, they never fabricate an
-  // outcome. Calling any of them hands paddle control to the driver (see
-  // updatePaddles) until debugReset().
-
-  private enterDriven(): void {
-    if (!this.driverVel) this.driverVel = { left: 0, right: 0 };
-  }
-
-  debugReset(): void {
-    this.driverVel = null;
-    this.driverAi = false;
-    this.toTitle();
-  }
-
-  // Hand the right (AI) paddle back to the computer opponent for the rest of the
-  // driven scenario, so the frames that follow run the real AI against the posed
-  // ball. Solo only — there is no AI in Versus, so it has no effect there. Cleared
-  // by reset().
-  debugSetAiControl(enabled: boolean): void {
-    this.enterDriven();
-    this.driverAi = enabled;
-  }
-
-  debugStartMatch(mode: Mode): void {
-    this.enterDriven();
-    this.startMatch(mode);
-  }
-
-  // Launch the ball now, ending the pre-serve countdown immediately (or
-  // re-serving a live rally). Routes through the real serve().
-  debugServe(): void {
-    this.enterDriven();
-    if (this.state === "countdown" || this.state === "playing") {
-      this.holdTimer = 0;
-      this.serve();
-    }
-  }
-
-  debugSetScore(p1: number, p2: number): void {
-    this.enterDriven();
-    this.scoreP1 = p1;
-    this.scoreP2 = p2;
-  }
-
-  debugSetPaddle(side: Side, cy?: number, vy?: number): void {
-    this.enterDriven();
-    const p = side === "left" ? this.left : this.right;
-    if (cy !== undefined) p.cy = cy;
-    if (vy !== undefined) this.driverVel![side] = vy;
-  }
-
-  // The number of balls the driver can address (one in this variant).
-  debugBallCount(): number {
-    return 1;
-  }
-
-  debugSetBall(
-    index: number,
-    state: { x?: number; y?: number; vx?: number; vy?: number; spin?: number },
-  ): void {
-    this.enterDriven();
-    if (index !== 0) return;
-    const b = this.ball;
-    if (state.x !== undefined) b.x = state.x;
-    if (state.y !== undefined) b.y = state.y;
-    if (state.vx !== undefined) b.vx = state.vx;
-    if (state.vy !== undefined) b.vy = state.vy;
-    if (state.spin !== undefined) b.spin = state.spin;
-  }
-
-  // A read of the full observable state, shared by the debug API's snapshot()
-  // and the diagnostic sources on the engine's overlay.
-  debugSnapshot(): CaromSnapshot {
-    return {
-      version: 1,
-      screen: this.state,
-      mode: this.mode,
-      score: { p1: this.scoreP1, p2: this.scoreP2 },
-      winner: this.winner,
-      muted: this.muted,
-      paddles: {
-        left: { cy: this.left.cy, vy: this.left.vy },
-        right: { cy: this.right.cy, vy: this.right.vy },
-      },
-      ball: {
-        x: this.ball.x,
-        y: this.ball.y,
-        vx: this.ball.vx,
-        vy: this.ball.vy,
-        speed: this.ball.speed,
-        spin: this.ball.spin,
-        held: this.state === "countdown",
-      },
-      simTime: this.simTime,
-    };
-  }
+  vy: number;
 }
 
-// The JSON-serializable state the debug API and the overlay report.
-export interface BallSnapshot {
+/** The ball. `speed` is derived (`hypot(vx, vy)`) and is not stored. */
+export interface BallState {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  speed: number;
+  /**
+   * The signed lateral-curvature scalar (magnitude in px/s^2). Positive and
+   * negative curve the flight opposite ways; it decays by half every
+   * SPIN_HALFLIFE seconds and changes otherwise only on a paddle hit.
+   */
   spin: number;
-  held: boolean;
 }
 
-export interface CaromSnapshot {
-  version: number;
-  screen: AppState;
-  mode: Mode;
-  score: { p1: number; p2: number };
-  winner: Side | null;
-  muted: boolean;
-  paddles: {
-    left: { cy: number; vy: number };
-    right: { cy: number; vy: number };
-  };
-  ball: BallSnapshot;
-  simTime: number;
+/** One recorded ball position, used to draw the motion trail. */
+export interface TrailSample {
+  x: number;
+  y: number;
+  /** The simulation time, in seconds, at which the sample was recorded. */
+  t: number;
 }
+
+/**
+ * Who is driving the paddles.
+ *
+ * Inert during normal play: `paddles` is false, the registered actions move the
+ * human paddles and, in Solo, the AI moves the right one. A control operation on
+ * `window.__carom` sets `paddles` to true, after which BOTH paddles follow `vy`
+ * and neither the input actions nor the AI move them — until `reset()`. That is
+ * what lets a scenario be posed and replayed exactly (specs/instrumentation.md).
+ */
+export interface DriverState {
+  /** True once a control operation has taken the paddles from the player. */
+  paddles: boolean;
+  /**
+   * Solo only: hand the right paddle back to the computer opponent for the rest
+   * of a driven scenario, so the real AI plays against the posed ball while the
+   * left paddle and the ball stay under the caller's control.
+   */
+  ai: boolean;
+  /** The vertical velocity each paddle holds while `paddles` is true, in px/s. */
+  vy: { left: number; right: number };
+}
+
+/**
+ * The whole of Carom's state.
+ *
+ * Every field is present from the moment `initialize` returns, and every one is
+ * plain data: numbers, strings, booleans and containers of them, so a scenario
+ * can be posed by assignment and read back the same way.
+ */
+export interface CaromState {
+  /** The screen currently shown (specs/ui.md). */
+  screen: Screen;
+  /** The mode the current or most recent match is played in. */
+  mode: Mode;
+  /** The highlighted item on whichever menu `screen` is showing. */
+  menuIndex: number;
+  /** The screen the pause menu resumes to: `countdown` or `playing`. */
+  resumeScreen: Screen;
+
+  /** The two scores. First to WIN_SCORE, winning by at least WIN_LEAD. */
+  score: { p1: number; p2: number };
+  /** The winning side once the match is over, and null until then. */
+  winner: Side | null;
+
+  /**
+   * The side the next serve travels toward: the player who was just scored on.
+   * The first serve of a match always travels toward player one ("left").
+   */
+  receiver: Side;
+  /**
+   * Seconds remaining of the pre-serve hold. HOLD_TIME at the start of a match
+   * and after each point, counting down to 0, at which point the ball is served.
+   * 0 during a live rally.
+   */
+  holdTimer: number;
+
+  paddles: { left: PaddleState; right: PaddleState };
+  /** The single ball in play (specs/balls.md). */
+  ball: BallState;
+  /** Recent ball positions, oldest first, for the motion trail. */
+  trail: TrailSample[];
+
+  /** Accumulated simulation time, in seconds. */
+  simTime: number;
+  /**
+   * Mirrors the engine's mute bit, refreshed every `update` from
+   * `api.audio.muted()`. The engine owns muting; this is the game's readable
+   * copy of it, and it is what `snapshot()` reports.
+   */
+  muted: boolean;
+  /**
+   * The state of the game's seeded random generator. `reset({ seed })` sets it,
+   * so reseeding and replaying the same calls reproduces the same result. A
+   * build that uses no randomness simply never reads it.
+   */
+  rngState: number;
+
+  /** The debug driver's hold on the paddles. Inert during normal play. */
+  driver: DriverState;
+}
+
+// ---- Building and posing the state --------------------------------------
+
+/** Put both paddles at the vertical center, stationary. */
+function centerPaddles(state: CaromState): void {
+  state.paddles.left.cy = FIELD_CY;
+  state.paddles.left.vy = 0;
+  state.paddles.right.cy = FIELD_CY;
+  state.paddles.right.vy = 0;
+}
+
+/**
+ * The complete initial state: the title screen, with every field present.
+ *
+ * Exported so this build's own tests can construct a state without standing an
+ * engine up around it.
+ *
+ * These are the same values `reset()` restores in `src/debug.ts`, deliberately —
+ * quitting to the menu and resetting from the debug API must not leave the game
+ * looking at two different title screens.
+ */
+export function createInitialState(): CaromState {
+  return {
+    screen: "title",
+    mode: "solo",
+    menuIndex: 0,
+    resumeScreen: "playing",
+    score: { p1: 0, p2: 0 },
+    winner: null,
+    receiver: "left",
+    holdTimer: 0,
+    paddles: {
+      left: { cy: FIELD_CY, vy: 0 },
+      right: { cy: FIELD_CY, vy: 0 },
+    },
+    ball: { x: FIELD_CX, y: FIELD_CY, vx: 0, vy: 0, spin: 0 },
+    trail: [],
+    simTime: 0,
+    muted: false,
+    rngState: DEFAULT_SEED,
+    driver: { paddles: false, ai: false, vy: { left: 0, right: 0 } },
+  };
+}
+
+// ---- Screen transitions -------------------------------------------------
+
+/**
+ * Return to the title screen.
+ *
+ * `simTime` is deliberately untouched: it is accumulated simulation time, not a
+ * property of the screen, and only a `reset()` starts it over.
+ */
+function toTitle(state: CaromState): void {
+  state.screen = "title";
+  state.mode = "solo";
+  state.menuIndex = 0;
+  state.resumeScreen = "playing";
+  state.score.p1 = 0;
+  state.score.p2 = 0;
+  state.winner = null;
+  state.receiver = "left";
+  state.holdTimer = 0;
+  centerPaddles(state);
+  parkBall(state.ball);
+  state.trail.length = 0;
+}
+
+/**
+ * Start a match. The match opens on the pre-serve countdown, with the first serve
+ * of the match always aimed at player one, so it opens consistently
+ * (specs/balls.md).
+ */
+function startMatch(state: CaromState, mode: Mode): void {
+  state.mode = mode;
+  state.screen = "countdown";
+  state.resumeScreen = "playing";
+  state.menuIndex = 0;
+  state.score.p1 = 0;
+  state.score.p2 = 0;
+  state.winner = null;
+  state.receiver = "left";
+  state.holdTimer = HOLD_TIME;
+  centerPaddles(state);
+  parkBall(state.ball);
+  state.trail.length = 0;
+}
+
+/** Park the ball and begin the pre-serve hold, aimed at `receiver`. */
+function respawn(state: CaromState, receiver: Side): void {
+  state.receiver = receiver;
+  parkBall(state.ball);
+  state.trail.length = 0;
+  state.holdTimer = HOLD_TIME;
+  state.screen = "countdown";
+}
+
+/**
+ * Launch the ball toward the receiver at SERVE_SPEED.
+ *
+ * The vertical component is small and fixed in magnitude — SERVE_ANGLE, well
+ * inside the +/-30deg specs/balls.md allows — so the volley is never perfectly
+ * flat, and its SIGN is the one draw this game makes from its seeded generator.
+ */
+function serve(state: CaromState): void {
+  const dir = state.receiver === "left" ? -1 : 1;
+  parkBall(state.ball);
+  state.ball.vx = dir * SERVE_SPEED * Math.cos(SERVE_ANGLE);
+  state.ball.vy = nextSign(state) * SERVE_SPEED * Math.sin(SERVE_ANGLE);
+  state.trail.length = 0;
+  state.holdTimer = 0;
+  state.screen = "playing";
+}
+
+function pauseMatch(state: CaromState): void {
+  state.resumeScreen = state.screen === "countdown" ? "countdown" : "playing";
+  state.screen = "paused";
+  state.menuIndex = 0;
+}
+
+function resumeMatch(state: CaromState): void {
+  state.screen = state.resumeScreen;
+}
+
+// ---- Edge input (once per frame) ----------------------------------------
+
+/**
+ * Read this frame's one-shot actions and act on them.
+ *
+ * Every edge read in Carom happens here, once, which is what the engine's
+ * consume-on-read edges ask for: two readers of the same action in one frame would
+ * split one press between them.
+ */
+function handleInput(state: CaromState, api: UpdateApi): void {
+  // Mute works on every screen, so it is read before the per-screen switch.
+  if (mute(api)) api.audio.setMuted(!api.audio.muted());
+
+  switch (state.screen) {
+    case "title":
+      menuInput(state, api, TITLE_ITEMS.length, (i) => selectTitle(state, i));
+      break;
+    case "howto": {
+      // `back` and `confirm` both leave; read both so neither is left armed.
+      const accepted = confirm(api);
+      const left = back(api);
+      if (accepted || left) toTitle(state);
+      break;
+    }
+    case "countdown":
+    case "playing":
+      // A match is live, so Escape means `pause` rather than `back`.
+      if (pause(api)) pauseMatch(state);
+      break;
+    case "paused":
+      // A menu is up, so Escape means `back` — which here is "resume".
+      if (back(api)) resumeMatch(state);
+      else
+        menuInput(state, api, PAUSE_ITEMS.length, (i) => selectPause(state, i));
+      break;
+    case "matchover":
+      menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
+        selectMatchOver(state, i),
+      );
+      break;
+  }
+}
+
+function menuInput(
+  state: CaromState,
+  api: UpdateApi,
+  count: number,
+  onConfirm: (index: number) => void,
+): void {
+  // All three are read before any is acted on, so exactly one press moves the
+  // selection or accepts it and nothing is left armed for a later frame.
+  const up = menuUp(api);
+  const down = menuDown(api);
+  const accepted = confirm(api);
+  if (up) {
+    state.menuIndex = (state.menuIndex + count - 1) % count;
+  } else if (down) {
+    state.menuIndex = (state.menuIndex + 1) % count;
+  } else if (accepted) {
+    onConfirm(state.menuIndex);
+  }
+}
+
+function selectTitle(state: CaromState, index: number): void {
+  if (index === 0) startMatch(state, "solo");
+  else if (index === 1) startMatch(state, "versus");
+  else {
+    state.screen = "howto";
+    state.menuIndex = 0;
+  }
+}
+
+function selectPause(state: CaromState, index: number): void {
+  if (index === 0) resumeMatch(state);
+  else if (index === 1) startMatch(state, state.mode);
+  else toTitle(state);
+}
+
+function selectMatchOver(state: CaromState, index: number): void {
+  if (index === 0) startMatch(state, state.mode);
+  else toTitle(state);
+}
+
+// ---- Simulation ---------------------------------------------------------
+
+/**
+ * Move both paddles for this frame.
+ *
+ * The debug driver's hold is checked first: once a control operation has taken the
+ * paddles (`driver.paddles`), both follow the driver's held velocities through the
+ * real integrator and neither the input actions nor the AI move them. Inert during
+ * normal play.
+ */
+function updatePaddles(state: CaromState, api: UpdateApi, dt: number): void {
+  const live = state.screen === "playing";
+
+  if (state.driver.paddles) {
+    state.paddles.left.vy = state.driver.vy.left;
+    integratePaddle(state.paddles.left, dt);
+    // In Solo a scenario can hand the right paddle back to the AI, so the computer
+    // opponent plays its own side against the posed ball while the left paddle and
+    // the ball stay driver-posed. Otherwise the driver moves the right paddle too.
+    if (state.driver.ai && state.mode === "solo") {
+      updateAi(state.paddles.right, state.ball, live, dt);
+    } else {
+      state.paddles.right.vy = state.driver.vy.right;
+      integratePaddle(state.paddles.right, dt);
+    }
+    return;
+  }
+
+  // Player one (left). Solo has no player two, so both sliders drive this paddle.
+  const p1 = state.mode === "solo" ? soloAxis(api) : p1Axis(api);
+  state.paddles.left.vy = p1 * PADDLE_SPEED;
+  integratePaddle(state.paddles.left, dt);
+
+  // The right paddle: the AI in Solo, a second human in Versus.
+  if (state.mode === "solo") {
+    updateAi(state.paddles.right, state.ball, live, dt);
+  } else {
+    state.paddles.right.vy = p2Axis(api) * PADDLE_SPEED;
+    integratePaddle(state.paddles.right, dt);
+  }
+}
+
+function checkWin(state: CaromState): Side | null {
+  const { p1, p2 } = state.score;
+  if (p1 >= WIN_SCORE && p1 - p2 >= WIN_LEAD) return "left";
+  if (p2 >= WIN_SCORE && p2 - p1 >= WIN_LEAD) return "right";
+  return null;
+}
+
+function score(state: CaromState, api: UpdateApi, scorer: Side): void {
+  if (scorer === "left") state.score.p1 += 1;
+  else state.score.p2 += 1;
+  api.audio.play(CUES.score);
+
+  const winner = checkWin(state);
+  if (winner) {
+    state.winner = winner;
+    state.screen = "matchover";
+    state.menuIndex = 0;
+    return;
+  }
+  // The next serve travels toward the player who was just scored on.
+  respawn(state, scorer === "left" ? "right" : "left");
+}
+
+/** A point is scored the moment the ball has fully passed a goal edge. */
+function checkGoals(state: CaromState, api: UpdateApi): void {
+  if (state.ball.x - BALL_R > FIELD_W) score(state, api, "left");
+  else if (state.ball.x + BALL_R < 0) score(state, api, "right");
+}
+
+/**
+ * Advance the simulation by `dt` seconds of elapsed time.
+ *
+ * `dt` is whatever the frame took — it is never assumed to be any particular
+ * value, and nothing here counts frames. A menu screen advances nothing but the
+ * clock; the paused screen freezes the field entirely.
+ */
+function advance(state: CaromState, api: UpdateApi, dt: number): void {
+  state.simTime += dt;
+
+  if (state.screen === "countdown" || state.screen === "playing") {
+    updatePaddles(state, api, dt);
+  }
+
+  if (state.screen === "countdown") {
+    state.holdTimer -= dt;
+    // The ball is held at the center; record so the (collapsed) trail stays in
+    // sync with the simulation clock.
+    recordTrail(state);
+    if (state.holdTimer <= 0) serve(state);
+  } else if (state.screen === "playing") {
+    const events = step(
+      state.ball,
+      state.paddles.left,
+      state.paddles.right,
+      dt,
+    );
+    // One cue per event that actually happened. A frame long enough to contain two
+    // different kinds of bounce plays both, because each is its own event and each
+    // has its own cue (specs/ui.md).
+    if (events.paddle) api.audio.play(CUES.paddleHit);
+    if (events.wall) api.audio.play(CUES.wallBounce);
+    if (events.obstacle) api.audio.play(CUES.obstacleBounce);
+    recordTrail(state);
+    checkGoals(state, api);
+  }
+}
+
+// ---- The game the engine drives -----------------------------------------
+
+export const game: Game<CaromState> = {
+  /**
+   * Runs once, before any frame: register every action against its bindings,
+   * define the four cues, build the complete initial state, and register the
+   * diagnostic sources over it.
+   *
+   * The state is built before the diagnostics are registered, because each source
+   * is a pure read of that object — and it is the object every later frame is
+   * handed, so the overlay reports the live game rather than a snapshot.
+   */
+  initialize(api: InitApi): CaromState {
+    registerActions(api);
+    defineCues(api);
+    const state = createInitialState();
+    registerDiagnostics(api, state);
+    return state;
+  },
+
+  /**
+   * Runs once per frame, before `render`.
+   *
+   * The order matters. Edges are news for exactly one frame — the engine discards
+   * whatever was not consumed — so they are read first, at the top of the frame
+   * they belong to, and the state they may have changed is the state the rest of
+   * the frame advances.
+   */
+  update(state: CaromState, api: UpdateApi, dt: number): void {
+    handleInput(state, api);
+    advance(state, api, dt);
+    // The engine owns the mute bit; this is the game's readable copy of it, so the
+    // HUD hint and `snapshot()` cannot drift from what the player actually hears.
+    state.muted = api.audio.muted();
+  },
+
+  /** Runs once per frame, after `update`. Draws, and changes nothing. */
+  render(state: CaromState, api: RenderApi): void {
+    renderGame(state, api.ctx);
+  },
+};

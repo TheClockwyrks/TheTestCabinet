@@ -273,7 +273,12 @@ fn read_record(path: &std::path::Path) -> serde_json::Value {
 async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let test_case = catalog
-        .resolve_latest("carom")
+        // Pinned to a FROZEN version rather than `resolve_latest`, so this test's
+        // fixture cannot drift as the case is revised. It also has to be a version
+        // that supports the engineless run, which is what these fakes drive: a
+        // version built against an engine refuses `EngineSelection::default()`
+        // before any of the ordering below happens.
+        .resolve("carom", "v2.1.0")
         .expect("resolve the bundled carom case");
     let variant = test_case.variant("base").expect("carom's base variant");
 
