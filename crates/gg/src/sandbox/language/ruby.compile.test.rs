@@ -3,11 +3,33 @@
 //! Nothing here is mocked and nothing is faked. Each case spawns the compiler exactly as a turn
 //! would, through a [`PrepareContext`] the sandbox mints, so what is proven is the path a run takes
 //! rather than a rehearsal of it.
-
-use std::time::Instant;
+//!
+//! Isolation is **not** here, in any form, and that is the same deletion the
+//! [Rust](crate::sandbox::language::rust), [Swift](crate::sandbox::language::swift) and
+//! [C++](crate::sandbox::language::cpp) arms each made at registration rather than a gap this arm
+//! left. The [seam's own gate](crate::sandbox::language::isolation) drives this arm's program *and*
+//! module steps sixteen ways along with every other language's — Ruby is in
+//! [`all_languages`](crate::sandbox::all_languages), so both of its halves are in
+//! [`preparations`](crate::sandbox::language::isolation::preparations) — and it needs nothing from
+//! this arm to do it: it searches an artifact for markers, and the JavaScript Opal writes carries
+//! them as the model spelled them.
+//!
+//! What stood here was a hand-pointed copy of exactly that gate, driving `program.rb` and
+//! `module.rb` through the same [`breaches`](crate::sandbox::language::isolation::breaches). It
+//! proved nothing the seam's run of it does not, and it cost sixty-four more real `node` compiles to
+//! prove it: measured on this repository's dev container at 6.3 s run on its own and **117.5 s**
+//! under `cargo nextest run --workspace`, against nextest's default hard kill at 120 s. It passed
+//! that run with 2.5 s to spare, which is the coin flip `.config/nextest.toml` bounds every other
+//! compiled arm away from — and on a CI runner with a quarter of the cores it is a termination,
+//! which reads as a hang rather than as a gate doing what it says. It is deleted rather than
+//! bounded, because a duplicate gate is not made correct by being given longer to run.
+//!
+//! What is left is bounded, and the reason is in `.config/nextest.toml` beside the other compiled
+//! arms: the seven tests below were measured with a worst of 7.6 s in one full workspace run and
+//! 41.5 s in another taken within the hour, which is what a group of real `node` processes costs
+//! depending on what else the scheduler is holding.
 
 use super::*;
-use crate::sandbox::language::isolation::{Preparation, breaches};
 
 /// A context, as the sandbox mints one per preparation.
 fn context() -> PrepareContext {
@@ -249,78 +271,65 @@ fn the_embedded_bundle_says_which_opal_and_which_ruby_it_is() {
     );
 }
 
-#[test]
-fn compiling_costs_what_it_costs_and_the_second_one_is_not_free() {
-    // Not a threshold — a machine's clock is not a contract — but a floor and a ceiling wide enough
-    // that only a real change moves them. What this asserts is that compiling a Ruby program is a
-    // real, repeated cost: it spawns a process every time, so an arm that reports it as zero would
-    // be an arm reporting a compiler it did not run.
-    warm();
-    let mut timings = Vec::new();
-    for _ in 0..3 {
-        let started = Instant::now();
-        let _ = compiled("puts (1..10).reduce(:+)\n");
-        timings.push(started.elapsed());
-    }
-    for elapsed in &timings {
-        assert!(
-            elapsed.as_millis() >= 10,
-            "a compile that spawns a process cannot take {elapsed:?}",
-        );
-        assert!(
-            *elapsed < COMPILE_TIMEOUT,
-            "a compile that took {elapsed:?} would have been killed",
-        );
-    }
-}
-
-/// One of the two things this arm compiles, driven by the
-/// [isolation gate](crate::sandbox::language::isolation).
+/// **Compiling is a real, repeated cost**: every preparation spawns the compiler and is handed back
+/// what *that* process wrote.
 ///
-/// Both go through [`compile`] and differ only in the file name their diagnostics are located in, so
-/// driving each of them separately is what says the *file name* is not somehow shared either.
-struct RubyCompile {
-    /// `program.rb` or `module.rb`.
-    file: &'static str,
-}
-
-impl Preparation for RubyCompile {
-    fn describe(&self) -> String {
-        format!("Ruby {}", self.file)
-    }
-
-    /// A program whose marker rides inside a **call**, so no compiler that eliminates dead code can
-    /// drop it and leave two preparations looking identical.
-    fn source(&self, marker: &str) -> String {
-        format!("puts {marker:?}\n")
-    }
-
-    fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
-        if self.file == MODULE_FILE {
-            return compile_module(source, context).map_err(|failure| failure.to_string());
-        }
-        compile(self.file, source, context).map_err(|failure| failure.to_string())
-    }
-}
-
+/// This was a stopwatch — three compiles timed, each asserted at `>= 10 ms` and `< COMPILE_TIMEOUT`
+/// — and both bounds were claims about the machine rather than about this arm: a floor saying the
+/// box is slow enough, a ceiling saying it is fast enough. Neither is the property the test is named
+/// for, and the ceiling could only ever be reached by a compile the seam had already killed, which
+/// arrives here as `the embedded Opal did not compile valid Ruby` and names the wrong thing. The
+/// floor's real subject is gated without a clock and for every arm at once, by
+/// [`every_language_reports_what_compiling_its_program_cost`](crate::sandbox::tests::compile_tests):
+/// a compiled arm's per-turn reading has to arrive on the outcome and be greater than zero.
+///
+/// What is left is the half nothing else asks — that the second compile is a **second compile**. An
+/// arm that memoised on the source, or handed back an artifact a previous preparation wrote, would
+/// be reporting a compiler it did not run, and that is observable in the preparation's own tree
+/// rather than on a clock: each compile must have read its own `program.rb` and been handed back the
+/// bytes its own `program.js` holds, in a tree no other preparation was given.
 #[test]
-fn every_ruby_compile_stands_on_ground_no_other_agent_can_reach() {
-    // Sixteen at once — `limits.maxParallel`'s ceiling, which is how many agents may be compiling
-    // simultaneously in one process. The gate requires every artifact to carry its own marker, to
-    // carry nobody else's, and no two preparations to have been handed the same workspace. Opal
-    // writes nothing outside the arguments gg gives it,
-    // and this is what makes that a measured fact rather than a belief about a toolchain.
-    warm();
-    for file in [PROGRAM_FILE, MODULE_FILE] {
-        let breaches = breaches(&RubyCompile { file });
+fn the_second_compile_is_a_second_compile_rather_than_a_memo() {
+    let source = "puts (1..10).reduce(:+)\n";
+    let mut outputs = Vec::new();
+    for _ in 0..3 {
+        let context = context();
+        let returned = compile_program(source, &context)
+            .expect("this Ruby compiles")
+            .source;
+        let workspace = context
+            .workspace()
+            .expect("the preparation has a workspace");
+
+        assert_eq!(
+            std::fs::read_to_string(workspace.work().join(PROGRAM_FILE))
+                .expect("the compiler was handed a program.rb"),
+            source,
+            "this compile read something other than the source it was given",
+        );
+        // The artifact is read back off the filesystem rather than out of the return value, because
+        // a file in this preparation's own output directory is what says a process ran *here*.
+        let output = workspace.output().join(OUTPUT_FILE);
+        let written = std::fs::read_to_string(&output).unwrap_or_else(|error| {
+            panic!(
+                "this preparation's own tree holds no {OUTPUT_FILE}: {error} — what came back was \
+                 not written by a compiler that ran for it",
+            )
+        });
+        assert_eq!(
+            written, returned,
+            "what the caller was handed is not what this preparation's compiler wrote",
+        );
+        outputs.push(output);
+    }
+
+    // Three preparations, three trees — so the three readings above are three artifacts and not one
+    // file read three times.
+    for (index, output) in outputs.iter().enumerate() {
         assert!(
-            breaches.is_empty(),
-            "compiling {file} is not isolated per preparation: {}",
-            breaches
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join("; "),
+            !outputs[..index].contains(output),
+            "two compiles were handed the same {}",
+            output.display(),
         );
     }
 }

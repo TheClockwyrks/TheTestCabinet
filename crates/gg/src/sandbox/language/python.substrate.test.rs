@@ -707,7 +707,7 @@ print("still here")
     //
     // Half one: a program that parks in SHORT hops is bounded near its budget. Ten seconds of
     // sleeping in 50 ms hops against a 1 s budget was measured stopping at 1.00–1.09 s.
-    let budget = SandboxLimits {
+    let short_hops = SandboxLimits {
         timeout: Duration::from_secs(1),
         ..SandboxLimits::default()
     };
@@ -715,7 +715,7 @@ print("still here")
         "import time\nfor _ in range(200):\n    time.sleep(0.05)",
         &[],
         &[],
-        budget,
+        short_hops,
         canned_outcome,
     );
     assert!(
@@ -731,29 +731,71 @@ print("still here")
     );
 
     // Half two: a program that parks in ONE long hop overruns its budget by the whole hop. A
-    // `time.sleep(3)` against the same 1 s budget was measured running the full 3 s every time it
-    // was not the first program in the process — 8 runs of `sleep(4)` against 1 s and 5 of
-    // `sleep(8)` against 2 s all ran to completion. It is stopped, and `elapsed` reports the truth;
-    // the deadline simply did not bound it. That is the acceptance, stated as a test so a future
-    // reader does not have to take the prose's word for it.
-    let (outcome, _log) = run_with(
-        "import time\ntime.sleep(3)",
-        &[],
-        &[],
-        budget,
-        canned_outcome,
-    );
+    // `time.sleep(3)` against a 1 s budget was measured running the full 3 s every time it was not
+    // the first program in the process — 8 runs of `sleep(4)` against 1 s and 5 of `sleep(8)`
+    // against 2 s all ran to completion. It is stopped, and `elapsed` reports the truth; the
+    // deadline simply did not bound it. That is the acceptance, stated as a test so a future reader
+    // does not have to take the prose's word for it.
+    //
+    // The reading only says that if the guest REACHED the park, and whether it does is not this
+    // test's to decide. The budget is armed when the store is built, so everything between there and
+    // the program's first line — instantiating the 25 MB component, and the wall clock the machine
+    // spends doing it — is already being counted against it. That is 15-19 ms on an idle dev
+    // container, and under `cargo nextest run --workspace` this assertion was measured **failing at
+    // 1.054 s** against a 1 s budget with nothing whatever wrong with the sandbox: the deadline
+    // landed before the sleep began, so the figure was of an instantiation rather than of a park,
+    // and `>= 2 s` was a claim about how busy the machine was.
+    //
+    // So the program says when it has reached the park and the assertion is made on that rather than
+    // on a stopwatch. `print` crosses the membrane as it happens and [`reclaim`] keeps what a
+    // trapped program had already logged, so the witness is there whether or not the sleep ran. A
+    // budget that did not get the guest that far is a budget too small for this machine rather than
+    // a finding, so it doubles and the case is taken again — with the park always three times
+    // whatever budget reached it, so a deadline that bounded the park would show up as an elapsed
+    // near one budget rather than three.
+    const WITNESS: &str = "parked";
+    let mut budget = Duration::from_secs(1);
+    let parked = loop {
+        let park = budget * 3;
+        let (outcome, _log) = run_with(
+            &format!(
+                "import time\nprint({WITNESS:?})\ntime.sleep({})",
+                park.as_secs_f64()
+            ),
+            &[],
+            &[],
+            SandboxLimits {
+                timeout: budget,
+                ..SandboxLimits::default()
+            },
+            canned_outcome,
+        );
+        assert!(
+            matches!(outcome.result, Err(SandboxError::Timeout { .. })),
+            "a parked Python program is stopped: {:?}",
+            outcome.result
+        );
+        if outcome.logs.iter().any(|line| line == WITNESS) {
+            break outcome;
+        }
+        // Not a retry for flakiness: the guest never got to the line, so there is nothing here to
+        // have measured. The ceiling is what says the machine — rather than the deadline — has
+        // stopped making sense.
+        assert!(
+            budget < Duration::from_secs(8),
+            "this guest did not reach its own first line inside {budget:?} of the deadline's own \
+             wall clock, so nothing here is a reading of a park",
+        );
+        budget *= 2;
+    };
     assert!(
-        matches!(outcome.result, Err(SandboxError::Timeout { .. })),
-        "a parked Python program is stopped: {:?}",
-        outcome.result
-    );
-    assert!(
-        outcome.elapsed >= Duration::from_secs(2),
-        "a single 3 s park against a 1 s budget is expected to run to completion — if the deadline \
-         now bounds it, the acceptance in `sandbox::limits` and the caution in the \
-         `gg/languages/python.md` page are both out of date: {:?}",
-        outcome.elapsed
+        parked.elapsed >= budget * 2,
+        "a park of {:?} against a {budget:?} budget was reached — the program logged {WITNESS:?} — \
+         and is expected to run to completion; if the deadline now bounds it, the acceptance in \
+         `sandbox::limits` and the caution in the `gg/languages/python.md` page are both out of \
+         date: {:?}",
+        budget * 3,
+        parked.elapsed
     );
 }
 
