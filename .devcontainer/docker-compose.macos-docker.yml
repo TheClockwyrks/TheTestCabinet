@@ -30,9 +30,11 @@ services:
       # to resolve the HOST path of the workspace it mounts into the k3d node.
       #
       # It lives in the host overrides rather than in docker-compose.yml because
-      # whether a host has such a socket at all is a property of the host: the
-      # macOS + Podman row has none, and naming one there stopped the container
-      # from starting. Access is granted at container start by
+      # HOW a host exposes that socket is a property of the host: the macOS +
+      # Podman row cannot bind one at all — a bind source there is resolved on the
+      # Mac, and the socket is inside the machine VM — so it routes the socket in
+      # through a named volume instead. Naming it here stopped that row's container
+      # from starting at all. Access is granted at container start by
       # tools/docker-socket-access.sh, whatever group owns the socket.
       #
       # Set DOCKER_SOCKET in .env for a non-default path.

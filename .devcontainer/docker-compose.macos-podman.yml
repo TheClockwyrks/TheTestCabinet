@@ -1,26 +1,20 @@
-# Host override for rootless Podman on macOS (`podman machine`). Copy this to
+# Host override for Podman on macOS (`podman machine`). Copy this to
 # docker-compose.local.yml (see README.md), paired with `.env.macos-podman`.
+# THE MACHINE MUST BE ROOTFUL — `setup-host.sh` checks, and README.md says why.
 #
-# Everything that differs from the other macOS variant
-# (docker-compose.macos-docker.yml) follows from one fact: with Podman there is a
-# Linux VM in the middle that you own, rather than a runtime that hides one.
+# Everything that differs from the Docker row (docker-compose.macos-docker.yml)
+# follows from one rule: A BIND MOUNT'S SOURCE IS A PATH ON YOUR MAC. It is not a
+# path in the VM. `podman machine` shares your home directory in, so a source
+# under $HOME resolves; anything else is checked and refused on the Mac side,
+# ending the whole `up` before a container exists —
+# `Error: statfs <path>: no such file or directory`. (podman-compose applies the
+# rule twice over: its own bind handling calls `os.path.exists` and then
+# `os.makedirs` on the source, on the Mac, before podman ever sees it.)
 #
-# WHERE A PATH IS RESOLVED. A bind mount's source is a path on the machine running
-# the `podman` CLI — your Mac — which the VM sees because `podman machine` shares
-# it (your home directory, by default). It is NOT a path in the VM, and podman
-# checks: name one and the whole `up` dies before any container exists, with
-# `Error: statfs <path>: no such file or directory`. Two consequences below, and
-# they are the ones that make this file more than a copy of the Docker row:
-#
-#   1. The checkout has to be somewhere the machine shares. A clone outside
-#      that is either refused like the above or, if the path happens to exist on
-#      the Mac, mounted as the wrong directory.
-#   2. There is NO HOST RUNTIME SOCKET to bind. Podman's socket lives at
-#      /run/user/<uid>/podman/podman.sock inside the VM, which by the rule above
-#      is unreachable from here; and the Mac-side socket `podman machine inspect`
-#      prints is a live endpoint rather than a file, so sharing its inode over
-#      virtiofs shares nothing you can connect to. So this file mounts none —
-#      see the volumes the other three host overrides carry and this one does not.
+# Two consequences: the checkout has to live under $HOME, and the host runtime
+# socket — which lives in the VM, at /run/podman/podman.sock — cannot be reached
+# by naming it. The volume at the bottom of this file is how it is reached
+# instead.
 x-podman:
   # podman-compose otherwise places the project's containers in a pod. The Dev
   # Containers extension drives the container it created directly (`podman
@@ -37,48 +31,53 @@ services:
         # gg's eleven toolchain installers (each has an aarch64 Linux build).
         BUILDARCH: arm64
 
-    # THE ONE SETTING THAT MAKES THE WORKSPACE WRITABLE. The checkout reaches the
-    # container in two hops — virtiofs from the Mac into the VM, then a bind mount
-    # from the VM into the container — and each hop renumbers it. virtiofs
-    # presents your files to the VM as the machine user (`core`, whose UID is your
-    # Mac user's, normally 501); rootless Podman then maps that user to the
-    # container's *root*, and the image's `ttc` (UID 1000, see .env.macos-podman)
-    # to some UID in the subuid range that owns nothing. The result is a checkout
-    # you can read and not write, which surfaces as `cargo build` failing to
-    # create a lock file rather than as a permissions error you would recognise.
-    #
-    # `keep-id` maps the machine user onto a UID you choose instead, and the
-    # explicit `uid=`/`gid=` say which: the ones the image built `ttc` with. This
-    # is also why devcontainer.json pins `"updateRemoteUserUID": false` — the
-    # extension's UID rewrite and this mapping would be fighting over the same
-    # number, and the ~1.9 GB of gg toolchains baked under that user's $HOME are
-    # what loses.
-    userns_mode: keep-id:uid=1000,gid=1000
+    # NOTE WHAT IS NOT HERE: `userns_mode: keep-id`, which the Linux Podman row
+    # uses to map the host user onto the image's. keep-id is rootless-only —
+    # podman refuses it outright on a rootful machine — and a rootful machine is
+    # what this row requires. The equivalent is done by NUMBER instead: the
+    # workspace arrives over virtiofs owned by your Mac account's real UID/GID,
+    # and DEVCONTAINER_UID/DEVCONTAINER_GID in .env build the image's user with
+    # those same numbers. `setup-host.sh` reads them out of the machine rather
+    # than guessing, because virtiofs passes macOS's numbering through unchanged
+    # and a Mac's first account is 501:20, not 1000:1000.
 
     security_opt:
       # podman machine's VM is Fedora CoreOS with SELinux ENFORCING, which the
       # Linux Podman variant (a NixOS host) has no equivalent of. Nothing here
-      # relabels its mounts with `:z`/`:Z` — you cannot relabel virtiofs, and the
-      # runtime socket bound in from `/run/user/<uid>/podman/` belongs to the
-      # machine user rather than to this container — so the container is run
-      # unconfined instead. Without it the socket is mounted and unreachable, and
-      # `make -C deployments/local local-up` reports a daemon it cannot talk to.
+      # relabels its mounts with `:z`/`:Z` — you cannot relabel virtiofs — so the
+      # container is run unconfined instead. Without it the runtime socket below
+      # is mounted and unreachable.
       - label=disable
 
     environment:
-      # Tells tools/docker-socket-access.sh that the missing host runtime socket
-      # is this row's normal state and not a stale docker-compose.local.yml, so it
-      # stays quiet instead of printing the hint it owes every other host.
-      - TCAB_NO_HOST_RUNTIME_SOCKET=1
+      # Where tools/docker-socket-access.sh finds the host runtime socket on this
+      # row, so it can link /var/run/docker.sock at it. Everything downstream —
+      # the `docker` client, `k3d`, deployments/local's Makefile — then works
+      # unchanged, at the path they all already expect.
+      - TCAB_HOST_RUNTIME_SOCKET=/run/host-podman/podman.sock
 
-    # NO SSH AGENT SOCKET IS BOUND IN, unlike the two variants that do bind one
-    # (docker-compose.nixos.yml and docker-compose.macos-docker.yml).
-    # Forwarding one means bind-mounting a *host* unix socket, and on macOS the
-    # Mac's agent socket (under /private/tmp/com.apple.launchd.*/Listeners) is on
-    # the far side of virtiofs, which passes files rather than live socket
-    # endpoints; Docker Desktop and OrbStack sidestep that by synthesising
-    # /run/host-services/ssh-auth.sock inside their own VM, and podman machine has
-    # no counterpart. Use the Dev Containers extension's own agent forwarding
-    # instead — it runs over the extension's channel rather than the filesystem,
-    # so it needs nothing here, and `.devcontainer/system/.bashrc` leaves
-    # SSH_AUTH_SOCK alone when no bridged socket exists. See README.md.
+    volumes:
+      # DOCKER-OUTSIDE-OF-DOCKER, THE ONLY WAY IT CAN BE DONE HERE. The other
+      # three host rows bind the runtime socket straight in. This one cannot: by
+      # the rule at the top of this file, /run/podman/podman.sock names a Mac path
+      # that does not exist, and the Mac-side socket `podman machine inspect`
+      # prints is a live endpoint rather than a file — sharing its inode over
+      # virtiofs shares nothing the guest can connect to.
+      #
+      # A NAMED VOLUME IS RESOLVED ON THE OTHER SIDE. Compose does not hand the
+      # runtime a path here; it asks it to create a volume, and the bind-backed
+      # local driver below (`type: none` + `o: bind`) does its own bind INSIDE the
+      # VM, where /run/podman is exactly what it looks like. Nothing is validated
+      # against the Mac, because nothing about it is a Mac path.
+      - host-podman-run:/run/host-podman
+
+volumes:
+  host-podman-run:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      # The rootful machine's runtime directory, holding podman.sock. Overridable
+      # from .env only because this file cannot be tested from the machine that
+      # writes it; `podman machine ssh 'ls /run/podman'` is the check.
+      device: ${PODMAN_SOCKET_DIR:-/run/podman}

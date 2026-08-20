@@ -12,18 +12,32 @@ set -euo pipefail
 
 SOCK="${DOCKER_SOCKET_PATH:-/var/run/docker.sock}"
 
-# Nothing mounted. On the macOS + Podman row that is the normal state — that host
-# has no runtime socket a container can bind (see docker-compose.macos-podman.yml,
-# which sets the variable below to say so) — and elsewhere it usually means a
-# docker-compose.local.yml copied before the socket mount moved into the host
-# overrides. Worth one line either way rather than silence, since what is missing
-# is a whole optional workflow.
-if [ ! -e "$SOCK" ]; then
-	if [ -z "${TCAB_NO_HOST_RUNTIME_SOCKET:-}" ]; then
-		echo "note: no host container-runtime socket at $SOCK, so 'make -C deployments/local local-up' will not work." >&2
-		echo "      If your .devcontainer/docker-compose.local.yml predates the move of that mount into" >&2
-		echo "      the host overrides, refresh it: .devcontainer/setup-host.sh --force" >&2
+# A host whose runtime socket could not be bind-mounted to $SOCK directly, and
+# arrives somewhere else instead: link it into place first, so everything
+# downstream — the `docker` client, `k3d`, deployments/local's Makefile — finds it
+# where they all already look. Today that is the macOS + Podman row, where the
+# socket comes in on a bind-backed named volume because a Mac cannot name a path
+# inside the podman machine VM (see docker-compose.macos-podman.yml).
+if [ -n "${TCAB_HOST_RUNTIME_SOCKET:-}" ] && [ ! -e "$SOCK" ]; then
+	if [ -S "$TCAB_HOST_RUNTIME_SOCKET" ]; then
+		sudo ln -sfn "$TCAB_HOST_RUNTIME_SOCKET" "$SOCK"
+	else
+		echo "warning: TCAB_HOST_RUNTIME_SOCKET=$TCAB_HOST_RUNTIME_SOCKET is not a socket." >&2
+		echo "         The host runtime is unreachable, so 'make -C deployments/local local-up'" >&2
+		echo "         will not work. On macOS + Podman, check that the machine is ROOTFUL and" >&2
+		echo "         that PODMAN_SOCKET_DIR in .devcontainer/.env names the directory holding" >&2
+		echo "         podman.sock:  podman machine ssh 'ls /run/podman'" >&2
 	fi
+fi
+
+# Nothing mounted and nothing linked. Usually a docker-compose.local.yml copied
+# before the runtime socket moved into the host overrides — worth one line rather
+# than silence, since what is missing is a whole optional workflow and nothing
+# else will mention it until `make local-up` cannot find a daemon.
+if [ ! -e "$SOCK" ]; then
+	echo "note: no host container-runtime socket at $SOCK, so 'make -C deployments/local local-up' will not work." >&2
+	echo "      If your .devcontainer/docker-compose.local.yml predates the move of that mount into" >&2
+	echo "      the host overrides, refresh it: .devcontainer/setup-host.sh --force" >&2
 	exit 0
 fi
 

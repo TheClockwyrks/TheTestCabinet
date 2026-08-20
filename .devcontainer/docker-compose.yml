@@ -60,19 +60,20 @@ services:
       # .nixos.yml, .macos-docker.yml), because whether a host HAS such a socket to
       # bind is a property of the host and not of this file.
       #
-      # It used to live here, on the assumption that every host has one. macOS +
-      # Podman is the host that does not, and it does not fail softly: a bind
-      # mount's source is resolved on the machine running the `podman` CLI — your
-      # Mac — and shared into the VM by the machine's own mounts, so the VM path
-      # where podman's socket actually lives (/run/user/<uid>/podman/podman.sock)
-      # is not addressable from here at all. Podman refuses the whole `up` over it:
+      # It used to live here, on the assumption that every host can bind one. macOS
+      # + Podman cannot, and it does not fail softly: a bind mount's source is
+      # resolved on the machine running the `podman` CLI — your Mac — and reaches
+      # the VM only because `podman machine` shares that directory, so the VM path
+      # where podman's socket actually lives (/run/podman/podman.sock) is not
+      # addressable from here at all. Podman refuses the whole `up` over it:
       #
       #   Error: statfs /private/var/run/user/501/podman/podman.sock:
       #   no such file or directory
       #
       # Which is to say the container could not START because of a mount that only
-      # the optional local service stack ever uses. Hence the move: a row that has
-      # no socket now simply does not name one. See .devcontainer/README.md.
+      # the optional local service stack ever uses. Hence the move: that row brings
+      # the same socket in through a named volume, whose path the runtime resolves
+      # on its own side. See .devcontainer/README.md.
 
 volumes:
   # Cargo build artifacts, kept off the host-mounted workspace; survives
