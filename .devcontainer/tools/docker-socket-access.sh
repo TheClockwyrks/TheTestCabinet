@@ -13,7 +13,23 @@ set -euo pipefail
 SOCK="${DOCKER_SOCKET_PATH:-/var/run/docker.sock}"
 
 # Nothing mounted (e.g. a host that doesn't run the local stack): nothing to do.
-[ -S "$SOCK" ] || exit 0
+if [ ! -e "$SOCK" ]; then
+	exit 0
+fi
+
+# The mount point exists but is not a socket. This is worth a word rather than a
+# silent exit, because it has exactly one cause and it is not obvious: compose was
+# given a DOCKER_SOCKET that does not exist ON THE HOST, and the runtime created an
+# empty directory at the source rather than refusing. The path is resolved wherever
+# the runtime runs, which on macOS + Podman is inside the podman machine VM and not
+# on the Mac — see .devcontainer/.env.macos-podman.
+if [ ! -S "$SOCK" ]; then
+	echo "warning: $SOCK is not a socket, so the host container runtime is unreachable." >&2
+	echo "         Check DOCKER_SOCKET in .devcontainer/.env — it must name the socket's" >&2
+	echo "         path on the host that runs the runtime (for podman machine, a path" >&2
+	echo "         inside the VM: podman machine ssh 'echo /run/user/\$(id -u)/podman/podman.sock')." >&2
+	exit 0
+fi
 
 # Already usable by this user: nothing to do.
 if [ -r "$SOCK" ] && [ -w "$SOCK" ]; then
@@ -22,6 +38,18 @@ fi
 
 SOCK_GID="$(stat -c '%g' "$SOCK")"
 USER_NAME="$(id -un)"
+
+# Owned by a UID/GID with no mapping into this container's user namespace, which
+# `stat` reports as the overflow id. Under rootless Podman that means the socket
+# belongs to a user the container cannot become — in practice, the host's ROOTFUL
+# runtime socket bound into a rootless container. Nothing can be granted here;
+# chown and chmod would both be refused, so say why rather than dying under `set -e`.
+if [ "$SOCK_GID" = "65534" ] || [ "$(stat -c '%u' "$SOCK")" = "65534" ]; then
+	echo "warning: $SOCK is owned outside this container's user namespace; access cannot be granted." >&2
+	echo "         Under rootless Podman, bind in the ROOTLESS runtime socket — the same one" >&2
+	echo "         that created this container — not /run/podman/podman.sock." >&2
+	exit 0
+fi
 
 if [ "$SOCK_GID" = "0" ]; then
 	# Root-owned socket (common with Docker Desktop / OrbStack bind mounts). There

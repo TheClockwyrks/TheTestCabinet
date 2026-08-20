@@ -1,0 +1,65 @@
+# Host override for rootless Podman on macOS (`podman machine`). Copy this to
+# docker-compose.local.yml (see README.md), paired with `.env.macos-podman`.
+#
+# Everything that differs from the other macOS variant
+# (docker-compose.macos-docker.yml) follows from one fact: with Podman there is a Linux
+# VM in the middle that you own, rather than a runtime that hides one. The
+# `podman` CLI runs on the Mac, but the daemon-side of every setting below — bind
+# mount sources, the runtime socket, `host-gateway`, UIDs — is resolved INSIDE
+# that VM. A path that exists on the Mac and not in the VM is not an error you
+# get told about; it is an empty directory bind-mounted over your workspace.
+x-podman:
+  # podman-compose otherwise places the project's containers in a pod. The Dev
+  # Containers extension drives the container it created directly (`podman
+  # inspect`, `podman exec`), and a pod's shared infra container is one more
+  # thing between it and them. Same reason the Linux Podman variant sets it.
+  in_pod: false
+
+services:
+  dev:
+    build:
+      args:
+        # Apple silicon. On an Intel Mac set this to amd64 — every install script
+        # in this image maps BUILDARCH to an upstream's arch naming, and so do
+        # gg's eleven toolchain installers (each has an aarch64 Linux build).
+        BUILDARCH: arm64
+
+    # THE ONE SETTING THAT MAKES THE WORKSPACE WRITABLE. The checkout reaches the
+    # container in two hops — virtiofs from the Mac into the VM, then a bind mount
+    # from the VM into the container — and each hop renumbers it. virtiofs
+    # presents your files to the VM as the machine user (`core`, whose UID is your
+    # Mac user's, normally 501); rootless Podman then maps that user to the
+    # container's *root*, and the image's `ttc` (UID 1000, see .env.macos-podman)
+    # to some UID in the subuid range that owns nothing. The result is a checkout
+    # you can read and not write, which surfaces as `cargo build` failing to
+    # create a lock file rather than as a permissions error you would recognise.
+    #
+    # `keep-id` maps the machine user onto a UID you choose instead, and the
+    # explicit `uid=`/`gid=` say which: the ones the image built `ttc` with. This
+    # is also why devcontainer.json pins `"updateRemoteUserUID": false` — the
+    # extension's UID rewrite and this mapping would be fighting over the same
+    # number, and the ~1.9 GB of gg toolchains baked under that user's $HOME are
+    # what loses.
+    userns_mode: keep-id:uid=1000,gid=1000
+
+    security_opt:
+      # podman machine's VM is Fedora CoreOS with SELinux ENFORCING, which the
+      # Linux Podman variant (a NixOS host) has no equivalent of. Nothing here
+      # relabels its mounts with `:z`/`:Z` — you cannot relabel virtiofs, and the
+      # runtime socket bound in from `/run/user/<uid>/podman/` belongs to the
+      # machine user rather than to this container — so the container is run
+      # unconfined instead. Without it the socket is mounted and unreachable, and
+      # `make -C deployments/local local-up` reports a daemon it cannot talk to.
+      - label=disable
+
+    # NO SSH AGENT SOCKET IS BOUND IN, unlike the two variants that do bind one
+    # (docker-compose.nixos.yml and docker-compose.macos.yml).
+    # Forwarding one means bind-mounting a *host* unix socket, and on macOS the
+    # Mac's agent socket (under /private/tmp/com.apple.launchd.*/Listeners) is on
+    # the far side of virtiofs, which passes files rather than live socket
+    # endpoints; Docker Desktop and OrbStack sidestep that by synthesising
+    # /run/host-services/ssh-auth.sock inside their own VM, and podman machine has
+    # no counterpart. Use the Dev Containers extension's own agent forwarding
+    # instead — it runs over the extension's channel rather than the filesystem,
+    # so it needs nothing here, and `.devcontainer/system/.bashrc` leaves
+    # SSH_AUTH_SOCK alone when no bridged socket exists. See README.md.

@@ -69,7 +69,17 @@ The devcontainer references two host-specific files that are not committed —
 without affecting the repository. Create them from the committed variants before
 opening the container.
 
-For Docker on a mainstream Linux host (the default):
+| Host | `docker-compose.local.yml` | `.env` |
+| --- | --- | --- |
+| Docker on Linux (the default) | `docker-compose.ubuntu.yml` | `.env.ubuntu` |
+| Rootless Podman on Linux (e.g. NixOS) | `docker-compose.nixos.yml` | `.env.podman` |
+| Docker on macOS — Docker Desktop or OrbStack | `docker-compose.macos-docker.yml` | `.env.ubuntu` |
+| Rootless Podman on macOS (`podman machine`) | `docker-compose.macos-podman.yml` | `.env.macos-podman` |
+
+One macOS row covers Docker Desktop and OrbStack both: OrbStack is a drop-in
+Docker-API runtime, and where this file cares — a daemon in a managed VM, no UID
+remapping, a synthesised SSH-agent socket — the two behave identically. Copy the
+pair for your row:
 
 ```sh
 cd .devcontainer
@@ -77,13 +87,20 @@ cp docker-compose.ubuntu.yml docker-compose.local.yml
 cp .env.ubuntu .env
 ```
 
-For rootless Podman (for example on a NixOS host):
+…or let [`setup-host.sh`](setup-host.sh) pick the row and copy it for you:
 
 ```sh
-cd .devcontainer
-cp docker-compose.nixos.yml docker-compose.local.yml
-cp .env.podman .env
+.devcontainer/setup-host.sh                 # detect this host
+.devcontainer/setup-host.sh macos-podman    # or name the variant
+                                            # (ubuntu | nixos | macos-docker | macos-podman)
+.devcontainer/setup-host.sh --print         # say what it would do and stop
 ```
+
+On three of the four rows that script is a convenience and the two `cp`s are
+equally correct. On the **macOS + Podman** row it is not, and the reason is worth
+knowing before you skip it: that row's `DOCKER_SOCKET` contains a UID belonging
+to the podman machine rather than to you, so a committed template can only guess
+it — and a wrong guess there is not a diagnosable failure. Read on.
 
 Then run **Dev Containers: Reopen in Container** in VS Code.
 
@@ -121,6 +138,82 @@ Then run **Dev Containers: Reopen in Container** in VS Code.
 > `scripts/ci/build-context.sh` checks this Dockerfile's `COPY` sources against **both**
 > allowlists, so the two cannot drift back apart unnoticed.
 
+### Podman on macOS
+
+Podman on macOS *is* `podman machine`: a Linux VM you own and configure, rather
+than one a runtime hides from you. Everything that makes this row different from
+the Docker row above follows from that, so it is worth stating plainly —
+**the `podman` CLI runs on the Mac, but every path the runtime is given is
+resolved inside the VM.**
+
+**Install both halves.** VS Code drives the devcontainer through compose, and
+Podman's compose is a separate binary:
+
+```sh
+brew install podman podman-compose
+```
+
+Then point the Dev Containers extension at them. Both settings are
+**machine-scoped**, so they belong in your *User* `settings.json` and cannot be
+committed here for you:
+
+```json
+"dev.containers.dockerPath": "podman",
+"dev.containers.dockerComposePath": "podman-compose"
+```
+
+**Size the machine before you build in it.** The image alone is ~1.9 GB of gg's
+toolchains on top of a Rust and Node toolchain, and what you then run inside it is
+`cargo build --workspace`. A stock machine is 2 CPUs and 2 GB of RAM, and it does
+not report a resource problem — it OOM-kills `rustc` partway through a build, or
+fills the disk during the toolchain layer. The disk can only ever grow, so be
+generous once:
+
+```sh
+podman machine stop
+podman machine set --cpus 8 --memory 16384 --disk-size 200
+podman machine start
+```
+
+`setup-host.sh` warns when the machine it finds is smaller than roughly that.
+
+**Keep the checkout inside what the machine shares.** `podman machine` mounts your
+home directory into the VM. A clone outside it is invisible to the runtime, and a
+bind mount whose source does not exist is not refused — an empty directory is
+created at it and mounted over your workspace. Either keep the repository under
+`$HOME`, or hand the machine the path when you create it:
+`podman machine init -v /path:/path`.
+
+**`DOCKER_SOCKET` is a path inside the VM.** Compose passes bind-mount sources to
+the runtime, which resolves them where *it* runs — so neither the Mac-side socket
+that `podman machine inspect` prints nor the rootful `/run/podman/podman.sock` is
+the right value. It has to be the **rootless** socket of the same machine user VS
+Code created the container as, or `deployments/local`'s Makefile cannot even
+`docker inspect` this container to find where the workspace came from:
+
+```sh
+podman machine ssh 'echo /run/user/$(id -u)/podman/podman.sock'
+```
+
+That is the line `setup-host.sh` runs for you. Getting it wrong is quiet — the
+container builds and works, and only its `docker` cannot reach a daemon — so
+[`tools/docker-socket-access.sh`](tools/docker-socket-access.sh) now says so at
+container start rather than exiting silently. The
+[local service stack](#host-docker-access-the-local-service-stack) is the part of
+this row that leans on the socket hardest, and `k3d` over Podman's Docker-compatible
+API is the least exercised thing here; if it gives you trouble, the devcontainer
+itself is unaffected.
+
+**SSH agent forwarding does not go through a bind mount on this row** — see
+[SSH agent forwarding](#ssh-agent-forwarding).
+
+**The workspace is writable because of one line.** `userns_mode:
+keep-id:uid=1000,gid=1000` in `docker-compose.macos-podman.yml` maps the machine
+user onto the image's `ttc`. Without it the checkout arrives read-only for that
+user, which surfaces as `cargo` failing to write a lock file rather than as
+anything that mentions permissions. It pairs with `"updateRemoteUserUID": false`
+in [`devcontainer.json`](devcontainer.json), which must stay false.
+
 ## Host Docker access (the local service stack)
 
 The local service stack (`make -C deployments/local local-up`) runs `k3d` and
@@ -143,7 +236,9 @@ This works out of the box on a standard setup. Two knobs cover the rest:
 
 - **Non-default socket path** (e.g. rootless Podman at
   `/run/user/1000/podman/podman.sock`): set `DOCKER_SOCKET` in `.env` to the
-  host path before opening the container.
+  host path before opening the container. On macOS + Podman that host is the
+  podman machine VM rather than your Mac, and the path has to be the machine
+  user's *rootless* socket — see [Podman on macOS](#podman-on-macos).
 - **Socket permissions** are aligned automatically at container start by
   `tools/docker-socket-access.sh` (run from `postStartCommand`), regardless of
   the host socket's owning group — so you do not need to match `DOCKER_GID` by
@@ -222,3 +317,19 @@ for the web console), and [Observability](https://docs.testcabinet.ai/developmen
 If the host exposes its SSH agent at `/tmp/ssh-agent.sock`, the `postStartCommand`
 bridges it to `/tmp/devcontainer-ssh-agent.sock` and the shell config points
 `SSH_AUTH_SOCK` at it, so `git push` over SSH works from inside the container.
+Two of the four host variants bind a host socket to that path: the Linux Podman
+one from `$SSH_AUTH_SOCK`, and the macOS Docker one from
+`/run/host-services/ssh-auth.sock`, which Docker Desktop and OrbStack both
+synthesise inside their own VM for exactly this. The Linux Docker row binds nothing and
+leans on the extension's own forwarding, the same as the row below.
+
+**macOS + Podman cannot have such a path.** Forwarding an agent this
+way means bind-mounting a live unix socket, and on macOS the Mac's own agent
+socket (under `/private/tmp/com.apple.launchd.*/Listeners`) sits on the far side
+of virtiofs, which shares files rather than socket endpoints; `podman machine` has
+no counterpart to the path the Docker runtimes invent. Use the Dev Containers
+extension's own agent forwarding instead — it runs over the extension's channel
+rather than the filesystem, so it needs nothing in the compose file, and
+[`system/.bashrc`](system/.bashrc) leaves `SSH_AUTH_SOCK` alone when no bridged
+socket exists. If you would rather not depend on it, `git` over HTTPS with the
+`gh` CLI (which the image ships) works on every row.

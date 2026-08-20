@@ -65,6 +65,13 @@ services:
       # for a non-default socket (e.g. rootless Podman at
       # /run/user/1000/podman/podman.sock) with DOCKER_SOCKET in .env. Access is
       # granted at container start by tools/docker-socket-access.sh.
+      #
+      # The source is resolved by whatever runs the RUNTIME, which is not always
+      # this machine: with `podman machine` on macOS it is a path inside the VM,
+      # and a path that exists only on the Mac gets an empty directory created at
+      # it rather than an error. .env.macos-podman explains how to read the right
+      # one out of the machine; docker-socket-access.sh says so at container start
+      # if it went wrong anyway.
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
 
 volumes:

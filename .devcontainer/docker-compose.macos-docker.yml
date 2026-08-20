@@ -1,0 +1,24 @@
+# Host override for the Docker API on macOS — Docker Desktop or OrbStack. Copy
+# this to docker-compose.local.yml (see README.md), paired with `.env.ubuntu`.
+#
+# ONE FILE COVERS BOTH RUNTIMES, and the name says why: OrbStack is a drop-in
+# Docker-API implementation, so what this row targets is the interface rather than
+# a vendor. Everything below follows from the two behaving the same way where it
+# matters here — each runs a Docker daemon in a VM it manages for you, each
+# presents the workspace already owned by a UID 1000 user (so nothing has to be
+# remapped and the plain Docker environment fits), and each synthesises
+# /run/host-services/ssh-auth.sock for the SSH agent bind below.
+#
+# The other macOS row, docker-compose.macos-podman.yml, is a separate file because
+# rootless Podman does none of those three things.
+services:
+  dev:
+    build:
+      args:
+        BUILDARCH: arm64
+    environment:
+      - SSH_AUTH_SOCK=/tmp/devcontainer-ssh-agent.sock
+    volumes:
+      - type: bind
+        source: ${SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}
+        target: /tmp/ssh-agent.sock
