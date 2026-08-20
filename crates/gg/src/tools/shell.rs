@@ -17,7 +17,7 @@
 //! **pair of files** in a gg-managed directory, and only the tail permitted by the configured
 //! [line/character ceilings](OffloadLimits) comes back — followed by a note naming the two files, so
 //! an agent that needs more can `grep` them instead of being handed a build log it did not ask for.
-//! Under [adaptive](OffloadPolicy::Adaptive) — the default — offloading applies only to the commands
+//! Under [adaptive](OffloadPolicy::Adaptive) offloading applies only to the commands
 //! whose output an agent actually reads: a command that **succeeded** comes back as its exit code
 //! and the paths its output went to, and one that **failed** comes back exactly as it would under
 //! offloading.
@@ -38,9 +38,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+// The shell vocabulary — the three mode ids and the two ceilings — is `crates/core`'s, because the
+// console writes a shell capability with the same names this reads it back by.
 use test_cabinet_core::gg::{
-    CAPABILITY_SHELL, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_MODES,
-    SHELL_OUTPUT_OFFLOAD,
+    CAPABILITY_SHELL, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE,
+    SHELL_OUTPUT_MODES, SHELL_OUTPUT_OFFLOAD,
 };
 use test_cabinet_core::gg_session_record::GgShellOrigin;
 
@@ -68,27 +70,9 @@ const DEFAULT_TIMEOUT_SECS: f64 = 120.0;
 /// generous enough to still exceed it.
 const MAX_OUTPUT_BYTES: usize = 16 * 1024;
 
-/// The shell capability's `maxLines` param: how many trailing **lines** of a command's output come
-/// back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a failed command, under
-/// [adaptive](SHELL_OUTPUT_ADAPTIVE).
-pub const PARAM_MAX_LINES: &str = "maxLines";
-
-/// The shell capability's `maxChars` param: how many trailing **characters** of a command's output
-/// come back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a failed command, under
-/// [adaptive](SHELL_OUTPUT_ADAPTIVE).
-pub const PARAM_MAX_CHARS: &str = "maxChars";
-
-/// The [line ceiling](PARAM_MAX_LINES) applied when a truncating mode names **neither** ceiling.
-///
-/// The truncating modes are defined by the ceiling they truncate past, so "offload with no ceiling"
-/// is not a mode — it is a config that forgot to finish the sentence. Rather than quietly running
-/// the control arm under the treatment arm's name, an unspecified ceiling takes this default, which
-/// is also what the console pre-fills the two inputs with.
-pub const DEFAULT_MAX_LINES: usize = 250;
-
-/// The [character ceiling](PARAM_MAX_CHARS) applied when a truncating mode names **neither**
-/// ceiling. See [`DEFAULT_MAX_LINES`].
-pub const DEFAULT_MAX_CHARS: usize = 4096;
+/// What either ceiling of zero would do, in the capability's own terms — the clause a
+/// [refusal](crate::validate) carries, written once so both ceilings say it the same way.
+const CEILING_CONSEQUENCE: &str = "a ceiling of nothing would return none of the command's output";
 
 /// The gg-managed directory offloaded output is written to. Outside the workspace on purpose: these
 /// files are gg's bookkeeping, not the agent's work product, and a run's diff should not fill up
@@ -129,20 +113,42 @@ pub enum OffloadPolicy {
     /// exactly as it would under [`Offload`](Self::Offload), and a command that **succeeded** comes
     /// back as its exit code alone, with a note naming the file pair its output went to.
     ///
-    /// The default. A successful command's output is the bulk of what a run's shell calls produce
+    /// The arm the [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog) writes into a
+    /// new document. A successful command's output is the bulk of what a run's shell calls produce
     /// and the part an agent least often reads — `cargo build` printing forty lines of `Compiling`
     /// says nothing that the exit code did not. A failed one is the opposite: it is read closely, and
     /// the tail is where the error is.
     Adaptive(OffloadLimits),
-}
-
-impl Default for OffloadPolicy {
-    fn default() -> Self {
-        Self::Adaptive(OffloadLimits::default())
-    }
+    /// **Not an output mode: the launch is already refused.** What [`resolve`](Self::resolve) and
+    /// [`for_mode`](Self::for_mode) hand back once they have nothing left to select — the capability
+    /// named no arm, or named one gg has no mode for, or wrote no ceilings for a truncating arm to
+    /// truncate past. Both are total, so they answer with something; this is the something, and its
+    /// name is what tells the next reader of that line that no run is going to reach it.
+    ///
+    /// It is deliberately not one of the three modes. Resolving a hole to
+    /// [`Adaptive`](Self::Adaptive) — or to ceilings gg picked — is exactly the substitution the
+    /// [refusal](crate::validate) exists to prevent: it runs one arm of the offloading experiment
+    /// under another's name.
+    LaunchRefused,
 }
 
 impl OffloadPolicy {
+    /// **A truncating policy with ceilings no fixture's output approaches** — 250 trailing lines
+    /// and 4 096 trailing characters — which is what gg's own loop tests bind `shell` with.
+    ///
+    /// `#[cfg(test)]`, because it is a fixture and not a figure gg would stand in for an absent
+    /// pair: a run's ceilings come from that run's own document or the launch is refused. What a
+    /// test that is not *about* truncation needs from it is that a mode is armed at all, which is
+    /// the shape the loop under test is written against.
+    #[cfg(test)]
+    pub(crate) fn ample() -> Self {
+        Self::Adaptive(OffloadLimits {
+            max_lines: 250,
+            max_chars: 4_096,
+            dir: PathBuf::from(OFFLOAD_DIR),
+        })
+    }
+
     /// This policy under an explicit `mode` — one of [`SHELL_OUTPUT_MODES`] — keeping whatever
     /// [limits](OffloadLimits) `fallback` carries.
     ///
@@ -153,20 +159,26 @@ impl OffloadPolicy {
     /// not of the command that produced it: an operator overriding the mode is saying "keep this one
     /// inline", not "and size it differently from everything else".
     ///
-    /// A mode gg does not recognize [refuses the launch](crate::validate). It used to resolve to
-    /// [`Adaptive`](Self::Adaptive) and was the one hook field no launch diagnostic ever read, so a
-    /// hook written to keep its build output inline was silently withholding it instead.
+    /// Two ways this refuses the launch. A mode gg does not recognize is the obvious one: it is the
+    /// one hook field no launch diagnostic used to read, so a hook written to keep its build output
+    /// inline silently withheld it instead. The other is a truncating `mode` asked for over a
+    /// `fallback` that carries **no** ceilings — an agent whose own shell runs
+    /// [inline](Self::Inline), or offers no shell at all. There is nothing there to truncate past
+    /// and gg picks no figure, so the override is refused rather than conducted at ceilings nobody
+    /// wrote. The one `fallback` that carries no ceilings and is *not* reported here is
+    /// [`LaunchRefused`](Self::LaunchRefused): that agent's `shell` is already named at its own
+    /// locus, and this would be the same defect counted twice.
     pub fn for_mode(
         mode: &str,
         fallback: &Self,
         locus: &str,
         report: &mut crate::validate::LaunchReport,
     ) -> Self {
-        let limits = fallback.offload_limits().cloned().unwrap_or_default();
-        match mode.trim() {
-            SHELL_OUTPUT_INLINE => Self::Inline,
-            SHELL_OUTPUT_OFFLOAD => Self::Offload(limits),
-            SHELL_OUTPUT_ADAPTIVE => Self::Adaptive(limits),
+        let truncating = |arm: fn(OffloadLimits) -> Self| fallback.limits().cloned().map(arm);
+        let selected = match mode.trim() {
+            SHELL_OUTPUT_INLINE => return Self::Inline,
+            SHELL_OUTPUT_OFFLOAD => truncating(Self::Offload),
+            SHELL_OUTPUT_ADAPTIVE => truncating(Self::Adaptive),
             unknown => {
                 report.report(
                     crate::validate::LaunchDefect::run_level(
@@ -181,44 +193,74 @@ impl OffloadPolicy {
                     )
                     .known(SHELL_OUTPUT_MODES),
                 );
-                Self::Adaptive(limits)
+                return Self::LaunchRefused;
             }
-        }
+        };
+        selected.unwrap_or_else(|| {
+            // Unless the fallback is itself already refused: then the agent's `shell` has been
+            // named at its own locus in this same pass, and this is that one defect seen from a
+            // second place rather than a second defect.
+            if !matches!(fallback, Self::LaunchRefused) {
+                report.report(crate::validate::LaunchDefect::run_level(
+                    locus.to_string(),
+                    mode.trim(),
+                    format!(
+                        "the `output` field asks for a mode that returns a tail of the command's \
+                         output, and this agent's own `{CAPABILITY_SHELL}` capability declares no \
+                         ceiling for that tail to be measured against; gg substitutes none."
+                    ),
+                ));
+            }
+            Self::LaunchRefused
+        })
     }
 
-    /// The [limits](OffloadLimits) this policy carries, or `None` under
-    /// [`Inline`](Self::Inline), which has none to carry.
-    fn offload_limits(&self) -> Option<&OffloadLimits> {
-        match self {
-            Self::Inline => None,
-            Self::Offload(limits) | Self::Adaptive(limits) => Some(limits),
-        }
-    }
-
-    /// Resolve the policy from the shell capability's `implementation` and `params`.
+    /// Resolve the policy from an **enabled** shell capability's `implementation` and `params`.
     ///
-    /// An **absent** implementation resolves to [`Adaptive`](Self::Adaptive), the default;
-    /// `inline` and `offload` are the two explicit alternatives. One gg does not recognize
-    /// [refuses the launch](crate::validate) rather than resolving to the default, because the
-    /// implementation is the arm selector of the offloading experiment and a run measured on the
-    /// adaptive arm under the inline arm's name is the study answering a question nobody asked.
-    /// `Adaptive` still comes back, to keep the resolver total for the mid-run calls that re-read a
-    /// profile.
+    /// Enabled is the caller's to establish: the two ceilings are required of a capability that
+    /// offers a `shell` and of nothing else, so a declaration that offers none is read by
+    /// [`check_declaration`] instead.
     ///
-    /// The [limits](OffloadLimits) are read whichever arm is selected — including
-    /// [`Inline`](Self::Inline), which does not carry them — so a `maxLines` gg cannot honour is
-    /// refused in the same pass rather than in whichever launch first happens to select a truncating
-    /// mode.
+    /// Three ways a declaration leaves nothing to select, and all three end at
+    /// [`LaunchRefused`](Self::LaunchRefused):
+    ///
+    /// - **No arm.** The mode is the offloading experiment's own variable and gg selects none on an
+    ///   operator's behalf. Reporting the absence belongs to the launch pass, which is the one
+    ///   reader that can see the switch, so nothing is said here.
+    /// - **An arm gg has no mode for.** Reported here: reading it as any of the three would measure
+    ///   one arm of the offloading experiment under another's name.
+    /// - **A ceiling missing, or naming no count of one or more.** Reported at its own locus by
+    ///   [`required_positive_count_param`](crate::validate::required_positive_count_param).
+    ///
+    /// Both [limits](OffloadLimits) are required whichever arm is selected — including
+    /// [`Inline`](Self::Inline), which does not carry them — so one shared params block swept across
+    /// the three modes is judged the same way on every launch in it.
     pub fn resolve(
         implementation: Option<&str>,
         params: &Value,
         report: &mut crate::validate::LaunchReport,
     ) -> Self {
-        let limits = OffloadLimits::from_params(params, report);
+        Self::select(
+            implementation,
+            OffloadLimits::required(params, report),
+            report,
+        )
+    }
+
+    /// The mode `implementation` names, carrying whatever `limits` survived being read — the half of
+    /// [`resolve`](Self::resolve) that is the same question whether or not the capability offers a
+    /// `shell`, so [`check_declaration`] asks it too and an unrecognized mode is refused wherever it
+    /// is written.
+    fn select(
+        implementation: Option<&str>,
+        limits: Option<OffloadLimits>,
+        report: &mut crate::validate::LaunchReport,
+    ) -> Self {
         match implementation.map(str::trim) {
             Some(SHELL_OUTPUT_INLINE) => Self::Inline,
-            Some(SHELL_OUTPUT_OFFLOAD) => Self::Offload(limits),
-            Some(SHELL_OUTPUT_ADAPTIVE) | Some("") | None => Self::Adaptive(limits),
+            Some(SHELL_OUTPUT_OFFLOAD) => limits.map_or(Self::LaunchRefused, Self::Offload),
+            Some(SHELL_OUTPUT_ADAPTIVE) => limits.map_or(Self::LaunchRefused, Self::Adaptive),
+            Some("") | None => Self::LaunchRefused,
             Some(unknown) => {
                 report.report(
                     crate::validate::LaunchDefect::run_level(
@@ -227,23 +269,24 @@ impl OffloadPolicy {
                         format!(
                             "the `{CAPABILITY_SHELL}` capability's implementation names how much \
                              of a command's output comes back inline; gg has no such mode, and \
-                             running the default `{SHELL_OUTPUT_ADAPTIVE}` instead would run one \
-                             arm of the offloading experiment under another's name."
+                             reading it as `{SHELL_OUTPUT_ADAPTIVE}` would run one arm of the \
+                             offloading experiment under another's name."
                         ),
                     )
                     .known(SHELL_OUTPUT_MODES),
                 );
-                Self::Adaptive(limits)
+                Self::LaunchRefused
             }
         }
     }
 
-    /// The limits in force, or `None` under [`Inline`](Self::Inline). Read by the tool itself and by
-    /// the [system prompt](crate::prompts), which states them up front so the model is not left to
-    /// discover the ceiling one truncated command at a time.
+    /// The limits in force, or `None` under [`Inline`](Self::Inline), which carries none, and under
+    /// [`LaunchRefused`](Self::LaunchRefused), which has no run to carry any for. Read by the tool
+    /// itself and by the [system prompt](crate::prompts), which states them up front so the model is
+    /// not left to discover the ceiling one truncated command at a time.
     pub fn limits(&self) -> Option<&OffloadLimits> {
         match self {
-            Self::Inline => None,
+            Self::Inline | Self::LaunchRefused => None,
             Self::Offload(limits) | Self::Adaptive(limits) => Some(limits),
         }
     }
@@ -256,59 +299,77 @@ impl OffloadPolicy {
 }
 
 /// How much of an offloaded command's output comes back inline, and where the whole of it is
-/// written. At least one of the two ceilings is always set — a config that names neither takes the
-/// [defaults](DEFAULT_MAX_LINES) — and when both are, the output satisfies **both**.
+/// written.
+///
+/// **Both** ceilings are always set, because a truncating mode is defined by what it truncates past
+/// and an enabled shell capability writes both whichever mode it selects. The output satisfies both,
+/// so the tighter one decides.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OffloadLimits {
-    /// The most trailing lines that come back inline, or `None` for no line ceiling.
-    pub max_lines: Option<usize>,
-    /// The most trailing characters that come back inline, or `None` for no character ceiling.
-    pub max_chars: Option<usize>,
+    /// The most trailing lines that come back inline.
+    pub max_lines: usize,
+    /// The most trailing characters that come back inline.
+    pub max_chars: usize,
     /// The directory the file pair is written to — [`OFFLOAD_DIR`] for every resolved policy, and a
     /// temporary directory under test.
     pub dir: PathBuf,
 }
 
-impl Default for OffloadLimits {
-    fn default() -> Self {
-        Self {
-            max_lines: Some(DEFAULT_MAX_LINES),
-            max_chars: Some(DEFAULT_MAX_CHARS),
-            dir: PathBuf::from(OFFLOAD_DIR),
-        }
-    }
-}
-
 impl OffloadLimits {
-    /// Read both ceilings out of the shell capability's `params`.
+    /// Both ceilings, read out of an **enabled** shell capability's `params` and required of it.
     ///
-    /// Either one alone is a complete instruction — "the last 200 lines, however long they are" is a
-    /// thing to ask for — so a config that names one and omits the other gets exactly that, with no
-    /// ceiling on the axis it left out. Only a config that names **neither** takes the
-    /// [defaults](DEFAULT_MAX_LINES), since a truncating mode with nothing to truncate past would
-    /// silently be the inline mode wearing another name.
-    fn from_params(params: &Value, report: &mut crate::validate::LaunchReport) -> Self {
+    /// `None` says at least one of them is missing or names no count of one or more, and by the time
+    /// it comes back the launch is already refused at that ceiling's own locus. A pair with a hole
+    /// in it is not a pair: "offload past nothing" is the inline mode wearing another name, so there
+    /// is no half-configured shape for this to return.
+    fn required(params: &Value, report: &mut crate::validate::LaunchReport) -> Option<Self> {
+        // Both read before either is answered, so an operator short of both hears about both.
+        let max_lines = required_positive_param(params, PARAM_MAX_LINES, report);
+        let max_chars = required_positive_param(params, PARAM_MAX_CHARS, report);
+        Some(Self {
+            max_lines: max_lines?,
+            max_chars: max_chars?,
+            dir: PathBuf::from(OFFLOAD_DIR),
+        })
+    }
+
+    /// Both ceilings as a **disabled** shell capability happens to have written them: read on
+    /// exactly the terms an enabled one's are, and required of nothing.
+    fn written(params: &Value, report: &mut crate::validate::LaunchReport) -> Option<Self> {
         let max_lines = positive_param(params, PARAM_MAX_LINES, report);
         let max_chars = positive_param(params, PARAM_MAX_CHARS, report);
-        match (max_lines, max_chars) {
-            (None, None) => Self::default(),
-            _ => Self {
-                max_lines,
-                max_chars,
-                dir: PathBuf::from(OFFLOAD_DIR),
-            },
-        }
+        Some(Self {
+            max_lines: max_lines?,
+            max_chars: max_chars?,
+            dir: PathBuf::from(OFFLOAD_DIR),
+        })
     }
 }
 
-/// One `params` entry read as a positive count, or `None` when it is **absent or `null`** — in which
-/// case the axis has no ceiling (or, when neither is named, both take their
-/// [defaults](DEFAULT_MAX_LINES)).
+/// One **required** ceiling: read, range-checked, and — absent — reported at its own locus, all in
+/// the one call that is the only way a resolver reaches it.
 ///
-/// A value that is present and names no count — a string, a zero, a fraction, a negative — is
-/// [reported](crate::validate) and refuses the launch. A zero ceiling would return no output at all,
-/// which is not a thing anybody configures on purpose, and silently reading it as "no ceiling on
-/// this axis" is the opposite of what it says.
+/// `None` covers every way the launch is now refused: the key was not written, or it names no whole
+/// count, or it names zero. A zero ceiling would return none of the command's output, which is not a
+/// thing anybody configures on purpose.
+fn required_positive_param(
+    params: &Value,
+    key: &str,
+    report: &mut crate::validate::LaunchReport,
+) -> Option<usize> {
+    crate::validate::required_positive_count_param(
+        params,
+        CAPABILITY_SHELL,
+        key,
+        CEILING_CONSEQUENCE,
+        report,
+    )
+    .map(saturating_ceiling)
+}
+
+/// One ceiling as written, or `None` when it is **absent or `null`** — the reader for a capability
+/// that is owed nothing, which is the disabled one. Everything present is judged exactly as
+/// [`required_positive_param`] judges it.
 fn positive_param(
     params: &Value,
     key: &str,
@@ -318,25 +379,43 @@ fn positive_param(
         params,
         CAPABILITY_SHELL,
         key,
-        "a ceiling of nothing would return none of the command's output",
+        CEILING_CONSEQUENCE,
         report,
     )
-    .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
+    .map(saturating_ceiling)
+}
+
+/// One ceiling narrowed to `usize`, saturating rather than refusing: a ceiling past `usize` is a
+/// count no command's output reaches, and "all of it" is exactly what the operator asked for.
+fn saturating_ceiling(count: u64) -> usize {
+    usize::try_from(count).unwrap_or(usize::MAX)
 }
 
 /// The shell half of one profile's contribution to the
 /// [launch pass](crate::validate::validate_launch): the [output mode](OffloadPolicy) and the two
 /// inline ceilings it declares, read exactly as the run will read them.
 ///
-/// Read whether the capability is switched on or off, on the terms the pass reads every other
-/// capability's: a disabled capability records the configuration the arm would have used, so a typo
-/// in it is a typo now rather than on the launch that flips the switch.
+/// **The switch decides which reading it gets.** An enabled capability offers a `shell` and is
+/// therefore owed both ceilings, so it goes through [`OffloadPolicy::resolve`] — the same function,
+/// reading the same `PARAM_*` constants, that [`shell_offload`](super::shell_offload) will call on
+/// the first turn. A disabled one offers nothing and is short of nothing; what it carries is the
+/// configuration the arm *would* have run at, so it is read by [`check_declaration`] and every value
+/// in it is still judged.
 pub fn check_launch(
     profile: &test_cabinet_core::gg::GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) {
-    if let Some(capability) = profile.capability(CAPABILITY_SHELL) {
+    let Some(capability) = profile.capability(CAPABILITY_SHELL) else {
+        return;
+    };
+    if capability.enabled {
         OffloadPolicy::resolve(
+            capability.implementation.as_deref(),
+            &capability.params,
+            report,
+        );
+    } else {
+        check_declaration(
             capability.implementation.as_deref(),
             &capability.params,
             report,
@@ -344,8 +423,27 @@ pub fn check_launch(
     }
 }
 
+/// Everything a **disabled** shell capability's declaration is judged on: the mode it names, and the
+/// two ceilings it writes, each read exactly as an enabled one's is.
+///
+/// What it is *not* judged on is absence. A capability that offers no `shell` configures nothing, so
+/// there is no ceiling it could be short of — and requiring one here would refuse the very document
+/// that expresses the off arm of a comparison. Everything written is still read, which is what keeps
+/// the two arms of that comparison one document with one switch moved rather than two documents
+/// judged differently.
+fn check_declaration(
+    implementation: Option<&str>,
+    params: &Value,
+    report: &mut crate::validate::LaunchReport,
+) {
+    OffloadPolicy::select(
+        implementation,
+        OffloadLimits::written(params, report),
+        report,
+    );
+}
+
 /// Runs a shell command in the workspace via `sh -c`, under an [output policy](OffloadPolicy).
-#[derive(Default)]
 pub struct ShellTool {
     /// How much of a command's output this tool returns inline, and whether it keeps the whole of it
     /// on disk.
@@ -798,33 +896,21 @@ async fn write_offload_pair(
 }
 
 impl OffloadLimits {
-    /// The tail of `text` that satisfies **every** configured ceiling, and whether anything was
-    /// dropped to get there. With both ceilings set the tighter one decides, since the result has to
-    /// satisfy both.
+    /// The tail of `text` that satisfies **both** ceilings, and whether anything was dropped to get
+    /// there. The tighter one decides, since the result has to satisfy both.
     fn tail<'a>(&self, text: &'a str) -> (&'a str, bool) {
-        let start = [
-            self.max_lines.map(|lines| line_tail_start(text, lines)),
-            self.max_chars.map(|chars| char_tail_start(text, chars)),
-        ]
-        .into_iter()
-        .flatten()
-        .max()
-        .unwrap_or(0);
+        let start =
+            line_tail_start(text, self.max_lines).max(char_tail_start(text, self.max_chars));
         (&text[start..], start > 0)
     }
 
-    /// How the ceilings read in prose — "last 200 lines", "last 4000 characters", or both — for the
-    /// tool description, the system prompt, and the truncation note.
+    /// How the ceilings read in prose — "last 200 lines and 4000 characters" — for the tool
+    /// description, the system prompt, and the truncation note.
     pub fn describe(&self) -> String {
-        match (self.max_lines, self.max_chars) {
-            (Some(lines), Some(chars)) => {
-                format!("last {lines} lines and {chars} characters")
-            }
-            (Some(lines), None) => format!("last {lines} lines"),
-            (None, Some(chars)) => format!("last {chars} characters"),
-            // Unreachable: a policy that resolved neither ceiling is `Inline` and has no limits.
-            (None, None) => "whole".to_string(),
-        }
+        format!(
+            "last {} lines and {} characters",
+            self.max_lines, self.max_chars
+        )
     }
 }
 

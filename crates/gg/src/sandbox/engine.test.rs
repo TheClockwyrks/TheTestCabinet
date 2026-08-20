@@ -71,7 +71,7 @@ fn trap_error(reason: &str) -> wasmtime::Error {
 /// that goes on reporting `err.to_string()` would leave the defect exactly where it was.
 #[test]
 fn a_traps_reason_leads_and_its_frames_follow() {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let store = classifiable_store(limits);
 
     for reason in [
@@ -104,7 +104,7 @@ fn a_traps_reason_leads_and_its_frames_follow() {
 /// section that was omitted.
 #[test]
 fn an_unwrapped_failure_is_reported_as_itself() {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let store = classifiable_store(limits);
     let error = wasmtime::Error::msg("unknown import `test-cabinet:gg/board`");
 
@@ -128,7 +128,7 @@ fn an_unwrapped_failure_is_reported_as_itself() {
 /// than naming one — see [`exit_message`](super::exit_message)'s own note.
 #[test]
 fn an_explicit_exit_is_named_without_inventing_its_status() {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let store = classifiable_store(limits);
 
     let rendered = |status: i32| {
@@ -172,7 +172,7 @@ fn an_explicit_exit_is_named_without_inventing_its_status() {
 /// the model's own file.
 #[test]
 fn a_frame_the_artifact_names_nothing_for_is_struck() {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let store = classifiable_store(limits);
     let nameless = wasmtime::Error::msg("wasm trap: wasm `unreachable` instruction executed")
         .context(
@@ -213,7 +213,7 @@ fn a_frame_the_artifact_names_nothing_for_is_struck() {
 fn the_elapsed_clock_names_a_timeout_only_where_the_guest_stops_itself() {
     let limits = SandboxLimits {
         timeout: std::time::Duration::ZERO,
-        ..SandboxLimits::default()
+        ..SandboxLimits::AMPLE
     };
 
     let stops_itself =
@@ -253,7 +253,7 @@ fn the_elapsed_clock_names_a_timeout_only_where_the_guest_stops_itself() {
 /// component.
 #[test]
 fn an_exit_is_never_an_artifact_defect() {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let store = classifiable_store(limits);
     let error = classify(
         &store,
@@ -276,7 +276,7 @@ fn an_exit_is_never_an_artifact_defect() {
 /// about a JavaScript engine.
 #[test]
 fn the_ceilings_report_what_the_guest_said() {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let said = "Fatal error: failed to allocate 33554440 bytes of memory with alignment 4";
 
     let mut store = classifiable_store(limits);
@@ -412,7 +412,7 @@ fn the_component_compiles_once_per_process() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -427,7 +427,7 @@ fn the_component_compiles_once_per_process() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -586,7 +586,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -607,7 +607,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );

@@ -595,6 +595,11 @@ fn every_language_spells_one_named_export_with_the_placeholder_gone() {
 /// on and one gg invented would be a difference between two arms that no document records.
 ///
 /// An absent param and a `null` one are the same answer, since neither is a language named.
+///
+/// The line is the params table's, not this resolver's, because the sweep over that table notices
+/// the same hole and an operator with one thing to fix is owed one line. So it carries no
+/// vocabulary either: a list of the eleven ids is what corrects a name the operator *wrote* — see
+/// [`an_unreadable_language_is_refused`] — and an absence has no name to correct.
 #[test]
 fn a_code_agent_that_names_no_language_is_refused() {
     for params in [json!({}), json!({ "language": null })] {
@@ -608,9 +613,10 @@ fn a_code_agent_that_names_no_language_is_refused() {
             defects[0].found.is_empty(),
             "{params}: the defect is about a value's absence, so there is nothing to quote back"
         );
-        assert!(
-            defects[0].known.contains(&"python".to_string()),
-            "{params}: the refusal offers the languages gg can drive"
+        assert_eq!(
+            defects[0],
+            crate::validate::missing_required_param(CAPABILITY_RESPONSES_AS_CODE, PARAM_LANGUAGE),
+            "{params}: the sweep and the resolver have to produce the same line"
         );
     }
 }

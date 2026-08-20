@@ -99,8 +99,13 @@
 //! names it is nearly. See [`suggest`] for what "nearly" means and why the candidates are the bound
 //! ones alone.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgramLanguage};
+
+/// The param this module reads, re-exported from the crate that owns gg's configuration
+/// vocabulary: the spelling a document is written in and the spelling gg reads it by are one
+/// constant, so a key cannot be renamed on one side of the wire alone.
+pub use test_cabinet_core::gg::PARAM_DOC_VIEW_TYPES;
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
@@ -141,12 +146,13 @@ pub use search::{DEFAULT_SEARCH_LIMIT, DocHit, DocKind, DocQuery, DocSearch, MAX
 /// places is the union of the enabled ones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocViewType {
-    /// The types the signature writes in the **return** position. On by default.
+    /// The types the signature writes in the **return** position — what a call hands back.
     Return,
-    /// The types the function's **arguments** declare. Off by default.
+    /// The types the function's **arguments** declare, which the signature the model is already
+    /// reading names without declaring.
     Parameters,
     /// The **error** types the function's own documentation comment declares it throws, from the
-    /// catalogue's [`throws`](crate::sandbox::CatalogueFunction::throws) list. On by default.
+    /// catalogue's [`throws`](crate::sandbox::CatalogueFunction::throws) list — how a call fails.
     Errors,
 }
 
@@ -183,19 +189,6 @@ impl DocViewType {
     /// The flag `id` names, or `None` for a key gg does not know.
     pub fn from_id(id: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|flag| flag.id() == id)
-    }
-
-    /// Whether the flag is on in a configuration that says nothing about it.
-    ///
-    /// [`Return`](Self::Return) and [`Errors`](Self::Errors) are on and
-    /// [`Parameters`](Self::Parameters) is off: what a call hands back and how it fails are the two
-    /// things a model has to hold to use the result, while an argument's type is written into the
-    /// signature the model is already reading.
-    pub fn default_on(self) -> bool {
-        match self {
-            Self::Return | Self::Errors => true,
-            Self::Parameters => false,
-        }
     }
 }
 
@@ -234,29 +227,44 @@ pub struct DocViewTypes {
     errors: bool,
 }
 
-impl Default for DocViewTypes {
-    /// Each flag at [its own default](DocViewType::default_on) — which is *not* the same thing as
-    /// "everything on": `return` and `errors` are on, `parameters` is off.
-    ///
-    /// Built by folding [`default_on`](DocViewType::default_on) over
-    /// [`ALL`](DocViewType::ALL) rather than by listing bools, so a flag's default lives in exactly
-    /// one place and a new flag cannot be added here with a silently different one.
-    fn default() -> Self {
-        let mut types = Self::OFF;
-        for flag in DocViewType::ALL {
-            types.set(flag, flag.default_on());
-        }
-        types
-    }
-}
-
 impl DocViewTypes {
-    /// Every flag off — what the master switch (`"docViewTypes": false`) produces. A function's
-    /// signature names its types; reading one is then a call the model makes for itself.
+    /// Every flag off — what the master switch (`"docViewTypes": false`) produces, and what an
+    /// agent that takes no code turn carries. A function's signature names its types; reading one
+    /// is then a call the model makes for itself.
     pub const OFF: Self = Self {
         returns: false,
         parameters: false,
         errors: false,
+    };
+
+    /// Every flag on — what `"docViewTypes": true` produces.
+    ///
+    /// The counterpart of [`OFF`](Self::OFF), and the only other flag set a single word can state.
+    /// Anything between the two is written flag by flag, because a set naming some of them would
+    /// leave gg to decide the rest.
+    pub const EVERY: Self = Self {
+        returns: true,
+        parameters: true,
+        errors: true,
+    };
+
+    /// The flag set a resolver hands back once it has [refused the launch](crate::validate).
+    ///
+    /// It opens nothing, and its name rather than its value is the point: the run it belongs to
+    /// does not start, so no documentation is ever placed under it, and the next reader of the line
+    /// that produced it can see that gg chose no set of its own.
+    pub const LAUNCH_REFUSED: Self = Self::OFF;
+
+    /// **What a call hands back and how it fails**, and not the types its signature already names —
+    /// the flag set gg's own cases place a fixture's views under.
+    ///
+    /// `#[cfg(test)]`, because it is a fixture and not a figure gg would stand in for an absent
+    /// one: a run's flags come from that run's own document or the launch is refused.
+    #[cfg(test)]
+    pub(crate) const RETURN_AND_ERRORS: Self = Self {
+        returns: true,
+        parameters: false,
+        errors: true,
     };
 
     /// Whether `flag` is on.
@@ -313,10 +321,6 @@ impl DocViewTypes {
     }
 }
 
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param choosing which of a
-/// function's types a documentation view opens beside it. Absent takes [`DocViewTypes::default`].
-pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
-
 /// The [locus](crate::validate::param_locus) every `docViewTypes` refusal is filed under, and the
 /// stem each per-key refusal appends its key to.
 fn doc_view_types_locus() -> String {
@@ -327,101 +331,151 @@ fn doc_view_types_locus() -> String {
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's
 /// [`docViewTypes`](PARAM_DOC_VIEW_TYPES) param.
 ///
-/// The param names a **delta against the defaults**, not a whole configuration, exactly as
-/// [`healing`](crate::healing::resolve_healing) does. Saying nothing means
-/// [the defaults](DocViewTypes::default) — which is *not* "everything on", because
-/// [`parameters`](DocViewType::Parameters) is [off by default](DocViewType::default_on).
+/// The param states a **whole flag set**, not a delta, exactly as
+/// [`healing`](crate::healing::resolve_healing) does. Every setting of the three is defensible and
+/// none is obviously right, which is what makes them something to measure rather than something to
+/// choose — so a set naming two of the three has not said what the third arm was.
 ///
 /// | `params.docViewTypes` | Meaning |
 /// | --- | --- |
-/// | absent / `null` / `true` / `{}` | the **defaults** — `return` and `errors` on, `parameters` off |
-/// | `false` | every flag **off** — the master switch |
-/// | `{ "parameters": true }` | `parameters` on, the rest at their defaults |
-/// | `{ "return": false }` | `return` off, the rest at their defaults |
+/// | `true` | [every flag on](DocViewTypes::EVERY) |
+/// | `false` | [every flag off](DocViewTypes::OFF) — the master switch |
+/// | an object naming all three | each flag exactly as its toggle reads |
+/// | absent / `null` / `{}` / an object leaving a flag out | **refused** — the launch does not start |
 /// | `{ "return": 0 }` | **refused**: a non-boolean is not a toggle |
 /// | `{ "returns": true }` | **refused**: `returns` names no flag |
 /// | `5`, `"off"`, `[]` | **refused**: there is no set of toggles here to read |
 ///
-/// A key or value gg cannot act on [refuses the launch](crate::validate) rather than leaving the
-/// default standing, for the reason [`resolve_healing`](crate::healing::resolve_healing) refuses
-/// one: `{"returns": false}` reads as a run with `return` **on**, which is the arm its author was
-/// trying to switch off, and the [agent surface](crate::telemetry) records the *resolved* flags, so
-/// a typo read as the default would leave a run whose every record says it ran the arm it did not.
-/// The flag ids are **contract-visible** — they are what the console's capability catalogue writes
-/// and what persisted run data records — so they are read literally, with only surrounding
-/// whitespace forgiven, and never guessed at. The defaults come back anyway to keep the resolver
-/// total for the per-turn calls that re-read it.
+/// Every refusal above is the same refusal: gg substitutes nothing. `{"returns": false}` reads as a
+/// run whose author was switching `return` off, the [agent surface](crate::telemetry) records the
+/// *resolved* flags, and a run gg filled the hole in would leave a record saying it ran the arm it
+/// did not. The flag ids are **contract-visible** — they are what the console's capability
+/// catalogue writes and what persisted run data records — so they are read literally, with only
+/// surrounding whitespace forgiven, and never guessed at. A flag set comes back anyway to keep the
+/// resolver total for the per-turn calls that re-read it.
 ///
-/// The flags are read whether the capability is switched on or off, on the rule the whole params
-/// table follows: a disabled capability records the configuration the arm would have used, so the
-/// two arms of one comparison stay symmetric, and a typo skipped because a switch happened to be
-/// off is a typo that surfaces on the launch where it is flipped.
+/// An **absent** capability opens no documentation view at all, so it resolves to
+/// [`OFF`](DocViewTypes::OFF) and nothing is required of it. A capability that is present and
+/// **disabled** requires nothing of itself either, and what it writes is read exactly as an enabled
+/// one's is: a disabled capability records the configuration the arm would have used, so the two
+/// arms of one comparison stay symmetric, and a set gg could not honour is a refusal now rather
+/// than on the launch that flips the switch.
 pub fn resolve_doc_view_types(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) -> DocViewTypes {
-    let mut types = DocViewTypes::default();
     let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
-        return types;
+        return DocViewTypes::OFF;
     };
-    let Some(value) = capability.params.get(PARAM_DOC_VIEW_TYPES) else {
-        return types;
-    };
-
-    match value {
-        // Three spellings of "say nothing", all meaning the default set: a key written out as null,
-        // an explicit `true`, and an object that changes nothing.
-        Value::Null | Value::Bool(true) => {}
-        Value::Bool(false) => types = DocViewTypes::OFF,
-        Value::Object(toggles) => {
-            for (key, value) in toggles {
-                match (DocViewType::from_id(key.trim()), value.as_bool()) {
-                    // The one arm that moves a flag off its default, in either direction: `false`
-                    // turns off `return` or `errors`, and `true` turns on `parameters`.
-                    (Some(flag), Some(on)) => types.set(flag, on),
-                    // A known key carrying something that is not a toggle: reading `0` as `false`
-                    // would be gg deciding what an operator meant, which is the whole of what this
-                    // refusal exists to stop.
-                    (Some(flag), None) => report.report(crate::validate::LaunchDefect::run_level(
-                        format!("{}.{key}", doc_view_types_locus()),
-                        crate::validate::as_written(value),
-                        format!(
-                            "the `{}` documentation-view type is opened or withheld with `true` or \
-                             `false`; gg cannot read this as either, and leaving it at its default \
-                             would open a different amount of documentation than this line was \
-                             written to ask for.",
-                            flag.id()
-                        ),
-                    )),
-                    (None, _) => report.report(
-                        crate::validate::LaunchDefect::run_level(
-                            format!("{}.{key}", doc_view_types_locus()),
-                            crate::validate::as_written(value),
-                            format!(
-                                "`{key}` names no documentation-view type, so it opens and \
-                                 withholds nothing; the agent would read a set of types nobody \
-                                 wrote."
-                            ),
-                        )
-                        .known(DocViewType::ALL.map(DocViewType::id)),
-                    ),
-                }
-            }
-        }
-        other => report.report(
-            crate::validate::LaunchDefect::run_level(
-                doc_view_types_locus(),
-                crate::validate::as_written(other),
-                format!(
-                    "the `{PARAM_DOC_VIEW_TYPES}` param is `true` (the defaults), `false` (every \
-                     type withheld), or an object of per-type toggles; there is nothing here gg \
-                     can read a set of types from."
-                ),
-            )
-            .known(DocViewType::ALL.map(DocViewType::id)),
-        ),
+    if capability.enabled {
+        let Some(value) = crate::validate::required_param(
+            &capability.params,
+            CAPABILITY_RESPONSES_AS_CODE,
+            PARAM_DOC_VIEW_TYPES,
+            report,
+        ) else {
+            return DocViewTypes::LAUNCH_REFUSED;
+        };
+        return read_doc_view_types(value, report);
     }
+    match capability
+        .params
+        .get(PARAM_DOC_VIEW_TYPES)
+        .filter(|value| !value.is_null())
+    {
+        Some(value) => read_doc_view_types(value, report),
+        None => DocViewTypes::OFF,
+    }
+}
 
+/// The flag set one written [`docViewTypes`](PARAM_DOC_VIEW_TYPES) value names — the half of
+/// [`resolve_doc_view_types`] that reads a value rather than deciding whether one had to be there.
+fn read_doc_view_types(value: &Value, report: &mut crate::validate::LaunchReport) -> DocViewTypes {
+    match value {
+        Value::Bool(true) => DocViewTypes::EVERY,
+        Value::Bool(false) => DocViewTypes::OFF,
+        Value::Object(toggles) => read_type_toggles(toggles, report),
+        other => {
+            report.report(
+                crate::validate::LaunchDefect::run_level(
+                    doc_view_types_locus(),
+                    crate::validate::as_written(other),
+                    format!(
+                        "the `{PARAM_DOC_VIEW_TYPES}` param is `true` (every type), `false` (every \
+                         type withheld), or an object naming all three; there is nothing here gg \
+                         can read a set of types from."
+                    ),
+                )
+                .known(DocViewType::ALL.map(DocViewType::id)),
+            );
+            DocViewTypes::LAUNCH_REFUSED
+        }
+    }
+}
+
+/// The flag set an object of per-type toggles names, holding it to naming **every** flag.
+///
+/// Two refusals live here and they are different questions. A key gg cannot act on is a value the
+/// operator wrote and gg could not honour; a flag nobody named is a value the operator did not
+/// write and gg will not choose. A key that is known but carries no toggle counts as named, so one
+/// mistyped value is one line rather than two at the same locus.
+fn read_type_toggles(
+    toggles: &Map<String, Value>,
+    report: &mut crate::validate::LaunchReport,
+) -> DocViewTypes {
+    let mut types = DocViewTypes::OFF;
+    let mut named: Vec<DocViewType> = Vec::new();
+    for (key, value) in toggles {
+        match (DocViewType::from_id(key.trim()), value.as_bool()) {
+            // The one arm that opens or withholds a type, in either direction.
+            (Some(flag), Some(on)) => {
+                types.set(flag, on);
+                named.push(flag);
+            }
+            // A known key carrying something that is not a toggle: reading `0` as `false` would be
+            // gg deciding what an operator meant, which is the whole of what this refusal exists to
+            // stop.
+            (Some(flag), None) => {
+                named.push(flag);
+                report.report(crate::validate::LaunchDefect::run_level(
+                    format!("{}.{key}", doc_view_types_locus()),
+                    crate::validate::as_written(value),
+                    format!(
+                        "the `{}` documentation-view type is opened or withheld with `true` or \
+                         `false`; gg cannot read this as either, and it opens no amount of \
+                         documentation an operator did not write.",
+                        flag.id()
+                    ),
+                ))
+            }
+            (None, _) => report.report(
+                crate::validate::LaunchDefect::run_level(
+                    format!("{}.{key}", doc_view_types_locus()),
+                    crate::validate::as_written(value),
+                    format!(
+                        "`{key}` names no documentation-view type, so it opens and withholds \
+                         nothing; the agent would read a set of types nobody wrote."
+                    ),
+                )
+                .known(DocViewType::ALL.map(DocViewType::id)),
+            ),
+        }
+    }
+    for flag in DocViewType::ALL {
+        if !named.contains(&flag) {
+            report.report(crate::validate::LaunchDefect::run_level(
+                format!("{}.{}", doc_view_types_locus(), flag.id()),
+                "",
+                format!(
+                    "the `{PARAM_DOC_VIEW_TYPES}` object does not name `{}`, so nothing says \
+                     whether the type is opened. How much documentation one lookup places is an \
+                     axis a study slices on, so a set naming two of the three has not said what \
+                     the third arm was.",
+                    flag.id()
+                ),
+            ));
+        }
+    }
     types
 }
 

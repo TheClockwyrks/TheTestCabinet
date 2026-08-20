@@ -164,7 +164,7 @@ input alone. Nothing a language compiles with may be reachable from another
 preparation running at the same time.
 
 Several preparations are in flight at once routinely: language is resolved per
-agent, agents run in parallel up to `limits.maxParallel` (16 by default), each
+agent, agents run in parallel up to `limits.maxParallel`, each
 turn may chain up to four programs, and each of those may compile modules
 beside its own program. Every one of them happens in the same process.
 

@@ -893,8 +893,16 @@ fn a_stopped_capture_records_no_prompt_frame() {
 /// references a body that was never written.
 #[test]
 fn crossing_the_byte_ceiling_stops_capture_for_the_whole_run() {
-    // Big enough for the header and a turn or two, far too small for twenty.
-    let (dir, recorder) = recorder_in(Some(2_048));
+    // Big enough for the header and a turn or two, far too small for twenty. Measured against a
+    // header the journal actually writes rather than guessed: the header carries the run's whole
+    // capability set, so a figure chosen once stops leaving room for any turn at all the moment a
+    // fully specified set grows.
+    let (header, empty) = recorder_in(None);
+    empty.finish();
+    let header_bytes = std::fs::metadata(header.path().join(GG_SESSION_JOURNAL_PATH))
+        .expect("the header was written")
+        .len();
+    let (dir, recorder) = recorder_in(Some(header_bytes + 2_048));
     for turn in 0..20 {
         recorder.record_model_io(
             RecordedCall {

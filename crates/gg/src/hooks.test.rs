@@ -7,7 +7,10 @@
 //! against a stubbed runner would prove nothing about the one thing it exists to do.
 
 use super::*;
-use test_cabinet_core::gg::{ALL_HOOK_EVENTS, GgAgentConfig, GgCapabilitySet, ROOT_PROFILE_ID};
+use test_cabinet_core::gg::{
+    ALL_HOOK_EVENTS, CAPABILITY_SHELL, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
+    ROOT_PROFILE_ID, SHELL_OUTPUT_ADAPTIVE,
+};
 
 /// An agent profile carrying `hooks` and nothing else that matters here — the declaration site for
 /// the eight [agent events](test_cabinet_core::gg::AGENT_HOOK_EVENTS), which is what nearly every
@@ -232,41 +235,28 @@ fn a_hook_gg_cannot_arm_refuses_the_launch() {
     assert!(defects[1].message.contains("session-end"), "{defects:?}");
 }
 
+/// A command hook that gg can arm: a command line and the ceiling it runs under, which is every
+/// field a command hook is required to name.
+fn command_hook(command: &str, timeout_secs: Option<f64>) -> GgHookAction {
+    GgHookAction::Command {
+        command: command.to_string(),
+        cwd: None,
+        timeout_secs,
+        output: None,
+    }
+}
+
 /// **Every part of an action gg would otherwise read past.** A gate that silently does not run is
 /// worse than no gate, and each of these is a way of having one: a blank command line runs `sh -c`
 /// on nothing and passes every operation it gates; a custom hook with no source is written to an
 /// empty file and dies on the first operation for printing no decision; a `timeoutSecs` gg cannot
-/// read is silently replaced by a five-minute ceiling nobody wrote.
+/// read names no length of time to kill the command at.
 #[test]
 fn an_action_gg_cannot_perform_refuses_the_launch() {
     let cases: [(GgHookAction, &str); 4] = [
-        (
-            GgHookAction::Command {
-                command: "   ".to_string(),
-                cwd: None,
-                timeout_secs: None,
-                output: None,
-            },
-            "command",
-        ),
-        (
-            GgHookAction::Command {
-                command: "npm test".to_string(),
-                cwd: None,
-                timeout_secs: Some(0.0),
-                output: None,
-            },
-            "timeoutSecs",
-        ),
-        (
-            GgHookAction::Command {
-                command: "npm test".to_string(),
-                cwd: None,
-                timeout_secs: Some(-5.0),
-                output: None,
-            },
-            "timeoutSecs",
-        ),
+        (command_hook("   ", Some(60.0)), "command"),
+        (command_hook("npm test", Some(0.0)), "timeoutSecs"),
+        (command_hook("npm test", Some(-5.0)), "timeoutSecs"),
         (
             GgHookAction::Custom {
                 source: "  ".to_string(),
@@ -288,22 +278,119 @@ fn an_action_gg_cannot_perform_refuses_the_launch() {
     }
 }
 
-/// An **absent** `timeoutSecs` takes gg's documented default, which is the whole of what absent
-/// means anywhere in this contract.
+/// An **absent** `timeoutSecs` refuses the launch. How long a build or a test suite may run before
+/// it is worth killing is a property of the workspace and nothing gg could know, so a hook killed at
+/// a figure gg picked reports a failure the workspace did not have — and reports it as the gate's
+/// own verdict, which is the one thing a gate must never be wrong about.
 #[test]
-fn an_absent_hook_timeout_takes_the_default() {
+fn a_command_hook_that_names_no_ceiling_refuses_the_launch() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
     set.hooks = vec![GgHook {
         event: GgHookEvent::SessionStart,
+        action: command_hook("npm test", None),
+        name: "gate".to_string(),
+    }];
+    let defects = crate::validate::validate_capability_set(&set)
+        .expect_err("a hook with no ceiling must not start a run");
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "hooks[gate].timeoutSecs");
+    assert_eq!(defects[0].found, "");
+}
+
+/// …and one that names a ceiling launches, `cwd` and `output` left out and all. Those two are
+/// **inheritance rather than substitution**: absent, the command runs in the agent's workspace root
+/// and its output follows the agent's own shell configuration, which is a setting an operator can
+/// mean rather than a figure gg stood in for.
+#[test]
+fn a_hook_that_inherits_its_cwd_and_its_output_mode_launches() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.hooks = vec![GgHook {
+        event: GgHookEvent::SessionStart,
+        action: command_hook("npm test", Some(600.0)),
+        name: "gate".to_string(),
+    }];
+    assert_eq!(crate::validate::validate_capability_set(&set), Ok(()));
+}
+
+/// An `output` override names a **mode**, and the ceilings a truncating one measures its tail
+/// against are the agent's own — so the override is judged against the `shell` the hook's own
+/// declaration site configures, exactly as [`run_command_hook`] will run it.
+#[test]
+fn a_truncating_output_override_launches_over_a_shell_that_declares_ceilings() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_SHELL);
+    set.agents[0].hooks = vec![GgHook {
+        event: GgHookEvent::PreShell,
         action: GgHookAction::Command {
             command: "npm test".to_string(),
             cwd: None,
-            timeout_secs: None,
-            output: None,
+            timeout_secs: Some(600.0),
+            output: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
         },
         name: "gate".to_string(),
     }];
-    crate::validate::validate_capability_set(&set).expect("an absent ceiling is not a defect");
+    assert_eq!(crate::validate::validate_capability_set(&set), Ok(()));
+}
+
+/// …and the same override on an agent that configures no `shell` at all is refused. There is no
+/// ceiling for the tail to be measured against and gg picks none, so the hook would run under a
+/// mode nobody could have written the figures for.
+#[test]
+fn a_truncating_output_override_over_a_shell_less_agent_is_refused() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    // A profile that leaves the capability out of its list entirely, which is the one way to leave
+    // it unconfigured: the authored root carries a `shell`, so it has to be taken away rather than
+    // switched off, or the ceilings the override would be measured against would still be there.
+    set.agents[0]
+        .capabilities
+        .retain(|capability| capability.id != CAPABILITY_SHELL);
+    set.agents[0].hooks = vec![GgHook {
+        event: GgHookEvent::PreShell,
+        action: GgHookAction::Command {
+            command: "npm test".to_string(),
+            cwd: None,
+            timeout_secs: Some(600.0),
+            output: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
+        },
+        name: "gate".to_string(),
+    }];
+    let defects = crate::validate::validate_capability_set(&set)
+        .expect_err("a tail with no ceiling must not start a run");
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "hooks[gate].output");
+    assert_eq!(defects[0].found, SHELL_OUTPUT_ADAPTIVE);
+}
+
+/// …and an agent whose `shell` is itself unhonourable is named **once**, at the capability that
+/// carries the defect. The hook's override reads a policy that is already refused, and a refusal
+/// naming one typo at two loci is the thing an operator reads as two typos.
+#[test]
+fn a_shell_gg_cannot_honour_is_not_reported_again_at_the_hook() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            implementation: Some("offlaod".to_string()),
+            ..GgCapabilityConfig::enabled(CAPABILITY_SHELL)
+        },
+    );
+    set.agents[0].hooks = vec![GgHook {
+        event: GgHookEvent::PreShell,
+        action: GgHookAction::Command {
+            command: "npm test".to_string(),
+            cwd: None,
+            timeout_secs: Some(600.0),
+            output: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
+        },
+        name: "gate".to_string(),
+    }];
+    let defects = crate::validate::validate_capability_set(&set)
+        .expect_err("a shell arm gg has no mode for must not start a run");
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(
+        defects[0].locus,
+        crate::validate::implementation_locus(CAPABILITY_SHELL)
+    );
 }
 
 /// …and a set whose hooks all resolve launches, hooks and all. The refusal has to be exactly the

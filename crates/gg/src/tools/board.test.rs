@@ -34,7 +34,7 @@ fn fixture() -> (Arc<Mutex<BoardStore>>, ToolContext, TempDir) {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
     (
-        Arc::new(Mutex::new(BoardStore::new(BoardCaps::default()))),
+        Arc::new(Mutex::new(BoardStore::new(BoardCaps::detached()))),
         ctx,
         dir,
     )
@@ -389,7 +389,7 @@ async fn unknown_issue_is_a_recoverable_tool_error() {
 #[tokio::test]
 async fn the_board_populations_are_reported_by_the_tools_that_change_them() {
     let (store, ctx, _dir) = fixture();
-    let caps = BoardCaps::default();
+    let caps = BoardCaps::detached();
 
     let epic = CreateEpicTool::new(Arc::clone(&store))
         .invoke(epic_args("core"), &ctx)

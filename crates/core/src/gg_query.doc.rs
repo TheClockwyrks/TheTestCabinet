@@ -45,8 +45,15 @@ pub const GG_DATE_FIELDS: &[&str] = &["started", "finished"];
 /// be groupable.
 pub const NO_LIMIT_HIT: &str = "none";
 
-/// The name a capability that selects no implementation reports under `cap.<id>.impl`.
-pub const DEFAULT_IMPLEMENTATION: &str = "default";
+/// The name a capability that selects **no** implementation reports under `cap.<id>.impl` — one of
+/// the sixteen that offer no arms, one switched off, or the one whose unwritten arm is a
+/// declaration of its own.
+///
+/// Deliberately a value rather than an absence, for the reason [`NO_LIMIT_HIT`] is: "this
+/// capability has no arm" is a bucket a group-by must be able to show. It is emphatically not a
+/// *default* — gg selects no arm on an operator's behalf, so there is no arm behind this name for a
+/// query to be reading past.
+pub const NO_IMPLEMENTATION: &str = "none";
 
 /// The `code.language` value of a tree the analyzer parsed in **more than one**
 /// language.
@@ -320,7 +327,7 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
             format!("cap.{id}.impl"),
             cfg.implementation
                 .clone()
-                .unwrap_or_else(|| DEFAULT_IMPLEMENTATION.to_string()),
+                .unwrap_or_else(|| NO_IMPLEMENTATION.to_string()),
         );
         flatten_json(&format!("cap.{id}"), &cfg.params, doc);
     }

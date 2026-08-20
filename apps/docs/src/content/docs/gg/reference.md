@@ -110,18 +110,18 @@ written for the pinned index only the [`markdown` strategy](/gg/memories/)
 keeps; under `keyword-search` a memory is found by searching, and
 `create_memory` stops requiring the `description` the index line was made of.
 
-The top-level entry is the default configuration's, and each other configuration
-is a labelled variant beside it. A configuration that changes only a number,
-such as a memory's length ceiling or a search's result cap, is not a variant,
-because the schema and the sentence are the same ones.
+The top-level entry is the plainest configuration of that tool, and each other
+configuration is a labelled variant beside it. A configuration that changes only
+a number, such as a memory's length ceiling or a search's result cap, is not a
+variant, because the schema and the sentence are the same ones.
 
-Limits are the one thing the page shows at a run's defaults rather than in every
-form they can take. A limit can be switched off entirely, since `0` means "no
-limit", which drops its clause rather than changing its figure; with every limit
-off, `write_memory`'s "(at most 64 memories, 4096 characters…)" parenthetical
-goes with them. Enumerating that would be a subset lattice per tool. Every call,
-every argument and every sentence gg can send is on the page, and only the
-numbers a run bounds them by belong to the run.
+Limits are the one thing the page shows at illustrative figures rather than in
+every form they can take. A limit can be switched off entirely, since `0` means
+"no limit", which drops its clause rather than changing its figure; with every
+limit off, `write_memory`'s "(at most 64 memories, 4096 characters…)"
+parenthetical goes with them. Enumerating that would be a subset lattice per
+tool. Every call, every argument and every sentence gg can send is on the page,
+and only the numbers a run bounds them by belong to the run.
 
 Some descriptions enumerate run data rather than a policy: the skills in an
 agent's library, the agents on the roster, the state an agent stands in and

@@ -52,8 +52,8 @@ async fn drive_compaction(
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -462,12 +462,13 @@ async fn a_handoff_model_that_will_not_resolve_ends_the_run() {
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
-            id: CAPABILITY_COMPACTION.to_string(),
-            enabled: true,
             implementation: Some(
                 test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string(),
             ),
-            params: json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+            ..crate::tools::configured(
+                CAPABILITY_COMPACTION,
+                json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+            )
         },
     );
     let inv = invocation(dir.path(), set);

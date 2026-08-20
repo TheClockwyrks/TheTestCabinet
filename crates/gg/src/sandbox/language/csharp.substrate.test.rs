@@ -197,7 +197,7 @@ fn evaluate_granting(
     library: bool,
     build: impl FnOnce(&CallLog) -> FakeOperationApi,
 ) -> (SandboxOutcome, CallLog) {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = build(&log);
     // Both of these before the store exists, for the reason this function's documentation gives.
@@ -803,7 +803,7 @@ public static class Program
 }
 "#,
         scope,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         api,
     );

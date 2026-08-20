@@ -56,21 +56,61 @@ fn feed_peak(guard: &mut LoopGuard, text: &str, chunk_chars: usize) -> (Option<L
     (None, peak)
 }
 
+/// The lookback the detector cases here are judged over.
+const WINDOW_WORDS: usize = 256;
+
+/// How often one word may occur in [`WINDOW_WORDS`] before it counts as an offender.
+const REPEAT_THRESHOLD: u32 = 32;
+
+/// How many distinct offenders saturate the window in these cases.
+const MIN_OFFENDERS: usize = 2;
+
+/// How long the window must stay saturated before a reply is abandoned in these cases — the term
+/// that separates a loop from a data literal, and the reason the tilemap case below survives.
+const MIN_SATURATED_RUN: usize = 3000;
+
+/// The length backstop these cases run under.
+const MAX_RESPONSE_CHARS: usize = 250_000;
+
+/// **The knobs every detector case here is judged against.** A detector has no configuration gg
+/// would supply — an armed profile writes all five — so the algorithm tests state the five they
+/// mean, once, and vary one of them where the case is about that one.
+///
+/// The figures are the ones a profile watching a coding model plausibly writes, which is what makes
+/// [`a_tilemap_literal_saturates_the_window_and_is_still_not_a_loop`] the test it is: a narrower
+/// sustained-run term would discard that reply.
+fn knobs() -> LoopGuardConfig {
+    LoopGuardConfig {
+        window_words: WINDOW_WORDS,
+        repeat_threshold: REPEAT_THRESHOLD,
+        min_offenders: MIN_OFFENDERS,
+        min_saturated_run: MIN_SATURATED_RUN,
+        max_response_chars: MAX_RESPONSE_CHARS,
+    }
+}
+
 /// A configuration whose repetition rule can never fire, for isolating the length backstop and the
 /// bookkeeping tests: no window can ever hold `usize::MAX` distinct offenders.
 fn repetition_off() -> LoopGuardConfig {
     LoopGuardConfig {
         min_offenders: usize::MAX,
-        ..LoopGuardConfig::default()
+        ..knobs()
     }
 }
 
-/// An armed declaration with every knob left to gg's defaults — the base every resolution case
-/// varies one field of.
+/// **A fully specified armed declaration** — the base every resolution case varies one field of.
+///
+/// It writes all five knobs because an armed detector owes all five: a base that left one out would
+/// make every case below a refusal about the knob it forgot rather than about the knob it is
+/// testing.
 fn armed_declaration() -> GgLoopDetection {
     GgLoopDetection {
         enabled: true,
-        ..GgLoopDetection::default()
+        window_words: Some(WINDOW_WORDS as u64),
+        repeat_threshold: Some(u64::from(REPEAT_THRESHOLD)),
+        min_offenders: Some(MIN_OFFENDERS as u64),
+        min_saturated_run: Some(MIN_SATURATED_RUN as u64),
+        max_response_chars: Some(MAX_RESPONSE_CHARS as u64),
     }
 }
 
@@ -263,7 +303,7 @@ survived into a later frame would be heard at the wrong moment.
 ///   became repetitive at its very first word would have taken.
 #[test]
 fn a_reply_that_became_a_period_is_abandoned() {
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
 
     let mut trip = None;
     let mut lines = 0;
@@ -279,21 +319,21 @@ fn a_reply_that_became_a_period_is_abandoned() {
         trip,
         Some(LoopTrip::Repetition {
             offenders: 2,
-            saturated_run: DEFAULT_MIN_SATURATED_RUN,
+            saturated_run: MIN_SATURATED_RUN,
             words: 3065,
         }),
     );
     assert_eq!(lines, 1533, "the trip lands mid-line, on `void` #1533");
 
-    let expected = (DEFAULT_WINDOW_WORDS + DEFAULT_MIN_SATURATED_RUN) as u64;
+    let expected = (WINDOW_WORDS + MIN_SATURATED_RUN) as u64;
     assert!(
-        (expected - 3065) < DEFAULT_WINDOW_WORDS as u64,
+        (expected - 3065) < WINDOW_WORDS as u64,
         "the trip should land within one window of N + R",
     );
     // And nowhere near the length backstop: the repetition rule is what caught this, at 5% of the
     // characters the backstop would have allowed.
     assert_eq!(guard.chars_seen(), 12_261);
-    assert!(guard.chars_seen() < DEFAULT_MAX_RESPONSE_CHARS);
+    assert!(guard.chars_seen() < MAX_RESPONSE_CHARS);
 }
 
 /// The false positive that would make the feature unusable, built the way a model really writes a
@@ -307,10 +347,11 @@ fn a_reply_that_became_a_period_is_abandoned() {
 /// nothing tripped, and that ordinary code after the literal pulls the window back out of
 /// saturation entirely.
 ///
-/// For scale: this fixture peaks at a saturated run of **1409** words against a default ceiling of
-/// 3000 — so a level roughly twice this size would still be read as the data it is, and one very
-/// much larger than that would not. That is the margin the defaults actually buy, stated here
-/// because it is the number a future adjustment to either figure has to be weighed against.
+/// For scale: this fixture peaks at a saturated run of **1409** words against the [`MIN_SATURATED_RUN`]
+/// of 3000 these cases are judged under — so a level roughly twice this size would still be read as
+/// the data it is, and one very much larger than that would not. That is the margin the
+/// sustained-run term actually buys, stated here because it is the number a profile choosing either
+/// figure has to weigh.
 #[test]
 fn a_tilemap_literal_saturates_the_window_and_is_still_not_a_loop() {
     let tilemap = tilemap_source(47, 32);
@@ -320,7 +361,7 @@ fn a_tilemap_literal_saturates_the_window_and_is_still_not_a_loop() {
         "the fixture is a realistic 1504-entry level",
     );
 
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
     // Seven characters at a time: a tile entry is three, so words straddle chunk boundaries
     // constantly, which is what a real stream does.
     let (trip, peak) = feed_peak(&mut guard, &tilemap, 7);
@@ -332,11 +373,11 @@ fn a_tilemap_literal_saturates_the_window_and_is_still_not_a_loop() {
          test is not exercising the case it exists for",
     );
     assert!(
-        peak < DEFAULT_MIN_SATURATED_RUN,
+        peak < MIN_SATURATED_RUN,
         "and the run must stay under the ceiling (peak was {peak})",
     );
     assert!(
-        guard.offenders() >= DEFAULT_MIN_OFFENDERS,
+        guard.offenders() >= MIN_OFFENDERS,
         "the window is saturated at the end of the literal",
     );
 
@@ -348,21 +389,21 @@ fn a_tilemap_literal_saturates_the_window_and_is_still_not_a_loop() {
         0,
         "ordinary code after the literal clears the saturation",
     );
-    assert!(guard.offenders() < DEFAULT_MIN_OFFENDERS);
+    assert!(guard.offenders() < MIN_OFFENDERS);
 }
 
 /// Ordinary prose does not merely fail to trip — it never comes close to saturating the window,
 /// which is the stronger property and the one that says the frequency threshold is set sensibly.
 #[test]
 fn ordinary_prose_never_even_saturates_the_window() {
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
     let (trip, peak) = feed_peak(&mut guard, ORDINARY_PROSE, 11);
 
     assert_eq!(trip, None);
     assert_eq!(peak, 0, "prose should never saturate the window at all");
-    assert!(guard.offenders() < DEFAULT_MIN_OFFENDERS);
+    assert!(guard.offenders() < MIN_OFFENDERS);
     assert!(
-        guard.words_seen() > DEFAULT_WINDOW_WORDS as u64,
+        guard.words_seen() > WINDOW_WORDS as u64,
         "the passage must be long enough to have filled the window",
     );
 }
@@ -371,12 +412,12 @@ fn ordinary_prose_never_even_saturates_the_window() {
 /// and property accesses that a naive frequency rule would have to be tuned around.
 #[test]
 fn ordinary_javascript_source_does_not_trip() {
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
     let (trip, peak) = feed_peak(&mut guard, ORDINARY_JS, 13);
 
     assert_eq!(trip, None);
     assert!(
-        peak < DEFAULT_MIN_SATURATED_RUN,
+        peak < MIN_SATURATED_RUN,
         "source code holds no sustained saturation (peak was {peak})",
     );
 }
@@ -389,7 +430,7 @@ fn ordinary_javascript_source_does_not_trip() {
 /// else. A detector that counted them would find every indented file repetitive.
 #[test]
 fn indentation_and_blank_lines_never_contribute_a_word() {
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
 
     assert_eq!(guard.push("        \n\t\n   \n"), LoopVerdict::Continue);
     assert_eq!(guard.words_seen(), 0);
@@ -407,7 +448,7 @@ fn indentation_and_blank_lines_never_contribute_a_word() {
 /// make the frequency rule meaningless.
 #[test]
 fn an_identifier_split_across_three_chunks_is_one_word() {
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
 
     guard.push("cons");
     guard.push("tructTile");
@@ -422,7 +463,7 @@ fn an_identifier_split_across_three_chunks_is_one_word() {
 /// nothing, since a reply that ends is not looping.
 #[test]
 fn a_trailing_partial_word_is_never_counted() {
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
 
     guard.push("one two thr");
 
@@ -470,7 +511,7 @@ fn a_whitespace_free_periodic_loop_is_caught_by_the_word_cap() {
 /// longer than the cap neither panics nor produces invalid slices.
 #[test]
 fn a_reply_written_in_another_alphabet_does_not_panic() {
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
 
     // 600 characters with no whitespace anywhere: four cap-flushed words and an 88-character
     // remainder that is never counted.
@@ -490,7 +531,7 @@ fn a_reply_written_in_another_alphabet_does_not_panic() {
 /// not already complete, and the empty one contributes not even a character.
 #[test]
 fn an_empty_chunk_and_a_whitespace_only_chunk_are_no_ops() {
-    let mut guard = LoopGuard::new(LoopGuardConfig::default());
+    let mut guard = LoopGuard::new(knobs());
 
     assert_eq!(guard.push(""), LoopVerdict::Continue);
     assert_eq!(guard.words_seen(), 0);
@@ -733,8 +774,8 @@ fn a_trip_describes_itself_for_the_operators_log() {
 // Resolution
 // ---------------------------------------------------------------------------------------------
 
-/// The default declaration arms nothing, which is what keeps every agent that says nothing on the
-/// non-streaming transport.
+/// A profile that says nothing about loop detection arms nothing, which is what keeps every agent
+/// that says nothing on the non-streaming transport.
 #[test]
 fn an_unarmed_declaration_resolves_to_no_detector_at_all() {
     let mut report = LaunchReport::collecting();
@@ -745,12 +786,117 @@ fn an_unarmed_declaration_resolves_to_no_detector_at_all() {
     assert!(report.into_defects().is_empty());
 }
 
-/// Arming the detector without naming a knob takes gg's defaults, silently.
+/// **An armed detector writes all five knobs**, so arming one and naming none is refused — five
+/// times, once at each knob's own locus, because an operator fixing a profile wants the whole list.
 #[test]
-fn an_armed_declaration_with_no_knobs_takes_ggs_defaults() {
+fn an_armed_declaration_naming_no_knob_is_refused_at_every_one() {
+    let mut report = LaunchReport::collecting();
+    let resolved = resolve_loop_guard(
+        &GgLoopDetection {
+            enabled: true,
+            ..GgLoopDetection::default()
+        },
+        &mut report,
+    );
+
     assert_eq!(
-        resolve_cleanly(armed_declaration()),
-        LoopGuardConfig::default(),
+        resolved.config, None,
+        "the placeholder: nothing watches a reply on a launch that is refused"
+    );
+    let defects = report.into_defects();
+    assert_eq!(
+        defects
+            .iter()
+            .map(|defect| defect.locus.clone())
+            .collect::<Vec<_>>(),
+        [
+            "loopDetection.windowWords",
+            "loopDetection.repeatThreshold",
+            "loopDetection.minOffenders",
+            "loopDetection.minSaturatedRun",
+            "loopDetection.maxResponseChars",
+        ]
+    );
+    assert_eq!(
+        defects[0].to_string(),
+        "loopDetection.windowWords — the detector is armed and this profile writes no windowWords, \
+         which is the lookback the frequency rule is measured over. What the rule trips on is its \
+         five terms together, so gg substitutes no figure for one nobody wrote: an armed detector \
+         states all five."
+    );
+}
+
+/// Each knob is owed on its own, so leaving out exactly one is one refusal naming exactly it —
+/// including the two whose zero means something, which an armed profile writes rather than omits.
+#[test]
+fn an_armed_declaration_short_of_one_knob_is_refused_for_that_knob() {
+    let cases: [(&str, GgLoopDetection); 5] = [
+        (
+            "loopDetection.windowWords",
+            GgLoopDetection {
+                window_words: None,
+                ..armed_declaration()
+            },
+        ),
+        (
+            "loopDetection.repeatThreshold",
+            GgLoopDetection {
+                repeat_threshold: None,
+                ..armed_declaration()
+            },
+        ),
+        (
+            "loopDetection.minOffenders",
+            GgLoopDetection {
+                min_offenders: None,
+                ..armed_declaration()
+            },
+        ),
+        (
+            "loopDetection.minSaturatedRun",
+            GgLoopDetection {
+                min_saturated_run: None,
+                ..armed_declaration()
+            },
+        ),
+        (
+            "loopDetection.maxResponseChars",
+            GgLoopDetection {
+                max_response_chars: None,
+                ..armed_declaration()
+            },
+        ),
+    ];
+
+    for (locus, declared) in cases {
+        let mut report = LaunchReport::collecting();
+        let resolved = resolve_loop_guard(&declared, &mut report);
+
+        assert_eq!(resolved.config, None, "{locus}");
+        let defects = report.into_defects();
+        assert_eq!(defects.len(), 1, "{locus}: {defects:?}");
+        assert_eq!(defects[0].locus, locus);
+    }
+}
+
+/// An **unarmed** declaration owes no knob: there is no detector for one to be missing from, and a
+/// profile that says nothing about loop detection is the commonest configuration gg reads.
+#[test]
+fn an_unarmed_declaration_owes_no_knob() {
+    let mut report = LaunchReport::collecting();
+    let resolved = resolve_loop_guard(
+        &GgLoopDetection {
+            enabled: false,
+            window_words: Some(64),
+            ..GgLoopDetection::default()
+        },
+        &mut report,
+    );
+
+    assert_eq!(resolved.config, None);
+    assert!(
+        report.into_defects().is_empty(),
+        "the four it did not write are four it does not owe"
     );
 }
 
@@ -778,8 +924,8 @@ fn every_knob_is_taken_as_declared() {
     );
 }
 
-/// A window of no words has nothing to look back over, so it is refused: a detector armed on gg's
-/// default window instead of the one the profile wrote is a different detector.
+/// A window of no words has nothing to look back over, so it is refused: a detector armed on a
+/// window of gg's choosing instead of the one the profile wrote is a different detector.
 #[test]
 fn a_window_of_no_words_is_refused() {
     let declared = GgLoopDetection {
@@ -959,7 +1105,7 @@ fn a_knob_wider_than_gg_counts_it_in_is_refused() {
 /// as well as its policy and neither should have to be inferred from silence.
 #[test]
 fn the_launch_line_names_every_knob_in_force() {
-    let summary = LoopGuardConfig::default().armed_summary();
+    let summary = knobs().armed_summary();
 
     assert_eq!(
         summary,
@@ -974,7 +1120,7 @@ fn the_launch_line_names_every_knob_in_force() {
 fn the_launch_line_says_when_the_length_backstop_is_off() {
     let summary = LoopGuardConfig {
         max_response_chars: 0,
-        ..LoopGuardConfig::default()
+        ..knobs()
     }
     .armed_summary();
 
@@ -985,12 +1131,12 @@ fn the_launch_line_says_when_the_length_backstop_is_off() {
 }
 
 /// And it says so when saturation alone trips, because that configuration behaves differently
-/// enough from the default to be worth reading in a log.
+/// enough from a sustained-run term to be worth reading in a log.
 #[test]
 fn the_launch_line_says_when_saturation_alone_trips() {
     let summary = LoopGuardConfig {
         min_saturated_run: 0,
-        ..LoopGuardConfig::default()
+        ..knobs()
     }
     .armed_summary();
 

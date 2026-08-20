@@ -95,8 +95,7 @@ fn everything_on() -> SystemContext {
         fences_are_stripped: true,
         read_file: ReadFileView {
             offered: true,
-            capped: true,
-            line_cap: 250,
+            line_cap: Some(250),
             images: true,
         },
         skills: vec![SkillView {

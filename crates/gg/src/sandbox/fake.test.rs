@@ -935,7 +935,7 @@ pub(crate) fn membrane_in(
             &all_operations(),
             RunEnding::Role(role),
         ),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
     )
 }
@@ -947,7 +947,7 @@ pub(crate) fn membrane_ending(log: &CallLog, ending: RunEnding) -> MembraneState
         FakeOperationApi::new(log),
         typescript(),
         scope_of(&all_capabilities(), &all_operations(), ending),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
     )
 }
@@ -971,7 +971,7 @@ pub(crate) fn membrane_with(
             operations,
             RunEnding::Role(EndingRole::Standard),
         ),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         deadline,
     )
 }
@@ -1010,7 +1010,7 @@ pub(crate) fn membrane_from_scope_in(
             &all_operations(),
             RunEnding::Role(EndingRole::Standard),
         ),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
     )
 }
@@ -1035,7 +1035,7 @@ pub(crate) fn membrane_closing_docs(
             &all_operations(),
             RunEnding::Role(EndingRole::Standard),
         ),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
     )
 }

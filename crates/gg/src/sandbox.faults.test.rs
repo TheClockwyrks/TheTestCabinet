@@ -47,7 +47,7 @@ fn program_faults_are_reported_not_trapped() {
             "console.log(text.length + entries.length);\n",
         ),
         &all_operations(),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         missing,
     );
 
@@ -84,7 +84,7 @@ fn program_faults_are_reported_not_trapped() {
             "}\n",
         ),
         &all_operations(),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         missing,
     );
     assert_eq!(
@@ -110,7 +110,7 @@ fn program_faults_are_reported_not_trapped() {
             "}\n",
         ),
         &all_operations(),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         |name, args| {
             if name == "edit_file" {
                 ToolOutcome::failed(
@@ -144,7 +144,7 @@ fn program_faults_are_reported_not_trapped() {
     let (outcome, log) = run_with(
         "import * as gg from \"gg\";\nconst entries = gg.files.listDir(\"src\");\nconsole.log(entries.length);\n",
         &[crate::sandbox::operations::SHELL_SHELL],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
 
@@ -170,7 +170,7 @@ fn program_faults_are_reported_not_trapped() {
     let (outcome, log) = run_with(
         "whatever.listDir(\"src\");\n",
         &[crate::sandbox::operations::SHELL_SHELL],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert!(

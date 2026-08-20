@@ -167,7 +167,8 @@ a retraction.
 Each is its own capability, so an arm is a capability set rather than a setting
 inside one. Enabling `exec` alone leaves an agent able to become something else
 but not to duplicate itself, and `fork` alone leaves it able to work two lines at
-once but not to change what it is. Both are off by default.
+once but not to change what it is. A profile that enables neither holds
+neither.
 
 Each is also individually grantable through an agent's
 [allowlist](/gg/configurations/#granting-calls), on the same terms as every other
@@ -190,8 +191,8 @@ capability that comes up short, so an operator fixing an agent that enables only
   carries `transition_state` instead.
 
 The refusal is part of gg's one launch check, which names every value in the
-capability set gg cannot honour exactly as written, so one pass over the
-configuration fixes them all. An absent value takes the documented default.
+capability set gg cannot honour exactly as written and every required value it
+leaves out, so one pass over the configuration fixes them all.
 
 ## Telemetry
 

@@ -18,10 +18,27 @@ use serde_json::json;
 use tempfile::TempDir;
 use test_cabinet_core::gg::{
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_SKILLS, GgCapabilityConfig, GgCapabilitySet,
+    PARAM_SKILLS_DIR,
 };
 
 use super::*;
-use crate::agent::PARAM_SKILLS_DIR;
+
+/// A workspace as the session hands it to this gate: gg's own
+/// [skills library](test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR) stood up and empty.
+///
+/// The session creates it before it reads the workspace, because everything under `.gg` is gg's
+/// rather than the seeder's, and it is the directory a freshly authored skills capability names. A
+/// case that is about something else has to start from the workspace a run really starts from, or
+/// it is refused for a directory that is always there.
+fn seeded() -> TempDir {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(
+        dir.path()
+            .join(test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR),
+    )
+    .unwrap();
+    dir
+}
 
 /// An invocation over `dir` carrying `set` — the smallest thing the gate can be asked about.
 fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
@@ -70,14 +87,29 @@ fn set_with(capability: &str, params: serde_json::Value) -> GgCapabilitySet {
 // Skills
 // ---------------------------------------------------------------------------
 
-/// **A workspace that authored no skills launches.** The default `.gg/skills` is absent from very
-/// nearly every workspace — nothing seeds it — so an empty library is the ordinary case and not a
-/// value gg failed to honour. This is the test that keeps the gate from refusing every run there is.
+/// **A workspace that authored no skills launches.** The `dir` a fresh capability set is authored
+/// with is [gg's own](test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR), stood up by the session and
+/// left empty, so an empty library is the ordinary case and not a value gg failed to honour. This is
+/// the test that keeps the gate from refusing every run there is.
 #[test]
-fn an_absent_default_skills_directory_is_not_a_defect() {
+fn the_authored_skills_directory_is_the_one_gg_stands_up() {
     let dir = TempDir::new().unwrap();
-    let invocation = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
-    assert!(invocation.capability_set.is_enabled(CAPABILITY_SKILLS));
+    let set = GgCapabilitySet::minimal("mock/echo");
+    assert!(set.is_enabled(CAPABILITY_SKILLS));
+    assert_eq!(
+        set.root()
+            .capability(CAPABILITY_SKILLS)
+            .and_then(|capability| capability.params.get(PARAM_SKILLS_DIR))
+            .and_then(serde_json::Value::as_str),
+        Some(test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR),
+        "an authored skills capability names gg's own directory"
+    );
+    std::fs::create_dir_all(
+        dir.path()
+            .join(test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR),
+    )
+    .expect("the session stands this directory up before the gate reads it");
+    let invocation = invocation(dir.path(), set);
     assert!(defects(&invocation).is_empty());
 }
 
@@ -131,7 +163,7 @@ fn every_entry_that_will_not_load_is_named_in_one_refusal() {
 /// other than the arm it was configured as.
 #[test]
 fn a_provided_file_that_cannot_be_read_is_refused() {
-    let dir = TempDir::new().unwrap();
+    let dir = seeded();
     std::fs::write(dir.path().join("SPEC.md"), "# The spec").unwrap();
 
     let mut invocation = invocation(dir.path(), set_with(CAPABILITY_AUTOLOAD_SPECS, json!({})));
@@ -154,7 +186,7 @@ fn a_provided_file_that_cannot_be_read_is_refused() {
 /// business.
 #[test]
 fn provided_files_are_only_checked_when_some_agent_autoloads_them() {
-    let dir = TempDir::new().unwrap();
+    let dir = seeded();
     let mut invocation = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
     invocation.provided_files = vec![PathBuf::from("SPEC.md")];
     assert!(

@@ -1,23 +1,33 @@
 //! **The launch refusal.**
 //!
-//! One property is what the whole design is for, and it has a test of its own at the bottom of this
-//! file: a configuration carrying several unhonourable values is refused **once**, naming every one
-//! of them. An operator fixing a sweep's shared document must not have to launch a dozen times to
-//! discover a dozen typos. Every later stage that teaches a resolver to report extends that test
-//! with its own defect class rather than adding a separate one.
+//! One property is what the whole design is for: a configuration gg cannot conduct is refused
+//! **once**, naming every value it cannot conduct it by. An operator fixing a sweep's shared
+//! document must not have to launch a dozen times to discover a dozen typos.
 //!
-//! The rest of the file pins the three groups this stage implements — the profile invariants
-//! absorbed from the old `validate_agents`, the capability-id vocabulary, and the per-capability
-//! params vocabulary — plus the two structural guarantees underneath them: the params table covers
-//! the capability catalogue exactly, and a [`Discarding`](LaunchReport::Discarding) sink is the
-//! assertion it claims to be.
+//! It takes two tests because a configured value fails in two ways, and the second is invisible in
+//! the document. [`every_class_of_defect_appears_in_one_refusal`] carries one value of every class
+//! gg cannot **honour** — a misspelled key, an arm gg does not offer, a ceiling that bounds
+//! nothing — and every later stage that teaches a resolver to report extends it with its own class
+//! rather than adding a separate test.
+//! [`one_refusal_names_every_value_the_document_leaves_out`] carries a document in which nothing is
+//! wrong and nothing is **written**, and derives what it expects from the tables, because a hole is
+//! what a hand-written list cannot stay honest about: a param that becomes required opens one in
+//! every document already stored, without a line of any of them changing.
+//!
+//! The rest of the file pins the groups this stage implements — the profile invariants absorbed
+//! from the old `validate_agents`, the capability-id vocabulary, the per-capability params
+//! vocabulary, and the half of that vocabulary that says which keys an **enabled** capability must
+//! actually write — plus the structural guarantees underneath them: the params table covers the
+//! capability catalogue exactly, every capability that offers arms has arms to offer, and a
+//! [`Discarding`](LaunchReport::Discarding) sink is the assertion it claims to be.
 
 use serde_json::json;
 use test_cabinet_core::gg::{
-    AUTOLOAD_LOCKED_IMPL, CAPABILITY_READ_FILE, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgHook, GgHookAction, GgHookEvent,
-    GgLoopDetection, GgRunLimits, GgSubagentRef, GgSubagentScope,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_PROFILE_ID, SHELL_OUTPUT_ADAPTIVE,
+    ALL_SUBAGENT_SCOPES, AUTOLOAD_LOCKED_IMPL, CAPABILITY_READ_FILE, CAPABILITY_SKILLS,
+    CAPABILITY_SUBAGENTS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgHook, GgHookAction,
+    GgHookEvent, GgLoopDetection, GgMemoryScope, GgRunLimits, GgSubagentRef, GgSubagentScope,
+    MEMORY_STRATEGY_SCRATCHPAD, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, READ_MODE_DEFAULT_CAP,
+    ROOT_PROFILE_ID, SHELL_OUTPUT_ADAPTIVE,
 };
 
 use super::*;
@@ -123,6 +133,122 @@ fn reporting_into_a_discarding_sink_is_a_gg_defect() {
     ));
 }
 
+/// **A value nobody wrote is named once, however many readers noticed it.** Two readers do notice
+/// it — the sweep over the whole table and the resolver that reads the one key — and both are
+/// wanted: the sweep cannot miss a key, and the resolver cannot fall back on one. They produce the
+/// same line, because the line comes from the table, so the operator is told about one thing once.
+#[test]
+fn a_value_is_named_once_however_many_readers_noticed_it() {
+    let mut report = LaunchReport::collecting();
+    report.report(missing_required_param(CAPABILITY_TASKS, PARAM_MAX_TASKS));
+    report.report(missing_required_param(CAPABILITY_TASKS, PARAM_MODE));
+    report.report(missing_required_param(CAPABILITY_TASKS, PARAM_MAX_TASKS));
+    let loci: Vec<_> = report
+        .into_defects()
+        .into_iter()
+        .map(|defect| defect.locus)
+        .collect();
+    assert_eq!(
+        loci,
+        [
+            param_locus(CAPABILITY_TASKS, PARAM_MAX_TASKS),
+            param_locus(CAPABILITY_TASKS, PARAM_MODE),
+        ]
+    );
+}
+
+/// …and two profiles short of the same param are two lines, because the attribution is part of the
+/// value. The stamping happens on the way out of the walk, so the de-duplication has to happen
+/// after it.
+#[test]
+fn two_profiles_short_of_one_param_are_two_lines() {
+    let mut report = LaunchReport::collecting();
+    for agent in ["root", "worker"] {
+        report.for_agent(agent, |report| {
+            report.report(missing_required_param(CAPABILITY_TASKS, PARAM_MODE));
+        });
+    }
+    let agents: Vec<_> = report
+        .into_defects()
+        .into_iter()
+        .map(|defect| defect.agent.unwrap_or_default())
+        .collect();
+    assert_eq!(agents, ["root", "worker"]);
+}
+
+// ---------------------------------------------------------------------------
+// Reading one param
+// ---------------------------------------------------------------------------
+
+/// **A resolver reading a required key reports its own absence**, and hands back nothing for the
+/// caller to mistake for a figure. The line it produces is the line the sweep produces, which is
+/// what lets both readers exist.
+#[test]
+fn a_required_param_reports_its_own_absence() {
+    for params in [json!({}), json!({ PARAM_MAX_TASKS: null })] {
+        let mut report = LaunchReport::collecting();
+        assert_eq!(
+            required_count_param(&params, CAPABILITY_TASKS, PARAM_MAX_TASKS, &mut report),
+            None,
+            "{params}"
+        );
+        let defects = report.into_defects();
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(
+            defects[0],
+            missing_required_param(CAPABILITY_TASKS, PARAM_MAX_TASKS)
+        );
+        // The sentence names the knob, not only that one is missing.
+        assert!(
+            defects[0]
+                .message
+                .contains("how many tasks the list may hold"),
+            "{}",
+            defects[0].message
+        );
+    }
+}
+
+/// **An optional key's absence is silent**, because the absence is the setting: nothing to bound,
+/// nothing to report, nothing substituted.
+#[test]
+fn an_optional_param_reads_absence_as_the_setting() {
+    let mut report = LaunchReport::collecting();
+    let params = json!({});
+    assert_eq!(
+        count_param(&params, CAPABILITY_TASKS, PARAM_MAX_TASKS, &mut report),
+        None
+    );
+    assert!(report.is_empty());
+}
+
+/// A required count that names no count is refused for *that*, on top of being read — and a
+/// required ceiling of zero is refused for what a zero would have meant.
+#[test]
+fn a_required_count_is_still_read_against_its_own_range() {
+    let mut report = LaunchReport::collecting();
+    let params = json!({ PARAM_MAX_TASKS: "lots" });
+    assert_eq!(
+        required_count_param(&params, CAPABILITY_TASKS, PARAM_MAX_TASKS, &mut report),
+        None
+    );
+    let zero = json!({ PARAM_MAX_TASKS: 0 });
+    assert_eq!(
+        required_positive_count_param(
+            &zero,
+            CAPABILITY_TASKS,
+            PARAM_MAX_TASKS,
+            "a list nothing may be added to offers a call whose every use is refused",
+            &mut report,
+        ),
+        None
+    );
+    let defects = report.into_defects();
+    assert_eq!(defects.len(), 2, "{defects:?}");
+    assert_eq!(defects[0].found, "\"lots\"");
+    assert_eq!(defects[1].found, "0");
+}
+
 // ---------------------------------------------------------------------------
 // The params table
 // ---------------------------------------------------------------------------
@@ -143,13 +269,21 @@ fn the_params_table_covers_the_capability_catalogue_exactly() {
             GG_CAPABILITY_CATALOG.contains(id),
             "`{id}` is in the params table but is not a capability gg ships"
         );
-        let mut keys = params.to_vec();
+        let mut keys: Vec<&str> = params.iter().map(|(key, _)| *key).collect();
         let written = keys.len();
         keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), written, "`{id}` names a param twice");
-        for key in *params {
+        for (key, requirement) in *params {
             assert!(!key.is_empty(), "`{id}` names an empty param");
+            // The requirement carries the clause a refusal reads out, so a key that is required and
+            // says nothing about what it configures would refuse the launch with half a sentence.
+            if let Requirement::Required(configures) = requirement {
+                assert!(
+                    !configures.is_empty(),
+                    "`{id}`'s `{key}` is required and says nothing about what it configures"
+                );
+            }
         }
     }
     for id in GG_CAPABILITY_CATALOG {
@@ -166,7 +300,12 @@ fn the_params_table_covers_the_capability_catalogue_exactly() {
 /// defect that used to be silent.
 #[test]
 fn ownership_is_known_only_to_the_capabilities_that_configure_one() {
-    let offers = |id: &str| params_for(id).unwrap().contains(&MODULE_PARAM_OWNERSHIP);
+    let offers = |id: &str| {
+        params_for(id)
+            .unwrap()
+            .iter()
+            .any(|(key, _)| *key == MODULE_PARAM_OWNERSHIP)
+    };
     assert!(offers(CAPABILITY_PROJECT_MANAGEMENT));
     assert!(offers(CAPABILITY_AGENT_MANAGED_CONTEXT));
     for id in [CAPABILITY_MEMORIES, CAPABILITY_SKILLS, CAPABILITY_TASKS] {
@@ -224,15 +363,14 @@ fn every_shipped_capability_id_is_accepted() {
 // ---------------------------------------------------------------------------
 
 /// A misspelled params key is refused. `serde` cannot reach inside a free-form `params` object, so
-/// this table is the only thing between `summryHeadroom` and a run that condensed at gg's default
-/// headroom while its record named the configured one.
+/// this table is the only thing between `summryHeadroom` and a run that condensed at some headroom
+/// nobody wrote while its record named the configured one.
 #[test]
 fn a_params_key_the_capability_does_not_read_is_refused() {
     let mut set = minimal();
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "summryHeadroom": 0.4 }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
-    });
+    set.agents[0]
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION).with_param("summryHeadroom", 0.4));
     let defects = defects(&set);
     assert_eq!(defects.len(), 1, "{defects:?}");
     assert_eq!(defects[0].found, "summryHeadroom");
@@ -244,24 +382,21 @@ fn a_params_key_the_capability_does_not_read_is_refused() {
     assert!(
         defects[0]
             .known
-            .contains(&crate::compaction::PARAM_SUMMARY_HEADROOM.to_string()),
+            .contains(&PARAM_SUMMARY_HEADROOM.to_string()),
         "the refusal offers the vocabulary: {:?}",
         defects[0].known
     );
 }
 
 /// A key that is a real gg param **on another capability** is still unknown here. `ownership` on
-/// `memories` reads as though it configured something and configures nothing at all; that used to be
-/// documented as "exactly like any other key gg does not know", and it is a refusal now.
+/// `memories` reads as though it configured something and configures nothing at all.
 #[test]
 fn a_params_key_belonging_to_another_capability_is_refused() {
     let mut set = minimal();
     put(
         &mut set,
-        GgCapabilityConfig {
-            params: json!({ MODULE_PARAM_OWNERSHIP: "owned" }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
-        },
+        GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
+            .with_param(MODULE_PARAM_OWNERSHIP, "owned"),
     );
     assert!(refusal_text(&set).contains(MODULE_PARAM_OWNERSHIP));
 }
@@ -269,72 +404,183 @@ fn a_params_key_belonging_to_another_capability_is_refused() {
 /// **The deliberate exception.** A key known to the capability but unused by the arm its
 /// `implementation` selected is accepted: one params block swept across all three memory strategies
 /// without retyping it is the point of the block, and `maxResults` is inert under `scratchpad`
-/// rather than wrong.
+/// rather than wrong. Required means required **whichever arm is selected**, for the same reason.
 #[test]
 fn a_params_key_the_selected_arm_does_not_use_is_accepted() {
     let mut set = minimal();
     put(
         &mut set,
         GgCapabilityConfig {
-            implementation: Some("scratchpad".to_string()),
-            params: json!({ crate::memories::PARAM_MAX_RESULTS: 5 }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
+            implementation: Some(MEMORY_STRATEGY_SCRATCHPAD.to_string()),
+            ..GgCapabilityConfig::enabled(CAPABILITY_MEMORIES).with_param(PARAM_MAX_RESULTS, 5)
         },
     );
     assert_eq!(defects(&set), Vec::new());
 }
 
-/// An absent or empty params object is the ordinary shape of a capability with nothing to tune, and
-/// takes every default. Absent is not unrecognized.
+/// **An absent params object is accepted where the capability requires nothing** — the ordinary
+/// shape of one with nothing to tune, and of every disabled capability whatever it could tune.
 #[test]
-fn an_absent_or_empty_params_object_is_accepted() {
+fn an_absent_or_empty_params_object_is_accepted_where_nothing_is_required() {
     for params in [json!({}), json!(null)] {
-        let mut set = minimal();
-        set.agents[0].capabilities.push(GgCapabilityConfig {
-            params,
-            ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
-        });
-        assert_eq!(defects(&set), Vec::new());
-    }
-}
-
-/// **The one required param.** Responses-as-code's `language` is the exception to "absent is not
-/// unrecognized", because it is the exception to "every param has a default": there is no language
-/// gg could pick that would not be a difference between two arms of a study that no document
-/// records. So a code agent that names none is refused before it spends a token, and the refusal
-/// offers the eleven ids.
-///
-/// The switch decides whether it may be left out, not whether it is read: a tool-calling agent
-/// writes no programs, and the editor saves it with an off, empty responses-as-code block, which is
-/// a document saying it is not a code agent rather than one with a hole in it.
-#[test]
-fn a_code_agent_that_names_no_language_is_refused() {
-    for params in [json!({}), json!({ crate::sandbox::PARAM_LANGUAGE: null })] {
         let mut set = minimal();
         put(
             &mut set,
             GgCapabilityConfig {
                 params: params.clone(),
-                ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
+                ..GgCapabilityConfig::enabled(CAPABILITY_WRITE_FILE)
             },
         );
-        let refused = defects(&set);
-        assert_eq!(refused.len(), 1, "{params} -> {refused:?}");
-        assert_eq!(
-            refused[0].locus,
-            param_locus(CAPABILITY_RESPONSES_AS_CODE, crate::sandbox::PARAM_LANGUAGE),
-            "{params}"
+        put(
+            &mut set,
+            GgCapabilityConfig {
+                params,
+                ..GgCapabilityConfig::disabled(CAPABILITY_PROGRAM_LIBRARY)
+            },
         );
-        assert!(
-            refused[0].known.contains(&"typescript".to_string()),
-            "{params}: the refusal offers the languages gg can drive"
-        );
+        assert_eq!(defects(&set), Vec::new());
+    }
+}
 
+/// **Every required key, absent from an enabled capability, refuses the launch by name.** This is
+/// the whole of "absence is never a value" read off the table: gg has no figure to put there, so
+/// the alternative to refusing is conducting a run under a number, a name or a mode nobody wrote.
+///
+/// Each capability is switched on carrying an empty params object, and every key the table marks
+/// [required](Requirement::Required) has to appear at its own locus in the refusal.
+#[test]
+fn every_required_param_absent_from_an_enabled_capability_is_refused() {
+    for (id, params) in CAPABILITY_PARAMS {
+        let required: Vec<&str> = params
+            .iter()
+            .filter(|(_, requirement)| matches!(requirement, Requirement::Required(_)))
+            .map(|(key, _)| *key)
+            .collect();
+        if required.is_empty() {
+            continue;
+        }
+        let mut set = minimal();
+        put(
+            &mut set,
+            GgCapabilityConfig {
+                params: json!({}),
+                ..GgCapabilityConfig::enabled(*id)
+            },
+        );
+        let refusal = refusal_text(&set);
+        for key in required {
+            assert!(
+                refusal.contains(&param_locus(id, key)),
+                "`{id}` launched without its `{key}`:\n{refusal}"
+            );
+        }
+    }
+}
+
+/// …and the same key absent from a **disabled** capability is no defect at all. An off capability
+/// configures nothing, so there is no value it could be short of, and requiring a full params block
+/// there would refuse the document that expresses the off arm of a comparison.
+#[test]
+fn a_required_param_absent_from_a_disabled_capability_is_not_refused() {
+    for id in GG_CAPABILITY_CATALOG {
+        let mut set = minimal();
+        put(
+            &mut set,
+            GgCapabilityConfig {
+                params: json!({}),
+                implementation: None,
+                ..GgCapabilityConfig::disabled(*id)
+            },
+        );
+        assert_eq!(defects(&set), Vec::new(), "`{id}` was refused while off");
+    }
+}
+
+/// **An off-when-absent key is a setting, not a hole.** Compaction's summarizer model and the
+/// board's reviewer requirement are each read when written and mean something definite when they
+/// are not: the agent condenses on its own model, and an issue's author names reviewers or does
+/// not. So a fully specified capability that writes neither launches.
+#[test]
+fn an_off_when_absent_param_may_be_left_out() {
+    for (id, params) in CAPABILITY_PARAMS {
+        let optional: Vec<&str> = params
+            .iter()
+            .filter(|(_, requirement)| *requirement == Requirement::OffWhenAbsent)
+            .map(|(key, _)| *key)
+            .collect();
+        if optional.is_empty() {
+            continue;
+        }
+        // The authoring catalog writes what a capability requires and nothing whose absence is
+        // itself the setting, so a freshly authored capability is exactly this case.
+        let authored = GgCapabilityConfig::enabled(*id);
+        for key in &optional {
+            assert!(
+                authored.params.get(key).is_none(),
+                "`{id}` is authored with an off-when-absent `{key}`"
+            );
+        }
+        let mut set = minimal();
+        put(&mut set, authored);
+        // The board needs a roster and a merge agent before it is a launchable document at all;
+        // what this case is about is that nothing complains about the key nobody wrote.
+        let refusal = defects(&set)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        for key in optional {
+            assert!(
+                !refusal.contains(&param_locus(id, key)),
+                "`{id}` was refused for the `{key}` nobody wrote:\n{refusal}"
+            );
+        }
+    }
+}
+
+/// **The one required param nothing may author.** Responses-as-code's `language` is the axis a
+/// cross-language study slices its arms by, so there is no figure a catalog could put in front of
+/// an operator to keep or change: a profile that switches the capability on names a language
+/// itself, and one that does not is refused before it spends a token.
+///
+/// The switch decides whether it may be left out, not whether it is read: a tool-calling agent
+/// writes no programs, and the editor saves it with an off responses-as-code block, which is a
+/// document saying it is not a code agent rather than one with a hole in it.
+#[test]
+fn a_code_agent_that_names_no_language_is_refused() {
+    let locus = param_locus(CAPABILITY_RESPONSES_AS_CODE, PARAM_LANGUAGE);
+    for language in [json!(null), json!("typescript")] {
+        let mut set = minimal();
+        put(
+            &mut set,
+            GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
+                .with_param(PARAM_LANGUAGE, language.clone()),
+        );
+        let named: Vec<LaunchDefect> = defects(&set)
+            .into_iter()
+            .filter(|defect| defect.locus == locus)
+            .collect();
+        if language.is_null() {
+            // **One** line, worded from the table. Two readers notice this hole — the params
+            // sweep, which cannot miss a required key, and the language resolver, which cannot
+            // reach one without reporting it — and because both take their sentence from the
+            // table rather than from their own call site, the operator is told about one thing to
+            // fix rather than two.
+            let swept = missing_required_param(CAPABILITY_RESPONSES_AS_CODE, PARAM_LANGUAGE);
+            assert_eq!(named.len(), 1, "{language} -> {named:?}");
+            assert_eq!(named[0].message, swept.message);
+            assert!(named[0].found.is_empty(), "{named:?}");
+            assert_eq!(named[0].agent.as_deref(), Some(ROOT_PROFILE_ID));
+        } else {
+            assert!(named.is_empty(), "{language} -> {named:?}");
+        }
+
+        // …and the same capability switched off requires nothing of itself.
         let mut off = minimal();
         put(
             &mut off,
             GgCapabilityConfig {
-                params,
+                params: json!({}),
                 ..GgCapabilityConfig::disabled(CAPABILITY_RESPONSES_AS_CODE)
             },
         );
@@ -342,8 +588,9 @@ fn a_code_agent_that_names_no_language_is_refused() {
     }
 }
 
-/// `params` that is not an object at all has no named values in it, so there is nothing gg can read
-/// — and reading it as "no params" would launch the default arm under the configured arm's name.
+/// `params` that is not an object at all has no named values in it, so there is nothing gg can
+/// read. It is the **one** line the refusal carries: a list of every param the capability is
+/// therefore missing would bury the sentence that says why it is missing them.
 #[test]
 fn a_params_value_that_is_not_an_object_is_refused() {
     let mut set = minimal();
@@ -373,7 +620,7 @@ fn a_capability_declared_twice_is_refused() {
     let mut set = minimal();
     set.agents[0].capabilities.push(GgCapabilityConfig {
         implementation: Some("vector-index".to_string()),
-        params: json!({ crate::memories::PARAM_MAX_COUNT: -4 }),
+        params: json!({ PARAM_MAX_COUNT: -4 }),
         ..GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
     });
     let refusal = refusal_text(&set);
@@ -381,6 +628,131 @@ fn a_capability_declared_twice_is_refused() {
         refusal.contains("declared more than once on this agent"),
         "{refusal}"
     );
+}
+
+/// **The arms table lines up with the code that selects on the arms.** A capability listed as
+/// offering arms whose vocabulary is empty would refuse every launch that names one; a capability
+/// with arms and no entry would let a name gg cannot select stand.
+#[test]
+fn every_capability_with_arms_has_arms_to_offer() {
+    for (id, rule) in CAPABILITIES_WITH_ARMS {
+        assert!(
+            GG_CAPABILITY_CATALOG.contains(id),
+            "`{id}` offers arms but is not a capability gg ships"
+        );
+        assert!(!arms_of(id).is_empty(), "`{id}` offers arms but names none");
+        // The one capability whose unwritten arm is a declaration is the one whose written arm has
+        // an alternative to be the alternative *to*.
+        if *rule == ArmRule::AbsenceIsAnArm {
+            assert_eq!(*id, CAPABILITY_AUTOLOAD_SPECS);
+            assert_eq!(arms_of(id), vec![AUTOLOAD_LOCKED_IMPL]);
+        }
+    }
+    for id in GG_CAPABILITY_CATALOG {
+        if arm_rule(id).is_none() {
+            assert!(
+                arms_of(id).is_empty(),
+                "`{id}` has arms but is not in the table"
+            );
+        }
+    }
+}
+
+/// **An enabled capability that offers arms and names none is refused.** The arm is what the
+/// capability is varied by, so gg has nothing to select and will not select anything: a run
+/// conducted on one arm while its record names no arm at all measures nothing.
+#[test]
+fn an_enabled_capability_that_names_no_arm_is_refused() {
+    for (id, rule) in CAPABILITIES_WITH_ARMS {
+        for implementation in [None, Some(String::new()), Some("  ".to_string())] {
+            let mut set = minimal();
+            put(
+                &mut set,
+                GgCapabilityConfig {
+                    implementation: implementation.clone(),
+                    ..GgCapabilityConfig::enabled(*id)
+                },
+            );
+            let named: Vec<LaunchDefect> = defects(&set)
+                .into_iter()
+                .filter(|defect| defect.locus.ends_with(".implementation"))
+                .collect();
+            match rule {
+                // Absent, blank or whitespace all name nothing, and an editor spells "unset" every
+                // one of those ways.
+                ArmRule::Required => {
+                    assert_eq!(named.len(), 1, "`{id}` {implementation:?} -> {named:?}");
+                    assert!(named[0].found.is_empty(), "{:?}", named[0]);
+                    assert_eq!(
+                        named[0].known,
+                        arms_of(id)
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>(),
+                        "{:?}",
+                        named[0]
+                    );
+                }
+                // …and where absence is itself an arm, naming nothing is a configured run.
+                ArmRule::AbsenceIsAnArm => {
+                    assert!(named.is_empty(), "`{id}` {implementation:?} -> {named:?}");
+                }
+            }
+
+            // Off, the arm is owed on neither rule: what a disabled capability carries is the
+            // configuration the arm would have used, and an operator who has not picked one has
+            // written a document that says so.
+            let mut off = minimal();
+            put(
+                &mut off,
+                GgCapabilityConfig {
+                    implementation,
+                    ..GgCapabilityConfig::disabled(*id)
+                },
+            );
+            assert_eq!(defects(&off), Vec::new(), "`{id}` was refused while off");
+        }
+    }
+}
+
+/// **An enabled memories capability names its strategy under every scope, inheriting included.**
+///
+/// An inheriting profile usually binds the store its spawner keeps — but every place gg starts one
+/// with no spawner to hand it a store (the root, an issue's implementer, a reviewer, a subagent
+/// whose spawner keeps no memories) it organizes a notebook of its own instead, and an arm it never
+/// named would be one gg picked. The pairing rule that keeps the two ends of an inheritance
+/// agreeing lives in [`check_scoping`](crate::memories::check_scoping), not here.
+#[test]
+fn an_enabled_memories_capability_names_its_strategy_under_every_scope() {
+    for scope in GgMemoryScope::ALL {
+        let mut set = minimal();
+        put(
+            &mut set,
+            GgCapabilityConfig {
+                implementation: None,
+                ..GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
+                    .with_param(MEMORY_PARAM_SCOPE, json!(scope.as_str()))
+            },
+        );
+        let named: Vec<LaunchDefect> = defects(&set)
+            .into_iter()
+            .filter(|defect| defect.locus.ends_with(".implementation"))
+            .collect();
+        assert_eq!(named.len(), 1, "`{scope}` -> {named:?}");
+    }
+    // …and one that names it launches, under every scope.
+    for scope in GgMemoryScope::ALL {
+        let mut set = minimal();
+        put(
+            &mut set,
+            GgCapabilityConfig {
+                implementation: Some(MEMORY_STRATEGY_SCRATCHPAD.to_string()),
+                ..GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
+                    .with_param(MEMORY_PARAM_SCOPE, json!(scope.as_str()))
+            },
+        );
+        assert_eq!(defects(&set), Vec::new(), "`{scope}` was refused");
+    }
 }
 
 /// **An `implementation` on a capability that offers no arms is refused.** Five capabilities read
@@ -406,8 +778,10 @@ fn an_implementation_on_a_capability_with_no_arms_is_refused() {
     );
 }
 
-/// A blank `implementation` names nothing — it is how an editor spells "unset" — so it reads exactly
-/// as an absent field does, on an armless capability and an armed one alike.
+/// A blank `implementation` names nothing — it is how an editor spells "unset" — so on a capability
+/// that offers no arms it reads exactly as an absent field does, and neither is a defect. (On one
+/// that offers arms it also reads as absent, which is the refusal
+/// [above](an_enabled_capability_that_names_no_arm_is_refused).)
 #[test]
 fn a_blank_implementation_is_the_absent_one() {
     for blank in ["", "   "] {
@@ -431,18 +805,15 @@ fn a_diverging_run_level_param_is_refused() {
     let mut set = minimal();
     put(
         &mut set,
-        GgCapabilityConfig {
-            params: json!({ crate::subagents::PARAM_MAX_DEPTH: 3 }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
-        },
+        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 3),
     );
     set.agents.push(GgAgentConfig {
         id: "worker".to_string(),
         name: "worker".to_string(),
-        capabilities: vec![GgCapabilityConfig {
-            params: json!({ crate::subagents::PARAM_MAX_DEPTH: 5 }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
-        }],
+        model_id: set.agents[0].model_id.clone(),
+        capabilities: vec![
+            GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 5),
+        ],
         ..GgAgentConfig::root()
     });
     let refusal = refusal_text(&set);
@@ -456,18 +827,15 @@ fn a_skills_directory_may_differ_per_agent() {
     let mut set = minimal();
     put(
         &mut set,
-        GgCapabilityConfig {
-            params: json!({ crate::agent::PARAM_SKILLS_DIR: ".gg/skills" }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
-        },
+        GgCapabilityConfig::enabled(CAPABILITY_SKILLS).with_param(PARAM_SKILLS_DIR, ".gg/skills"),
     );
     set.agents.push(GgAgentConfig {
         id: "worker".to_string(),
         name: "worker".to_string(),
-        capabilities: vec![GgCapabilityConfig {
-            params: json!({ crate::agent::PARAM_SKILLS_DIR: "docs/skills" }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
-        }],
+        capabilities: vec![
+            GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
+                .with_param(PARAM_SKILLS_DIR, "docs/skills"),
+        ],
         model_id: set.agents[0].model_id.clone(),
         ..GgAgentConfig::root()
     });
@@ -482,18 +850,14 @@ fn a_run_level_param_repeated_unchanged_is_accepted() {
     let mut set = minimal();
     put(
         &mut set,
-        GgCapabilityConfig {
-            params: json!({ crate::subagents::PARAM_MAX_DEPTH: 3 }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
-        },
+        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 3),
     );
     set.agents.push(GgAgentConfig {
         id: "worker".to_string(),
         name: "worker".to_string(),
-        capabilities: vec![GgCapabilityConfig {
-            params: json!({ crate::subagents::PARAM_MAX_DEPTH: 3.0 }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
-        }],
+        capabilities: vec![
+            GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 3.0),
+        ],
         model_id: set.agents[0].model_id.clone(),
         ..GgAgentConfig::root()
     });
@@ -617,25 +981,21 @@ fn two_profiles_may_share_a_name_and_are_addressed_apart_by_id() {
 /// another.
 #[test]
 fn a_merge_agent_gg_would_read_past_is_refused() {
-    let unreadable = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: 42 });
-    let other = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "helper" });
-    for second in [unreadable.clone(), other] {
+    for second in [json!(42), json!("helper")] {
         let mut set = minimal();
         crate::tools::grant_configured(
             &mut set.agents[0],
-            GgCapabilityConfig {
-                params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-                ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-            },
+            GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+                .with_param(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_PROFILE_ID),
         );
         set.agents.push(GgAgentConfig {
             id: "helper".to_string(),
             name: "helper".to_string(),
             model_id: set.agents[0].model_id.clone(),
-            capabilities: vec![GgCapabilityConfig {
-                params: second.clone(),
-                ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-            }],
+            capabilities: vec![
+                GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+                    .with_param(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, second.clone()),
+            ],
             ..GgAgentConfig::root()
         });
         let refusal = refusal_text(&set);
@@ -651,23 +1011,17 @@ fn a_merge_agent_gg_would_read_past_is_refused() {
 #[test]
 fn one_merge_agent_named_on_every_profile_is_accepted() {
     let mut set = minimal();
-    let params = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID });
-    crate::tools::grant_configured(
-        &mut set.agents[0],
-        GgCapabilityConfig {
-            params: params.clone(),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
-    );
+    let board = || {
+        GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+            .with_param(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_PROFILE_ID)
+    };
+    crate::tools::grant_configured(&mut set.agents[0], board());
     set.agents[0].subagents.push(GgSubagentRef::any("helper"));
     set.agents.push(GgAgentConfig {
         id: "helper".to_string(),
         name: "helper".to_string(),
         model_id: set.agents[0].model_id.clone(),
-        capabilities: vec![GgCapabilityConfig {
-            params,
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        }],
+        capabilities: vec![board()],
         ..GgAgentConfig::root()
     });
     assert_eq!(defects(&set), Vec::new());
@@ -694,16 +1048,10 @@ fn every_class_of_defect_appears_in_one_refusal() {
         subagents: vec![GgSubagentRef::new("ghost", &[GgSubagentScope::Subagent])],
         capabilities: vec![
             GgCapabilityConfig::enabled("memorys"),
-            GgCapabilityConfig {
-                params: json!({ "summryHeadroom": 0.4 }),
-                ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
-            },
+            GgCapabilityConfig::enabled(CAPABILITY_COMPACTION).with_param("summryHeadroom", 0.4),
             // The delegation depth is a bound on the **run's** tree, so gg reads it off the root —
             // and the pass reads it from exactly where the run does.
-            GgCapabilityConfig {
-                params: json!({ crate::subagents::PARAM_MAX_DEPTH: 0 }),
-                ..GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
-            },
+            GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 0),
         ],
         ..GgAgentConfig::root()
     };
@@ -725,24 +1073,18 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 capabilities: vec![
                     GgCapabilityConfig {
                         implementation: Some("vector-index".to_string()),
-                        params: json!({
-                            crate::memories::PARAM_MAX_COUNT: "lots",
-                            MEMORY_PARAM_SCOPE: "communal",
-                        }),
                         ..GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
+                            .with_param(PARAM_MAX_COUNT, "lots")
+                            .with_param(MEMORY_PARAM_SCOPE, "communal")
                     },
                     GgCapabilityConfig {
                         implementation: Some("self-compation".to_string()),
-                        params: json!({
-                            crate::compaction::PARAM_SUMMARY_HEADROOM: 1.5,
-                            COMPACTION_PARAM_MODEL_SLOT: "summarizer",
-                        }),
                         ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
+                            .with_param(PARAM_SUMMARY_HEADROOM, 1.5)
+                            .with_param(COMPACTION_PARAM_MODEL_SLOT, "summarizer")
                     },
-                    GgCapabilityConfig {
-                        params: json!({ MODULE_PARAM_OWNERSHIP: "communal" }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-                    },
+                    GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+                        .with_param(MODULE_PARAM_OWNERSHIP, "communal"),
                 ],
                 ..GgAgentConfig::root()
             },
@@ -756,6 +1098,26 @@ fn every_class_of_defect_appears_in_one_refusal() {
                     implementation: Some(COMPACTION_STRATEGY_MEMORY.to_string()),
                     ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
                 }],
+                ..GgAgentConfig::root()
+            },
+            // …and one that is not wrong about anything: it is simply **unspecified**. An enabled
+            // capability that names no arm, and one whose params object is empty of the two keys it
+            // requires. gg has nothing to put in either hole, so both refuse the launch rather than
+            // being filled in behind the operator.
+            GgAgentConfig {
+                id: "unspecified".to_string(),
+                name: "unspecified".to_string(),
+                model_id: "mock/k".to_string(),
+                capabilities: vec![
+                    GgCapabilityConfig {
+                        implementation: None,
+                        ..GgCapabilityConfig::enabled(CAPABILITY_SHELL)
+                    },
+                    GgCapabilityConfig {
+                        params: json!({}),
+                        ..GgCapabilityConfig::enabled(CAPABILITY_TASKS)
+                    },
+                ],
                 ..GgAgentConfig::root()
             },
             // A profile whose model was never bound, and whose id is declared twice.
@@ -839,33 +1201,25 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 name: "code".to_string(),
                 model_id: "mock/f".to_string(),
                 capabilities: vec![
-                    GgCapabilityConfig {
-                        params: json!({
-                            crate::sandbox::PARAM_LANGUAGE: "pythn",
-                            crate::sandbox::PARAM_TIMEOUT_SECS: 0,
-                            crate::sandbox::PARAM_MAX_MEMORY_BYTES: "lots",
-                            crate::docs::PARAM_DOC_VIEW_TYPES: { "returns": true },
-                            crate::healing::PARAM_ASSISTANT_MESSAGES: "healed",
-                            crate::healing::PARAM_HEALING: { "stripFences": false },
-                        }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
-                    },
+                    GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
+                        .with_param(PARAM_LANGUAGE, "pythn")
+                        .with_param(PARAM_TIMEOUT_SECS, 0)
+                        .with_param(PARAM_MAX_MEMORY_BYTES, "lots")
+                        .with_param(PARAM_DOC_VIEW_TYPES, json!({ "returns": true }))
+                        .with_param(PARAM_ASSISTANT_MESSAGES, "healed")
+                        .with_param(PARAM_HEALING, json!({ "stripFences": false })),
                     GgCapabilityConfig {
                         implementation: Some("default_cap".to_string()),
-                        params: json!({ crate::tools::PARAM_LINE_CAP: 0 }),
                         ..GgCapabilityConfig::enabled(CAPABILITY_READ_FILE)
+                            .with_param(PARAM_LINE_CAP, 0)
                     },
                     GgCapabilityConfig {
                         implementation: Some("offlaod".to_string()),
-                        params: json!({ crate::tools::PARAM_MAX_LINES: "lots" }),
                         ..GgCapabilityConfig::enabled(CAPABILITY_SHELL)
+                            .with_param(PARAM_MAX_LINES, "lots")
                     },
-                    GgCapabilityConfig {
-                        params: json!({
-                            crate::skills::builtin::PARAM_BUILT_INS: { "gg-fileystem": false },
-                        }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
-                    },
+                    GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
+                        .with_param(PARAM_BUILT_INS, json!({ "gg-fileystem": false })),
                 ],
                 // …and a hook whose `output` names no mode and whose `timeoutSecs` names no
                 // duration — the two hook fields that used to be read with no launch diagnostic
@@ -889,40 +1243,32 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 name: "code".to_string(),
                 model_id: "mock/f".to_string(),
                 capabilities: vec![
+                    GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
+                        .with_param(PARAM_LANGUAGE, "python")
+                        .with_param(PARAM_TIMEOUT_SECS, 0.5)
+                        .with_param(PARAM_MAX_MEMORY_BYTES, 5e8)
+                        .with_param(PARAM_DOC_VIEW_TYPES, json!({ "parameters": true }))
+                        .with_param(PARAM_ASSISTANT_MESSAGES, "response-healing")
+                        .with_param(PARAM_HEALING, json!({ "strip-fences": false })),
                     GgCapabilityConfig {
-                        params: json!({
-                            crate::sandbox::PARAM_LANGUAGE: "python",
-                            crate::sandbox::PARAM_TIMEOUT_SECS: 0.5,
-                            crate::sandbox::PARAM_MAX_MEMORY_BYTES: 5e8,
-                            crate::docs::PARAM_DOC_VIEW_TYPES: { "parameters": true },
-                            crate::healing::PARAM_ASSISTANT_MESSAGES: "response-healing",
-                            crate::healing::PARAM_HEALING: { "strip-fences": false },
-                        }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
-                    },
-                    GgCapabilityConfig {
-                        implementation: Some(crate::tools::READ_MODE_DEFAULT_CAP.to_string()),
-                        params: json!({ crate::tools::PARAM_LINE_CAP: 120 }),
+                        implementation: Some(READ_MODE_DEFAULT_CAP.to_string()),
                         ..GgCapabilityConfig::enabled(CAPABILITY_READ_FILE)
+                            .with_param(PARAM_LINE_CAP, 120)
                     },
                     GgCapabilityConfig {
                         implementation: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
-                        params: json!({ crate::tools::PARAM_MAX_LINES: 40 }),
                         ..GgCapabilityConfig::enabled(CAPABILITY_SHELL)
+                            .with_param(PARAM_MAX_LINES, 40)
                     },
-                    GgCapabilityConfig {
-                        params: json!({
-                            crate::skills::builtin::PARAM_BUILT_INS: { "gg-filesystem": false },
-                        }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
-                    },
+                    GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
+                        .with_param(PARAM_BUILT_INS, json!({ "gg-filesystem": false })),
                 ],
                 hooks: vec![GgHook {
                     event: GgHookEvent::PreShell,
                     action: GgHookAction::Command {
                         command: "cargo build".to_string(),
                         cwd: None,
-                        timeout_secs: None,
+                        timeout_secs: Some(600.0),
                         output: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
                     },
                     name: "build".to_string(),
@@ -944,24 +1290,19 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 id: "ceilings".to_string(),
                 name: "ceilings".to_string(),
                 model_id: "mock/e".to_string(),
+                // An armed detector that bounds nothing with the one knob it wrote, and writes
+                // none of the other four.
                 loop_detection: GgLoopDetection {
                     enabled: true,
                     window_words: Some(0),
                     ..GgLoopDetection::default()
                 },
                 capabilities: vec![
-                    GgCapabilityConfig {
-                        params: json!({ crate::tasks::PARAM_MAX_TASKS: 0 }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_TASKS)
-                    },
-                    GgCapabilityConfig {
-                        params: json!({ crate::agent::PARAM_TOP_FILE_VIEWS: "several" }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-                    },
-                    GgCapabilityConfig {
-                        params: json!({ crate::programs::PARAM_KEEP: "5" }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY)
-                    },
+                    GgCapabilityConfig::enabled(CAPABILITY_TASKS).with_param(PARAM_MAX_TASKS, 0),
+                    GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+                        .with_param(PARAM_TOP_FILE_VIEWS, "several"),
+                    GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY)
+                        .with_param(PARAM_KEEP, "5"),
                     GgCapabilityConfig {
                         implementation: Some("pinned".to_string()),
                         ..GgCapabilityConfig::enabled(CAPABILITY_AUTOLOAD_SPECS)
@@ -982,8 +1323,8 @@ fn every_class_of_defect_appears_in_one_refusal() {
         limits: GgRunLimits {
             max_turns: Some(0),
             max_cost: Some(-1.0),
-            // A rate no run could ever exceed. (`0.5` on its own is fine: the window half it did
-            // not declare simply takes gg's default.)
+            // A rate no run could ever exceed — and, with `..default()`, neither of the two
+            // ceilings a run has no "off" for.
             max_error_rate: Some(1.5),
             ..GgRunLimits::default()
         },
@@ -1001,6 +1342,12 @@ fn every_class_of_defect_appears_in_one_refusal() {
     };
 
     let refusal = refusal_text(&set);
+    // The two loci an unspecified capability earns, spelled the way the table spells them rather
+    // than written out here.
+    let (max_tasks, task_mode) = (
+        param_locus(CAPABILITY_TASKS, PARAM_MAX_TASKS),
+        param_locus(CAPABILITY_TASKS, PARAM_MODE),
+    );
     for expected in [
         // an unresolved model slot
         "model slot",
@@ -1040,16 +1387,28 @@ fn every_class_of_defect_appears_in_one_refusal() {
         "limits.maxCost",
         // an error rate no run could ever exceed
         "limits.maxErrorRate",
-        // a detector knob that cannot bound anything
+        // a detector knob that cannot bound anything, and the four the armed profile never wrote
         "loopDetection.windowWords",
+        "loopDetection.repeatThreshold",
+        "loopDetection.minOffenders",
+        "loopDetection.minSaturatedRun",
+        "loopDetection.maxResponseChars",
+        // the two run-level ceilings a run has no "off" for, neither of them written
+        "limits.maxParallel",
+        "limits.replayMaxBytes",
         // a task list the model may never add to
-        crate::tasks::PARAM_MAX_TASKS,
+        PARAM_MAX_TASKS,
         // a file-view count gg cannot read
-        crate::agent::PARAM_TOP_FILE_VIEWS,
+        PARAM_TOP_FILE_VIEWS,
         // a retention gg cannot read
-        crate::programs::PARAM_KEEP,
+        PARAM_KEEP,
         // an autoload arm gg does not offer
         "pinned",
+        // an enabled capability that names no arm at all
+        "names no implementation",
+        // …and one short of the params it requires, named at each of the two loci
+        max_tasks.as_str(),
+        task_mode.as_str(),
         // a capability declared twice, whose second entry is read by nothing
         "declared more than once on this agent",
         // an arm on a capability that offers none
@@ -1057,13 +1416,13 @@ fn every_class_of_defect_appears_in_one_refusal() {
         // a hook ceiling that names no duration
         "timeoutSecs",
         // a delegation tree the root may not spawn into
-        crate::subagents::PARAM_MAX_DEPTH,
+        PARAM_MAX_DEPTH,
         // a language gg cannot drive
         "pythn",
         // a program timeout that bounds nothing
-        crate::sandbox::PARAM_TIMEOUT_SECS,
+        PARAM_TIMEOUT_SECS,
         // a memory cap gg cannot read
-        crate::sandbox::PARAM_MAX_MEMORY_BYTES,
+        PARAM_MAX_MEMORY_BYTES,
         // a documentation-view type key gg does not have
         "returns",
         // an assistant-message mode gg does not have
@@ -1073,11 +1432,11 @@ fn every_class_of_defect_appears_in_one_refusal() {
         // a read mode that would have granted uncapped reads
         "default_cap",
         // a line cap that would return nothing
-        crate::tools::PARAM_LINE_CAP,
+        PARAM_LINE_CAP,
         // a shell output mode gg does not have
         "offlaod",
         // an inline ceiling gg cannot read
-        crate::tools::PARAM_MAX_LINES,
+        PARAM_MAX_LINES,
         // a built-in skill id that withholds nothing
         "gg-fileystem",
         // a hook output mode gg does not have
@@ -1117,24 +1476,17 @@ fn the_corrected_configuration_launches() {
         )],
         capabilities: vec![
             GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
-            GgCapabilityConfig {
-                params: json!({ crate::compaction::PARAM_SUMMARY_HEADROOM: 0.4 }),
-                ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
-            },
-            GgCapabilityConfig {
-                params: json!({ crate::subagents::PARAM_MAX_DEPTH: 2 }),
-                ..GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
-            },
+            GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
+                .with_param(PARAM_SUMMARY_HEADROOM, 0.4),
+            GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 2),
         ],
         ..GgAgentConfig::root()
     };
     crate::tools::grant(&mut root, CAPABILITY_SHELL);
     crate::tools::grant_configured(
         &mut root,
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+            .with_param(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_PROFILE_ID),
     );
 
     let set = GgCapabilitySet {
@@ -1160,21 +1512,17 @@ fn the_corrected_configuration_launches() {
                                 .id()
                                 .to_string(),
                         ),
-                        params: json!({
-                            crate::memories::PARAM_MAX_COUNT: 40.0,
-                            MEMORY_PARAM_SCOPE: "shared",
-                        }),
                         ..GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
+                            .with_param(PARAM_MAX_COUNT, 40.0)
+                            .with_param(MEMORY_PARAM_SCOPE, "shared")
                     },
                     GgCapabilityConfig {
                         implementation: Some(COMPACTION_STRATEGY_MEMORY.to_string()),
-                        params: json!({ crate::compaction::PARAM_SUMMARY_HEADROOM: 0.5 }),
                         ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
+                            .with_param(PARAM_SUMMARY_HEADROOM, 0.5)
                     },
-                    GgCapabilityConfig {
-                        params: json!({ MODULE_PARAM_OWNERSHIP: "unowned" }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-                    },
+                    GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+                        .with_param(MODULE_PARAM_OWNERSHIP, "unowned"),
                 ],
                 ..GgAgentConfig::root()
             },
@@ -1184,13 +1532,13 @@ fn the_corrected_configuration_launches() {
                 id: "machine".to_string(),
                 name: "machine".to_string(),
                 model_id: String::new(),
-                capabilities: vec![GgCapabilityConfig {
-                    params: json!({ "states": [
+                capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FSM).with_param(
+                    FSM_PARAM_STATES,
+                    json!([
                         { "name": "only", "agentId": "worker", "transitions": [{ "to": "done" }] },
                         { "name": "done", "agentId": "worker" },
-                    ] }),
-                    ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
-                }],
+                    ]),
+                )],
                 ..GgAgentConfig::root()
             },
             // Both delegation capabilities with what each of them needs to offer its call, and two
@@ -1205,7 +1553,10 @@ fn the_corrected_configuration_launches() {
                 capabilities: vec![
                     GgCapabilityConfig::enabled(CAPABILITY_EXEC),
                     GgCapabilityConfig::enabled(CAPABILITY_FORK),
-                    GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
+                    // The recursion bound is the run's, read off the root, so a profile that
+                    // declares one at all declares the one in force.
+                    GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)
+                        .with_param(PARAM_MAX_DEPTH, 2),
                 ],
                 ..GgAgentConfig::root()
             },
@@ -1213,26 +1564,24 @@ fn the_corrected_configuration_launches() {
                 id: "ceilings".to_string(),
                 name: "ceilings".to_string(),
                 model_id: "mock/e".to_string(),
+                // An armed detector writes all five knobs; there is no half-armed detector, and
+                // nothing gg would fill the other four in with.
                 loop_detection: GgLoopDetection {
                     enabled: true,
                     window_words: Some(64),
-                    ..GgLoopDetection::default()
+                    repeat_threshold: Some(3),
+                    min_offenders: Some(2),
+                    min_saturated_run: Some(0),
+                    max_response_chars: Some(0),
                 },
                 capabilities: vec![
-                    GgCapabilityConfig {
-                        params: json!({ crate::tasks::PARAM_MAX_TASKS: 20 }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_TASKS)
-                    },
-                    GgCapabilityConfig {
-                        params: json!({ crate::agent::PARAM_TOP_FILE_VIEWS: 3 }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-                    },
-                    GgCapabilityConfig {
-                        // `0` is the one retention whose zero is the widest setting rather than the
-                        // narrowest: keep every program of the session.
-                        params: json!({ crate::programs::PARAM_KEEP: 0 }),
-                        ..GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY)
-                    },
+                    GgCapabilityConfig::enabled(CAPABILITY_TASKS).with_param(PARAM_MAX_TASKS, 20),
+                    GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+                        .with_param(PARAM_TOP_FILE_VIEWS, 3),
+                    // `0` is the one retention whose zero is the widest setting rather than the
+                    // narrowest: keep every program of the session.
+                    GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY)
+                        .with_param(PARAM_KEEP, 0),
                     GgCapabilityConfig {
                         implementation: Some(AUTOLOAD_LOCKED_IMPL.to_string()),
                         ..GgCapabilityConfig::enabled(CAPABILITY_AUTOLOAD_SPECS)
@@ -1241,14 +1590,238 @@ fn the_corrected_configuration_launches() {
                 ..GgAgentConfig::root()
             },
         ],
+        // The two required ceilings, plus the four this run chose to arm.
         limits: GgRunLimits {
             max_turns: Some(60),
             max_cost: Some(25.0),
             max_error_rate: Some(0.5),
             error_rate_window: Some(10),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         },
         ..GgCapabilitySet::default()
     };
+    assert_eq!(defects(&set), Vec::new());
+}
+
+// ---------------------------------------------------------------------------
+// Every hole at once
+// ---------------------------------------------------------------------------
+
+/// **A document that writes none of what it owes is refused once, naming every one of them.**
+///
+/// [The refusal above](every_class_of_defect_appears_in_one_refusal) proves the one-pass property
+/// over the classes of value gg cannot honour. This proves it over the values nobody wrote — the
+/// half a hand-written list cannot keep honest, because a hole is invisible in the document and a
+/// new required key adds one without editing a line of it.
+///
+/// So every locus expected here is **derived**: from the [params table](CAPABILITY_PARAMS), from
+/// [the arm rules](CAPABILITIES_WITH_ARMS), from the run's two ceilings that have no off, and from
+/// the five terms an armed detector is measured by. A key that becomes required joins this test by
+/// joining the table, and a resolver that quietly filled one in behind the operator fails here
+/// rather than in a sweep's results six hours later.
+///
+/// The document is the awkward one on purpose: nothing in it is misspelled, out of range or
+/// contradictory. It is simply silent, which is the one state gg has no reading of.
+#[test]
+fn one_refusal_names_every_value_the_document_leaves_out() {
+    // Every capability gg ships, each switched **on** and each writing nothing at all: no arm, and
+    // a params object carrying none of its keys.
+    let capabilities: Vec<GgCapabilityConfig> = GG_CAPABILITY_CATALOG
+        .iter()
+        .map(|id| GgCapabilityConfig {
+            implementation: None,
+            params: json!({}),
+            ..GgCapabilityConfig::enabled(*id)
+        })
+        .collect();
+
+    let set = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            model_id: "mock/echo".to_string(),
+            capabilities,
+            // An armed detector writing not one of its five terms…
+            loop_detection: GgLoopDetection {
+                enabled: true,
+                ..GgLoopDetection::default()
+            },
+            // …and a command hook with no ceiling on how long it may hold the turn.
+            hooks: vec![GgHook {
+                event: GgHookEvent::PreShell,
+                action: GgHookAction::Command {
+                    command: "cargo build".to_string(),
+                    cwd: None,
+                    timeout_secs: None,
+                    output: None,
+                },
+                name: "gate".to_string(),
+            }],
+            ..GgAgentConfig::root()
+        }],
+        // …over a run writing neither of the two ceilings it has no "off" for.
+        limits: GgRunLimits::default(),
+        ..GgCapabilitySet::default()
+    };
+
+    let refusal = refusal_text(&set);
+
+    // Every param the table marks required, at its own locus.
+    for (id, params) in CAPABILITY_PARAMS {
+        for (key, requirement) in *params {
+            if matches!(requirement, Requirement::Required(_)) {
+                let locus = param_locus(id, key);
+                assert!(
+                    refusal.contains(&locus),
+                    "the refusal is silent about `{locus}`:\n{refusal}"
+                );
+            }
+        }
+    }
+
+    // Every capability that is varied by its arm, named where it names none — and the one whose
+    // unwritten arm is a declaration rather than a hole, left alone.
+    for (id, rule) in CAPABILITIES_WITH_ARMS {
+        let unwritten = format!("the `{id}` capability is on and names no implementation");
+        match rule {
+            ArmRule::Required => assert!(
+                refusal.contains(&unwritten),
+                "the refusal is silent about `{id}`'s unwritten arm:\n{refusal}"
+            ),
+            ArmRule::AbsenceIsAnArm => assert!(
+                !refusal.contains(&unwritten),
+                "`{id}` was refused for the arm its absence already states:\n{refusal}"
+            ),
+        }
+    }
+
+    // The run-level and per-profile holes, which sit outside any capability's params and so are
+    // spelled here the way the document spells them.
+    for locus in [
+        "limits.maxParallel",
+        "limits.replayMaxBytes",
+        "loopDetection.windowWords",
+        "loopDetection.repeatThreshold",
+        "loopDetection.minOffenders",
+        "loopDetection.minSaturatedRun",
+        "loopDetection.maxResponseChars",
+        "hooks[gate].timeoutSecs",
+    ] {
+        assert!(
+            refusal.contains(locus),
+            "the refusal is silent about `{locus}`:\n{refusal}"
+        );
+    }
+
+    // …and the converse, on the same silent document: a key whose absence *is* the setting is not
+    // a hole, so nothing in the refusal names one. Without this the pass could satisfy every
+    // assertion above by demanding everything.
+    for (id, params) in CAPABILITY_PARAMS {
+        for (key, requirement) in *params {
+            if *requirement == Requirement::OffWhenAbsent {
+                let locus = param_locus(id, key);
+                assert!(
+                    !refusal.contains(&locus),
+                    "the refusal names `{locus}`, which nobody owes:\n{refusal}"
+                );
+            }
+        }
+    }
+
+    // **Each of them once.** This is the document with the most readers noticing the most holes,
+    // which makes it the one place the second half of the rule can actually be checked: a value
+    // read by a resolver *and* swept from the table is one thing to fix, and a refusal that
+    // printed it twice would say there were two. Nothing here is wrong in two different ways, so
+    // one profile's one locus is one line.
+    let mut named: Vec<(Option<String>, String)> = Vec::new();
+    for defect in defects(&set) {
+        let addressed = (defect.agent.clone(), defect.locus.clone());
+        assert!(
+            !named.contains(&addressed),
+            "`{}` is named twice in one refusal:\n{refusal}",
+            defect.locus
+        );
+        named.push(addressed);
+    }
+}
+
+/// **A board ceiling that diverges from the board owner's is refused.**
+///
+/// A run keeps one board, bounded by the ceilings on the first profile with the capability on.
+/// Every other board-carrying profile writes its own — the keys are required wherever the
+/// capability is on — and gg reads none of them, so a retry depth swept on the wrong profile would
+/// run every arm at the owner's figure.
+#[test]
+fn a_board_ceiling_that_diverges_from_the_board_owners_is_refused() {
+    let board = |retries: u64| {
+        GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+            .with_param(PARAM_MAX_EPICS, 50)
+            .with_param(PARAM_MAX_ISSUES, 2_000)
+            .with_param(PARAM_MAX_RETRIES, retries)
+            .with_param(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_PROFILE_ID)
+            .with_param(MODULE_PARAM_OWNERSHIP, "owned")
+    };
+    let set = |implementer_retries: u64| GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                subagents: vec![GgSubagentRef::any(ROOT_PROFILE_ID)],
+                capabilities: vec![board(2)],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: "implementer".to_string(),
+                name: "implementer".to_string(),
+                model_id: "mock/echo".to_string(),
+                capabilities: vec![board(implementer_retries)],
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::minimal("mock/echo")
+    };
+
+    // Only the ceiling matters here; the fixture's board earns other defects of its own (a merge
+    // agent with no shell), and they are somebody else's test.
+    let retries = |set: &GgCapabilitySet| -> Vec<LaunchDefect> {
+        defects(set)
+            .into_iter()
+            .filter(|defect| defect.locus.ends_with(PARAM_MAX_RETRIES))
+            .collect()
+    };
+    // The same figure on both is the ordinary shape — an editor that offers the param per agent
+    // writes it on each, and the document says exactly what the run does.
+    assert_eq!(retries(&set(2)), Vec::new());
+
+    let diverging = retries(&set(9));
+    assert_eq!(diverging.len(), 1, "{diverging:?}");
+    assert_eq!(diverging[0].agent.as_deref(), Some("implementer"));
+    assert_eq!(diverging[0].found, "9");
+    assert!(
+        diverging[0].message.contains("configure nothing"),
+        "{}",
+        diverging[0].message
+    );
+}
+
+/// **A roster entry that names no scope is refused.** The three roles are governed independently and
+/// every call that names a target is checked against the scope it names it in, so an entry short of
+/// them permits nothing at all — and gg grants none of the three on an operator's behalf.
+#[test]
+fn a_roster_entry_that_names_no_scope_is_refused() {
+    let mut set = minimal();
+    set.agents[0].subagents = vec![GgSubagentRef::new(ROOT_PROFILE_ID, &[])];
+    let unscoped = defects(&set);
+    assert_eq!(unscoped.len(), 1, "{unscoped:?}");
+    assert_eq!(unscoped[0].locus, "subagents[0].scopes");
+    assert_eq!(
+        unscoped[0].known,
+        ALL_SUBAGENT_SCOPES
+            .iter()
+            .map(|scope| scope.id().to_string())
+            .collect::<Vec<_>>()
+    );
+
+    // One scope is enough: the entry says what it is for.
+    set.agents[0].subagents = vec![GgSubagentRef::new(
+        ROOT_PROFILE_ID,
+        &[GgSubagentScope::Subagent],
+    )];
     assert_eq!(defects(&set), Vec::new());
 }

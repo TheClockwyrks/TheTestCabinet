@@ -1191,10 +1191,10 @@ fn persistent_issue_set() -> GgCapabilitySet {
     let mut set = persistent_subagent_set();
     crate::tools::grant_configured(
         &mut set.agents[0],
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
+        ),
     );
     set
 }

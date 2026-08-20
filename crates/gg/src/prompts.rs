@@ -629,12 +629,11 @@ pub struct ReadFileView {
     /// Whether `read_file` is offered at all this run. Everything else here describes how it
     /// behaves, so a run that withholds the tool states none of it.
     pub offered: bool,
-    /// Whether a line cap is in force at all. False when `read_file` is not offered, or when it
-    /// reads whole files.
-    pub capped: bool,
-    /// The cap, in lines. Meaningless (and unreferenced by the template) when not
-    /// [capped](Self::capped).
-    pub line_cap: usize,
+    /// The cap, in lines, or `None` when no cap is in force — `read_file` is not offered, it reads
+    /// whole files, or the profile configures no read policy at all. One field rather than a flag
+    /// beside a figure, because two fields can disagree and this is exactly the disagreement that
+    /// would print a cap of zero at an agent reading whole files.
+    pub line_cap: Option<usize>,
     /// Whether this run's model can be shown an **image**.
     ///
     /// A test case's specs ship reference mockups, and whether reading one shows the

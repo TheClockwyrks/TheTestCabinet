@@ -5,8 +5,8 @@ title: "Loop detection"
 Some models, on some turns, stop answering and start cycling: the reply is a
 program for a few hundred tokens and then it is `void 0;`, over and over, until
 the provider's own output cap ends it. Loop detection watches a reply as it
-arrives and abandons one that has become a repetition. It is off by default and
-armed per agent, because arming it also moves that agent onto a
+arrives and abandons one that has become a repetition. It is armed per agent,
+because arming it also moves that agent onto a
 [streaming transport](#the-transport-it-implies).
 
 A loop costs four things at once, and only the last of them can be recovered
@@ -74,7 +74,7 @@ there is nothing after it to write. So the detector asks whether a stretch has
 been repetitive for longer than any real data literal could be.
 
 The numbers are chosen against that question. A 64×64 tilemap is 4,096 entries,
-and the default sustained run of 3,000 words sits at roughly a 55×55 map. The
+and a sustained run of 3,000 words sits at roughly a 55×55 map. The
 realistic 1,504-entry level in gg's own test corpus peaks at a saturated run of
 1,409 words against that ceiling, so a level about twice the size of a real one
 is still read as the data it is. That margin is what any adjustment to either
@@ -115,7 +115,7 @@ One consequence is worth knowing before reading a negative result. A
 whitespace-free loop is detectable only when its period does not divide the
 128-character cap. A period that divides it makes every cap-flushed slice
 identical, which is exactly one offender, and one offender never meets the
-default `minOffenders: 2`. A six-character period (`void0;`) works because 128
+`minOffenders` of 2. A six-character period (`void0;`) works because 128
 mod 6 is 2, so successive slices cycle through three distinct recurring strings.
 128 is comfortably above any identifier, URL or base64 line a model writes as
 one run, so an ordinary reply is tokenised lexically and this path never fires.
@@ -215,24 +215,35 @@ in the same way.
   "id": "implementer",
   "name": "Implementer",
   "modelSlot": "primary",
-  "loopDetection": { "enabled": true },
+  "loopDetection": {
+    "enabled": true,
+    "windowWords": 256,
+    "repeatThreshold": 32,
+    "minOffenders": 2,
+    "minSaturatedRun": 3000,
+    "maxResponseChars": 250000
+  },
   "capabilities": [ /* … */ ]
 }
 ```
 
-`{ "enabled": true }` is the whole ordinary declaration. Every knob below is
-optional and an absent one takes gg's default. A profile that never touched the
-setting omits the key entirely, so every stored configuration round-trips byte
-for byte.
+An armed detector writes all five knobs. What the rule trips on is the whole
+five-way relationship between a window, a threshold, a breadth, a run length and
+a backstop, so a detector armed on figures nobody chose measures gg rather than
+the model.
 
-| Key | Default | What it does |
-| --- | --- | --- |
-| `enabled` | `false` | Whether the detector runs, and whether the agent streams. |
-| `windowWords` | `256` | `N`, the lookback the frequency rule is measured over. |
-| `repeatThreshold` | `32` | `P`, occurrences in the window above which a word offends. |
-| `minOffenders` | `2` | `M`, distinct offenders that make the window saturated. |
-| `minSaturatedRun` | `3000` | `R`, consecutive words that must arrive while saturated. |
-| `maxResponseChars` | `250000` | A hard ceiling on reply length. `0` turns it off. |
+| Key | What it does |
+| --- | --- |
+| `enabled` | Whether the detector runs, and whether the agent streams. |
+| `windowWords` | `N`, the lookback the frequency rule is measured over. |
+| `repeatThreshold` | `P`, occurrences in the window above which a word offends. |
+| `minOffenders` | `M`, distinct offenders that make the window saturated. |
+| `minSaturatedRun` | `R`, consecutive words that must arrive while saturated. |
+| `maxResponseChars` | A hard ceiling on reply length. `0` turns it off. |
+
+The figures in the snippet above are what the console seeds a freshly armed
+detector with, and they are the figures the rest of this page reasons about. An
+operator keeps or edits them, and gg runs on whatever the profile carries.
 
 `windowWords` is also the minimum sample: the repetition rule cannot fire until
 the window has observed `N` words. It is wide enough that a genuinely repeated
@@ -241,8 +252,8 @@ long reply is judged on its own terms rather than diluted by the thousands of
 ordinary words around it.
 
 A word is an offender at strictly more than `repeatThreshold` occurrences, which
-at the default is one word occupying more than an eighth of the window. Ordinary
-prose puts its commonest word at around 6% of a passage, so the default is
+at 32 in a window of 256 is one word occupying more than an eighth of the window.
+Ordinary prose puts its commonest word at around 6% of a passage, so that is
 several times above anything a reply that is saying something reaches, while a
 two-word period saturates it after 66 words. `minOffenders` of 2 is the smallest
 number that expresses "a phrase, not a word", and raising it delays detection of
@@ -252,17 +263,18 @@ characters.
 
 In the [configuration editor](/gg/configurations/) it is a per-agent fieldset,
 in the same place as the prompt-cache lifetime: a switch that arms it plus the
-five knobs, each left empty to take gg's default.
+five knobs, which arming fills in.
 
-An absent knob takes gg's default. A knob that is present is armed exactly as
-written, and one gg cannot arm that way refuses the launch, on the same terms
-the [execution ceilings](/gg/execution-limits/#configuring-them) are resolved
-under. A knob is judged as written whether or not the detector is armed.
+A knob missing from an armed detector refuses the launch. A knob that is present
+is read exactly as written, and one gg cannot arm that way refuses the launch, on
+the same terms the [execution
+ceilings](/gg/execution-limits/#configuring-them) are resolved under. A knob is
+judged as written whether or not the detector is armed.
 
 | Declaration | Result |
 | --- | --- |
 | `loopDetection` absent, or `enabled: false` | detector off, transport buffered |
-| `enabled: true` with no knobs | gg's defaults |
+| `enabled: true` missing any of the five knobs | refused |
 | `minSaturatedRun: 0` | `0`, the plain frequency rule |
 | `maxResponseChars: 0` | the backstop is off |
 | `minOffenders` > `windowWords` | armed as declared, warned that only the length backstop can fire |

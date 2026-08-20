@@ -205,13 +205,15 @@ export const AGENT_MODE_HINT =
 const WORKER_MODES: ReadonlyArray<GgAgentMode> = ["tools", "rac"];
 
 // A dedicated param control on a capability. `kind` picks the input + how the value
-// coerces into the JSON params object: fraction/number/bytes → a JSON number,
-// select → a JSON string (an empty selection omits the param entirely), text → a
-// JSON string of whatever was typed (an empty field omits the param), toggles → a
-// JSON object of `{ option: <state> }` for every option moved off *its own* default
-// (see [TOGGLES_HINT]), boolean → `true` when switched on and no key at all when off (so
-// its default arm is the absent key, for the same reason `toggles` records only what
-// was moved).
+// coerces into the JSON params object: fraction/number/bytes → a JSON number, select and
+// text → a JSON string, toggles → a JSON object of `{ option: <state> }` written the way
+// [toggleSet] says, boolean → `true` or `false`, whichever way its slider is sitting.
+//
+// What an *empty* control writes is decided by [required], not by the kind: a required
+// param always writes something (a toggle set writes its whole membership, a slider that
+// is off writes `false`), and an empty required text, number or selection is a save the
+// form refuses. An optional param's empty control writes no key, because for those the
+// absent key is the setting.
 //
 // Every param gg actually reads has a control here — there is deliberately no raw
 // JSON escape hatch in the editor, since the console knows gg's whole param schema.
@@ -255,36 +257,48 @@ export interface ParamSpec {
   slotKey?: string;
   hint?: string;
   placeholder?: string;
-  // The value gg falls back to when this param is left unset, seeded into the field
-  // of a fresh configuration so an operator sees the real default rather than an
-  // empty box. Set only where the param has a genuine, documented default (not an
-  // "e.g." example); an unset field still means "gg's default", so clearing a seeded
-  // field is exactly leaving it empty. `toggles` params seed nothing (their default
-  // arm is the empty string already).
+  // What the control is seeded with the moment the capability is switched on, and what
+  // an older stored configuration missing this param is filled in with when it is opened
+  // ([draftFromCapabilitySet]). It is a starting point in front of an operator, never a
+  // fallback: the configuration carries the figure that is in the field, and clearing the
+  // field of a [required] param is an error rather than a deferral to gg.
   //
-  // On a [required] param it is a starting point rather than a fallback: it is what a
-  // fresh agent is seeded with, and leaving the field empty is an error rather than a
-  // deferral to gg.
+  // Every required param has one, and they are the same figures `GgCapabilityConfig::enabled`
+  // authors (the authoring catalog in `crates/core/src/gg.rs`), so a capability switched on
+  // here and one switched on there are the same capability. Two exceptions, both
+  // deliberate: a `boolean` needs none, since its slider always shows and always writes
+  // one of its two states, and responses-as-code's `language` must never acquire one —
+  // it is the axis a cross-language study slices its arms on, so it is the single required
+  // value nobody may choose for the operator.
   defaultValue?: string;
-  // Whether gg refuses a launch that leaves this param unset — the rare param with no
-  // documented default at all, where an absent value cannot be read as a choice.
-  // Responses-as-code's `language` is the only one: gg drives no run in a language
-  // nobody named, because that language is the axis a cross-language study slices on.
-  // The form reports it where the operator can still fix it, rather than letting the
-  // launch be the first to say so.
+  // Whether gg refuses a launch this param is absent from — which is every param but the
+  // three whose absence is itself a setting (compaction's `model` and `modelSlot`, and
+  // project management's `reviewers`). A required control always writes: it is seeded when
+  // the capability is switched on, filled in when a stored configuration is short of it,
+  // and refused by the save gate when it is emptied. The form reports it where the
+  // operator can still fix it, rather than letting the launch be the first to say so.
   required?: boolean;
+  // How gg reads the object a `toggles` param writes, and therefore what the form has to
+  // write into it. Required on a `toggles` param and meaningless on any other.
+  //
+  // `exhaustive`: the object names EVERY member. gg arms no member an operator did not
+  // write, so one that leaves a member out refuses the launch — and gg's two scalar
+  // shorthands, `true` and `false`, are every member on and every member off.
+  //
+  // `withholding`: the object names the members held BACK, and one it does not mention is
+  // offered. `{}` is the legitimate "withhold nothing", and there is no scalar form.
+  toggleSet?: "exhaustive" | "withholding";
   // The closed set of values a `select` offers, or the independently switchable
   // members a `toggles` param is made of.
   //
-  // A `toggles` member may declare its own default arm: `defaultOff` marks one gg leaves
-  // OFF unless a configuration arms it, which the form has to know because the draft
-  // records deviations from each member's default rather than a raw off-list (see
-  // [TOGGLES_HINT]). Absent means on-by-default, which is what every member but one is.
-  // `hint` is hover text for a member whose label cannot carry why it exists.
+  // `seedOff` marks a member the [authoring catalog](defaultValue) writes as OFF when the
+  // capability is freshly switched on — a starting point in front of the operator, not an
+  // arm gg would read out of an absence. `hint` is hover text for a member whose label
+  // cannot carry why it exists.
   options?: ReadonlyArray<{
     value: string;
     label: string;
-    defaultOff?: boolean;
+    seedOff?: boolean;
     hint?: string;
   }>;
   // The capability [implementations](CapSpec.implementationOptions) this param is
@@ -311,24 +325,19 @@ export function paramApplies(
   );
 }
 
-// Why a `toggles` param writes only the members whose switch was *moved*: each
-// underlying gg param has its own default arm, so an absent key IS that default, and
-// writing `{ "strip-fences": true }` for a member nobody touched would turn every saved
-// configuration into an explicit opt-in that a later default change could no longer
-// reach.
+// The two sentences a `toggles` param's hint ends with, one per [ParamSpec.toggleSet], so
+// the rule is stated once in one wording wherever it applies. Neither names a particular
+// kind of member: what the toggles ARE is the surrounding hint's and the members' own
+// labels' job.
 //
-// Almost every member is on by default, and one — `drop-doubled-response` — is off (see
-// [ParamSpec.options]'s `defaultOff`), which is exactly why this is stated as "off its
-// default" rather than as "switched off": a subtractive rule cannot express arming a
-// member gg leaves off.
-//
-// Every toggle set in the form ends its hint with this sentence — response healing's
-// repairs and the skills capability's built-ins today — so the rule is stated once, in
-// one wording, wherever it applies. That is why it names no particular kind of member:
-// what the toggles ARE, and which of them start on, is the surrounding hint's and the
-// members' own labels' job.
-const TOGGLES_HINT =
-  "Each starts at its own default; only the ones you move off it are recorded.";
+// An exhaustive set is recorded whole because gg reads it whole — it arms no member an
+// operator did not write, and a configuration naming two of three has not said what the
+// third arm was. A withholding set records the switches it takes away, because a member it
+// does not name is one gg offers.
+const EXHAUSTIVE_TOGGLES_HINT =
+  "Every switch here is recorded, on or off — gg arms none of them for you.";
+const WITHHOLDING_TOGGLES_HINT =
+  "Only the ones you switch off are recorded; anything left on is offered.";
 
 export interface CapSpec {
   id: string;
@@ -357,9 +366,13 @@ export interface CapSpec {
   implementationPlaceholder?: string;
   // When the implementations are a known, closed set (rather than a strategy name
   // gg resolves at run time), the field becomes a picker over these instead of free
-  // text — an operator should not have to remember how a mode is spelled. An empty
-  // `value` is the capability's default implementation. Option labels stay terse
-  // (the mode's name); what each mode does belongs in `implementationHint`.
+  // text — an operator should not have to remember how a mode is spelled. The first row
+  // is the arm a freshly enabled capability is written with (see [authoredImplementation]),
+  // and every row names an arm: gg reads no implementation out of an unwritten one, so a
+  // picker offers no way to select "unspecified". The one empty value in the catalog is
+  // autoload specifications' unlocked arm, which gg spells as the absent key
+  // ([requiresImplementation]). Option labels stay terse (the mode's name); what each mode
+  // does belongs in `implementationHint`.
   implementationOptions?: ReadonlyArray<{ value: string; label: string }>;
   // The help-tooltip text for the implementation field — what the modes mean, kept
   // off the picker's option labels so the dropdown reads as a list of names.
@@ -408,10 +421,11 @@ export interface CapSpec {
 
 // How much of a file one `read_file` call returns — the read-file capability's
 // implementation, and the per-tool A/B lever one capability per filesystem primitive
-// exists to allow. The values are gg's implementation ids
-// (`crates/gg/src/tools/filesystem.rs`); the empty value is the default (unlimited).
+// exists to allow. The values are gg's implementation ids (`crates/core/src/gg.rs`), and
+// every row is one of them: gg reads no arm out of an unwritten `implementation`, so
+// there is no row here that writes nothing.
 export const READ_MODE_OPTIONS = [
-  { value: "", label: "Unlimited (default)" },
+  { value: "unlimited", label: "Unlimited" },
   { value: "default-cap", label: "Default cap" },
 ] as const;
 
@@ -424,12 +438,16 @@ export const READ_MODE_HINT =
 // returns the whole file and never reads it.
 export const CAPPED_READ_MODES = ["default-cap"] as const;
 
-// The line cap gg falls back to when a capped read mode names none.
-export const DEFAULT_READ_LINE_CAP = 250;
+// The line cap a freshly enabled read-file capability is written with — the same figure
+// `GgCapabilityConfig::enabled` authors. It is a starting point in front of an operator,
+// not a fallback: the capability carries whatever number is in the field, and clearing
+// the field is an error rather than a deferral to gg.
+export const AUTHORED_READ_LINE_CAP = 250;
 
 // Where a `shell` command's output goes — the shell capability's implementation. The
-// values are gg's implementation ids (`crates/core/src/gg.rs`); the empty value is the
-// default (adaptive). Both truncating modes write every command's stdout and stderr to a
+// values are gg's implementation ids (`crates/core/src/gg.rs`), and every row is one of
+// them: gg reads no arm out of an unwritten `implementation`, so there is no row here that
+// writes nothing. Both truncating modes write every command's stdout and stderr to a
 // file pair under `/tmp/gg-shell` and return only the configured tail, so a chatty build
 // cannot spend a large slice of the window in one call.
 // --- Hooks --------------------------------------------------------------------
@@ -585,31 +603,43 @@ export const HOOK_DECISION_CONTRACT = `{"action":"continue"}
 {"action":"message","message":"text put in front of the model"}`;
 
 export const SHELL_OUTPUT_OPTIONS = [
-  { value: "", label: "Adaptive (default)" },
+  { value: "adaptive", label: "Adaptive" },
   { value: "offload", label: "Offload to files" },
   { value: "inline", label: "Inline" },
 ] as const;
 
+// The same three modes, plus the one thing a *hook*'s output field can say that a
+// capability's cannot: follow the agent's own shell configuration. That is inheritance
+// rather than a mode of its own — a hook with no output mode runs under whatever its
+// agent's shell is configured with — which is why it is offered here and nowhere else.
+export const HOOK_OUTPUT_OPTIONS = [
+  { value: "", label: "Follow the agent" },
+  ...SHELL_OUTPUT_OPTIONS,
+] as const;
+
 // The shell output modes that truncate a command's output to the two ceilings below —
 // everything except `inline`, which returns the whole of it and reads neither param.
-export const TRUNCATING_SHELL_OUTPUT_MODES = ["", "offload"] as const;
+export const TRUNCATING_SHELL_OUTPUT_MODES = ["adaptive", "offload"] as const;
 
 // What each output mode does — the detail lifted off the picker's option labels into
 // the field's help tooltip.
 export const SHELL_OUTPUT_HINT =
   "Adaptive returns only the exit code for a command that succeeded, and the tail for one that failed. Offload returns the tail for every command. Both write the full stdout and stderr to a file pair under /tmp/gg-shell and tell the agent where to grep for the rest. Inline returns the whole output (capped at 16 KiB) and writes nothing to disk.";
 
-// The two ceilings gg falls back to when a truncating shell output mode names neither
-// (`DEFAULT_MAX_LINES`/`DEFAULT_MAX_CHARS` in `crates/gg/src/tools/shell.rs`).
-export const DEFAULT_SHELL_MAX_LINES = 250;
-export const DEFAULT_SHELL_MAX_CHARS = 4096;
+// The two ceilings a freshly enabled shell capability is written with. A truncating mode
+// reads both and gg supplies neither, so these are what the form puts in front of an
+// operator to keep or change — not figures a launch can land on.
+export const AUTHORED_SHELL_MAX_LINES = 250;
+export const AUTHORED_SHELL_MAX_CHARS = 4096;
 
 // Whether the autoload-specifications capability **locks** the injected specs into the
-// window. The values are gg's implementation ids (`crates/core/src/gg.rs`); the empty
-// value is the default (not locked — ordinary, droppable file reads), and `locked` pins
-// them across compaction and eviction.
+// window. This is the one implementation picker with an empty row, and the empty row is a
+// real arm rather than a deferral: `locked` is the capability's only named implementation
+// (`crates/core/src/gg.rs`), so writing nothing is itself the declaration that the seeded
+// specifications are ordinary, droppable file views. Both rows therefore say what the run
+// does, and neither leaves gg to decide.
 export const AUTOLOAD_LOCKED_OPTIONS = [
-  { value: "", label: "Not locked (default)" },
+  { value: "", label: "Not locked" },
   { value: "locked", label: "Locked" },
 ] as const;
 
@@ -629,14 +659,15 @@ export const AUTOLOAD_LOCKED_HINT =
 // renamed in `crates/core/src/gg.rs` is a compile error here rather than a control
 // that writes a key gg reports as unknown.
 //
-// All but one are armed unless a configuration switches them off, because for those the
-// repair is strictly safer than not making it: the reply they delete from could not have
-// run as sent. `drop-doubled-response` is the exception, and carries its own
-// [defaultOff](ParamSpec.options) flag rather than being a special case in the form.
+// A configuration states all three, and gg arms none of them for it. All but one are
+// *seeded* on when the capability is switched on, because for those the repair is strictly
+// safer than not making it: the reply they delete from could not have run as sent.
+// `drop-doubled-response` is the exception, and carries its own
+// [seedOff](ParamSpec.options) flag rather than being a special case in the form.
 export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
   value: GgHealingStrategy;
   label: string;
-  defaultOff?: boolean;
+  seedOff?: boolean;
   hint?: string;
 }> = [
   {
@@ -650,17 +681,17 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
   {
     value: "drop-doubled-response",
     label:
-      "drop-doubled-response — halve a reply that is one program sent twice (off by default)",
-    defaultOff: true,
-    hint: "Off unless you arm it, and the only strategy that is: the half it deletes is valid code under any other reading, so unlike every other repair here, not making it is the safer default. It fires only on a byte-exact doubling with nothing at all between the copies — a model that deliberately repeats a statement writes a separator, and any single character of separator makes the reply an odd number of bytes long, which the test declines on. Arm it for a model observed to concatenate its completion with itself.",
+      "drop-doubled-response — halve a reply that is one program sent twice (starts off)",
+    seedOff: true,
+    hint: "The one strategy a fresh capability starts switched off: the half it deletes is valid code under any other reading, so unlike every other repair here, not making it is the safer place to start. It fires only on a byte-exact doubling with nothing at all between the copies — a model that deliberately repeats a statement writes a separator, and any single character of separator makes the reply an odd number of bytes long, which the test declines on. Arm it for a model observed to concatenate its completion with itself.",
   },
 ];
 
 // How the assistant message a code turn records is derived from the model's reply
 // (`crates/gg/src/healing.rs`). Under responses-as-code the reply is a program healing
 // rewrites before running, so the transcript can store either what the model *sent* or
-// what gg actually *ran* — a lever a study slices on. The empty value is gg's default
-// (no post-processing), so leaving the field alone changes nothing.
+// what gg actually *ran* — a lever a study slices on, and so a mode the configuration
+// names rather than one gg reads out of an empty field.
 // --- Program language ---------------------------------------------------------------
 //
 // Which language an agent writes its programs in. Every language offers the *same*
@@ -668,10 +699,11 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
 // study varies — and gg records it on the run and on each agent's surface so the arms can
 // be told apart afterwards.
 //
-// It is the catalog's one required param, and the reason is that same axis: gg has no
-// default language, because any language it picked would be a difference between two arms
-// that no document records. A code agent that names none is refused at launch, so the
-// picker seeds a fresh agent with one and the form refuses to save an agent left empty.
+// It is the one required param the form does not fill in, and the reason is that same
+// axis: a language gg picked — or that this picker picked — would be a difference between
+// two arms that no document records. A code agent that names none is refused at launch, so
+// a fresh agent opens on the picker's placeholder row and the save gate names the field
+// until the operator answers it.
 //
 // How each registered language is labelled in the picker: the arms' names, with the one
 // annotation this picker needs and a reader of documentation does not.
@@ -695,14 +727,10 @@ const PROGRAM_LANGUAGE_LABELS: Record<GgProgramLanguage, string> = {
   javascript: "JavaScript (no type check)",
 };
 
-// What a fresh code agent is seeded with. It is a starting point rather than a fallback:
-// it is written into the configuration the moment the agent exists, so the language the
-// run is driven in is one the document names.
-export const SEEDED_PROGRAM_LANGUAGE: GgProgramLanguage = "typescript";
-
-// The empty row is a placeholder, not a choice: it is what a stored configuration
-// carrying no `language` shows, and picking it leaves the form with the error that value
-// earns. Every other row is a language gg can drive.
+// The empty row is a placeholder, not a choice: it is what a fresh code agent opens on
+// and what a stored configuration carrying no `language` shows, and leaving it there is
+// the one required value the save gate cannot fill in for the operator. Every other row is
+// a language gg can drive.
 export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
   value: "" | GgProgramLanguage;
   label: string;
@@ -718,7 +746,7 @@ export const PROGRAM_LANGUAGE_HINT =
   "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Python is its own guest, a committed CPython, and its programs are checked by nothing before they run. Ruby is compiled to JavaScript by a committed Opal before it crosses, so its programs are read and refused before they run without their types ever being checked — the one arm that separates compiling a program from typing it. PureScript is compiled and fully type-checked by a real `purs` in the run image, against a library set gg carries, so it is the other end of that axis: a wrong argument shape, a missing case or a missing instance costs a diagnostic rather than a turn. Java is the only arm whose program passes through two compilers — `javac` and then TeaVM — inside a JVM gg keeps warm between programs, so it is both type-checked and the most expensive arm to compile, and a class outside TeaVM's classlib is a located compile error rather than a run-time surprise. Kotlin rides that same road from bytecode onwards and is the A/B against it: the same two compilers, the same guest and the same classlib, so what differs between the pair is the language and its SDK rather than the toolchain — a program here is a Kotlin script, and its surface expresses every optional argument as a default passed by name where Java's needs an overload. Rust and Swift are a different shape rather than a different language: neither ships a guest at all, because their compilers produce the program rather than something that later reads one, so each turn compiles the component it is then evaluated by. Rust's is the cheapest compile of any checked arm and its programs are ~25 KB; Swift's reply is compiled byte for byte, with no wrapper and no line offset, and is the one arm that pays more to instantiate a program than to compile it. C++ is the third of that shape and the cheapest of the three per turn, because the prelude its programs are compiled against is precompiled once per machine — its reply is compiled byte for byte too, it is the only arm whose guest has working exceptions, and it is the only one where undefined behavior can end a program with nothing to say about why. C# is neither shape: Roslyn compiles the reply to an IL assembly on the host in about a third of a second, the bytes cross as base64, and a committed guest holding a Mono IL interpreter and the whole .NET class library loads them — so it is type-checked like a compiled arm, costs one compiler and no engine work per turn like an interpreted one, and has the best error surface of any of them, because an unhandled exception arrives with its type, its message and its managed stack. There is no default: gg drives no run in a language nobody chose, so a code agent has to name one and a launch that omits it is refused.";
 
 export const ASSISTANT_MESSAGE_OPTIONS = [
-  { value: "", label: "Post-response healing (default)" },
+  { value: "response-healing", label: "Post-response healing" },
   { value: "none", label: "No post-processing" },
 ] as const;
 
@@ -730,33 +758,34 @@ export const ASSISTANT_MESSAGE_HINT =
 // Which SDK types a documentation lookup opens beside the function it was asked for —
 // three INDEPENDENT toggles rather than one three-way arm, because what a return type
 // costs and what a declared failure buys are separate questions and a study slices on
-// each of them. `parameters` carries its own [defaultOff](ParamSpec.options) flag, since
-// it is the one gg leaves off unless a configuration asks for it.
+// each of them. A configuration states all three; `parameters` carries its own
+// [seedOff](ParamSpec.options) flag, since it is the one a fresh capability opens with
+// switched off.
 export const DOC_VIEW_TYPES_OPTIONS: ReadonlyArray<{
   value: string;
   label: string;
-  defaultOff?: boolean;
+  seedOff?: boolean;
   hint?: string;
 }> = [
   {
     value: "return",
     label: "return — the types the signature hands back",
-    hint: "Lands the agent on what it can do with the value it is about to get. On unless you switch it off.",
+    hint: "Lands the agent on what it can do with the value it is about to get. A fresh capability starts it on.",
   },
   {
     value: "parameters",
-    label: "parameters — the types its arguments declare (off by default)",
-    defaultOff: true,
-    hint: "Off unless you ask for it, and the only one of the three that is: an argument's type is already written into the signature the agent is reading, so opening it is more context up front against fewer follow-up lookups.",
+    label: "parameters — the types its arguments declare (starts off)",
+    seedOff: true,
+    hint: "The one of the three a fresh capability starts switched off: an argument's type is already written into the signature the agent is reading, so opening it is more context up front against fewer follow-up lookups. Like the other two, what the run does with it is whatever this switch says.",
   },
   {
     value: "errors",
     label: "errors — the failures its documentation declares it throws",
-    hint: "The error types the function's own documentation comment names, in whatever tag its language declares one with. It is the one source that is not in the signature at all, so nothing else in this list can reach it. On unless you switch it off.",
+    hint: "The error types the function's own documentation comment names, in whatever tag its language declares one with. It is the one source that is not in the signature at all, so nothing else in this list can reach it. A fresh capability starts it on.",
   },
 ];
 
-export const DOC_VIEW_TYPES_HINT = `Opening a function's documentation also opens SDK types beside it, as views of their own — each source switched on its own, and what one open places is the union of them. Always exactly one level: a type's own view never drags in a further type. ${TOGGLES_HINT}`;
+export const DOC_VIEW_TYPES_HINT = `Opening a function's documentation also opens SDK types beside it, as views of their own — each source switched on its own, and what one open places is the union of them. Always exactly one level: a type's own view never drags in a further type. ${EXHAUSTIVE_TOGGLES_HINT}`;
 
 // --- Loop detection ---------------------------------------------------------------
 //
@@ -792,45 +821,45 @@ export interface LoopDetectionSpec {
   key: Exclude<keyof GgLoopDetection, "enabled">;
   label: string;
   hint: string;
-  // gg's own default for the knob, shown as the field's placeholder so an empty box
-  // reads as the real figure rather than as "nothing". Left empty, the knob is not
-  // written at all — which is exactly "take gg's default", so a seeded value is
-  // deliberately NOT used here (unlike the run ceilings, which seed their fields):
-  // writing 256 for a window nobody chose freezes today's default into every stored
-  // configuration.
-  ggDefault: number;
+  // What the knob is seeded with the moment the detector is armed, and what an armed
+  // stored declaration missing this knob is filled in with when it is opened. An armed
+  // detector writes all five: the rule trips on the five of them together, so one armed on
+  // figures nobody chose would measure gg rather than the model, and gg has none of its own
+  // to lend. A disarmed detector owes none of them, and a knob it carries anyway is kept —
+  // the operator tuned it and switched it off.
+  authored: number;
 }
 
 export const LOOP_DETECTION_SPECS: ReadonlyArray<LoopDetectionSpec> = [
   {
     key: "windowWords",
     label: "Window (words)",
-    ggDefault: 256,
-    hint: "How many of the most recent words the detector looks back over. A word is a whitespace-separated run of characters — plus a fixed-width slice whenever a run exceeds gg's internal cap, which is what makes a whitespace-free loop (`a();a();a();…`) detectable rather than one unbounded word. Empty takes gg's default of 256.",
+    authored: 256,
+    hint: "How many of the most recent words the detector looks back over. A word is a whitespace-separated run of characters — plus a fixed-width slice whenever a run exceeds gg's internal cap, which is what makes a whitespace-free loop (`a();a();a();…`) detectable rather than one unbounded word.",
   },
   {
     key: "repeatThreshold",
     label: "Repeats before suspicious",
-    ggDefault: 32,
-    hint: "How many times one word may occur inside the window before it counts as an offender — strictly more than this makes one. Raising it tolerates denser legitimate repetition (a data literal, a long table) at the cost of catching a loop later. Empty takes gg's default of 32, which is a word occupying more than an eighth of a 256-word window.",
+    authored: 32,
+    hint: "How many times one word may occur inside the window before it counts as an offender — strictly more than this makes one. Raising it tolerates denser legitimate repetition (a data literal, a long table) at the cost of catching a loop later. 32 is a word occupying more than an eighth of a 256-word window.",
   },
   {
     key: "minOffenders",
     label: "Offenders to saturate",
-    ggDefault: 2,
-    hint: "How many DISTINCT offenders must be present at once for the window to count as saturated. More than one is required because a single very common token (`the`, `0,`, a brace) is ordinary, while a loop repeats a whole fragment and so saturates several words together. Empty takes gg's default of 2.",
+    authored: 2,
+    hint: "How many DISTINCT offenders must be present at once for the window to count as saturated. More than one is required because a single very common token (`the`, `0,`, a brace) is ordinary, while a loop repeats a whole fragment and so saturates several words together.",
   },
   {
     key: "minSaturatedRun",
     label: "Saturated words before abandoning",
-    ggDefault: 3000,
-    hint: "How many consecutive words must arrive while the window stays saturated before the reply is abandoned. This is the term that separates a loop from legitimately repetitive content: a tilemap literal or a long table saturates the window and then ENDS, while a loop saturates it and never stops. 0 abandons as soon as the window saturates — the unmodified frequency rule, and a deliberate setting rather than a mistake. Empty takes gg's default of 3000.",
+    authored: 3000,
+    hint: "How many consecutive words must arrive while the window stays saturated before the reply is abandoned. This is the term that separates a loop from legitimately repetitive content: a tilemap literal or a long table saturates the window and then ENDS, while a loop saturates it and never stops. 0 abandons as soon as the window saturates — the unmodified frequency rule, and a deliberate setting rather than a mistake.",
   },
   {
     key: "maxResponseChars",
     label: "Reply ceiling (characters)",
-    ggDefault: 250_000,
-    hint: "A hard ceiling on one reply, and the backstop for a runaway that is not repetitive enough to trip the window rule. 0 turns the backstop off and leaves only the repetition rule. Empty takes gg's default of 250,000.",
+    authored: 250_000,
+    hint: "A hard ceiling on one reply, and the backstop for a runaway that is not repetitive enough to trip the window rule. 0 turns the backstop off and leaves only the repetition rule.",
   },
 ];
 
@@ -986,12 +1015,35 @@ export function capabilitySpec(id: string): CapSpec | undefined {
   return CAPABILITIES.find((cap) => cap.id === id);
 }
 
+/**
+ * The arm a freshly switched-on capability is written with: the first row of its picker,
+ * which is the arm the authoring catalog in `crates/core/src/gg.rs` names for it. The empty
+ * string for a capability that offers no arms at all, and for autoload specifications,
+ * whose unwritten implementation *is* its unlocked arm.
+ */
+export function authoredImplementation(cap: CapSpec): string {
+  return cap.implementationOptions?.[0]?.value ?? "";
+}
+
+/**
+ * Whether an enabled `cap` has to name an arm — true for the four pickers every row of
+ * which is a real implementation (shell, read-file, memories, compaction), and false for
+ * autoload specifications, where writing nothing is the declaration that the seeded
+ * specifications are ordinary file views. A capability with no closed set of arms requires
+ * none either: a free-text implementation field names a strategy gg resolves at run time,
+ * and there is no list here to say what a fresh one would be.
+ */
+export function requiresImplementation(cap: CapSpec): boolean {
+  const options = cap.implementationOptions ?? [];
+  return options.length > 0 && options.every((o) => o.value !== "");
+}
+
 // Whether a module-backed capability's state is carried in its holder's **prompt**
 // (`owned` — every turn, as a pinned block and a prompt section) or is reachable only
-// through the tools it contributes (`unowned`). The empty value is the default
-// (`owned`).
+// through the tools it contributes (`unowned`). Both are written: a capability that
+// declares no ownership declares nothing gg can conduct a run on.
 export const MODULE_OWNERSHIP_OPTIONS = [
-  { value: "", label: "Owned (default)" },
+  { value: "owned", label: "Owned" },
   { value: "unowned", label: "Unowned — tools only, not in the prompt" },
 ] as const;
 
@@ -1019,14 +1071,18 @@ function ownershipParam(what: string): ParamSpec {
     key: "ownership",
     label: "Ownership",
     kind: "select",
+    required: true,
+    defaultValue: MODULE_OWNERSHIP_OPTIONS[0].value,
     options: MODULE_OWNERSHIP_OPTIONS,
     hint: `Whether this agent's prompt carries ${what}. Owned rebuilds it into the window on its own schedule and describes it in the system prompt, so the agent is told what it holds on every turn. Unowned removes both, and leaves the tools, the state and the telemetry unchanged: the agent reaches ${what} through its tools instead, and pays no context for it between calls.`,
   };
 }
 
-// The workspace-relative directory gg reads authored skills from when a
-// configuration names none (`crates/gg/src/skills.rs`).
-export const DEFAULT_SKILLS_DIR = ".gg/skills";
+// The workspace-relative directory a freshly enabled skills capability is written with
+// (`GG_WORKSPACE_SKILLS_DIR` in `crates/core/src/gg.rs`). gg reads the directory the
+// configuration names and looks in no other, so this is the field's starting value rather
+// than somewhere gg would look on its own.
+export const AUTHORED_SKILLS_DIR = ".gg/skills";
 
 // The twelve skills gg ships itself — one per family of the functions it offers
 // (`FAMILIES` in `crates/gg/src/skills.builtin.rs`), in the order gg lists them, which
@@ -1102,46 +1158,49 @@ export const BUILT_IN_SKILL_OPTIONS: ReadonlyArray<{
 // only when this agent really holds at least one of its functions, so the list is a
 // ceiling rather than a roster: switching nothing off on an agent with no board still
 // yields no `gg-project`.
-export const BUILT_IN_SKILLS_HINT = `Skills gg writes itself, one per family of the functions this agent has — generated from its live tools rather than authored, so they cannot describe a tool it was not given. Under tool calling a built-in's body is the family's real tool definitions and parameters; under responses-as-code it opens a documentation view per function on the turn after it is used. A family is offered only when the agent holds at least one of its functions, and a skill of the same name in the skills directory replaces it. Switching one off withholds it from this agent entirely — the family's functions still work, the manual for them is simply not there. ${TOGGLES_HINT}`;
+export const BUILT_IN_SKILLS_HINT = `Skills gg writes itself, one per family of the functions this agent has — generated from its live tools rather than authored, so they cannot describe a tool it was not given. Under tool calling a built-in's body is the family's real tool definitions and parameters; under responses-as-code it opens a documentation view per function on the turn after it is used. A family is offered only when the agent holds at least one of its functions, and a skill of the same name in the skills directory replaces it. Switching one off withholds it from this agent entirely — the family's functions still work, the manual for them is simply not there. ${WITHHOLDING_TOGGLES_HINT}`;
 
-// The bounds gg falls back to when a configuration sets no cap, mirroring the
-// per-capability defaults in `crates/gg/src/{tasks,board,memories}.rs`. Surfaced as
-// placeholders so an operator sees what leaving a field empty means.
-export const DEFAULT_MAX_TASKS = 100;
-export const DEFAULT_MAX_EPICS = 50;
-export const DEFAULT_MAX_ISSUES = 2000;
-// How many times gg re-dispatches a failed issue before marking it `failed`
-// (`crates/gg/src/board.rs`). Surfaced as the project-management capability's
-// `maxRetries` default so an operator sees what leaving the field empty means.
-export const DEFAULT_MAX_RETRIES = 1;
-// The memory bounds gg falls back to (`crates/gg/src/memories.rs`). They were written
-// for a scratchpad of a handful of short notes and are now sized for a store an agent
-// really curates: 64 notes of 4 096 characters, with no aggregate ceiling on the
-// scratchpad at all — which is why there is no `DEFAULT_MEMORY_MAX_TOTAL_LEN` here to
-// seed that field with. The description ceiling is 256 characters under every strategy,
-// because a description is an index line the window pays for on every turn.
-export const DEFAULT_MEMORY_MAX_COUNT = 64;
-export const DEFAULT_MEMORY_MAX_LEN_PER = 4096;
-export const DEFAULT_MEMORY_MAX_LEN_DESCRIPTION = 256;
-export const DEFAULT_MEMORY_MAX_LEN_INDEX = 16384;
-export const DEFAULT_MEMORY_MAX_RESULTS = 25;
+// The bounds a freshly enabled tasks or project-management capability is written with,
+// the same figures `GgCapabilityConfig::enabled` authors (`crates/core/src/gg.rs`). Every
+// one of them is a required param: the capability carries the number in its field, and an
+// emptied field is a save the form refuses rather than a bound gg would supply.
+export const AUTHORED_MAX_TASKS = 100;
+export const AUTHORED_MAX_EPICS = 50;
+export const AUTHORED_MAX_ISSUES = 2000;
+// How many times gg re-dispatches an issue whose agent ended without finishing before
+// marking it `failed`. `0` is a legitimate setting — one attempt and no retry — which is
+// why it is a figure the operator keeps or changes rather than an empty field.
+export const AUTHORED_MAX_RETRIES = 1;
+// The memory bounds a freshly enabled memories capability is written with — the
+// scratchpad's, because the scratchpad is the arm a fresh capability selects. The three
+// the scratchpad does not apply are written `0`, which is the params object's own spelling
+// of "no ceiling": what bounds a scratchpad is the count and the per-note ceiling, and the
+// description ceiling every strategy reads. An operator who moves the strategy picker to
+// an arm that reads one of the zeroed limits sets the figure it should run under, the same
+// way every other required number is set.
+export const AUTHORED_MEMORY_MAX_COUNT = 64;
+export const AUTHORED_MEMORY_MAX_LEN_PER = 4096;
+export const AUTHORED_MEMORY_MAX_LEN_DESCRIPTION = 256;
+export const AUTHORED_MEMORY_MAX_TOTAL_LEN = 0;
+export const AUTHORED_MEMORY_MAX_LEN_INDEX = 0;
+export const AUTHORED_MEMORY_MAX_RESULTS = 0;
 
 // How a run's memories are organized (`crates/gg/src/memories.rs`) — the memory
-// strategy, which decides which memory tools exist, which of the limits apply, and
-// what the context window carries. The values are gg's strategy ids; the empty value
-// is the default (`scratchpad`), which is what an unrecognized name resolves to too.
+// strategy, which decides which memory tools exist, which of the limits apply, and what
+// the context window carries. The values are gg's strategy ids, all three of them real:
+// an unwritten strategy is not a scratchpad, it is a launch gg refuses.
 export const MEMORY_STRATEGY_OPTIONS = [
-  { value: "", label: "Scratchpad (default)" },
+  { value: "scratchpad", label: "Scratchpad" },
   { value: "markdown", label: "Markdown + index" },
   { value: "keyword-search", label: "Keyword search" },
 ] as const;
 
 // The memory **scopes** (see gg/memories): which memory instance an agent instance binds
 // to. Orthogonal to the strategy, which decides what a memory *is*; this decides whose it
-// is. The empty value is the default (`isolated`), which is the only behaviour gg had
-// before instances could be shared and is what every existing configuration keeps.
+// is. `isolated` — an instance per agent instance — is what a fresh capability is written
+// with, and it is written, not assumed.
 export const MEMORY_SCOPE_OPTIONS = [
-  { value: "", label: "Isolated (default)" },
+  { value: "isolated", label: "Isolated" },
   { value: "shared", label: "Shared across this agent's instances" },
   { value: "inherited", label: "Inherited from the spawner" },
   { value: "read-only", label: "Inherited, read-only" },
@@ -1155,13 +1214,16 @@ export const MEMORY_SCOPE_HINT =
 // The memory strategies that bound the store by a **count** of notes: the scratchpad
 // (whose notes live in the window) and keyword search. A markdown run is bounded by its
 // index instead, since every memory needs a line in it.
-export const COUNTED_MEMORY_STRATEGIES = ["", "keyword-search"] as const;
+export const COUNTED_MEMORY_STRATEGIES = [
+  "scratchpad",
+  "keyword-search",
+] as const;
 
 // The scratchpad strategy alone — the only one whose notes are carried in the window, and
-// so the only one an aggregate length budget could bound (it has none by default; the
-// field is offered here because this is the only strategy where setting one means
-// anything).
-export const SCRATCHPAD_MEMORY_STRATEGY = [""] as const;
+// so the only one an aggregate length budget could bound (`0` is how a configuration says
+// it has none; the field is offered here because this is the only strategy where setting
+// one means anything).
+export const SCRATCHPAD_MEMORY_STRATEGY = ["scratchpad"] as const;
 
 // The strategy that keeps a pinned markdown index — the only one with an index to bound.
 export const INDEXED_MEMORY_STRATEGY = ["markdown"] as const;
@@ -1216,18 +1278,19 @@ export const SUBAGENT_SCOPES: ReadonlyArray<{
   },
 ];
 
-// The per-hook timeout gg falls back to when a hook declares none (`DEFAULT_HOOK_TIMEOUT`
-// in `crates/gg/src/hooks.rs`). Generous, because a hook command is typically a build or
-// a test suite rather than a quick check.
-export const DEFAULT_HOOK_TIMEOUT_SECS = 300;
+// The timeout a freshly added command hook is written with. Generous, because a hook
+// command is typically a build or a test suite rather than a quick check — and a figure
+// rather than an empty field, because gg kills a hook at the ceiling the hook declares and
+// has no ceiling of its own to lend one that declares none.
+export const AUTHORED_HOOK_TIMEOUT_SECS = 300;
 
 // The compaction strategies gg resolves at run time (`crates/gg/src/compaction.rs`),
 // in editor order — grouped by who condenses the thread: the working agent itself (the
-// first two and the last) or a separate handoff model, out of band. An unrecognized name
-// falls back to the default rather than failing to launch, so the field stays a closed
-// picker rather than free text.
+// first two and the last) or a separate handoff model, out of band. A closed picker
+// rather than free text because an unrecognized name refuses the launch, and every row is
+// a strategy: an enabled compaction that names none is refused too.
 export const SUMMARIZER_OPTIONS = [
-  { value: "", label: "Self-summarization (default)" },
+  { value: "self-summarization", label: "Self-summarization" },
   { value: "self-compaction", label: "Self-compaction" },
   { value: "handoff-summarization", label: "Handoff summarization" },
   { value: "handoff-compaction", label: "Handoff compaction" },
@@ -1245,7 +1308,30 @@ export const HANDOFF_SUMMARIZERS = [
 // What each compaction strategy does — the detail lifted off the picker's option
 // labels into the field's help tooltip.
 export const SUMMARIZER_HINT =
-  "Self-summarization (the default) asks the agent, in its own thread, to write the summary its next context is rebuilt from. Self-compaction gives the agent a `compact` tool it calls with a summary AND the files to re-read, so it chooses what survives. The two Handoff strategies do the same two jobs on a separate model (set below), which reads the thread as labelled messages and never interrupts the agent. Memory compaction requires Memories: the agent writes its working state to memories instead of a summary, and those cross the boundary verbatim.";
+  "Self-summarization asks the agent, in its own thread, to write the summary its next context is rebuilt from. Self-compaction gives the agent a `compact` tool it calls with a summary AND the files to re-read, so it chooses what survives. The two Handoff strategies do the same two jobs on a separate model (set below), which reads the thread as labelled messages and never interrupts the agent. Memory compaction requires Memories: the agent writes its working state to memories instead of a summary, and those cross the boundary verbatim.";
+
+// The remaining figures a freshly switched-on capability is written with, each named
+// beside no other vocabulary of its own. Like every [defaultValue](ParamSpec.defaultValue)
+// they are the authoring catalog's (`crates/core/src/gg.rs`) and not gg's: gg reads the
+// number in the document and has none of its own to fall back on.
+
+// A narrowing an order of magnitude under a large model's real window, which is what the
+// context-window override is reached for: it puts a compaction boundary within reach of a
+// run that would otherwise have to buy a million tokens of input to see one.
+export const AUTHORED_WINDOW_LIMIT = 100_000;
+// A fifth of the window held back for the summarization call.
+export const AUTHORED_SUMMARY_HEADROOM = 0.2;
+// The shortlist of largest file views an agent-managed-context agent's prompt names.
+export const AUTHORED_TOP_FILE_VIEWS = 5;
+// Deep enough for a root that delegates to a lead that delegates to a worker, and shallow
+// enough that a runaway roster cannot open a fleet.
+export const AUTHORED_MAX_DEPTH = 3;
+// One program's wall-clock and memory ceilings inside the wasm sandbox: thirty seconds,
+// and 256 MiB.
+export const AUTHORED_PROGRAM_TIMEOUT_SECS = 30;
+export const AUTHORED_PROGRAM_MAX_MEMORY_BYTES = 268_435_456;
+// How many of a code agent's most recent programs the library holds.
+export const AUTHORED_PROGRAMS_KEPT = 20;
 
 export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   // --- Models & tools ---------------------------------------------------------
@@ -1264,17 +1350,19 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxLines",
         label: "Max lines",
         kind: "number",
-        defaultValue: String(DEFAULT_SHELL_MAX_LINES),
+        required: true,
+        defaultValue: String(AUTHORED_SHELL_MAX_LINES),
         showWhenImplementation: TRUNCATING_SHELL_OUTPUT_MODES,
-        hint: "Trailing lines of a truncated command's output returned inline. Clear it for no line ceiling.",
+        hint: "Trailing lines of a truncated command's output returned inline. Written whichever output mode is selected, so moving the picker onto a truncating one needs no retype.",
       },
       {
         key: "maxChars",
         label: "Max characters",
         kind: "number",
-        defaultValue: String(DEFAULT_SHELL_MAX_CHARS),
+        required: true,
+        defaultValue: String(AUTHORED_SHELL_MAX_CHARS),
         showWhenImplementation: TRUNCATING_SHELL_OUTPUT_MODES,
-        hint: "Trailing characters of a truncated command's output returned inline. With both ceilings set, the tighter one decides; clear both and gg uses its defaults.",
+        hint: "Trailing characters of a truncated command's output returned inline. The tighter of the two ceilings decides what comes back; both are written, because a truncating mode reads both and gg supplies neither.",
       },
     ],
     tools: ["shell"],
@@ -1299,9 +1387,10 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "lineCap",
         label: "Line cap",
         kind: "number",
-        defaultValue: String(DEFAULT_READ_LINE_CAP),
+        required: true,
+        defaultValue: String(AUTHORED_READ_LINE_CAP),
         showWhenImplementation: CAPPED_READ_MODES,
-        hint: "Lines per call under either capped mode.",
+        hint: "Lines per call under a capped read mode. Written under the unlimited mode too, which reads it under neither name — so switching the picker to a capped mode is one click rather than a retype.",
       },
     ],
     tools: ["read_file"],
@@ -1350,11 +1439,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "The agent's whole reply is a program over the tools, run in a wasm sandbox.",
     params: [
       {
+        // The one required param with no seeded value, and the only field in the form an
+        // operator has to answer before a fresh code agent can be saved. See
+        // [ParamSpec.defaultValue]: the language is the axis a cross-language study slices
+        // its arms on, so neither gg nor this form may pick it.
         key: "language",
         label: "Program language",
         kind: "select",
         options: PROGRAM_LANGUAGE_OPTIONS,
-        defaultValue: SEEDED_PROGRAM_LANGUAGE,
         required: true,
         hint: PROGRAM_LANGUAGE_HINT,
       },
@@ -1362,19 +1454,24 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "timeoutSecs",
         label: "Execution timeout (seconds)",
         kind: "number",
-        placeholder: "e.g. 30",
-        hint: "Wall-clock ceiling on one program's guest execution. Time the program spends parked in a tool call is excluded. gg's default is 30 seconds.",
+        required: true,
+        defaultValue: String(AUTHORED_PROGRAM_TIMEOUT_SECS),
+        hint: "Wall-clock ceiling on one program's guest execution. Time the program spends parked in a tool call is excluded, so this bounds the work the program itself does rather than the turn it belongs to.",
       },
       {
         key: "maxMemoryBytes",
         label: "Max memory (bytes)",
         kind: "bytes",
-        placeholder: "e.g. 67108864",
+        required: true,
+        defaultValue: String(AUTHORED_PROGRAM_MAX_MEMORY_BYTES),
+        hint: "Ceiling on the memory the wasm sandbox may hand one program. A program that asks for more is stopped at the ceiling, which is an error turn rather than a run that dies.",
       },
       {
         key: "docViewTypes",
         label: "Documentation types",
         kind: "toggles",
+        toggleSet: "exhaustive",
+        required: true,
         options: DOC_VIEW_TYPES_OPTIONS,
         hint: DOC_VIEW_TYPES_HINT,
       },
@@ -1382,13 +1479,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "healing",
         label: "Response healing",
         kind: "toggles",
+        toggleSet: "exhaustive",
+        required: true,
         options: HEALING_STRATEGY_OPTIONS,
-        hint: `Repairs gg makes to a reply before running it — deletion only, so a healed program is always a subsequence of what the model sent. The model is told nothing about a repair; every one of them is reported to the run's operator and counted on the run. ${TOGGLES_HINT}`,
+        hint: `Repairs gg makes to a reply before running it — deletion only, so a healed program is always a subsequence of what the model sent. The model is told nothing about a repair; every one of them is reported to the run's operator and counted on the run. ${EXHAUSTIVE_TOGGLES_HINT}`,
       },
       {
         key: "assistantMessages",
         label: "Assistant messages",
         kind: "select",
+        required: true,
+        defaultValue: ASSISTANT_MESSAGE_OPTIONS[0].value,
         options: ASSISTANT_MESSAGE_OPTIONS,
         hint: ASSISTANT_MESSAGE_HINT,
       },
@@ -1424,8 +1525,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "keep",
         label: "Programs kept",
         kind: "number",
-        placeholder: "e.g. 20",
-        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get`. Older ones are dropped, and asking for one says which turns are still held. `0` keeps every program of the session; empty is gg's default of 20.",
+        required: true,
+        defaultValue: String(AUTHORED_PROGRAMS_KEPT),
+        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get`. Older ones are dropped, and asking for one says which turns are still held. `0` keeps every program of the session — the setting for a study that reads them all back, spelled as a figure like every other.",
       },
     ],
     // No `tools`, for the reason `modes` gives: there are no programs in a tool-calling
@@ -1445,8 +1547,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "windowLimit",
         label: "Window limit (tokens)",
         kind: "number",
-        placeholder: "e.g. 100000",
-        hint: "The window to run the model against, in tokens. Can only narrow: a value above the model catalog's figure for the model is clamped to it, and 0 (or blank) applies no override.",
+        required: true,
+        defaultValue: String(AUTHORED_WINDOW_LIMIT),
+        hint: "The window to run the model against, in tokens. Can only narrow: a value above the model catalog's figure for the model is clamped to it. Imposing the narrowing is the whole of what this capability does, so there is no figure here that means no override — switch the capability off for that.",
       },
     ],
   },
@@ -1464,6 +1567,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "images",
         label: "Attach reference images",
         kind: "boolean",
+        required: true,
         hint: "On, a seeded reference mockup arrives as the picture itself. Off, it arrives as its label, format and size, and the agent reads the file when it wants to look. A picture is charged to the window by its dimensions and charged again on every request the view survives, so a case's mockups can outweigh the specifications they illustrate. A model that cannot see images is never sent one either way.",
       },
     ],
@@ -1482,7 +1586,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "summaryHeadroom",
         label: "Summary headroom",
         kind: "fraction",
-        defaultValue: "0.2",
+        required: true,
+        defaultValue: String(AUTHORED_SUMMARY_HEADROOM),
         hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. This also defines the trigger: a compaction fires once the window is 1 − headroom full (the working window is full and only the headroom remains).",
       },
       {
@@ -1495,7 +1600,10 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         // is offered only under them rather than sitting inert beside every other
         // strategy.
         showWhenImplementation: HANDOFF_SUMMARIZERS,
-        hint: "The model that condenses the thread instead of the agent. Take it from a model slot to pick it when the run is launched, or pin one here. Leave it unset (or name a model that will not resolve) and gg condenses on the agent's own model rather than skipping the compaction.",
+        // One of the three params whose absence is the setting, so it carries no
+        // [required] flag and no seeded value: a new configuration that asked for a
+        // summarizer model nobody chose would be the form deciding the arm.
+        hint: "The model that condenses the thread instead of the agent. Take it from a model slot to pick it when the run is launched, or pin one here. Left unset, the agent condenses on its own model — which is a setting rather than a gap, and the one every configuration that names no summarizer runs under.",
       },
     ],
     tools: ["compact"],
@@ -1507,7 +1615,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     group: "Context",
     purpose:
       "The agent reclaims window space itself: evicting file views, archiving thread sections.",
-    params: [ownershipParam("what it has archived")],
+    params: [
+      {
+        key: "topFileViews",
+        label: "File views kept",
+        kind: "number",
+        required: true,
+        defaultValue: String(AUTHORED_TOP_FILE_VIEWS),
+        hint: "How many of the agent's largest file views its prompt names when it is asked to reclaim window space — the shortlist it evicts from, rather than a ceiling on how many views it may hold.",
+      },
+      ownershipParam("what it has archived"),
+    ],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
     operations: [
       "context.evict_file_view",
@@ -1544,13 +1662,16 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "dir",
         label: "Skills directory",
         kind: "text",
-        defaultValue: DEFAULT_SKILLS_DIR,
+        required: true,
+        defaultValue: AUTHORED_SKILLS_DIR,
         hint: "Where this agent reads its authored skills from. A skills library belongs to the agent, so each profile names its own directory and two profiles naming one directory share the load. Relative paths are joined onto the workspace; an absolute path is used as-is. A `<name>.md` file there is a prose skill; a `<name>/` directory is one too, with its front matter and body in a required `skill.md` beside an optional `skill.<ext>` (a module the agent's programs import) and `on-use.<ext>` (a script gg runs on every use). The extension is the program language of the agent using it — `skill.ts` for a TypeScript agent — so a directory may carry one per language.",
       },
       {
         key: "builtIns",
         label: "Built-in skills",
         kind: "toggles",
+        toggleSet: "withholding",
+        required: true,
         options: BUILT_IN_SKILL_OPTIONS,
         hint: BUILT_IN_SKILLS_HINT,
       },
@@ -1569,15 +1690,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     implementationOptions: MEMORY_STRATEGY_OPTIONS,
     implementationHint: MEMORY_STRATEGY_HINT,
     // Each limit is offered only under the strategies that read it — gg ignores the rest,
-    // and a box that changes nothing can only mislead. A value stored for a limit the
-    // current strategy hides is still kept and re-saved, so one capability set can still
-    // be swept across all three arms without retyping its params. Zero means unlimited
-    // everywhere.
+    // and a box that changes nothing can only mislead. All six are written whichever
+    // strategy is selected, so one capability set can be swept across all three arms
+    // without retyping its params, and a hidden limit is the figure the arm that reads it
+    // would run under. `0` is a written setting, not an omission: it says the limit is off.
     params: [
       {
         key: "scope",
         label: "Scope",
         kind: "select",
+        required: true,
+        defaultValue: MEMORY_SCOPE_OPTIONS[0].value,
         options: MEMORY_SCOPE_OPTIONS,
         hint: MEMORY_SCOPE_HINT,
       },
@@ -1585,50 +1708,53 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxCount",
         label: "Max memories",
         kind: "number",
-        defaultValue: String(DEFAULT_MEMORY_MAX_COUNT),
+        required: true,
+        defaultValue: String(AUTHORED_MEMORY_MAX_COUNT),
         showWhenImplementation: COUNTED_MEMORY_STRATEGIES,
-        hint: `How many notes the model may keep at once; gg's default is ${DEFAULT_MEMORY_MAX_COUNT}. 0 for unlimited.`,
+        hint: "How many notes the model may keep at once. 0 for unlimited.",
       },
       {
         key: "maxLenPerMemory",
         label: "Max length each (chars)",
         kind: "number",
-        defaultValue: String(DEFAULT_MEMORY_MAX_LEN_PER),
-        hint: `Character ceiling on any one note's body — ${DEFAULT_MEMORY_MAX_LEN_PER} by default, and 8192 under the two file-shaped strategies, whose bodies are not in the window. A code memory's module and its on-use script are not bodies and are charged to neither this nor the total: they are a capability the agent gains, not context it carries. 0 for unlimited.`,
+        required: true,
+        defaultValue: String(AUTHORED_MEMORY_MAX_LEN_PER),
+        hint: "Character ceiling on any one note's body, read under every strategy — though the two file-shaped ones keep their bodies out of the window, so a larger figure costs the window nothing there. A code memory's module and its on-use script are not bodies and are charged to neither this nor the total: they are a capability the agent gains, not context it carries. 0 for unlimited.",
       },
       {
         key: "maxTotalLen",
         label: "Max length total (chars)",
         kind: "number",
-        // No `defaultValue`: the scratchpad has no aggregate ceiling of its own any
-        // more, so seeding one here would invent a budget gg does not impose and quietly
-        // save it into every configuration opened in the editor.
-        placeholder: "unlimited",
+        required: true,
+        defaultValue: String(AUTHORED_MEMORY_MAX_TOTAL_LEN),
         showWhenImplementation: SCRATCHPAD_MEMORY_STRATEGY,
-        hint: "Character ceiling across all note bodies together — the budget for what the window carries. Empty is no ceiling, which is gg's default: the per-note ceiling and the count are what bound a scratchpad now. 0 is unlimited too.",
+        hint: "Character ceiling across all note bodies together — the budget for what the window carries. A fresh capability writes 0, which is no aggregate ceiling: the per-note ceiling and the count are what bound a scratchpad unless you set one here.",
       },
       {
         key: "maxLenIndex",
         label: "Max index length (chars)",
         kind: "number",
-        defaultValue: String(DEFAULT_MEMORY_MAX_LEN_INDEX),
+        required: true,
+        defaultValue: String(AUTHORED_MEMORY_MAX_LEN_INDEX),
         showWhenImplementation: INDEXED_MEMORY_STRATEGY,
-        hint: "Character ceiling on the pinned index. A create whose entry would not fit is refused, so this is what bounds how many memories a markdown run can hold. 0 for unlimited.",
+        hint: "Character ceiling on the pinned index. A create whose entry would not fit is refused, so this is what bounds how many memories a markdown run can hold. 0 for unlimited, which is what a fresh capability writes because it selects the scratchpad — set a figure when you move to the markdown strategy.",
       },
       {
         key: "maxLenDescription",
         label: "Max description length (chars)",
         kind: "number",
-        defaultValue: String(DEFAULT_MEMORY_MAX_LEN_DESCRIPTION),
-        hint: `Character ceiling on a memory's one-line description; gg's default is ${DEFAULT_MEMORY_MAX_LEN_DESCRIPTION}, under every strategy. A description is an index line, not a body — under the markdown strategy the window pays for every one of them on every turn, and under the others it is what a search result or a linked-holder notice shows. 0 for unlimited.`,
+        required: true,
+        defaultValue: String(AUTHORED_MEMORY_MAX_LEN_DESCRIPTION),
+        hint: "Character ceiling on a memory's one-line description, read under every strategy. A description is an index line, not a body — under the markdown strategy the window pays for every one of them on every turn, and under the others it is what a search result or a linked-holder notice shows. 0 for unlimited.",
       },
       {
         key: "maxResults",
         label: "Max search results",
         kind: "number",
-        defaultValue: String(DEFAULT_MEMORY_MAX_RESULTS),
+        required: true,
+        defaultValue: String(AUTHORED_MEMORY_MAX_RESULTS),
         showWhenImplementation: SEARCHING_MEMORY_STRATEGY,
-        hint: "How many memories one `search_memories` call reports. 0 for unlimited.",
+        hint: "How many memories one `search_memories` call reports. 0 for unlimited, which is what a fresh capability writes because it selects the scratchpad — set a figure when you move to keyword search.",
       },
     ],
     tools: [
@@ -1675,7 +1801,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "mode",
         label: "Mode",
         kind: "select",
-        defaultValue: "simple",
+        required: true,
+        defaultValue: TASKS_MODE_OPTIONS[0].value,
         hint: TASKS_MODE_HINT,
         options: TASKS_MODE_OPTIONS,
       },
@@ -1683,7 +1810,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxTasks",
         label: "Max tasks",
         kind: "number",
-        defaultValue: String(DEFAULT_MAX_TASKS),
+        required: true,
+        defaultValue: String(AUTHORED_MAX_TASKS),
         hint: "How many tasks the list may hold at once.",
       },
       // No `ownership` param: the task list is always carried in its holder's prompt. It
@@ -1729,31 +1857,38 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxEpics",
         label: "Max epics",
         kind: "number",
-        defaultValue: String(DEFAULT_MAX_EPICS),
+        required: true,
+        defaultValue: String(AUTHORED_MAX_EPICS),
         hint: "How many epics the board may hold.",
       },
       {
         key: "maxIssues",
         label: "Max issues",
         kind: "number",
-        defaultValue: String(DEFAULT_MAX_ISSUES),
+        required: true,
+        defaultValue: String(AUTHORED_MAX_ISSUES),
         hint: "How many issues the board may hold.",
       },
       {
         key: "maxRetries",
         label: "Max retries",
         kind: "number",
-        defaultValue: String(DEFAULT_MAX_RETRIES),
-        hint: "How many times gg re-dispatches an issue whose assigned agent ended without finishing — a spent turn ceiling, a breached limit, a model error — before marking the issue failed.",
+        required: true,
+        defaultValue: String(AUTHORED_MAX_RETRIES),
+        hint: "How many times gg re-dispatches an issue whose assigned agent ended without finishing — a spent turn ceiling, a breached limit, a model error — before marking the issue failed. 0 is a setting: one attempt, and a failure is final.",
       },
       {
         key: "mergeAgentId",
         label: "Merge agent",
         kind: "agent",
+        required: true,
         defaultValue: ROOT_PROFILE_ID,
-        hint: "Required. Every issue works in its own git worktree, merged back when it is accepted; when that merge conflicts with work another issue landed first, this agent is dispatched into the workspace to resolve it and finish the merge. It must have the Shell capability.",
+        hint: "Every issue works in its own git worktree, merged back when it is accepted; when that merge conflicts with work another issue landed first, this agent is dispatched into the workspace to resolve it and finish the merge. It must have the Shell capability, and the board has one — so a configuration with a board names it.",
       },
       {
+        // The board's one optional param: a set that requires no reviewers is a board
+        // whose issues are accepted on the implementer's word, which is a real
+        // configuration rather than a missing one.
         key: "reviewers",
         label: "Reviewers required",
         kind: "boolean",
@@ -1815,8 +1950,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxDepth",
         label: "Max depth",
         kind: "number",
-        placeholder: "e.g. 3",
-        hint: "Recursion bound (a spawn at max depth is refused).",
+        required: true,
+        defaultValue: String(AUTHORED_MAX_DEPTH),
+        hint: "Recursion bound (a spawn at max depth is refused). Counted from the root, which sits at depth zero.",
       },
     ],
     tools: ["spawn_subagent", "wait_for_subagents", "send_message"],
@@ -1879,6 +2015,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: FSM_STATES_PARAM,
         label: "States",
         kind: "states",
+        required: true,
         hint: "The machine, in order — the first state is the one it enters. Each state runs an agent profile this configuration declares (never another machine), and each transition names the state it leads to, when the model should take it, and which modules travel with it. A transition carries only the modules it names; one that names none starts its successor on nothing. A new transition is pre-filled with History.",
       },
     ],
@@ -1934,18 +2071,12 @@ export const OWNERSHIP_MODULE_KINDS: ReadonlySet<GgModuleKind> = new Set(
 // `capabilityEnabled` facet space, where "is the cost ceiling enabled?" would be a
 // dimension no study wants to slice its results by.
 
-// gg's default error ceilings, armed when a configuration declares none — the two
-// that end a run whose model has stopped making progress. The turn ceiling is
-// unbounded by default (the host caps the wall-clock), and runtime and cost are off
-// when unset.
-export const DEFAULT_MAX_CONSECUTIVE_ERRORS = 5;
-export const DEFAULT_MAX_ERROR_RATE = 0.4;
-export const DEFAULT_ERROR_RATE_WINDOW = 50;
-
-// How many agents gg runs at once when a configuration names no cap. Unlike the
-// ceilings, this one is always in force — a run always has *some* pool — so the
-// default is a number rather than "off".
-export const DEFAULT_MAX_PARALLEL = 16;
+// The two ceilings a run cannot be conducted without, and so the two a fresh
+// configuration is written with. Every other ceiling is unarmed when its field is empty —
+// gg arms no error ceiling, no turn ceiling, no runtime and no cost nobody wrote — while
+// these two have no "off" a run could proceed under: a run always has *some* pool, and the
+// capture journal is always being written.
+export const AUTHORED_MAX_PARALLEL = 16;
 
 // One execution ceiling's control. `key` is the wire field on
 // `GgCapabilitySet.limits`; `kind` is what makes the value legible *and* checkable
@@ -1964,21 +2095,26 @@ export interface RunLimitSpec {
   kind: "count" | "fraction" | "amount" | "mib";
   placeholder?: string;
   hint: string;
-  // The value gg falls back to when this ceiling is unset, seeded into a fresh
-  // configuration's field so it shows gg's real default rather than an empty box. The
-  // two error ceilings have one; the turn ceiling is unbounded by default and runtime
-  // and cost are off when empty, so those seed nothing.
+  // What a fresh configuration's field is seeded with, and what an older stored one
+  // missing this ceiling is filled in with when it is opened. Only the two
+  // [required](RunLimitSpec.required) ceilings have one: the rest are unarmed while their
+  // field is empty, and seeding a figure into one of those would arm a ceiling nobody
+  // asked for.
   defaultValue?: string;
+  // Whether gg refuses a run this ceiling is absent from. True of the parallelism cap and
+  // the journal ceiling, which bound something every run does, and of nothing else: an
+  // empty turn, runtime, cost or error field is that ceiling switched off, which is a
+  // setting gg records as one.
+  required?: boolean;
 }
 
 // One mebibyte in bytes — the factor the `mib` ceiling converts through, spelled once
 // because both the load and the save path multiply by it.
 export const BYTES_PER_MIB = 1024 * 1024;
 
-// gg's default ceiling on the replay capture journal, in MiB. Unlike the others this one
-// is always in force — capture runs for every run — so the default is a number rather
-// than "off".
-export const DEFAULT_REPLAY_MAX_MIB = 256;
+// The other of the two: the ceiling on the replay capture journal, in MiB. Sized to be
+// unreachable by a run that is behaving and reachable by one that is not.
+export const AUTHORED_REPLAY_MAX_MIB = 256;
 
 // The guardrails, in the order they read as a sentence: how much of the run happens
 // at once, then how long it may go on for, then how badly it may go, then how much it
@@ -1992,9 +2128,9 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxParallel",
     label: "Max parallel agents",
     kind: "count",
-    defaultValue: String(DEFAULT_MAX_PARALLEL),
-    placeholder: `e.g. ${DEFAULT_MAX_PARALLEL}`,
-    hint: `How many of the run's agents may run at once, counting the root and every subagent, issue implementer and reviewer; gg's default is ${DEFAULT_MAX_PARALLEL}. An agent spawned while the pool is full queues for a slot rather than being refused, so this stops nothing — it only serializes the run. A suspended agent (waiting on its subagents or an issue) frees its slot, and takes priority over any not-yet-started agent when one opens up.`,
+    required: true,
+    defaultValue: String(AUTHORED_MAX_PARALLEL),
+    hint: "How many of the run's agents may run at once, counting the root and every subagent, issue implementer and reviewer. An agent spawned while the pool is full queues for a slot rather than being refused, so this stops nothing — it only serializes the run. A suspended agent (waiting on its subagents or an issue) frees its slot, and takes priority over any not-yet-started agent when one opens up. Every run has a pool, so this one is always written.",
   },
   {
     key: "maxTurns",
@@ -2014,25 +2150,22 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxConsecutiveErrors",
     label: "Consecutive errors",
     kind: "count",
-    defaultValue: String(DEFAULT_MAX_CONSECUTIVE_ERRORS),
-    placeholder: "e.g. 5",
-    hint: `How many error turns in a row end an agent; gg's default is ${DEFAULT_MAX_CONSECUTIVE_ERRORS}. A turn is an error when the work it declared could not be carried out — a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.`,
+    placeholder: "no ceiling",
+    hint: "How many error turns in a row end an agent. Empty arms no such ceiling: a run whose model errors every turn spends its turns, its runtime or its cost instead. A turn is an error when the work it declared could not be carried out — a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
   },
   {
     key: "maxErrorRate",
     label: "Error rate",
     kind: "fraction",
-    defaultValue: String(DEFAULT_MAX_ERROR_RATE),
-    placeholder: "0.0 – 1.0",
-    hint: `The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all. gg's default is ${DEFAULT_MAX_ERROR_RATE} over ${DEFAULT_ERROR_RATE_WINDOW} turns.`,
+    placeholder: "no ceiling",
+    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all, and neither is armed unless you write it.",
   },
   {
     key: "errorRateWindow",
     label: "Error-rate window (turns)",
     kind: "count",
-    defaultValue: String(DEFAULT_ERROR_RATE_WINDOW),
-    placeholder: "e.g. 50",
-    hint: `How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns. gg's default is ${DEFAULT_ERROR_RATE_WINDOW}.`,
+    placeholder: "no ceiling",
+    hint: "How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns.",
   },
   {
     key: "maxCost",
@@ -2045,7 +2178,8 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "replayMaxBytes",
     label: "Session journal (MiB)",
     kind: "mib",
-    placeholder: `e.g. ${DEFAULT_REPLAY_MAX_MIB}`,
-    hint: `Ceiling on the session capture journal gg writes as it runs — the one thing a run that hangs leaves behind. Crossing it stops capture and marks the record truncated; the run itself continues. Empty means gg's default of ${DEFAULT_REPLAY_MAX_MIB} MiB, and 0 is read as no ceiling at all.`,
+    required: true,
+    defaultValue: String(AUTHORED_REPLAY_MAX_MIB),
+    hint: "Ceiling on the session capture journal gg writes as it runs — the one thing a run that hangs leaves behind. Crossing it stops capture and marks the record truncated; the run itself continues. Every run writes the journal, so this one is always written, and it has no unbounded setting: 0 would stop capture before its first line and is refused.",
   },
 ];

@@ -175,8 +175,12 @@ refusal names every offending declaration at once.
 - A state unreachable from the entry state. The machine would run a strictly
   smaller process than the one written.
 - An FSM shell declaring any of a worker's configuration: a model binding, a
-  prompt, a roster, or capabilities other than `fsm`. The editor offers a machine
-  none of these fields, so this is a hand-written set.
+  prompt, a roster, capabilities other than `fsm`, [hooks](/gg/hooks/), or
+  [loop detection](/gg/loop-detection/). A machine takes no turn, so there is no
+  gate for a hook to fire around and no reply for a detector to read — a
+  `pre-write` gate declared here is a gate that always passes, which is worse
+  than no gate. The editor offers a machine none of these fields, so this is a
+  hand-written set.
 
 ## Telemetry
 

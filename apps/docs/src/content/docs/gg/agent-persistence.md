@@ -147,7 +147,7 @@ incarnations of one agent.
 
 ## Configuring it
 
-The capability is per agent, off by default, and takes no params:
+The capability is per agent and takes no params:
 
 ```jsonc
 {
@@ -155,8 +155,18 @@ The capability is per agent, off by default, and takes no params:
   "name": "Owner",
   "capabilities": [
     { "id": "agent-persistence", "enabled": true },
-    { "id": "read-file", "enabled": true },
-    { "id": "shell", "enabled": true }
+    {
+      "id": "read-file",
+      "enabled": true,
+      "implementation": "default-cap",
+      "params": { "lineCap": 250 }
+    },
+    {
+      "id": "shell",
+      "enabled": true,
+      "implementation": "adaptive",
+      "params": { "maxLines": 250, "maxChars": 4096 }
+    }
   ]
 }
 ```

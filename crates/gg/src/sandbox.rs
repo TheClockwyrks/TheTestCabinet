@@ -37,11 +37,12 @@
 //!
 //! ## What a program costs, and what bounds it
 //!
-//! A program is bounded by a wall-clock **execution timeout** on the guest's own CPU (the
-//! [default](limits::DEFAULT_TIMEOUT) is 30 s) and a linear-memory cap — not by a fuel count. The
-//! timeout exists only to stop a program that does not terminate: even the heaviest *honest* program
-//! measured, rewriting twenty 64 KiB files, spends about 1.8 s of guest CPU, so a 30 s ceiling is
-//! reached only by a runaway (`while (true) {}` burns the guest's clock at wall-clock speed). Time a
+//! A program is bounded by a wall-clock **execution timeout** on the guest's own CPU and a
+//! linear-memory cap — both [written by the profile](limits::resolve_sandbox_limits) — not by a fuel
+//! count. The timeout exists only to stop a program that does not terminate: even the heaviest
+//! *honest* program measured, rewriting twenty 64 KiB files, spends about 1.8 s of guest CPU, so a
+//! ceiling of tens of seconds is reached only by a runaway (`while (true) {}` burns the guest's
+//! clock at wall-clock speed). Time a
 //! program spends parked in a bridged tool call — a `shell` build that takes minutes — is **excluded**
 //! from the measurement, so waiting on a build is never mistaken for a loop. Why the ceiling is a
 //! timeout, and how the exclusion is enforced, is in [`limits`].
@@ -107,9 +108,8 @@ pub(crate) mod signatures;
 
 pub use invoker::OperationApi;
 pub use language::{
-    FileWindow, ModuleExport, ModuleExportKind, PARAM_LANGUAGE, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, all_languages, language, library_set,
-    resolve_program_language, spell,
+    FileWindow, ModuleExport, ModuleExportKind, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, all_languages, language, library_set, resolve_program_language, spell,
 };
 
 // The one reading of an export list. Compiled for the tests alone, because every reader left is a
@@ -224,11 +224,6 @@ pub fn check_launch(
     language::check_launch(profile, report);
     limits::check_launch(profile, report);
 }
-
-// The two sandbox ceilings' param names, so the [launch check](crate::validate::CAPABILITY_PARAMS)
-// that reads a `params` object against its capability's vocabulary names the same constant the
-// resolver reads, rather than a second spelling of the same string.
-pub use limits::{PARAM_MAX_MEMORY_BYTES, PARAM_TIMEOUT_SECS};
 
 // The table's own types, which nothing outside `sandbox` names *yet* and which are exported all the
 // same because they are what `operation_of` hands back and what its fields are: an `Operation`
@@ -759,7 +754,7 @@ pub(crate) fn component_bound_operations(
     let (holder, _) = engine::program_component(language, artifact)?;
     let component = holder.get();
     let linker = linker::<fake::FakeOperationApi>()?;
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = fake::CallLog::default();
     // Nothing at all is offered: the guest reports what it *can* bind, which does not depend on
     // what this particular store enables.

@@ -25,16 +25,21 @@ trigger the summarizer has to fit the transcript and write a summary inside the
 same window. So the window an agent is given, which is the denominator of every
 fullness figure and the basis of the trigger, is the model's window less the
 `summaryHeadroom` fraction. The held-back slice is the room the summarization
-round-trip runs in. Against a 200k model at the default headroom the agent works
+round-trip runs in. Against a 200k model at a headroom of `0.2` the agent works
 against 160k.
 
-`summaryHeadroom` is the capability's one tuning parameter. It accepts `0.0` to
-`0.9` and defaults to `0.2`. A value outside that range, or one gg cannot read
-as a fraction, refuses the launch, and an absent one takes the default. The
-fullness threshold that fires a compaction is `1 - summaryHeadroom`, so at the
-default the trigger is `0.8` and fires at roughly 128k of that 160k working
+`summaryHeadroom` is the capability's one tuning parameter, and an enabled
+compaction capability writes it. It accepts `0.0` to `0.9`; a value outside that
+range, one gg cannot read as a fraction, and an absent one each refuse the
+launch. The fullness threshold that fires a compaction is `1 - summaryHeadroom`,
+so at `0.2` the trigger is `0.8` and fires at roughly 128k of that 160k working
 window. Setting the headroom to `0` hands the agent the whole window and
 triggers only at 100% full.
+
+Compaction is a per-agent capability, and so is the window it reserves out of:
+each agent's headroom comes off its own profile, so a run may compact its
+implementer at `0.8` of a narrowed window while its reviewer is measured against
+its model's whole one.
 
 With compaction off nothing is reserved and the agent is measured against the
 model's whole window. A run configured that way overflows rather than
@@ -82,9 +87,9 @@ describes it in the summary itself.
 ## Compaction strategies
 
 Who condenses the thread, and what the restarted context is rebuilt from, is the
-capability's `implementation`. Five strategies ship. An `implementation` naming
-anything else refuses the launch, with the error naming the five that exist, and
-an absent one takes `self-summarization`.
+capability's `implementation`, and an enabled compaction capability names one.
+Five strategies ship. An `implementation` that is absent, or that names anything
+else, refuses the launch, with the error naming the five that exist.
 
 ### In-loop strategies
 
@@ -93,7 +98,7 @@ an instruction, the agent's next turn supplies the answer, and until it does
 every other call is refused with a message naming what was refused and what is
 wanted.
 
-- Self-summarization (`self-summarization`, the default). gg asks the agent
+- Self-summarization (`self-summarization`). gg asks the agent
   to summarize the work done and the work remaining, and its next reply is the
   summary the thread restarts from. Under
   [responses as code](/gg/responses-as-code/overview/) every reply is a program,
@@ -118,7 +123,9 @@ wanted.
 The two handoff strategies run between the agent's turns. The working agent is
 never interrupted and never offered the `compact` tool; its next turn finds a
 smaller window. They condense on the model the capability's `model` parameter
-names, resolved through the same client factory every agent's model is.
+names, resolved through the same client factory every agent's model is. The
+parameter is optional, and a capability that names no summarizer condenses on the
+working agent's own model.
 
 - Handoff summarization (`handoff-summarization`). The compaction model is
   given no tools and answers with prose.
@@ -135,7 +142,7 @@ assistant messages, the working model's turns read to the compaction model as
 its own prior output, and it would then write a first-person account of work it
 never did.
 
-The `model` parameter is resolved at launch against the model catalog every
+A `model` that is written is resolved at launch against the model catalog every
 agent's own binding is resolved against, so a handoff strategy naming a model gg
 cannot resolve refuses the launch. A model that resolves and then cannot be
 reached during the run ends the run under

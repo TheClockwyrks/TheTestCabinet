@@ -51,11 +51,11 @@ and the run has no room left below that agent.
 
 One global cap bounds how many agents run at once, counting every running agent
 whatever profile or model it runs on. It is the run's
-[`maxParallel`](/gg/execution-limits/), 16 unless the configuration says
-otherwise. The cap is a run-level guardrail rather than a param on this
-capability because it bounds the run's concurrency as a whole, including the
-top-level agents a [board](/gg/project-management/) dispatches in a run where
-nothing has the subagents capability.
+[`maxParallel`](/gg/execution-limits/), which every configuration writes — there
+is no width gg runs at when nobody names one. The cap is a run-level guardrail
+rather than a param on this capability because it bounds the run's concurrency as
+a whole, including the top-level agents a [board](/gg/project-management/)
+dispatches in a run where nothing has the subagents capability.
 
 The grant policy:
 
@@ -102,15 +102,16 @@ children at all, whether by spawning them from its roster or by forking itself.
 | --- | --- | --- |
 | Inter-agent messaging | on | Off withholds `send_message`, leaving spawn-and-wait. |
 
-| Param | Default | Meaning |
-| --- | --- | --- |
-| `maxDepth` | 3 | The deepest an agent may sit in the delegation tree; a spawn at that depth fails as a limit. |
+| Param | Meaning |
+| --- | --- |
+| `maxDepth` | The deepest an agent may sit in the delegation tree; a spawn at that depth fails as a limit. |
 
-An absent `maxDepth` takes the default above. One carrying a value gg cannot
-honour exactly as written refuses the launch, alongside every other such value in
-the capability set. It bounds the run's whole agent tree rather than one agent,
-so it is read off the first profile; a *different* `maxDepth` on another profile
-would be read by nothing and refuses the launch too.
+An enabled subagents capability writes `maxDepth`. An absent one, and one
+carrying a value gg cannot honour exactly as written, refuse the launch alongside
+every other such value in the capability set. It bounds the run's whole agent
+tree rather than one agent, so it is read off the first profile; a *different*
+`maxDepth` on another profile would be read by nothing and refuses the launch
+too.
 
 Switched off, none of the three tools is offered and the agent delegates nothing
 of its own.

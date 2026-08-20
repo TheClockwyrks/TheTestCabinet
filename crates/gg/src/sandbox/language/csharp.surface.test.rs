@@ -963,7 +963,7 @@ fn the_artifact_binds_exactly_the_operations_gg_offers() {
     //
     // It is asked directly rather than through `component_bound_operations`, which takes a registered
     // language and this arm is not one yet.
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let component =
         engine::compile_bytes(GUEST_COMPONENT).expect("the embedded C# guest is a component");

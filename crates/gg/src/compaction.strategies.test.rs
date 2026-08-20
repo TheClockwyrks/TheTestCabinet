@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use serde_json::json;
 use test_cabinet_core::gg::{
-    CAPABILITY_COMPACTION, CAPABILITY_MEMORIES, GgCapabilityConfig, GgCapabilitySet,
+    CAPABILITY_COMPACTION, CAPABILITY_MEMORIES, COMPACTION_STRATEGY_MEMORY,
+    COMPACTION_STRATEGY_SELF_SUMMARIZATION, GgCapabilityConfig, GgCapabilitySet,
+    PARAM_SUMMARY_HEADROOM,
 };
 
 use super::super::*;
@@ -28,12 +30,24 @@ fn flat(rendered: &str) -> String {
 }
 
 /// A capability set whose Root agent enables compaction with `implementation` and `params`, with
-/// memories on or off — the two inputs strategy resolution reads.
+/// memories on or off.
+///
+/// One value is filled in rather than replaced: an enabled compaction that writes no
+/// [`summaryHeadroom`](PARAM_SUMMARY_HEADROOM) is refused, and every case in this file is about the
+/// strategy or the handoff model rather than the headroom — so a case that does not name one gets
+/// the fraction it would have written, and a case whose subject *is* the headroom names its own and
+/// this leaves it alone.
 fn set_with(
     implementation: Option<&str>,
     params: serde_json::Value,
     memories: bool,
 ) -> GgCapabilitySet {
+    let mut params = params;
+    if let Some(object) = params.as_object_mut() {
+        object
+            .entry(PARAM_SUMMARY_HEADROOM)
+            .or_insert_with(|| json!(0.2));
+    }
     let mut set = GgCapabilitySet::minimal("mock/x");
     crate::tools::grant_configured(
         &mut set.agents[0],
@@ -82,32 +96,62 @@ fn model(code_mode: bool) -> ContextModel {
 // Resolution
 // ---------------------------------------------------------------------------
 
-/// Every strategy id resolves to its strategy and round-trips through [`CompactionStrategy::id`],
-/// and an absent, `null` or empty implementation takes the documented default. **Absent is not
-/// unrecognized**, and that half of the policy is what this case pins.
+/// Every strategy id resolves to its strategy and round-trips through [`CompactionStrategy::id`].
 #[test]
-fn every_strategy_id_round_trips_and_an_absent_one_takes_the_default() {
+fn every_strategy_id_round_trips() {
     for strategy in CompactionStrategy::ALL {
         assert_eq!(
-            CompactionStrategy::resolve(Some(strategy.id()), true, &mut honoured()),
+            CompactionStrategy::resolve(Some(strategy.id()), &mut honoured()),
             strategy,
             "{} round-trips",
             strategy.id()
         );
     }
+}
+
+/// An absent, `null` or blank implementation is **no strategy at all**, not the prose one.
+///
+/// The resolver says nothing about it — it is handed an `Option<&str>` and no switch, and whether an
+/// arm is owed is a property of the switch — so it answers with the placeholder and leaves the
+/// refusal to the reader that can see the capability whole.
+#[test]
+fn an_absent_implementation_selects_nothing_and_is_reported_elsewhere() {
     for absent in [None, Some(""), Some("  ")] {
         assert_eq!(
-            CompactionStrategy::resolve(absent, true, &mut honoured()),
-            CompactionStrategy::SelfSummarization,
-            "{absent:?} takes the default"
+            CompactionStrategy::resolve(absent, &mut honoured()),
+            CompactionStrategy::NO_COMPACTION,
+            "{absent:?} selects no strategy"
         );
     }
 }
 
-/// A strategy gg does not offer is **refused**, not resolved to the default. The strategy is the
-/// compaction capability's one experimental variable: a run that condensed in prose while its record
-/// said `handoff-compaction` would answer a question nobody asked, and nothing in its data would say
-/// so.
+/// …and an **enabled** compaction that names none refuses the launch, at the locus of the
+/// implementation, offering the five strategies back. The arm is what a compaction study varies, so
+/// gg selects none on an operator's behalf.
+#[test]
+fn an_enabled_compaction_that_names_no_strategy_is_refused() {
+    let set = set_with(None, json!({}), true);
+    let refusal = crate::validate::refusal(&set).expect_err("the set is refused");
+    assert!(refusal.contains("implementation"), "{refusal}");
+    assert!(
+        refusal.contains(COMPACTION_STRATEGY_SELF_SUMMARIZATION),
+        "{refusal}"
+    );
+    assert_eq!(refusal.lines().count(), 1, "{refusal}");
+
+    // Naming one launches: the arm is the only thing that document was short of.
+    let named = set_with(
+        Some(COMPACTION_STRATEGY_SELF_SUMMARIZATION),
+        json!({}),
+        true,
+    );
+    assert!(crate::validate::refusal(&named).is_ok());
+}
+
+/// A strategy gg does not offer is **refused**, and the value handed back is the placeholder rather
+/// than an arm. The strategy is the compaction capability's one experimental variable: a run that
+/// condensed in prose while its record said `handoff-compaction` would answer a question nobody
+/// asked, and nothing in its data would say so.
 #[test]
 fn an_unknown_strategy_is_refused() {
     for unknown in [
@@ -118,8 +162,8 @@ fn an_unknown_strategy_is_refused() {
     ] {
         let defects = reported(|report| {
             assert_eq!(
-                CompactionStrategy::resolve(Some(unknown), true, report),
-                CompactionStrategy::SelfSummarization,
+                CompactionStrategy::resolve(Some(unknown), report),
+                CompactionStrategy::NO_COMPACTION,
                 "the resolver stays total"
             );
         });
@@ -136,45 +180,37 @@ fn an_unknown_strategy_is_refused() {
     }
 }
 
-/// Memory compaction is the one strategy with a hard prerequisite: without the memories capability
-/// there is nothing to write the working state into, and a run configured that way would never
-/// satisfy its own gate. So it demotes to the default instead of stalling.
+/// Memory compaction resolves to **itself** whether or not the agent can write its memories.
+///
+/// The prerequisite is real — a holder with no writable memories has no call that could satisfy the
+/// boundary — but it is enforced by refusing the run, never by handing back a different arm. A
+/// resolver that answered `self-summarization` here would make the two profiles of a compaction
+/// study the same arm, with the cost split as the only place it ever showed.
 #[test]
-fn memory_compaction_requires_memories() {
+fn memory_compaction_never_resolves_to_another_strategy() {
     assert_eq!(
-        CompactionStrategy::resolve(Some("memory-compaction"), true, &mut honoured()),
+        CompactionStrategy::resolve(Some(COMPACTION_STRATEGY_MEMORY), &mut honoured()),
         CompactionStrategy::Memory
     );
-    assert_eq!(
-        CompactionStrategy::resolve(Some("memory-compaction"), false, &mut honoured()),
-        CompactionStrategy::SelfSummarization,
-        "the demotion is not reported here — whether an instance may write its memories is not \
-         always a property of the document, and the half that is is refused by the launch pass"
-    );
-    // …and the same through a whole capability set.
-    assert_eq!(
-        CompactionSetup::resolve(
-            set_with(Some("memory-compaction"), json!({}), false).root(),
-            false,
-            &mut honoured(),
-        )
-        .strategy,
-        CompactionStrategy::SelfSummarization
-    );
-    assert_eq!(
-        CompactionSetup::resolve(
-            set_with(Some("memory-compaction"), json!({}), true).root(),
-            true,
-            &mut honoured(),
-        )
-        .strategy,
-        CompactionStrategy::Memory
-    );
+    // …and the same through a whole capability set, memories on or off. The set with them off is
+    // refused at launch; what this pins is that the strategy it was refused *for* is the one it
+    // named.
+    for memories in [true, false] {
+        assert_eq!(
+            CompactionSetup::resolve(
+                set_with(Some(COMPACTION_STRATEGY_MEMORY), json!({}), memories).root(),
+                &mut honoured(),
+            )
+            .strategy,
+            CompactionStrategy::Memory,
+            "memories: {memories}"
+        );
+    }
 }
 
-/// …and the half of that prerequisite a **document** can decide is a launch refusal rather than a
-/// demotion. A profile that names `memory-compaction` with no memories capability at all could never
-/// satisfy one, so gg will not start the run and quietly measure self-summarization under its name.
+/// …and the half of that prerequisite a **document** can decide is a launch refusal. A profile that
+/// names `memory-compaction` with no memories capability at all could never satisfy one, so gg will
+/// not start the run and quietly measure self-summarization under its name.
 #[test]
 fn memory_compaction_without_memories_is_refused_at_launch() {
     let set = set_with(Some("memory-compaction"), json!({}), false);
@@ -185,27 +221,6 @@ fn memory_compaction_without_memories_is_refused_at_launch() {
     // The same profile with memories on launches: the prerequisite is met.
     let met = set_with(Some("memory-compaction"), json!({}), true);
     assert!(crate::validate::refusal(&met).is_ok());
-}
-
-/// The prerequisite is *writable* memories, not merely enabled ones.
-///
-/// A [read-only](crate::memories::MemoryScope::ReadOnly) holder is shown its spawner's memories and
-/// offered no call that changes them, so a memory compaction would ask it to record its state with
-/// calls it does not have and the boundary's gate could never be satisfied — leaving the run wedged
-/// against a full window. Demoting is a worse summary; not demoting is no run at all.
-#[test]
-fn memory_compaction_demotes_for_a_read_only_holder() {
-    // The capability is on — the set says so — but this holder may not write, so the strategy that
-    // depends on writing is not the one it gets.
-    assert_eq!(
-        CompactionSetup::resolve(
-            set_with(Some("memory-compaction"), json!({}), true).root(),
-            false,
-            &mut honoured(),
-        )
-        .strategy,
-        CompactionStrategy::SelfSummarization
-    );
 }
 
 /// Which strategies are in-loop (the agent condenses its own thread across a turn boundary) and
@@ -280,7 +295,7 @@ fn the_handoff_model_is_read_only_for_a_handoff_strategy() {
         Some("openrouter/cheap".to_string())
     );
     assert!(
-        CompactionSetup::resolve(handoff.root(), true, &mut honoured())
+        CompactionSetup::resolve(handoff.root(), &mut honoured())
             .strategy
             .is_handoff()
     );

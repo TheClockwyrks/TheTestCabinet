@@ -533,10 +533,12 @@ fn the_capability_namespace_reads_every_agent() {
     let doc = build_run_doc(&record, &GgDocLifecycle::default());
     assert_eq!(doc.get("cap.fsm"), Some(&GgValue::Bool(true)));
     // The params come from whichever agent carries the configuration, so a subagent-only
-    // capability does not report itself as enabled with nothing configured.
+    // capability does not report itself as enabled with nothing configured. `fsm` offers no arms
+    // at all, so the arm it reports is the one that says there is none rather than a default it
+    // fell back to.
     assert_eq!(
         doc.get("cap.fsm.impl"),
-        Some(&GgValue::String("default".to_string()))
+        Some(&GgValue::String(super::doc::NO_IMPLEMENTATION.to_string()))
     );
 
     // Per-agent detail is recoverable, and it is sparse: only the agents that have a

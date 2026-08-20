@@ -134,40 +134,89 @@ fn select_grant_skips_a_waiter_whose_key_is_held() {
 // SubagentConfig resolution
 // ---------------------------------------------------------------------------
 
-/// A set without the subagents capability resolves to the defaults.
-#[test]
-fn config_defaults_without_the_capability() {
-    let config = config(&GgCapabilitySet::minimal("mock/x"));
-    assert_eq!(config.max_parallel, DEFAULT_MAX_PARALLEL);
-    assert_eq!(config.max_depth, DEFAULT_MAX_DEPTH);
+/// `set` with a subagents capability switched to `enabled` and carrying `params` verbatim, granted
+/// on the root.
+fn with_subagents(set: &mut GgCapabilitySet, enabled: bool, params: serde_json::Value) {
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_SUBAGENTS.to_string(),
+            enabled,
+            implementation: None,
+            params,
+        },
+    );
 }
 
-/// An explicit `maxDepth` overrides the default; an absent one keeps it. The capability's params
-/// bound its own recursion and nothing else — the parallelism cap is not read from here.
+/// A run that never declared the capability has no delegation tree, so there is no depth to be short
+/// of and none to bound: the answer is the figure that says so, not one gg picked.
+#[test]
+fn a_set_without_the_capability_bounds_no_tree() {
+    let config = config(&GgCapabilitySet::minimal("mock/x"));
+    assert_eq!(config.max_parallel, 16);
+    assert_eq!(config.max_depth, REFUSED_MAX_DEPTH);
+}
+
+/// The depth is read exactly as written. The capability's params bound its own recursion and nothing
+/// else — the parallelism cap is not read from here.
 #[test]
 fn config_reads_the_depth_param() {
     let mut set = GgCapabilitySet::minimal("mock/x");
-    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    cap.params = serde_json::json!({ "maxDepth": 5 });
-    crate::tools::grant_configured(&mut set.agents[0], cap);
+    with_subagents(&mut set, true, serde_json::json!({ "maxDepth": 5 }));
     let config = config(&set);
     assert_eq!(config.max_depth, 5);
     assert_eq!(
-        config.max_parallel, DEFAULT_MAX_PARALLEL,
+        config.max_parallel, 16,
         "the capability's params do not carry the run's parallelism cap"
     );
 }
 
 /// A depth of zero is a tree the root may not spawn into: the capability switched off by
-/// arithmetic, with all three of its tools still offered. Refused rather than quietly defaulted.
+/// arithmetic, with all three of its tools still offered.
 #[test]
 fn a_depth_of_zero_is_refused() {
     let mut set = GgCapabilitySet::minimal("mock/x");
-    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    cap.params = serde_json::json!({ "maxDepth": 0 });
-    crate::tools::grant_configured(&mut set.agents[0], cap);
+    with_subagents(&mut set, true, serde_json::json!({ "maxDepth": 0 }));
 
     let defects = refusals(&set);
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "subagents.params.maxDepth");
+}
+
+/// An enabled capability states how deep the run may delegate. gg has no depth to put there: a tree
+/// bounded by a figure nobody wrote refuses a spawn at a depth the configuration does not name.
+#[test]
+fn an_absent_depth_is_refused() {
+    for params in [
+        serde_json::json!({}),
+        serde_json::json!({ "maxDepth": null }),
+    ] {
+        let mut set = GgCapabilitySet::minimal("mock/x");
+        with_subagents(&mut set, true, params.clone());
+
+        let defects = refusals(&set);
+        assert_eq!(defects.len(), 1, "{params}: {defects:?}");
+        assert_eq!(defects[0].locus, "subagents.params.maxDepth", "{params}");
+        assert_eq!(
+            SubagentConfig::resolve(&set, &mut LaunchReport::already_reported()).max_depth,
+            REFUSED_MAX_DEPTH,
+            "{params}: the placeholder says the launch is already refused"
+        );
+    }
+}
+
+/// A capability that is switched **off** requires no depth of itself — there is no tree — but a
+/// depth written on it is still read, so a typo in it is a typo now rather than on the launch that
+/// flips the switch.
+#[test]
+fn a_disabled_capability_requires_no_depth() {
+    let mut set = GgCapabilitySet::minimal("mock/x");
+    with_subagents(&mut set, false, serde_json::json!({}));
+    assert!(refusals(&set).is_empty());
+
+    let mut typo = GgCapabilitySet::minimal("mock/x");
+    with_subagents(&mut typo, false, serde_json::json!({ "maxDepth": 0 }));
+    let defects = refusals(&typo);
     assert_eq!(defects.len(), 1, "{defects:?}");
     assert_eq!(defects[0].locus, "subagents.params.maxDepth");
 }
@@ -182,7 +231,7 @@ fn config_reads_the_run_level_parallelism_cap() {
 }
 
 /// A parallelism cap of zero would be a run in which no agent may run at all, so it could not
-/// start. It is refused rather than read as "no declaration".
+/// start.
 #[test]
 fn a_parallelism_cap_of_zero_is_refused() {
     let mut set = GgCapabilitySet::minimal("mock/x");
@@ -192,8 +241,25 @@ fn a_parallelism_cap_of_zero_is_refused() {
     assert_eq!(defects.len(), 1, "{defects:?}");
     assert_eq!(defects[0].locus, "limits.maxParallel");
     assert_eq!(
-        SubagentConfig::resolve(&set, &mut LaunchReport::collecting()).max_parallel,
-        DEFAULT_MAX_PARALLEL,
+        SubagentConfig::resolve(&set, &mut LaunchReport::already_reported()).max_parallel,
+        REFUSED_MAX_PARALLEL,
+        "the resolver stays total; the launch is over by the time this matters"
+    );
+}
+
+/// Every run has a concurrency, so this ceiling has no "off" — an unwritten one would be a figure gg
+/// chose, and the run's record would name a parallelism it was not conducted at.
+#[test]
+fn an_absent_parallelism_cap_is_refused() {
+    let mut set = GgCapabilitySet::minimal("mock/x");
+    set.limits.max_parallel = None;
+
+    let defects = refusals(&set);
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "limits.maxParallel");
+    assert_eq!(
+        SubagentConfig::resolve(&set, &mut LaunchReport::already_reported()).max_parallel,
+        REFUSED_MAX_PARALLEL,
         "the resolver stays total; the launch is over by the time this matters"
     );
 }

@@ -122,14 +122,6 @@ use crate::sandbox::{
     BOARD_SET_ISSUE_BLOCKED_BY, BOARD_UPDATE_ISSUE, OperationId,
 };
 
-/// Default ceiling on the number of epics the board may hold at once.
-pub const DEFAULT_MAX_EPICS: usize = 50;
-
-/// Default ceiling on the number of issues the board may hold at once. Generous — the board is
-/// the run's decomposition of a large build, and a long run legitimately files thousands of
-/// issues against it — but bounded so a runaway loop cannot fill the window with issues.
-pub const DEFAULT_MAX_ISSUES: usize = 2000;
-
 /// The fewest letters an [epic](Epic)'s prefix may have. Three is enough to be a mnemonic
 /// (`API`, `WEB`) and short enough that nothing shorter would be.
 pub const MIN_PREFIX_LEN: usize = 3;
@@ -142,12 +134,6 @@ pub const MAX_PREFIX_LEN: usize = 6;
 /// numbering is per prefix, so an epic that happens to be called `ISSUE` shares the sequence rather
 /// than colliding with it.
 pub const UNGROUPED_PREFIX: &str = "ISSUE";
-
-/// Default number of times gg re-dispatches an issue whose assigned agent finished without
-/// completing it before giving up and marking it [`Failed`](IssueStatus::Failed). One retry (so
-/// two attempts in all) is a middle ground: it absorbs a single flaky attempt without letting a
-/// genuinely-stuck issue respawn agents without end.
-pub const DEFAULT_MAX_RETRIES: usize = 1;
 
 /// The board **operations** that mutate it — the ones whose success re-pumps the auto-dispatch queue
 /// and refreshes the pinned board block.
@@ -165,23 +151,17 @@ pub const BOARD_MUTATIONS: &[OperationId] = &[
     BOARD_REMOVE_ISSUE,
 ];
 
-/// The project-management capability param naming the [epic ceiling](BoardCaps::max_epics).
-pub(crate) const PARAM_MAX_EPICS: &str = "maxEpics";
-
-/// The project-management capability param naming the [issue ceiling](BoardCaps::max_issues).
-pub(crate) const PARAM_MAX_ISSUES: &str = "maxIssues";
-
-/// The project-management capability param naming the [retry ceiling](BoardCaps::max_retries).
-pub(crate) const PARAM_MAX_RETRIES: &str = "maxRetries";
-
-/// The project-management capability param switching the **reviewers** feature on: when true,
-/// this agent cannot file an issue without naming at least one
-/// [reviewer](IssuePolicy::require_reviewers). Off by default.
+/// The project-management capability's params, [named by core](test_cabinet_core::gg) so the
+/// vocabulary a document is written in and the vocabulary gg reads it by are one declaration.
 ///
-/// Crate-visible, unlike its neighbours: the [reference](crate::reference) builds `create_issue`
-/// both ways so the console can show what each one really says, and it names the param rather than
-/// spelling the string a second time.
-pub(crate) const PARAM_REVIEWERS: &str = "reviewers";
+/// Three of them are the board's ceilings, required of an enabled capability and resolved together
+/// into [`BoardCaps`]. The fourth, [`reviewers`](PARAM_REVIEWERS), is the one **optional** param of
+/// this capability: its absence is the setting — an issue's author names reviewers or does not — and
+/// the [reference](crate::reference) reaches for it by name, building `create_issue` both ways so
+/// the console can show what each one really says.
+pub(crate) use test_cabinet_core::gg::{
+    PARAM_MAX_EPICS, PARAM_MAX_ISSUES, PARAM_MAX_RETRIES, PARAM_REVIEWERS,
+};
 
 /// The ceilings the [`BoardStore`] enforces, resolved from the capability's params.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,57 +176,110 @@ pub struct BoardCaps {
     pub max_retries: usize,
 }
 
-impl Default for BoardCaps {
-    fn default() -> Self {
-        Self {
-            max_epics: DEFAULT_MAX_EPICS,
-            max_issues: DEFAULT_MAX_ISSUES,
-            max_retries: DEFAULT_MAX_RETRIES,
-        }
-    }
-}
+/// The ceilings a board carries when **no document configured one**: none of them, so nothing may
+/// be filed on it and nothing dispatched from it.
+///
+/// Two readers reach it, and it says the same thing to both. [`BoardCaps::resolve`] falls back to it
+/// key by key once it has reported that an enabled capability writes no ceiling, or writes one gg
+/// cannot honour — a resolver stays total, so it answers even after it has refused the launch, and
+/// the name is what tells the next reader of that line that no operator chose these figures. A
+/// [disabled](BoardRuntime::disabled) runtime carries the whole of it, because a capability that is
+/// off has no board rather than a board on gg's ceilings.
+pub(crate) const REFUSED_BOARD_CAPS: BoardCaps = BoardCaps {
+    max_epics: 0,
+    max_issues: 0,
+    max_retries: 0,
+};
+
+/// What a `maxEpics` of zero would mean, in the capability's own terms — the clause a refusal hands
+/// the operator, written once because both readers of the key state the same consequence.
+const NO_EPIC_CONSEQUENCE: &str =
+    "a board that may hold no epic offers a call whose every use is refused";
+
+/// What a `maxIssues` of zero would mean. Read on the terms [`NO_EPIC_CONSEQUENCE`] is.
+const NO_ISSUE_CONSEQUENCE: &str = "a board that may hold no issue has nothing to dispatch";
 
 impl BoardCaps {
-    /// Resolve the caps from a project-management-capability `params` object.
+    /// Ceilings for a board **assembled by hand** rather than resolved from a document — the
+    /// [reference](crate::reference) surface's bound board, which exists only so a tool definition
+    /// can be rendered, and the fixtures the tests build stores from.
     ///
-    /// An absent key takes the default beside it. A present one is honoured exactly as written, and
-    /// one gg cannot honour is [reported](crate::validate) and refuses the launch rather than
-    /// reverting: a board silently bounded by a number nobody wrote refuses the model's calls at a
-    /// ceiling the configuration does not name, and the run reads as one whose model stopped filing.
+    /// Deliberately **not** a [`Default`]. A figure a run is conducted under comes from the document
+    /// and from nowhere else, so there is no `BoardCaps` a reader of a configuration can reach
+    /// without [resolving](Self::resolve) one; these are for the callers that are reading no
+    /// configuration at all. Generous enough that nothing built on them is near a ceiling, which is
+    /// the only property a hand-built board needs.
+    pub const fn detached() -> Self {
+        Self {
+            max_epics: 50,
+            max_issues: 2_000,
+            max_retries: 1,
+        }
+    }
+
+    /// Resolve the caps from an **enabled** project-management capability's `params` object.
+    ///
+    /// All three are required, so an absent one is [reported](crate::validate) at its own locus and
+    /// refuses the launch rather than taking a figure gg picked. So is one gg cannot honour: a board
+    /// silently bounded by a number nobody wrote refuses the model's calls at a ceiling the
+    /// configuration does not name, and the run reads as one whose model stopped filing.
     ///
     /// `maxEpics` and `maxIssues` must be **positive** — a board that may hold no epic offers
     /// `create_epic` and refuses every use of it — while `maxRetries` accepts `0`, which means what
-    /// it says: one attempt, no re-dispatch.
+    /// it says: one attempt, no re-dispatch. Every key that earns a defect falls back to its
+    /// [refused](REFUSED_BOARD_CAPS) figure, by which point the launch is already over.
+    ///
+    /// The params are the [board owner's](crate::agent::board_owner). A run keeps one board, so it
+    /// has one set of ceilings; a second board-carrying profile that declares a different figure is
+    /// [refused at launch](crate::validate) rather than read here and ignored.
     pub fn resolve(params: &Value, report: &mut crate::validate::LaunchReport) -> Self {
-        let default = Self::default();
         Self {
-            max_epics: positive_usize(
+            max_epics: required_positive_usize(
                 params,
                 PARAM_MAX_EPICS,
-                "a board that may hold no epic offers a call whose every use is refused",
+                NO_EPIC_CONSEQUENCE,
                 report,
             )
-            .unwrap_or(default.max_epics),
-            max_issues: positive_usize(
+            .unwrap_or(REFUSED_BOARD_CAPS.max_epics),
+            max_issues: required_positive_usize(
                 params,
                 PARAM_MAX_ISSUES,
-                "a board that may hold no issue has nothing to dispatch",
+                NO_ISSUE_CONSEQUENCE,
                 report,
             )
-            .unwrap_or(default.max_issues),
-            max_retries: crate::validate::count_param(
+            .unwrap_or(REFUSED_BOARD_CAPS.max_issues),
+            max_retries: crate::validate::required_count_param(
                 params,
                 CAPABILITY_PROJECT_MANAGEMENT,
                 PARAM_MAX_RETRIES,
                 report,
             )
-            .map_or(default.max_retries, narrow),
+            .map_or(REFUSED_BOARD_CAPS.max_retries, narrow),
         }
     }
 }
 
-/// A param value that must name a count of one or more, or `None` when it is absent — and a
-/// [reported defect](crate::validate) when it is present and neither.
+/// A **required** param value that must name a count of one or more, or `None` once its absence — or
+/// the value written in its place — has been [reported](crate::validate).
+fn required_positive_usize(
+    params: &Value,
+    key: &str,
+    consequence: &str,
+    report: &mut crate::validate::LaunchReport,
+) -> Option<usize> {
+    crate::validate::required_positive_count_param(
+        params,
+        CAPABILITY_PROJECT_MANAGEMENT,
+        key,
+        consequence,
+        report,
+    )
+    .map(narrow)
+}
+
+/// The same value read off a capability that is switched **off**, where nothing is required of an
+/// absence: `None` when the key is not there, and a [reported defect](crate::validate) when it is
+/// there and names no count of one or more.
 fn positive_usize(
     params: &Value,
     key: &str,
@@ -344,8 +377,12 @@ impl IssuePolicy {
 /// Whether `agent` must name at least one reviewer on every issue it files — the
 /// [reviewers](PARAM_REVIEWERS) feature switch.
 ///
-/// A switch is a boolean, and a value that is not one is [reported](crate::validate) rather than
-/// read as `false`. That arm is the reason this is its own function: reading `"true"` as *off* would
+/// The one param of this capability that is **optional**: absent, the feature is off and an issue's
+/// author names reviewers or leaves them out as it chooses. That absence is the setting rather than
+/// a stand-in for a value, so nothing is reported for it.
+///
+/// A switch that *is* written is a boolean, and a value that is not one is
+/// [reported](crate::validate) rather than read as `false`. That arm is the reason this is its own function: reading `"true"` as *off* would
 /// not merely lose the feature, it would walk straight past the
 /// [launch check](crate::validate) that refuses an agent required to name
 /// reviewers with no reviewer in its roster — the one gate the misconfiguration exists to trip.
@@ -397,17 +434,39 @@ pub fn requires_reviewers(agent: &GgAgentConfig) -> bool {
 /// [launch pass](crate::validate::validate_launch): the board ceilings and the reviewers switch
 /// `profile` declares, read exactly as the run will read them.
 ///
-/// Read whether the capability is switched on or off, on the terms the pass reads every other
-/// capability's params: a disabled capability records the configuration the arm would have used.
+/// Switched **on**, the capability is fully specified, so the three ceilings go through
+/// [`BoardCaps::resolve`] — the very resolver the run uses — and an absent one is reported at the
+/// same `PARAM_*` constant the run reads it by. Switched **off** it requires nothing of itself: it
+/// records the configuration the arm would have used, and a hole in that is a hole in nothing, but
+/// what it *does* write is still read so a typo in it is a typo now rather than on the launch that
+/// flips the switch.
+///
+/// The [reviewers](PARAM_REVIEWERS) switch is read either way and required neither way: it is the
+/// one param of this capability whose absence is itself the setting.
 pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
-    let Some(params) = profile
-        .capability(CAPABILITY_PROJECT_MANAGEMENT)
-        .map(|cap| &cap.params)
-    else {
+    let Some(capability) = profile.capability(CAPABILITY_PROJECT_MANAGEMENT) else {
         return;
     };
-    BoardCaps::resolve(params, report);
+    if capability.enabled {
+        BoardCaps::resolve(&capability.params, report);
+    } else {
+        check_disabled_caps(&capability.params, report);
+    }
     resolve_require_reviewers(profile, report);
+}
+
+/// What the pass reads off a **disabled** project-management capability: the same three ceilings,
+/// honoured or refused on the same terms as an enabled capability's, with their absence requiring
+/// nothing.
+fn check_disabled_caps(params: &Value, report: &mut crate::validate::LaunchReport) {
+    positive_usize(params, PARAM_MAX_EPICS, NO_EPIC_CONSEQUENCE, report);
+    positive_usize(params, PARAM_MAX_ISSUES, NO_ISSUE_CONSEQUENCE, report);
+    crate::validate::count_param(
+        params,
+        CAPABILITY_PROJECT_MANAGEMENT,
+        PARAM_MAX_RETRIES,
+        report,
+    );
 }
 
 /// The profile **ids** `entries` offers as a comma-separated, backticked list, or `"(none)"` when
@@ -1679,10 +1738,14 @@ impl BoardRuntime {
 
     /// A disabled runtime (the capability is off): no tools, no prompt text, no context
     /// block, no telemetry.
+    ///
+    /// It carries the board [no document configured](REFUSED_BOARD_CAPS) — nothing may be filed on
+    /// it, which is what "there is no board" means — and nothing can reach it either way, since the
+    /// capability being off is what makes every board tool absent.
     pub fn disabled() -> Self {
         Self {
             enabled: false,
-            ..Self::new(BoardCaps::default())
+            ..Self::new(REFUSED_BOARD_CAPS)
         }
     }
 
@@ -2035,9 +2098,10 @@ impl Module for BoardRuntime {
 
     /// Re-resolve the caps and the ownership from the receiving profile.
     ///
-    /// A profile without the authoring capability does **not** refuse the board: it holds the same
-    /// run-global queue [unowned](Ownership::Unowned), exactly as it would have been handed one at
-    /// its own construction. Refusing would leave an agent that is working an issue unable to see
+    /// A profile whose project-management capability is **absent or off** does **not** refuse the
+    /// board: it holds the same run-global queue [unowned](Ownership::Unowned), exactly as it would
+    /// have been handed one at its own construction, and re-resolves no ceiling from a capability
+    /// that configures none. Refusing would leave an agent that is working an issue unable to see
     /// the board its issue is on.
     fn adopt(
         &mut self,
@@ -2046,13 +2110,14 @@ impl Module for BoardRuntime {
     ) -> Result<(), AdoptError> {
         self.ids = Arc::clone(ctx.ids);
         self.origin = GgModuleOrigin::Run;
-        if profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
-            let caps = profile
-                .capability(CAPABILITY_PROJECT_MANAGEMENT)
-                .map(|cap| {
-                    BoardCaps::resolve(&cap.params, &mut crate::validate::LaunchReport::Discarding)
-                })
-                .unwrap_or_default();
+        if let Some(capability) = profile
+            .capability(CAPABILITY_PROJECT_MANAGEMENT)
+            .filter(|capability| capability.enabled)
+        {
+            let caps = BoardCaps::resolve(
+                &capability.params,
+                &mut crate::validate::LaunchReport::Discarding,
+            );
             self.store.lock().expect("board store lock").set_caps(caps);
             self.ownership = crate::modules::resolve_ownership(
                 profile,

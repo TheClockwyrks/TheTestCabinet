@@ -182,7 +182,7 @@ fn run_as(
 /// Run `program` with no gg tool offered at all and the default ceilings — the shape most of these
 /// cases want, because the substrate binds no SDK for a tool to be reached through.
 fn run(program: &str) -> SandboxOutcome {
-    run_with(program, &[], &[], SandboxLimits::default(), canned_outcome).0
+    run_with(program, &[], &[], SandboxLimits::AMPLE, canned_outcome).0
 }
 
 /// Run `program` with `modules` bound at `lib.<name>` — a code skill's or code memory's module, as
@@ -195,14 +195,7 @@ fn run_with_modules(program: &str, modules: &[(&str, &str)]) -> SandboxOutcome {
             source: (*source).to_string(),
         })
         .collect();
-    run_with(
-        program,
-        &[],
-        &bound,
-        SandboxLimits::default(),
-        canned_outcome,
-    )
-    .0
+    run_with(program, &[], &bound, SandboxLimits::AMPLE, canned_outcome).0
 }
 
 /// What a program logged, insisting that the sandbox ran it and that it did not throw.
@@ -279,7 +272,7 @@ print(summary.line)
 gg.views.open_text("notes", textwrap.dedent(notes))
 "#,
         scope,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         api,
     );
@@ -347,7 +340,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
             program,
             &operations,
             &[],
-            SandboxLimits::default(),
+            SandboxLimits::AMPLE,
             canned_outcome,
         );
         let error = program_error(&outcome);
@@ -378,7 +371,7 @@ gg.views.open_text("notes", notes)
             modules: &[],
             ending: RunEnding::None,
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::with(&log, canned_outcome),
     );
@@ -407,7 +400,7 @@ gg.views.open_text("notes", notes)
         &format!("{stated}\ngg.views.open_text(\"notes\", \"eight files\")"),
         &operations,
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(logs(&outcome), [] as [String; 0]);
@@ -483,7 +476,7 @@ print(text.splitlines()[0])
         read,
         &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["contents of notes.md"]);
@@ -509,7 +502,7 @@ try:
 except Err as err:
     print(f"{err.value.code.name} {err.value.operation}")
 "#;
-    let (outcome, log) = run_with(caught, &[], &[], SandboxLimits::default(), canned_outcome);
+    let (outcome, log) = run_with(caught, &[], &[], SandboxLimits::AMPLE, canned_outcome);
     assert_eq!(logs(&outcome), ["UNAVAILABLE read_text_file"]);
     assert!(
         log.calls().is_empty(),
@@ -530,7 +523,7 @@ except Err as err:
         "from wit_world.imports import helpers\nhelpers.read_text_file('notes.md', None, None)",
         &[],
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     let error = program_error(&outcome);
@@ -687,7 +680,7 @@ print("still here")
     // back-edges, which a Python `while True:` produces in the interpreter's own dispatch loop.
     let limits = SandboxLimits {
         timeout: Duration::from_secs(3),
-        ..SandboxLimits::default()
+        ..SandboxLimits::AMPLE
     };
     let (outcome, _log) = run_with("while True:\n    pass", &[], &[], limits, canned_outcome);
     assert!(
@@ -709,7 +702,7 @@ print("still here")
     // sleeping in 50 ms hops against a 1 s budget was measured stopping at 1.00–1.09 s.
     let budget = SandboxLimits {
         timeout: Duration::from_secs(1),
-        ..SandboxLimits::default()
+        ..SandboxLimits::AMPLE
     };
     let (outcome, _log) = run_with(
         "import time\nfor _ in range(200):\n    time.sleep(0.05)",
@@ -932,7 +925,7 @@ fn the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
     // charged to a program that has not started. See [`run_as`] for the measurements.
     let component = component();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let scope = ProgramScope {
         capabilities: &[],
@@ -1323,7 +1316,7 @@ fn every_operation_crosses_the_membrane_from_its_python_spelling() {
             crossing.program,
             &operations,
             &[],
-            SandboxLimits::default(),
+            SandboxLimits::AMPLE,
             canned_outcome,
         );
         assert!(
@@ -1397,7 +1390,7 @@ print(created.id, created.board.issues, created.board.max_issues)
 "#,
         &operations,
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(
@@ -1439,7 +1432,7 @@ except dataclasses.FrozenInstanceError:
 "#,
         &operations,
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(
@@ -1471,7 +1464,7 @@ except gg.core.ApiError as failure:
 "#,
         &operations,
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         |name, _args| {
             if name == "edit_file" {
                 ToolOutcome::failed(
@@ -1498,7 +1491,7 @@ except gg.core.ApiError as failure:
         "import gg\ngg.files.read_file(\"missing.py\")",
         &operations,
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         |name, _args| {
             ToolOutcome::failed(
                 crate::tools::ToolFailure::NotFound,
@@ -1530,7 +1523,7 @@ except gg.core.ApiError as failure:
         "import gg\ngg.files.read_file(\"a.py\", offset=-1)",
         &operations,
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     let error = program_error(&outcome);
@@ -1548,7 +1541,7 @@ except gg.core.ApiError as failure:
         "import gg\ngg.tasks.add_task(\"t1\")",
         &operations,
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     let error = program_error(&outcome);
@@ -1570,7 +1563,7 @@ except gg.core.ApiError as failure:
             program,
             &operations,
             &[],
-            SandboxLimits::default(),
+            SandboxLimits::AMPLE,
             canned_outcome,
         );
         assert_eq!(
@@ -1593,7 +1586,7 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
         "import gg\ngg.files.read_file(\"notes.md\")",
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     let error = program_error(&outcome);
@@ -1618,7 +1611,7 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
         "import gg\ngg.board.create_epic(\"epc\", \"E\", \"D\")",
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     let error = program_error(&outcome);
@@ -1634,7 +1627,7 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
         "import gg\ngg.files.read_fil(\"notes.md\")",
         &all_operations(),
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     let error = program_error(&outcome);
@@ -1652,7 +1645,7 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
         "\"text\".no_such_method()",
         &all_operations(),
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
@@ -1672,7 +1665,7 @@ except ApiError as failure:
 "#,
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["read_file True"]);
@@ -1752,7 +1745,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
         true,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(
@@ -1796,7 +1789,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
         true,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(
@@ -1821,7 +1814,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         &[],
         RunEnding::Role(crate::ending::EndingRole::Review),
         false,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(logs(&outcome), [vec!["ok"; review.len()].join(",")]);
@@ -1854,7 +1847,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         ),
         &[],
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(logs(&outcome), [vec!["ok"; types.len()].join(",")]);
@@ -1902,7 +1895,7 @@ print(gg.views.current()[0].close(), len(gg.views.current()))
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
         true,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(
@@ -1948,7 +1941,7 @@ print(gg.views.current()[0].close(), len(gg.views.current()))
     // The component before the store, as everywhere in this file; see [`run_as`] for why.
     let component = component();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     // A run that keeps a library: the capability on, and the calls it offers granted.
     let capabilities = vec![CAPABILITY_PROGRAM_LIBRARY.to_string()];
     let operations = capability_operations([CAPABILITY_PROGRAM_LIBRARY]);
@@ -2017,7 +2010,7 @@ print(type(whole).__name__, [v.region for v in gg.views.current() if v.kind is g
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
         true,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(
@@ -2055,7 +2048,7 @@ print(type(region).__name__, region.offset, region.limit)
 "#,
         &all_operations(),
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         |name, _args| {
             if name == "read_file" {
                 ToolOutcome::ok("line two\n", "read 1 line").with_data(
@@ -2080,7 +2073,7 @@ print(type(region).__name__, region.offset, region.limit)
         "import gg\ngg.views.open_docs_view(None)",
         &all_operations(),
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert!(
@@ -2098,7 +2091,7 @@ print(type(region).__name__, region.offset, region.limit)
     // The component before the store, as everywhere in this file; see [`run_as`] for why.
     let component = component();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     // A run that keeps a library: the capability on, and the calls it offers granted.
     let capabilities = vec![CAPABILITY_PROGRAM_LIBRARY.to_string()];
     let operations = capability_operations([CAPABILITY_PROGRAM_LIBRARY]);
@@ -2208,7 +2201,7 @@ except gg.core.ApiError as failure:
 "#,
         &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["close_all True"]);

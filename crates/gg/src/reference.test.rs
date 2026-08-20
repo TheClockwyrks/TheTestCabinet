@@ -162,7 +162,7 @@ fn every_registered_language_is_listed_with_the_size_of_its_own_document() {
 }
 
 /// Every tool a configuration rewrites carries its alternate renderings, and each one really
-/// differs from the default — a variant identical to the entry above it is a variant that is not
+/// differs from the entry — a variant identical to the entry above it is a variant that is not
 /// being built from the configuration it claims.
 #[test]
 fn the_policy_driven_tools_carry_distinct_variants() {
@@ -193,15 +193,15 @@ fn the_policy_driven_tools_carry_distinct_variants() {
         for variant in &entry.variants {
             assert!(
                 variant.description != entry.description || variant.parameters != entry.parameters,
-                "`{name}`'s `{}` variant renders identically to the default",
+                "`{name}`'s `{}` variant renders identically to the entry",
                 variant.label
             );
         }
     }
 
-    // The unlimited read mode is the *default*, and it is the one that offers no paging arguments
-    // at all — so the capped variant is where `offset` and `limit` appear. Asserted explicitly
-    // because getting the default backwards would look right on the page and be wrong.
+    // The unlimited read mode is the entry's, and it is the one that offers no paging arguments at
+    // all — so the capped variant is where `offset` and `limit` appear. Asserted explicitly because
+    // getting the two the wrong way round would look right on the page and be wrong.
     let read_file = tool("read_file");
     assert!(read_file.parameters["properties"].get("limit").is_none());
     assert!(read_file.variants[0].parameters["properties"]["limit"].is_object());
@@ -376,7 +376,7 @@ fn run_data_descriptions_are_built_from_placeholders() {
 
     // `create_issue` carries its roster in the **parameter schema** rather than in its prose, and
     // in a variant's as well as the entry's — the two reasons the scan reads more than the
-    // description of the default rendering.
+    // description of the entry's rendering.
     assert!(declares("create_issue", PLACEHOLDER_AGENT));
 
     // And nothing else claims a stand-in. A token declared by a tool whose text does not contain it

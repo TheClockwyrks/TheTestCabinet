@@ -21,7 +21,7 @@ fn state() -> MembraneState<FakeOperationApi> {
             modules: &[],
             ending: crate::sandbox::membrane::RunEnding::None,
         },
-        crate::sandbox::SandboxLimits::default(),
+        crate::sandbox::SandboxLimits::AMPLE,
         None,
     )
 }

@@ -29,8 +29,8 @@ averaged over it is honest for a run that enabled a capability on one subagent.
 
 Capability params are typed in the document, so a numeric comparison such as
 `cap.compaction.summaryHeadroom > 0.5` is expressible. Comparing two settings of
-a capability needs nothing beyond its param field: a run that left the setting at
-its default records no value and buckets as absent.
+a capability needs nothing beyond its param field: every enabled capability
+writes its params, so each run in a study buckets under the figure it ran.
 
 A query reaches only fields a run durably records, so aggregation and the
 [telemetry](/gg/telemetry/overview/) schema are designed together. A figure

@@ -9,7 +9,7 @@ use super::*;
 
 /// A store with generous caps.
 fn store() -> BoardStore {
-    BoardStore::new(BoardCaps::default())
+    BoardStore::new(BoardCaps::detached())
 }
 
 /// A minimal-but-complete issue under `epic_id`, returning the id the store assigned.

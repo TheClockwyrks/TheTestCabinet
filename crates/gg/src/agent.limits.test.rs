@@ -18,12 +18,14 @@
 //! session-start sandbox warm-up; every other one calls [`Agent::drive`] directly and pays nothing.
 
 use super::*;
-use crate::limits::DEFAULT_MAX_CONSECUTIVE_ERRORS;
-use crate::subagents::DEFAULT_MAX_PARALLEL;
 use test_cabinet_core::gg::{
-    GgLoopDetection, GgProgramLanguage, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
-    SHELL_OUTPUT_MODES,
+    AUTHORED_MAX_PARALLEL, GgLoopDetection, GgProgramLanguage, GgTurnErrorKind, GgTurnErrorType,
+    GgTurnOutcome, SHELL_OUTPUT_MODES,
 };
+
+/// The consecutive-error ceiling the run below declares. gg arms none of its own, so a test about
+/// stopping on one has to write it down exactly as an operator would.
+const DECLARED_CONSECUTIVE_ERRORS: u64 = 5;
 
 /// A reply that is not a program — the shape a model sends when it narrates a finished task instead
 /// of ending the run, and therefore an error turn under this protocol.
@@ -35,10 +37,10 @@ fn code_on() -> CodeSetup {
     CodeSetup {
         enabled: true,
         language: GgProgramLanguage::TypeScript,
-        limits: SandboxLimits::default(),
-        healing: HealingConfig::default(),
+        limits: SandboxLimits::AMPLE,
+        healing: HealingConfig::SAFE_REPAIRS,
         assistant_messages: AssistantMessageMode::None,
-        doc_view_types: crate::docs::DocViewTypes::default(),
+        doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
 
@@ -141,7 +143,7 @@ async fn a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recor
     set.limits = GgRunLimits {
         max_turns: Some(20),
         max_consecutive_errors: Some(3),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     };
     let inv = invocation(dir.path(), set);
     let client = Arc::new(MockClient::new("mock/primary", prose_script(10)));
@@ -182,57 +184,59 @@ async fn a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recor
     assert_eq!(outcome, SessionOutcome::Ran);
 }
 
-/// **An unlimited run stops on the default error ceiling, not by burning turns.**
+/// **A run with no turn ceiling stops on the error ceiling it declares, not by burning turns.**
 ///
-/// With no `limits` declared, turns are unbounded (the host caps the wall-clock) and gg arms its
-/// default error ceilings instead. A model replying prose every turn is failing, so it trips the
-/// default consecutive-error ceiling — at [`DEFAULT_MAX_CONSECUTIVE_ERRORS`] — rather than running
-/// on to some turn budget. And the recorded ceilings say the turn ceiling was unbounded, so "what
-/// ceiling was this run under?" is answerable rather than inferred.
+/// With no `maxTurns`, turns are unbounded (the host caps the wall-clock), so what stops a model
+/// replying prose every turn is the consecutive-error ceiling its document arms — and nothing else,
+/// because gg arms no error ceiling nobody wrote. And the recorded ceilings say the turn ceiling was
+/// unbounded, so "what ceiling was this run under?" is answerable rather than inferred.
 #[tokio::test]
-async fn an_unlimited_run_stops_on_the_default_error_ceiling() {
+async fn a_run_with_no_turn_ceiling_stops_on_the_error_ceiling_it_declares() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
-    // More prose than the default ceiling allows, to prove the loop stops itself rather than merely
-    // running out of script.
+    // More prose than the declared ceiling allows, to prove the loop stops itself rather than
+    // merely running out of script.
     let client = MockClient::new(
         "mock/primary",
-        prose_script(DEFAULT_MAX_CONSECUTIVE_ERRORS as usize + 5),
+        prose_script(DECLARED_CONSECUTIVE_ERRORS as usize + 5),
     );
+    let declared = GgRunLimits {
+        max_consecutive_errors: Some(DECLARED_CONSECUTIVE_ERRORS),
+        ..GgRunLimits::authored()
+    };
 
     let end = drive_root(
         &client,
         dir.path(),
         &registry,
         &emitter,
-        // The resolved default: turns unbounded, the two error ceilings armed.
-        setup_from(GgRunLimits::default()),
+        // Turns unbounded, one error ceiling armed — and nothing else, because nothing else is
+        // written.
+        setup_from(declared),
         code_on(),
     )
     .await;
 
     assert_eq!(end.status, "limit_exceeded");
-    assert_eq!(end.turns, DEFAULT_MAX_CONSECUTIVE_ERRORS as usize);
+    assert_eq!(end.turns, DECLARED_CONSECUTIVE_ERRORS as usize);
     assert_eq!(
         client.turns_taken(),
-        DEFAULT_MAX_CONSECUTIVE_ERRORS as usize,
+        DECLARED_CONSECUTIVE_ERRORS as usize,
         "the loop really stopped on the ceiling rather than draining its script"
     );
     let breach = end
         .limit
-        .expect("the default error ceiling records a breach");
+        .expect("the declared error ceiling records a breach");
     assert_eq!(breach.limit, GgLimitKind::ConsecutiveErrors);
-    assert_eq!(breach.threshold, f64::from(DEFAULT_MAX_CONSECUTIVE_ERRORS));
-    // And a run left unbounded records the turn ceiling as absent — an honest default, not a hidden
-    // fifty.
     assert_eq!(
-        recorded_limits(
-            &setup_from(GgRunLimits::default()).limits,
-            DEFAULT_MAX_PARALLEL
-        )
-        .max_turns,
+        breach.threshold, DECLARED_CONSECUTIVE_ERRORS as f64,
+        "the recorded threshold is the one the document wrote"
+    );
+    // And a run left unbounded records the turn ceiling as absent — the setting, not a hidden fifty.
+    assert_eq!(
+        recorded_limits(&setup_from(declared).limits, AUTHORED_MAX_PARALLEL as usize).max_turns,
         None
     );
 }
@@ -259,7 +263,7 @@ async fn an_error_rate_ceiling_stops_a_run_that_is_mostly_failing() {
             max_turns: Some(12),
             max_error_rate: Some(0.5),
             error_rate_window: Some(4),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         code_on(),
     )
@@ -323,7 +327,7 @@ async fn a_cost_ceiling_stops_the_run_at_the_next_turn_boundary() {
         setup_from(GgRunLimits {
             max_turns: Some(6),
             max_cost: Some(1.5),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         no_code(),
     )
@@ -366,7 +370,7 @@ async fn a_cost_ceiling_is_shared_across_every_agent() {
     let shared = setup_from(GgRunLimits {
         max_turns: Some(4),
         max_cost: Some(1.5),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     });
 
     // The first agent spends $1 and finishes of its own accord, comfortably under the ceiling.
@@ -442,7 +446,7 @@ async fn an_unpriced_run_is_never_stopped_by_a_cost_ceiling() {
         setup_from(GgRunLimits {
             max_turns: Some(3),
             max_cost: Some(0.000_001),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         no_code(),
     )
@@ -477,7 +481,7 @@ async fn the_turn_ceiling_and_the_deadline_now_record_a_breach_too() {
         &emitter,
         setup_from(GgRunLimits {
             max_turns: Some(2),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         no_code(),
     )
@@ -492,7 +496,7 @@ async fn the_turn_ceiling_and_the_deadline_now_record_a_breach_too() {
     let mut passed = setup_from(GgRunLimits {
         max_turns: Some(5),
         max_runtime_secs: Some(30),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     });
     passed.deadline = Some(Instant::now());
     let timed_out = drive_root(
@@ -543,7 +547,7 @@ async fn a_model_api_error_is_still_fatal_on_the_first_occurrence() {
         setup_from(GgRunLimits {
             max_turns: Some(10),
             max_consecutive_errors: Some(5),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         no_code(),
     )
@@ -601,7 +605,7 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
             // Armed at the tightest setting there is: one error turn would stop the run. A fatal
             // fault must not be that error turn.
             max_consecutive_errors: Some(1),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         code_on(),
     )
@@ -683,7 +687,7 @@ async fn a_compiler_that_could_not_finish_ends_the_run_and_is_charged_to_nobody(
         // The tightest setting there is: one error turn would stop the run and be recorded as the
         // reason it stopped. A compiler's crash must not be that error turn.
         max_consecutive_errors: Some(1),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     });
     let fault = FaultLatch::default();
     setup.fault = fault.clone();
@@ -787,7 +791,7 @@ async fn a_limit_stopped_run_keeps_everything_it_built() {
         setup_from(GgRunLimits {
             max_turns: Some(6),
             max_cost: Some(0.5),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         no_code(),
     )
@@ -821,7 +825,7 @@ async fn every_turn_records_exactly_one_outcome() {
             )),
             setup_from(GgRunLimits {
                 max_turns: Some(5),
-                ..GgRunLimits::default()
+                ..GgRunLimits::authored()
             }),
             no_code(),
         ),
@@ -830,7 +834,7 @@ async fn every_turn_records_exactly_one_outcome() {
             Box::new(MockClient::new("mock/primary", vec![priced_turn(0.0); 5])),
             setup_from(GgRunLimits {
                 max_turns: Some(3),
-                ..GgRunLimits::default()
+                ..GgRunLimits::authored()
             }),
             no_code(),
         ),
@@ -841,7 +845,7 @@ async fn every_turn_records_exactly_one_outcome() {
             }),
             setup_from(GgRunLimits {
                 max_turns: Some(5),
-                ..GgRunLimits::default()
+                ..GgRunLimits::authored()
             }),
             no_code(),
         ),
@@ -851,7 +855,7 @@ async fn every_turn_records_exactly_one_outcome() {
             setup_from(GgRunLimits {
                 max_turns: Some(9),
                 max_consecutive_errors: Some(2),
-                ..GgRunLimits::default()
+                ..GgRunLimits::authored()
             }),
             code_on(),
         ),
@@ -904,7 +908,7 @@ async fn every_turn_records_exactly_one_outcome() {
     let mut passed = setup_from(GgRunLimits {
         max_turns: Some(5),
         max_runtime_secs: Some(1),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     });
     passed.deadline = Some(Instant::now());
     let end = drive_root(
@@ -944,7 +948,7 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
     set.limits = GgRunLimits {
         max_turns: Some(6),
         max_consecutive_errors: Some(2),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     };
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
@@ -1021,7 +1025,7 @@ async fn unusable_limit_declarations_refuse_the_launch_naming_every_one() {
         // half simply takes gg's default.)
         max_error_rate: Some(1.5),
         max_cost: Some(-1.0),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     };
     let inv = invocation(dir.path(), set);
 
@@ -1059,7 +1063,7 @@ async fn a_run_that_arms_no_ceiling_says_so_and_launches() {
     // a ceiling gg *can* arm that is wide enough never to fire.
     set.limits = GgRunLimits {
         max_consecutive_errors: Some(1_000),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     };
     let inv = invocation(dir.path(), set);
 
@@ -1208,7 +1212,7 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
     // which is the value the loop hands the seam and the only thing that can answer for a latch.
     let healthy = setup_from(GgRunLimits {
         max_consecutive_errors: Some(1),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     });
     let limits = healthy.limits;
     let failed_call = TurnOutcome::Error(TurnErrorType::ProgramApiError);
@@ -1229,7 +1233,7 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
     // by construction and would retroactively break the healthy half beside it.
     let broken = setup_from(GgRunLimits {
         max_consecutive_errors: Some(1),
-        ..GgRunLimits::default()
+        ..GgRunLimits::authored()
     });
     broken
         .fault
@@ -1284,7 +1288,7 @@ async fn an_error_turn_publishes_its_kind_and_the_streak_it_is_part_of() {
         &emitter,
         setup_from(GgRunLimits {
             max_turns: Some(9),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         code_on(),
     )
@@ -1358,7 +1362,7 @@ async fn a_turn_that_made_no_tool_call_publishes_a_missing_completion_error() {
         &emitter,
         setup_from(GgRunLimits {
             max_turns: Some(9),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         no_code(),
     )
@@ -1423,7 +1427,7 @@ async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() 
         &emitter,
         setup_from(GgRunLimits {
             max_turns: Some(5),
-            ..GgRunLimits::default()
+            ..GgRunLimits::authored()
         }),
         no_code(),
     )
@@ -1499,7 +1503,7 @@ async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
         dir.path(),
         &registry,
         &emitter,
-        setup_from(GgRunLimits::default()),
+        setup_from(GgRunLimits::authored()),
         no_code(),
     )
     .await;
@@ -1592,10 +1596,14 @@ async fn an_armed_loop_detector_names_its_configuration_at_launch() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-loopguard".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/echo");
+    // An armed detector states all five knobs; this case is about the one it varies.
     set.agents[0].loop_detection = GgLoopDetection {
         enabled: true,
+        window_words: Some(256),
         repeat_threshold: Some(8),
-        ..GgLoopDetection::default()
+        min_offenders: Some(2),
+        min_saturated_run: Some(3_000),
+        max_response_chars: Some(250_000),
     };
 
     assert_eq!(

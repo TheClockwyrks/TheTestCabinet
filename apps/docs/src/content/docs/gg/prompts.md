@@ -155,8 +155,7 @@ The two modes are separate files because every capability's calls change shape
 between them and the base framing carries a different ending rule and a
 different account of what a reply is. An operator's per-agent override renders
 against the same context in either mode, and the console seeds its editor with
-whichever built-in default matches the agent's mode. There is one built-in
-default per mode.
+gg's own template for the agent's mode.
 
 ### The language segment
 

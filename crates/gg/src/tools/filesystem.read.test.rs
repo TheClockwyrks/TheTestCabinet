@@ -55,23 +55,15 @@ fn tool(policy: ReadPolicy) -> ReadFileTool {
 // Resolving the policy from a capability config
 // ---------------------------------------------------------------------------
 
+/// The `lineCap` is required whichever mode is named, so both arms resolve out of a fully written
+/// capability and neither is reachable without one.
 #[test]
-fn resolve_defaults_to_unlimited() {
-    // No implementation at all — the historical behavior.
-    assert_eq!(
-        policy(None, &json!({})),
-        ReadPolicy::Unlimited,
-        "an unconfigured read-file capability reads whole files"
-    );
+fn resolve_reads_the_mode_and_its_line_cap() {
     assert_eq!(
         policy(Some(READ_MODE_UNLIMITED), &json!({ "lineCap": 10 })),
         ReadPolicy::Unlimited,
-        "the unlimited mode ignores a line cap"
+        "the unlimited mode reads the cap it does not use"
     );
-}
-
-#[test]
-fn resolve_reads_the_line_cap_for_the_capped_mode() {
     assert_eq!(
         policy(Some(READ_MODE_DEFAULT_CAP), &json!({ "lineCap": 120 })),
         ReadPolicy::DefaultCap(120)
@@ -83,21 +75,34 @@ fn resolve_reads_the_line_cap_for_the_capped_mode() {
     );
 }
 
-/// An **absent** cap is the documented default, and that is not a fallback: a capped mode with
-/// nothing to say about its ceiling gets gg's.
+/// **An absent `lineCap` refuses the launch.** gg has no cap of its own to page an agent at: a
+/// figure it picked would page the run at a ceiling nobody wrote while the record named the
+/// configuration that was not conducted. The defect lands at the param's own locus, whichever mode
+/// the capability selected.
 #[test]
-fn an_absent_line_cap_takes_the_default() {
-    for params in [json!({}), json!({ "lineCap": null })] {
-        assert_eq!(
-            policy(Some(READ_MODE_DEFAULT_CAP), &params),
-            ReadPolicy::DefaultCap(DEFAULT_READ_LINE_CAP),
-            "params {params}"
-        );
+fn an_absent_line_cap_is_refused() {
+    for implementation in [READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED] {
+        for params in [json!({}), json!({ "lineCap": null })] {
+            let (resolved, defects) = reported(Some(implementation), &params);
+            assert_eq!(defects.len(), 1, "{implementation} {params} -> {defects:?}");
+            assert_eq!(
+                defects[0].locus, "read-file.params.lineCap",
+                "{implementation} {params}"
+            );
+            assert!(defects[0].found.is_empty(), "{implementation} {params}");
+            if implementation == READ_MODE_DEFAULT_CAP {
+                assert_eq!(
+                    resolved,
+                    ReadPolicy::LaunchRefused,
+                    "{params}: the capped arm has no cap to be conducted at"
+                );
+            }
+        }
     }
 }
 
 /// A `lineCap` gg cannot honour **refuses the launch**: a cap of no lines would make every read
-/// return nothing, and reading it as gg's 250 would page the agent at a ceiling nobody wrote.
+/// return nothing, and there is no figure gg would page the agent at instead.
 #[test]
 fn an_unusable_line_cap_is_refused() {
     for value in [json!(0), json!("250"), json!(-1), json!(12.5), json!([250])] {
@@ -105,7 +110,7 @@ fn an_unusable_line_cap_is_refused() {
         let (resolved, defects) = reported(Some(READ_MODE_DEFAULT_CAP), &params);
         assert_eq!(
             resolved,
-            ReadPolicy::DefaultCap(DEFAULT_READ_LINE_CAP),
+            ReadPolicy::LaunchRefused,
             "{params}: the resolver stays total"
         );
         assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
@@ -114,21 +119,73 @@ fn an_unusable_line_cap_is_refused() {
 }
 
 /// **A mode gg does not recognize refuses the launch**, and this is the sharpest case of the rule
-/// in gg: the implementation is the arm selector, so a typo'd `default_cap` used to hand its agent
-/// **unlimited** reads while the run's record named the capped arm — the two arms run as one.
+/// in gg: the implementation is the arm selector, so a typo'd `default_cap` read as `unlimited`
+/// hands its agent uncapped reads while the run's record names the capped arm — the two arms run as
+/// one.
 #[test]
 fn an_unknown_read_mode_is_refused() {
     for implementation in ["hardcap", "default_cap"] {
         let (resolved, defects) = reported(Some(implementation), &json!({ "lineCap": 10 }));
         assert_eq!(
             resolved,
-            ReadPolicy::Unlimited,
+            ReadPolicy::LaunchRefused,
             "`{implementation}`: the resolver stays total"
         );
         assert_eq!(defects.len(), 1, "`{implementation}` -> {defects:?}");
         assert_eq!(defects[0].locus, "read-file.implementation");
         assert_eq!(defects[0].known, READ_MODES);
     }
+}
+
+/// **An unwritten mode is not one of the modes.** The arm is the read-cap experiment's own variable,
+/// so the resolver has nothing to select and answers with the placeholder that says so. It reports
+/// nothing: the absence belongs to the launch pass, the one reader that can see whether the
+/// capability is switched on, and a second sentence from here would be the same hole named twice.
+#[test]
+fn an_unwritten_read_mode_selects_no_arm() {
+    for implementation in [None, Some(""), Some("   ")] {
+        let (resolved, defects) = reported(implementation, &json!({ "lineCap": 120 }));
+        assert_eq!(resolved, ReadPolicy::LaunchRefused, "{implementation:?}");
+        assert_eq!(defects, Vec::new(), "{implementation:?}");
+    }
+}
+
+/// A **disabled** read-file capability is owed no cap — it offers no `read_file`, so there is
+/// nothing it could be short of — and everything it does write is still read, which is what keeps
+/// the on and off arms of one comparison one document with one switch moved.
+#[test]
+fn a_disabled_capability_is_owed_nothing_and_still_read() {
+    let judged = |implementation: Option<&str>, params: &serde_json::Value| {
+        let mut report = LaunchReport::collecting();
+        check_declaration(implementation, params, &mut report);
+        report.into_defects()
+    };
+
+    assert_eq!(
+        judged(Some(READ_MODE_DEFAULT_CAP), &json!({})),
+        Vec::new(),
+        "an absent cap is nothing to be short of"
+    );
+    assert_eq!(
+        judged(None, &json!({})),
+        Vec::new(),
+        "nor is an absent mode"
+    );
+
+    let defects = judged(Some("hardcap"), &json!({ "lineCap": 0 }));
+    assert_eq!(defects.len(), 2, "{defects:?}");
+    assert!(
+        defects
+            .iter()
+            .any(|defect| defect.locus == "read-file.implementation"),
+        "{defects:?}"
+    );
+    assert!(
+        defects
+            .iter()
+            .any(|defect| defect.locus == "read-file.params.lineCap"),
+        "{defects:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------

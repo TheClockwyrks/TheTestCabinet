@@ -11,12 +11,12 @@ capability off reads what it needs itself. Its opening context is the
 [opening turn](/gg/responses-as-code/views/#the-opening-turn) every fresh window
 is seeded with.
 
-It is off by default and per agent. It is one profile's
-[capability](/gg/configurations/), listed in the editor's Context group, so a
-run can front-load the entire spec for one agent while another reads only what
-it needs. Turning it on and off is a clean experiment: does giving the model the
-whole specification up front, rather than letting it choose what to read,
-produce a better build?
+It is per agent, and a profile that does not enable it does not have it. It is
+one profile's [capability](/gg/configurations/), listed in the editor's Context
+group, so a run can front-load the entire spec for one agent while another reads
+only what it needs. Turning it on and off is a clean experiment: does giving the
+model the whole specification up front, rather than letting it choose what to
+read, produce a better build?
 
 ## What is loaded
 
@@ -82,7 +82,8 @@ would teach the model that opening a file view sometimes does nothing.
 ## Images
 
 The `images` param decides whether an autoloaded reference mockup is attached as
-a picture. It is off by default, so the seeding costs what its text costs.
+a picture, and an enabled capability writes it. An absent `images`, and one gg
+cannot read as a switch, refuse the launch.
 
 A picture is charged to the window by its
 [dimensions](/gg/filesystem/#what-this-costs-the-context-window), and it is
@@ -92,9 +93,10 @@ outweighs the specifications they illustrate. Turning the param on is therefore
 a deliberate arm of the study: does the model build a better game for having
 seen the target rather than read it?
 
-Off, the mockup still arrives. It is read, it takes its place in the seeded
-order, and it enters the window as the same file view with the label, format and
-byte size any read produces. The model knows the file exists and reads it with
+With it `false` the seeding costs what its text costs, and the mockup still
+arrives. It is read, it takes its place in the seeded order, and it enters the
+window as the same file view with the label, format and byte size any read
+produces. The model knows the file exists and reads it with
 `read_file` when it wants to look.
 
 The param governs the seeding alone. A read the model makes for itself attaches
@@ -108,10 +110,12 @@ description and no request is wasted.
 
 ## Locked
 
-The capability's one lever is its `implementation`:
+The capability's one lever is its `implementation`, and it has one value. A
+profile writes `locked` to pin the specs, or writes nothing, which is the
+declaration that they are ordinary file views. Any other name refuses the launch.
 
-- Unset, the default, leaves the autoloaded specs as ordinary, ephemeral file
-  views. They are summarized away when the thread is
+- Written nowhere, the autoloaded specs are ordinary, ephemeral file views.
+  They are summarized away when the thread is
   [compacted](/gg/compaction/) and can be dropped by [agent-managed
   context](/gg/agent-managed-context/)'s `gg.context.evictFileView`, just as a
   spec the model read itself would be. If the agent needs a detail again later,

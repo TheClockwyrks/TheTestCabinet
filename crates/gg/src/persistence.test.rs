@@ -310,7 +310,7 @@ async fn restoring_re_reads_each_view_from_the_workspace_as_it_stands_now() {
     let restored = restore_file_views(
         &mut window,
         &[whole("a.rs")],
-        ReadPolicy::Unlimited,
+        Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
@@ -363,7 +363,7 @@ async fn restoring_a_paged_view_re_reads_the_same_region() {
     let restored = restore_file_views(
         &mut window,
         std::slice::from_ref(&view),
-        ReadPolicy::DefaultCap(100),
+        Some(ReadPolicy::DefaultCap(100)),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
@@ -415,7 +415,7 @@ async fn two_windows_of_one_file_both_come_back() {
     let restored = restore_file_views(
         &mut window,
         &desk,
-        ReadPolicy::Unlimited,
+        Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
@@ -436,7 +436,7 @@ async fn a_view_whose_file_is_gone_is_skipped_with_a_warning() {
     let restored = restore_file_views(
         &mut window,
         &[whole("gone.rs"), whole("here.rs")],
-        ReadPolicy::Unlimited,
+        Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
@@ -476,7 +476,7 @@ async fn a_view_already_open_is_not_re_opened() {
     let restored = restore_file_views(
         &mut window,
         &[whole("spec.md")],
-        ReadPolicy::Unlimited,
+        Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
@@ -498,7 +498,7 @@ async fn an_empty_record_seeds_nothing() {
         restore_file_views(
             &mut window,
             &[],
-            ReadPolicy::Unlimited,
+            Some(ReadPolicy::Unlimited),
             &ctx,
             GgProgramLanguage::TypeScript,
             &emitter,
@@ -795,7 +795,7 @@ async fn a_code_mode_window_records_and_restores_the_views_a_program_opened() {
     let files = restore_file_views(
         &mut next,
         &recorded.files,
-        ReadPolicy::Unlimited,
+        Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,

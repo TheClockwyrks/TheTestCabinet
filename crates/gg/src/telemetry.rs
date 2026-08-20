@@ -261,8 +261,8 @@ impl Emitter {
     }
 
     /// Record the [execution ceilings](GgRunLimits) in force for this run on the shared
-    /// [summary tracker](SessionSummaryTracker) — the configured set with gg's own turn default
-    /// filled in, as the orchestrator resolved it.
+    /// [summary tracker](SessionSummaryTracker) — the configured set exactly as the orchestrator
+    /// resolved it, with an unarmed ceiling recorded as the absence it is.
     ///
     /// Another configuration fact no event carries, so the loop records it once (on the root's
     /// emitter) as soon as the orchestrator has resolved it — long before any ceiling could be

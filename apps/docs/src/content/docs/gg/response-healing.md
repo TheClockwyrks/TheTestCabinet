@@ -47,10 +47,10 @@ language's dialect. It performs no I/O, reads no clock, and imports nothing from
 the sandbox, so turning a strategy off changes only what one function returns.
 
 The assistant message gg records for the turn is governed by the
-`assistantMessages` param rather than by healing. Its default records the healed
-program, which is the one that ran. The other setting records the reply as the
-model sent it, which puts a reply that could not compile into the model's own
-history and is an arm of a study rather than the ordinary path.
+`assistantMessages` param rather than by healing. Under `response-healing` it
+records the healed program, which is the one that ran. Under `none` it records
+the reply as the model sent it, which puts a reply that could not compile into
+the model's own history and is an arm of a study rather than the ordinary path.
 
 ## Canonicalisation
 
@@ -298,46 +298,49 @@ ECMAScript arms do. Each arm's own answers are on its own page under
 ## Configuration
 
 Healing is configured per agent, in the `responses-as-code` capability's params,
-as a `healing` object keyed by strategy id. The object is a delta against the
-defaults: a strategy absent from it takes its own default. The run's launch log
-and session summary record the root agent's resolved set.
+as a `healing` object keyed by strategy id. A profile that enables the capability
+writes it, and an object writes every strategy: what a run repaired is the thing
+under test, so a set naming two of the three has not said what the third arm was.
+The run's launch log and session summary record the root agent's resolved set.
 
 ```jsonc
 { "id": "responses-as-code", "enabled": true,
   "params": { "language": "typescript", "timeoutSecs": 30,
               "maxMemoryBytes": 268435456,
-              "healing": { "strip-fences": false, "drop-doubled-response": true } } }
+              "assistantMessages": "response-healing",
+              "docViewTypes": { "return": true, "parameters": false, "errors": true },
+              "healing": { "strip-fences": true, "strip-prose": true,
+                           "drop-doubled-response": false } } }
 ```
 
 | `params.healing` | Meaning |
 | --- | --- |
-| absent / `null` / `true` / `{}` | the defaults: the two on, `drop-doubled-response` off |
+| `true` | every strategy on |
 | `false` | every strategy off, the master switch |
-| `{ "strip-prose": false }` | `strip-prose` off, the rest at their defaults |
-| `{ "drop-doubled-response": true }` | `drop-doubled-response` on, the rest at their defaults |
+| an object naming all three | each strategy exactly as its toggle reads |
+| absent, `null`, `{}`, or an object leaving a strategy out | refused |
 | `{ "strip-prose": 0 }` | refused, since a non-boolean is not a toggle |
 | `{ "stripProse": false }` | refused: `healing.stripProse` names no strategy |
 | `5`, `"off"`, `[]` | refused: `healing` is a boolean or an object of toggles |
 
 A `healing` value gg cannot honour exactly as written refuses the launch, before
 the first turn and before any model spend. `{"stripFences": false}` would
-otherwise run the default arm under the disabled arm's name, and every number
-that comparison produced would measure the wrong thing. The refusal names every
-such value in the configuration, so one pass fixes them all.
+otherwise run one arm under the other's name, and every number that comparison
+produced would measure the wrong thing. The refusal names every such value in the
+configuration, so one pass fixes them all.
 
-In the [configuration editor](/gg/configurations/) the strategies are switches
-on the capability, and only the ones moved off their default are written into
-the saved configuration. The underlying params are a delta, so writing out the
-untouched ones would turn every saved configuration into an explicit opt-in that
-a later change of default could not reach.
+In the [configuration editor](/gg/configurations/) the strategies are switches on
+the capability, and all three are written into the saved configuration. A saved
+arm therefore says what it did with every strategy, which is what makes two saved
+configurations comparable on the one that differs.
 
-### Which strategies are armed by default
+### Which strategies to arm
 
-A strategy is armed by default when repairing is strictly safer than not
-repairing. `strip-fences` and `strip-prose` qualify, and the warrant is the same
-for both: the reply each of them deletes from could not have run as sent. A
-fenced reply is not a program in any language, nor is one with prose around it,
-so declining to repair either costs the turn outright.
+Repairing is strictly safer than not repairing for `strip-fences` and
+`strip-prose`, and the warrant is the same for both: the reply each of them
+deletes from could not have run as sent. A fenced reply is not a program in any
+language, nor is one with prose around it, so declining to repair either costs
+the turn outright. A study that is not measuring healing itself arms both.
 
 `drop-doubled-response` is the exception. The half it deletes is valid code
 under any reading other than "the transport duplicated this", so where the other
@@ -345,7 +348,7 @@ two turn a dead reply into a live one, this one changes what a live reply does.
 The separator argument is why its match rule is safe with almost no guards,
 which is a different question from whether every model should have the repair
 armed. It is armed deliberately, per run, by an operator who has seen the
-defect, and the default arm every study compares against is the other one. The
+defect, and the arm every study compares it against is the one with it off. The
 master switch turns it off with everything else.
 
 Each toggle creates an arm worth measuring:
@@ -354,7 +357,7 @@ Each toggle creates an arm worth measuring:
 | --- | --- |
 | `strip-fences` | compiles a fenced reply with its fence, so the turn is a preparation error. This arm measures what a fence costs when nothing catches it. |
 | `strip-prose` | compiles a bare program with its explanation around it, which fails to prepare |
-| `drop-doubled-response`, which is its default | compiles a doubled reply whole: a redeclaration error, or, for a body of bare statements, a program that runs and does every piece of its work twice |
+| `drop-doubled-response` | compiles a doubled reply whole: a redeclaration error, or, for a body of bare statements, a program that runs and does every piece of its work twice |
 
 Under the master switch every reply is compiled exactly as the model sent it.
 Healing still runs and still canonicalises, and it repairs nothing.
@@ -400,9 +403,9 @@ response healing: strip-fences, strip-prose
 response healing: strip-fences, strip-prose, drop-doubled-response
 ```
 
-The first line is the default arm, printed by a run that says nothing about
-healing. The second is what a run that armed the extra strategy prints, and the
-one strategy between them is the whole difference. A run with every strategy off
+The first line is what a run that armed the two safe repairs prints. The second
+is what a run that armed the extra strategy prints, and the one strategy between
+them is the whole difference. A run with every strategy off
 logs `response healing: disabled`, followed by the note that a reply is compiled
 exactly as the model sent it.
 
@@ -446,7 +449,6 @@ its own denominator is worse than one the reader divides.
 
 A comparison needs nothing further. A capability's params are flattened into the
 same document, so each strategy's declaration is its own field under
-`cap.responses-as-code.healing.<strategy>`, and a run that left a strategy at
-its default falls out of the comparison rather than being counted as a value it
-never declared. For the two default-on strategies the absent bucket is on, and
-for `drop-doubled-response` it is off.
+`cap.responses-as-code.healing.<strategy>`. Every run writes all three, so a
+slice by one of them buckets every run in the study rather than only the ones
+that mentioned it.

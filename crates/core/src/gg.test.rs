@@ -992,14 +992,25 @@ fn a_set_without_model_slots_deserializes_unchanged() {
     assert!(value["agents"][0].get("modelSlot").is_none());
 }
 
+/// A capability that writes neither an `implementation` nor `params` still **deserializes**, and
+/// deserializes to exactly what it says: no arm and no params.
+///
+/// The requirement that an enabled capability be fully specified is a *launch* refusal, not a parse
+/// error, and the difference is load-bearing. A configuration already stored in the database has to
+/// keep reading back so it can open in the editor and be finished there; a document that could not
+/// be parsed could not be repaired either.
 #[test]
-fn capability_config_defaults_params_to_an_empty_object_when_absent() {
-    // A stored config that omits `params` (and `implementation`) still deserializes,
-    // with `params` defaulting to an empty object.
+fn a_capability_that_writes_no_arm_and_no_params_still_deserializes_as_written() {
     let config: GgCapabilityConfig =
         serde_json::from_value(json!({ "id": "shell", "enabled": true })).expect("deserialize");
-    assert_eq!(config, GgCapabilityConfig::enabled(CAPABILITY_SHELL));
+    assert_eq!(config.id, CAPABILITY_SHELL);
+    assert!(config.enabled);
+    assert_eq!(config.implementation, None);
     assert_eq!(config.params, json!({}));
+
+    // And it is *not* what this crate authors, which is the whole distinction: authoring writes the
+    // catalog's arm and params, and reading writes nothing at all.
+    assert_ne!(config, GgCapabilityConfig::enabled(CAPABILITY_SHELL));
 }
 
 #[test]
@@ -1136,9 +1147,6 @@ fn the_module_vocabulary_serializes_in_its_documented_spelling() {
         json!("board")
     );
 
-    // Ownership defaults to the behaviour gg had before it was configurable, so a set written
-    // without the param keeps behaving exactly as it did.
-    assert_eq!(GgModuleOwnership::default(), GgModuleOwnership::Owned);
     assert_eq!(
         serde_json::to_value(GgModuleOwnership::Owned).unwrap(),
         json!("owned")
@@ -2626,6 +2634,383 @@ fn declared_capability_ids() -> std::collections::BTreeSet<String> {
             Some(value.trim_matches('"').to_string())
         })
         .collect()
+}
+
+// --- The authoring catalog ----------------------------------------------------
+
+/// The five capabilities that offer arms to choose between — the only ones an
+/// [`implementation`](GgCapabilityConfig::implementation) may name at all.
+const CAPABILITIES_WITH_ARMS: [&str; 5] = [
+    CAPABILITY_SHELL,
+    CAPABILITY_READ_FILE,
+    CAPABILITY_MEMORIES,
+    CAPABILITY_COMPACTION,
+    CAPABILITY_AUTOLOAD_SPECS,
+];
+
+/// Every key an authored params object carries. A JSON object has no order of its own, so this is
+/// the set of keys rather than a sequence of them.
+fn authored_keys(id: &str) -> std::collections::BTreeSet<&'static str> {
+    let entry = authored_capability(id).unwrap_or_else(|| panic!("`{id}` has no catalog entry"));
+    entry
+        .params
+        .as_object()
+        .unwrap_or_else(|| panic!("`{id}` authors params that are not an object"))
+        .keys()
+        .map(|key| {
+            GG_AUTHORED_PARAM_KEYS
+                .iter()
+                .find(|known| *known == key)
+                .copied()
+                .unwrap_or_else(|| panic!("`{key}` is not a param constant this crate declares"))
+        })
+        .collect()
+}
+
+/// Every param key the [authoring catalog](gg_authoring_catalog) can write, so
+/// [`authored_keys`](authored_keys) reports a key by the constant that names it rather than by a
+/// string spelled a second time.
+const GG_AUTHORED_PARAM_KEYS: [&str; 24] = [
+    PARAM_MAX_LINES,
+    PARAM_MAX_CHARS,
+    PARAM_LINE_CAP,
+    PARAM_WINDOW_LIMIT,
+    AUTOLOAD_PARAM_IMAGES,
+    PARAM_SKILLS_DIR,
+    PARAM_BUILT_INS,
+    MEMORY_PARAM_SCOPE,
+    PARAM_MAX_COUNT,
+    PARAM_MAX_LEN_PER_MEMORY,
+    PARAM_MAX_TOTAL_LEN,
+    PARAM_MAX_LEN_INDEX,
+    PARAM_MAX_LEN_DESCRIPTION,
+    PARAM_MAX_RESULTS,
+    PARAM_MAX_TASKS,
+    PARAM_MODE,
+    PARAM_SUMMARY_HEADROOM,
+    PARAM_TOP_FILE_VIEWS,
+    MODULE_PARAM_OWNERSHIP,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    PARAM_MAX_EPICS,
+    PARAM_MAX_ISSUES,
+    PARAM_MAX_RETRIES,
+    PARAM_MAX_DEPTH,
+];
+
+/// The catalog answers for **every** capability gg ships and for nothing else.
+///
+/// A capability added to [`GG_CAPABILITY_CATALOG`] without an entry here is one the console would
+/// pre-fill with nothing and every constructor in this crate would author incomplete — a capability
+/// that cannot be switched on without the launch refusing it. Failing here is how that is found,
+/// rather than on the first launch that enables it.
+#[test]
+fn the_authoring_catalog_covers_the_capability_catalog_exactly_and_in_order() {
+    let authored: Vec<&str> = gg_authoring_catalog()
+        .iter()
+        .map(|entry| entry.id)
+        .collect();
+    assert_eq!(authored, GG_CAPABILITY_CATALOG.to_vec());
+
+    let mut seen = std::collections::BTreeSet::new();
+    for id in &authored {
+        assert!(seen.insert(*id), "`{id}` is authored twice");
+    }
+    for id in GG_CAPABILITY_CATALOG {
+        assert!(
+            authored_capability(id).is_some(),
+            "`{id}` ships but the authoring catalog says nothing about it"
+        );
+    }
+    assert!(authored_capability("no-such-capability").is_none());
+}
+
+/// The catalog names an arm only where a capability has arms to name, and it names one for four of
+/// the five.
+///
+/// [Autoload specifications](CAPABILITY_AUTOLOAD_SPECS) is the exception, and deliberately: its one
+/// arm is [`locked`](AUTOLOAD_LOCKED_IMPL), and an implementation written nowhere is itself the
+/// declaration that the seeded specifications are ordinary file views. Writing `locked` into every
+/// new document would pin the specifications of every run nobody asked to pin. The other sixteen
+/// capabilities offer no arm at all, so a name on one of them refuses the launch — a catalog that
+/// wrote one would author a document that cannot start.
+#[test]
+fn the_authoring_catalog_names_an_arm_only_where_a_capability_offers_arms() {
+    for entry in gg_authoring_catalog() {
+        if entry.implementation.is_some() {
+            assert!(
+                CAPABILITIES_WITH_ARMS.contains(&entry.id),
+                "`{}` offers no arms, so an authored implementation would refuse the launch",
+                entry.id
+            );
+        }
+    }
+
+    let named: Vec<&str> = gg_authoring_catalog()
+        .iter()
+        .filter(|entry| entry.implementation.is_some())
+        .map(|entry| entry.id)
+        .collect();
+    assert_eq!(
+        named,
+        vec![
+            CAPABILITY_SHELL,
+            CAPABILITY_READ_FILE,
+            CAPABILITY_MEMORIES,
+            CAPABILITY_COMPACTION,
+        ]
+    );
+    assert_eq!(
+        authored_capability(CAPABILITY_AUTOLOAD_SPECS)
+            .expect("autoload is in the catalog")
+            .implementation,
+        None
+    );
+
+    // Each named arm is one its capability actually offers.
+    let arm = |id| {
+        authored_capability(id)
+            .expect("in the catalog")
+            .implementation
+    };
+    assert_eq!(arm(CAPABILITY_SHELL), Some(SHELL_OUTPUT_ADAPTIVE));
+    assert!(SHELL_OUTPUT_MODES.contains(&SHELL_OUTPUT_ADAPTIVE));
+    assert_eq!(arm(CAPABILITY_READ_FILE), Some(READ_MODE_UNLIMITED));
+    assert!(READ_MODES.contains(&READ_MODE_UNLIMITED));
+    assert_eq!(arm(CAPABILITY_MEMORIES), Some(MEMORY_STRATEGY_SCRATCHPAD));
+    assert_eq!(
+        arm(CAPABILITY_COMPACTION),
+        Some(COMPACTION_STRATEGY_SELF_SUMMARIZATION)
+    );
+}
+
+/// The catalog never writes [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)'s
+/// [`language`](PARAM_LANGUAGE), and no other entry writes it either.
+///
+/// It is the one required value nobody may choose for the operator: the language is the axis a
+/// cross-language study slices its arms by, so a form that pre-filled it would hand back a run
+/// recorded under a language nobody picked. Every other required param has a figure that can be put
+/// in front of an operator to keep or change; this one has only their answer.
+#[test]
+fn the_authoring_catalog_never_names_a_program_language() {
+    for entry in gg_authoring_catalog() {
+        let params = entry.params.as_object().expect("params are an object");
+        assert!(
+            !params.contains_key(PARAM_LANGUAGE),
+            "`{}` authors a `{PARAM_LANGUAGE}`, which is the one value nobody may choose",
+            entry.id
+        );
+    }
+    let rac = authored_capability(CAPABILITY_RESPONSES_AS_CODE).expect("in the catalog");
+    let written: std::collections::BTreeSet<&str> = rac
+        .params
+        .as_object()
+        .expect("params are an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        written,
+        std::collections::BTreeSet::from([
+            PARAM_TIMEOUT_SECS,
+            PARAM_MAX_MEMORY_BYTES,
+            PARAM_DOC_VIEW_TYPES,
+            PARAM_HEALING,
+            PARAM_ASSISTANT_MESSAGES,
+        ])
+    );
+}
+
+/// A param that is **off when it is absent** is left out of the catalog.
+///
+/// Writing one in would make every new document ask for the thing its absence turns off: a
+/// summarizer model on an arm that summarizes on its own model, or a reviewer on every issue an
+/// agent files. The absence is the setting, and the catalog states settings by writing them.
+#[test]
+fn the_authoring_catalog_leaves_out_every_param_that_is_off_when_absent() {
+    assert_eq!(
+        authored_keys(CAPABILITY_COMPACTION),
+        std::collections::BTreeSet::from([PARAM_SUMMARY_HEADROOM])
+    );
+    assert_eq!(
+        authored_keys(CAPABILITY_PROJECT_MANAGEMENT),
+        std::collections::BTreeSet::from([
+            PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+            PARAM_MAX_EPICS,
+            PARAM_MAX_ISSUES,
+            PARAM_MAX_RETRIES,
+            MODULE_PARAM_OWNERSHIP,
+        ])
+    );
+}
+
+/// The [memories](CAPABILITY_MEMORIES) entry writes the [scratchpad](MEMORY_STRATEGY_SCRATCHPAD)'s
+/// own limits, since the scratchpad is the arm it selects — all six of them, whichever the strategy
+/// applies, which is what lets one sweep hand every arm the same params block. The three the
+/// scratchpad does not apply are written `0`, the spelling a params object uses for "no limit".
+#[test]
+fn the_memories_entry_writes_the_scratchpads_limits() {
+    let entry = authored_capability(CAPABILITY_MEMORIES).expect("in the catalog");
+    assert_eq!(entry.implementation, Some(MEMORY_STRATEGY_SCRATCHPAD));
+    assert_eq!(
+        entry.params,
+        json!({
+            "scope": "isolated",
+            "maxCount": 64,
+            "maxLenPerMemory": 4096,
+            "maxTotalLen": 0,
+            "maxLenIndex": 0,
+            "maxLenDescription": 256,
+            "maxResults": 0,
+        })
+    );
+}
+
+/// The authored [`healing`](PARAM_HEALING) block names **every** strategy gg ships, in the spelling
+/// the strategy itself serializes to.
+///
+/// A block that left one out would be refused at launch, and one that misspelled a key would arm
+/// the arm its author was switching off — which is exactly the drift a literal written twice
+/// produces, so the two spellings are pinned against each other here.
+#[test]
+fn the_authored_healing_block_names_every_strategy_in_its_own_spelling() {
+    let entry = authored_capability(CAPABILITY_RESPONSES_AS_CODE).expect("in the catalog");
+    let healing = entry.params[PARAM_HEALING]
+        .as_object()
+        .expect("healing is a toggle set");
+    let declared: std::collections::BTreeSet<String> = healing.keys().cloned().collect();
+    let strategies: std::collections::BTreeSet<String> = [
+        GgHealingStrategy::StripFences,
+        GgHealingStrategy::StripProse,
+        GgHealingStrategy::DropDoubledResponse,
+    ]
+    .into_iter()
+    .map(|strategy| {
+        serde_json::to_value(strategy)
+            .expect("serialize")
+            .as_str()
+            .expect("a strategy serializes as its id")
+            .to_string()
+    })
+    .collect();
+    assert_eq!(declared, strategies);
+}
+
+/// A capability this crate constructs is **fully specified**: the catalog's arm, and every one of
+/// the catalog's params.
+#[test]
+fn an_enabled_capability_is_authored_from_the_catalog() {
+    for entry in gg_authoring_catalog() {
+        let config = GgCapabilityConfig::enabled(entry.id);
+        assert_eq!(config.id, entry.id);
+        assert!(config.enabled);
+        assert_eq!(config.implementation.as_deref(), entry.implementation);
+        assert_eq!(config.params, entry.params);
+    }
+}
+
+/// A **disabled** capability records the configuration the arm would have used, so the on and off
+/// arms of one comparison are the same document with one switch moved.
+#[test]
+fn a_disabled_capability_records_the_configuration_it_would_have_used() {
+    let off = GgCapabilityConfig::disabled(CAPABILITY_MEMORIES);
+    assert!(!off.enabled);
+    assert_eq!(
+        GgCapabilityConfig {
+            enabled: true,
+            ..off
+        },
+        GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
+    );
+}
+
+/// An id outside [`GG_CAPABILITY_CATALOG`] is authored with nothing at all — there is no capability
+/// to specify, and a set naming one is refused at launch by name.
+#[test]
+fn an_id_gg_does_not_ship_is_authored_with_nothing() {
+    let config = GgCapabilityConfig::enabled("no-such-capability");
+    assert_eq!(config.implementation, None);
+    assert_eq!(config.params, json!({}));
+}
+
+/// [`with_param`](GgCapabilityConfig::with_param) **merges**. A caller changing one figure asked for
+/// one figure changed, and a replacement would hand back a capability short of the params it
+/// requires — a document that refuses its own launch, naming params the caller never touched.
+#[test]
+fn with_param_overrides_one_key_and_keeps_every_other() {
+    let tuned = GgCapabilityConfig::enabled(CAPABILITY_SHELL).with_param(PARAM_MAX_LINES, 40);
+    assert_eq!(tuned.params[PARAM_MAX_LINES], json!(40));
+    assert_eq!(
+        tuned.params[PARAM_MAX_CHARS],
+        authored_capability(CAPABILITY_SHELL)
+            .expect("in the catalog")
+            .params[PARAM_MAX_CHARS]
+    );
+    assert_eq!(
+        authored_keys(CAPABILITY_SHELL),
+        std::collections::BTreeSet::from([PARAM_MAX_LINES, PARAM_MAX_CHARS])
+    );
+
+    // A key the catalog did not write is added rather than refused here: what a params key must be
+    // is the launch's question, not the builder's.
+    let extra =
+        GgCapabilityConfig::enabled(CAPABILITY_TASKS).with_param(PARAM_MODE, TASK_MODE_ISSUES);
+    assert_eq!(extra.params[PARAM_MODE], json!(TASK_MODE_ISSUES));
+    assert_eq!(extra.params[PARAM_MAX_TASKS], json!(100));
+}
+
+/// The root profile a new configuration starts from is **fully specified**: every capability it
+/// enables carries the arm the catalog names and exactly the params the catalog writes.
+///
+/// This is the property that makes `GgAgentConfig::root()` a launchable starting point rather than
+/// a sketch. A capability whose catalog entry grew a param would fail here until the profile was
+/// re-authored, which is the same failure a stored configuration meets at its next launch.
+#[test]
+fn the_root_agent_is_fully_specified() {
+    let root = GgAgentConfig::root();
+    assert!(!root.capabilities.is_empty());
+    for capability in &root.capabilities {
+        let entry = authored_capability(&capability.id)
+            .unwrap_or_else(|| panic!("`{}` is not a capability gg ships", capability.id));
+        assert_eq!(
+            capability.implementation.as_deref(),
+            entry.implementation,
+            "`{}` does not carry the arm a new document is written with",
+            capability.id
+        );
+        assert_eq!(
+            capability.params, entry.params,
+            "`{}` does not carry the params a new document is written with",
+            capability.id
+        );
+    }
+}
+
+/// Both set constructors carry the two **required** run-level ceilings and arm nothing else.
+///
+/// gg conducts every run under the parallelism cap and the journal ceiling and neither has an off,
+/// so a set without them is refused at launch — while the five ceilings are armed only by being
+/// written, and a starting configuration writes none of them.
+#[test]
+fn a_new_capability_set_carries_the_two_required_ceilings_and_arms_no_other() {
+    for set in [
+        GgCapabilitySet::default(),
+        GgCapabilitySet::minimal("anthropic/claude-opus-4.8"),
+    ] {
+        assert_eq!(set.limits.max_parallel, Some(AUTHORED_MAX_PARALLEL));
+        assert_eq!(set.limits.replay_max_bytes, Some(AUTHORED_REPLAY_MAX_BYTES));
+        assert_eq!(set.limits.max_turns, None);
+        assert_eq!(set.limits.max_runtime_secs, None);
+        assert_eq!(set.limits.max_cost, None);
+        assert_eq!(set.limits.max_consecutive_errors, None);
+        assert_eq!(set.limits.max_error_rate, None);
+        assert_eq!(set.limits.error_rate_window, None);
+        assert!(!set.limits.is_empty());
+    }
+
+    assert_eq!(
+        serde_json::to_value(GgRunLimits::authored()).expect("serialize"),
+        json!({ "maxParallel": 16, "replayMaxBytes": 268_435_456 })
+    );
 }
 
 // --- The configuration contract is strict -------------------------------------

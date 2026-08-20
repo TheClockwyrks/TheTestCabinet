@@ -75,19 +75,41 @@ fn plain() -> (MemoryRegistry, InheritedModules, ModuleIds) {
     )
 }
 
-/// A profile enabling `capabilities`, each with the given params.
+/// A profile enabling `capabilities`, each **fully specified**: the arm and params the
+/// [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog) writes, with the given params'
+/// own keys written over them.
+///
+/// Authored rather than bare, because a bare capability is not a document gg would launch: an
+/// enabled capability states every param it requires, and a test whose profile was short of one
+/// would be asserting against a configuration that refuses its own launch. A test says the keys it
+/// is about and inherits the rest.
 fn profile_with(capabilities: Vec<(&str, serde_json::Value)>) -> GgAgentConfig {
     GgAgentConfig {
         capabilities: capabilities
             .into_iter()
-            .map(|(id, params)| GgCapabilityConfig {
-                id: id.to_string(),
-                enabled: true,
-                implementation: None,
-                params,
+            .map(|(id, params)| {
+                let mut capability = GgCapabilityConfig::enabled(id);
+                for (key, value) in params.as_object().expect("params is an object") {
+                    capability = capability.with_param(key.as_str(), value.clone());
+                }
+                capability
             })
             .collect(),
         ..GgAgentConfig::root()
+    }
+}
+
+/// The ceilings a board built **by hand** here carries: room for the one epic or issue each of
+/// these tests files, since not one of them is about a ceiling.
+///
+/// Written out rather than resolved, because these boards have no capability behind them — a board
+/// a test constructs is not a configured one, and the figures it is bounded by are this fixture's
+/// rather than anything gg chose.
+fn board_caps() -> BoardCaps {
+    BoardCaps {
+        max_epics: 10,
+        max_issues: 10,
+        max_retries: 1,
     }
 }
 
@@ -134,7 +156,7 @@ fn add_task(runtime: &TasksRuntime, id: &str) {
 fn an_unowned_module_contributes_no_pinned_block() {
     let tasks = TasksRuntime::new(10);
     add_task(&tasks, "t1");
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     board
         .store()
         .lock()
@@ -183,7 +205,7 @@ fn an_unowned_module_contributes_no_pinned_block() {
 #[test]
 fn a_task_list_is_owned_whatever_the_profile_declares() {
     let skills = SkillsRuntime::disabled();
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     let (registry, inherited, ids) = plain();
     let profile = profile_with(vec![(CAPABILITY_TASKS, json!({ "ownership": "unowned" }))]);
 
@@ -212,7 +234,7 @@ fn a_task_list_is_owned_whatever_the_profile_declares() {
 #[test]
 fn a_profile_without_the_board_capability_holds_it_unowned() {
     let skills = SkillsRuntime::disabled();
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     let (registry, inherited, ids) = plain();
     let modules = CapabilityModules::resolve(
         &GgAgentConfig::root(),
@@ -233,32 +255,78 @@ fn a_profile_without_the_board_capability_holds_it_unowned() {
     assert_eq!(modules.board().ownership(), Ownership::Owned);
 }
 
-/// The `ownership` param is read off each module-backed capability. A recognized value is honoured
-/// and an absent one takes the default, silently — absent is not unrecognized.
+/// The `ownership` param is read off each module-backed capability, and a recognized value is
+/// honoured on both of them.
 #[test]
 fn the_ownership_param_resolves() {
-    let profile = profile_with(vec![(
-        CAPABILITY_PROJECT_MANAGEMENT,
-        json!({ "ownership": "unowned" }),
-    )]);
-    assert_eq!(
-        resolve_ownership(
-            &profile,
-            CAPABILITY_PROJECT_MANAGEMENT,
-            &mut LaunchReport::Discarding
+    for (capability, written, resolved) in [
+        (CAPABILITY_PROJECT_MANAGEMENT, "unowned", Ownership::Unowned),
+        (CAPABILITY_PROJECT_MANAGEMENT, "owned", Ownership::Owned),
+        (
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            "unowned",
+            Ownership::Unowned,
         ),
-        Ownership::Unowned
-    );
-    for absent in [json!({}), json!({ "ownership": null })] {
+        (CAPABILITY_AGENT_MANAGED_CONTEXT, "owned", Ownership::Owned),
+    ] {
+        let profile = profile_with(vec![(capability, json!({ "ownership": written }))]);
         assert_eq!(
-            resolve_ownership(
-                &profile_with(vec![(CAPABILITY_PROJECT_MANAGEMENT, absent)]),
-                CAPABILITY_PROJECT_MANAGEMENT,
-                &mut LaunchReport::Discarding
-            ),
-            Ownership::Owned
+            resolve_ownership(&profile, capability, &mut LaunchReport::Discarding),
+            resolved,
+            "{capability}.{written}"
         );
     }
+}
+
+/// **An enabled capability that writes no `ownership` refuses the launch**, at the param's own
+/// locus. It is the knob that decides whether the agent is told what it holds every turn or has to
+/// look it up, and gg picks neither value: a board resolved to `owned` because nobody wrote a word
+/// is an agent paying for a decomposition in every request it makes, under a document that never
+/// asked for one.
+#[test]
+fn an_enabled_capability_short_of_its_ownership_is_refused() {
+    for capability in [
+        CAPABILITY_PROJECT_MANAGEMENT,
+        CAPABILITY_AGENT_MANAGED_CONTEXT,
+    ] {
+        for absent in [json!({}), json!({ "ownership": null })] {
+            let profile = GgAgentConfig {
+                capabilities: vec![GgCapabilityConfig {
+                    id: capability.to_string(),
+                    enabled: true,
+                    implementation: None,
+                    params: absent.clone(),
+                }],
+                ..GgAgentConfig::root()
+            };
+            let mut report = LaunchReport::collecting();
+            assert_eq!(
+                resolve_ownership(&profile, capability, &mut report),
+                Ownership::Owned,
+                "the resolver stays total"
+            );
+            let defects = report.into_defects();
+            assert_eq!(defects.len(), 1, "{capability} {absent} -> {defects:?}");
+            assert_eq!(defects[0].locus, format!("{capability}.params.ownership"));
+        }
+    }
+}
+
+/// …and a capability the profile does not declare, or has switched **off**, is owed none: it
+/// configures no module, so there is no ownership for it to be short of.
+#[test]
+fn a_capability_that_is_absent_or_off_is_owed_no_ownership() {
+    let mut report = LaunchReport::collecting();
+    resolve_ownership(
+        &profile_with(Vec::new()),
+        CAPABILITY_PROJECT_MANAGEMENT,
+        &mut report,
+    );
+    let mut off = profile_with(vec![(CAPABILITY_AGENT_MANAGED_CONTEXT, json!({}))]);
+    off.capabilities[0].enabled = false;
+    off.capabilities[0].params = json!({});
+    resolve_ownership(&off, CAPABILITY_AGENT_MANAGED_CONTEXT, &mut report);
+    assert!(report.is_empty());
 }
 
 /// An `ownership` gg cannot read is **refused**. It is the knob that decides whether an agent is
@@ -313,7 +381,7 @@ fn a_disabled_capabilitys_ownership_is_checked_too() {
 /// store" could not give.
 #[test]
 fn a_fork_is_independent_of_its_original() {
-    let memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     write_memory(&memories, "shared-history");
     let forked = memories.forked();
 
@@ -350,7 +418,7 @@ fn a_fork_is_independent_of_its_original() {
 /// the copy continues the history the original wrote rather than claiming to be its first revision.
 #[test]
 fn a_fork_carries_the_revision_history() {
-    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     write_memory(&memories, "note");
     let _ = memories.drain_events();
 
@@ -377,7 +445,7 @@ fn a_fork_carries_the_revision_history() {
 /// the property linked memory and the run-global board rest on.
 #[test]
 fn a_share_is_the_same_store_through_two_handles() {
-    let memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     let linked = memories.shared();
 
     write_memory(&memories, "written-by-the-first");
@@ -388,7 +456,7 @@ fn a_share_is_the_same_store_through_two_handles() {
 
     // The board is *always* shared, even when a caller asks it to fork: two boards would each keep
     // their own issue counter and would both hand out the same identifier.
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     let ModuleHandle::Board(copy) = board.fork() else {
         panic!("a board module forks into a board module");
     };
@@ -442,7 +510,7 @@ fn a_skills_fork_copies_the_read_set_and_a_share_aliases_it() {
 /// reported once, on one stream, however many copies of the module exist.
 #[test]
 fn a_fork_does_not_duplicate_undrained_telemetry() {
-    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     write_memory(&memories, "note");
 
     let mut forked = memories.forked();
@@ -520,7 +588,7 @@ fn a_tightened_cap_keeps_what_is_already_there() {
     let (registry, inherited, ids) = plain();
     let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
-    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     write_memory(&memories, "one");
     write_memory(&memories, "two");
 
@@ -558,7 +626,7 @@ fn caps_are_re_resolved_even_while_the_tools_still_hold_the_store() {
     let (registry, inherited, ids) = plain();
     let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
-    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     // Exactly what `ToolRegistry::from_run` does: one binding per memory tool, each an `Arc` clone.
     let bindings: Vec<_> = (0..3).map(|_| memories.binding()).collect();
 
@@ -589,7 +657,7 @@ fn an_adopted_module_is_not_handed_its_predecessors_unread_news() {
     let (registry, inherited, ids) = plain();
     let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
-    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default())
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED)
         .with_agent("agent-1");
     memories
         .binding()
@@ -652,7 +720,7 @@ fn a_shared_successor_rebinds_the_instance_its_own_profile_keeps() {
         .expect("the write is within the caps");
 
     // The predecessor's own, entirely separate, notebook.
-    let mut carried = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let mut carried = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     write_memory(&carried, "predecessor-note");
 
     carried
@@ -683,7 +751,7 @@ fn a_profile_that_disables_the_capability_refuses_the_module() {
     let (registry, inherited, ids) = plain();
     let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
-    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     assert_eq!(
         memories.adopt(&profile_with(Vec::new()), &ctx),
         Err(AdoptError::Disabled)
@@ -700,7 +768,7 @@ fn a_different_memory_strategy_is_refused_with_a_reason() {
     let (registry, inherited, ids) = plain();
     let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
-    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     let mut receiver = profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]);
     receiver.capabilities[0].implementation = Some("markdown".to_string());
 
@@ -726,7 +794,7 @@ fn an_intersection_transfer_carries_drops_and_initializes() {
     let old = ModuleSet::inert(&history_setup())
         .with(ModuleHandle::Memories(MemoriesRuntime::new(
             MemoryStrategy::Scratchpad,
-            MemoryCaps::default(),
+            MemoryCaps::UNBOUNDED,
         )))
         .with(ModuleHandle::Tasks(TasksRuntime::new(10)));
     write_memory(old.caps().memories(), "carried");
@@ -773,7 +841,7 @@ fn an_explicit_transfer_carries_only_what_it_names() {
     let old = ModuleSet::inert(&history_setup())
         .with(ModuleHandle::Memories(MemoriesRuntime::new(
             MemoryStrategy::Scratchpad,
-            MemoryCaps::default(),
+            MemoryCaps::UNBOUNDED,
         )))
         .with(ModuleHandle::Tasks(TasksRuntime::new(10)));
     write_memory(old.caps().memories(), "not-named");
@@ -841,7 +909,7 @@ fn an_incompatible_module_is_reinitialized_with_a_stated_reason() {
     let (registry, inherited, ids) = plain();
 
     let old = ModuleSet::inert(&history_setup()).with(ModuleHandle::Memories(
-        MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default()),
+        MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED),
     ));
     write_memory(old.caps().memories(), "lost");
 
@@ -974,7 +1042,7 @@ fn a_forked_window_carries_the_thread_but_not_the_system_prompt() {
 fn a_forked_set_is_independent_of_the_set_it_was_cloned_from() {
     let dir = tempfile::TempDir::new().unwrap();
     let skills = SkillsRuntime::new(library(dir.path()));
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     let (registry, inherited, ids) = plain();
     let profile = profile_with(vec![
         (CAPABILITY_MEMORIES, json!({})),
@@ -1071,7 +1139,7 @@ fn a_forked_set_is_independent_of_the_set_it_was_cloned_from() {
 fn a_forked_memory_is_copied_when_isolated_and_linked_when_it_is_not() {
     let dir = tempfile::TempDir::new().unwrap();
     let skills = SkillsRuntime::new(library(dir.path()));
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     let (registry, inherited, ids) = plain();
 
     for (scope, links) in [
@@ -1129,7 +1197,7 @@ fn share_keeps_a_module_id_and_fork_mints_a_new_one() {
     let modules: Vec<ModuleHandle> = vec![
         ModuleHandle::Memories(MemoriesRuntime::new(
             MemoryStrategy::Scratchpad,
-            MemoryCaps::default(),
+            MemoryCaps::UNBOUNDED,
         )),
         ModuleHandle::Tasks(TasksRuntime::new(10)),
         ModuleHandle::Skills(SkillsRuntime::new(library(dir.path()))),
@@ -1169,7 +1237,7 @@ fn share_keeps_a_module_id_and_fork_mints_a_new_one() {
     );
 
     // The board is the run's single work queue: every way of copying it hands back the same one.
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     let id = board.instance_id().to_string();
     assert_eq!(board.share().as_module().instance_id(), id);
     assert_eq!(
@@ -1264,7 +1332,7 @@ fn an_inherited_holder_with_no_spawner_reports_a_created_origin() {
 #[test]
 fn a_roster_reports_every_kind_with_ids_only_where_there_is_a_store() {
     let skills = SkillsRuntime::disabled();
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     let (registry, inherited, ids) = plain();
     let profile = profile_with(vec![
         (CAPABILITY_MEMORIES, json!({})),
@@ -1310,7 +1378,7 @@ fn a_roster_reports_every_kind_with_ids_only_where_there_is_a_store() {
 #[test]
 fn a_fork_reports_linked_and_copied_per_kind_with_both_ids() {
     let skills = SkillsRuntime::disabled();
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(board_caps());
     let (registry, inherited, ids) = plain();
     let profile = profile_with(vec![
         (CAPABILITY_TASKS, json!({})),

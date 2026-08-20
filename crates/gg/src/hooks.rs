@@ -50,6 +50,13 @@
 //! [offloading policy](OffloadPolicy) so a megabyte of test failure behaves like a megabyte of
 //! `shell` output rather than flooding a window.
 //!
+//! A command hook **names its own ceiling**. How long a build or a test suite may run before it is
+//! worth killing is a property of the workspace and gg knows nothing about it, so `timeoutSecs` is
+//! [required](check_timeout) and gg supplies none. Its `output` and its `cwd` are the opposite case
+//! and stay optional: absent, the first follows the agent's own shell configuration and the second
+//! runs the command in the agent's workspace root — inheritance from the agent being gated, not a
+//! figure gg chose.
+//!
 //! A **script** hook ([`GgHookAction::BuiltIn`] / [`GgHookAction::Custom`]) is the expressive case:
 //! gg hands it the event as one JSON argument and reads a [decision](GgHookOutcomeKind) back on
 //! stdout. That is what buys "let this through, but tell the model X" — an outcome no exit code can
@@ -86,10 +93,25 @@ mod builtin;
 
 pub(crate) use builtin::builtin_source;
 
-/// The per-hook timeout gg falls back to when a hook declares none. Generous, on the same reasoning
-/// the validation commands this replaced used: a hook command is typically a build or a test suite
-/// rather than a quick check.
-const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_secs(300);
+/// The ceiling gg runs **its own script hooks** under — a fixed constant, with no option behind it
+/// for it to stand in for.
+///
+/// A script hook is not a build: it is handed the event as one JSON argument and prints one decision
+/// object, so what it needs is enough time to read the workspace and answer, and this is generous
+/// against that. A [command hook](GgHookAction::Command) is the other thing entirely — an arbitrary
+/// build or test suite whose ceiling is nobody's to guess — so it
+/// [names its own](GgHookAction::Command::timeout_secs) and gg never supplies one.
+const SCRIPT_HOOK_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// The ceiling [`run_command_hook`] runs under when a command hook declares no
+/// [`timeoutSecs`](GgHookAction::Command::timeout_secs) — a hook the
+/// [launch pass](check_timeout) has already refused the run over, so nothing gg conducts reaches
+/// this.
+///
+/// **Zero**, and zero rather than a figure because a hook whose ceiling nobody wrote gates nothing:
+/// the command is killed at once, in the only way that cannot be mistaken for a gate that ran. A
+/// length of time gg chose is exactly what the refusal exists to prevent.
+const TIMEOUT_OF_A_REFUSED_HOOK: Duration = Duration::ZERO;
 
 /// The directory, under the run's own [workspace bookkeeping](test_cabinet_core::gg::GG_WORKSPACE_DIR),
 /// that script hooks are materialized into.
@@ -312,7 +334,7 @@ impl HookOwner<'_> {
 /// [agent profile](GgAgentConfig::hooks). Grouping by event is what makes the common case — an
 /// event with no hooks on it, which is most events of most runs — a map lookup that finds nothing,
 /// rather than a walk of every hook per file write.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct HookRuntime {
     /// The hooks on each event, in declaration order.
     by_event: BTreeMap<GgHookEvent, Vec<ResolvedHook>>,
@@ -322,6 +344,20 @@ pub(crate) struct HookRuntime {
 }
 
 impl HookRuntime {
+    /// The hooks of a declaration site **the set does not declare** — no hooks, on no event.
+    ///
+    /// Reached only where a profile id has no entry in the run's per-profile hook map, which is a
+    /// profile the set does not carry and the dispatcher has already refused. It is named rather
+    /// than reached through `Default` because a gate that silently does not run is worse than no
+    /// gate: the name is what says this site declared nothing, as against a site whose declarations
+    /// were dropped.
+    pub(crate) fn undeclared() -> Self {
+        Self {
+            by_event: BTreeMap::new(),
+            scripts_dir: PathBuf::new(),
+        }
+    }
+
     /// Resolve the run's [session hooks](GgCapabilitySet::hooks) against `workspace_dir`.
     pub(crate) fn resolve_session(
         set: &GgCapabilitySet,
@@ -492,9 +528,19 @@ impl HookRuntime {
             )
             .await),
             GgHookAction::BuiltIn { script } => {
-                // Resolution proved the id, so an absent source here would be gg's catalogue
-                // disagreeing with itself between launch and this call.
-                let source = builtin_source(script).unwrap_or_default();
+                // Resolution proved the id, so an absent source here is gg's catalogue disagreeing
+                // with itself between launch and this call. Running an empty script instead would
+                // print no decision and end the run one layer further down, saying nothing about
+                // which of the two things went wrong.
+                let Some(source) = builtin_source(script) else {
+                    return Err(HookFailure {
+                        hook: hook.label.clone(),
+                        detail: format!(
+                            "gg ships no source for the built-in `{script}`, which the launch \
+                             pass accepted. This is a gg defect."
+                        ),
+                    });
+                };
                 self.run_script_hook(hook, source, agent, payload, ctx, emitter)
                     .await
             }
@@ -539,7 +585,7 @@ impl HookRuntime {
         );
         let outcome = run_command(
             &command,
-            DEFAULT_HOOK_TIMEOUT,
+            SCRIPT_HOOK_TIMEOUT,
             &OffloadPolicy::Inline,
             ctx,
             GgShellOrigin::Hook,
@@ -593,6 +639,15 @@ impl HookRuntime {
 /// output is the whole of what it has to say and a run that only surfaced failures would make a
 /// passing check invisible. A non-zero exit becomes a [block](GgHookOutcomeKind::Block) carrying
 /// that same output, so the model reads *why* in the words of the thing that refused it.
+///
+/// Three of the declaration's fields are read here, and they are read three different ways.
+/// `timeout_secs` is the hook's own and gg supplies none: the declared figure is what the command
+/// runs under, and a hook that declared none has already [refused the launch](check_timeout).
+/// `output_mode` and `cwd` are **inheritance rather than substitution** — absent, the command's
+/// output follows the agent's own [shell configuration](OffloadPolicy) and the command runs in the
+/// agent's workspace root. Neither absence is gg choosing a figure: each is the hook declining to
+/// differ from the agent it is gating, which is a setting an operator can mean and a value gg is not
+/// standing in for.
 #[allow(clippy::too_many_arguments)]
 async fn run_command_hook(
     hook: &ResolvedHook,
@@ -604,13 +659,18 @@ async fn run_command_hook(
     offload: &OffloadPolicy,
     emitter: &Emitter,
 ) -> GgHookOutcomeKind {
-    let timeout = timeout_secs
-        .filter(|secs| secs.is_finite() && *secs > 0.0)
-        .map(Duration::from_secs_f64)
-        .unwrap_or(DEFAULT_HOOK_TIMEOUT);
+    // The declared ceiling, read as it was written. The launch pass proved it is there and that it
+    // is a positive, finite number of seconds, so the placeholder below stands for a run that was
+    // never started rather than for a hook gg decided a ceiling for.
+    let timeout = match timeout_secs {
+        Some(secs) if secs.is_finite() && secs > 0.0 => Duration::from_secs_f64(secs),
+        _ => TIMEOUT_OF_A_REFUSED_HOOK,
+    };
     // A hook that declares no output mode follows the agent's own `shell` configuration, which is
     // almost always what an operator means: the reason a run offloads its command output is that
-    // its commands are noisy, and a hook running `npm test` is the noisiest of them.
+    // its commands are noisy, and a hook running `npm test` is the noisiest of them. Inheritance,
+    // not a substituted figure — the mode the output lands under is the one the agent is already
+    // running.
     let policy = match output_mode {
         // A discarding sink: the launch pass read every hook's `output` through this same resolver
         // and refused the run if any named a mode gg does not have.
@@ -624,7 +684,8 @@ async fn run_command_hook(
     };
     // Derived from the agent's context rather than built fresh, so a hook that declares a `cwd`
     // still runs through *this agent's* shell runner and is still attributed to the agent whose
-    // operation it is gating.
+    // operation it is gating. An absent `cwd` inherits that context whole, which is the agent's
+    // workspace root — its worktree, for an agent working in one.
     let ctx = match cwd {
         None => ctx.clone(),
         Some(dir) => {
@@ -801,7 +862,7 @@ pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchR
             message,
         ));
     }
-    check_actions(&set.hooks, report);
+    check_actions(&set.hooks, &hook_offload(set.root()), report);
     for profile in &set.agents {
         report.for_agent(&profile.id, |report| {
             for (label, message) in problems(&profile.hooks, HookOwner::Agent(&profile.id)) {
@@ -811,9 +872,23 @@ pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchR
                     message,
                 ));
             }
-            check_actions(&profile.hooks, report);
+            check_actions(&profile.hooks, &hook_offload(profile), report);
         });
     }
+}
+
+/// The [output policy](OffloadPolicy) `profile`'s hooks run under — its own `shell` configuration,
+/// which is what [`run_command_hook`] is handed and what an `output` override is measured against.
+/// A session hook is fired on the root's behalf, so the root's is the one that governs it.
+///
+/// Read through [`already_reported`](crate::validate::LaunchReport::already_reported): every defect
+/// this capability carries belongs to [`shell::check_launch`](crate::tools::check_launch), which
+/// reads it at its own loci in this same pass, and a refusal names each value once.
+fn hook_offload(profile: &GgAgentConfig) -> OffloadPolicy {
+    crate::tools::shell_offload(
+        profile,
+        &mut crate::validate::LaunchReport::already_reported(),
+    )
 }
 
 /// Every field of one declaration site's hook **actions** that gg reads and could fail to honour:
@@ -825,7 +900,11 @@ pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchR
 /// is one gg can perform, which is the other half of "a hook that silently does not run is worse
 /// than no hook": a hook armed on a blank command line runs `sh -c '   '`, exits 0 and prints
 /// nothing, which is a `pre-write` gate that always passes.
-fn check_actions(hooks: &[GgHook], report: &mut crate::validate::LaunchReport) {
+fn check_actions(
+    hooks: &[GgHook],
+    offload: &OffloadPolicy,
+    report: &mut crate::validate::LaunchReport,
+) {
     for (index, hook) in hooks.iter().enumerate() {
         let label = hook_label(hook, index);
         match &hook.action {
@@ -845,13 +924,12 @@ fn check_actions(hooks: &[GgHook], report: &mut crate::validate::LaunchReport) {
                     ));
                 }
                 check_timeout(&label, *timeout_secs, report);
+                // Read exactly as `run_command_hook` reads it, against the policy that call will
+                // hand it: an `output` override names the **mode**, and the ceilings a truncating
+                // one measures its tail against are the agent's own — so a hook that asks for a
+                // tail on an agent whose `shell` declares none is a hook gg cannot run as written.
                 if let Some(mode) = output {
-                    OffloadPolicy::for_mode(
-                        mode,
-                        &OffloadPolicy::default(),
-                        &hook_output_locus(&label),
-                        report,
-                    );
+                    OffloadPolicy::for_mode(mode, offload, &hook_output_locus(&label), report);
                 }
             }
             GgHookAction::Custom { source } => {
@@ -874,31 +952,40 @@ fn check_actions(hooks: &[GgHook], report: &mut crate::validate::LaunchReport) {
 /// One command hook's [`timeoutSecs`](GgHookAction::Command::timeout_secs), read exactly as
 /// [`run_command_hook`] reads it.
 ///
-/// Absent takes [`DEFAULT_HOOK_TIMEOUT`], which is the documented default and generous because a
-/// hook command is typically a build. A declared one that is not a positive, finite number of
-/// seconds is refused: it is a ceiling, and a ceiling gg quietly replaced with its own is the
-/// failure the whole refusal policy exists for — an operator who wrote `0` to make a gate fail fast
-/// would instead get five minutes nobody asked for, with nothing anywhere saying so.
+/// **Required.** How long a build or a test suite may run before it is worth killing is a property
+/// of the workspace, and gg knows nothing about it: a hook killed at a figure gg picked reports a
+/// failure the workspace did not have, and reports it as the gate's own verdict. So an absent
+/// ceiling refuses the launch rather than being filled in.
+///
+/// A declared one that is not a positive, finite number of seconds is refused on the same terms —
+/// `0` and a negative name no length of time, and an operator who wrote one to make a gate fail fast
+/// has written something gg cannot run under.
 fn check_timeout(
     label: &str,
     timeout_secs: Option<f64>,
     report: &mut crate::validate::LaunchReport,
 ) {
+    let locus = || format!("hooks[{label}].timeoutSecs");
     let Some(secs) = timeout_secs else {
+        report.report(crate::validate::LaunchDefect::run_level(
+            locus(),
+            "",
+            "a command hook names how long its command may run before it is killed, and this one \
+             names none; gg substitutes no ceiling, because a hook killed at a figure nobody wrote \
+             reports a failure the workspace did not have."
+                .to_string(),
+        ));
         return;
     };
     if secs.is_finite() && secs > 0.0 {
         return;
     }
     report.report(crate::validate::LaunchDefect::run_level(
-        format!("hooks[{label}].timeoutSecs"),
+        locus(),
         format!("{secs}"),
-        format!(
-            "a hook's `timeoutSecs` is how long its command may run before it is killed, so it must \
-             be a positive number of seconds; gg's own default of {}s would otherwise stand in for \
-             a ceiling the operator wrote.",
-            DEFAULT_HOOK_TIMEOUT.as_secs(),
-        ),
+        "a hook's `timeoutSecs` is how long its command may run before it is killed, so it must be \
+         a positive number of seconds; this names no length of time gg could run the command under."
+            .to_string(),
     ));
 }
 

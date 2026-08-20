@@ -21,7 +21,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::metrics::{Cost, TokenCounts};
 
@@ -62,30 +62,72 @@ pub const SHELL_OUTPUT_INLINE: &str = "inline";
 /// file pair the agent can grep, and returning only the configured tail inline.
 pub const SHELL_OUTPUT_OFFLOAD: &str = "offload";
 
-/// The [shell](CAPABILITY_SHELL) output mode — the **default** — that offloads selectively:
-/// a command that failed comes back as it would under [`offload`](SHELL_OUTPUT_OFFLOAD), and
-/// a command that succeeded comes back as its exit code and the paths its output went to.
+/// The [shell](CAPABILITY_SHELL) output mode that offloads selectively: a command that failed
+/// comes back as it would under [`offload`](SHELL_OUTPUT_OFFLOAD), and a command that succeeded
+/// comes back as its exit code and the paths its output went to.
 pub const SHELL_OUTPUT_ADAPTIVE: &str = "adaptive";
 
 /// Every [shell](CAPABILITY_SHELL) output mode, for the launch-time check that a set names one
-/// gg recognizes. The [default](SHELL_OUTPUT_ADAPTIVE) is first.
+/// gg recognizes. [`adaptive`](SHELL_OUTPUT_ADAPTIVE) is first, and is the arm the
+/// [authoring catalog](gg_authoring_catalog) writes into a new document.
 pub const SHELL_OUTPUT_MODES: [&str; 3] = [
     SHELL_OUTPUT_ADAPTIVE,
     SHELL_OUTPUT_INLINE,
     SHELL_OUTPUT_OFFLOAD,
 ];
 
+/// The [shell](CAPABILITY_SHELL) capability's `maxLines` param: how many trailing **lines** of a
+/// command's output come back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a failed
+/// command, under [adaptive](SHELL_OUTPUT_ADAPTIVE).
+///
+/// An enabled shell capability writes it whichever mode it selects, so a sweep that varies the
+/// mode over one shared params block reads the same ceiling on every arm. Absent, the launch is
+/// refused: a truncating mode is defined by the ceiling it truncates past, and one gg picked would
+/// be the control arm run under the treatment arm's name.
+pub const PARAM_MAX_LINES: &str = "maxLines";
+
+/// The [shell](CAPABILITY_SHELL) capability's `maxChars` param: how many trailing **characters**
+/// of a command's output come back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a
+/// failed command, under [adaptive](SHELL_OUTPUT_ADAPTIVE).
+///
+/// Written and required on exactly the terms [`maxLines`](PARAM_MAX_LINES) is. The tighter of the
+/// two decides, because the result has to satisfy both.
+pub const PARAM_MAX_CHARS: &str = "maxChars";
+
 /// The stable id of the read-file capability: the agent's ability to read a file in the
 /// run workspace (the `read_file` tool).
 ///
 /// Its [implementation](GgCapabilityConfig::implementation) selects how much of a file one
-/// call may return by default — the *unlimited* and *default-cap*
-/// [read modes](https://docs.testcabinet.ai/gg/filesystem/) — and its `lineCap` param sets
-/// the default window the capped mode returns. How a coding agent copes when it only sees a
-/// file a window at a time unless it asks for more is a first-class experimental variable, so
-/// it is configured rather than hardcoded. Neither mode can *refuse* a whole-file read: an
-/// explicit larger `limit` is always honoured.
+/// call may return — the [unlimited](READ_MODE_UNLIMITED) and
+/// [default-cap](READ_MODE_DEFAULT_CAP) [read modes](https://docs.testcabinet.ai/gg/filesystem/)
+/// — and its [`lineCap`](PARAM_LINE_CAP) param sets the window a call that asks for no `limit` of
+/// its own is given. How a coding agent copes when it only sees a file a window at a time unless
+/// it asks for more is a first-class experimental variable, so it is configured rather than
+/// hardcoded. Neither mode can *refuse* a whole-file read: an explicit larger `limit` is always
+/// honoured.
 pub const CAPABILITY_READ_FILE: &str = "read-file";
+
+/// The [read-file](CAPABILITY_READ_FILE) capability's `lineCap` param: how many lines a call that
+/// names no `limit` of its own is given under [`default-cap`](READ_MODE_DEFAULT_CAP).
+///
+/// An enabled capability writes it whichever mode is selected, which is what lets one sweep vary
+/// the mode over a shared params block and have every launch in it judged the same way. Absent, or
+/// naming no line count of one or more, the launch is refused.
+pub const PARAM_LINE_CAP: &str = "lineCap";
+
+/// The [read-file](CAPABILITY_READ_FILE) [implementation](GgCapabilityConfig::implementation)
+/// under which one call returns the whole file.
+pub const READ_MODE_UNLIMITED: &str = "unlimited";
+
+/// The [read-file](CAPABILITY_READ_FILE) [implementation](GgCapabilityConfig::implementation)
+/// under which a call that asks for no `limit` of its own returns
+/// [`lineCap`](PARAM_LINE_CAP) lines, and one that asks for more is honoured.
+pub const READ_MODE_DEFAULT_CAP: &str = "default-cap";
+
+/// Both read modes, in the spelling a launch refusal offers back.
+/// [`unlimited`](READ_MODE_UNLIMITED) is first, and is the arm the
+/// [authoring catalog](gg_authoring_catalog) writes into a new document.
+pub const READ_MODES: [&str; 2] = [READ_MODE_UNLIMITED, READ_MODE_DEFAULT_CAP];
 
 /// The stable id of the write-file capability: the agent's ability to create or overwrite
 /// a file in the run workspace (the `write_file` tool).
@@ -116,18 +158,28 @@ pub const CAPABILITY_LIST_DIR: &str = "list-dir";
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 pub const CAPABILITY_CONTEXT_WINDOW_OVERRIDE: &str = "context-window-override";
 
+/// The [context-window-override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) capability's `windowLimit`
+/// param: the window to run this agent's model against, in tokens.
+///
+/// Narrowing is the whole of what the capability does, so an enabled one writes the figure it
+/// narrows to and an absent one refuses the launch — an override with no figure is an override the
+/// run would record and never apply. So does a `0`, and so does a figure above the model's own
+/// window, which is a hard limit. A profile that leaves the capability off is measured against the
+/// model's full window, and that absence is the setting.
+pub const PARAM_WINDOW_LIMIT: &str = "windowLimit";
+
 /// The stable id of the autoload-specifications capability: when on, an agent's very
 /// first context is seeded with the **full contents of every file the test case
 /// provided** — its specifications and reference images — injected as though the model
 /// had already `read_file`d each, so the model starts with the whole brief in the window
 /// rather than having to discover and read it.
 ///
-/// Off (the default) the agent starts with only the build prompt and reads what it needs
-/// itself; on, it is a distinct arm of the "does front-loading the whole spec help?"
-/// study. Its [`implementation`](GgCapabilityConfig::implementation) is the **locked**
-/// lever: the default (empty) injects the specs as ordinary, ephemeral file reads that
-/// [compaction](CAPABILITY_COMPACTION) may summarize away and
-/// [agent-managed context](CAPABILITY_AGENT_MANAGED_CONTEXT) may evict, while
+/// Off, the agent starts with only the build prompt and reads what it needs itself; on, it is a
+/// distinct arm of the "does front-loading the whole spec help?" study. Its
+/// [`implementation`](GgCapabilityConfig::implementation) is the **locked** lever, and it is the
+/// one arm gg reads out of an implementation nobody wrote: written nowhere, the specs are injected
+/// as ordinary, ephemeral file reads that [compaction](CAPABILITY_COMPACTION) may summarize away
+/// and [agent-managed context](CAPABILITY_AGENT_MANAGED_CONTEXT) may evict, while
 /// [`AUTOLOAD_LOCKED_IMPL`] pins them so they are kept in the window verbatim across every
 /// compaction boundary and cannot be evicted.
 pub const CAPABILITY_AUTOLOAD_SPECS: &str = "autoload-specs";
@@ -135,24 +187,28 @@ pub const CAPABILITY_AUTOLOAD_SPECS: &str = "autoload-specs";
 /// The [`implementation`](GgCapabilityConfig::implementation) of
 /// [`CAPABILITY_AUTOLOAD_SPECS`] that **locks** the autoloaded specifications into the
 /// window — pinned across compaction and immune to eviction — rather than injecting them
-/// as ordinary, droppable file reads (the default when the implementation is absent or empty).
+/// as ordinary, droppable file reads, which is what an implementation written nowhere declares.
 ///
-/// This is the capability's whole vocabulary. A profile naming any other implementation is
-/// refused at launch: `lock` and `Locked` are not this arm, and a run that quietly took the
+/// This is the capability's whole vocabulary, and the one place in gg where an unwritten
+/// implementation is itself a declaration rather than an omission — the capability has one arm, so
+/// the two states it can be in are "written" and "not". A profile naming any other implementation
+/// is refused at launch: `lock` and `Locked` are not this arm, and a run that quietly took the
 /// unlocked arm instead would record the locked one having been asked for.
 pub const AUTOLOAD_LOCKED_IMPL: &str = "locked";
 
 /// The [`params`](GgCapabilityConfig::params) key of [`CAPABILITY_AUTOLOAD_SPECS`] that decides
 /// whether a seeded reference mockup is attached as a **picture**.
 ///
-/// Off, the default, a mockup is still read and still takes its place in the seeded order: it
-/// enters the window as the file view any read produces, carrying the label, format and byte size,
-/// and the model reads the file itself when it wants to look. On, the picture rides along, and
-/// rides along again on every request for as long as the view lives.
+/// An enabled capability writes it, and an absent one — like one gg cannot read as a switch —
+/// refuses the launch. Off, a mockup is still read and still takes its place in the seeded order:
+/// it enters the window as the file view any read produces, carrying the label, format and byte
+/// size, and the model reads the file itself when it wants to look. On, the picture rides along,
+/// and rides along again on every request for as long as the view lives.
 ///
-/// The default is off because an image is charged by its dimensions rather than its prose, so a
-/// case's mockups can outweigh the specifications they illustrate. Turning it on is an arm of the
-/// study rather than a detail: does a model build better for having seen the target?
+/// The switch is an arm of the study rather than a detail, which is why it is stated rather than
+/// assumed: an image is charged by its dimensions rather than by its prose, so a case's mockups can
+/// outweigh the specifications they illustrate. Does a model build better for having seen the
+/// target?
 ///
 /// A model that cannot see images is never sent one, so the param decides only what gg *offers*.
 pub const AUTOLOAD_PARAM_IMAGES: &str = "images";
@@ -201,6 +257,25 @@ pub const CAPABILITY_AGENT_PERSISTENCE: &str = "agent-persistence";
 /// across a compaction boundary.
 pub const CAPABILITY_SKILLS: &str = "skills";
 
+/// The [skills](CAPABILITY_SKILLS) capability's `dir` param: the directory this profile's authored
+/// skills are loaded from. A relative path is joined onto the run workspace and an absolute one is
+/// taken as given.
+///
+/// Skills belong to an agent, so each profile that enables the capability names its own directory,
+/// and an enabled capability that names none refuses the launch. gg writes nothing into the named
+/// directory, so a profile that is to hold gg's [built-ins](PARAM_BUILT_INS) alone points this at
+/// a directory the workspace carries and leaves empty.
+pub const PARAM_SKILLS_DIR: &str = "dir";
+
+/// The [skills](CAPABILITY_SKILLS) capability's `builtIns` param: which of the skills gg ships
+/// this agent is offered.
+///
+/// Read the way every toggle set in gg is — an object recording only the ones switched **off**, so
+/// `{}` is the declaration that offers all of them — and written by every enabled capability,
+/// which is what makes `{}` a declaration rather than a silence. An absent `builtIns`, a value
+/// that is not an object of toggles, and a key naming no skill gg ships each refuse the launch.
+pub const PARAM_BUILT_INS: &str = "builtIns";
+
 /// The stable id of the Phase 1 memories capability: the same mechanism as
 /// [`CAPABILITY_SKILLS`] but curated by the model itself and bounded in count and
 /// length, so self-curated memory cannot crowd out the working context.
@@ -209,7 +284,7 @@ pub const CAPABILITY_SKILLS: &str = "skills";
 /// strategy** — how the model's notes are organized, and how much of them the window
 /// carries. Three strategies ship, and they differ in what is *always* in context:
 ///
-/// - [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) (the default) — a small, bounded set whose
+/// - [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) — a small, bounded set whose
 ///   **bodies are all pinned in the window** and cross a [compaction](CAPABILITY_COMPACTION)
 ///   boundary verbatim.
 /// - [`markdown`](MEMORY_STRATEGY_MARKDOWN) — an **index** of slugs and descriptions is
@@ -220,12 +295,17 @@ pub const CAPABILITY_SKILLS: &str = "skills";
 ///
 /// Every strategy stores memories **in gg, never on disk**, so the only way to write one is
 /// through the tools the capability offers — a model cannot forge a memory by writing a file
-/// into the workspace. A strategy name gg does not recognize **fails the launch** and names the
-/// three it knows: the arm is the independent variable, so a run that silently took the default
-/// would be a measurement of the wrong thing.
+/// into the workspace. An enabled capability **names its strategy**, and one that names none, or
+/// one gg does not recognize, fails the launch and is told the three that exist: the arm is the
+/// independent variable, so a run gg picked an arm for would be a measurement of the wrong thing.
 ///
-/// Which params a run's [`params`](GgCapabilityConfig::params) may carry depends on the
-/// strategy — [`GgMemoryCaps`] documents the limits each resolves and their defaults.
+/// An enabled capability writes its [`scope`](MEMORY_PARAM_SCOPE) and all six limits —
+/// [`maxCount`](PARAM_MAX_COUNT), [`maxLenPerMemory`](PARAM_MAX_LEN_PER_MEMORY),
+/// [`maxTotalLen`](PARAM_MAX_TOTAL_LEN), [`maxLenIndex`](PARAM_MAX_LEN_INDEX),
+/// [`maxLenDescription`](PARAM_MAX_LEN_DESCRIPTION) and [`maxResults`](PARAM_MAX_RESULTS) —
+/// whichever strategy it selects, which is what lets one sweep hand every arm the same params
+/// block. [`GgMemoryCaps`] is the resolved form, and a limit a strategy does not apply is `None`
+/// there whatever the params say.
 pub const CAPABILITY_MEMORIES: &str = "memories";
 
 /// The [memories](CAPABILITY_MEMORIES) strategy that keeps a small, bounded set of notes
@@ -235,8 +315,9 @@ pub const CAPABILITY_MEMORIES: &str = "memories";
 /// [`max_len_per_memory`](GgMemoryCaps::max_len_per_memory) and
 /// [`max_total_len`](GgMemoryCaps::max_total_len).
 ///
-/// The default: what a memories capability that names **no** strategy uses. Nothing else falls
-/// back to it — a strategy gg does not recognize fails the launch rather than landing here.
+/// The arm the [authoring catalog](gg_authoring_catalog) writes into a new document. Nothing
+/// *falls* to it: a memories capability that names no strategy, and one naming a strategy gg does
+/// not recognize, each refuse the launch rather than landing here.
 pub const MEMORY_STRATEGY_SCRATCHPAD: &str = "scratchpad";
 
 /// The [memories](CAPABILITY_MEMORIES) strategy that splits memory into an **index** and a
@@ -266,24 +347,66 @@ pub const MEMORY_STRATEGY_KEYWORD_SEARCH: &str = "keyword-search";
 /// capability naming which memory **instance** an agent instance binds to — its
 /// [scope](GgMemoryScope).
 ///
+/// An enabled capability writes it, and an absent one refuses the launch: a scope decides which
+/// agents share a notebook, and there is no reading of the record afterwards that would show a run
+/// had silently been given private ones. An unrecognized value is refused on the same terms.
+///
 /// Meaningful only where memories are enabled: a profile that sets it with the capability off is
-/// **refused** at launch, because the two together describe an intent gg cannot honour. An
-/// unrecognized value is refused on the same terms, in line with how every unrecognized capability
-/// *value* is treated — a scope decides which agents share a notebook, and there is no reading of
-/// the record afterwards that would show a run had silently been given private ones.
+/// **refused** at launch, because the two together describe an intent gg cannot honour.
 ///
 /// See [memories](https://docs.testcabinet.ai/gg/memories/) for what each scope does, and
 /// [`MODULE_PARAM_OWNERSHIP`] for the orthogonal question of whether the bound instance is carried
 /// in the holder's prompt.
 pub const MEMORY_PARAM_SCOPE: &str = "scope";
 
+/// The [memories](CAPABILITY_MEMORIES) capability's `maxCount` param: how many memories the set
+/// may hold at once.
+///
+/// One of the six limits an enabled capability writes whichever strategy it selects; `0` is how a
+/// limit is turned **off**. An absent limit, and one naming no whole count, each refuse the launch.
+/// Applied by the [scratchpad](MEMORY_STRATEGY_SCRATCHPAD) and
+/// [keyword-search](MEMORY_STRATEGY_KEYWORD_SEARCH) strategies; under
+/// [markdown](MEMORY_STRATEGY_MARKDOWN) the index that must list every memory is what bounds the
+/// population.
+pub const PARAM_MAX_COUNT: &str = "maxCount";
+
+/// The [memories](CAPABILITY_MEMORIES) capability's `maxLenPerMemory` param: the characters one
+/// memory's body may run to. Applied by every strategy, and written on the terms
+/// [`maxCount`](PARAM_MAX_COUNT) is.
+pub const PARAM_MAX_LEN_PER_MEMORY: &str = "maxLenPerMemory";
+
+/// The [memories](CAPABILITY_MEMORIES) capability's `maxTotalLen` param: the characters every
+/// memory body runs to together. It is the [scratchpad](MEMORY_STRATEGY_SCRATCHPAD)'s window
+/// budget, since that is the strategy whose bodies are all pinned; written on the terms
+/// [`maxCount`](PARAM_MAX_COUNT) is.
+pub const PARAM_MAX_TOTAL_LEN: &str = "maxTotalLen";
+
+/// The [memories](CAPABILITY_MEMORIES) capability's `maxLenIndex` param: the characters the
+/// [markdown](MEMORY_STRATEGY_MARKDOWN) strategy's pinned index may run to, a create whose entry
+/// would not fit being refused. Written on the terms [`maxCount`](PARAM_MAX_COUNT) is.
+pub const PARAM_MAX_LEN_INDEX: &str = "maxLenIndex";
+
+/// The [memories](CAPABILITY_MEMORIES) capability's `maxLenDescription` param: the characters one
+/// memory's one-line description may run to.
+///
+/// Applied by every strategy, because the description is the one field every turn pays for — an
+/// index line and a search hit are mostly description. Written on the terms
+/// [`maxCount`](PARAM_MAX_COUNT) is.
+pub const PARAM_MAX_LEN_DESCRIPTION: &str = "maxLenDescription";
+
+/// The [memories](CAPABILITY_MEMORIES) capability's `maxResults` param: how many hits one
+/// `search_memories` call reports under the [keyword-search](MEMORY_STRATEGY_KEYWORD_SEARCH)
+/// strategy. Written on the terms [`maxCount`](PARAM_MAX_COUNT) is.
+pub const PARAM_MAX_RESULTS: &str = "maxResults";
+
 /// Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the
 /// [`scope`](MEMORY_PARAM_SCOPE) param, resolved.
 ///
-/// [`Isolated`](Self::Isolated) is the default: a subagent starts with an empty notebook and
-/// nothing it writes is seen by anyone else, which is the right answer for a configuration that
-/// wants each agent measured on its own curation. The other three bind the *same* store to several
-/// holders, which is what makes a study of shared, accumulated knowledge possible at all.
+/// [`Isolated`](Self::Isolated) is what the [authoring catalog](gg_authoring_catalog) writes into
+/// a new document: a subagent starts with an empty notebook and nothing it writes is seen by
+/// anyone else, which is the right answer for a configuration that wants each agent measured on
+/// its own curation. The other three bind the *same* store to several holders, which is what makes
+/// a study of shared, accumulated knowledge possible at all.
 ///
 /// Two rules make the four coherent, and they are the ones a configuration's reader has to know:
 ///
@@ -292,13 +415,13 @@ pub const MEMORY_PARAM_SCOPE: &str = "scope";
 ///    write is not a feature.
 /// 2. **Write access is a property of the holder, not of the store.** So a read-only agent's
 ///    [`Inherited`](Self::Inherited) subagent gets a read/**write** handle onto the same store.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GgMemoryScope {
     /// A fresh instance per agent **instance**: what one agent writes, no other agent ever sees.
-    /// The default, and gg's only behaviour before scoping existed.
-    #[default]
+    /// What a new document is authored with — by the authoring catalog, which writes it into the
+    /// document rather than leaving gg to read it out of an absence.
     Isolated,
     /// One instance per agent **profile**, shared by every instance of it in the run — including
     /// instances running in parallel, which are then linked holders of one store and are told
@@ -359,10 +482,39 @@ impl std::fmt::Display for GgMemoryScope {
 /// a blocked-by DAG that survives compaction verbatim.
 pub const CAPABILITY_TASKS: &str = "tasks";
 
+/// The [tasks](CAPABILITY_TASKS) capability's `maxTasks` param: how many tasks the list may hold
+/// at once, an add beyond it being refused.
+///
+/// An enabled capability writes it. An absent one refuses the launch, and so does a `0`, which
+/// would offer the model a call whose every use is refused. A list bounded by a number nobody
+/// wrote reads afterwards as a model that stopped planning.
+pub const PARAM_MAX_TASKS: &str = "maxTasks";
+
+/// The [tasks](CAPABILITY_TASKS) capability's `mode` param: how much structure a task carries, one
+/// of [`TASK_MODES`]. An enabled capability writes it, and an absent or unrecognized one refuses
+/// the launch.
+pub const PARAM_MODE: &str = "mode";
+
+/// The [tasks](CAPABILITY_TASKS) [mode](PARAM_MODE) in which a task is a lightweight to-do: a
+/// title and an optional description.
+pub const TASK_MODE_SIMPLE: &str = "simple";
+
+/// The [tasks](CAPABILITY_TASKS) [mode](PARAM_MODE) in which a task carries the same structured
+/// sections a [board issue](CAPABILITY_PROJECT_MANAGEMENT) does — an in-scope, an out-of-scope and
+/// a completion criteria beside its title — so an agent planning substantial work for itself
+/// writes down what finished means when it files the task rather than when it reaches it.
+pub const TASK_MODE_ISSUES: &str = "issues";
+
+/// Both task modes, in the spelling a launch refusal offers back.
+/// [`simple`](TASK_MODE_SIMPLE) is first, and is what the
+/// [authoring catalog](gg_authoring_catalog) writes into a new document.
+pub const TASK_MODES: [&str; 2] = [TASK_MODE_SIMPLE, TASK_MODE_ISSUES];
+
 /// The [`params`](GgCapabilityConfig::params) key every **module-backed** capability reads to
 /// decide whether the state it keeps is [owned](GgModuleOwnership::Owned) by the agent holding
-/// it — the default, and the only behaviour gg had before modules existed — or
-/// [unowned](GgModuleOwnership::Unowned).
+/// it — the only behaviour gg had before modules existed — or
+/// [unowned](GgModuleOwnership::Unowned). Each of the two capabilities that read it writes it, and
+/// an enabled one that does not refuses the launch.
 ///
 /// A module-backed capability is one whose state gg keeps for the agent rather than one that is
 /// a pure function of a call — see [`GgModuleKind`] for the closed list of modules. Exactly **two**
@@ -394,15 +546,14 @@ pub const MODULE_PARAM_OWNERSHIP: &str = "ownership";
 /// can be shared between agents, or a task list handed from one FSM state to the next, an agent
 /// can be given a working store it should be able to act on without paying for it in every
 /// request it makes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GgModuleOwnership {
     /// The holder's prompt carries the module: its system-prompt section is rendered, and the
     /// pinned block it keeps (the memory index, the task list, the board) is refreshed into the
-    /// window on that module's own schedule. The default, and what a [task list](GgModuleKind)
-    /// always is.
-    #[default]
+    /// window on that module's own schedule. What a new document is authored with, and what a
+    /// [task list](GgModuleKind) always is.
     Owned,
     /// The module is reachable through the holder's **tools and nothing else**: no system-prompt
     /// section, no pinned block, and no per-turn notice. Its state is still live — the tools read
@@ -775,8 +926,9 @@ pub const CAPABILITY_COMPACTION: &str = "compaction";
 /// gg appends a user message asking for a summary of the work done and the work remaining, and
 /// rebuilds the next context from the model's own reply.
 ///
-/// The default: what a compaction capability that names **no** strategy uses. Nothing else falls
-/// back to it — a strategy gg does not recognize fails the launch rather than landing here.
+/// The arm the [authoring catalog](gg_authoring_catalog) writes into a new document. Nothing
+/// *falls* to it: a compaction capability that names no strategy, and one naming a strategy gg
+/// does not recognize, each refuse the launch rather than landing here.
 pub const COMPACTION_STRATEGY_SELF_SUMMARIZATION: &str = "self-summarization";
 
 /// The [compaction](CAPABILITY_COMPACTION) strategy in which the agent compacts itself through
@@ -808,8 +960,9 @@ pub const COMPACTION_STRATEGY_MEMORY: &str = "memory-compaction";
 /// **handoff** strategies delegate to — an ordinary model id, resolved through the same client
 /// factory every agent's model is.
 ///
-/// Absent, the handoff strategies condense on the agent's own model, which is the documented
-/// default for a key nobody wrote. **Present** and unresolvable is a different thing entirely: the
+/// **Optional**, and one of the few params whose absence is itself the setting: with no model
+/// named, a handoff strategy condenses on the agent's own model and gg substitutes nothing.
+/// **Present** and unresolvable is a different thing entirely: the
 /// whole point of a handoff arm is *which* model condensed the thread, so a model id the catalog
 /// has no window for fails the launch, and one that cannot be reached mid-run ends the run as gg's
 /// own error rather than quietly reverting to the working model.
@@ -827,6 +980,15 @@ pub const COMPACTION_PARAM_MODEL: &str = "model";
 /// that continued would condense on the agent's own model while its configuration named a slot.
 pub const COMPACTION_PARAM_MODEL_SLOT: &str = "modelSlot";
 
+/// The [compaction](CAPABILITY_COMPACTION) capability's `summaryHeadroom` param: the fraction of
+/// the model's window, `0.0..=0.9`, held back from the agent so the summarization round trip has
+/// room to run in.
+///
+/// The working window an agent is measured against is the model's window less this slice, and the
+/// fullness that fires a compaction is `1 - summaryHeadroom`. An enabled capability writes it; an
+/// absent one, one outside the range, and one gg cannot read as a fraction each refuse the launch.
+pub const PARAM_SUMMARY_HEADROOM: &str = "summaryHeadroom";
+
 /// The stable id of the Phase 2 [agent-managed context] capability: the model-facing
 /// complement to [compaction](CAPABILITY_COMPACTION) that gives the agent agency over
 /// its own window — evicting file views it no longer needs and archiving sections of
@@ -835,6 +997,16 @@ pub const COMPACTION_PARAM_MODEL_SLOT: &str = "modelSlot";
 ///
 /// [agent-managed context]: https://docs.testcabinet.ai/gg/agent-managed-context/
 pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
+
+/// The [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) capability's `topFileViews`
+/// param: how many individual files the context-usage signal's breakdown names, most expensive
+/// first.
+///
+/// An enabled capability writes it, alongside its [`ownership`](MODULE_PARAM_OWNERSHIP), and an
+/// absent one refuses the launch. How many reads a window holds at once differs enormously between
+/// an agent that opens two specifications and one crawling a codebase, so the figure is the
+/// profile's to state rather than gg's to guess.
+pub const PARAM_TOP_FILE_VIEWS: &str = "topFileViews";
 
 /// The stable id of the [project management] capability: the heavyweight counterpart to
 /// [tasks](CAPABILITY_TASKS) that expands the lightweight to-do list into a **single,
@@ -906,6 +1078,32 @@ pub const CAPABILITY_PROJECT_MANAGEMENT: &str = "project-management";
 /// a shell can do.
 pub const PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: &str = "mergeAgentId";
 
+/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability's `maxEpics` param: how many
+/// epics the board may hold at once. An enabled capability writes it, and an absent one refuses
+/// the launch.
+pub const PARAM_MAX_EPICS: &str = "maxEpics";
+
+/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability's `maxIssues` param: how
+/// many issues the board may hold at once. Written and required on the terms
+/// [`maxEpics`](PARAM_MAX_EPICS) is.
+pub const PARAM_MAX_ISSUES: &str = "maxIssues";
+
+/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability's `maxRetries` param: how
+/// many times gg re-dispatches an issue whose assigned agent finished without completing it before
+/// marking it [failed](GgIssueStatus::Failed). A review round is not a retry.
+///
+/// Written and required on the terms [`maxEpics`](PARAM_MAX_EPICS) is, and `0` is a legitimate
+/// figure: it says one attempt and no more.
+pub const PARAM_MAX_RETRIES: &str = "maxRetries";
+
+/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability's `reviewers` param: when
+/// on, this agent cannot file an issue without naming at least one reviewer.
+///
+/// **Optional**, and the one param of this capability that is: absent, an issue's author names
+/// reviewers or leaves them out as it chooses, and that absence is the setting rather than a
+/// stand-in for a value. A value that is not a switch refuses the launch.
+pub const PARAM_REVIEWERS: &str = "reviewers";
+
 /// The stable id of the Phase 4 [subagents] capability: the delegation core — an agent's
 /// ability to **spawn other agents**, work in parallel with them or **block** until they
 /// return, **message** a running child, and receive its **return value**.
@@ -924,6 +1122,15 @@ pub const PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: &str = "mergeAgentId";
 /// [subagents]: https://docs.testcabinet.ai/gg/subagents/
 /// [scheduler]: https://docs.testcabinet.ai/gg/subagents/#scheduling
 pub const CAPABILITY_SUBAGENTS: &str = "subagents";
+
+/// The [subagents](CAPABILITY_SUBAGENTS) capability's `maxDepth` param: how deep the delegation
+/// tree may go. The root is depth `0`, and an agent at `maxDepth` may not spawn, since its child
+/// would be one deeper.
+///
+/// An enabled capability writes it, and an absent one refuses the launch. Unlike the run's
+/// [parallelism cap](GgRunLimits::max_parallel) it is per agent, so two profiles may be trusted to
+/// recurse to different depths.
+pub const PARAM_MAX_DEPTH: &str = "maxDepth";
 
 /// The stable id of the Phase 5 [FSM-driven processes] capability: driving a run through a
 /// **finite state machine** so the *order* of the work is a property of the process, not the
@@ -1127,6 +1334,71 @@ pub const CAPABILITY_FORK: &str = "fork";
 /// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/overview/
 pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param: the
+/// [language](GgProgramLanguage) this agent writes its programs in.
+///
+/// **The one value nobody may choose on the operator's behalf.** Every other required param has a
+/// figure the [authoring catalog](gg_authoring_catalog) can put in front of an operator to keep or
+/// change; this one has none, and must never acquire one, because the language is the axis a
+/// cross-language study slices its arms by. A profile that switches the capability on names a
+/// language itself, and one that does not is refused before its first turn.
+pub const PARAM_LANGUAGE: &str = "language";
+
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `timeoutSecs` param: the
+/// guest-CPU ceiling one program runs under, in seconds. A fraction is honoured.
+///
+/// An enabled capability writes it. An absent one refuses the launch, as does anything that is not
+/// a positive number: a study that deliberately starves the sandbox to measure what a model does
+/// about it is measuring the figure, so the figure is stated.
+pub const PARAM_TIMEOUT_SECS: &str = "timeoutSecs";
+
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `maxMemoryBytes` param: the
+/// guest's linear-memory ceiling for one program, as a whole number of bytes.
+///
+/// Written and required on the terms [`timeoutSecs`](PARAM_TIMEOUT_SECS) is. JSON has no integer
+/// type, so `5e8` and `500000000` are one declaration; `500000000.5` names no count of bytes and
+/// is refused rather than rounded to a ceiling nobody wrote.
+pub const PARAM_MAX_MEMORY_BYTES: &str = "maxMemoryBytes";
+
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `docViewTypes` param: which
+/// of a function's types opening its documentation opens beside it, as three independent toggles
+/// keyed `return`, `parameters` and `errors`.
+///
+/// An enabled capability writes it. `true` opens all three and `false` opens none; an object names
+/// each of the three, and one that leaves a key out is refused along with an absent param, a
+/// non-boolean toggle, and a key naming none of the three.
+pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
+
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param: which
+/// [response-healing](GgHealingStrategy) repairs are armed for this agent.
+///
+/// An enabled capability writes it. `true` arms every strategy and `false` arms none; an object
+/// names each of them, and one that leaves a strategy out is refused along with an absent param, a
+/// non-boolean toggle, and a key naming no strategy. Reading `{"stripFences": false}` as a run
+/// with `strip-fences` armed would measure the arm its author was switching off.
+pub const PARAM_HEALING: &str = "healing";
+
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `assistantMessages` param:
+/// which form of a reply is recorded as the assistant's message, one of
+/// [`ASSISTANT_MESSAGE_MODES`]. An enabled capability writes it, and an absent or unrecognized one
+/// refuses the launch.
+pub const PARAM_ASSISTANT_MESSAGES: &str = "assistantMessages";
+
+/// The [`assistantMessages`](PARAM_ASSISTANT_MESSAGES) mode recording the reply exactly as the
+/// model sent it, with no post-processing.
+pub const ASSISTANT_MESSAGES_NONE: &str = "none";
+
+/// The [`assistantMessages`](PARAM_ASSISTANT_MESSAGES) mode recording the **healed program that
+/// ran** — the text the turn was actually conducted on, with the reply as sent kept beside it for
+/// the operator.
+pub const ASSISTANT_MESSAGES_RESPONSE_HEALING: &str = "response-healing";
+
+/// Both assistant-message modes, in the spelling a launch refusal offers back.
+/// [`response-healing`](ASSISTANT_MESSAGES_RESPONSE_HEALING) is first, and is what the
+/// [authoring catalog](gg_authoring_catalog) writes into a new document.
+pub const ASSISTANT_MESSAGE_MODES: [&str; 2] =
+    [ASSISTANT_MESSAGES_RESPONSE_HEALING, ASSISTANT_MESSAGES_NONE];
+
 /// The stable id of the **program library** capability: gg keeps the source of every program a
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent has run, and hands the agent a `programs`
 /// object to reach back for one, patch it, and hand it back to be run.
@@ -1170,15 +1442,21 @@ pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 ///
 /// # What it is bounded by
 ///
-/// Its `keep` param is how many of the most recent programs are retained (gg's default is 20; `0`
-/// retains every program of the session). It bounds memory, not the model: a `get` of a turn the
-/// retention has dropped is `not-found` naming the turns that are held.
+/// Its [`keep`](PARAM_KEEP) param is how many of the most recent programs are retained. It bounds
+/// memory, not the model: a `get` of a turn the retention has dropped is `not-found` naming the
+/// turns that are held.
 ///
 /// gg includes it **so its effectiveness can be measured empirically** — toggled against the same
 /// runs without it, it answers "does making a retry proportional to the mistake pay for itself?"
 /// with data. Opt-in, and inert without [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): there are
 /// no programs in a tool-calling session to keep.
 pub const CAPABILITY_PROGRAM_LIBRARY: &str = "program-library";
+
+/// The [program-library](CAPABILITY_PROGRAM_LIBRARY) capability's `keep` param: how many of the
+/// most recent programs the library retains, `0` keeping every program of the session.
+///
+/// An enabled capability writes it, and an absent one refuses the launch.
+pub const PARAM_KEEP: &str = "keep";
 
 /// The stable id of the **documentation-view close** capability: whether a
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent may take a documentation view back out of
@@ -1246,6 +1524,248 @@ pub const GG_CAPABILITY_CATALOG: &[&str] = &[
     CAPABILITY_DOCVIEW_CLOSE,
 ];
 
+// ---------------------------------------------------------------------------
+// The authoring catalog
+// ---------------------------------------------------------------------------
+
+/// One [authoring catalog](gg_authoring_catalog) entry: everything a *new* document says about one
+/// capability.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GgAuthoredCapability {
+    /// The capability this entry authors — one of [`GG_CAPABILITY_CATALOG`].
+    pub id: &'static str,
+    /// The arm a new document selects.
+    ///
+    /// `None` for the sixteen capabilities that offer no arms to select between, and `None` for
+    /// [autoload specifications](CAPABILITY_AUTOLOAD_SPECS), whose only arm is
+    /// [`locked`](AUTOLOAD_LOCKED_IMPL) and whose *unwritten* implementation is itself the
+    /// declaration that the seeded specifications are ordinary file views. The remaining four —
+    /// [shell](CAPABILITY_SHELL), [read-file](CAPABILITY_READ_FILE),
+    /// [memories](CAPABILITY_MEMORIES) and [compaction](CAPABILITY_COMPACTION) — have no reading
+    /// of an unwritten arm at all, so a new document states one.
+    pub implementation: Option<&'static str>,
+    /// The whole params object a new document is written with: every param the capability
+    /// **requires**, and nothing whose absence is itself a setting.
+    pub params: Value,
+}
+
+/// The **authoring catalog**: the [implementation](GgCapabilityConfig::implementation) and the
+/// whole [params](GgCapabilityConfig::params) object a *new* document is written with, one entry
+/// per id in [`GG_CAPABILITY_CATALOG`], in that same order.
+///
+/// It is consulted by whatever **writes** a configuration — this crate's constructors
+/// ([`GgCapabilityConfig::enabled`], [`GgCapabilityConfig::disabled`] and so
+/// [`GgAgentConfig::root`], [`GgCapabilitySet::default`] and [`GgCapabilitySet::minimal`]) and the
+/// console's capability-set editor, which pre-fills a freshly switched-on capability from it — and
+/// by **nothing that reads one**. gg's resolvers never reach it. gg reads the document in front of
+/// it and substitutes nothing, so every figure a run is conducted and recorded under is a figure
+/// the configuration states.
+///
+/// That is the whole distinction this type exists to keep: these are starting values an operator
+/// keeps or changes at the moment a capability is switched on, not fallbacks a launch can land on.
+/// Deleting one of these keys out of a stored document does not restore the figure — it
+/// [refuses the launch](GgCapabilityConfig::params).
+///
+/// Two kinds of key are deliberately absent, and both absences are load-bearing.
+///
+/// - A param that is **off when it is absent**: [compaction](CAPABILITY_COMPACTION)'s
+///   [`model`](COMPACTION_PARAM_MODEL) and [`modelSlot`](COMPACTION_PARAM_MODEL_SLOT), and
+///   [project management](CAPABILITY_PROJECT_MANAGEMENT)'s [`reviewers`](PARAM_REVIEWERS). The
+///   absence is the setting, so writing one in would make every new document ask for a summarizer
+///   model, or a reviewer, that nobody asked for.
+/// - [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)'s [`language`](PARAM_LANGUAGE), which has no
+///   value here and must never acquire one. It is the axis a cross-language study slices its arms
+///   by, which makes it the one required value nobody may choose for the operator — not gg, and
+///   not the form that opens the capability. Every other required param has a figure that can be
+///   put in front of an operator to keep or change; this one has only the operator's answer.
+pub fn gg_authoring_catalog() -> &'static [GgAuthoredCapability] {
+    static CATALOG: std::sync::OnceLock<Vec<GgAuthoredCapability>> = std::sync::OnceLock::new();
+    CATALOG.get_or_init(build_authoring_catalog)
+}
+
+/// The [authoring catalog](gg_authoring_catalog), built once behind its `OnceLock`.
+fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
+    /// One entry's params object. The pairs are written in the order they read best; a JSON object
+    /// has no order of its own, and `serde_json`'s map sorts its keys.
+    fn params(pairs: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
+        Value::Object(
+            pairs
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value))
+                .collect(),
+        )
+    }
+    /// A capability with no params to write.
+    fn none() -> Value {
+        params([])
+    }
+    let entry = |id, implementation, params| GgAuthoredCapability {
+        id,
+        implementation,
+        params,
+    };
+
+    vec![
+        entry(
+            CAPABILITY_SHELL,
+            Some(SHELL_OUTPUT_ADAPTIVE),
+            params([
+                (PARAM_MAX_LINES, json!(250)),
+                (PARAM_MAX_CHARS, json!(4096)),
+            ]),
+        ),
+        entry(
+            CAPABILITY_READ_FILE,
+            Some(READ_MODE_UNLIMITED),
+            params([(PARAM_LINE_CAP, json!(250))]),
+        ),
+        entry(CAPABILITY_WRITE_FILE, None, none()),
+        entry(CAPABILITY_EDIT_FILE, None, none()),
+        entry(CAPABILITY_LIST_DIR, None, none()),
+        entry(
+            CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+            None,
+            // A narrowing an order of magnitude under a large model's window, which is what the
+            // capability is reached for: it puts a compaction boundary within reach of a run that
+            // would otherwise have to buy a million tokens of input to see one.
+            params([(PARAM_WINDOW_LIMIT, json!(100_000))]),
+        ),
+        entry(
+            CAPABILITY_AUTOLOAD_SPECS,
+            None,
+            params([(AUTOLOAD_PARAM_IMAGES, json!(false))]),
+        ),
+        entry(CAPABILITY_AGENT_PERSISTENCE, None, none()),
+        entry(
+            CAPABILITY_SKILLS,
+            None,
+            params([
+                (PARAM_SKILLS_DIR, json!(GG_WORKSPACE_SKILLS_DIR)),
+                // Every built-in offered: the toggle set records only what is switched off.
+                (PARAM_BUILT_INS, params([])),
+            ]),
+        ),
+        entry(
+            CAPABILITY_MEMORIES,
+            Some(MEMORY_STRATEGY_SCRATCHPAD),
+            // The scratchpad's own limits, since the scratchpad is the arm this entry selects. The
+            // three it does not apply are written `0`, which is how a params object says a limit is
+            // off: the count and the per-memory ceiling already bound what the window carries.
+            params([
+                (MEMORY_PARAM_SCOPE, json!(GgMemoryScope::Isolated)),
+                (PARAM_MAX_COUNT, json!(64)),
+                (PARAM_MAX_LEN_PER_MEMORY, json!(4_096)),
+                (PARAM_MAX_TOTAL_LEN, json!(0)),
+                (PARAM_MAX_LEN_INDEX, json!(0)),
+                (PARAM_MAX_LEN_DESCRIPTION, json!(256)),
+                (PARAM_MAX_RESULTS, json!(0)),
+            ]),
+        ),
+        entry(
+            CAPABILITY_TASKS,
+            None,
+            params([
+                (PARAM_MAX_TASKS, json!(100)),
+                (PARAM_MODE, json!(TASK_MODE_SIMPLE)),
+            ]),
+        ),
+        entry(
+            CAPABILITY_COMPACTION,
+            Some(COMPACTION_STRATEGY_SELF_SUMMARIZATION),
+            params([(PARAM_SUMMARY_HEADROOM, json!(0.2))]),
+        ),
+        entry(
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            None,
+            params([
+                (PARAM_TOP_FILE_VIEWS, json!(5)),
+                (MODULE_PARAM_OWNERSHIP, json!(GgModuleOwnership::Owned)),
+            ]),
+        ),
+        entry(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            None,
+            params([
+                // The board is the run's, so it has one merge agent, and the profile a new set
+                // declares is its root. An editor that adds a second profile re-points it.
+                (PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, json!(ROOT_PROFILE_ID)),
+                (PARAM_MAX_EPICS, json!(50)),
+                (PARAM_MAX_ISSUES, json!(2_000)),
+                (PARAM_MAX_RETRIES, json!(1)),
+                (MODULE_PARAM_OWNERSHIP, json!(GgModuleOwnership::Owned)),
+            ]),
+        ),
+        entry(
+            CAPABILITY_SUBAGENTS,
+            None,
+            params([(PARAM_MAX_DEPTH, json!(3))]),
+        ),
+        entry(
+            CAPABILITY_FSM,
+            None,
+            // An empty table: a machine's states are the whole of what an operator authors here,
+            // and there is no state gg could invent that names a profile the set has.
+            params([(FSM_PARAM_STATES, Value::Array(Vec::new()))]),
+        ),
+        entry(CAPABILITY_EXEC, None, none()),
+        entry(CAPABILITY_FORK, None, none()),
+        entry(
+            CAPABILITY_RESPONSES_AS_CODE,
+            None,
+            // No `language`: see this catalog's own documentation for why it is the one required
+            // value that has no entry here and must not gain one.
+            params([
+                (PARAM_TIMEOUT_SECS, json!(30)),
+                (PARAM_MAX_MEMORY_BYTES, json!(268_435_456)),
+                (
+                    PARAM_DOC_VIEW_TYPES,
+                    json!({ "return": true, "parameters": false, "errors": true }),
+                ),
+                (
+                    PARAM_HEALING,
+                    json!({
+                        "strip-fences": true,
+                        "strip-prose": true,
+                        "drop-doubled-response": false,
+                    }),
+                ),
+                (
+                    PARAM_ASSISTANT_MESSAGES,
+                    json!(ASSISTANT_MESSAGES_RESPONSE_HEALING),
+                ),
+            ]),
+        ),
+        entry(
+            CAPABILITY_PROGRAM_LIBRARY,
+            None,
+            params([(PARAM_KEEP, json!(20))]),
+        ),
+        entry(CAPABILITY_DOCVIEW_CLOSE, None, none()),
+    ]
+}
+
+/// The [authoring catalog](gg_authoring_catalog) entry for `id`, or `None` for an id outside
+/// [`GG_CAPABILITY_CATALOG`] — which names no capability gg can switch on, so there is nothing to
+/// author for it.
+pub fn authored_capability(id: &str) -> Option<&'static GgAuthoredCapability> {
+    gg_authoring_catalog().iter().find(|entry| entry.id == id)
+}
+
+/// The [parallelism cap](GgRunLimits::max_parallel) a new configuration is written with.
+///
+/// Wide enough that a fan-out study is measuring the run's own shape rather than this figure, and
+/// narrow enough to stay legible and to keep a fleet inside a provider's rate limits.
+pub const AUTHORED_MAX_PARALLEL: u64 = 16;
+
+/// The [session-journal ceiling](GgRunLimits::replay_max_bytes) a new configuration is written
+/// with: **256 MiB**.
+///
+/// Sized to be unreachable by a run that is behaving and reachable by one that is not. A pooled
+/// record of a 200-turn session projects to a few megabytes, so this is two orders of magnitude of
+/// headroom; what it bounds is a model producing megabytes of distinct output until the journal
+/// fills the run container's disk.
+pub const AUTHORED_REPLAY_MAX_BYTES: u64 = 256 * 1024 * 1024;
+
 /// The workspace-relative dotdir gg keeps **its own** files in during a run: the capture
 /// [journal](crate::gg_session_journal::GG_SESSION_JOURNAL_PATH) and the
 /// [skills](CAPABILITY_SKILLS) library.
@@ -1259,6 +1779,17 @@ pub const GG_CAPABILITY_CATALOG: &[&str] = &[
 /// where it would publish a verbatim transcript of every model call. It must be excluded at
 /// seed time because no publish-time filter can undo a commit the model already made.
 pub const GG_WORKSPACE_DIR: &str = ".gg";
+
+/// The [skills](CAPABILITY_SKILLS) library inside gg's own [dotdir](GG_WORKSPACE_DIR), and the
+/// [`dir`](PARAM_SKILLS_DIR) a fresh capability set is authored with.
+///
+/// gg stands it up at session start, alongside the rest of its dotdir, so it is a directory the
+/// workspace always carries and — until something authors a skill into it — leaves empty. That is
+/// what makes it a usable starting value: a profile pointed at it holds gg's
+/// [built-ins](PARAM_BUILT_INS) alone rather than refusing a launch over a directory nobody seeded.
+/// A `dir` naming anywhere else is a promise about the *seeded* workspace, and the launch is refused
+/// when the workspace does not keep it.
+pub const GG_WORKSPACE_SKILLS_DIR: &str = ".gg/skills";
 
 /// The name a fresh capability set's **root agent** is seeded with.
 ///
@@ -1330,7 +1861,12 @@ pub struct GgCapabilitySet {
     /// capability — a capability is a feature a configuration switches on or off, a ceiling is an
     /// operator's guardrail over every capability at once — so they never appear in the
     /// [`cap.*`](crate::gg_query) document namespace.
-    /// A set that declares none omits the key entirely.
+    ///
+    /// Two of them are **required**: [`maxParallel`](GgRunLimits::max_parallel) and
+    /// [`replayMaxBytes`](GgRunLimits::replay_max_bytes), because gg conducts every run under both
+    /// and neither has an off it could take instead. The five ceilings are each armed by writing a
+    /// figure and left unarmed by leaving it out. A set that declares nothing at all omits the key
+    /// entirely and still deserializes — and is refused at launch, naming the two it owes.
     #[serde(default, skip_serializing_if = "GgRunLimits::is_empty")]
     pub limits: GgRunLimits,
     /// The **session hooks** this run is scripted with — the operator-authored commands and
@@ -1356,12 +1892,16 @@ impl Default for GgCapabilitySet {
     /// A capability set carrying a single [Root agent](ROOT_AGENT) with the default
     /// capabilities but **no** model binding, so it needs no model id. Use
     /// [`Self::minimal`] to build a launchable set bound to a model.
+    ///
+    /// Fully specified in every respect a model binding is not: each capability carries the arm and
+    /// params the [authoring catalog](gg_authoring_catalog) writes, and the set carries the two
+    /// [required ceilings](GgRunLimits::authored).
     fn default() -> Self {
         Self {
             preset: None,
             agents: default_agents(),
             model_slots: Vec::new(),
-            limits: GgRunLimits::default(),
+            limits: GgRunLimits::authored(),
             hooks: Vec::new(),
         }
     }
@@ -1374,6 +1914,12 @@ impl GgCapabilitySet {
     /// [`CAPABILITY_EDIT_FILE`], [`CAPABILITY_LIST_DIR`]), [`CAPABILITY_SKILLS`],
     /// [`CAPABILITY_MEMORIES`], and [`CAPABILITY_TASKS`]) present and enabled. This is a
     /// launchable configuration — the smallest set that runs a gg session end to end.
+    ///
+    /// Launchable means **fully specified**: every capability carries the arm and params the
+    /// [authoring catalog](gg_authoring_catalog) writes, and the set carries the two
+    /// [required ceilings](GgRunLimits::authored). A set short of any of those is refused before
+    /// its first turn, so "the smallest set that runs" and "the smallest set that is complete" are
+    /// the same set.
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
@@ -1382,7 +1928,7 @@ impl GgCapabilitySet {
                 ..GgAgentConfig::root()
             }],
             model_slots: Vec::new(),
-            limits: GgRunLimits::default(),
+            limits: GgRunLimits::authored(),
             hooks: Vec::new(),
         }
     }
@@ -1713,9 +2259,19 @@ pub struct GgAgentConfig {
     /// resolves a reference by reading it, which is what makes renaming a profile free.
     pub name: String,
     /// The capabilities this agent is configured with, each identified by a stable id.
-    /// A capability absent from this list is off *and* unconfigured; one present but
-    /// [disabled](GgCapabilityConfig::enabled) is off but records the configuration it
-    /// would have used, which keeps two configurations differing only in that switch comparable.
+    ///
+    /// A capability absent from this list is off *and* unconfigured, and absence from the list is
+    /// the **only** way to leave a capability unconfigured. One present and enabled is **fully
+    /// specified**: it writes an [`implementation`](GgCapabilityConfig::implementation) wherever
+    /// the capability offers arms and every param that capability requires, and a launch that finds
+    /// one of them missing is refused. One present but
+    /// [disabled](GgCapabilityConfig::enabled) is off yet records the configuration it would have
+    /// used, which keeps two configurations differing only in that switch comparable, and is held
+    /// to nothing beyond the values it does write being honourable.
+    ///
+    /// An id declared twice on one agent refuses the launch: the first declaration answers every
+    /// lookup, so the second one's switch, arm and params would configure nothing while the run's
+    /// record carried them.
     #[serde(default)]
     pub capabilities: Vec<GgCapabilityConfig>,
     /// The opaque model id this agent runs on, passed through to the model client.
@@ -1825,8 +2381,9 @@ pub struct GgAgentConfig {
 }
 
 impl GgAgentConfig {
-    /// A fresh [Root agent](ROOT_AGENT) with the default capabilities, every call those capabilities
-    /// offer granted on both surfaces, and no model binding.
+    /// A fresh [Root agent](ROOT_AGENT) with the default capabilities — each **fully specified**,
+    /// carrying the arm and the whole params object the [authoring catalog](gg_authoring_catalog)
+    /// writes — every call those capabilities offer granted on both surfaces, and no model binding.
     ///
     /// The two allowlists are **written out** here rather than left empty, and that is not a
     /// runtime default sneaking back in. Nothing is being inferred from an absent key — an agent
@@ -2066,12 +2623,14 @@ pub struct GgSubagentRef {
     /// agent's `spawn_subagent` tool description and in the prompt's roster. May be empty.
     #[serde(default)]
     pub description: String,
-    /// **What** this agent may use the target for. An entry may carry several scopes — the same
-    /// profile is often both a reasonable implementer and a reasonable reviewer — and one that
-    /// carries none can be used for nothing, which is how a reference is disabled without deleting
-    /// it. An entry that names no scope takes the default,
-    /// [`Subagent`](GgSubagentScope::Subagent) alone.
-    #[serde(default = "default_subagent_scopes")]
+    /// **What** this agent may use the target for — one or more. An entry may carry several scopes:
+    /// the same profile is often both a reasonable implementer and a reasonable reviewer.
+    ///
+    /// An entry that names none can be used for nothing, and is
+    /// [refused at launch](https://docs.testcabinet.ai/gg/configurations/) rather than read as a
+    /// scope gg chose for it — a roster line that permits nothing is a delegation the document
+    /// describes and the run cannot make.
+    #[serde(default)]
     pub scopes: Vec<GgSubagentScope>,
 }
 
@@ -2105,12 +2664,6 @@ pub const ALL_SUBAGENT_SCOPES: [GgSubagentScope; 3] = [
     GgSubagentScope::Implementer,
     GgSubagentScope::Reviewer,
 ];
-
-/// The default [scopes](GgSubagentRef::scopes) of a reference that names none: general
-/// [spawning](GgSubagentScope::Subagent).
-fn default_subagent_scopes() -> Vec<GgSubagentScope> {
-    vec![GgSubagentScope::Subagent]
-}
 
 /// What one [roster entry](GgSubagentRef) permits its target to be used **for**.
 ///
@@ -2216,10 +2769,14 @@ impl GgPromptCacheTtl {
 /// does not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
 /// param — a tool-calling model loops in exactly the same way, inside a tool call's arguments.
 ///
-/// Every knob is optional and an absent one takes gg's own default (documented per field). A knob
-/// **set** to a value that cannot bound anything — a zero window, a zero threshold, a demand for
-/// no offenders — is a launch **failure**, on the same terms as [`GgRunLimits`]: a detector armed
-/// on gg's defaults instead of the ones the profile wrote is a different detector.
+/// **An armed detector writes all five knobs.** What the rule trips on is the whole set of them
+/// together — a lookback, a frequency, a breadth, a persistence and a backstop — so a detector
+/// armed on figures nobody chose measures gg rather than the model, and an armed detector missing
+/// any of them refuses the launch. An **unarmed** one owes none of them, and a knob written on one
+/// is still read and still judged as written, which is what keeps the armed and unarmed arms of one
+/// comparison the same document with one switch moved. A knob **set** to a value that cannot bound
+/// anything — a zero window, a zero threshold, a demand for no offenders — is a launch **failure**,
+/// on the same terms as [`GgRunLimits`].
 ///
 /// The one exception is a declaration gg arms exactly as written and which is merely provably
 /// inert: [`min_offenders`](Self::min_offenders) above
@@ -2232,13 +2789,20 @@ impl GgPromptCacheTtl {
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgLoopDetection {
-    /// Whether the detector runs for this agent at all. `false` — the default — leaves the agent on
-    /// gg's ordinary non-streaming transport and no reply is ever discarded; `true` arms the
+    /// Whether the detector runs for this agent at all. `false`, which is what a profile that says
+    /// nothing about loop detection reads as, leaves the agent on gg's ordinary non-streaming
+    /// transport and no reply is ever discarded; `true` arms the
     /// detector **and** switches the transport to streaming, because a detector that can only read a
     /// completed reply has already let every cost it exists to avoid be paid.
     pub enabled: bool,
     /// `N` — how many of the most recent words the detector looks back over when deciding whether a
-    /// reply has become repetitive. Absent takes gg's default (**256**).
+    /// reply has become repetitive, and the minimum sample: the repetition rule cannot fire until
+    /// this many words have arrived.
+    ///
+    /// One of the five knobs an **armed** detector writes. What the rule trips on is the five of
+    /// them together, so a detector armed on figures nobody chose would measure gg rather than the
+    /// model, and an armed detector missing any of them refuses the launch. An unarmed detector owes
+    /// none of them, and a knob written on one is still read and still judged as written.
     ///
     /// A "word" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run
     /// exceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)
@@ -2249,9 +2813,9 @@ pub struct GgLoopDetection {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub window_words: Option<u64>,
-    /// `P` — how many times a single word may occur within the window before it counts as an
-    /// *offender*. Absent takes gg's default (**32**, one word occupying more than an eighth of a
-    /// 256-word window).
+    /// `P` — how many times a single word may occur within the [window](Self::window_words) before
+    /// it counts as an *offender*. Written and required on the terms
+    /// [`window_words`](Self::window_words) is.
     ///
     /// Strictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate
     /// repetition (a dense data literal, a long table) at the cost of catching a loop later.
@@ -2262,10 +2826,10 @@ pub struct GgLoopDetection {
     #[cfg_attr(feature = "contract", ts(optional))]
     pub repeat_threshold: Option<u64>,
     /// `M` — how many **distinct** offenders must be present at once for the window to count as
-    /// *saturated*. Absent takes gg's default (**2**).
+    /// *saturated*. Written and required on the terms [`window_words`](Self::window_words) is.
     ///
-    /// More than one is required because a single very common token (`the`, `0,`, a brace) is
-    /// ordinary; a loop repeats a whole fragment, so it saturates several words together.
+    /// More than one is worth asking for because a single very common token (`the`, `0,`, a brace)
+    /// is ordinary; a loop repeats a whole fragment, so it saturates several words together.
     #[serde(
         deserialize_with = "count::option_u64",
         skip_serializing_if = "Option::is_none"
@@ -2273,7 +2837,8 @@ pub struct GgLoopDetection {
     #[cfg_attr(feature = "contract", ts(optional))]
     pub min_offenders: Option<u64>,
     /// `R` — how many consecutive words must arrive while the window stays saturated before gg
-    /// abandons the reply. Absent takes gg's default (**3000**).
+    /// abandons the reply. Written and required on the terms
+    /// [`window_words`](Self::window_words) is.
     ///
     /// This is the term that separates a loop from legitimately repetitive *content*: a tilemap
     /// literal or a long table saturates the window and then **ends**, while a loop saturates it and
@@ -2287,8 +2852,9 @@ pub struct GgLoopDetection {
     #[cfg_attr(feature = "contract", ts(optional))]
     pub min_saturated_run: Option<u64>,
     /// A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not
-    /// *repetitive* enough to trip the window rule. Absent takes gg's default (**250 000**); `0`
-    /// turns the backstop off and leaves only the repetition rule.
+    /// *repetitive* enough to trip the window rule. Written and required on the terms
+    /// [`window_words`](Self::window_words) is; `0` turns the backstop off and leaves only the
+    /// repetition rule, which is a declaration rather than an omission.
     #[serde(
         deserialize_with = "count::option_u64",
         skip_serializing_if = "Option::is_none"
@@ -2443,42 +3009,107 @@ pub struct GgCapabilityConfig {
     /// exist — nothing it offers is exposed and it consumes no context — which is what makes two
     /// configurations differing in one capability worth comparing.
     pub enabled: bool,
-    /// The selected implementation of the capability, when it offers more than one
-    /// (for example two compaction strategies or two memory strategies). `None` selects the
-    /// default. This is the basis for A/B comparisons between implementations — which is exactly
-    /// why a name the capability does not offer is a **launch failure** and never a fall back to
-    /// the default: the arm is the independent variable, and a run measured on one arm while its
-    /// record names another is worse than no run.
+    /// The arm this capability is configured on, for the five capabilities that offer arms to
+    /// choose between: [shell](CAPABILITY_SHELL), [read-file](CAPABILITY_READ_FILE),
+    /// [memories](CAPABILITY_MEMORIES), [compaction](CAPABILITY_COMPACTION) and
+    /// [autoload specifications](CAPABILITY_AUTOLOAD_SPECS).
+    ///
+    /// **An enabled capability that offers arms writes one.** Leaving it out refuses the launch
+    /// rather than selecting one, because the arm is the independent variable and a run measured on
+    /// one arm while its record names another is worse than no run. The single exception is
+    /// autoload specifications, whose one arm is [`locked`](AUTOLOAD_LOCKED_IMPL): there an
+    /// unwritten implementation is itself the declaration that the seeded specifications are
+    /// ordinary file views, which is a reading of absence rather than a substitution for it.
+    ///
+    /// A name the capability does not offer refuses the launch, and so does any name at all on one
+    /// of the sixteen capabilities that offer none. `Option` on the wire so a configuration already
+    /// stored in the database still deserializes and still opens in the editor: what a missing
+    /// required arm costs is the *launch*, not the parse. The
+    /// [authoring catalog](gg_authoring_catalog) is what writes one into a new document.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub implementation: Option<String>,
-    /// Free-form parameters for the capability (for example a compaction threshold or
-    /// a subagent parallelism cap), interpreted by the capability itself. Defaults to
-    /// an empty object.
+    /// The capability's parameters, interpreted by the capability itself.
+    ///
+    /// **An enabled capability writes every param it requires.** An absent one refuses the launch,
+    /// named at its own locus beside every other defect in the document, because gg substitutes
+    /// nothing: every figure a run is conducted and recorded under is a figure written here. A
+    /// param that is *optional* — [compaction](CAPABILITY_COMPACTION)'s
+    /// [`model`](COMPACTION_PARAM_MODEL) and [`modelSlot`](COMPACTION_PARAM_MODEL_SLOT),
+    /// [project management](CAPABILITY_PROJECT_MANAGEMENT)'s [`reviewers`](PARAM_REVIEWERS) — is
+    /// **off when it is absent**, and that absence is the setting rather than a stand-in for a
+    /// figure.
+    ///
+    /// A **disabled** capability configures nothing and so requires nothing of itself, while the
+    /// values written on it are still read and still refused if gg cannot honour them.
+    ///
+    /// The object stays free-form on the wire — its keys are the selected capability's own
+    /// vocabulary, which no shared type could express — and every key is checked against that
+    /// vocabulary at launch. The [authoring catalog](gg_authoring_catalog) is what *writes* one;
+    /// nothing that reads a configuration consults it. Deserializes to an empty object when the key
+    /// is absent, so a stored document still parses and still opens in the editor.
     #[serde(default = "empty_params")]
     #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
     pub params: Value,
 }
 
 impl GgCapabilityConfig {
-    /// A capability present and enabled, with the default implementation and empty
-    /// parameters.
+    /// A capability present and enabled, **fully specified**: the arm and the whole params object
+    /// the [authoring catalog](gg_authoring_catalog) writes for `id`.
+    ///
+    /// This is authoring rather than resolution. It states figures in a document for an operator to
+    /// keep or change, exactly as the console's editor does the moment a capability is switched on;
+    /// gg then reads that document and chooses nothing of its own. Every capability this crate
+    /// constructs is therefore launchable as it stands, and every capability an operator edits
+    /// afterwards carries the figures they left in it.
+    ///
+    /// An id outside [`GG_CAPABILITY_CATALOG`] has no catalog entry and gets no arm and no params.
+    /// A set carrying such an id is refused at launch by name, so there is nothing here to author
+    /// for it.
     pub fn enabled(id: impl Into<String>) -> Self {
+        let id = id.into();
+        let authored = authored_capability(&id);
         Self {
-            id: id.into(),
+            id,
             enabled: true,
-            implementation: None,
-            params: empty_params(),
+            implementation: authored.and_then(|entry| entry.implementation.map(str::to_string)),
+            params: authored.map_or_else(empty_params, |entry| entry.params.clone()),
         }
     }
 
-    /// A capability present but disabled — recorded (so a configuration names what it turned off)
-    /// yet inert.
+    /// A capability present but **disabled** — inert, and carrying the same fully specified arm and
+    /// params [`enabled`](Self::enabled) writes.
+    ///
+    /// A disabled capability configures nothing, so nothing is *required* of it; what it records is
+    /// the configuration the arm would have used, which is what keeps the on and off arms of one
+    /// comparison the same document with one switch moved. Values written on it are still read and
+    /// still refused if gg cannot honour them, so a typo in one is heard about now rather than on
+    /// the launch that flips the switch.
     pub fn disabled(id: impl Into<String>) -> Self {
         Self {
             enabled: false,
             ..Self::enabled(id)
         }
+    }
+
+    /// This capability with one param overridden: the [catalog](gg_authoring_catalog)'s object with
+    /// `key` set to `value` and every other key it wrote left standing.
+    ///
+    /// It **merges**, and that is the whole of its contract. A caller changing one figure asked for
+    /// one figure changed; replacing the object would hand back a capability short of the params it
+    /// requires, which is a document that refuses its own launch — and would do so naming a param
+    /// the caller never touched.
+    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
+        let (key, value) = (key.into(), value.into());
+        match self.params.as_object_mut() {
+            Some(params) => {
+                params.insert(key, value);
+            }
+            // A params object that is not an object at all cannot be merged into; it came from a
+            // hand-written document, and the launch refuses it either way.
+            None => self.params = Value::Object([(key, value)].into_iter().collect()),
+        }
+        self
     }
 }
 
@@ -2861,8 +3492,11 @@ pub enum GgHookAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "contract", ts(optional))]
         cwd: Option<String>,
-        /// How long it may run before it is killed. Absent uses gg's default, which is generous
-        /// because a hook command is typically a build or a test suite.
+        /// How long it may run before it is killed. **Required** on a command hook: the ceiling a
+        /// build or a test suite needs is nothing gg could know, and a hook killed at a figure
+        /// nobody wrote is a gate that reports a failure the workspace did not have. An absent one
+        /// refuses the launch. `Option` on the wire so a stored configuration still deserializes
+        /// and still opens in the editor.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "contract", ts(optional))]
         timeout_secs: Option<f64>,
@@ -3046,22 +3680,26 @@ mod count {
 /// produced it — where limits on the invocation would let a run record *which* ceiling was hit
 /// while making *what the ceiling was* unrecoverable.
 ///
-/// **The defaults catch a stuck run without capping a productive one.** gg's host (The Test
-/// Cabinet) already enforces a wall-clock cap on every run, so a turn ceiling would mostly just cut
-/// a run short before it is done, and the turn ceiling is therefore **unbounded** when unset. What
-/// is armed by default instead are the two error
-/// ceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,
-/// and an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —
-/// the host owns the clock, and gg will not invent a spend ceiling nobody asked for.
+/// **Two are required and five are armed by being written.**
+/// [`max_parallel`](Self::max_parallel) and [`replay_max_bytes`](Self::replay_max_bytes) bound
+/// every run gg conducts — the pool it runs agents in and the journal it writes as it goes — and
+/// neither has a figure that means "no cap", so an absent one refuses the launch.
+/// [`max_turns`](Self::max_turns), [`max_runtime_secs`](Self::max_runtime_secs),
+/// [`max_cost`](Self::max_cost), [`max_consecutive_errors`](Self::max_consecutive_errors) and
+/// [`max_error_rate`](Self::max_error_rate) with its [window](Self::error_rate_window) are each
+/// **unarmed when the configuration leaves them out**. gg arms no ceiling nobody wrote: an agent
+/// stopped for looping on errors was stopped by a threshold an operator chose, which is what makes
+/// the stop a finding rather than an artefact of the harness. The host (The Test Cabinet) enforces
+/// a wall-clock cap on every run regardless.
 ///
-/// **Absent takes the default; present-and-unhonourable fails the launch.** A field set to a value
-/// that cannot bound anything — a zero turn or runtime ceiling, a zero window, a negative rate, a
-/// rate above `1.0`, a non-finite cost — is refused by name, not disarmed with a warning: an
-/// operator who wrote a ceiling believes the run is bounded, and a run that quietly became
-/// unbounded is the one case where the misconfiguration costs money. A **partially** declared error
-/// rate (a rate without a window, or a window without a rate) is refused on the same terms rather
-/// than arming nothing. The run records the ceilings that were actually in force on
-/// [`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.
+/// **Present and unhonourable fails the launch.** A field set to a value that cannot bound
+/// anything — a zero turn or runtime ceiling, a zero window, a negative rate, a rate above `1.0`, a
+/// non-finite cost — is refused by name rather than disarmed with a warning: an operator who wrote
+/// a ceiling believes the run is bounded, and a run that quietly became unbounded is the one case
+/// where the misconfiguration costs money. A **partially** declared error rate (a rate without a
+/// window, or a window without a rate) is refused on the same terms rather than arming nothing. The
+/// run records the ceilings that were in force on [`GgSessionSummary::limits`], and records an
+/// unarmed one as unbounded.
 ///
 /// One combination stays a warning, because gg honours it exactly as written:
 /// [`error_rate_window`](Self::error_rate_window) at or above
@@ -3076,10 +3714,11 @@ mod count {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgRunLimits {
     /// How many of the run's agents may **run at once**, counting the root and every subagent,
-    /// issue implementer and reviewer alike. **Absent means gg's default of
-    /// 16**; set it explicitly to widen or tighten the pool. `0` is refused — a run with no agent
-    /// able to run could not start at all, so it is a ceiling gg cannot honour rather than a way
-    /// of writing "no cap".
+    /// issue implementer and reviewer alike.
+    ///
+    /// **Required.** Every configuration states it, because gg runs every agent out of this one
+    /// pool and there is no figure that means "no cap": `0` describes a run with no agent able to
+    /// run, which is not a run. An absent one and a `0` each refuse the launch.
     ///
     /// Unlike every other field here it **stops nothing** — it *queues*. An agent spawned while the
     /// pool is full is created normally and waits for a slot, so a configuration cannot lose work by
@@ -3120,9 +3759,11 @@ pub struct GgRunLimits {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_runtime_secs: Option<u64>,
-    /// How many **error turns in a row** end an agent. **Absent means gg's default of 5**; set it
-    /// explicitly to widen or tighten the ceiling. `0` is refused rather than read as "off" — it
-    /// would end an agent before its first turn, so it is not a ceiling gg can honour.
+    /// How many **error turns in a row** end an agent. **Absent leaves it unarmed** — gg arms no
+    /// error ceiling nobody wrote, so an agent stopped by this one was stopped by a threshold its
+    /// operator chose. `0` is refused rather than read as "off": it would end an agent before its
+    /// first turn, so it is not a ceiling gg can honour, and leaving the key out is how a
+    /// configuration says there is none.
     ///
     /// A turn is an error when the work it *declared* could not be carried out as declared: a
     /// model call that failed, a program that did not compile, one that threw uncaught, or one the
@@ -3142,9 +3783,9 @@ pub struct GgRunLimits {
     /// of ten, five errors is not a breach and six is. Needs
     /// [`error_rate_window`](Self::error_rate_window); either alone fails the launch.
     ///
-    /// When **both** this and the window are absent, gg's default arms an error rate of **0.4 over
-    /// the last 50 turns**. A partial declaration (this without the window, or the window without
-    /// this) neither falls back to the default nor arms nothing — it is refused, because half a
+    /// The two halves stand or fall together. Writing both arms the ceiling and writing neither
+    /// leaves it **unarmed**; writing one half is refused, because a rate with no window and a
+    /// window with no rate each describe a ceiling gg has no threshold to judge against, and half a
     /// ceiling is a ceiling the operator believes they have.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
@@ -3153,8 +3794,9 @@ pub struct GgRunLimits {
     /// measured over — and, deliberately, the minimum sample: the ceiling cannot fire until the
     /// agent has taken this many turns, so one number does both jobs. The earliest turn this
     /// ceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says "stop on
-    /// any error", which is a legitimate declaration rather than an accident. Absent (together with
-    /// [`max_error_rate`](Self::max_error_rate)) means gg's default window of **50**.
+    /// any error", which is a legitimate declaration rather than an accident. Absent together with
+    /// [`max_error_rate`](Self::max_error_rate) leaves the ceiling **unarmed**; absent while the
+    /// rate is written refuses the launch.
     #[serde(
         deserialize_with = "count::option_u64",
         default,
@@ -3179,8 +3821,11 @@ pub struct GgRunLimits {
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_cost: Option<f64>,
     /// The per-run ceiling, in bytes, on the
-    /// [session capture journal](crate::gg_session_journal) gg writes as it runs. **Absent means
-    /// gg's default of 256 MiB.**
+    /// [session capture journal](crate::gg_session_journal) gg writes as it runs.
+    ///
+    /// **Required.** gg writes the journal on every run whatever the set says, so there is no run
+    /// this ceiling does not apply to and no spelling of "no ceiling" here, because there is no run
+    /// that wants one. An absent one refuses the launch.
     ///
     /// The odd one out here, and deliberately so: every other ceiling **stops the run**, and
     /// this one stops only the *observation* of it. Crossing it stops capture and marks the
@@ -3190,10 +3835,9 @@ pub struct GgRunLimits {
     /// params because capture is on for every run whatever the set says, so a ceiling parked on a
     /// capability would be unreadable by exactly the runs that need it.
     ///
-    /// `0` cannot bound anything (it would stop capture before its first line) and is **refused**,
-    /// on the same terms as [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`. Omit the
-    /// key to take the default; there is no spelling of "no ceiling" here, because there is no run
-    /// that wants one.
+    /// `0` cannot bound anything — it would stop capture before its first line — and is
+    /// **refused**, on the same terms as
+    /// [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`.
     #[serde(
         deserialize_with = "count::option_u64",
         default,
@@ -3204,6 +3848,20 @@ pub struct GgRunLimits {
 }
 
 impl GgRunLimits {
+    /// The two **required** ceilings, at the figures the [authoring catalog](gg_authoring_catalog)
+    /// writes, and no ceiling armed beyond them.
+    ///
+    /// What a new configuration is written with, and the smallest limits block a launch accepts. It
+    /// arms neither error ceiling and no turn, runtime or cost budget: a study that wants one writes
+    /// the figure it wants, which is the only way gg ever comes to have one.
+    pub fn authored() -> Self {
+        Self {
+            max_parallel: Some(AUTHORED_MAX_PARALLEL),
+            replay_max_bytes: Some(AUTHORED_REPLAY_MAX_BYTES),
+            ..Self::default()
+        }
+    }
+
     /// Whether this declares no ceiling at all — the `skip_serializing_if` predicate on
     /// [`GgCapabilitySet::limits`], so a set that declares nothing omits the key entirely.
     ///
@@ -4107,21 +4765,21 @@ pub struct GgSkillState {
 /// characters of a memory's **body** (its `description` is a short one-liner, like a
 /// skill's).
 ///
-/// # Which limits apply, and what they default to
+/// # Which limits apply
 ///
-/// Every limit is optional — `None` is **unlimited**, which a run configures by setting the
-/// param to `0` — and which ones a run resolves depends on the
-/// [strategy](CAPABILITY_MEMORIES) its `implementation` selected. A limit a strategy does
-/// not use is always `None`:
+/// An enabled capability writes all six params whichever strategy it selects, so one sweep hands
+/// every arm the same params block; `0` is how a limit is turned off, and a param a strategy does
+/// not apply is `None` here whatever the params said. The resolved figures are therefore the
+/// configuration's, never gg's:
 ///
-/// | Limit | Param | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |
-/// | --- | --- | --- | --- | --- |
-/// | [`max_count`](Self::max_count) | `maxCount` | 8 | — | unlimited |
-/// | [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |
-/// | [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |
-/// | [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |
-/// | [`max_len_description`](Self::max_len_description) | `maxLenDescription` | unlimited | unlimited | unlimited |
-/// | [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |
+/// | Limit | Param | Applies under |
+/// | --- | --- | --- |
+/// | [`max_count`](Self::max_count) | [`maxCount`](PARAM_MAX_COUNT) | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD), [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |
+/// | [`max_len_per_memory`](Self::max_len_per_memory) | [`maxLenPerMemory`](PARAM_MAX_LEN_PER_MEMORY) | every strategy |
+/// | [`max_total_len`](Self::max_total_len) | [`maxTotalLen`](PARAM_MAX_TOTAL_LEN) | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) |
+/// | [`max_len_index`](Self::max_len_index) | [`maxLenIndex`](PARAM_MAX_LEN_INDEX) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) |
+/// | [`max_len_description`](Self::max_len_description) | [`maxLenDescription`](PARAM_MAX_LEN_DESCRIPTION) | every strategy |
+/// | [`max_results`](Self::max_results) | [`maxResults`](PARAM_MAX_RESULTS) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |
 ///
 /// [memories]: https://docs.testcabinet.ai/gg/memories/
 /// [skills]: https://docs.testcabinet.ai/gg/skills/
@@ -4145,8 +4803,8 @@ pub struct GgMemoryCaps {
     /// The maximum length, in characters, of a memory's one-line **description** — the part
     /// of a memory a strategy shows up front (every line of a
     /// [`markdown`](MEMORY_STRATEGY_MARKDOWN) index is one), which is why a run that wants a
-    /// tight index bounds it here rather than trusting the model to be terse. Off by default
-    /// (`null` is unlimited) and applies under every strategy.
+    /// tight index bounds it here rather than trusting the model to be terse. Applies under every
+    /// strategy; `null` is unlimited, which a configuration asks for by writing `0`.
     pub max_len_description: Option<u64>,
     /// The most memories one `search_memories` call reports under the
     /// [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) strategy. `null` for every other

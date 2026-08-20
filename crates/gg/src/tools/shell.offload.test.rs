@@ -28,8 +28,13 @@ fn reported(
     (policy, report.into_defects())
 }
 
+/// A ceiling no command in these tests reaches, for the axis a case is not about. Both ceilings are
+/// always set — the output has to satisfy both — so a case testing one of them says so by leaving
+/// the other far enough out to never bite.
+const UNBOUNDED: usize = 1_000_000;
+
 /// An offloading policy with the given ceilings, writing into `dir`.
-fn offloading(dir: &TempDir, max_lines: Option<usize>, max_chars: Option<usize>) -> OffloadPolicy {
+fn offloading(dir: &TempDir, max_lines: usize, max_chars: usize) -> OffloadPolicy {
     OffloadPolicy::Offload(OffloadLimits {
         max_lines,
         max_chars,
@@ -38,7 +43,7 @@ fn offloading(dir: &TempDir, max_lines: Option<usize>, max_chars: Option<usize>)
 }
 
 /// An adaptive policy with the given ceilings, writing into `dir`.
-fn adaptive(dir: &TempDir, max_lines: Option<usize>, max_chars: Option<usize>) -> OffloadPolicy {
+fn adaptive(dir: &TempDir, max_lines: usize, max_chars: usize) -> OffloadPolicy {
     OffloadPolicy::Adaptive(OffloadLimits {
         max_lines,
         max_chars,
@@ -84,16 +89,18 @@ fn shell_data(outcome: &ToolOutcome) -> &ShellData {
 // Resolving the policy
 // ---------------------------------------------------------------------------
 
-/// Nothing configured is the adaptive mode at its default ceilings — the mode a run gets when its
-/// capability set says nothing about output.
+/// A fully written capability resolves to the mode it names, at the ceilings it writes, and reports
+/// nothing.
 #[test]
-fn an_unconfigured_capability_is_adaptive_at_the_defaults() {
-    let policy = resolved(None, &json!({}));
-    assert_eq!(policy, OffloadPolicy::default());
+fn a_written_capability_resolves_to_what_it_says() {
+    let policy = resolved(
+        Some(SHELL_OUTPUT_ADAPTIVE),
+        &json!({ "maxLines": 250, "maxChars": 4096 }),
+    );
     assert!(policy.withholds_on_success());
     let limits = policy.limits().expect("armed");
-    assert_eq!(limits.max_lines, Some(DEFAULT_MAX_LINES));
-    assert_eq!(limits.max_chars, Some(DEFAULT_MAX_CHARS));
+    assert_eq!(limits.max_lines, 250);
+    assert_eq!(limits.max_chars, 4096);
     assert_eq!(limits.dir, std::path::Path::new(OFFLOAD_DIR));
 }
 
@@ -128,56 +135,86 @@ async fn offload_dir_is_not_under_the_gg_binary() {
     assert_eq!(err.kind(), std::io::ErrorKind::NotADirectory);
 }
 
-/// The inline mode is the opt-out, and it ignores the ceilings — they are the other modes'
-/// configuration.
+/// The inline mode is the opt-out, and it carries no ceilings — they are the other modes'
+/// configuration. It still writes them, because one params block swept across the three modes is
+/// judged the same way on every launch in it.
 #[test]
 fn the_inline_mode_is_the_opt_out() {
     assert_eq!(
-        resolved(Some(SHELL_OUTPUT_INLINE), &json!({ "maxLines": 10 })),
+        resolved(
+            Some(SHELL_OUTPUT_INLINE),
+            &json!({ "maxLines": 10, "maxChars": 400 })
+        ),
         OffloadPolicy::Inline,
     );
     assert!(OffloadPolicy::Inline.limits().is_none());
     assert!(!OffloadPolicy::Inline.withholds_on_success());
 }
 
-/// Either ceiling alone is a complete instruction, and leaves the axis it omits uncapped; both
-/// together arm both. Read the same way under either truncating mode.
+/// Both ceilings are written on every arm, and both come back as written.
 #[test]
-fn either_ceiling_alone_arms_a_truncating_mode() {
+fn both_ceilings_arm_a_truncating_mode() {
     for mode in [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_ADAPTIVE] {
-        let lines = resolved(Some(mode), &json!({ "maxLines": 40 }));
-        let limits = lines.limits().expect("armed");
-        assert_eq!((limits.max_lines, limits.max_chars), (Some(40), None));
-
-        let chars = resolved(Some(mode), &json!({ "maxChars": 900 }));
-        let limits = chars.limits().expect("armed");
-        assert_eq!((limits.max_lines, limits.max_chars), (None, Some(900)));
-
         let both = resolved(Some(mode), &json!({ "maxLines": 40, "maxChars": 900 }));
         let limits = both.limits().expect("armed");
-        assert_eq!((limits.max_lines, limits.max_chars), (Some(40), Some(900)));
+        assert_eq!((limits.max_lines, limits.max_chars), (40, 900));
     }
 }
 
-/// A truncating mode that names **neither** ceiling takes the defaults rather than quietly becoming
-/// the inline mode under another name. An **absent** value is the documented default, which is not a
-/// fallback.
+/// **A ceiling nobody wrote refuses the launch**, at its own locus and whichever mode is named —
+/// including `inline`, which does not carry the ceilings.
+///
+/// A truncating mode is defined by what it truncates past, so "offload past nothing" is the inline
+/// mode wearing another name; and a figure gg picked would run one arm of the offloading experiment
+/// while the record named the ceilings nobody wrote. An operator short of both hears about both in
+/// one refusal.
 #[test]
-fn a_truncating_mode_without_a_ceiling_takes_the_defaults() {
-    for params in [json!({}), json!({ "maxLines": null, "maxChars": null })] {
-        let policy = resolved(Some(SHELL_OUTPUT_OFFLOAD), &params);
-        assert_eq!(
-            policy,
-            OffloadPolicy::Offload(OffloadLimits::default()),
-            "{params} should still offload, at the defaults",
-        );
-        assert!(!policy.withholds_on_success());
+fn an_absent_ceiling_is_refused() {
+    for mode in [
+        SHELL_OUTPUT_OFFLOAD,
+        SHELL_OUTPUT_ADAPTIVE,
+        SHELL_OUTPUT_INLINE,
+    ] {
+        for (params, missing) in [
+            (json!({ "maxChars": 900 }), vec!["maxLines"]),
+            (json!({ "maxLines": 40 }), vec!["maxChars"]),
+            (json!({}), vec!["maxLines", "maxChars"]),
+            (
+                json!({ "maxLines": null, "maxChars": null }),
+                vec!["maxLines", "maxChars"],
+            ),
+        ] {
+            let (policy, defects) = reported(Some(mode), &params);
+            assert_eq!(
+                defects.len(),
+                missing.len(),
+                "{mode} {params} -> {defects:?}"
+            );
+            for key in &missing {
+                assert!(
+                    defects
+                        .iter()
+                        .any(|defect| defect.locus == format!("shell.params.{key}")
+                            && defect.found.is_empty()),
+                    "{mode} {params} -> {defects:?}"
+                );
+            }
+            if mode == SHELL_OUTPUT_INLINE {
+                assert_eq!(policy, OffloadPolicy::Inline, "{params}: inline needs none");
+            } else {
+                assert_eq!(
+                    policy,
+                    OffloadPolicy::LaunchRefused,
+                    "{mode} {params}: a truncating arm has nothing to truncate past"
+                );
+            }
+        }
     }
 }
 
 /// A ceiling gg cannot honour **refuses the launch**. A `0` returns none of the command's output and
 /// a `"lots"` names no number at all; reading either as "no ceiling on this axis" says the opposite
-/// of what was written, and taking gg's default says something else again.
+/// of what was written, and there is no figure gg would put there instead.
 ///
 /// Read whichever arm is selected — including `inline`, which does not carry the ceilings — so a
 /// typo is refused in this pass rather than in whichever launch first happens to select a truncating
@@ -191,7 +228,9 @@ fn an_unusable_ceiling_is_refused() {
         ("maxChars", json!(4.5)),
     ] {
         for mode in [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_INLINE] {
-            let params = json!({ key.to_string(): value.clone() });
+            // The other ceiling written, so the one defect is the one under test.
+            let mut params = json!({ "maxLines": 40, "maxChars": 900 });
+            params[key] = value.clone();
             let (_, defects) = reported(Some(mode), &params);
             assert_eq!(defects.len(), 1, "{mode} {params} -> {defects:?}");
             assert_eq!(defects[0].locus, format!("shell.params.{key}"));
@@ -203,23 +242,22 @@ fn an_unusable_ceiling_is_refused() {
 /// writes `40.0` as readily as `40`.
 #[test]
 fn an_integral_float_is_a_ceiling() {
-    let policy = resolved(Some(SHELL_OUTPUT_OFFLOAD), &json!({ "maxLines": 40.0 }));
-    assert_eq!(policy.limits().expect("armed").max_lines, Some(40));
+    let policy = resolved(
+        Some(SHELL_OUTPUT_OFFLOAD),
+        &json!({ "maxLines": 40.0, "maxChars": 900 }),
+    );
+    assert_eq!(policy.limits().expect("armed").max_lines, 40);
 }
 
-/// **A mode gg does not recognize refuses the launch.** Reading it as the default would run the
-/// adaptive arm under the arm nobody named, which is the offloading experiment answering a question
-/// it was not asked.
+/// **A mode gg does not recognize refuses the launch.** Reading it as any of the three would run one
+/// arm of the offloading experiment under the arm nobody named, which is the study answering a
+/// question it was not asked.
 #[test]
 fn an_unknown_mode_is_refused() {
-    let (policy, defects) = reported(Some("offlaod"), &json!({ "maxLines": 5 }));
+    let (policy, defects) = reported(Some("offlaod"), &json!({ "maxLines": 5, "maxChars": 50 }));
     assert_eq!(
         policy,
-        OffloadPolicy::Adaptive(OffloadLimits {
-            max_lines: Some(5),
-            max_chars: None,
-            dir: PathBuf::from(OFFLOAD_DIR),
-        }),
+        OffloadPolicy::LaunchRefused,
         "the resolver stays total"
     );
     assert_eq!(defects.len(), 1, "{defects:?}");
@@ -227,20 +265,72 @@ fn an_unknown_mode_is_refused() {
     assert_eq!(defects[0].known, SHELL_OUTPUT_MODES);
 }
 
+/// **An unwritten mode is not one of the modes.** The arm is the offloading experiment's own
+/// variable, so the resolver has nothing to select and answers with the placeholder that says so. It
+/// reports nothing: the absence belongs to the launch pass, the one reader that can see whether the
+/// capability is switched on.
+#[test]
+fn an_unwritten_mode_selects_no_arm() {
+    for implementation in [None, Some(""), Some("   ")] {
+        let (policy, defects) = reported(implementation, &json!({ "maxLines": 5, "maxChars": 50 }));
+        assert_eq!(policy, OffloadPolicy::LaunchRefused, "{implementation:?}");
+        assert_eq!(defects, Vec::new(), "{implementation:?}");
+    }
+}
+
+/// A **disabled** shell capability is owed no ceiling — it offers no `shell`, so there is nothing it
+/// could be short of — and everything it does write is still read, which is what keeps the on and
+/// off arms of one comparison one document with one switch moved.
+#[test]
+fn a_disabled_capability_is_owed_nothing_and_still_read() {
+    let judged = |implementation: Option<&str>, params: &serde_json::Value| {
+        let mut report = LaunchReport::collecting();
+        check_declaration(implementation, params, &mut report);
+        report.into_defects()
+    };
+
+    assert_eq!(
+        judged(Some(SHELL_OUTPUT_OFFLOAD), &json!({})),
+        Vec::new(),
+        "an absent ceiling is nothing to be short of"
+    );
+    assert_eq!(
+        judged(None, &json!({})),
+        Vec::new(),
+        "nor is an absent mode"
+    );
+
+    let defects = judged(Some("offlaod"), &json!({ "maxChars": 0 }));
+    assert_eq!(defects.len(), 2, "{defects:?}");
+    assert!(
+        defects
+            .iter()
+            .any(|defect| defect.locus == "shell.implementation"),
+        "{defects:?}"
+    );
+    assert!(
+        defects
+            .iter()
+            .any(|defect| defect.locus == "shell.params.maxChars"),
+        "{defects:?}"
+    );
+}
+
 /// A hook's own `output` override travels the same vocabulary, and a mode gg does not recognize
 /// there refuses the launch too — the one hook field that used to be read with no launch diagnostic
 /// anywhere behind it, so a hook written to keep its build output inline silently withheld it.
 #[test]
 fn an_unknown_hook_output_mode_is_refused() {
+    let agent = OffloadPolicy::Adaptive(OffloadLimits {
+        max_lines: 250,
+        max_chars: 4096,
+        dir: PathBuf::from(OFFLOAD_DIR),
+    });
     let mut report = LaunchReport::collecting();
-    let policy = OffloadPolicy::for_mode(
-        "inlien",
-        &OffloadPolicy::default(),
-        "hooks[build].output",
-        &mut report,
-    );
-    assert!(
-        matches!(policy, OffloadPolicy::Adaptive(_)),
+    let policy = OffloadPolicy::for_mode("inlien", &agent, "hooks[build].output", &mut report);
+    assert_eq!(
+        policy,
+        OffloadPolicy::LaunchRefused,
         "the resolver stays total"
     );
     let defects = report.into_defects();
@@ -248,35 +338,63 @@ fn an_unknown_hook_output_mode_is_refused() {
     assert_eq!(defects[0].locus, "hooks[build].output");
     assert_eq!(defects[0].known, SHELL_OUTPUT_MODES);
 
-    // Each of the three real modes is honoured, and reports nothing.
+    // Each of the three real modes is honoured, and reports nothing. The two truncating ones keep
+    // the agent's own ceilings: the override says "keep this one inline", not "and size it
+    // differently from everything else".
     for mode in SHELL_OUTPUT_MODES {
         let mut report = LaunchReport::collecting();
-        OffloadPolicy::for_mode(
+        let policy = OffloadPolicy::for_mode(mode, &agent, "hooks[build].output", &mut report);
+        assert!(report.is_empty(), "`{mode}` is a mode gg offers");
+        if mode != SHELL_OUTPUT_INLINE {
+            assert_eq!(policy.limits(), agent.limits(), "`{mode}`");
+        }
+    }
+}
+
+/// **A hook cannot ask for a tail an agent declares no ceiling for.** An agent whose own shell runs
+/// inline — or offers no shell at all — carries no ceilings, and there is no figure gg puts there
+/// on the operator's behalf, so the override is refused rather than conducted at a ceiling nobody
+/// wrote.
+#[test]
+fn a_truncating_hook_override_over_an_inline_agent_is_refused() {
+    for mode in [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_ADAPTIVE] {
+        let mut report = LaunchReport::collecting();
+        let policy = OffloadPolicy::for_mode(
             mode,
-            &OffloadPolicy::default(),
+            &OffloadPolicy::Inline,
             "hooks[build].output",
             &mut report,
         );
-        assert!(report.is_empty(), "`{mode}` is a mode gg offers");
+        assert_eq!(policy, OffloadPolicy::LaunchRefused, "`{mode}`");
+        let defects = report.into_defects();
+        assert_eq!(defects.len(), 1, "`{mode}` -> {defects:?}");
+        assert_eq!(defects[0].locus, "hooks[build].output");
+        assert_eq!(defects[0].found, mode);
     }
+
+    // …and asking for inline over an inline agent is no override at all, so it reports nothing.
+    let mut report = LaunchReport::collecting();
+    let policy = OffloadPolicy::for_mode(
+        SHELL_OUTPUT_INLINE,
+        &OffloadPolicy::Inline,
+        "hooks[build].output",
+        &mut report,
+    );
+    assert_eq!(policy, OffloadPolicy::Inline);
+    assert!(report.is_empty());
 }
 
 /// The ceilings read the same way in the tool description, the system prompt, and the truncation
 /// note, because all three ask the same object.
 #[test]
 fn limits_describe_themselves_in_prose() {
-    let describe = |lines, chars| {
+    assert_eq!(
         OffloadLimits {
-            max_lines: lines,
-            max_chars: chars,
+            max_lines: 200,
+            max_chars: 4_000,
             dir: PathBuf::from(OFFLOAD_DIR),
         }
-        .describe()
-    };
-    assert_eq!(describe(Some(200), None), "last 200 lines");
-    assert_eq!(describe(None, Some(4_000)), "last 4000 characters");
-    assert_eq!(
-        describe(Some(200), Some(4_000)),
+        .describe(),
         "last 200 lines and 4000 characters"
     );
 }
@@ -292,7 +410,7 @@ async fn short_output_comes_back_untouched() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        offloading(&dir, Some(50), None),
+        offloading(&dir, 50, UNBOUNDED),
         json!({ "command": "echo one; echo two" }),
     )
     .await;
@@ -311,7 +429,7 @@ async fn long_output_is_tailed_and_written_to_the_file_pair() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        offloading(&dir, Some(3), None),
+        offloading(&dir, 3, UNBOUNDED),
         json!({ "command": "for i in $(seq 1 40); do echo line-$i; done" }),
     )
     .await;
@@ -330,7 +448,7 @@ async fn long_output_is_tailed_and_written_to_the_file_pair() {
     // it is, and nothing else.
     let note: Vec<&str> = data.body.lines().rev().take(3).collect();
     assert!(
-        note[2].starts_with("[Output truncated: last 3 lines]"),
+        note[2].starts_with("[Output truncated: last 3 lines and "),
         "{}",
         data.body
     );
@@ -360,7 +478,7 @@ async fn each_stream_is_written_to_its_own_file() {
     let dir = TempDir::new().unwrap();
     run(
         &dir,
-        offloading(&dir, Some(1), None),
+        offloading(&dir, 1, UNBOUNDED),
         json!({ "command": "echo to-stdout; echo to-stderr 1>&2" }),
     )
     .await;
@@ -377,7 +495,7 @@ async fn the_pair_is_written_even_for_a_silent_command() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        offloading(&dir, Some(5), None),
+        offloading(&dir, 5, UNBOUNDED),
         json!({ "command": "true" }),
     )
     .await;
@@ -392,7 +510,7 @@ async fn a_character_ceiling_keeps_the_last_characters() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        offloading(&dir, None, Some(10)),
+        offloading(&dir, UNBOUNDED, 10),
         json!({ "command": "printf 'abcdefghijklmnopqrstuvwxyz'" }),
     )
     .await;
@@ -411,7 +529,7 @@ async fn the_tighter_of_two_ceilings_decides() {
     // ceiling only the last three.
     let outcome = run(
         &dir,
-        offloading(&dir, Some(10), Some(15)),
+        offloading(&dir, 10, 15),
         json!({ "command": "for i in $(seq 10 29); do echo x-$i; done" }),
     )
     .await;
@@ -432,7 +550,7 @@ async fn a_timed_out_command_still_writes_its_pair() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        offloading(&dir, Some(2), None),
+        offloading(&dir, 2, UNBOUNDED),
         json!({
             // `exec` so the sleep REPLACES the shell rather than being forked by it: a grandchild
             // holding the pipe open past the kill is a race this test is not about.
@@ -463,8 +581,8 @@ async fn a_failed_write_falls_back_to_inline_output() {
     let outcome = run(
         &dir,
         OffloadPolicy::Offload(OffloadLimits {
-            max_lines: Some(2),
-            max_chars: None,
+            max_lines: 2,
+            max_chars: UNBOUNDED,
             dir: blocked.join("shell"),
         }),
         json!({ "command": "for i in $(seq 1 20); do echo kept-$i; done" }),
@@ -503,8 +621,8 @@ fn the_definition_names_the_tail_when_offloading() {
     );
 
     let limits = OffloadLimits {
-        max_lines: Some(120),
-        max_chars: None,
+        max_lines: 120,
+        max_chars: UNBOUNDED,
         dir: PathBuf::from(OFFLOAD_DIR),
     };
     let offloaded = ShellTool::new(OffloadPolicy::Offload(limits.clone())).definition();
@@ -565,7 +683,7 @@ async fn a_successful_command_returns_only_its_exit_code() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        adaptive(&dir, Some(50), None),
+        adaptive(&dir, 50, UNBOUNDED),
         json!({ "command": "echo one; echo two" }),
     )
     .await;
@@ -601,7 +719,7 @@ async fn a_silent_successful_command_says_no_output() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        adaptive(&dir, Some(50), None),
+        adaptive(&dir, 50, UNBOUNDED),
         json!({ "command": "true" }),
     )
     .await;
@@ -620,7 +738,7 @@ async fn a_failed_command_is_offloaded_normally() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        adaptive(&dir, Some(3), None),
+        adaptive(&dir, 3, UNBOUNDED),
         json!({ "command": "for i in $(seq 1 40); do echo line-$i; done; exit 3" }),
     )
     .await;
@@ -649,7 +767,7 @@ async fn a_short_failure_comes_back_untouched() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        adaptive(&dir, Some(50), None),
+        adaptive(&dir, 50, UNBOUNDED),
         json!({ "command": "echo broke 1>&2; exit 1" }),
     )
     .await;
@@ -667,7 +785,7 @@ async fn a_timed_out_command_is_not_withheld() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        adaptive(&dir, Some(2), None),
+        adaptive(&dir, 2, UNBOUNDED),
         json!({
             // `exec` so the sleep REPLACES the shell rather than being forked by it, as above.
             "command": "for i in $(seq 1 20); do echo noisy-$i; done; exec sleep 30",
@@ -691,8 +809,8 @@ async fn a_failed_write_hands_a_successful_commands_output_over() {
     let outcome = run(
         &dir,
         OffloadPolicy::Adaptive(OffloadLimits {
-            max_lines: Some(2),
-            max_chars: None,
+            max_lines: 2,
+            max_chars: UNBOUNDED,
             dir: blocked.join("shell"),
         }),
         json!({ "command": "for i in $(seq 1 20); do echo kept-$i; done" }),

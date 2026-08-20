@@ -143,7 +143,7 @@ fn evaluate(
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = FakeOperationApi::with(&log, responder);
     // Both of these before the store exists, for the reason this function's documentation gives.
@@ -1173,7 +1173,7 @@ GG::Session.request_changes("widen the test", "name the file")
     // after it does not. The double answers an empty page, which is the whole of what a double can
     // honestly say about a real index; what is proven is the crossing, the keyword arguments, the
     // Symbol the kind filter lowers from, and the view the host opens on the way back.
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = FakeOperationApi::new(&log);
     let component = component();
@@ -1488,7 +1488,7 @@ end
     // arm measured, and worth pinning for the same reason.
     let limits = SandboxLimits {
         timeout: std::time::Duration::from_millis(400),
-        ..SandboxLimits::default()
+        ..SandboxLimits::AMPLE
     };
     // Everything the host has to do is done BEFORE the reading and before the store. `bounded_store`
     // arms the 400 ms deadline the moment it builds the state, against a WALL clock that only credits
@@ -1608,7 +1608,7 @@ fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     // charged to a program that has not started. See [`evaluate`] for the measurements.
     let component = component();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let scope = ProgramScope {
         capabilities: &[],
@@ -2235,7 +2235,7 @@ GG::Views.open_text("notes", JSON.parse(%({"label": "notes"}))["label"] + " #{re
         crate::sandbox::language(GgProgramLanguage::Ruby),
         program,
         scope,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         api,
     );

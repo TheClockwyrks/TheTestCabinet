@@ -82,7 +82,7 @@ fn run_scoped(
             modules,
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::with(&log, canned_outcome),
     );

@@ -9,12 +9,14 @@ keeps its own budget.
 
 ## Execution limits
 
-| Limit | Default | What it bounds |
-| --- | --- | --- |
-| `timeoutSecs` | 30 s | Guest-execution time for one program: the guest's own setup, the program itself, and every value marshalled across the membrane. |
-| `maxMemoryBytes` | 256 MiB | Guest linear memory. A `memory.grow` past the cap is denied. |
+| Limit | What it bounds |
+| --- | --- |
+| `timeoutSecs` | Guest-execution time for one program: the guest's own setup, the program itself, and every value marshalled across the membrane. |
+| `maxMemoryBytes` | Guest linear memory. A `memory.grow` past the cap is denied. |
 
-Both are armed per program and re-armed every turn, so a session of fifty turns
+Each profile writes both, on the terms in
+[Configuration](/gg/responses-as-code/overview/#configuration). Both are armed
+per program and re-armed every turn, so a session of fifty turns
 gives every program its own full budget and nothing accumulates. Neither is
 clamped: a study may starve the sandbox on purpose, and the error names the
 configured limit. The ceilings that bound a whole run, rather than one program,

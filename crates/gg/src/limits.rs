@@ -37,20 +37,22 @@
 //! [resolver](resolve_run_limits), one [breach record](test_cabinet_core::gg::GgLimitBreach) and
 //! one aggregation facet, rather than two vocabularies that drift.
 //!
-//! The defaults catch a run that is *failing* without capping one that is merely *long*. gg's host
-//! (The Test Cabinet) already enforces a wall-clock cap on every run, so the turn ceiling would
-//! mostly just cut productive runs short and is **unbounded when unset**
-//! ([`RunLimits::max_turns`] is `None`). What is armed
-//! by default instead are the two error ceilings that end a run whose model has stopped making
-//! progress: [`DEFAULT_MAX_CONSECUTIVE_ERRORS`] in a row, and an error rate above
-//! [`DEFAULT_MAX_ERROR_RATE`] over the last [`DEFAULT_ERROR_RATE_WINDOW`] turns. Runtime and cost
-//! stay off — the host owns the clock, and gg will not invent a spend ceiling nobody asked for. A
-//! run whose model never recovers therefore still terminates, on an error ceiling rather than by
-//! burning turns, while a run that keeps progressing is bounded only by the host's clock. What
-//! makes the defaults honest rather than hidden is that the run records the ceilings that were
-//! actually **in force** ([`GgSessionSummary::limits`](test_cabinet_core::gg::GgSessionSummary))
-//! beside the breach, so "what ceiling was this run under?" is answerable for every run — including
-//! one that declared nothing and ran under the defaults.
+//! **gg arms no ceiling nobody wrote.** Every one of the five is armed by writing a figure and left
+//! unarmed by leaving its key out — the two error ceilings included, so an agent stopped by one was
+//! stopped by a threshold its operator chose rather than by one gg picked. A set that names none is
+//! a legitimate configuration rather than a runaway: gg's host (The Test Cabinet) enforces a
+//! wall-clock cap on every run it conducts, and that is the bound such a run is under. What keeps it
+//! auditable is that the run records the ceilings actually **in force**
+//! ([`GgSessionSummary::limits`](test_cabinet_core::gg::GgSessionSummary)) beside the breach, so
+//! "what ceiling was this run under?" is answerable for every run — including the one whose honest
+//! answer is "none".
+//!
+//! One value on the same block is **required**, and it is not an execution ceiling at all:
+//! [`replayMaxBytes`](RunLimits::replay_max_bytes), the byte ceiling on the
+//! [capture journal](crate::capture). gg writes that journal on every run whatever the set says, so
+//! there is no run it does not apply to and no absence for gg to read as "off" — a set that omits it
+//! is [refused](resolve_run_limits) here. The other required run-level value, `maxParallel`, is
+//! resolved by [`SubagentConfig`](crate::subagents::SubagentConfig), which owns the pool it bounds.
 //!
 //! # This module decides; the loop acts
 //!
@@ -476,64 +478,59 @@ pub enum FatalFault {
 // The resolved ceilings
 // ---------------------------------------------------------------------------------------------
 
-/// The consecutive-error ceiling armed when a run declares none.
+/// **What a ceiling resolves to once gg has refused the declaration that named it**: none of it.
 ///
-/// One of the two error ceilings gg arms by default (see the [module docs](self)): a run whose
-/// model fails this many turns in a row has stopped making progress and is ended rather than left
-/// to run to the host's clock. It is not a hidden default — the resolved value is recorded on the
-/// run's session summary, so a run bounded by it says so.
-pub const DEFAULT_MAX_CONSECUTIVE_ERRORS: u32 = 5;
+/// [`resolve_run_limits`] stays [total](crate::validate#the-resolver-contract) — some forty mid-run
+/// callers read the ceilings and none of them may grow error handling for a condition the launch
+/// pass has already made impossible — so a refused declaration still has to hand back a value. This
+/// is that value, named rather than spelled `None` at the call site so the next reader of the line
+/// can see it is a placeholder standing where a run's ceiling would be, on a launch that is over.
+/// Nothing is ever conducted under it: the report it was returned beside refuses the run.
+fn refused_ceiling<T>() -> Option<T> {
+    None
+}
 
-/// The error rate armed when a run declares neither half of the error-rate ceiling.
+/// **The count a declaration too wide for this host resolves to.** Its only property is that
+/// [`narrow_usize`] reported the value before returning it, so no run reaches it.
 ///
-/// Paired with [`DEFAULT_ERROR_RATE_WINDOW`]: a run whose recent turns are more than this fraction
-/// errors has stopped making progress. Recorded on the session summary like every other default.
-pub const DEFAULT_MAX_ERROR_RATE: f64 = 0.4;
-
-/// The lookback the default [error rate](DEFAULT_MAX_ERROR_RATE) is measured over — and, as ever,
-/// the minimum sample, so the default ceiling cannot fire before an agent's fiftieth turn.
-pub const DEFAULT_ERROR_RATE_WINDOW: usize = 50;
-
-/// The per-run ceiling on the [session capture journal](crate::capture) when a run declares none:
-/// **256 MiB**.
-///
-/// Sized to be unreachable by any run that is behaving, and reachable by one that is not. A pooled
-/// record of a 200-turn session projects to a few megabytes, so this is roughly two orders of
-/// magnitude of headroom; what it actually bounds is the pathological case — a model that keeps
-/// producing megabytes of distinct output — where the alternative is a journal that fills the run
-/// container's disk and takes the run down with it. Capture is the thing that gives way, never the
-/// run: crossing the ceiling stops capture and marks the record
-/// [truncated](test_cabinet_core::gg_session_record::GgSessionTruncationReason::ByteCeiling).
-pub const DEFAULT_REPLAY_MAX_BYTES: u64 = 256 * 1024 * 1024;
+/// Written as the widest count the host holds rather than as zero because a saturating narrow is
+/// what the refusal is being written *instead of*, and a reader who finds this figure in a
+/// [`RunLimits`] should recognise the shape it replaces.
+const REFUSED_COUNT: usize = usize::MAX;
 
 /// The resolved [execution ceilings](test_cabinet_core::gg::GgRunLimits) one run is bounded by.
 ///
-/// The turn ceiling and the two error ceilings carry gg's [defaults](self) when the run declared
-/// nothing; runtime and cost are `None` when the run declared nothing usable, and `None` there
-/// means the ceiling is **off**. `Copy`, because a resolved ceiling set is five scalars that every
-/// agent enforces identically and none of them mutates.
+/// Every field is `None` for a ceiling the set left unarmed, and gg leaves unarmed every ceiling the
+/// set did not write: `None` here means the ceiling is **off**, never that gg chose a figure for it.
+/// `Copy`, because a resolved ceiling set is five scalars that every agent enforces identically and
+/// none of them mutates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RunLimits {
-    /// The per-agent turn ceiling, or `None` for **unbounded** — the default when the set declares
-    /// none, because the host caps a run's wall-clock and a turn ceiling armed as a backstop mostly
-    /// cuts productive runs short.
+    /// The per-agent turn ceiling, or `None` for **unbounded**, which is what a set that writes no
+    /// `maxTurns` gets: the host caps a run's wall-clock, and gg arms no turn backstop of its own.
     pub max_turns: Option<usize>,
     /// The run's wall-clock budget, when configured. Run-wide: every agent measures it against the
     /// same session-start instant, so it ends the run rather than one agent.
     pub max_runtime: Option<Duration>,
-    /// How many error turns in a row end an agent, when configured.
+    /// How many error turns in a row end an agent, when configured. `None` when the set wrote no
+    /// `maxConsecutiveErrors` — gg arms no error ceiling nobody wrote.
     pub max_consecutive_errors: Option<u32>,
     /// The recent-error-rate ceiling and the window it is measured over, when **both** are
-    /// configured — either alone resolves to `None` and a startup warning.
+    /// configured. Writing neither leaves it unarmed; writing one half is refused, because a rate
+    /// with no window and a window with no rate each describe a ceiling gg has nothing to judge
+    /// against, and half a ceiling is a ceiling the operator believes they have.
     pub error_rate: Option<ErrorRateLimit>,
     /// The run's accumulated-cost ceiling, when configured. Measured against the run-wide
     /// [spend](RunSpend), never against one agent's share of it.
     pub max_cost: Option<f64>,
-    /// The per-run byte ceiling on the [session capture journal](crate::capture), defaulting to
-    /// [`DEFAULT_REPLAY_MAX_BYTES`]. `None` is *unbounded* capture, and no declaration produces it:
-    /// there is no spelling of "no journal ceiling", because capture is on for every run and a run
-    /// that wanted an unbounded journal is a run that wanted to fill its own disk. The `Option`
-    /// stays for the [journal](crate::capture)'s own sake, which is written against one.
+    /// The per-run byte ceiling on the [session capture journal](crate::capture).
+    ///
+    /// **Required**, and the one value on this type that is: capture runs on every session whatever
+    /// the set says, so there is no run this ceiling does not apply to and no spelling of "no
+    /// journal ceiling" for an absence to be read as. A set that writes none is refused. `None`
+    /// therefore never describes a run — it is the [placeholder](refused_ceiling) a refused launch
+    /// carries — and the `Option` stays for the [journal](crate::capture)'s own sake, which is
+    /// written against one.
     ///
     /// Resolved here because there is one resolver and one declaration site for
     /// every ceiling gg reads — but it is deliberately **absent from
@@ -612,8 +609,8 @@ impl RunLimits {
     /// operator log should not have to infer it from silence.
     pub fn armed_summary(&self) -> String {
         let mut armed = Vec::new();
-        // The turn ceiling reads first when set; when unbounded (the default) it simply contributes
-        // nothing, because the host's clock — not a turn count — is what bounds the run.
+        // The turn ceiling reads first when set; when unbounded it simply contributes nothing,
+        // because the host's clock — not a turn count — is what bounds such a run.
         if let Some(max) = self.max_turns {
             armed.push(format!("{max} turns"));
         }
@@ -683,35 +680,88 @@ fn unarmable(
         locus(key),
         found.to_string(),
         format!(
-            "{consequence}, so gg cannot arm the ceiling `{key}` declares. Omit the key to take \
-             gg's default, or give it a value it can be bounded by."
+            "{consequence}, so gg cannot arm the ceiling `{key}` declares. {}",
+            remedy(key)
+        ),
+    )
+}
+
+/// What an operator can do about a value gg could not arm — which differs between the ceilings that
+/// have an unarmed reading and the one that has none.
+///
+/// Read off the key rather than passed in at each call site, so a ceiling cannot be refused with
+/// advice that contradicts whether it is required.
+fn remedy(key: &str) -> &'static str {
+    if key == LIMIT_REPLAY_MAX_BYTES {
+        "Capture runs on every session, so there is no reading of this run under which the journal \
+         has no ceiling: write a figure it can be bounded by."
+    } else {
+        "Omit the key to leave the ceiling unarmed, or give it a value a run can be bounded by."
+    }
+}
+
+/// **A run-level value gg conducts every run under, which this set does not write.**
+///
+/// The counterpart of [`unarmable`] for the absence rather than the value: `configures` says what
+/// the key bounds, reading as the object of "which is", so the refusal names *which* guardrail is
+/// missing rather than only that one is. It says outright that there is no absence to read as "off",
+/// because that is the question an operator meeting this line is about to ask.
+fn unwritten(key: &str, configures: impl fmt::Display) -> crate::validate::LaunchDefect {
+    crate::validate::LaunchDefect::run_level(
+        locus(key),
+        "",
+        format!(
+            "the run writes no `{key}`, which is {configures}. gg substitutes nothing for a value \
+             nobody wrote, and every run is conducted under this one, so there is no absence for \
+             gg to read as \"off\"."
+        ),
+    )
+}
+
+/// **Half a ceiling**: one of the [error rate](ErrorRateLimit)'s two keys written and the other not.
+///
+/// Its own constructor rather than [`unwritten`]'s wording because the absence means something
+/// different here. This ceiling *does* have an off — writing neither key is it — so what the
+/// operator has done is describe a ceiling that is missing the half it would be judged by, and the
+/// refusal has to say which of the two readings gg is not going to pick between.
+fn unpaired(missing: &str, written: &str, configures: &str) -> crate::validate::LaunchDefect {
+    crate::validate::LaunchDefect::run_level(
+        locus(missing),
+        "",
+        format!(
+            "`{written}` is declared and `{missing}` is not. `{missing}` is {configures}, and the \
+             two halves stand or fall together: write both to arm the ceiling, or neither to leave \
+             it unarmed. gg will not complete a half-written ceiling with a figure of its own."
         ),
     )
 }
 
 /// Resolve the run's ceilings from [`set.limits`](GgCapabilitySet::limits).
 ///
-/// **Total**, and refusing rather than falling back: an absent key takes gg's
-/// [default](self) silently, and a key that is *present* and cannot bound anything is reported to
-/// `report` — which refuses the launch — rather than disarmed with a warning. The value this
-/// function then returns for it no longer decides anything (the run is about to be refused); it
-/// keeps the signature total for the mid-run callers described in the
-/// [resolver contract](crate::validate#the-resolver-contract).
+/// **Total**, and refusing rather than falling back. A ceiling nobody wrote is a ceiling gg does not
+/// arm: absence is the declaration that the ceiling is off, and gg has nothing to put in its place.
+/// A key that is *present* and cannot bound anything, and the one key whose absence gg cannot read
+/// as "off", are both reported to `report` — which refuses the launch. The value this function then
+/// returns for either no longer decides anything (the run is about to be refused); it keeps the
+/// signature total for the mid-run callers described in the
+/// [resolver contract](crate::validate#the-resolver-contract), and it is an explicitly
+/// [named placeholder](refused_ceiling) rather than a figure.
 ///
 /// The rule and its reason: a ceiling is the one configuration whose failure mode is **silence**.
 /// An operator who wrote `maxTurns` believes the run is bounded, so a `maxTurns` gg quietly dropped
 /// leaves a run that behaves exactly like one nobody bounded — and behaves that way while burning
-/// money, which is why this is the resolver the refusal policy was written for.
+/// money, which is why this is the resolver the refusal policy was written for. A ceiling gg armed
+/// on a figure of its own is the same silence read from the other end: the record would name a
+/// ceiling the operator never chose.
 ///
 /// | Declaration | Resolves to |
 /// | --- | --- |
-/// | `limits` absent | turns unbounded, the two error ceilings at their [defaults](self), runtime and cost off |
-/// | `maxTurns` absent | **unbounded** (no turn ceiling) |
-/// | `maxRuntimeSecs` absent | no budget |
-/// | `maxConsecutiveErrors` absent | [`DEFAULT_MAX_CONSECUTIVE_ERRORS`] |
-/// | either error-rate half absent | that half at its default ([`DEFAULT_MAX_ERROR_RATE`], [`DEFAULT_ERROR_RATE_WINDOW`]) |
+/// | `limits` absent | every ceiling **unarmed**, and a refusal naming `replayMaxBytes` |
+/// | `maxTurns`, `maxRuntimeSecs`, `maxConsecutiveErrors` or `maxCost` absent | that ceiling **unarmed** |
+/// | both error-rate halves absent | the error-rate ceiling **unarmed** |
+/// | one error-rate half absent | **refused**, naming the half that is missing |
 /// | `maxErrorRate: 0.0` | armed: any error at all, once the window is full |
-/// | `replayMaxBytes` absent | [`DEFAULT_REPLAY_MAX_BYTES`] |
+/// | `replayMaxBytes` absent | **refused** — capture runs on every session, so it has no "off" |
 /// | `errorRateWindow >= maxTurns` (when a turn ceiling is set) | **armed as declared**, plus a warning |
 /// | any ceiling declared `0` | **refused** |
 /// | `maxErrorRate` outside `0.0..=1.0`, or not finite; `maxCost` ≤ 0 or not finite | **refused** |
@@ -727,7 +777,7 @@ pub fn resolve_run_limits(
 ) -> RunLimits {
     let declared = set.limits;
 
-    // Absent is unbounded — the host caps the wall-clock, so gg imposes no turn backstop unless a
+    // Absent is unarmed — the host caps the wall-clock, so gg imposes no turn backstop unless a
     // study asks for one. Zero is not a second spelling of that: it is a ceiling nothing could run
     // under, and reading it as "unbounded" is reading a ceiling as its own opposite.
     let max_turns = match declared.max_turns {
@@ -737,7 +787,7 @@ pub fn resolve_run_limits(
                 0,
                 "a run in which no agent may take a turn has nothing to do",
             ));
-            None
+            refused_ceiling()
         }
         Some(turns) => Some(narrow_usize(LIMIT_MAX_TURNS, turns, "turns", report)),
         None => None,
@@ -750,12 +800,15 @@ pub fn resolve_run_limits(
                 0,
                 "a budget of no seconds is spent before the run starts",
             ));
-            None
+            refused_ceiling()
         }
         Some(secs) => Some(Duration::from_secs(secs)),
         None => None,
     };
 
+    // Absent leaves it unarmed, on the same terms as the turn ceiling: an agent stopped after five
+    // failed turns in a row was stopped by a threshold its operator chose, and there is no fifth
+    // turn gg would have picked on their behalf.
     let max_consecutive_errors = match declared.max_consecutive_errors {
         Some(0) => {
             report.report(unarmable(
@@ -763,22 +816,24 @@ pub fn resolve_run_limits(
                 0,
                 "it would end an agent before its first turn",
             ));
-            None
+            refused_ceiling()
         }
-        Some(max) => Some(u32::try_from(max).unwrap_or_else(|_| {
-            report.report(unarmable(
-                LIMIT_MAX_CONSECUTIVE_ERRORS,
-                max,
-                format!(
-                    "gg counts an agent's consecutive errors in a 32-bit number, so it cannot hold \
-                     a ceiling above {}",
-                    u32::MAX
-                ),
-            ));
-            DEFAULT_MAX_CONSECUTIVE_ERRORS
-        })),
-        // Absent arms gg's default — one of the two error ceilings that end a stuck run.
-        None => Some(DEFAULT_MAX_CONSECUTIVE_ERRORS),
+        Some(max) => match u32::try_from(max) {
+            Ok(max) => Some(max),
+            Err(_) => {
+                report.report(unarmable(
+                    LIMIT_MAX_CONSECUTIVE_ERRORS,
+                    max,
+                    format!(
+                        "gg counts an agent's consecutive errors in a 32-bit number, so it cannot \
+                         hold a ceiling above {}",
+                        u32::MAX
+                    ),
+                ));
+                refused_ceiling()
+            }
+        },
+        None => None,
     };
 
     let error_rate = resolve_error_rate(&declared, max_turns, report, warnings);
@@ -791,17 +846,17 @@ pub fn resolve_run_limits(
                 max,
                 "a spend ceiling must be a finite figure greater than zero",
             ));
-            None
+            refused_ceiling()
         }
         None => None,
     };
 
-    // The one ceiling here that bounds the *observation* of a run rather than the run. `0` is
-    // treated exactly as `maxConsecutiveErrors: 0` is — a declaration that cannot bound anything —
-    // rather than as "capture nothing", because a ceiling read as its own opposite is the kind of
-    // silent inversion this resolver exists to prevent. There is deliberately no spelling of "no
-    // journal ceiling": capture is on for every run, and a run that wanted an unbounded one is a
-    // run that wanted to fill its own disk.
+    // The one value here that bounds the *observation* of a run rather than the run, and the one
+    // that is **required**: capture is on for every run whatever the set says, so an absent ceiling
+    // is not a declaration that there is none — it is a run gg would conduct under a figure nobody
+    // wrote, or under no bound on a file it writes to the run container's disk. `0` is refused for
+    // the reason `maxConsecutiveErrors: 0` is, rather than read as "capture nothing": a ceiling read
+    // as its own opposite is the silent inversion this resolver exists to prevent.
     let replay_max_bytes = match declared.replay_max_bytes {
         Some(0) => {
             report.report(unarmable(
@@ -809,10 +864,16 @@ pub fn resolve_run_limits(
                 0,
                 "it would stop session capture before its first line",
             ));
-            Some(DEFAULT_REPLAY_MAX_BYTES)
+            refused_ceiling()
         }
         Some(max) => Some(max),
-        None => Some(DEFAULT_REPLAY_MAX_BYTES),
+        None => {
+            report.report(unwritten(
+                LIMIT_REPLAY_MAX_BYTES,
+                "the byte ceiling gg writes this run's capture journal under",
+            ));
+            refused_ceiling()
+        }
     };
 
     RunLimits {
@@ -852,59 +913,76 @@ fn narrow_usize(
             value,
             format!("this host cannot count that many {unit}"),
         ));
-        usize::MAX
+        REFUSED_COUNT
     })
 }
 
 /// Resolve the [error-rate ceiling](ErrorRateLimit) from its two halves, refusing every way they
 /// can fail to describe one.
 ///
-/// Each half is read **on its own terms**: a declared one is armed exactly as written, and an absent
-/// one takes gg's [default](self) ([`DEFAULT_MAX_ERROR_RATE`], [`DEFAULT_ERROR_RATE_WINDOW`]). So a
-/// set declaring neither arms both defaults, and a set declaring one arms that one over the other's
-/// default — the same rule every other ceiling follows, and the only reading under which the
-/// declared half is honoured as written. Filling the missing half in is not a fallback: nothing was
-/// written there to substitute for.
+/// The two halves **stand or fall together**. Writing both arms the ceiling, writing neither leaves
+/// it unarmed — gg arms no error ceiling nobody wrote — and writing one is refused, naming the half
+/// that is missing. There is no third reading: a rate with no window has nothing to measure over and
+/// a window with no rate has no threshold to judge against, so the only figure that could complete a
+/// half-declaration is one gg chose, and half a ceiling is a ceiling the operator believes they have.
 ///
-/// Both halves are then judged, and **both** are reported when both are wrong: an operator fixing a
-/// document wants the whole list, and a rate and a window are edited in the same place.
+/// Every written half is then judged where it stands, and **all** of them are reported: an operator
+/// fixing a document wants the whole list, and a rate and a window are edited in the same place.
 fn resolve_error_rate(
     declared: &GgRunLimits,
     max_turns: Option<usize>,
     report: &mut crate::validate::LaunchReport,
     warnings: &mut Vec<String>,
 ) -> Option<ErrorRateLimit> {
-    let max_rate = declared.max_error_rate.unwrap_or(DEFAULT_MAX_ERROR_RATE);
-    let window = declared
-        .error_rate_window
-        .unwrap_or(DEFAULT_ERROR_RATE_WINDOW as u64);
-
-    let rate_ok = max_rate.is_finite() && (0.0..=1.0).contains(&max_rate);
-    if !rate_ok {
-        report.report(unarmable(
-            LIMIT_MAX_ERROR_RATE,
-            max_rate,
-            "an error rate is a fraction of the window between 0.0 and 1.0, and this one could \
-             never be exceeded",
-        ));
-    }
-
-    let window = narrow_usize(LIMIT_ERROR_RATE_WINDOW, window, "turns", report);
-    if window == 0 {
-        report.report(unarmable(
+    match (declared.max_error_rate, declared.error_rate_window) {
+        // Neither half: the ceiling is off, which is what a set that says nothing about it says.
+        (None, None) => return None,
+        (Some(_), None) => report.report(unpaired(
             LIMIT_ERROR_RATE_WINDOW,
-            0,
-            "a window of no turns has nothing to measure",
-        ));
+            LIMIT_MAX_ERROR_RATE,
+            "the lookback the rate is measured over, and the minimum sample before it can fire",
+        )),
+        (None, Some(_)) => report.report(unpaired(
+            LIMIT_MAX_ERROR_RATE,
+            LIMIT_ERROR_RATE_WINDOW,
+            "the fraction of that window which may be errors",
+        )),
+        (Some(_), Some(_)) => {}
     }
-    if !rate_ok || window == 0 {
-        return None;
-    }
-    // Warnable only about a window the operator **wrote**, and only against a turn ceiling that
-    // exists. gg's own default window is not a declaration and has nothing to say about somebody
-    // else's turn ceiling; and an unbounded run (the default) has no last turn for a window to be
-    // pinned to, so an explicit window is always given room to fill.
-    if let (Some(max_turns), Some(_)) = (max_turns, declared.error_rate_window)
+
+    let max_rate = declared.max_error_rate.filter(|max_rate| {
+        let armable = max_rate.is_finite() && (0.0..=1.0).contains(max_rate);
+        if !armable {
+            report.report(unarmable(
+                LIMIT_MAX_ERROR_RATE,
+                max_rate,
+                "an error rate is a fraction of the window between 0.0 and 1.0, and this one could \
+                 never be exceeded",
+            ));
+        }
+        armable
+    });
+
+    let window = declared.error_rate_window.and_then(|window| {
+        let window = narrow_usize(LIMIT_ERROR_RATE_WINDOW, window, "turns", report);
+        if window == 0 {
+            report.report(unarmable(
+                LIMIT_ERROR_RATE_WINDOW,
+                0,
+                "a window of no turns has nothing to measure",
+            ));
+            return refused_ceiling();
+        }
+        Some(window)
+    });
+
+    let (Some(max_rate), Some(window)) = (max_rate, window) else {
+        return refused_ceiling();
+    };
+
+    // Only against a turn ceiling that exists: an unbounded run has no last turn for a window to be
+    // pinned to, so a window is always given room to fill.
+    if let Some(max_turns) = max_turns
         && window >= max_turns
     {
         warnings.push(format!(

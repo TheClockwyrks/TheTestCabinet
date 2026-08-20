@@ -475,7 +475,7 @@ export function GgConfigEditor({
           <section className={gg.limitsWidget}>
             <p className={runExec.sectionLabel}>
               Run limits
-              <HelpTip text="The ceilings a run is bounded by, applied to every agent whatever its type. A run stopped by one records which one stopped it. Leave a field empty to leave that ceiling off." />
+              <HelpTip text="The ceilings a run is bounded by, applied to every agent whatever its type. A run stopped by one records which one stopped it. Leaving a field empty leaves that ceiling unarmed — gg arms none nobody wrote — except the two every run has: the agent pool and the capture journal, which are always written." />
             </p>
             <div className={gg.limitGrid}>
               {RUN_LIMIT_SPECS.map((spec) => (

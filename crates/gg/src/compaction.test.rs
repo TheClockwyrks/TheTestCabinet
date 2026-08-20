@@ -102,13 +102,14 @@ async fn compact_if_needed(
 fn trigger_fullness_is_derived_from_the_headroom() {
     // The trigger is not a separate knob: it is defined as `1 - summaryHeadroom`.
     assert_eq!(
-        CompactionPolicy::default().trigger_fullness(),
-        1.0 - DEFAULT_SUMMARY_HEADROOM
-    );
-    assert_eq!(
         CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.35 }), &mut honoured())
             .trigger_fullness(),
         1.0 - 0.35
+    );
+    assert_eq!(
+        CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.2 }), &mut honoured())
+            .trigger_fullness(),
+        1.0 - 0.2
     );
 }
 
@@ -116,69 +117,140 @@ fn trigger_fullness_is_derived_from_the_headroom() {
 fn setup_resolves_from_the_capability_set() {
     use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
 
-    // Absent: disabled.
-    let off = CompactionSetup::resolve(
-        GgCapabilitySet::minimal("mock/x").root(),
-        true,
-        &mut honoured(),
-    );
+    // Absent: the setup that says so. Nothing is read, nothing is required, and the two
+    // placeholders beside `enabled` are what the loop never looks at.
+    let off = CompactionSetup::resolve(GgCapabilitySet::minimal("mock/x").root(), &mut honoured());
     assert!(!off.enabled);
+    assert_eq!(off.policy, CompactionPolicy::NO_COMPACTION);
+    assert_eq!(off.strategy, CompactionStrategy::NO_COMPACTION);
+    assert!(off.summarizer.is_none());
 
-    // Present + enabled with a param: enabled, headroom read (and the trigger derived from it).
+    // Declared and switched off: the same answer. What it carries is the configuration the arm
+    // would have used, and the run it configures is a run that does not compact.
+    let mut disabled = GgCapabilitySet::minimal("mock/x");
+    crate::tools::grant_configured(
+        &mut disabled.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: false,
+            implementation: Some("handoff-summarization".to_string()),
+            params: json!({ "summaryHeadroom": 0.3 }),
+        },
+    );
+    assert!(!CompactionSetup::resolve(disabled.root(), &mut honoured()).enabled);
+
+    // Present + enabled: enabled, headroom read (and the trigger derived from it).
     let mut set = GgCapabilitySet::minimal("mock/x");
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
             id: CAPABILITY_COMPACTION.to_string(),
             enabled: true,
-            implementation: None,
+            implementation: Some("self-summarization".to_string()),
             params: json!({ "summaryHeadroom": 0.3 }),
         },
     );
-    let on = CompactionSetup::resolve(set.root(), true, &mut honoured());
+    let on = CompactionSetup::resolve(set.root(), &mut honoured());
     assert!(on.enabled);
     assert_eq!(on.policy.summary_headroom, 0.3);
     assert_eq!(on.policy.trigger_fullness(), 1.0 - 0.3);
+    assert_eq!(on.strategy, CompactionStrategy::SelfSummarization);
 }
 
-/// The summary headroom takes its default when the param is absent, and honors any fraction in
-/// range. **Absent is not unrecognized**, which is the half of the policy this case pins.
+/// Every fraction gg can withhold is honoured as written, including the two ends of the range.
 #[test]
-fn policy_defaults_then_honors_a_valid_summary_headroom() {
-    assert_eq!(
-        CompactionPolicy::resolve(&json!({}), &mut honoured()).summary_headroom,
-        DEFAULT_SUMMARY_HEADROOM
+fn policy_honors_any_headroom_in_range() {
+    for (params, expected) in [
+        (json!({ "summaryHeadroom": 0.35 }), 0.35),
+        // Zero headroom is a legitimate (if reckless) choice — the operator asking for the whole
+        // window is honoured, unlike a negative or window-consuming value.
+        (json!({ "summaryHeadroom": 0.0 }), 0.0),
+        // A whole number is a perfectly ordinary way to write `0`, and JSON has no way to say it
+        // is one rather than a float.
+        (json!({ "summaryHeadroom": 0 }), 0.0),
+        (json!({ "summaryHeadroom": 0.9 }), 0.9),
+    ] {
+        assert_eq!(
+            CompactionPolicy::resolve(&params, &mut honoured()).summary_headroom,
+            expected,
+            "{params}"
+        );
+    }
+}
+
+/// **An enabled compaction writes its headroom.** The number sets the compaction trigger *and* the
+/// window the agent is given for the whole run, so a run gg picked a fraction for would differ from
+/// the configured arm in when it compacted and in how much window it ever had — and its record
+/// would name a configuration nobody wrote.
+#[test]
+fn an_absent_summary_headroom_is_refused() {
+    for params in [json!({}), json!({ "summaryHeadroom": null })] {
+        let defects = reported(|report| {
+            assert_eq!(
+                CompactionPolicy::resolve(&params, report),
+                CompactionPolicy::NO_COMPACTION,
+                "the resolver stays total"
+            );
+        });
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects[0].found, "", "{params}");
+        assert!(
+            defects[0].locus.ends_with("params.summaryHeadroom"),
+            "{}",
+            defects[0].locus
+        );
+    }
+}
+
+/// …and it refuses the whole launch, once, at that key's own locus.
+#[test]
+fn a_compaction_with_no_headroom_refuses_the_launch() {
+    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
+
+    let mut set = GgCapabilitySet::minimal("mock/x");
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: true,
+            implementation: Some("self-summarization".to_string()),
+            params: json!({}),
+        },
     );
-    assert_eq!(
-        CompactionPolicy::resolve(&json!({ "summaryHeadroom": null }), &mut honoured())
-            .summary_headroom,
-        DEFAULT_SUMMARY_HEADROOM
+    let refusal = crate::validate::refusal(&set).expect_err("the set is refused");
+    assert!(refusal.contains("summaryHeadroom"), "{refusal}");
+    // Named once, however many readers of the document noticed it: the params sweep and the policy
+    // resolver both do.
+    assert_eq!(refusal.lines().count(), 1, "{refusal}");
+}
+
+/// A **disabled** compaction is owed no headroom — it configures nothing, so there is nothing for
+/// it to be short of — but a headroom it does carry is read on exactly the enabled arm's terms, so
+/// a typo is heard about now rather than on the launch that flips the switch.
+#[test]
+fn a_disabled_compaction_requires_no_headroom_and_is_still_read() {
+    assert!(reported(|report| CompactionPolicy::check_declared(&json!({}), report)).is_empty());
+    assert!(
+        reported(|report| CompactionPolicy::check_declared(
+            &json!({ "summaryHeadroom": 0.4 }),
+            report
+        ))
+        .is_empty()
     );
-    assert_eq!(
-        CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.35 }), &mut honoured())
-            .summary_headroom,
-        0.35
-    );
-    // Zero headroom is a legitimate (if reckless) choice — the operator asking for the whole
-    // window is honored, unlike a negative or window-consuming value.
-    assert_eq!(
-        CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.0 }), &mut honoured())
-            .summary_headroom,
-        0.0
-    );
-    // A whole number is a perfectly ordinary way to write `0`, and JSON has no way to say it is
-    // one rather than a float.
-    assert_eq!(
-        CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0 }), &mut honoured())
-            .summary_headroom,
-        0.0
+
+    let defects = reported(|report| {
+        CompactionPolicy::check_declared(&json!({ "summaryHeadroom": 2 }), report)
+    });
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert!(
+        defects[0].locus.ends_with("params.summaryHeadroom"),
+        "{}",
+        defects[0].locus
     );
 }
 
-/// A headroom gg cannot honour is **refused**, not quietly replaced by the default. This one number
-/// sets the compaction trigger *and* the window the agent is given for the whole run, so a run that
-/// kept 0.2 while its record said 0.95 would differ from the configured arm in when it compacted and
-/// in how much window it ever had.
+/// A headroom gg cannot honour is **refused**, and the resolver hands back the placeholder rather
+/// than a fraction of its own choosing.
 #[test]
 fn a_summary_headroom_gg_cannot_honour_is_refused() {
     for (params, found) in [
@@ -189,8 +261,8 @@ fn a_summary_headroom_gg_cannot_honour_is_refused() {
     ] {
         let defects = reported(|report| {
             assert_eq!(
-                CompactionPolicy::resolve(&params, report).summary_headroom,
-                DEFAULT_SUMMARY_HEADROOM,
+                CompactionPolicy::resolve(&params, report),
+                CompactionPolicy::NO_COMPACTION,
                 "the resolver stays total"
             );
         });
@@ -208,11 +280,13 @@ fn a_summary_headroom_gg_cannot_honour_is_refused() {
 /// window it narrows.
 #[test]
 fn policy_working_window_reserves_the_headroom() {
-    let default = CompactionPolicy::default();
-    assert_eq!(default.working_window(200_000), 160_000);
+    let fifth = CompactionPolicy {
+        summary_headroom: 0.2,
+    };
+    assert_eq!(fifth.working_window(200_000), 160_000);
     // A tiny window still leaves the agent something to fill, rather than a zero
     // denominator that would make every fullness ratio infinite.
-    assert_eq!(default.working_window(1), 1);
+    assert_eq!(fifth.working_window(1), 1);
     assert_eq!(
         CompactionPolicy {
             summary_headroom: 0.0,
@@ -223,17 +297,21 @@ fn policy_working_window_reserves_the_headroom() {
 }
 
 /// The window is only reduced when compaction is actually on: an off arm keeps the model's
-/// whole window, since there is no summarization call to reserve for.
+/// whole window, since there is no summarization call to reserve for — and no headroom is read,
+/// which is why an off arm may write none.
 #[test]
 fn working_window_only_reserves_when_compaction_is_on() {
     use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
 
     let off = GgCapabilitySet::minimal("mock/x");
-    assert_eq!(working_window(&off, 200_000, &mut honoured()), 200_000);
+    assert_eq!(
+        working_window(off.root(), 200_000, &mut honoured()),
+        200_000
+    );
 
     let mut on = GgCapabilitySet::minimal("mock/x");
     crate::tools::grant(&mut on.agents[0], CAPABILITY_COMPACTION);
-    assert_eq!(working_window(&on, 200_000, &mut honoured()), 160_000);
+    assert_eq!(working_window(on.root(), 200_000, &mut honoured()), 160_000);
 
     // A disabled compaction capability that carries params is still an off arm.
     let mut disabled = GgCapabilitySet::minimal("mock/x");
@@ -246,7 +324,27 @@ fn working_window_only_reserves_when_compaction_is_on() {
             params: json!({ "summaryHeadroom": 0.5 }),
         },
     );
-    assert_eq!(working_window(&disabled, 200_000, &mut honoured()), 200_000);
+    assert_eq!(
+        working_window(disabled.root(), 200_000, &mut honoured()),
+        200_000
+    );
+
+    // …and one that carries none: an off arm is short of nothing, so nothing is reported for it
+    // here either.
+    let mut bare = GgCapabilitySet::minimal("mock/x");
+    crate::tools::grant_configured(
+        &mut bare.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: false,
+            implementation: None,
+            params: json!({}),
+        },
+    );
+    assert_eq!(
+        working_window(bare.root(), 200_000, &mut honoured()),
+        200_000
+    );
 
     // The headroom param is honored on the enabled arm.
     let mut tuned = GgCapabilitySet::minimal("mock/x");
@@ -259,7 +357,70 @@ fn working_window_only_reserves_when_compaction_is_on() {
             params: json!({ "summaryHeadroom": 0.5 }),
         },
     );
-    assert_eq!(working_window(&tuned, 200_000, &mut honoured()), 100_000);
+    assert_eq!(
+        working_window(tuned.root(), 200_000, &mut honoured()),
+        100_000
+    );
+}
+
+/// The headroom is read off the **agent's own** profile, not the run's root.
+///
+/// Compaction is a per-agent capability, so the fraction that fires a compaction and the window it
+/// is measured against have to come from one document. Read off the root instead, a worker
+/// compacting at `1 - summaryHeadroom` of a window nothing reduced would reserve none of the room
+/// its own summarization call needs — and a worker that compacts not at all would be measured
+/// against a window its profile never narrowed.
+#[test]
+fn working_window_is_read_off_the_agents_own_profile() {
+    use test_cabinet_core::gg::{
+        CAPABILITY_COMPACTION, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
+    };
+
+    let compacting = |headroom: f64| GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: true,
+        implementation: None,
+        params: json!({ "summaryHeadroom": headroom }),
+    };
+
+    // A root that reserves nothing at all and a worker that reserves a quarter.
+    let mut set = GgCapabilitySet::minimal("mock/x");
+    let mut worker = GgAgentConfig {
+        id: "worker".to_string(),
+        name: "worker".to_string(),
+        model_id: "mock/x".to_string(),
+        ..GgAgentConfig::root()
+    };
+    crate::tools::grant_configured(&mut worker, compacting(0.25));
+    set.agents.push(worker);
+
+    assert_eq!(
+        working_window(set.root(), 200_000, &mut honoured()),
+        200_000
+    );
+    assert_eq!(
+        working_window(&set.agents[1], 200_000, &mut honoured()),
+        150_000
+    );
+
+    // …and the mirror: a root that reserves and a worker that does not compact at all is measured
+    // against its model's whole window.
+    let mut mirrored = GgCapabilitySet::minimal("mock/x");
+    crate::tools::grant_configured(&mut mirrored.agents[0], compacting(0.4));
+    mirrored.agents.push(GgAgentConfig {
+        id: "worker".to_string(),
+        name: "worker".to_string(),
+        model_id: "mock/x".to_string(),
+        ..GgAgentConfig::root()
+    });
+    assert_eq!(
+        working_window(mirrored.root(), 200_000, &mut honoured()),
+        120_000
+    );
+    assert_eq!(
+        working_window(&mirrored.agents[1], 200_000, &mut honoured()),
+        200_000
+    );
 }
 
 // ---------------------------------------------------------------------------

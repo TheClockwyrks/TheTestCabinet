@@ -13,12 +13,13 @@
 
 use std::sync::Arc;
 
-use serde_json::json;
+use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
-    GgSubagentRef, GgTelemetryKind, ROOT_PROFILE_ID,
+    GgSubagentRef, GgTelemetryKind, MEMORY_PARAM_SCOPE, ROOT_PROFILE_ID,
 };
 
+use super::scope::SCOPE_OF_A_REFUSED_LAUNCH;
 use super::*;
 use crate::board::BoardRuntime;
 use crate::context::HeuristicTokenEstimator;
@@ -95,10 +96,25 @@ fn profile(id: &str, strategy: MemoryStrategy, scope: MemoryScope) -> GgAgentCon
             id: CAPABILITY_MEMORIES.to_string(),
             enabled: true,
             implementation: Some(strategy.id().to_string()),
-            params: json!({ "scope": scope.as_str() }),
+            params: fully_specified(scope),
         }],
         ..GgAgentConfig::root()
     }
+}
+
+/// The params an enabled memories capability writes: the scope, and all six limits lifted with
+/// `0`. Every profile here is **fully specified**, because a resolve made mid-run reads into a
+/// [discarding](LaunchReport::Discarding) sink that asserts the launch pass left nothing to say.
+fn fully_specified(scope: MemoryScope) -> Value {
+    json!({
+        MEMORY_PARAM_SCOPE: scope.as_str(),
+        PARAM_MAX_COUNT: 0,
+        PARAM_MAX_LEN_PER_MEMORY: 0,
+        PARAM_MAX_TOTAL_LEN: 0,
+        PARAM_MAX_LEN_INDEX: 0,
+        PARAM_MAX_LEN_DESCRIPTION: 0,
+        PARAM_MAX_RESULTS: 0,
+    })
 }
 
 /// A scratchpad profile — the strategy most of these tests use, because its notice carries bodies
@@ -334,20 +350,52 @@ fn inheritance_is_refused_across_a_strategy_mismatch() {
     assert!(child.is_writable(), "its own notebook is its own to write");
 }
 
-/// An absent `scope` takes the documented default — absent is not unrecognized.
+/// **An enabled memories capability that writes no `scope` refuses the launch**, at the scope's own
+/// key. The scope is what decides *whose notebook this agent holds*, so there is no figure gg could
+/// stand in for one nobody wrote: a run meant to have two agents curating one store would instead
+/// have two that never meet, and the only evidence would be a notebook that stayed empty. An
+/// explicit `null` is an absence on exactly the same terms.
 #[test]
-fn an_absent_scope_takes_the_default() {
+fn an_enabled_capability_short_of_a_scope_is_refused() {
     let mut config = scratchpad("solo", MemoryScope::Isolated);
+    for params in [json!({}), json!({ MEMORY_PARAM_SCOPE: null })] {
+        config.capabilities[0].params = params.clone();
+        let mut report = LaunchReport::collecting();
+        assert_eq!(
+            resolve_scope(&config, &mut report),
+            SCOPE_OF_A_REFUSED_LAUNCH,
+            "the resolver stays total"
+        );
+        let defects = report.into_defects();
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects[0].locus, "memories.params.scope");
+        assert!(
+            defects[0].message.contains("substitutes nothing"),
+            "{}",
+            defects[0].message
+        );
+    }
+}
+
+/// **A disabled capability is owed no scope.** It binds no memories, so there is nothing for it to
+/// be short of; what it carries is the configuration the arm *would* have used, and everything it
+/// does carry is still read.
+#[test]
+fn a_disabled_capability_is_owed_no_scope() {
+    let mut config = scratchpad("solo", MemoryScope::Isolated);
+    config.capabilities[0].enabled = false;
     config.capabilities[0].params = json!({});
     assert_eq!(
         resolve_scope(&config, &mut LaunchReport::Discarding),
-        MemoryScope::Isolated
+        SCOPE_OF_A_REFUSED_LAUNCH
     );
-    config.capabilities[0].params = json!({ "scope": null });
-    assert_eq!(
-        resolve_scope(&config, &mut LaunchReport::Discarding),
-        MemoryScope::Isolated
-    );
+
+    config.capabilities[0].params = json!({ MEMORY_PARAM_SCOPE: "communal" });
+    let mut report = LaunchReport::collecting();
+    resolve_scope(&config, &mut report);
+    let defects = report.into_defects();
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "memories.params.scope");
 }
 
 /// A `scope` gg cannot read is **refused**. The scope decides *whose notebook this agent holds*, so
@@ -357,14 +405,14 @@ fn an_absent_scope_takes_the_default() {
 fn an_unreadable_scope_is_refused() {
     let mut config = scratchpad("solo", MemoryScope::Isolated);
     for (params, found) in [
-        (json!({ "scope": "communal" }), "communal"),
-        (json!({ "scope": 3 }), "3"),
+        (json!({ MEMORY_PARAM_SCOPE: "communal" }), "communal"),
+        (json!({ MEMORY_PARAM_SCOPE: 3 }), "3"),
     ] {
         config.capabilities[0].params = params.clone();
         let mut report = LaunchReport::collecting();
         assert_eq!(
             resolve_scope(&config, &mut report),
-            MemoryScope::Isolated,
+            SCOPE_OF_A_REFUSED_LAUNCH,
             "the resolver stays total"
         );
         let defects = report.into_defects();
@@ -400,7 +448,8 @@ fn a_scoping_gg_cannot_honour_refuses_the_launch() {
     ));
     // A third names a scope gg does not know.
     let mut typo = scratchpad("typo", MemoryScope::Isolated);
-    typo.capabilities[0].params = json!({ "scope": "communal" });
+    typo.capabilities[0].params = fully_specified(MemoryScope::Isolated);
+    typo.capabilities[0].params[MEMORY_PARAM_SCOPE] = json!("communal");
     set.agents.push(typo);
 
     let refusal = crate::validate::refusal(&set).expect_err("the set is refused");
@@ -437,9 +486,12 @@ fn a_scope_on_a_disabled_capability_launches() {
     );
 }
 
-/// **An inheriting child that names no strategy of its own launches**, whatever its spawner
-/// organizes memories as. Inheriting *is* "organize them the way my spawner does", so an absent
-/// `implementation` agrees with every spawner rather than defaulting into a contradiction with one.
+/// **An inheriting child that names no strategy of its own is not a scoping contradiction**,
+/// whatever its spawner organizes memories as. Inheriting *is* "organize them the way my spawner
+/// does", so naming no `implementation` agrees with every spawner rather than disagreeing with one.
+///
+/// Whether such a child is *entitled* to name none is [`check_implementation`](crate::validate)'s,
+/// which reads the whole capability; this is only [`check_scoping`]'s half.
 #[test]
 fn an_inheriting_child_that_names_no_strategy_launches() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
@@ -908,7 +960,7 @@ fn the_revision_log_forgets_what_every_holder_has_read_past() {
 /// find a record with a hole in it.
 #[test]
 fn a_store_with_no_holders_forgets_nothing() {
-    let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     for n in 0..4 {
         store
             .write(

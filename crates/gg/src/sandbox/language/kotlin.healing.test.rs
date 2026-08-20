@@ -45,7 +45,7 @@ pub(super) const FIXTURES: &[&str] = &[
 fn healed(reply: &str) -> Healed {
     heal(
         reply,
-        &HealingConfig::default(),
+        &HealingConfig::SAFE_REPAIRS,
         crate::sandbox::language(GgProgramLanguage::Kotlin).healing(),
     )
 }

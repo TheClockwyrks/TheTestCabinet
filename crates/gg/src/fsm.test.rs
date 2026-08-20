@@ -2,7 +2,8 @@ use super::*;
 use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig,
-    GgCapabilitySet, GgDispatchError, GgSubagentRef, GgSubagentScope, ROOT_PROFILE_ID,
+    GgCapabilitySet, GgDispatchError, GgHook, GgHookAction, GgHookEvent, GgLoopDetection,
+    GgSubagentRef, GgSubagentScope, ROOT_PROFILE_ID,
 };
 
 /// Every machine defect `set` earns, joined into one refusal — [`check_launch`] read as the launch
@@ -122,7 +123,10 @@ fn a_disabled_capability_declares_no_machine() {
 }
 
 /// An enabled capability with no `states` is the shape a set written against the removed built-in
-/// machines has. It is a **launch failure**, not a silent degradation to an ordinary agent.
+/// machines has. It is a **launch failure**, not a silent degradation to an ordinary agent — and it
+/// is named by the pass that can see the switch rather than by this module, which is handed the
+/// param and has no way to know one was owed. So the assertion is against the whole refusal: this
+/// module builds no machine at all, and the launch says which param is missing, on which profile.
 #[test]
 fn an_enabled_capability_without_states_is_a_launch_failure() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
@@ -133,7 +137,15 @@ fn an_enabled_capability_without_states_is_a_launch_failure() {
             ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
         },
     );
-    let error = refusal(&set).expect_err("a machine-less FSM agent cannot run");
+    assert!(
+        FsmSpec::resolve(&set.agents[0]).is_none(),
+        "there is no machine here to build"
+    );
+    assert!(
+        refusal(&set).is_ok(),
+        "and no machine defect to report: the hole is in the params, not in the table"
+    );
+    let error = crate::validate::refusal(&set).expect_err("a machine-less FSM agent cannot run");
     assert!(error.contains(FSM_PARAM_STATES), "{error}");
     assert!(error.contains(ROOT_PROFILE_ID), "{error}");
 }
@@ -393,13 +405,37 @@ fn a_shell_declaring_a_workers_configuration_is_refused_part_by_part() {
         description: String::new(),
         scopes: vec![GgSubagentScope::Subagent],
     }];
+    set.agents[0].hooks = vec![GgHook {
+        name: "build".to_string(),
+        event: GgHookEvent::PreWrite,
+        action: GgHookAction::Command {
+            command: "npm test".to_string(),
+            cwd: None,
+            timeout_secs: Some(600.0),
+            output: None,
+        },
+    }];
+    set.agents[0].loop_detection = GgLoopDetection {
+        enabled: true,
+        window_words: Some(400),
+        repeat_threshold: Some(8),
+        min_offenders: Some(3),
+        min_saturated_run: Some(200),
+        max_response_chars: Some(200_000),
+    };
     let error = refusal(&set).expect_err("a shell takes no turns, so none of this is read");
-    for part in ["model binding", "system prompt", "roster"] {
+    for part in [
+        "model binding",
+        "system prompt",
+        "roster",
+        "hooks",
+        "loop detector",
+    ] {
         assert!(error.contains(part), "{error}");
     }
     assert_eq!(
         error.lines().count(),
-        3,
+        5,
         "one defect per declaration: {error}"
     );
 }

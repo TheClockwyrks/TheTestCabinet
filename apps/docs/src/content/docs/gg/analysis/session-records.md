@@ -194,7 +194,7 @@ Three ceilings bound what a capture costs.
 
 | Ceiling | Value | Applies to |
 | --- | --- | --- |
-| Journal bytes (`replayMaxBytes`) | 256 MiB | The whole journal; capture stops |
+| Journal bytes (`replayMaxBytes`) | the configured figure | The whole journal; capture stops |
 | Subprocess stream | 32 KiB | One recorded stdout or stderr |
 | Tool payload | 256 KiB | One recorded tool output or lifted data text |
 

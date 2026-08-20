@@ -63,8 +63,16 @@
 //! [`drop-doubled-response`](HealingStrategy::DropDoubledResponse) — asks the dialect nothing at
 //! all, deliberately; see its own documentation for why it has no hook.
 
-use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
+use serde_json::{Map, Value};
+use test_cabinet_core::gg::{
+    ASSISTANT_MESSAGE_MODES, ASSISTANT_MESSAGES_NONE, ASSISTANT_MESSAGES_RESPONSE_HEALING,
+    CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig,
+};
+
+/// The two params this module reads, re-exported from the crate that owns gg's configuration
+/// vocabulary: the spelling a document is written in and the spelling gg reads it by are one
+/// constant, so a key cannot be renamed on one side of the wire alone.
+pub use test_cabinet_core::gg::{PARAM_ASSISTANT_MESSAGES, PARAM_HEALING};
 
 // ---------------------------------------------------------------------------------------------
 // The language dialect
@@ -226,29 +234,6 @@ impl HealingStrategy {
         }
     }
 
-    /// Whether a run that says nothing about this strategy gets it.
-    ///
-    /// **The rule: a strategy is armed by default when repairing is strictly safer than not
-    /// repairing.** For two of the three it is, and the warrant is the same in both cases — the
-    /// reply the strategy deletes from *could not have run as sent*. A fenced reply is not a program
-    /// in any language; nor is one with prose around it. Declining to repair either of those costs
-    /// the turn outright, so the default that loses least is *on*.
-    ///
-    /// [`DropDoubledResponse`](Self::DropDoubledResponse) is the exception, and the asymmetry is
-    /// real rather than an abundance of caution: the half it deletes is **valid code under any
-    /// reading other than "the transport duplicated this"**. A reply that runs its program twice is
-    /// a reply that runs — so where the other two turn a dead reply into a live one, this one
-    /// changes what a live reply does. That is a repair only for the models observed to emit the
-    /// defect, so it is armed **deliberately**, per run, by an operator who has seen it. See the
-    /// strategy's own documentation for why its match rule is nonetheless safe with almost no
-    /// guards.
-    pub const fn default_armed(self) -> bool {
-        match self {
-            Self::StripFences | Self::StripProse => true,
-            Self::DropDoubledResponse => false,
-        }
-    }
-
     /// The strategy an [id](Self::id) names, or `None` when nothing does.
     ///
     /// The exact inverse of [`id`](Self::id) — written against [`ALL`](Self::ALL) rather than as a
@@ -270,36 +255,51 @@ pub struct HealingConfig {
     drop_doubled_response: bool,
 }
 
-impl Default for HealingConfig {
-    /// Each strategy at [its own default](HealingStrategy::default_armed) — which is *not* the same
-    /// thing as "everything on".
-    ///
-    /// A strategy absent from a run's `healing` param takes this arm, so a configuration that says
-    /// nothing gets the two repairs whose warrant holds unconditionally and does **not** get
-    /// [`drop-doubled-response`](HealingStrategy::DropDoubledResponse). This is the arm a study
-    /// compares against.
-    ///
-    /// Built by folding [`default_armed`](HealingStrategy::default_armed) over
-    /// [`ALL`](HealingStrategy::ALL) rather than by listing bools, so a strategy's default lives in
-    /// exactly one place and a new strategy cannot be added here with a silently different one.
-    fn default() -> Self {
-        let mut config = Self::OFF;
-        for strategy in HealingStrategy::ALL {
-            config.set(strategy, strategy.default_armed());
-        }
-        config
-    }
-}
-
 impl HealingConfig {
-    /// Every strategy off — what the master switch produces, and the floor two configurations are
-    /// compared against.
+    /// Every strategy off — what the `false` master switch produces, what an agent that takes no
+    /// code turn carries, and the floor two configurations are compared against.
     ///
     /// [`heal`] still runs under it and still canonicalises; it simply repairs nothing, so the reply
     /// reaches its language's prepare step exactly as the model sent it.
     pub const OFF: Self = Self {
         strip_fences: false,
         strip_prose: false,
+        drop_doubled_response: false,
+    };
+
+    /// Every strategy armed — what the `true` master switch produces.
+    ///
+    /// The counterpart of [`OFF`](Self::OFF), and the only other configuration a single word can
+    /// state. Anything between the two is written strategy by strategy, because a set that named
+    /// some of them would leave gg to arm the rest.
+    pub const EVERY: Self = Self {
+        strip_fences: true,
+        strip_prose: true,
+        drop_doubled_response: true,
+    };
+
+    /// The configuration a resolver hands back once it has [refused the launch](crate::validate).
+    ///
+    /// It repairs nothing, and its name rather than its value is the point: the run it belongs to
+    /// does not start, so no reply is ever healed under it, and the next reader of the line that
+    /// produced it can see that gg armed no set of its own choosing.
+    pub const LAUNCH_REFUSED: Self = Self::OFF;
+
+    /// **The two repairs whose warrant holds unconditionally**, and not the third — the set gg's own
+    /// cases heal a fixture under.
+    ///
+    /// A fenced reply is not a program in any language, nor is one with prose around it, so
+    /// declining to repair either costs the turn outright.
+    /// [`drop-doubled-response`](HealingStrategy::DropDoubledResponse) deletes a half that is valid
+    /// code under any reading other than "the transport duplicated this", so it is armed by an
+    /// operator who has seen the defect and never on anyone's behalf.
+    ///
+    /// `#[cfg(test)]`, because it is a fixture and not a figure gg would stand in for an absent
+    /// one: a run's set comes from that run's own document or the launch is refused.
+    #[cfg(test)]
+    pub(crate) const SAFE_REPAIRS: Self = Self {
+        strip_fences: true,
+        strip_prose: true,
         drop_doubled_response: false,
     };
 
@@ -359,111 +359,152 @@ impl HealingConfig {
     }
 }
 
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param arming the
-/// [healing strategies](HealingStrategy). Absent takes [`HealingConfig::default`].
-pub const PARAM_HEALING: &str = "healing";
-
 /// Resolve the [healing configuration](HealingConfig) from the
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's [`healing`](PARAM_HEALING)
 /// param.
 ///
-/// The param names a **delta against the defaults**, not a whole configuration. Saying nothing means
-/// [the defaults](HealingConfig::default) — which is *not* "everything on", because
-/// [`drop-doubled-response`](HealingStrategy::DropDoubledResponse) is
-/// [armed deliberately](HealingStrategy::default_armed) rather than by omission. Every row below
-/// that reads "the defaults" therefore means "the other two on, `drop-doubled-response` off".
+/// The param states a **whole configuration**, not a delta: what a run repaired is the thing under
+/// test, so a set naming two of the three strategies has not said what the third arm was. One word
+/// states the two extremes and an object states everything between them.
 ///
 /// | `params.healing` | Meaning |
 /// | --- | --- |
-/// | absent / `null` / `true` / `{}` | the **defaults** |
-/// | `false` | every strategy **off** — the master switch |
-/// | `{ "strip-prose": false }` | `strip-prose` off, the rest at their defaults |
-/// | `{ "drop-doubled-response": true }` | `drop-doubled-response` **on**, the rest at their defaults — the one strategy an operator has to ask for |
+/// | `true` | [every strategy armed](HealingConfig::EVERY) |
+/// | `false` | [every strategy off](HealingConfig::OFF) — the master switch |
+/// | an object naming all three | each strategy exactly as its toggle reads |
+/// | absent / `null` / `{}` / an object leaving a strategy out | **refused** — the launch does not start |
 /// | `{ "strip-prose": 0 }` | **refused**: a non-boolean is not a toggle |
 /// | `{ "stripProse": false }` | **refused**: `stripProse` names no strategy |
 /// | `5`, `"off"`, `[]` | **refused**: there is no set of toggles here to read |
 ///
-/// Note the asymmetry the third and fourth rows describe: `false` is how a default-on strategy is
-/// turned off and `true` is how the default-off one is turned on, and **both** travel through the
-/// same `(Some(strategy), Some(on))` arm below. There is no second mechanism for arming a strategy,
-/// which is what keeps the table above a description of one line of code.
+/// Every refusal above is the same refusal: gg substitutes nothing. `{"stripFences": false}` reads
+/// as a run whose author was switching `strip-fences` off and whose record would name the arm that
+/// ran with it on, and every response-healing number the study produced would then be a measurement
+/// of the other arm. The strategy ids are **contract-visible** — they are what the console's
+/// capability catalogue writes and what persisted run data records — so they are read literally,
+/// with only surrounding whitespace forgiven, and never guessed at.
 ///
-/// A key or value gg cannot act on [refuses the launch](crate::validate) rather than leaving the
-/// default standing: `{"stripFences": false}` reads as a run with `strip-fences` **on**, which is
-/// the arm its author was trying to switch off, and every response-healing number the study produced
-/// would then be a measurement of the other arm. The strategy ids are **contract-visible** — they are
-/// what the console's capability catalogue writes and what persisted run data records — so they are
-/// read literally, with only surrounding whitespace forgiven, and never guessed at.
-///
-/// The toggles are read whether the capability is switched **on or off**, like every other param in
-/// the set: a disabled capability records the configuration the arm would have used, so the two arms
-/// of one comparison stay symmetric, and a typo skipped because a switch happened to be off is a
-/// typo that surfaces on the launch where it is flipped. Nothing about the run changes — healing
-/// never runs where responses-as-code is off.
+/// An **absent** capability takes no code turn, so there is no reply to repair and nothing to
+/// require: it resolves to [`OFF`](HealingConfig::OFF). A capability that is present and
+/// **disabled** requires nothing of itself either, and what it writes is read exactly as an enabled
+/// one's is — a disabled capability records the configuration the arm would have used, so the two
+/// arms of one comparison stay symmetric, and a set gg could not honour is a refusal now rather
+/// than on the launch that flips the switch. Nothing about the run changes: healing never runs
+/// where responses-as-code is off.
 pub fn resolve_healing(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) -> HealingConfig {
-    let mut config = HealingConfig::default();
     let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
-        return config;
+        return HealingConfig::OFF;
     };
-    let Some(healing) = capability.params.get(PARAM_HEALING) else {
-        return config;
-    };
+    if capability.enabled {
+        let Some(value) = crate::validate::required_param(
+            &capability.params,
+            CAPABILITY_RESPONSES_AS_CODE,
+            PARAM_HEALING,
+            report,
+        ) else {
+            return HealingConfig::LAUNCH_REFUSED;
+        };
+        return read_healing(value, report);
+    }
+    match capability
+        .params
+        .get(PARAM_HEALING)
+        .filter(|value| !value.is_null())
+    {
+        Some(value) => read_healing(value, report),
+        None => HealingConfig::OFF,
+    }
+}
 
-    match healing {
-        // Three spellings of "say nothing", all meaning the default arm: a key that was written out
-        // as null, an explicit `true`, and an object that changes nothing.
-        Value::Null | Value::Bool(true) => {}
-        Value::Bool(false) => config = HealingConfig::OFF,
-        Value::Object(toggles) => {
-            for (key, value) in toggles {
-                match (HealingStrategy::from_id(key.trim()), value.as_bool()) {
-                    // The one arm that moves a strategy off its default, in either direction:
-                    // `false` disarms a default-on strategy and `true` arms `drop-doubled-response`.
-                    (Some(strategy), Some(on)) => config.set(strategy, on),
-                    // A known id carrying something that is not a toggle: reading `0` as `false`
-                    // would be gg deciding what an operator meant, which is the whole of what this
-                    // refusal exists to stop.
-                    (Some(strategy), None) => {
-                        report.report(crate::validate::LaunchDefect::run_level(
-                            format!("{}.{key}", healing_locus()),
-                            crate::validate::as_written(value),
-                            format!(
-                                "the `{}` healing strategy is armed or disarmed with `true` or \
-                             `false`; gg cannot read this as either, and leaving the strategy at \
-                             its default would run the arm this line was written to change.",
-                                strategy.id()
-                            ),
-                        ))
-                    }
-                    (None, _) => report.report(
-                        crate::validate::LaunchDefect::run_level(
-                            format!("{}.{key}", healing_locus()),
-                            crate::validate::as_written(value),
-                            format!(
-                                "`{key}` names no healing strategy, so it arms and disarms \
-                                 nothing; the run would heal by a configuration nobody wrote."
-                            ),
-                        )
-                        .known(HealingStrategy::ALL.map(HealingStrategy::id)),
+/// The set one written [`healing`](PARAM_HEALING) value names — the half of [`resolve_healing`] that
+/// reads a value rather than deciding whether one had to be there.
+fn read_healing(value: &Value, report: &mut crate::validate::LaunchReport) -> HealingConfig {
+    match value {
+        Value::Bool(true) => HealingConfig::EVERY,
+        Value::Bool(false) => HealingConfig::OFF,
+        Value::Object(toggles) => read_toggles(toggles, report),
+        other => {
+            report.report(
+                crate::validate::LaunchDefect::run_level(
+                    healing_locus(),
+                    crate::validate::as_written(other),
+                    format!(
+                        "the `{PARAM_HEALING}` param is `true` (every strategy), `false` (every \
+                         strategy off), or an object naming all three; there is nothing here gg \
+                         can read a set of strategies from."
                     ),
-                }
-            }
+                )
+                .known(HealingStrategy::ALL.map(HealingStrategy::id)),
+            );
+            HealingConfig::LAUNCH_REFUSED
         }
-        other => report.report(
-            crate::validate::LaunchDefect::run_level(
-                healing_locus(),
-                crate::validate::as_written(other),
+    }
+}
+
+/// The set an object of per-strategy toggles names, holding it to naming **every** strategy.
+///
+/// Two refusals live here and they are different questions. A key gg cannot act on is a value the
+/// operator wrote and gg could not honour; a strategy nobody named is a value the operator did not
+/// write and gg will not choose. A key that is known but carries no toggle counts as named, so one
+/// mistyped value is one line rather than two at the same locus.
+fn read_toggles(
+    toggles: &Map<String, Value>,
+    report: &mut crate::validate::LaunchReport,
+) -> HealingConfig {
+    let mut config = HealingConfig::OFF;
+    let mut named: Vec<HealingStrategy> = Vec::new();
+    for (key, value) in toggles {
+        match (HealingStrategy::from_id(key.trim()), value.as_bool()) {
+            // The one arm that arms or disarms a strategy, in either direction.
+            (Some(strategy), Some(on)) => {
+                config.set(strategy, on);
+                named.push(strategy);
+            }
+            // A known id carrying something that is not a toggle: reading `0` as `false` would be
+            // gg deciding what an operator meant, which is the whole of what this refusal exists to
+            // stop.
+            (Some(strategy), None) => {
+                named.push(strategy);
+                report.report(crate::validate::LaunchDefect::run_level(
+                    format!("{}.{key}", healing_locus()),
+                    crate::validate::as_written(value),
+                    format!(
+                        "the `{}` healing strategy is armed or disarmed with `true` or `false`; gg \
+                         cannot read this as either, and it arms no strategy an operator did not \
+                         write.",
+                        strategy.id()
+                    ),
+                ))
+            }
+            (None, _) => report.report(
+                crate::validate::LaunchDefect::run_level(
+                    format!("{}.{key}", healing_locus()),
+                    crate::validate::as_written(value),
+                    format!(
+                        "`{key}` names no healing strategy, so it arms and disarms nothing; the \
+                         run would heal by a configuration nobody wrote."
+                    ),
+                )
+                .known(HealingStrategy::ALL.map(HealingStrategy::id)),
+            ),
+        }
+    }
+    for strategy in HealingStrategy::ALL {
+        if !named.contains(&strategy) {
+            report.report(crate::validate::LaunchDefect::run_level(
+                format!("{}.{}", healing_locus(), strategy.id()),
+                "",
                 format!(
-                    "the `{PARAM_HEALING}` param is `true` (the defaults), `false` (every strategy \
-                     off), or an object of per-strategy toggles; there is nothing here gg can read \
-                     a set of strategies from."
+                    "the `{PARAM_HEALING}` object does not name `{}`, so nothing says whether the \
+                     repair is armed. What a run repaired is the thing under test, so a set naming \
+                     two of the three has not said what the third arm was.",
+                    strategy.id()
                 ),
-            )
-            .known(HealingStrategy::ALL.map(HealingStrategy::id)),
-        ),
+            ));
+        }
     }
     config
 }
@@ -481,15 +522,18 @@ fn healing_locus() -> String {
 /// That leaves a choice with no analogue on the tool-calling path: is the assistant turn the model
 /// re-reads next turn the reply it *sent*, or the program gg actually *ran*?
 ///
-/// The healed text is the program of record, so the answer gg records by default is the program that
-/// ran. Every line number a model is handed counts lines of that text — a compiler's diagnostic, a
-/// runtime's location, the frame under a panic — so a history carrying the *other* text hands the
-/// model coordinates into something it has never seen. The reply as sent survives regardless, on the
+/// The healed text is the program of record, which is the case for recording what ran: every line
+/// number a model is handed counts lines of that text — a compiler's diagnostic, a runtime's
+/// location, the frame under a panic — so a history carrying the *other* text hands the model
+/// coordinates into something it has never seen. The case for the reply as sent is that a study of
+/// a model's code-only compliance wants to read what the model actually wrote. Both are defensible,
+/// which is why the profile states which one it ran. The reply as sent survives either way, on the
 /// operator's side, which is where reading the two against each other belongs.
 ///
 /// Whichever mode is chosen, healing still runs and is still disclosed in the turn's feedback: the
 /// mode governs only the stored assistant message, never whether a reply is repaired before it runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// A profile that enables the capability names one of the two; neither is gg's to pick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssistantMessageMode {
     /// **No post-processing.** The assistant message is the reply exactly as the model returned it,
     /// byte for byte. Healing still repairs the reply before running it, but that repair does not
@@ -498,32 +542,28 @@ pub enum AssistantMessageMode {
     ///
     /// It is knowingly inconsistent rather than neutral: a reply that could not have compiled sits
     /// in the model's own history while every location gg reports counts lines of the healed text.
-    /// It is an arm of a study, and the arm every other run is compared against is the default one.
+    /// It is one arm of a study, and it is also what an agent that takes no code turn at all
+    /// carries: there is no healed program to record in place of a reply.
     None,
     /// **Post-response healing.** The assistant message is the [healed](Healed::program) program —
     /// what gg actually compiled and ran — whenever healing rewrote the reply, and the reply
     /// verbatim when it did not ([`Healed::rewritten`] is false). The model then re-reads a clean,
-    /// running program next turn rather than the malformed one it sent. The default.
-    #[default]
+    /// running program next turn rather than the malformed one it sent.
     ResponseHealing,
 }
 
-/// The [`assistantMessages`](PARAM_ASSISTANT_MESSAGES) spelling of
-/// [`AssistantMessageMode::None`].
-const ASSISTANT_MESSAGES_NONE: &str = "none";
-/// The [`assistantMessages`](PARAM_ASSISTANT_MESSAGES) spelling of
-/// [`AssistantMessageMode::ResponseHealing`].
-const ASSISTANT_MESSAGES_RESPONSE_HEALING: &str = "response-healing";
-
 impl AssistantMessageMode {
-    /// The two modes, in the spelling a [refusal](crate::validate) offers back.
-    pub const ALL: [&'static str; 2] =
-        [ASSISTANT_MESSAGES_NONE, ASSISTANT_MESSAGES_RESPONSE_HEALING];
-}
+    /// The two modes, in the spelling a [refusal](crate::validate) offers back — the one array,
+    /// shared with the document's own vocabulary.
+    pub const ALL: [&'static str; 2] = ASSISTANT_MESSAGE_MODES;
 
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param choosing which form of a
-/// reply is recorded as the assistant's message. Absent takes [`AssistantMessageMode::default`].
-pub const PARAM_ASSISTANT_MESSAGES: &str = "assistantMessages";
+    /// The mode a resolver hands back once it has [refused the launch](crate::validate), and the
+    /// mode an agent that takes no code turn carries.
+    ///
+    /// Both are the same statement: gg post-processes nothing it was not told to. No transcript is
+    /// ever written under it, because the run it belongs to does not start.
+    pub const LAUNCH_REFUSED: Self = Self::None;
+}
 
 /// Resolve the [assistant-message mode](AssistantMessageMode) from the
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's
@@ -531,29 +571,50 @@ pub const PARAM_ASSISTANT_MESSAGES: &str = "assistantMessages";
 ///
 /// | `params.assistantMessages` | Mode |
 /// | --- | --- |
-/// | absent / `null` / `"response-healing"` | [`ResponseHealing`](AssistantMessageMode::ResponseHealing) — the healed program that ran (the default) |
+/// | `"response-healing"` | [`ResponseHealing`](AssistantMessageMode::ResponseHealing) — the healed program that ran |
 /// | `"none"` | [`None`](AssistantMessageMode::None) — no post-processing |
-/// | anything else | **refused** — the launch does not start |
+/// | absent / `null` / anything else | **refused** — the launch does not start |
 ///
 /// Read literally — with only surrounding whitespace forgiven — and [refused](crate::validate) on
 /// mismatch for the same reason [`resolve_healing`] is: the value is contract-visible (the console's
 /// capability catalogue writes it, persisted run data records it), so a typo must stop the run
-/// rather than record it under a mode nobody chose. The mode comes back anyway to keep the resolver
-/// total for the per-turn calls that re-read it. The value is read whether the capability is
-/// switched on or off, on the same rule every other param in the set follows.
+/// rather than record it under a mode nobody chose. An absent value is refused on the same terms,
+/// because the two modes are the arms of a comparison and picking one for an operator is picking
+/// which arm their run measured. The mode comes back anyway to keep the resolver total for the
+/// per-turn calls that re-read it.
+///
+/// An **absent** capability records replies exactly as the model sent them, since there is no
+/// healed program to record in their place. A capability that is present and **disabled** requires
+/// no mode of itself, and a mode written on one is read exactly as an enabled one's is.
 pub fn resolve_assistant_messages(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) -> AssistantMessageMode {
     let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
-        return AssistantMessageMode::default();
+        return AssistantMessageMode::None;
     };
-    let Some(value) = capability.params.get(PARAM_ASSISTANT_MESSAGES) else {
-        return AssistantMessageMode::default();
+    let value = if capability.enabled {
+        let Some(value) = crate::validate::required_param(
+            &capability.params,
+            CAPABILITY_RESPONSES_AS_CODE,
+            PARAM_ASSISTANT_MESSAGES,
+            report,
+        ) else {
+            return AssistantMessageMode::LAUNCH_REFUSED;
+        };
+        value
+    } else {
+        match capability
+            .params
+            .get(PARAM_ASSISTANT_MESSAGES)
+            .filter(|value| !value.is_null())
+        {
+            Some(value) => value,
+            None => return AssistantMessageMode::None,
+        }
     };
 
     match value {
-        Value::Null => AssistantMessageMode::default(),
         Value::String(mode) if mode.trim() == ASSISTANT_MESSAGES_NONE => AssistantMessageMode::None,
         Value::String(mode) if mode.trim() == ASSISTANT_MESSAGES_RESPONSE_HEALING => {
             AssistantMessageMode::ResponseHealing
@@ -575,7 +636,7 @@ pub fn resolve_assistant_messages(
                 )
                 .known(AssistantMessageMode::ALL),
             );
-            AssistantMessageMode::default()
+            AssistantMessageMode::LAUNCH_REFUSED
         }
     }
 }

@@ -53,7 +53,7 @@ fn paging_profile() -> GgAgentConfig {
     assert!(
         matches!(
             read_policy(&profile),
-            ReadPolicy::DefaultCap(PAGING_LINE_CAP)
+            Some(ReadPolicy::DefaultCap(PAGING_LINE_CAP))
         ),
         "the paging profile must resolve to a capped read policy, not {:?}",
         read_policy(&profile)
@@ -116,7 +116,7 @@ async fn drive_instance_in(
                 autoload: no_autoload(),
                 persistence: PersistenceSetup::resolve(profile, store),
                 read_policy: read_policy(profile),
-                shell_offload: OffloadPolicy::default(),
+                shell_offload: OffloadPolicy::ample(),
                 code,
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -445,10 +445,10 @@ fn code_on() -> CodeSetup {
     CodeSetup {
         enabled: true,
         language: GgProgramLanguage::TypeScript,
-        limits: SandboxLimits::default(),
-        healing: HealingConfig::default(),
+        limits: SandboxLimits::AMPLE,
+        healing: HealingConfig::SAFE_REPAIRS,
         assistant_messages: AssistantMessageMode::None,
-        doc_view_types: crate::docs::DocViewTypes::default(),
+        doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
 

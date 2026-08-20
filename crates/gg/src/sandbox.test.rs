@@ -37,7 +37,7 @@ fn run(program: &str) -> (SandboxOutcome, CallLog) {
     run_with(
         program,
         &all_operations(),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         canned_outcome,
     )
 }
@@ -93,7 +93,7 @@ fn run_with_library(program: &str, held: &[(u64, &str)]) -> SandboxOutcome {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         api,
     );
@@ -113,7 +113,7 @@ fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
             modules: &[],
             ending: RunEnding::Role(role),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -523,7 +523,7 @@ fn the_limits_stop_a_runaway_program() {
     // A timeout far shorter than the default keeps the test quick; a runaway reaches any ceiling.
     let short_timeout = SandboxLimits {
         timeout: Duration::from_millis(100),
-        ..SandboxLimits::default()
+        ..SandboxLimits::AMPLE
     };
 
     // A program that calls nothing and never returns is stopped by the timeout alone.
@@ -568,7 +568,7 @@ fn the_limits_stop_a_runaway_program() {
         &all_operations(),
         SandboxLimits {
             max_memory_bytes: 256 * 1024,
-            ..SandboxLimits::default()
+            ..SandboxLimits::AMPLE
         },
         canned_outcome,
     );
@@ -589,7 +589,7 @@ fn the_limits_stop_a_runaway_program() {
         &all_operations(),
         SandboxLimits {
             max_memory_bytes: 64 * 1024 * 1024,
-            ..SandboxLimits::default()
+            ..SandboxLimits::AMPLE
         },
         canned_outcome,
     );
@@ -615,7 +615,7 @@ fn the_limits_stop_a_runaway_program() {
             "console.log(total);",
         ),
         &all_operations(),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         |name, args| {
             if name == "read_file" {
                 let contents = "alpha ".repeat(64 * 1024 / 6);
@@ -643,7 +643,7 @@ fn the_limits_stop_a_runaway_program() {
     // so this reading is only about the workload when the workload has the machine. That is
     // what `.config/nextest.toml` gives it: the override there makes this test take every
     // runner slot, so a busy suite cannot inflate the number and red the gate over nothing.
-    let default_timeout = SandboxLimits::default().timeout;
+    let default_timeout = SandboxLimits::AMPLE.timeout;
     assert!(
         outcome.elapsed * 5 < default_timeout,
         "the default timeout has lost its headroom: the workload ran for {:?} of {default_timeout:?}",
@@ -933,7 +933,7 @@ fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
     let (outcome, _) = run_with(
         "import * as gg from \"gg\";\ngg.files.listDir();",
         &all_operations(),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         |_, _| {
             ToolOutcome::failed(
                 ToolFailure::Unavailable,
@@ -957,7 +957,7 @@ fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
     let (outcome, _) = run_with(
         "import * as gg from \"gg\";\ngg.files.listDir();",
         &all_operations(),
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         |_, _| ToolOutcome::failed(ToolFailure::NotFound, "no such directory"),
     );
     assert!(
@@ -1227,7 +1227,7 @@ fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxO
             modules: &bound,
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -1340,7 +1340,7 @@ fn an_on_use_script_has_no_ending_calls_in_scope() {
             modules: &[],
             ending: RunEnding::None,
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );

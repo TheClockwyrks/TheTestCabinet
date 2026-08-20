@@ -140,7 +140,7 @@ fn evaluate_granting(
     library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = FakeOperationApi::with(&log, responder);
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
@@ -865,7 +865,7 @@ gg.log(summary.line)
 try views.openText("notes", body: notes)
 "#,
         scope,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         api,
     );

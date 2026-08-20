@@ -20,7 +20,13 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
 import { GgConfigEditor } from "./GgConfigEditor";
-import { BUILT_IN_SKILL_OPTIONS, type GgAgentMode } from "./ggCatalog";
+import {
+  BUILT_IN_SKILL_OPTIONS,
+  LOOP_DETECTION_SPECS,
+  authoredImplementation,
+  capabilitySpec,
+  type GgAgentMode,
+} from "./ggCatalog";
 import {
   blankAgentDraft,
   blankModelSlot,
@@ -91,7 +97,10 @@ function renderCaps(initial: GgConfigDraft) {
 }
 
 // A draft with one agent, opened on that agent's form, of the given type (Tools unless
-// said otherwise), with `capId` enabled and carrying `params`.
+// said otherwise), with `capId` enabled and carrying `params` over the values a
+// switched-on capability is written with. `implementation` names the arm; the empty string
+// is the arm a freshly switched-on capability selects, which is the only reading of an
+// empty implementation the form has left.
 function draftWith(
   capId: string,
   implementation: string,
@@ -108,7 +117,13 @@ function draftWith(
         mode,
         capabilities: {
           ...agent.capabilities,
-          [capId]: { enabled: true, implementation, params, extraParams: {} },
+          [capId]: {
+            ...agent.capabilities[capId]!,
+            enabled: true,
+            implementation:
+              implementation || authoredImplementation(capabilitySpec(capId)!),
+            params: { ...agent.capabilities[capId]!.params, ...params },
+          },
         },
       },
     ],
@@ -372,32 +387,33 @@ function docViewTypeBox(panel: HTMLElement, flag: string): HTMLInputElement {
 // thing that says the generic param grid picked it up: a flag that never appears is an
 // arm of the study an operator can only reach by hand-editing the configuration's JSON.
 //
-// Each flag sits at its own default — `return` and `errors` on, `parameters` off — and a
-// subtractive control could not express asking for `parameters` at all, so what a checkbox
-// does is only visible by rendering it and clicking.
+// The draft value is the list of types switched OFF, and a saved configuration names all
+// three whichever way they sit — so what a checkbox does is only visible by rendering it
+// and clicking.
 describe("the responses-as-code documentation types", () => {
-  it("opens with `parameters` off and the other two on", () => {
+  it("opens a fresh capability with `parameters` off and the other two on", () => {
     renderCaps(draftWith("responses-as-code", "", {}, "rac"));
     const panel = screen.getByRole("group", { name: "Responses as code" });
     expect(docViewTypeBox(panel, "return").checked).toBe(true);
     expect(docViewTypeBox(panel, "errors").checked).toBe(true);
     const parameters = docViewTypeBox(panel, "parameters");
     expect(parameters.checked).toBe(false);
-    // The label carries the asymmetry, since the other two default the opposite way.
-    expect(parameters.parentElement?.textContent).toContain("off by default");
+    // The label carries the asymmetry, since the other two start the opposite way.
+    expect(parameters.parentElement?.textContent).toContain("starts off");
   });
 
   it("holds a stored configuration and moves one flag without moving the rest", () => {
     renderCaps(
-      draftWith("responses-as-code", "", { docViewTypes: "parameters" }, "rac"),
+      draftWith("responses-as-code", "", { docViewTypes: "return" }, "rac"),
     );
     const panel = screen.getByRole("group", { name: "Responses as code" });
+    expect(docViewTypeBox(panel, "return").checked).toBe(false);
     expect(docViewTypeBox(panel, "parameters").checked).toBe(true);
 
     const errors = docViewTypeBox(panel, "errors");
     fireEvent.click(errors);
     expect(docViewTypeBox(panel, "errors").checked).toBe(false);
-    expect(docViewTypeBox(panel, "return").checked).toBe(true);
+    expect(docViewTypeBox(panel, "return").checked).toBe(false);
     expect(docViewTypeBox(panel, "parameters").checked).toBe(true);
   });
 });
@@ -634,21 +650,22 @@ describe("authoring a state machine", () => {
 });
 
 // Whether a module's state is carried in its holder's prompt is a per-agent, per-module
-// decision, and the default arm has to be the absent param, or every saved configuration
-// would become an explicit opt-in to what modules have always done.
+// decision, and it is written down: gg reads the arm the configuration names and has none
+// of its own, so the picker opens on `owned` rather than on a blank row that would have to
+// mean something.
 //
 // Asked of project management rather than memories: the board and the thread archive are
 // the two capabilities that still offer the picker at all. Memories and skills dropped it
 // with gg, so a test that kept looking for it there would be asserting a control that
 // writes a key nothing reads.
 describe("module ownership", () => {
-  it("is offered on a module-backed capability and defaults to owned", () => {
+  it("is offered on a module-backed capability and opens on owned", () => {
     renderCaps(draftWith("project-management", ""));
     const row = capabilityRow("project-management");
     const ownership = within(row).getByLabelText(
       /Ownership/,
     ) as HTMLSelectElement;
-    expect(ownership.value).toBe("");
+    expect(ownership.value).toBe("owned");
     expect(
       within(ownership).getByRole("option", { name: /Unowned/ }),
     ).toBeDefined();
@@ -702,7 +719,7 @@ describe("the responses-as-code agent's healing strategies", () => {
     return within(group).getAllByRole("checkbox") as HTMLInputElement[];
   }
 
-  it("opens with the one default-off repair off and every other one on", () => {
+  it("opens a fresh capability with the one seeded-off repair off and every other one on", () => {
     renderCaps(draftWith("responses-as-code", "", {}, "rac"));
     const boxes = healingBoxes();
     const doubled = boxes.find((box) =>
@@ -712,13 +729,13 @@ describe("the responses-as-code agent's healing strategies", () => {
     expect(boxes.filter((box) => !box.checked)).toEqual([doubled]);
   });
 
-  it("arms the default-off repair, and says on the control that it is one", () => {
+  it("arms the seeded-off repair, and says on the control that it is one", () => {
     renderCaps(draftWith("responses-as-code", "", {}, "rac"));
     const doubled = healingBoxes().find((box) =>
       box.parentElement?.textContent?.includes("drop-doubled-response"),
     )!;
-    // The label carries the asymmetry, since every other member's default is the opposite.
-    expect(doubled.parentElement?.textContent).toContain("off by default");
+    // The label carries the asymmetry, since every other member starts the opposite way.
+    expect(doubled.parentElement?.textContent).toContain("starts off");
     fireEvent.click(doubled);
     expect(doubled.checked).toBe(true);
     // And nothing else moved with it.
@@ -862,22 +879,27 @@ describe("an agent's loop detection", () => {
     expect(screen.queryByLabelText(/Window \(words\)/)).toBeNull();
   });
 
-  it("reveals its knobs when armed, each naming gg's own default", () => {
+  it("reveals its knobs when armed, each of them filled in", () => {
     render(<Harness initial={emptyDraft()} />);
     fireEvent.click(loopSwitch());
     const window = screen.getByLabelText(
       /Window \(words\)/,
     ) as HTMLInputElement;
-    // Empty, not seeded: an empty field IS "take gg's default", and writing 256 into every
-    // stored configuration would freeze today's number into all of them.
-    expect(window.value).toBe("");
-    // The bare figure. A placeholder already reads as "what you get if you leave this
-    // empty", so it does not spend the width of the field saying so as well — five
-    // times over, in a row of five knobs.
-    expect(window.placeholder).toBe("256");
+    // Filled in by the act of arming it: the rule trips on the five knobs together and gg
+    // lends no figure for a missing one, so the operator is looking at the detector that
+    // would actually run, with every number in reach.
+    expect(window.value).toBe("256");
     expect(
-      (screen.getByLabelText(/Reply ceiling/) as HTMLInputElement).placeholder,
-    ).toBe("250,000");
+      (screen.getByLabelText(/Reply ceiling/) as HTMLInputElement).value,
+    ).toBe("250000");
+    for (const spec of LOOP_DETECTION_SPECS) {
+      const field = screen.getByLabelText(
+        new RegExp(spec.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      ) as HTMLInputElement;
+      expect(field.value).toBe(String(spec.authored));
+    }
+    // The bare figure, still, for a field an operator has cleared.
+    expect(window.placeholder).toBe("256");
   });
 
   it("keeps a tuned knob when the detector is switched back off", () => {

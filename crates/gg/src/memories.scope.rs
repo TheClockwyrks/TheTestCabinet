@@ -75,24 +75,52 @@ impl MemoryRegistry {
     }
 }
 
-/// Resolve the [`scope`](MEMORY_PARAM_SCOPE) param on `profile`'s memories capability.
+/// The [scope](MemoryScope) a resolver answers with when the document named none it could return.
 ///
-/// Absent or `null` takes the documented default, [`Isolated`](MemoryScope::Isolated). A value gg
-/// cannot read is reported into `report` and [refuses the launch](crate::validate): the scope is what
-/// decides *whose notebook this agent holds*, so reading an unrecognized one as `isolated` would give
-/// a run in which two agents were meant to curate one store two stores that never meet — and the
-/// evidence for it is a notebook that stayed empty.
+/// On an **enabled** memories capability that is a refused launch: `scope` is required, and what
+/// comes back binds a store no turn is ever taken against. It is also what a capability binding no
+/// memories at all — switched off, or not declared — nominally reads as, and no caller consults it
+/// there: an agent with no memories holds no instance to scope, so every reader of a scope asks
+/// whether the capability is on first.
+pub(super) const SCOPE_OF_A_REFUSED_LAUNCH: MemoryScope = MemoryScope::Isolated;
+
+/// Resolve the [`scope`](MEMORY_PARAM_SCOPE) param on `profile`'s memories capability — which
+/// memory instance each of its agent instances binds.
 ///
-/// The resolved value still comes back, and is still the default, because the resolver is
+/// An enabled capability **writes one**. Absent, `null`, or a value gg cannot read is reported into
+/// `report` and [refuses the launch](crate::validate): the scope is what decides *whose notebook
+/// this agent holds*, so standing `isolated` in for one gg was not given would produce a run in
+/// which two agents meant to curate one store curate two that never meet — and the evidence for it
+/// is a notebook that stayed empty.
+///
+/// A **disabled** capability binds nothing, so it is owed no scope: an absence there is the
+/// ordinary shape of the off arm rather than a defect, and only a value gg could not have honoured
+/// is reported. That is what keeps the on and off arms of one comparison one document with one
+/// switch moved.
+///
+/// A value still comes back, because the resolver is
 /// [total](crate::validate#the-resolver-contract): it is re-read at every spawn, where the launch
-/// pass has already proved there is nothing to report.
+/// pass has already proved there is nothing to report. Where there was, it is the
+/// [placeholder](SCOPE_OF_A_REFUSED_LAUNCH).
 pub fn resolve_scope(profile: &GgAgentConfig, report: &mut LaunchReport) -> MemoryScope {
-    let Some(raw) = profile
-        .capability(CAPABILITY_MEMORIES)
-        .and_then(|capability| capability.params.get(MEMORY_PARAM_SCOPE))
-        .filter(|value| !value.is_null())
-    else {
-        return MemoryScope::default();
+    let Some(capability) = profile.capability(CAPABILITY_MEMORIES) else {
+        return SCOPE_OF_A_REFUSED_LAUNCH;
+    };
+    let written = if capability.enabled {
+        crate::validate::required_param(
+            &capability.params,
+            CAPABILITY_MEMORIES,
+            MEMORY_PARAM_SCOPE,
+            report,
+        )
+    } else {
+        capability
+            .params
+            .get(MEMORY_PARAM_SCOPE)
+            .filter(|value| !value.is_null())
+    };
+    let Some(raw) = written else {
+        return SCOPE_OF_A_REFUSED_LAUNCH;
     };
     let known = |value: &str| {
         MemoryScope::ALL
@@ -120,7 +148,7 @@ pub fn resolve_scope(profile: &GgAgentConfig, report: &mut LaunchReport) -> Memo
                     )
                     .known(MemoryScope::ALL.map(|scope| scope.as_str())),
                 );
-                MemoryScope::default()
+                SCOPE_OF_A_REFUSED_LAUNCH
             }
         },
         other => {
@@ -134,7 +162,7 @@ pub fn resolve_scope(profile: &GgAgentConfig, report: &mut LaunchReport) -> Memo
                 )
                 .known(MemoryScope::ALL.map(|scope| scope.as_str())),
             );
-            MemoryScope::default()
+            SCOPE_OF_A_REFUSED_LAUNCH
         }
     }
 }
@@ -178,11 +206,11 @@ pub fn links(profile: &GgAgentConfig, scope: MemoryScope, ctx: &ModuleResolveCtx
 /// the inheritance the configuration describes never happens. The evidence would otherwise be a
 /// notebook that stayed empty.
 ///
-/// A child that names **no** strategy is not that. An inheriting agent organizes its memories the
-/// way its spawner does, so an absent `implementation` is the documented default *for an inheriting
-/// profile* — it agrees with whatever it is handed, and [`MemoriesRuntime::resolve`](super::MemoriesRuntime::resolve)
-/// binds the spawner's store whatever strategy it is organized by. Only two profiles that both
-/// speak, and disagree, are a contradiction.
+/// A child that names **no** strategy is skipped rather than compared. Every enabled memories
+/// capability names one, so a child that does not has already been refused at its own
+/// [`implementation`](crate::validate) — and comparing the placeholder that comes back against its
+/// spawner's would name that one omission a second time, as a disagreement the operator did not
+/// write.
 ///
 /// This is the **statically decidable half** of the question. A child spawned by a profile the
 /// roster does not name — a machine's successor, a dynamically chosen spawner — is not decidable
@@ -226,7 +254,7 @@ pub fn check_scoping(set: &GgCapabilitySet, report: &mut LaunchReport) {
                         agent.id,
                         agent.name,
                         strategy.id(),
-                        MemoryScope::default(),
+                        MemoryScope::Isolated,
                         child_id = child.id,
                     ),
                 ));
@@ -246,10 +274,9 @@ pub fn check_scoping(set: &GgCapabilitySet, report: &mut LaunchReport) {
 /// happen is the old answer — a fresh private notebook — which leaves the run's record saying two
 /// agents shared a store while they never saw each other's memories.
 ///
-/// `None` covers the three ordinary cases: an agent that is not inheriting at all, an inheriting
-/// agent whose spawner keeps no memories (the documented arm in which the child gets its own), and
-/// an inheriting agent that names **no** strategy — which organizes its memories the way its spawner
-/// does, whatever way that is, and so can never disagree with one.
+/// `None` covers the two ordinary cases: an agent that is not inheriting at all, and an inheriting
+/// agent whose spawner keeps no memories — the documented arm in which the child organizes one of
+/// its own, the way its own `implementation` says.
 pub fn inherited_strategy_conflict(
     profile: &GgAgentConfig,
     ctx: &ModuleResolveCtx<'_>,
@@ -276,8 +303,10 @@ pub fn inherited_strategy_conflict(
     ))
 }
 
-/// The [strategy](MemoryStrategy) `profile` organizes its memories by, **naming one or not**: the
-/// documented default ([`Scratchpad`](MemoryStrategy::Scratchpad)) where it names none.
+/// The [strategy](MemoryStrategy) `profile` organizes its memories by, whether it named one or
+/// not — the [placeholder](MemoryStrategy::resolve) where it named none, which is only ever
+/// compared against another profile's after [`declared_strategy`] has established that this one
+/// spoke.
 ///
 /// Read into an [already-reported](LaunchReport::already_reported) sink: the profile's own
 /// `implementation` is read — and refused — by [`check_launch`](super::check_launch) a few lines
@@ -291,13 +320,13 @@ fn strategy_of(profile: &GgAgentConfig) -> MemoryStrategy {
     )
 }
 
-/// The [strategy](MemoryStrategy) `profile` **names**, or `None` when it names none.
+/// The [strategy](MemoryStrategy) `profile` **names**, or `None` when it names none. A blank string
+/// names nothing (it is how an editor spells "unset"), so it reads exactly as an absent key does.
 ///
-/// That distinction is the whole of an inheriting profile's contract. A profile that names a
-/// strategy has said how its notebook is organized, and one that names none organizes it however
-/// whoever hands it one does — so it agrees with every spawner, and there is nothing for gg to
-/// refuse or to report. A blank string names nothing (it is how an editor spells "unset"), so it
-/// reads exactly as an absent key does.
+/// Every enabled memories capability names one, so `None` is a document
+/// [`check_implementation`](crate::validate) has already refused. It stays legible here so the
+/// checks that compare two profiles' strategies can leave that omission to the one locus that
+/// reports it, rather than restating it as a disagreement.
 pub(super) fn declared_strategy(profile: &GgAgentConfig) -> Option<MemoryStrategy> {
     let named = profile
         .capability(CAPABILITY_MEMORIES)

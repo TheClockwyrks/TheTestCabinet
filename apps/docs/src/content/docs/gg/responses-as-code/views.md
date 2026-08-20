@@ -213,7 +213,7 @@ One open places types one level deep. Which of them it places is the agent's
 `docViewTypes` flags, each independent of the others: `return` places the types
 the signature writes in the return position, `parameters` the types of its
 arguments, and `errors` the error types the function's own documentation comment
-declares. `return` and `errors` are on by default. Whichever flags are set,
+declares. Whichever flags are set,
 exactly one level is opened, and a type view opens no further type view.
 
 Re-opening a function whose view is already open still places any of its types

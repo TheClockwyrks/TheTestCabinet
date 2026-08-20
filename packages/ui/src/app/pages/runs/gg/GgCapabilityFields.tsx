@@ -13,7 +13,7 @@ import { ModelCombobox } from "../../../components/ModelCombobox";
 import { familyOf } from "../../../data/families";
 import { paramApplies, type CapSpec, type ParamSpec } from "./ggCatalog";
 import {
-  blankCapabilityDraft,
+  capabilityDraftFor,
   capabilityGrantWarning,
   fsmStatesWarnings,
   isFsmShell,
@@ -244,7 +244,7 @@ export function CapabilityBody({
   onClearParam,
   onSetFeature,
 }: CapabilityBodyProps) {
-  const draft = agent.capabilities[cap.id] ?? blankCapabilityDraft();
+  const draft = agent.capabilities[cap.id] ?? capabilityDraftFor(cap.id);
   const implementation = draft.implementation;
   // Run-level "which agent runs this?" knobs (the merge and judge agents) are read off
   // the root agent, so only offer them there — and a param the selected implementation
@@ -497,7 +497,11 @@ export function CapabilityBody({
                   <Switch
                     checked={draft.params?.[flag.key] === "true"}
                     disabled={readOnly}
-                    onChange={(on) => onSetParam(flag.key, on ? "true" : "")}
+                    // Both states are written down for a required flag, so the slider's
+                    // position is the value rather than a deviation from an absent one.
+                    onChange={(on) =>
+                      onSetParam(flag.key, on ? "true" : "false")
+                    }
                   />
                   <span className={gg.featureName}>{flag.label}</span>
                 </label>

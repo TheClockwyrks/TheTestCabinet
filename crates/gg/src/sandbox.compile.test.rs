@@ -45,7 +45,7 @@ fn outcome_of(language: &'static dyn ProgramLanguage, program: &str) -> SandboxO
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::with(&log, canned_outcome),
     );

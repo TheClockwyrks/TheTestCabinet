@@ -13,7 +13,7 @@ others.
 | `edit-file` | `edit_file` | Replace one exact, unique occurrence of a string. |
 | `list-dir` | `list_dir` | List a directory's entries (directories suffixed `/`). |
 
-All four are enabled in the default capability set, and they appear as their own
+All four are enabled in a fresh configuration, and they appear as their own
 Filesystem group in the [configuration](/gg/configurations/) editor.
 
 `edit_file` replaces exactly one occurrence. Text that is absent and text that
@@ -42,25 +42,26 @@ could not honor.
 
 ## Read modes
 
-How much of a file one `read_file` call returns by default is the read-file
-capability's swappable implementation. Capping reads is one of the load-bearing
-differences between real coding harnesses: a cap stops a single call from
-flooding the window and forces an agent to be deliberate about what it looks at,
-while costing a round trip per page. The two modes are the arms of that
-experiment.
+How much of a file one `read_file` call returns is the read-file capability's
+swappable implementation, and an enabled read-file capability names one. Capping
+reads is one of the load-bearing differences between real coding harnesses: a cap
+stops a single call from flooding the window and forces an agent to be deliberate
+about what it looks at, while costing a round trip per page. The two modes are
+the arms of that experiment.
 
 | Mode | `read_file` returns | Paging arguments |
 | --- | --- | --- |
-| `unlimited` *(default)* | The whole file, one call. | — |
-| `default-cap` | `lineCap` lines by default. | `offset` and `limit` |
+| `unlimited` | The whole file, one call. | — |
+| `default-cap` | `lineCap` lines, for a call that names no `limit`. | `offset` and `limit` |
 
-The `lineCap` param sets the default window under `default-cap` and itself
-defaults to 250 lines. A value gg cannot read as a line count of one or more
-refuses the launch, whichever mode is selected, so a sweep that varies the mode
-over one shared params block is told about the typo on its first launch. An
-implementation gg does not recognize refuses the launch, naming the two modes. A
-refusal names every value in the configuration gg cannot honour exactly as
-written, so one pass fixes them all.
+The `lineCap` param sets the window a call gets when it asks for no `limit` of
+its own. The capability writes it whichever mode is selected, so a sweep that
+varies the mode over one shared params block reads the same figure on both arms
+and every launch in the sweep is judged the same way. An absent `lineCap`, a
+value gg cannot read as a line count of one or more, and an implementation gg
+does not recognize each refuse the launch, the last of them naming the two
+modes. A refusal names every value in the configuration gg cannot honour exactly
+as written, so one pass fixes them all.
 
 `default-cap` gives `read_file` two extra arguments, so the agent can page
 through a file it did not get at once:
@@ -79,7 +80,8 @@ to continue from:
 
 ### Whole-file reads under either mode
 
-The cap is a default rather than a ceiling. An agent that asks for a `limit`
+The cap bounds a call that asked for nothing rather than every call. An agent
+that asks for a `limit`
 covering the file gets the file, byte for byte, exactly as `unlimited` would
 have returned it, with no window note appended.
 

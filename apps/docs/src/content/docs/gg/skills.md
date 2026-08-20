@@ -22,16 +22,24 @@ A skill has two halves and may carry either or both:
 
 Skills belong to an agent. Each profile that enables the capability names its own
 directory in the capability's `dir` param, and gg loads that profile's catalogue
-from it: `.gg/skills` under the workspace by default, a relative path joined onto
-the workspace, an absolute path as given. Two profiles naming one directory read
-it once and share the result, so a run has one copy of a skill in memory and the
-workspace has one copy on disk.
+from it. A relative path is joined onto the workspace and an absolute path is
+taken as given. Two profiles naming one directory read it once and share the
+result, so a run has one copy of a skill in memory and the workspace has one copy
+on disk.
 
-A `dir` param that names no readable directory refuses the launch, as does every
-entry below it that gg cannot load exactly as it is written. One refusal names
-them all, so a single pass over the directory fixes it. The default directory is
-the exception: nothing seeds `.gg/skills`, so a workspace that authored no skills
-opens with gg's own [built-ins](#the-skills-gg-ships) alone.
+An absent `dir`, one that names no readable directory, and every entry below it
+that gg cannot load exactly as it is written each refuse the launch. One refusal
+names them all, so a single pass over the directory fixes it. A path an operator
+wrote is a promise about the seeded workspace, and gg reaches for no directory of
+its own when the workspace does not keep it.
+
+The one directory that is always there is `.gg/skills`, the value a fresh
+capability is authored with. `.gg` is gg's own — the capture journal, a hook's
+scripts, this library — so gg stands the directory up at session start and leaves
+it empty. A workspace that authored no skills therefore opens with gg's own
+[built-ins](#the-skills-gg-ships) alone, and an agent that is to hold only those
+is pointed there deliberately. gg writes nothing *into* it: what it holds is
+whatever the workspace put there.
 
 The files under that directory are gg's. gg reads them to build the catalogue
 and writes nothing there, no skill path reaches the model, and using a skill by
@@ -200,24 +208,32 @@ tools: `gg-docs`, `gg-views`, `gg-programs` and `gg-session`.
 An authored skill of the same name wins. A workspace that writes its own
 `gg-filesystem` replaces gg's.
 
-They are selected per agent with the skills capability's `builtIns` param, which,
-like every toggle set in gg, records only the ones switched off, so an
-unconfigured run gets all of them:
+They are selected per agent with the skills capability's `builtIns` param, an
+object of toggles the capability writes. It is a **withholding** set: it names
+the families held back, and one it does not name is offered — so `{}` is the
+declaration that offers all twelve. That is a reading of the object rather than
+a default gg fell back to, which is why it differs from
+[`healing`](/gg/response-healing/) and
+[`docViewTypes`](/gg/responses-as-code/), where each member is an arm and the
+object has to name every one of them.
 
 ```json
 {
   "id": "skills",
   "enabled": true,
-  "params": { "builtIns": { "gg-memory": false, "gg-context": false } }
+  "params": {
+    "dir": ".gg/skills",
+    "builtIns": { "gg-memory": false, "gg-context": false }
+  }
 }
 ```
 
 Switching one off withholds the manual and leaves the functions: the family still
 works, and the agent is not handed a description of it. A key naming none of the
-twelve refuses the launch, as does a value that is not `true` or `false` and a
-`builtIns` that is not an object of toggles. A key naming a family this agent is
-not offered is accepted, since it is a real skill id and one configuration is
-written for a whole sweep.
+twelve refuses the launch, as does a value that is not `true` or `false`, an
+absent `builtIns`, and one that is not an object of toggles. A key naming a
+family this agent is not offered is accepted, since it is a real skill id and one
+configuration is written for a whole sweep.
 
 The built-ins are resolved against what this agent may call, so two agents in one
 run hold catalogues that differ exactly where their grants and their directories

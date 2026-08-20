@@ -35,16 +35,10 @@ use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgAgentConfig};
 
 use crate::tools::ToolFailure;
 
-/// How many programs a library keeps when the capability names no `keep` — the most recent 20.
-///
-/// Chosen from what the capability is *for*: a model reaches back for the turn it just ran, and
-/// occasionally for something a few turns older that it wants to run again. Twenty covers both with
-/// room to spare while bounding an agent's resident source at something on the order of a few
-/// hundred kilobytes. A study that wants the whole session sets `keep` to `0`.
-pub const DEFAULT_KEEP: usize = 20;
-
-/// The `keep` param: how many of the most recent programs are retained, `0` meaning every one.
-pub const PARAM_KEEP: &str = "keep";
+/// The param this module reads, re-exported from the crate that owns gg's configuration
+/// vocabulary: the spelling a document is written in and the spelling gg reads it by are one
+/// constant, so a key cannot be renamed on one side of the wire alone.
+pub use test_cabinet_core::gg::PARAM_KEEP;
 
 /// One program this agent ran, as the library holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,6 +88,19 @@ pub struct ProgramRefusal {
     /// leaving the model to guess at a number twice.
     pub message: String,
 }
+
+/// **Keep every program of the session** — the retention `keep: 0` states.
+///
+/// The one integral param in gg whose zero is the widest setting rather than the narrowest, which
+/// is why it is spelled here rather than left as a bare `None` at the two loci that produce it.
+const KEEP_EVERY_PROGRAM: Option<usize> = None;
+
+/// The retention a resolver hands back once it has [refused the launch](crate::validate).
+///
+/// Named rather than written as [`KEEP_EVERY_PROGRAM`], which is a configuration an operator can
+/// ask for and which every reader downstream would read this as. Nothing is ever kept under it: the
+/// run it belongs to does not start.
+const KEEP_LAUNCH_REFUSED: Option<usize> = Some(0);
 
 /// One agent's library of the programs it has run.
 ///
@@ -223,17 +230,17 @@ impl ProgramLibrary {
 /// | `params` | Meaning |
 /// | --- | --- |
 /// | capability absent or disabled | no library, and the `programs` object is not bound |
-/// | no `keep` | the [default](DEFAULT_KEEP) retention |
-/// | `keep: 0` | every program of the session is retained |
+/// | `keep: 0` | [every program of the session](KEEP_EVERY_PROGRAM) is retained |
 /// | `keep: 5` | the five most recent |
+/// | no `keep` | **refused** — the launch does not proceed |
 /// | `keep: "5"`, `keep: -1` | **refused** — the launch does not proceed |
 ///
 /// `0` is a value here rather than an absence, and the one integral param in gg whose zero is the
 /// widest setting rather than the narrowest: it says *keep everything*, which is what a study
-/// reading whole sessions back wants and what a bounded default cannot express. A `keep` gg cannot
-/// read is the opposite — it takes no setting at all — so it is [reported](crate::validate) and
-/// refuses the launch, and a study never holds a different number of programs than its
-/// configuration says.
+/// reading whole sessions back wants. That is exactly why an absent `keep` cannot be read as one —
+/// the two say opposite things, and gg will not pick between them. A `keep` gg cannot read takes no
+/// setting at all, and is refused on the same terms, so a study never holds a different number of
+/// programs than its configuration says.
 ///
 /// Per **agent** rather than per run, like every other capability: a reviewer may keep programs
 /// where its spawner does not, and the object a program sees is exactly what its own profile
@@ -248,18 +255,27 @@ pub fn resolve_program_library(
     else {
         return ProgramLibrary::disabled();
     };
-    ProgramLibrary::enabled(resolve_keep(&capability.params, report))
+    ProgramLibrary::enabled(required_keep(&capability.params, report))
 }
 
-/// The retention `params` declares: `None` for "keep every program of the session", and
-/// [`DEFAULT_KEEP`] when the key is absent or when it carries a value gg refused.
-fn resolve_keep(params: &Value, report: &mut crate::validate::LaunchReport) -> Option<usize> {
-    match crate::validate::count_param(params, CAPABILITY_PROGRAM_LIBRARY, PARAM_KEEP, report) {
-        Some(0) => None,
+/// The retention an **enabled** capability declares, or [`KEEP_LAUNCH_REFUSED`] once it has been
+/// reported short of one.
+///
+/// The two ways to come back with nothing are separated here rather than folded together, because
+/// they are opposite statements: a written `0` is an operator asking to keep the whole session, and
+/// an absent `keep` is nobody having said anything at all.
+fn required_keep(params: &Value, report: &mut crate::validate::LaunchReport) -> Option<usize> {
+    match crate::validate::required_count_param(
+        params,
+        CAPABILITY_PROGRAM_LIBRARY,
+        PARAM_KEEP,
+        report,
+    ) {
+        Some(0) => KEEP_EVERY_PROGRAM,
         Some(keep) => Some(usize::try_from(keep).unwrap_or(usize::MAX)),
-        // Absent, or refused: the default stands either way, and in the refused case the launch is
-        // over long before any program reaches the library it would have been kept in.
-        None => Some(DEFAULT_KEEP),
+        // Absent, or written and unreadable: either way the launch is over long before any program
+        // reaches the library it would have been kept in.
+        None => KEEP_LAUNCH_REFUSED,
     }
 }
 
@@ -267,13 +283,23 @@ fn resolve_keep(params: &Value, report: &mut crate::validate::LaunchReport) -> O
 /// the retention `profile` declares.
 ///
 /// Read on a **disabled** capability too, unlike the resolver above, which has no library to build
-/// for one: the params of a switched-off capability are still configuration — they record the
-/// retention the arm would have kept — so a typo in them is a typo now rather than on the launch
-/// that flips the switch.
+/// for one — but read as an optional value there. A switched-off capability requires nothing of
+/// itself, and what it does write is still configuration: it records the retention the arm would
+/// have kept, so a typo in it is a typo now rather than on the launch that flips the switch.
 pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
-    if let Some(capability) = profile.capability(CAPABILITY_PROGRAM_LIBRARY) {
-        resolve_keep(&capability.params, report);
+    let Some(capability) = profile.capability(CAPABILITY_PROGRAM_LIBRARY) else {
+        return;
+    };
+    if capability.enabled {
+        required_keep(&capability.params, report);
+        return;
     }
+    crate::validate::count_param(
+        &capability.params,
+        CAPABILITY_PROGRAM_LIBRARY,
+        PARAM_KEEP,
+        report,
+    );
 }
 
 /// The launch-time `info` line naming which agents keep programs and how many each keeps, or `None`

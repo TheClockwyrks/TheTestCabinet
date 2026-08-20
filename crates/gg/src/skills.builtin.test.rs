@@ -5,7 +5,39 @@ use serde_json::json;
 use super::*;
 use crate::model::ToolDefinition;
 use crate::sandbox::{FILES_READ_FILE, FILES_WRITE_FILE, capability_operations};
-use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE};
+use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE, GgCapabilityConfig};
+
+/// A profile whose skills capability is **on** and **fully specified**: the params the
+/// [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog) writes, with `params`' own keys
+/// written over them.
+///
+/// The one shape a built-in catalogue is built for, and it is authored rather than completed — the
+/// document an operator would have in front of them, not one gg filled a hole in. A test about
+/// *which families are offered* says only the toggles it means and inherits the rest.
+fn skills_on(params: serde_json::Value) -> GgAgentConfig {
+    let mut capability = GgCapabilityConfig::enabled(CAPABILITY_SKILLS);
+    for (key, value) in params.as_object().expect("params is an object") {
+        capability = capability.with_param(key.as_str(), value.clone());
+    }
+    GgAgentConfig {
+        capabilities: vec![capability],
+        ..GgAgentConfig::root()
+    }
+}
+
+/// A profile carrying the skills capability with the given switch and **exactly** these params —
+/// how the tests about what an enabled capability *owes* say that it wrote none.
+fn skills_capability(enabled: bool, params: serde_json::Value) -> GgAgentConfig {
+    GgAgentConfig {
+        capabilities: vec![GgCapabilityConfig {
+            id: CAPABILITY_SKILLS.to_string(),
+            enabled,
+            implementation: None,
+            params,
+        }],
+        ..GgAgentConfig::root()
+    }
+}
 
 /// A `read_file` definition, as the registry would build one.
 fn read_file() -> ToolDefinition {
@@ -29,6 +61,12 @@ fn read_file() -> ToolDefinition {
 /// nothing here reads the code surface at all, which is what makes the two arms of this file
 /// separate rather than parameterised.
 fn native(offered: &[&str], params: serde_json::Value) -> Vec<Skill> {
+    native_for(offered, &skills_on(params))
+}
+
+/// [`native`] against a profile the caller built — how the two arms where there is no catalogue at
+/// all (no skills capability, and one switched off) are reached.
+fn native_for(offered: &[&str], profile: &GgAgentConfig) -> Vec<Skill> {
     let names: Vec<String> = offered.iter().map(|name| (*name).to_string()).collect();
     builtin_skills(
         &names,
@@ -37,7 +75,7 @@ fn native(offered: &[&str], params: serde_json::Value) -> Vec<Skill> {
         &[],
         &[],
         /* program_language */ None,
-        &params,
+        profile,
     )
 }
 
@@ -60,7 +98,7 @@ fn code(
             .collect::<Vec<_>>(),
         &operations,
         Some(language),
-        &params,
+        &skills_on(params),
     )
 }
 
@@ -284,13 +322,76 @@ fn a_builtins_param_gg_cannot_read_is_refused() {
     }
 }
 
-/// An **absent** or `null` param offers every family, and that is the documented default rather
-/// than a fallback.
+/// An **absent** or `null` `builtIns` on an enabled capability **refuses the launch**. There is no
+/// figure for gg to put there: which of its own manuals an agent is given is the whole of what the
+/// param varies, and a run offered every family under a document that named none is a run whose
+/// record describes a configuration nobody wrote. `{}` is how every family is asked for.
 #[test]
-fn an_absent_builtins_param_offers_everything() {
+fn an_absent_builtins_param_refuses_the_launch() {
     for params in [json!({}), json!({ "builtIns": null })] {
         let mut report = crate::validate::LaunchReport::collecting();
-        assert!(switched_off(&params, &mut report).is_empty(), "{params}");
-        assert!(report.is_empty(), "{params}");
+        let off = switched_off(&params, &mut report);
+        assert!(off.is_empty(), "{params}: the resolver stays total");
+        let defects = report.into_defects();
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects[0].locus, "skills.params.builtIns", "{defects:?}");
+    }
+}
+
+/// …and an empty object is not that: it is the declaration that withholds nothing, and it launches.
+#[test]
+fn an_empty_toggle_set_is_a_declaration_rather_than_a_silence() {
+    let mut report = crate::validate::LaunchReport::collecting();
+    let off = switched_off(&json!({ "builtIns": {} }), &mut report);
+    assert!(off.is_empty());
+    assert!(report.is_empty());
+}
+
+/// A profile that does not declare the skills capability is offered **no catalogue**. It has no
+/// `read_skill` to reach one with, so a manual generated for it would be prose nothing could open —
+/// and the absent capability is the setting, not a hole to fill.
+#[test]
+fn a_profile_with_no_skills_capability_is_offered_no_built_ins() {
+    let profile = GgAgentConfig {
+        capabilities: Vec::new(),
+        ..GgAgentConfig::root()
+    };
+    assert!(native_for(&["read_file"], &profile).is_empty());
+}
+
+/// A skills capability switched **off** is the same answer: it configures no catalogue, so there is
+/// none of gg's own to join to it, whatever its params say.
+#[test]
+fn a_disabled_skills_capability_is_offered_no_built_ins() {
+    let profile = skills_capability(false, json!({ "builtIns": {} }));
+    assert!(native_for(&["read_file"], &profile).is_empty());
+}
+
+/// What the launch pass asks of each of the three shapes: an enabled capability owes its
+/// `builtIns`, a disabled one owes nothing, and a disabled one that *wrote* something is still held
+/// to it — which is what keeps the two arms of a built-ins comparison one document with one switch
+/// moved.
+#[test]
+fn the_switch_decides_what_is_owed_and_not_what_is_read() {
+    let cases: [(GgAgentConfig, usize); 4] = [
+        (skills_capability(true, json!({})), 1),
+        (skills_capability(true, json!({ "builtIns": {} })), 0),
+        (skills_capability(false, json!({})), 0),
+        (
+            skills_capability(false, json!({ "builtIns": { "gg-fileystem": false } })),
+            1,
+        ),
+    ];
+    for (profile, expected) in cases {
+        let mut report = crate::validate::LaunchReport::collecting();
+        check_launch(&profile, &mut report);
+        let defects = report.into_defects();
+        assert_eq!(
+            defects.len(),
+            expected,
+            "{:?} {} -> {defects:?}",
+            profile.capabilities[0].enabled,
+            profile.capabilities[0].params
+        );
     }
 }

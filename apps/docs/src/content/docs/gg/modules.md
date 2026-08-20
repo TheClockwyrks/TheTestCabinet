@@ -27,12 +27,22 @@ Two module-backed capabilities read an `ownership` param:
 [`agent-managed-context`](/gg/agent-managed-context/) for the thread archive.
 
 ```jsonc
-{ "id": "project-management", "enabled": true, "params": { "ownership": "unowned" } }
+{
+  "id": "project-management",
+  "enabled": true,
+  "params": {
+    "ownership": "unowned",
+    "mergeAgentId": "merger",
+    "maxEpics": 50,
+    "maxIssues": 2000,
+    "maxRetries": 1
+  }
+}
 ```
 
-- `owned`, the default, means the holder's prompt carries the module. Its
-  system-prompt section is rendered, and the pinned block it keeps is refreshed
-  into the window on that module's own schedule.
+- `owned` means the holder's prompt carries the module. Its system-prompt
+  section is rendered, and the pinned block it keeps is refreshed into the
+  window on that module's own schedule.
 - `unowned` means the module is reachable through its tools alone. Its state
   stays live: the tools read and write it, it is copied and transferred like any
   other module, and its telemetry is unchanged. What the model still gets is

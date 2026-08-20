@@ -27,7 +27,7 @@ fn a_prepare_error_never_touches_the_engine() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -71,7 +71,7 @@ fn an_unsupported_feature_is_a_prepare_error_with_guidance() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -116,7 +116,7 @@ fn a_compiler_that_rejected_the_program_still_reports_what_it_cost() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -162,7 +162,7 @@ fn refused(source: &str) -> SandboxOutcome {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -278,7 +278,7 @@ fn a_language_that_compiles_nothing_reports_no_compile_time_at_all() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );
@@ -304,7 +304,7 @@ fn typescript_reports_what_checking_a_program_cost() {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
     );

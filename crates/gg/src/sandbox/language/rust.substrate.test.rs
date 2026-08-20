@@ -163,7 +163,7 @@ fn evaluate_granting(
     library: bool,
     build: impl FnOnce(&CallLog) -> FakeOperationApi,
 ) -> (SandboxOutcome, CallLog) {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = build(&log);
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");

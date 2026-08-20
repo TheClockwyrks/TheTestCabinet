@@ -26,12 +26,15 @@ A slug is up to 64 characters of letters, digits, `-`, `_` and `.`.
 ## The three strategies
 
 The capability's `implementation` selects the memory strategy. The strategies
-differ in what is always in the context window. A name gg does not recognize
-refuses the launch, naming the three that exist.
+differ in what is always in the context window. An enabled memories capability
+names one, whatever its [scope](#scoping), and a name gg does not recognize
+refuses the launch, naming the three that exist. What a profile binding somebody
+else's store is saying by naming one is under
+[Inheritance and the strategy](#inheritance-and-the-strategy).
 
 | Strategy | Always in context | Tools |
 | --- | --- | --- |
-| `scratchpad` (default) | every memory, body and all | `write_memory`, `update_memory`, `delete_memory` |
+| `scratchpad` | every memory, body and all | `write_memory`, `update_memory`, `delete_memory` |
 | `markdown` | the index (one `slug` — `description` line per memory) | `create_memory`, `read_memory`, `edit_memory`, `delete_memory` |
 | `keyword-search` | nothing | `create_memory`, `read_memory`, `edit_memory`, `delete_memory`, `search_memories` |
 
@@ -44,8 +47,8 @@ and a call the active strategy does not offer is
 ### `scratchpad`
 
 Every memory's body is pinned in the window and crosses a compaction boundary
-verbatim. The count and the per-body length bound it. The aggregate ceiling
-`maxTotalLen` is available and off by default.
+verbatim. The count and the per-body length bound it, and the aggregate ceiling
+`maxTotalLen` bounds the pinned block as a whole.
 
 ### `markdown`
 
@@ -85,19 +88,21 @@ One slider sits in the capability's Features box, per agent.
 
 ## Limits
 
-Every limit is set through the capability's `params`, and `0` disables it. A
-param a strategy does not use is accepted, so one sweep can hand every arm the
-same params block. A param name the capability does not know refuses the launch,
-as does a value gg cannot read as a whole count.
+Every limit is set through the capability's `params`, and an enabled memories
+capability writes all six whichever strategy it selects. Writing the whole block
+on every arm is what lets one sweep hand every arm the same params. `0` is how a
+limit is turned off, so a run that wants no aggregate ceiling writes
+`maxTotalLen: 0`. A missing param, a param name the capability does not know, and
+a value gg cannot read as a whole count each refuse the launch.
 
-| Param | Applies to | Default |
+| Param | Applies to | What it bounds |
 | --- | --- | --- |
-| `maxCount` | `scratchpad`, `keyword-search` | 64 / unlimited |
-| `maxLenPerMemory` | all three | 4 096 / 8 192 / 8 192 |
-| `maxTotalLen` | `scratchpad` | unlimited |
-| `maxLenIndex` | `markdown` | 16 384 |
-| `maxLenDescription` | all three | 256 |
-| `maxResults` | `keyword-search` | 25 |
+| `maxCount` | `scratchpad`, `keyword-search` | How many memories the set holds at once. |
+| `maxLenPerMemory` | all three | Characters in one memory's body. |
+| `maxTotalLen` | `scratchpad` | Characters across every pinned body together. |
+| `maxLenIndex` | `markdown` | Characters in the pinned index. |
+| `maxLenDescription` | all three | Characters in one memory's description. |
+| `maxResults` | `keyword-search` | Hits one `search_memories` call returns. |
 
 Lengths are in characters of a memory's body. A description is bounded
 separately, by `maxLenDescription` under every strategy, because it is the one
@@ -114,7 +119,15 @@ For example, a markdown run with a small index and no per-memory limit:
   "id": "memories",
   "enabled": true,
   "implementation": "markdown",
-  "params": { "maxLenIndex": 4096, "maxLenPerMemory": 0 }
+  "params": {
+    "scope": "isolated",
+    "maxCount": 64,
+    "maxLenPerMemory": 0,
+    "maxTotalLen": 0,
+    "maxLenIndex": 4096,
+    "maxLenDescription": 256,
+    "maxResults": 25
+  }
 }
 ```
 
@@ -192,13 +205,13 @@ recorded against gg rather than against the model.
 
 ## Scoping
 
-By default a memory instance belongs to one agent instance: a subagent starts
-with an empty notebook, and nothing it writes is seen by anyone else. The `scope`
-param binds the instance differently.
+The `scope` param says which instance an agent binds. Under `isolated` a memory
+instance belongs to one agent instance: a subagent starts with an empty notebook,
+and nothing it writes is seen by anyone else. The other three link agents.
 
 | `scope` | Which instance the agent binds |
 | --- | --- |
-| `isolated` (default) | A fresh one, per agent instance |
+| `isolated` | A fresh one, per agent instance |
 | `shared` | One per agent profile: every instance of it in the run, including those running in parallel |
 | `inherited` | Its spawner's, read/write, when it was spawned as a subagent; its own otherwise |
 | `read-only` | As `inherited`, but this agent may not write |
@@ -208,7 +221,15 @@ param binds the instance differently.
   "id": "memories",
   "enabled": true,
   "implementation": "markdown",
-  "params": { "scope": "inherited", "maxLenIndex": 4096 }
+  "params": {
+    "scope": "inherited",
+    "maxCount": 64,
+    "maxLenPerMemory": 8192,
+    "maxTotalLen": 0,
+    "maxLenIndex": 4096,
+    "maxLenDescription": 256,
+    "maxResults": 25
+  }
 }
 ```
 
@@ -277,17 +298,18 @@ the original and its copy hold one store, and each is told what the other writes
 A store is read by the calls its own strategy offers, so an `inherited` or
 `read-only` agent organizes its memories the way its spawner does.
 
-An inheriting profile that names **no** `implementation` takes exactly that: it
-binds its spawner's store however that store is organized, and its memory calls
-are that store's strategy's. This is the ordinary shape, and it is the one case
-where "absent" does not mean `scratchpad` — an agent whose whole configuration
-is "work in my spawner's notebook" has said nothing about how the notebook is
-kept.
+Every enabled memories capability names its `implementation`, an inheriting one
+included. Most of the rows above hand such an agent a store somebody else
+organized — but four of them hand it nothing, and it keeps a notebook of its own
+instead: the run's root, an issue's implementer, a reviewer or merge agent, and a
+subagent whose spawner keeps no memories. An arm gg picked for those would be a
+memories study running on an organization nobody wrote, so the profile names the
+one it works in.
 
-A profile that *does* name one is asking for a store organized that way. A roster
-pairing whose two profiles both name a strategy and name different ones refuses
-the launch. Where only the live spawner settles the pairing, a disagreement is
-gg's own defect and ends the run under `internal_error`.
+Naming one is a claim about the store the agent ends up with, so the two ends of
+an inheritance have to agree. A roster pairing whose two profiles name different
+strategies refuses the launch. Where only the live spawner settles the pairing, a
+disagreement is gg's own defect and ends the run under `internal_error`.
 
 ### Resolved scopes in the console
 

@@ -122,8 +122,14 @@ pub struct FsmSpec {
 }
 
 impl FsmSpec {
-    /// Read the machine `profile` declares, or `None` when it declares none (the capability is
-    /// absent or off — the overwhelmingly common case).
+    /// Read the machine `profile` declares, or `None` when it declares none — the capability is
+    /// absent or off (the overwhelmingly common case), or it is on and writes no
+    /// [`states`](FSM_PARAM_STATES).
+    ///
+    /// That last absence is **not** reported here. `states` is the machine's whole content, so it is
+    /// [required](crate::validate::Requirement::Required) of every enabled declaration and refused
+    /// at its own locus by the pass that can see the switch; saying it a second time in this
+    /// module's words would name one hole as two.
     ///
     /// Returns `Err` for a machine gg cannot build at all: an unparseable or empty `states` param,
     /// an unnamed or duplicated state. The *cross-profile* checks — that every named agent exists
@@ -132,10 +138,8 @@ impl FsmSpec {
         let capability = profile
             .capability(CAPABILITY_FSM)
             .filter(|capability| capability.enabled)?;
-        Some(Self::parse(
-            &profile.id,
-            capability.params.get(FSM_PARAM_STATES),
-        ))
+        let states = capability.params.get(FSM_PARAM_STATES)?;
+        Some(Self::parse(&profile.id, states))
     }
 
     /// Build the machine the shell profile with id `fsm` declares, from the raw
@@ -143,14 +147,7 @@ impl FsmSpec {
     ///
     /// Split out from [`resolve`](Self::resolve) so the parse — the half with all the diagnostics —
     /// is unit-testable against a bare JSON value rather than through a whole capability set.
-    fn parse(fsm: &str, states: Option<&Value>) -> Result<Self, String> {
-        let Some(states) = states else {
-            return Err(format!(
-                "the `{fsm}` agent enables the `{CAPABILITY_FSM}` capability but declares no \
-                 `{FSM_PARAM_STATES}`; an FSM agent has no turns of its own, so there would be \
-                 nothing to run. Declare the states it drives, entry state first."
-            ));
-        };
+    fn parse(fsm: &str, states: &Value) -> Result<Self, String> {
         let declared: Vec<GgFsmState> = serde_json::from_value(states.clone()).map_err(|err| {
             format!(
                 "the `{fsm}` agent's `{CAPABILITY_FSM}` capability declares a `{FSM_PARAM_STATES}` \
@@ -561,7 +558,8 @@ fn check_transfer(
 ///
 /// Everything a *worker* profile is configured with is on this list, because a machine is not a
 /// worker: it never takes a turn, so there is no model to call, no prompt to render, no roster to
-/// spawn from, and no capability whose tools anything would be offered. Each state runs the agent
+/// spawn from, no capability whose tools anything would be offered, no gate to fire around a turn
+/// and no reply for a detector to read. Each state runs the agent
 /// profile it names, with **that** profile's configuration — so a declaration here is not a value gg
 /// substitutes something else for, it is a value gg discards, and an operator who wrote one believes
 /// the machine's agents inherit it. The console's editor offers a machine none of these fields, so
@@ -599,6 +597,19 @@ fn check_shell_declarations(
     }
     if !profile.subagents.is_empty() {
         report.report(ignored("subagents", "roster"));
+    }
+    // A hook fires around a turn — a write, a shell command, a compaction, an agent's own start and
+    // stop — and the runtime that holds one is looked up by the profile actually running. A machine
+    // takes no turn, so a `pre-write` gate declared here is a gate that always passes, which is
+    // worse than no gate because an operator believes they have one.
+    if !profile.hooks.is_empty() {
+        report.report(ignored("hooks", "hooks"));
+    }
+    // The detector watches a reply arrive, and a machine produces none. An armed one here would
+    // also demand its five knobs, so the machine would be asked for figures parameterising
+    // machinery gg never builds.
+    if !profile.loop_detection.is_default() {
+        report.report(ignored("loopDetection", "loop detector"));
     }
     for (index, capability) in profile.capabilities.iter().enumerate() {
         if capability.enabled && capability.id != CAPABILITY_FSM {

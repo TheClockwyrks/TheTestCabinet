@@ -1289,13 +1289,13 @@ const UNUSED: GgProgramLanguage = GgProgramLanguage::TypeScript;
 /// chose — and the language is the very axis a cross-language study slices on. [`UNUSED`] comes back
 /// anyway to keep the resolver total for the per-turn calls that re-read it.
 ///
-/// **An absent language is that same defect, one step earlier**, which is why this param is the one
-/// exception to the [resolver contract](crate::validate)'s "absent means default". Every other param
-/// has a documented default that is a real answer — a ceiling gg picked, a strategy gg picked — and
-/// taking it is what the document asked for. This one has no such answer: any language gg chose
-/// would be a language the study did not, and a sweep whose arms differ in *nothing an operator
-/// wrote* is exactly the experiment these refusals exist to prevent. Absent is therefore refused
-/// wherever the capability is on, and the run is fixed by naming one of the eleven ids.
+/// **An absent language is that same defect, one step earlier.** Any language gg chose would be a
+/// language the study did not, and a sweep whose arms differ in *nothing an operator wrote* is
+/// exactly the experiment these refusals exist to prevent. So it is read through
+/// [`required_param`](crate::validate::required_param), like every other key the
+/// [table](crate::validate) marks required: the absence is reported at this locus in the table's
+/// own words, which is the same line the params sweep produces and therefore the one line the
+/// refusal carries. The run is fixed by naming one of the eleven ids.
 ///
 /// The vocabulary a refusal offers back is read off the [registry](all_languages) rather than off
 /// the enum, so an operator is told the languages gg can actually drive rather than the ones it
@@ -1340,27 +1340,25 @@ pub fn resolve_program_language(
         UNUSED
     };
 
-    let unnamed = |report: &mut crate::validate::LaunchReport| {
-        if capability.enabled {
-            report.report(
-                crate::validate::LaunchDefect::run_level(
-                    crate::validate::param_locus(CAPABILITY_RESPONSES_AS_CODE, PARAM_LANGUAGE),
-                    String::new(),
-                    format!(
-                        "this agent answers every turn with a program, so the `{PARAM_LANGUAGE}` \
-                         param naming the language it writes them in is required; gg has no \
-                         default to fall back to, because a language gg picked is the one thing a \
-                         cross-language study cannot have varying underneath it."
-                    ),
-                )
-                .known(all_languages().map(|language| language.id().id())),
-            );
-        }
-        UNUSED
+    // Required of a capability that is **on**, and read-but-not-owed of one that is off: the
+    // switch is what decides whether the key may be left out, and `required_param` is handed a
+    // params object with no switch in it.
+    let written = if capability.enabled {
+        crate::validate::required_param(
+            &capability.params,
+            CAPABILITY_RESPONSES_AS_CODE,
+            PARAM_LANGUAGE,
+            report,
+        )
+    } else {
+        capability
+            .params
+            .get(PARAM_LANGUAGE)
+            .filter(|value| !value.is_null())
     };
 
-    match capability.params.get(PARAM_LANGUAGE) {
-        None | Some(serde_json::Value::Null) => unnamed(report),
+    match written {
+        None => UNUSED,
         Some(serde_json::Value::String(id)) => match GgProgramLanguage::from_id(id.trim()) {
             Some(language) => language,
             None => unreadable(id.clone(), report),

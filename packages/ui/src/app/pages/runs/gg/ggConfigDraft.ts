@@ -43,6 +43,7 @@ import type {
   GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
 import {
+  AUTHORED_HOOK_TIMEOUT_SECS,
   BYTES_PER_MIB,
   CAPABILITIES,
   GG_BUILTIN_HOOK_IDS,
@@ -58,8 +59,10 @@ import {
   ROOT_PROFILE_ID,
   RUN_LIMIT_SPECS,
   SUBAGENT_SCOPES,
+  authoredImplementation,
   capabilityAppliesToMode,
   capabilitySpec,
+  requiresImplementation,
   hookScopeOf,
   isModeCapability,
   type CapSpec,
@@ -69,10 +72,14 @@ import {
 } from "./ggCatalog";
 
 // One capability's draft state. `enabled` toggles the capability on/off;
-// `implementation` is the selected swappable implementation (the A/B lever —
-// empty = the capability's default); and `params` holds the values of the
-// capability's dedicated param controls keyed by param name (string form, empty =
-// unset).
+// `implementation` is the selected arm (the A/B lever); and `params` holds the values of
+// the capability's dedicated param controls keyed by param name, in string form.
+//
+// An empty `implementation` or an empty param is a hole rather than a default: gg
+// substitutes nothing, so an enabled capability short of either is a save this module
+// refuses ([agentParamErrors]). The only empty that means something is autoload
+// specifications' unlocked arm, which gg spells as the absent key
+// ([requiresImplementation]).
 //
 // `extraParams` is not editable in the form: it carries, verbatim, any param a
 // *stored* configuration had that no dedicated control covers, so reopening and
@@ -283,9 +290,10 @@ export interface GgLoopDetectionDraft {
 }
 
 /**
- * Loop detection as an agent that has never touched it holds it: off, with every knob at
- * gg's default (an empty field). This is also what a stored configuration that declares
- * none loads as, and what such an agent saves back as — no key at all.
+ * Loop detection as an agent that has never touched it holds it: off, with every knob
+ * empty. This is also what a stored configuration that declares none loads as, and what
+ * such an agent saves back as — no key at all. A disarmed detector owes no knobs, which is
+ * why the empty fields are legitimate here and are not once it is [armed](armLoopDetection).
  */
 export function blankLoopDetection(): GgLoopDetectionDraft {
   const knobs = {} as Record<LoopDetectionSpec["key"], string>;
@@ -389,10 +397,13 @@ export function blankRunLimits(): GgRunLimitsDraft {
 }
 
 /**
- * A fresh configuration's guardrails, with every one that has a documented default (the
- * parallelism cap and the two error ceilings) seeded to it, so a new configuration shows
- * gg's real default rather than an empty box. The turn ceiling is left empty (unbounded),
- * and runtime and cost are off.
+ * A fresh configuration's guardrails: the two [required](RunLimitSpec.required) ceilings
+ * written to their authored figures, and every other field empty — which is that ceiling
+ * unarmed, and the only thing an empty field here means.
+ *
+ * A run always has an agent pool and always writes a capture journal, so those two are
+ * always in the document. The turn, runtime, cost and error ceilings are each a guardrail
+ * an operator either wants or does not, and gg arms none that nobody wrote.
  */
 export function seededRunLimits(): GgRunLimitsDraft {
   const draft = blankRunLimits();
@@ -403,17 +414,58 @@ export function seededRunLimits(): GgRunLimitsDraft {
 }
 
 /**
- * A capability's dedicated param controls seeded to their documented defaults.
+ * A capability's dedicated param controls seeded to their
+ * [authored values](ParamSpec.defaultValue) — every value a switched-on capability is
+ * written with, in front of the operator in the form rather than applied on the way out.
  *
- * An `agent` param is skipped: its documented default ([ROOT_PROFILE_ID]) means "whichever
- * profile is the root", which is only an answer once a draft has a root to point at.
- * [seedAgentParams] fills those in.
+ * An `agent` param is skipped: its authored value ([ROOT_PROFILE_ID]) means "whichever
+ * profile is the root", which is only an answer once a draft has a root to point at, and
+ * [seedAgentParams] fills those in. The two required params with no value to seed are
+ * skipped by having none: a `boolean` always writes the state its slider is in, and
+ * responses-as-code's `language` is the operator's own answer.
  */
 function seededParams(cap: CapSpec): Record<string, string> {
   const out: Record<string, string> = {};
   for (const p of cap.params ?? []) {
     if (p.kind === "agent") continue;
+    if (p.kind === "toggles") {
+      out[p.key] = seededToggles(p);
+      continue;
+    }
     if (p.defaultValue !== undefined) out[p.key] = p.defaultValue;
+  }
+  return out;
+}
+
+/**
+ * `params` with every required control a *stored* configuration was short of filled in
+ * from the catalog — the load-path half of [seededParams].
+ *
+ * This is the editor being helpful about a document written before a param was required,
+ * or by hand, and it is deliberately done here rather than at serialization: an operator
+ * opens such a configuration, sees the filled-in figures in the fields they belong to, and
+ * saves a document that says what the run will do. Nothing is filled in silently on the
+ * way out, so a value in the saved set is a value that was on the screen.
+ *
+ * Only the required ones, and only the empty ones: a param whose absence is the setting
+ * stays absent, and a stored figure is never overwritten.
+ */
+function filledRequiredParams(
+  cap: CapSpec,
+  params: Record<string, string>,
+): Record<string, string> {
+  const out = { ...params };
+  for (const p of cap.params ?? []) {
+    if (!p.required || p.kind === "agent") continue;
+    if (p.kind === "toggles") {
+      // A toggle set's draft value is the list of members switched off, so an empty string
+      // is a statement — every member on — rather than an empty field. Only a key the
+      // stored configuration carried nothing readable for is seeded.
+      if (!(p.key in out)) out[p.key] = seededToggles(p);
+      continue;
+    }
+    if (p.defaultValue === undefined) continue;
+    if (!(out[p.key] ?? "").trim()) out[p.key] = p.defaultValue;
   }
   return out;
 }
@@ -449,6 +501,21 @@ export function blankCapabilityDraft(): GgCapabilityDraft {
 }
 
 /**
+ * The row a draft holds for a capability nothing has configured: switched off, and already
+ * carrying the arm and the values it would be written with the moment it is switched on.
+ *
+ * Switching a capability on is one click, and it has to produce a capability that is fully
+ * specified — so the specification is in the draft before the click, where the operator
+ * sees it, rather than being conjured at serialization time. An id outside the catalog
+ * names no capability and has nothing to seed.
+ */
+export function capabilityDraftFor(id: string): GgCapabilityDraft {
+  const cap = capabilitySpec(id);
+  if (!cap) return blankCapabilityDraft();
+  return { ...defaultCapabilityDraft(cap), enabled: false };
+}
+
+/**
  * A capability row as a *fresh* agent would carry it: the catalog's own on/off default,
  * with every param seeded to its documented default.
  *
@@ -461,7 +528,7 @@ export function blankCapabilityDraft(): GgCapabilityDraft {
 function defaultCapabilityDraft(cap: CapSpec): GgCapabilityDraft {
   return {
     enabled: Boolean(cap.defaultOn),
-    implementation: "",
+    implementation: authoredImplementation(cap),
     params: seededParams(cap),
     extraParams: {},
   };
@@ -560,9 +627,9 @@ function draftsFor(
   for (const cap of CAPABILITIES) {
     out[cap.id] = {
       enabled: enabledIds.includes(cap.id),
-      implementation: "",
-      // Seed the catalog's documented defaults, then let a built-in's own overrides
-      // win — so a fresh field shows gg's real default instead of an empty box.
+      implementation: authoredImplementation(cap),
+      // Seed the catalog's authored values, then let a built-in's own overrides win — so
+      // every field shows the figure this configuration will be conducted under.
       params: { ...seededParams(cap), ...(paramDefaults[cap.id] ?? {}) },
       extraParams: {},
     };
@@ -766,51 +833,40 @@ export function emptyDraft(): GgConfigDraft {
 // --- `toggles` params -----------------------------------------------------------
 //
 // A `toggles` param is a JSON object of independently switchable members, each with its
-// own default arm: almost all are **on** unless switched off, and one — response
-// healing's `drop-doubled-response` — is **off** unless armed (see the catalog's
-// `defaultOff`).
+// gg reads such a param one of two ways, and the catalog says which on the param itself
+// ([ParamSpec.toggleSet]). An `exhaustive` set — response healing's repairs, the SDK types
+// a documentation lookup opens — has to name EVERY member: gg arms no member an operator
+// did not write, so an object leaving one out refuses the launch. A `withholding` set —
+// the skills capability's built-ins — names only what is held BACK, and a member it does
+// not mention is offered; that is a reading of the object rather than a default, which is
+// why `{}` is the legitimate "withhold nothing".
 //
-// The draft holds the ids of the members whose switch has been MOVED OFF ITS OWN DEFAULT,
-// comma-separated, so it stays a plain string like every other dedicated control. Storing
-// the deviations rather than a raw off-list is what lets the two arms coexist: an empty
-// draft value means "every member at its default", whichever way each of those points,
-// and only a moved member is ever written to the wire.
+// The draft holds the ids of the members switched OFF, comma-separated, so it stays a
+// plain string like every other dedicated control. It is a raw off-list rather than a set
+// of deviations because there is nothing for a member to deviate FROM: what an operator
+// sees in the checkboxes is the whole statement, and it is written out whole.
 
 const TOGGLE_SEPARATOR = ",";
 
-/** Whether a member is on when nothing has touched it. */
-function toggleDefaultOn(option: { defaultOff?: boolean }): boolean {
-  return !option.defaultOff;
-}
-
-/** The member ids a draft value marks as moved off their default, as a set. */
-function togglesMoved(spec: ParamSpec, raw: string | undefined): Set<string> {
+/**
+ * The switched-**off** member ids a `toggles` draft value stands for, in catalog order —
+ * what the form's checkboxes are drawn from.
+ */
+export function togglesOff(
+  spec: ParamSpec,
+  raw: string | undefined,
+): ReadonlyArray<string> {
   const ids = new Set(
     (raw ?? "")
       .split(TOGGLE_SEPARATOR)
       .map((id) => id.trim())
       .filter(Boolean),
   );
-  // Filtered against the catalog, so a stale id from an older client cannot make a
-  // member that no longer exists decide anything.
-  return new Set(
-    (spec.options ?? []).map((o) => o.value).filter((id) => ids.has(id)),
-  );
-}
-
-/**
- * The switched-**off** member ids a `toggles` draft value stands for, in catalog order —
- * what the form's checkboxes are drawn from. A member is off when it has been moved and
- * its default was on, or when it has NOT been moved and its default was off.
- */
-export function togglesOff(
-  spec: ParamSpec,
-  raw: string | undefined,
-): ReadonlyArray<string> {
-  const moved = togglesMoved(spec, raw);
+  // Filtered against the catalog, so a stale id from an older client cannot switch off a
+  // member that no longer exists.
   return (spec.options ?? [])
-    .filter((o) => moved.has(o.value) === toggleDefaultOn(o))
-    .map((o) => o.value);
+    .map((o) => o.value)
+    .filter((id) => ids.has(id));
 }
 
 /** The draft value for a `toggles` param with exactly `off` switched off. */
@@ -820,24 +876,43 @@ export function togglesDraftValue(
 ): string {
   const offSet = new Set(off);
   return (spec.options ?? [])
-    .filter((o) => offSet.has(o.value) === toggleDefaultOn(o))
     .map((o) => o.value)
+    .filter((id) => offSet.has(id))
     .join(TOGGLE_SEPARATOR);
 }
 
 /**
- * The draft value a *stored* `toggles` param decodes to, or `null` when the stored
- * value is not one this control can represent.
+ * The draft value a freshly switched-on capability's `toggles` param opens at — the
+ * members the [authoring catalog](ParamSpec.options) writes as off, and nothing else.
  *
- * The two scalar forms are gg's own shorthands, and they are not symmetric: `true` means
- * "the defaults" (which is not the same as "everything on" once a member defaults off),
- * while `false` is the master switch and means every member off.
+ * A starting point in front of the operator, never a fallback: what is saved is whatever
+ * the checkboxes are showing by then, and gg reads no arm out of a member nobody wrote.
+ */
+function seededToggles(spec: ParamSpec): string {
+  return togglesDraftValue(
+    spec,
+    (spec.options ?? []).filter((o) => o.seedOff).map((o) => o.value),
+  );
+}
+
+/**
+ * The draft value a *stored* `toggles` param decodes to, or `null` when the stored
+ * value is not one this control can represent — in which case it is carried through the
+ * [passthrough](GgCapabilityDraft.extraParams) untouched rather than shown as something
+ * it is not.
+ *
+ * An `exhaustive` set also accepts gg's two scalar shorthands, read exactly as gg reads
+ * them: `true` is every member on and `false` is every member off. An object has to name
+ * every member, because that is the only object gg would launch. A `withholding` set takes
+ * an object alone, and a member it leaves out is offered.
  */
 function togglesFromParam(spec: ParamSpec, value: unknown): string | null {
   const options = spec.options ?? [];
   const ids = options.map((o) => o.value);
-  if (value === false) return togglesDraftValue(spec, ids);
-  if (value === true) return "";
+  if (spec.toggleSet === "exhaustive") {
+    if (value === false) return togglesDraftValue(spec, ids);
+    if (value === true) return "";
+  }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
@@ -847,35 +922,32 @@ function togglesFromParam(spec: ParamSpec, value: unknown): string | null {
   ) {
     return null;
   }
-  // A member the stored object does not mention takes its own default, so the off-list
-  // has to be resolved over every member rather than read off the entries alone —
-  // otherwise an unmentioned default-off member would come back armed.
   const stated = new Map(entries as Array<[string, boolean]>);
+  // An exhaustive set that leaves a member out is a document gg refuses, and there is no
+  // arm the editor could show for the member nobody wrote — so it goes to the passthrough
+  // and the operator sees the key they have to fix.
+  if (spec.toggleSet === "exhaustive" && stated.size !== ids.length) return null;
   return togglesDraftValue(
     spec,
-    options
-      .filter((o) => !(stated.get(o.value) ?? toggleDefaultOn(o)))
-      .map((o) => o.value),
+    // A withholding set's unmentioned member is offered, which is the reading gg gives it.
+    options.filter((o) => stated.get(o.value) === false).map((o) => o.value),
   );
 }
 
 /**
- * The JSON a `toggles` draft value writes, or `undefined` when every member sits at its
- * own default (which writes no param at all). Only the moved members are recorded — a
- * default-on member switched off as `false`, and a default-off member armed as `true`.
+ * The JSON a `toggles` draft value writes. An `exhaustive` set names every member and the
+ * state its checkbox is in; a `withholding` set names the switched-off ones alone, and
+ * writes `{}` when none of them is.
  */
-function togglesToParam(
-  spec: ParamSpec,
-  raw: string,
-): Record<string, boolean> | undefined {
+function togglesToParam(spec: ParamSpec, raw: string): Record<string, boolean> {
   const off = new Set(togglesOff(spec, raw));
   const out: Record<string, boolean> = {};
   for (const option of spec.options ?? []) {
     const on = !off.has(option.value);
-    if (on === toggleDefaultOn(option)) continue;
+    if (on && spec.toggleSet === "withholding") continue;
     out[option.value] = on;
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return out;
 }
 
 // --- `states` params (the FSM machine) ------------------------------------------
@@ -1203,7 +1275,9 @@ export function agentDraftFromConfig(
   for (const cap of CAPABILITIES) {
     const from = stored.get(cap.id);
     if (!from) {
-      capabilities[cap.id] = blankCapabilityDraft();
+      // A capability the stored configuration does not mention is off, and is seeded the
+      // way a fresh one is, so switching it on here is switching on a specified capability.
+      capabilities[cap.id] = capabilityDraftFor(cap.id);
       continue;
     }
     // A stored param is JSON; the editor's dedicated controls hold text. Route each
@@ -1239,10 +1313,11 @@ export function agentDraftFromConfig(
         continue;
       }
       if (spec.kind === "boolean") {
-        // A stored `false` is the same as an absent key, so it loads as the empty
-        // (off) draft value and re-saves as no key rather than an explicit `false`.
+        // Both states are held explicitly, because for a required flag both are written:
+        // the slider's position IS the value, and there is no third thing an absent key
+        // could mean.
         if (typeof value !== "boolean") extraParams[key] = value;
-        else params[key] = value ? "true" : "";
+        else params[key] = value ? "true" : "false";
         continue;
       }
       if (spec.kind === "states") {
@@ -1253,10 +1328,18 @@ export function agentDraftFromConfig(
       }
       params[key] = String(value);
     }
+    // What the stored configuration was short of, filled in from the catalog so the
+    // operator opens on a form that shows what the run would do — an arm for a capability
+    // that has to name one, and a figure for every required param that had none. Both are
+    // visible in their own controls, and both are saved back as what they say.
+    const implementation = from.implementation ?? "";
     capabilities[cap.id] = {
       enabled: from.enabled,
-      implementation: from.implementation ?? "",
-      params,
+      implementation:
+        !implementation.trim() && requiresImplementation(cap)
+          ? authoredImplementation(cap)
+          : implementation,
+      params: filledRequiredParams(cap, params),
       extraParams,
     };
   }
@@ -1333,10 +1416,10 @@ export function resolveAgentReferences(
             {
               agentId: s.agentId,
               description: s.description ?? "",
-              // An entry that names no `scopes` takes gg's default, plain spawning.
-              scopes: s.scopes?.length
-                ? [...s.scopes]
-                : (["subagent"] as GgSubagentScope[]),
+              // Exactly what the entry names, and nothing where it names nothing: gg
+              // grants none of the three roles on an operator's behalf, so an entry short
+              // of them is a launch it refuses rather than a plain spawner.
+              scopes: [...(s.scopes ?? [])],
             },
           ]
         : [],
@@ -1432,10 +1515,13 @@ function hookDraft(hook: GgHook, key: string | number): GgHookDraft {
     name: hook.name ?? "",
     command: action.type === "command" ? action.command : "",
     cwd: action.type === "command" ? (action.cwd ?? "") : "",
+    // Filled in when a stored command hook named none: gg kills a hook at the ceiling the
+    // hook declares and has none of its own to lend one that declares nothing, so the
+    // figure goes in the field where the operator can see and change it.
     timeoutSecs:
-      action.type === "command" && action.timeoutSecs !== undefined
-        ? String(action.timeoutSecs)
-        : "",
+      action.type !== "command"
+        ? ""
+        : String(action.timeoutSecs ?? AUTHORED_HOOK_TIMEOUT_SECS),
     output: action.type === "command" ? (action.output ?? "") : "",
     script: action.type === "built-in" ? action.script : "",
     source: action.type === "custom" ? action.source : "",
@@ -1458,7 +1544,7 @@ export function blankHookDraft(scope: GgHookScope = "agent"): GgHookDraft {
     name: "",
     command: "",
     cwd: "",
-    timeoutSecs: "",
+    timeoutSecs: String(AUTHORED_HOOK_TIMEOUT_SECS),
     output: "",
     script: GG_BUILTIN_HOOK_IDS[0]!,
     source: "",
@@ -1472,6 +1558,12 @@ export function blankHookDraft(scope: GgHookScope = "agent"): GgHookDraft {
  * A hook with nothing to run is **dropped** rather than serialized: a `command` hook with
  * an empty command line and a `custom` one with no source are both editing states, and
  * writing them out would put a hook on the run that fires and does nothing.
+ *
+ * A command hook's timeout is the one field here that is not optional — gg has no ceiling
+ * of its own to run a hook that declares none under — so it is always written. The two
+ * that stay optional are inheritance rather than substitution: an absent `cwd` runs the
+ * command in the agent's own workspace root, and an absent `output` follows the agent's own
+ * shell configuration. [hookErrors] is what keeps an unwritable timeout from reaching here.
  */
 function hooksFromDraft(hooks: GgHookDraft[]): GgHook[] {
   return hooks.flatMap((hook): GgHook[] => {
@@ -1481,7 +1573,10 @@ function hooksFromDraft(hooks: GgHookDraft[]): GgHook[] {
       const command = hook.command.trim();
       if (!command) return [];
       const cwd = hook.cwd.trim();
-      const timeout = Number(hook.timeoutSecs.trim());
+      // An empty field is not a zero: `Number("")` is `0`, which would write a hook gg
+      // kills the instant it starts.
+      const declared = hook.timeoutSecs.trim();
+      const timeout = declared ? Number(declared) : Number.NaN;
       const output = hook.output.trim();
       return [
         {
@@ -1491,9 +1586,9 @@ function hooksFromDraft(hooks: GgHookDraft[]): GgHook[] {
             type: "command" as const,
             command,
             ...(cwd ? { cwd } : {}),
-            ...(hook.timeoutSecs.trim() && Number.isFinite(timeout)
-              ? { timeoutSecs: timeout }
-              : {}),
+            timeoutSecs: Number.isFinite(timeout)
+              ? timeout
+              : AUTHORED_HOOK_TIMEOUT_SECS,
             ...(output ? { output } : {}),
           },
         },
@@ -1523,8 +1618,11 @@ function hooksFromDraft(hooks: GgHookDraft[]): GgHook[] {
 }
 
 /**
- * A stored ceiling set as the form's text fields. An absent ceiling stays the empty
- * string — the form's own spelling of "off".
+ * A stored ceiling set as the form's text fields. An absent optional ceiling stays the
+ * empty string — the form's own spelling of "unarmed" — and an absent
+ * [required](RunLimitSpec.required) one is filled in from the catalog, so an older
+ * configuration written before those two were required opens with the figures in their
+ * fields rather than with a save the operator cannot make.
  *
  * A [`mib`](RunLimitSpec.kind) ceiling is stored in bytes and edited in mebibytes, so it
  * is divided down here and multiplied back in [runLimitsFromDraft]. A stored value that
@@ -1535,7 +1633,12 @@ function runLimitsDraft(limits: GgRunLimits | undefined): GgRunLimitsDraft {
   const draft = blankRunLimits();
   for (const spec of RUN_LIMIT_SPECS) {
     const value = limits?.[spec.key];
-    if (value === undefined) continue;
+    if (value === undefined) {
+      if (spec.required && spec.defaultValue !== undefined) {
+        draft[spec.key] = spec.defaultValue;
+      }
+      continue;
+    }
     draft[spec.key] =
       spec.kind === "mib" ? String(value / BYTES_PER_MIB) : String(value);
   }
@@ -1554,6 +1657,12 @@ type ParamsParse =
  * configuration carried that no control covers ([GgCapabilityDraft.extraParams]). A
  * dedicated control's value wins over a same-named passthrough key.
  *
+ * `enabled` is whether this capability is *on* for the agent, and it is what decides
+ * whether the required params are required: requirement is a property of the switch, so a
+ * capability that is off is short of nothing. Its params are still written — that is what
+ * keeps the on and off arms of one comparison the same document with one switch moved —
+ * but an empty control on one writes no key rather than refusing the save.
+ *
  * An `agent` param needs no resolving in either direction: its draft value is the profile
  * [id](GgAgentDraft.id) gg reads. `slotName` turns a `model` param's deferred half back into
  * the slot name the wire carries; omit it to check the params without resolving anything
@@ -1562,6 +1671,7 @@ type ParamsParse =
 export function capabilityParams(
   cap: CapSpec,
   draft: GgCapabilityDraft,
+  enabled: boolean,
   slotName?: (slotId: string) => string,
 ): ParamsParse {
   const out: Record<string, unknown> = { ...(draft.extraParams ?? {}) };
@@ -1577,12 +1687,44 @@ export function capabilityParams(
       }
     }
     const raw = (draft.params?.[p.key] ?? "").trim();
+    // The three kinds that write whatever state their control is in, empty or not: a
+    // toggle set that has moved nothing is an empty object, a slider that is off is
+    // `false`, and a machine with no states is an empty list. Each is a value the operator
+    // can see on the screen, so none of them is a hole — but on a capability that is off
+    // there is nothing to state, and the key is left out.
+    //
+    // `stated` is what keeps that from overwriting a *stored* value this control cannot
+    // represent, which the passthrough is already carrying under the same key: such a
+    // value satisfies the requirement by being there, and replacing it with the empty
+    // state would drop what the operator could not see and did not change.
+    const stated = p.required && enabled && !(p.key in out);
+    if (p.kind === "toggles") {
+      // A toggle set states its whole membership, so it writes what the checkboxes are
+      // showing whichever way the capability's switch is sitting — the off arm carries the
+      // configuration the on arm would have used. The exception is the stored value this
+      // control could not represent, which the passthrough already holds under this key
+      // and the operator never saw to change.
+      if (!(p.key in out)) out[p.key] = togglesToParam(p, raw);
+      continue;
+    }
+    if (p.kind === "boolean") {
+      if (raw === "true") out[p.key] = true;
+      else if (stated) out[p.key] = false;
+      continue;
+    }
+    if (p.kind === "states") {
+      const states = statesToParam(raw);
+      if (states) out[p.key] = states;
+      else if (stated) out[p.key] = [];
+      continue;
+    }
     if (!raw) {
-      // An empty control is "take gg's default" for every param but the handful that
-      // have none. For those, gg refuses the launch — so the form refuses the save,
-      // where it is still one click to fix rather than a run that never started.
-      if (p.required) {
-        return { ok: false, error: `${p.label} has no default: pick one.` };
+      // gg substitutes nothing, so an empty required control is a launch that would be
+      // refused. The form refuses the save instead, where it is still one field to fill in
+      // rather than a run that never started. An optional param's empty control is the
+      // setting — no summarizer model, no reviewer requirement — and writes no key.
+      if (p.required && enabled) {
+        return { ok: false, error: `${p.label} needs a value.` };
       }
       continue;
     }
@@ -1595,22 +1737,6 @@ export function capabilityParams(
       p.kind === "text"
     ) {
       out[p.key] = raw;
-      continue;
-    }
-    if (p.kind === "toggles") {
-      const toggles = togglesToParam(p, raw);
-      if (toggles) out[p.key] = toggles;
-      continue;
-    }
-    if (p.kind === "states") {
-      const states = statesToParam(raw);
-      if (states) out[p.key] = states;
-      continue;
-    }
-    // A feature switch records only its *on* arm; off is the absent key (`raw` empty),
-    // which the guard above already skipped.
-    if (p.kind === "boolean") {
-      if (raw === "true") out[p.key] = true;
       continue;
     }
     const n = Number(raw);
@@ -1814,7 +1940,14 @@ export function setFeatureBundle(
 export function runLimitsError(limits: GgRunLimitsDraft): string | null {
   for (const spec of RUN_LIMIT_SPECS) {
     const raw = limits[spec.key].trim();
-    if (!raw) continue;
+    if (!raw) {
+      // The two ceilings a run cannot be conducted without. Every other empty field is
+      // that ceiling unarmed, which is a setting rather than a gap.
+      if (spec.required) {
+        return `${spec.label} is required — every run has one, and gg supplies no figure for it.`;
+      }
+      continue;
+    }
     const value = Number(raw);
     if (!Number.isFinite(value)) return `${spec.label} must be a number.`;
     if (spec.kind === "count" && (!Number.isInteger(value) || value < 0)) {
@@ -1833,10 +1966,10 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
       return `${spec.label} cannot be negative.`;
     }
   }
-  // A half-declared error-rate ceiling is well-formed: gg arms the half that is written
-  // exactly as written and takes its own default for the other, the same way it does when
-  // neither is written. Refusing to save one here would make the editor stricter than the
-  // contract and hide a ceiling the API accepts.
+  // A half-declared error-rate ceiling is well-formed and means nothing is armed: the
+  // rate and its window stand or fall together, and gg does not lend the missing half.
+  // Refusing to save one here would make the editor stricter than the contract, which
+  // accepts it and says at launch that the ceiling is inert.
   return null;
 }
 
@@ -1857,7 +1990,9 @@ export function runLimitsWarning(limits: GgRunLimitsDraft): string | null {
 }
 
 /**
- * A draft's ceilings as the wire shape, or `undefined` when it declares none. A
+ * A draft's ceilings as the wire shape. The two required ones are always in it — a saved
+ * configuration cannot be short of them ([runLimitsError]) — so the `undefined` arm is
+ * reachable only from a draft assembled by something other than this editor. A
  * [`mib`](RunLimitSpec.kind) ceiling is written back out as the byte count gg reads.
  */
 export function runLimitsFromDraft(
@@ -1885,9 +2020,13 @@ export function runLimitsFromDraft(
 // touched the lever writes no key at all.
 
 /**
- * A stored declaration as the editor holds it — every knob it named as text, every knob
- * it did not as an empty field. `undefined`, an agent that left the lever alone, is the
- * disarmed default, which is exactly gg's own reading of an absent key.
+ * A stored declaration as the editor holds it — every knob it named as text, every knob it
+ * did not as an empty field. `undefined`, an agent that left the lever alone, loads
+ * disarmed, which is exactly gg's own reading of an absent key.
+ *
+ * An **armed** stored declaration short of a knob is [filled in](armLoopDetection): the
+ * five knobs are the rule, gg has no figure to lend for a missing one, and the operator
+ * has to see what the detector would run on before saving it back.
  */
 export function loopDetectionDraft(
   stored: GgLoopDetection | undefined,
@@ -1898,11 +2037,31 @@ export function loopDetectionDraft(
   for (const spec of LOOP_DETECTION_SPECS) {
     const value = stored[spec.key];
     // `0` is a setting on two of these knobs, so the test is against `undefined` rather
-    // than falsiness — `?? ""` would turn "abandon as soon as the window saturates" back
-    // into "take gg's default of 3000".
+    // than falsiness — `?? ""` would turn "abandon as soon as the window saturates" into
+    // an empty field.
     if (value !== undefined) draft.knobs[spec.key] = String(value);
   }
-  return draft;
+  return draft.enabled ? armLoopDetection(draft) : draft;
+}
+
+/**
+ * `draft` armed, with every knob it is short of seeded to its
+ * [authored figure](LoopDetectionSpec.authored).
+ *
+ * Arming is what makes the five knobs required — the rule trips on the five of them
+ * together, and a detector armed on figures nobody chose would measure gg rather than the
+ * model — so this is where the figures go into the fields, at the moment the switch moves
+ * and where the operator can retune them. A knob already carrying a value is left alone,
+ * including one an operator tuned before disarming the detector.
+ */
+export function armLoopDetection(
+  draft: GgLoopDetectionDraft,
+): GgLoopDetectionDraft {
+  const knobs = { ...draft.knobs };
+  for (const spec of LOOP_DETECTION_SPECS) {
+    if (!knobs[spec.key].trim()) knobs[spec.key] = String(spec.authored);
+  }
+  return { ...draft, enabled: true, knobs };
 }
 
 /**
@@ -1936,19 +2095,27 @@ export function loopDetectionKey(draft: GgLoopDetectionDraft): {
 /**
  * Why an agent's loop detection cannot be saved, or `null` when it is well-formed.
  *
- * Only checks what the *form* cannot express: a knob is a whole, non-negative count of
- * words, occurrences or characters. Everything gg itself merely warns about — a window of
- * zero, more offenders than the window can hold — is left to gg, which resolves such a
- * knob to its own default and says so at launch rather than refusing the run. Refusing the
- * save for those would be the console being stricter than the thing it configures.
+ * Two things: that an **armed** detector names all five knobs, which gg requires of one
+ * because the rule is the five of them together and it has no figure to lend for a missing
+ * one; and that a knob that is written is a whole, non-negative count of words,
+ * occurrences or characters. Everything gg merely warns about — a window of zero, more
+ * offenders than the window can hold — is armed exactly as declared and left to gg, and
+ * refusing the save for those would be the console being stricter than the thing it
+ * configures.
  *
- * A disarmed agent is checked too: its knobs are still recorded, so a value that could
- * never be read back is still a value the operator will find later.
+ * A disarmed agent's knobs are checked for shape but not for presence: it owes none, and
+ * the ones it carries are still recorded, so a value that could never be read back is
+ * still a value the operator will find later.
  */
 export function loopDetectionError(draft: GgLoopDetectionDraft): string | null {
   for (const spec of LOOP_DETECTION_SPECS) {
     const raw = draft.knobs[spec.key].trim();
-    if (!raw) continue;
+    if (!raw) {
+      if (draft.enabled) {
+        return `${spec.label} needs a value while loop detection is armed.`;
+      }
+      continue;
+    }
     const value = Number(raw);
     if (!Number.isFinite(value)) return `${spec.label} must be a number.`;
     if (!Number.isInteger(value) || value < 0) {
@@ -2005,10 +2172,15 @@ export function agentParamErrors(
       errors[cap.id] = null;
       continue;
     }
-    const parsed = capabilityParams(
-      cap,
-      agent.capabilities[cap.id] ?? blankCapabilityDraft(),
-    );
+    const draft = agent.capabilities[cap.id] ?? capabilityDraftFor(cap.id);
+    // The arm first, because a capability that names none is short of the one value that
+    // decides which of its params are read at all.
+    if (requiresImplementation(cap) && !(draft.implementation ?? "").trim()) {
+      errors[cap.id] =
+        `${cap.implementationLabel ?? "Implementation"} needs a value.`;
+      continue;
+    }
+    const parsed = capabilityParams(cap, draft, true);
     errors[cap.id] = parsed.ok ? null : parsed.error;
   }
   // The machine's own structure, checked the way gg checks it at launch — reported on
@@ -2074,6 +2246,31 @@ const CREATE_ISSUE_TOOL = "create_issue";
 const CREATE_ISSUE_OPERATION = "board.create_issue";
 
 /**
+ * Why one list of hooks cannot be saved, or `null` when every one of them is well-formed.
+ *
+ * The one required field is a command hook's timeout: gg kills a hook at the ceiling the
+ * hook declares and has none of its own for one that declares nothing, so a hook without
+ * one is a hook gg would refuse. A hook with no command line at all is not checked — it is
+ * an editing state, and [hooksFromDraft] drops it rather than putting a hook on the run
+ * that fires and does nothing.
+ */
+export function hookErrors(hooks: ReadonlyArray<GgHookDraft>): string | null {
+  for (const hook of hooks) {
+    if (hook.kind !== "command" || !hook.command.trim()) continue;
+    const raw = hook.timeoutSecs.trim();
+    const label = hook.name.trim() || hook.command.trim();
+    if (!raw) {
+      return `The \`${label}\` hook needs a timeout — gg has no ceiling of its own to run it under.`;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+      return `The \`${label}\` hook's timeout must be a whole number of seconds.`;
+    }
+  }
+  return null;
+}
+
+/**
  * Whether `agent` can file board issues: the project-management capability is on and its
  * allowlist grants the call that files one, asked of the surface this agent answers on.
  */
@@ -2107,6 +2304,8 @@ export function agentSaveError(
     const loop = loopDetectionError(agent.loopDetection);
     if (loop) return loop;
   }
+  const hook = hookErrors(agent.hooks);
+  if (hook) return hook;
   const failed = Object.entries(agentParamErrors(agent, draft.agents)).find(
     ([, error]) => error !== null,
   );
@@ -2180,14 +2379,23 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
     // throw all of that away at exactly the moment it is needed.
     const machine = fsmStatesError(agent, draft.agents);
     if (machine) return machine;
+    const hook = hookErrors(agent.hooks);
+    if (hook)
+      return `${hook.replace(/\.$/, "")} (on the \`${agent.name.trim()}\` agent).`;
     const failed = Object.entries(agentParamErrors(agent, draft.agents)).find(
       ([, error]) => error !== null,
     );
     if (failed) {
-      return `Fix the ${failed[0]} params on the \`${agent.name.trim()}\` agent before saving.`;
+      // The value's own sentence, not "fix the params": gg names every value it cannot
+      // honour and so does this, because "which one?" is the whole of what an operator
+      // needs to know to fix it.
+      const cap = capabilitySpec(failed[0]);
+      return `${failed[1]!.replace(/\.$/, "")} — the \`${agent.name.trim()}\` agent's ${cap?.name ?? failed[0]} capability.`;
     }
   }
 
+  const hooks = hookErrors(draft.hooks);
+  if (hooks) return hooks;
   return runLimitsError(draft.limits);
 }
 
@@ -2213,14 +2421,19 @@ function agentConfigFromDraft(
     if (!capabilityAppliesToMode(cap, agent.mode)) {
       return { id: cap.id, enabled: false, params: {} };
     }
-    const capDraft = agent.capabilities[cap.id] ?? blankCapabilityDraft();
-    const parsed = capabilityParams(cap, capDraft, slotName);
+    const capDraft = agent.capabilities[cap.id] ?? capabilityDraftFor(cap.id);
+    // A mode marker has no switch of its own: reaching here at all means the agent's type
+    // *is* this one, which is what the flag records — and what makes its params required.
+    const enabled = isModeCapability(cap.id) || Boolean(capDraft.enabled);
+    const parsed = capabilityParams(cap, capDraft, enabled, slotName);
     const impl = (capDraft.implementation ?? "").trim();
     return {
       id: cap.id,
-      // A mode marker has no switch of its own: reaching here at all means the agent's
-      // type *is* this one, which is what the flag records.
-      enabled: isModeCapability(cap.id) || Boolean(capDraft.enabled),
+      enabled,
+      // The arm as the picker holds it. Every arm this editor can select is written, so an
+      // enabled capability that offers arms names one; the single empty value in the
+      // catalog is autoload specifications' unlocked arm, which gg spells as the absent
+      // key and which is therefore written by leaving it out.
       ...(impl ? { implementation: impl } : {}),
       // Record the config even for a disabled capability, so the on and off arms of two
       // configurations being compared stay symmetric.

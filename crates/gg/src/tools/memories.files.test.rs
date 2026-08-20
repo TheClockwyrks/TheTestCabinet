@@ -18,7 +18,7 @@ use crate::tools::ToolFailure;
 /// agent whose calls go through it. These tests attribute to no agent — the empty author — since
 /// what they are about is what each call does, not whose call it was.
 fn fixture(strategy: MemoryStrategy) -> (MemoryBinding, ToolContext, TempDir) {
-    fixture_with(strategy, MemoryCaps::for_strategy(strategy))
+    fixture_with(strategy, MemoryCaps::UNBOUNDED)
 }
 
 /// The same, with limits of the caller's choosing.
@@ -57,7 +57,15 @@ fn hits(outcome: &ToolOutcome) -> &[MemoryHitData] {
 
 #[tokio::test]
 async fn create_memory_stores_the_contents_and_reports_usage() {
-    let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
+    // The usage note reports what the call is bounded *by*, so this case has to bound something:
+    // an unbounded store spends against no ceiling and has no room to report.
+    let (store, ctx, _dir) = fixture_with(
+        MemoryStrategy::Markdown,
+        MemoryCaps {
+            max_len_index: Some(4096),
+            ..MemoryCaps::UNBOUNDED
+        },
+    );
     let tool = CreateMemoryTool::new(store.clone());
 
     let outcome = tool
@@ -151,7 +159,7 @@ async fn create_memory_surfaces_a_full_index_as_a_limit() {
         MemoryCaps {
             // Room for exactly one `- `aaa` — dd` line and no more.
             max_len_index: Some(12),
-            ..MemoryCaps::for_strategy(strategy)
+            ..MemoryCaps::UNBOUNDED
         },
     );
     let tool = CreateMemoryTool::new(store.clone());
@@ -397,7 +405,7 @@ async fn a_tool_description_states_only_the_limits_in_force() {
         MemoryCaps {
             max_count: Some(12),
             max_len_per_memory: Some(500),
-            ..MemoryCaps::for_strategy(strategy)
+            ..MemoryCaps::UNBOUNDED
         },
     );
     let description = CreateMemoryTool::new(bounded).definition().description;
@@ -410,7 +418,7 @@ async fn a_tool_description_states_only_the_limits_in_force() {
             max_count: None,
             max_len_per_memory: None,
             max_len_index: None,
-            ..MemoryCaps::for_strategy(strategy)
+            ..MemoryCaps::UNBOUNDED
         },
     );
     let description = CreateMemoryTool::new(unbounded).definition().description;

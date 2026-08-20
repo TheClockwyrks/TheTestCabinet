@@ -139,11 +139,12 @@ use test_cabinet_core::gg::{
     ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, AUTOLOAD_PARAM_IMAGES, CAPABILITY_AGENT_MANAGED_CONTEXT,
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus,
-    GgAgentTransitionKind, GgCallFailure, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase, GgLimitBreach,
-    GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRosterEntry, GgRunLimits,
-    GgSlotBinding, GgSubagentScope, GgTelemetryKind, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    CAPABILITY_SUBAGENTS, GG_WORKSPACE_SKILLS_DIR, GgAgentApi, GgAgentApiFunction, GgAgentConfig,
+    GgAgentStatus, GgAgentTransitionKind, GgCallFailure, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase,
+    GgLimitBreach, GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRosterEntry,
+    GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, PARAM_SKILLS_DIR,
+    PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -195,7 +196,7 @@ use crate::sandbox::{
     self, OperationId, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
     SandboxOutcome, run_program,
 };
-use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
+use crate::skills::{ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{
     AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SlotHold, SubagentConfig,
     WaiterToken,
@@ -215,19 +216,6 @@ use crate::tools::{
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
-
-/// The [context-window-override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) capability's param
-/// naming the context window to run the model against, in tokens. It may only *narrow* the
-/// [catalog's figure](GgInvocation::model_windows) — the model's real window is a hard limit
-/// — so a larger value is clamped to it, and a value of `0` or a non-integer is ignored.
-/// Narrowing it is how a study exercises compaction against a 1M-token model without paying
-/// for a million tokens of input. Read only when the capability is enabled.
-pub(crate) const PARAM_WINDOW_LIMIT: &str = "windowLimit";
-
-/// Skills capability param naming the directory authored skills are loaded from. A
-/// relative value is resolved against the run workspace; an absolute one is used as
-/// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
-pub(crate) const PARAM_SKILLS_DIR: &str = "dir";
 
 /// The [slot](GgSlotBinding) name a [handoff compaction](crate::compaction::CompactionStrategy::is_handoff)'s second
 /// client is bound under, so the tokens it spends are attributed to the compaction model rather
@@ -728,15 +716,47 @@ fn resolve_agent_client(
 /// configures one — the board is run-global, so its merge agent is too, and reading the first
 /// declaration keeps a set that names it on a non-root profile working rather than silently
 /// ignored.
-pub(crate) fn merge_agent_id(set: &GgCapabilitySet) -> Option<String> {
-    set.agents
-        .iter()
-        .filter_map(|agent| agent.capability(CAPABILITY_PROJECT_MANAGEMENT))
-        .filter_map(|cap| cap.params.get(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT))
-        .filter_map(Value::as_str)
-        .map(str::trim)
-        .find(|id| !id.is_empty())
-        .map(str::to_string)
+///
+/// Every profile that switches [project management](CAPABILITY_PROJECT_MANAGEMENT) on writes the
+/// param, and one that does not is [refused](crate::validate::required_param) at its own locus, on
+/// that profile: an accepted issue's branch has to be merged back, concurrent issues make a
+/// conflicting merge an ordinary event, and gg nominates nobody to resolve one. Every declaration is
+/// read even after one has answered, so a set with two boardless-looking profiles hears about both.
+/// A profile that switches the capability off is owed nothing and still has what it wrote read.
+pub(crate) fn merge_agent_id(
+    set: &GgCapabilitySet,
+    report: &mut crate::validate::LaunchReport,
+) -> Option<String> {
+    let mut named: Option<String> = None;
+    for agent in &set.agents {
+        let Some(capability) = agent.capability(CAPABILITY_PROJECT_MANAGEMENT) else {
+            continue;
+        };
+        let declared = if capability.enabled {
+            report.for_agent(&agent.id, |report| {
+                crate::validate::required_param(
+                    &capability.params,
+                    CAPABILITY_PROJECT_MANAGEMENT,
+                    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+                    report,
+                )
+            })
+        } else {
+            capability
+                .params
+                .get(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT)
+                .filter(|value| !value.is_null())
+        };
+        if named.is_some() {
+            continue;
+        }
+        named = declared
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string);
+    }
+    named
 }
 
 /// Run one gg session for `invocation`, emitting telemetry throughout, and report
@@ -860,6 +880,14 @@ pub(crate) async fn run_with_seams(
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::HarnessError;
     }
+    // gg's own dotdir, stood up before the workspace is read. `.gg` is gg's bookkeeping rather than
+    // the model's work — the capture journal, the hook scripts and the skills library live there,
+    // and seeding excludes the whole of it from the run's git tree — so gg creates it rather than
+    // asking the seeder to know what is inside it. The consequence the gate below depends on: the
+    // `.gg/skills` a fresh capability set is authored with is a directory the workspace always
+    // carries and leaves empty, which is exactly what a profile holding gg's built-ins alone wants.
+    // A `dir` naming anywhere else is a promise about the *seeded* workspace and is judged as one.
+    prepare_workspace_dotdir(&invocation.workspace_dir);
     // Launch check 2: **the workspace**. Two capabilities are configured in the document and
     // satisfied by the seeded workspace — the skills library an agent reads from, and the
     // specifications autoload promises it in full — and neither can be proved from the document
@@ -1224,7 +1252,11 @@ pub(crate) async fn run_with_seams(
                 &HookAgent::new(ROOT_AGENT_ID, set.root_name()).of_kind(GgHookAgentKind::Root),
                 json!({ "status": status }),
                 &session_ctx,
-                &OffloadPolicy::default(),
+                // The root's own output policy: a session hook is fired on the root's behalf, in
+                // the root's workspace, so what it gets back of a command's output is what the root
+                // gets back of one. gg has no policy of its own to lend it.
+                // Mid-run: the launch pass read the root's `shell` through this same resolver.
+                &shell_offload(set.root(), &mut crate::validate::LaunchReport::Discarding),
                 &root_emitter,
             )
             .await
@@ -1382,7 +1414,7 @@ fn captured_model_windows(orch: &Orchestrator, invocation: &GgInvocation) -> BTr
                 .iter()
                 .find(|agent| agent.resolved_model_id() == Some(model_id.as_str()))
                 .unwrap_or_else(|| orch.caps.root());
-            resolve_window_limit(&orch.caps, profile, &orch.model_windows, &model_id)
+            resolve_window_limit(profile, &orch.model_windows, &model_id)
                 .map(|window| (model_id, window))
         })
         .collect()
@@ -1939,7 +1971,7 @@ impl Orchestrator {
             baseline_commit: worktrees.baseline_commit,
             merge_agent: board_owner(set)
                 .is_some()
-                .then(|| merge_agent_id(set))
+                .then(|| merge_agent_id(set, report))
                 .flatten(),
             code: CodeSetup {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
@@ -2019,7 +2051,7 @@ impl Orchestrator {
     fn context_setup(&self, profile: &GgAgentConfig, model_id: &str) -> ContextSetup {
         ContextSetup {
             estimator: Arc::clone(&self.estimator),
-            window_limit: resolve_window_limit(&self.caps, profile, &self.model_windows, model_id),
+            window_limit: resolve_window_limit(profile, &self.model_windows, model_id),
         }
     }
 
@@ -3619,10 +3651,7 @@ async fn drive_agent(
             &granted_capabilities,
             &granted_operations,
             code.enabled.then_some(code.language),
-            profile
-                .capability(CAPABILITY_SKILLS)
-                .map(|capability| &capability.params)
-                .unwrap_or(&Value::Null),
+            &profile,
         );
         let (registry, granted_operations) = if builtins.is_empty() {
             (registry, granted_operations)
@@ -3753,11 +3782,8 @@ async fn drive_agent(
         // The launch pass read this profile's compaction configuration — its strategy, its
         // headroom, its handoff model — with a collecting sink and refused the run if any of it
         // could not be honoured, so this re-resolution reports into a discarding one.
-        let mut compaction = CompactionSetup::resolve(
-            &profile,
-            memories_writable,
-            &mut crate::validate::LaunchReport::Discarding,
-        );
+        let mut compaction =
+            CompactionSetup::resolve(&profile, &mut crate::validate::LaunchReport::Discarding);
         // What is left of the memory-compaction demotion once the launch pass has had it, and it
         // **ends the run**. The declared half — the memories capability off, or a `read-only` scope
         // written on the profile — refuses the launch before the first turn, so reaching here means
@@ -4024,18 +4050,23 @@ async fn drive_agent(
                     autoload,
                     persistence,
                     read_policy: read_policy(&profile),
-                    shell_offload: shell_offload(&profile),
+                    shell_offload: shell_offload(
+                        &profile,
+                        // Mid-run: the launch pass read this profile's `shell` through this same
+                        // resolver.
+                        &mut crate::validate::LaunchReport::Discarding,
+                    ),
                     code,
                     hooks: HooksSetup {
                         // A profile with no runtime is one the set does not declare, which the
-                        // dispatcher has already refused — so an empty runtime here is the
-                        // unreachable case, and it declares no hooks rather than guessing at
-                        // another profile's.
+                        // dispatcher has already refused — so the unreachable case here is the
+                        // named [undeclared](crate::hooks::HookRuntime::undeclared) runtime, which
+                        // declares no hooks rather than guessing at another profile's.
                         runtime: orch
                             .agent_hooks
                             .get(&profile.id)
                             .map(Arc::clone)
-                            .unwrap_or_default(),
+                            .unwrap_or_else(|| Arc::new(crate::hooks::HookRuntime::undeclared())),
                         session: Arc::clone(&orch.session_hooks),
                         agent: hook_agent,
                     },
@@ -8647,12 +8678,12 @@ fn stopped_text(status: TerminalStatus, report: Option<&str>) -> Option<String> 
 
 /// The resolved [ceilings](RunLimits) as the run **records** them on its session summary.
 ///
-/// gg's [defaults](crate::limits) are written out exactly as they were in force — the error ceilings
-/// a run left unset, the [parallelism cap](SubagentConfig::max_parallel) it ran under, and an absent
-/// turn ceiling recorded as `None` (unbounded) — because that is what makes a default honest: "what
-/// ceiling was this run under?" has to be answerable from the record, and a default that is recorded
-/// is not a hidden one. Everything else is `None` when the ceiling is off, which is the same thing the
-/// declaration said.
+/// Every ceiling is written out exactly as it was in force: the
+/// [parallelism cap](SubagentConfig::max_parallel) the run ran under, and each of the rest as
+/// `None` when it is off — an unarmed error ceiling and an absent turn ceiling are recorded as the
+/// unbounded settings they are. "What ceiling was this run under?" is answerable from the record
+/// alone, and the answer is the document's, because there is nothing else it could have come
+/// from.
 fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
     GgRunLimits {
         max_parallel: Some(max_parallel as u64),
@@ -8683,14 +8714,16 @@ struct ContextSetup {
     window_limit: Option<u64>,
 }
 
-/// The [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) param naming how many individual
-/// files the context-usage signal's file-view breakdown lists, most expensive first.
-pub(crate) const PARAM_TOP_FILE_VIEWS: &str = "topFileViews";
+/// How many files the context-usage breakdown names for a profile that does not configure
+/// [agent-managed context](CAPABILITY_AGENT_MANAGED_CONTEXT) at all — none, because a profile
+/// without the capability is offered no `evict_file_view` and so is never shown the breakdown the
+/// figure sizes.
+const NO_FILE_VIEWS_NAMED: usize = 0;
 
-/// How many files that breakdown names when the capability configures no
-/// [`PARAM_TOP_FILE_VIEWS`]. Enough that the reads actually worth dropping are in the list, short
-/// enough that the block stays a glance rather than a directory listing.
-const DEFAULT_TOP_FILE_VIEWS: usize = 5;
+/// The count the breakdown carries once [`PARAM_TOP_FILE_VIEWS`] has refused the launch. It is not
+/// a size gg chose: the run it belongs to does not start, and the signal it would have sized names
+/// no file.
+const TOP_FILE_VIEWS_OF_A_REFUSED_LAUNCH: usize = 0;
 
 /// The agent-managed-context configuration threaded into the [turn loop](Agent::drive): whether the
 /// capability is on, what this agent can actually do about its window, and the shared thread
@@ -8773,31 +8806,67 @@ impl AmcSetup {
 /// How many individual files the [context-usage signal](ContextModel::refresh_context_usage_signal)
 /// names, from `profile`'s [`PARAM_TOP_FILE_VIEWS`] param.
 ///
-/// Absent takes [`DEFAULT_TOP_FILE_VIEWS`]. A present value gg cannot read as a count, or a `0` —
-/// which leaves the signal telling an agent its window is full of file reads and naming none of
-/// them, so the `evict_file_view` call it is being steered towards has no path to take — is
-/// [reported](crate::validate) and refuses the launch. How many reads a window holds at once differs
-/// enormously between agents, which is exactly why the number has to be the one the profile wrote.
+/// An enabled capability writes the figure, and one that does not is
+/// [refused](crate::validate::required_positive_count_param) at the param's own locus: how many
+/// reads a window holds at once differs enormously between an agent that opens two specifications
+/// and one crawling a codebase, so there is no count gg could put here that would be the operator's.
+/// A `0` is refused on the same terms — it leaves the signal telling an agent its window is full of
+/// file reads and naming none of them, so the `evict_file_view` call it is being steered towards has
+/// no path to take — as is a value gg cannot read as a count.
+///
+/// A profile that does not configure the capability, or switches it off, names
+/// [no files at all](NO_FILE_VIEWS_NAMED) and is owed nothing: it is offered no `evict_file_view`,
+/// so the breakdown this figure sizes is never put in front of it. What such a profile *does* write
+/// is still read, so a `0` on the off arm of a comparison is heard about now rather than on the
+/// launch that flips the switch.
 fn resolve_top_file_views(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) -> usize {
-    profile
-        .capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
-        .and_then(|capability| {
-            crate::validate::positive_count_param(
-                &capability.params,
-                CAPABILITY_AGENT_MANAGED_CONTEXT,
-                PARAM_TOP_FILE_VIEWS,
-                "a signal that names no file at all leaves the agent it is steering with nothing \
-                 to evict",
-                report,
-            )
-        })
-        .map_or(DEFAULT_TOP_FILE_VIEWS, |top| {
-            usize::try_from(top).unwrap_or(usize::MAX)
-        })
+    let Some(capability) = profile.capability(CAPABILITY_AGENT_MANAGED_CONTEXT) else {
+        return NO_FILE_VIEWS_NAMED;
+    };
+    let consequence = "a signal that names no file at all leaves the agent it is steering with \
+                       nothing to evict";
+    let declared = if capability.enabled {
+        crate::validate::required_positive_count_param(
+            &capability.params,
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            PARAM_TOP_FILE_VIEWS,
+            consequence,
+            report,
+        )
+    } else {
+        crate::validate::positive_count_param(
+            &capability.params,
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            PARAM_TOP_FILE_VIEWS,
+            consequence,
+            report,
+        );
+        return NO_FILE_VIEWS_NAMED;
+    };
+    declared.map_or(TOP_FILE_VIEWS_OF_A_REFUSED_LAUNCH, |top| {
+        usize::try_from(top).unwrap_or(usize::MAX)
+    })
 }
+
+/// What [`AUTOLOAD_PARAM_IMAGES`] reads as for a profile that seeds nothing — one with no
+/// [autoload](CAPABILITY_AUTOLOAD_SPECS) capability, or one that switches it off. There is no
+/// seeded mockup for the switch to be about, so the answer is not a picture rather than a figure
+/// standing in for one nobody wrote.
+const NO_PICTURES_SEEDED: bool = false;
+
+/// What that param reads as once it has refused the launch. The run it belongs to does not start,
+/// so the value seeds nothing; it is named rather than reached through `false` so the next reader
+/// of the line can see it configures nothing.
+const IMAGES_OF_A_REFUSED_LAUNCH: bool = false;
+
+/// Whether the seeded views are [pinned](Retention::Pinned) once the `implementation` naming an arm
+/// gg does not offer has refused the launch. Read on the terms [`IMAGES_OF_A_REFUSED_LAUNCH`] is:
+/// the run does not start, so nothing is seeded to be pinned or dropped, and the name is what says
+/// so at the one line where a bare `false` would read as the unlocked arm.
+const LOCK_OF_A_REFUSED_LAUNCH: bool = false;
 
 /// Whether — and how — an agent's opening context is seeded with the test case's
 /// [provided files](Orchestrator::provided_files), the
@@ -8807,18 +8876,18 @@ fn resolve_top_file_views(
 /// front-load the whole spec for one agent and let another read what it needs.
 #[derive(Debug, Clone, Copy)]
 struct AutoloadSetup {
-    /// Whether this agent front-loads the provided files. When off (the default), the agent opens
-    /// with only the build prompt and reads what it needs itself.
+    /// Whether this agent front-loads the provided files. When off, the agent opens with only the
+    /// build prompt and reads what it needs itself.
     enabled: bool,
     /// Whether the autoloaded views are **locked** — [pinned](Retention::Pinned) into the window,
     /// kept verbatim across every [compaction] boundary and immune to
     /// [eviction](ContextModel::evict_file_views). Off, they are ordinary ephemeral file reads that
     /// compaction may summarize and agent-managed context may evict.
     locked: bool,
-    /// Whether a seeded reference mockup is attached as a **picture**. Off (the default) it arrives
-    /// as the description any read produces — label, format, byte size — and the model reads the
-    /// file itself when it wants to look. An attached picture is charged by its dimensions and
-    /// charged again on every request the view survives.
+    /// Whether a seeded reference mockup is attached as a **picture**. Off it arrives as the
+    /// description any read produces — label, format, byte size — and the model reads the file
+    /// itself when it wants to look. An attached picture is charged by its dimensions and charged
+    /// again on every request the view survives.
     images: bool,
 }
 
@@ -8827,11 +8896,14 @@ impl AutoloadSetup {
     /// [`CAPABILITY_AUTOLOAD_SPECS`], and **locked** when that capability's
     /// [implementation](GgAgentConfig::capability) is [`AUTOLOAD_LOCKED_IMPL`].
     ///
-    /// Absent or empty is the capability's documented default — ordinary ephemeral file reads that
-    /// compaction may summarize and agent-managed context may evict. Anything else is
-    /// [reported](crate::validate) and refuses the launch: `lock`, `Locked` and `pinned` are not
-    /// this arm, and the exact-match comparison that decides it would otherwise read every one of
-    /// them as *unlocked*, running the droppable arm on a launch that asked for the pinned one.
+    /// The lever has one value, so writing nothing is a **declaration** rather than a silence: it
+    /// says the seeded specifications are ordinary ephemeral file reads, which compaction may
+    /// summarize and agent-managed context may evict. Both states are writable and both are meant,
+    /// which is why this is the one arm in gg an enabled capability may leave unnamed. Anything
+    /// *else* is [reported](crate::validate) and refuses the launch: `lock`, `Locked` and `pinned`
+    /// are not this arm, and the exact-match comparison that decides it would otherwise read every
+    /// one of them as *unlocked*, running the droppable arm on a launch that asked for the pinned
+    /// one.
     fn resolve(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) -> Self {
         let enabled = profile.is_enabled(CAPABILITY_AUTOLOAD_SPECS);
         let locked = match profile
@@ -8854,7 +8926,7 @@ impl AutoloadSetup {
                     )
                     .known([AUTOLOAD_LOCKED_IMPL]),
                 );
-                false
+                LOCK_OF_A_REFUSED_LAUNCH
             }
         };
         let images = Self::resolve_images(profile, report);
@@ -8871,18 +8943,40 @@ impl AutoloadSetup {
     /// Whether `profile` asks autoload to attach a seeded mockup as a picture, from the
     /// [`images`](AUTOLOAD_PARAM_IMAGES) param.
     ///
+    /// An enabled capability writes it, and one that writes none is
+    /// [refused](crate::validate::required_param): what a seeded mockup costs and what the model
+    /// can do with it both turn on this switch, and gg picks neither side of it. A profile with no
+    /// autoload capability, or one that switches it off, seeds nothing at all, so there is no
+    /// picture for the switch to be about and nothing is owed; a value written on the off arm is
+    /// still read.
+    ///
     /// A switch is a boolean, and a value that is not one is [reported](crate::validate) rather
     /// than read as `false`. Reading `"true"` as *off* would seed the run's opening context with
     /// captions on a launch that asked for pictures, and the record would name the arm that did
     /// not run.
     fn resolve_images(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) -> bool {
-        let Some(declared) = profile
-            .capability(CAPABILITY_AUTOLOAD_SPECS)
-            .map(|capability| &capability.params)
-            .and_then(|params| params.get(AUTOLOAD_PARAM_IMAGES))
-            .filter(|value| !value.is_null())
-        else {
-            return false;
+        let Some(capability) = profile.capability(CAPABILITY_AUTOLOAD_SPECS) else {
+            return NO_PICTURES_SEEDED;
+        };
+        let declared = if capability.enabled {
+            let Some(declared) = crate::validate::required_param(
+                &capability.params,
+                CAPABILITY_AUTOLOAD_SPECS,
+                AUTOLOAD_PARAM_IMAGES,
+                report,
+            ) else {
+                return IMAGES_OF_A_REFUSED_LAUNCH;
+            };
+            declared
+        } else {
+            let Some(declared) = capability
+                .params
+                .get(AUTOLOAD_PARAM_IMAGES)
+                .filter(|value| !value.is_null())
+            else {
+                return NO_PICTURES_SEEDED;
+            };
+            declared
         };
         match declared.as_bool() {
             Some(images) => images,
@@ -8903,7 +8997,7 @@ impl AutoloadSetup {
                     )
                     .known(["true", "false"]),
                 );
-                false
+                IMAGES_OF_A_REFUSED_LAUNCH
             }
         }
     }
@@ -9365,8 +9459,10 @@ struct DriveSetup {
     /// This agent's [persistence]: whether its instances are serialized and carry their open file
     /// views between them.
     persistence: PersistenceSetup,
-    /// How much of a file one `read_file` returns.
-    read_policy: ReadPolicy,
+    /// How much of a file one `read_file` returns, or `None` when this agent has no
+    /// [read-file](test_cabinet_core::gg::CAPABILITY_READ_FILE) capability at all and so is offered
+    /// no `read_file` to bind a policy to.
+    read_policy: Option<ReadPolicy>,
     /// How much of a command's output one `shell` call returns.
     shell_offload: OffloadPolicy,
     /// Whether this agent answers with programs rather than tool calls, and the sandbox ceilings
@@ -9719,7 +9815,6 @@ fn describe_turns(turns: &[u64]) -> String {
 /// in gg is per agent, and a run may narrow its implementer's window while measuring its reviewer
 /// against the model's own.
 pub(crate) fn resolve_window_limit(
-    set: &GgCapabilitySet,
     profile: &GgAgentConfig,
     windows: &BTreeMap<String, u64>,
     model_id: &str,
@@ -9729,49 +9824,94 @@ pub(crate) fn resolve_window_limit(
     // records the window it *would* have narrowed to (keeping two configurations' on/off
     // symmetric) without narrowing anything. Execution ceilings moved to
     // `capabilitySet.limits`; this window narrowing stays a capability param because it is
-    // genuinely a lever a study toggles, not a run-wide ceiling.
+    // genuinely a lever a study toggles, not a run-wide ceiling. So the switch is read *before* the
+    // param: an enabled capability owes a figure, and the discarding sink below may only be reached
+    // where the launch pass has already proved one is written.
     //
     // Discarding: `check_window_limits` read this same param at launch against this same model
-    // window, and refused the run if it was not a narrowing gg could apply.
-    let configured = window_limit(profile, &mut crate::validate::LaunchReport::Discarding)
-        .filter(|_| profile.is_enabled(CAPABILITY_CONTEXT_WINDOW_OVERRIDE))
-        .map_or(model_window, |limit| limit.min(model_window));
+    // window, and refused the run if it was absent, or not a narrowing gg could apply.
+    let configured = match profile
+        .capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
+        .filter(|capability| capability.enabled)
+    {
+        Some(_) => {
+            match window_limit(profile, &mut crate::validate::LaunchReport::Discarding) {
+                Some(limit) => limit.min(model_window),
+                // An enabled override with no figure: `check_window_limits` read this same param
+                // through this same resolver and refused the run, so this measures an agent that
+                // takes no turn.
+                None => window_of_a_refused_launch(model_window),
+            }
+        }
+        // No override, or one switched off: the agent is measured against its model's own window,
+        // which is the setting an absent narrowing states rather than a figure gg picked.
+        None => model_window,
+    };
     Some(compaction::working_window(
-        set,
+        profile,
         configured,
         &mut crate::validate::LaunchReport::Discarding,
     ))
 }
 
-/// The [narrowed window](PARAM_WINDOW_LIMIT) `profile` declares, in tokens, or `None` when it
-/// declares none.
+/// The window an agent is measured against once the [narrowing](PARAM_WINDOW_LIMIT) it declared has
+/// refused the launch: the model's own, because there is no narrowed one to use and a
+/// [total](crate::validate#the-resolver-contract) reader must answer with something.
 ///
-/// A `0` is refused rather than read as "no override": an override that narrows nothing is an
-/// override the run records and never applied, which is precisely the configuration the
-/// [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) study cannot survive — its two arms
-/// would be the same arm.
+/// A function rather than a constant because the figure is the model's rather than gg's. It is
+/// named so the next reader of that line sees a refused launch rather than the un-narrowed arm
+/// running under the narrowed arm's name.
+fn window_of_a_refused_launch(model_window: u64) -> u64 {
+    model_window
+}
+
+/// The [narrowed window](PARAM_WINDOW_LIMIT) `profile` declares, in tokens, or `None` when it
+/// narrows nothing.
+///
+/// Narrowing is the whole of what the capability does, so an enabled one writes the figure it
+/// narrows to and one that writes none is [refused](crate::validate::required_positive_count_param)
+/// at the param's own locus — an override with no figure is an override the run would record and
+/// never apply. A `0` is refused on the same terms rather than read as "no override": it narrows to
+/// a window that holds not even the system prompt, and it would leave the
+/// [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) study's two arms as one arm.
+///
+/// A profile with no such capability, or one that switches it off, is measured against its model's
+/// own window; that absence is the setting, and nothing is owed. A figure written on the off arm is
+/// still read and still judged, so the two arms of one comparison stay one document with one switch
+/// moved.
 fn window_limit(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) -> Option<u64> {
     let capability = profile.capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)?;
-    crate::validate::positive_count_param(
-        &capability.params,
-        CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
-        PARAM_WINDOW_LIMIT,
-        "a window of no tokens holds not even the system prompt, and an override that narrows to \
-         nothing is one the run records and never applies",
-        report,
-    )
+    let consequence = "a window of no tokens holds not even the system prompt, and an override \
+                       that narrows to nothing is one the run records and never applies";
+    if capability.enabled {
+        crate::validate::required_positive_count_param(
+            &capability.params,
+            CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+            PARAM_WINDOW_LIMIT,
+            consequence,
+            report,
+        )
+    } else {
+        crate::validate::positive_count_param(
+            &capability.params,
+            CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+            PARAM_WINDOW_LIMIT,
+            consequence,
+            report,
+        )
+    }
 }
 
 /// Every profile's [window override](PARAM_WINDOW_LIMIT), read against the window of the model
 /// bound to it — the launch check that makes the narrowing exact.
 ///
-/// The override **may only make the window smaller**. A value above the model's own window used to
-/// be clamped, silently, which left a run recording a narrowing it never applied and measuring the
-/// model's full window under the narrowed arm's name; it is refused now, on the same rule an
-/// unresolvable window is refused under. A profile whose model has no window at all is left alone —
+/// The override **may only make the window smaller**. A value above the model's own window is
+/// refused, on the same rule an unresolvable window is refused under: clamping it would leave a run
+/// recording a narrowing it never applied and measuring the model's full window under the narrowed
+/// arm's name. A profile whose model has no window at all is left alone —
 /// [`validate_model_windows`] owns that refusal, and reporting it twice would name one defect as
 /// two.
 fn check_window_limits(
@@ -9834,10 +9974,26 @@ pub(crate) fn check_invocation(
         report,
     );
     for profile in &invocation.capability_set.agents {
-        if profile.is_enabled(CAPABILITY_SKILLS) {
+        report.for_agent(&profile.id, |report| {
             resolve_skills_dir(profile, &invocation.workspace_dir, report);
-        }
+        });
     }
+}
+
+/// Create gg's own [dotdir](test_cabinet_core::gg::GG_WORKSPACE_DIR) and the
+/// [skills library](GG_WORKSPACE_SKILLS_DIR) inside it, before anything reads the workspace.
+///
+/// Everything under `.gg` is gg's — the capture journal it streams while the session runs, the
+/// scripts a hook executes, the skills library — and seeding excludes the whole directory from the
+/// run's git tree for that reason. So gg stands it up itself rather than requiring every seeded
+/// workspace to know what belongs inside it, and the `.gg/skills` a fresh capability set is authored
+/// with is a directory that is always there and always empty until a workspace authors into it.
+///
+/// A failure to create it is not reported here. The one thing that turns on it is the
+/// [skills gate](check_workspace), which names the directory, the profile that wanted it and what
+/// that profile would have opened with — a better refusal than an `io::Error` on a path.
+fn prepare_workspace_dotdir(workspace_dir: &Path) {
+    let _ = std::fs::create_dir_all(workspace_dir.join(GG_WORKSPACE_SKILLS_DIR));
 }
 
 /// This module's contribution to the [workspace gate](crate::validate::validate_workspace): every
@@ -9846,11 +10002,11 @@ pub(crate) fn check_invocation(
 ///
 /// Three questions, and each of them needs the filesystem rather than the document:
 ///
-/// 1. A `dir` a profile **named** must be a directory gg can open. A configured path that is
-///    not there is a typo (or a workspace that never seeded what it was meant to), and loading
-///    `.gg/skills` instead would hand the agent a set of skills nobody configured. The **default**
-///    directory being absent is not this: it is absent from every workspace that authored no
-///    skills, and an empty library is exactly right there.
+/// 1. The `dir` a profile named must be a directory gg can open. Every enabled skills capability
+///    names one, so the path is always a promise about the workspace: one that is not there is a
+///    typo, or a workspace that never seeded what it was meant to, and gg reaches for no directory
+///    of its own — the agent would open with a library nobody authored. A profile that is to hold
+///    gg's built-ins alone points `dir` at a directory the workspace carries and leaves empty.
 /// 2. Every entry under it must load — [`SkillLibrary::load`] reports each one that does not.
 /// 3. A skill carrying **code** must carry it in a language the profile reading it writes. A
 ///    directory authored `skill.ts` read by a Python agent loads nothing: the skill reads as prose,
@@ -9869,16 +10025,22 @@ pub(crate) fn check_workspace(
         if !profile.is_enabled(CAPABILITY_SKILLS) {
             continue;
         }
-        // Already reported: the launch pass read this param and refused a `dir` that is not a path.
-        let dir = resolve_skills_dir(
+        // Already reported: the launch pass read this param, refused an enabled capability that
+        // named no `dir` and refused one whose `dir` is not a path — so a profile that reaches the
+        // workspace gate with skills on has a directory to walk.
+        let Some(dir) = resolve_skills_dir(
             profile,
             &invocation.workspace_dir,
             &mut crate::validate::LaunchReport::already_reported(),
-        );
+        ) else {
+            continue;
+        };
         let library = match loaded.get(&dir) {
             Some(library) => Arc::clone(library),
             None => {
-                let library = if configures_skills_dir(profile) && !dir.is_dir() {
+                let library = if dir.is_dir() {
+                    Arc::new(SkillLibrary::load(&dir, report))
+                } else {
                     report.report(crate::validate::LaunchDefect::run_level(
                         crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_SKILLS_DIR),
                         dir.display().to_string(),
@@ -9891,8 +10053,6 @@ pub(crate) fn check_workspace(
                         ),
                     ));
                     Arc::new(SkillLibrary::empty())
-                } else {
-                    Arc::new(SkillLibrary::load(&dir, report))
                 };
                 loaded.insert(dir.clone(), Arc::clone(&library));
                 library
@@ -9900,19 +10060,6 @@ pub(crate) fn check_workspace(
         };
         check_skill_languages(profile, &dir, &library, &mut checked, report);
     }
-}
-
-/// Whether `profile` **names** its skills directory, as opposed to taking
-/// [the default](DEFAULT_SKILLS_DIR).
-///
-/// The distinction is the whole of why a missing skills directory is sometimes a refusal and
-/// sometimes the ordinary case: a path an operator wrote is a promise about the workspace, and an
-/// unwritten one is the absence that takes a documented default.
-fn configures_skills_dir(profile: &GgAgentConfig) -> bool {
-    profile
-        .capability(CAPABILITY_SKILLS)
-        .and_then(|capability| capability.params.get(PARAM_SKILLS_DIR))
-        .is_some_and(|value| !value.is_null())
 }
 
 /// Every skill that carries code must carry it in the language of the profile reading it.
@@ -10029,7 +10176,9 @@ fn resolve_skills(
         if !profile.is_enabled(CAPABILITY_SKILLS) {
             continue;
         }
-        let dir = resolve_skills_dir(profile, workspace_dir, report);
+        let Some(dir) = resolve_skills_dir(profile, workspace_dir, report) else {
+            continue;
+        };
         let library = match by_dir.get(&dir) {
             Some(library) => Arc::clone(library),
             None => {
@@ -10043,52 +10192,74 @@ fn resolve_skills(
     by_profile
 }
 
-/// Resolve the directory `profile` loads its skills from: the skills capability's
-/// [`dir`](PARAM_SKILLS_DIR) param when set (relative to the workspace, or absolute as
-/// given), else [`DEFAULT_SKILLS_DIR`] under the workspace.
+/// The directory a profile loads no skills from: it configures none — the capability is absent or
+/// switched off — or the param that would have named one has already refused the launch. Either
+/// way there is nothing to walk, and gg reaches for no directory of its own.
+const NO_SKILLS_DIRECTORY: Option<PathBuf> = None;
+
+/// Resolve the directory `profile` loads its authored skills from: the skills capability's
+/// [`dir`](PARAM_SKILLS_DIR) param, relative to the workspace or absolute as given.
 ///
-/// An absent `dir` takes the default. A present one that is not a path — a number, an object, a
-/// string of nothing but whitespace — is [reported](crate::validate) and refuses the launch. It is
-/// the quietest of all these defects otherwise: the default directory is very likely to exist, the
-/// library loads from it, and the agent proceeds with a set of skills nobody configured. Whether the
-/// resolved directory can actually be **read** is a different question, and one the workspace
-/// answers rather than the document; it is checked after seeding, not here.
+/// An enabled capability writes it, and one that writes none is
+/// [refused](crate::validate::required_param): a library belongs to an agent, and there is no
+/// directory gg could reach for that would be the one this profile meant. A present value that is
+/// not a path — a number, an object, a string of nothing but whitespace — is refused on the same
+/// terms.
+///
+/// `None` says this profile loads no authored skills at all: it declares no skills capability, or
+/// switches it off, or wrote a `dir` gg could not read and the launch is already refused. A `dir` on
+/// a switched-off capability is still read, so the two arms of one comparison stay one document with
+/// one switch moved.
+///
+/// Whether the resolved directory can actually be **read** is a different question, and one the
+/// workspace answers rather than the document; it is checked after seeding, by
+/// [`check_workspace`], not here.
 fn resolve_skills_dir(
     profile: &GgAgentConfig,
     workspace_dir: &Path,
     report: &mut crate::validate::LaunchReport,
-) -> PathBuf {
-    let declared = profile
-        .capability(CAPABILITY_SKILLS)
-        .map(|capability| &capability.params)
-        .and_then(|params| params.get(PARAM_SKILLS_DIR))
-        .filter(|value| !value.is_null());
-    let configured = match declared {
-        None => DEFAULT_SKILLS_DIR,
-        Some(value) => match value.as_str().map(str::trim).filter(|dir| !dir.is_empty()) {
-            Some(dir) => dir,
-            None => {
-                report.report(crate::validate::LaunchDefect::run_level(
-                    crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_SKILLS_DIR),
-                    crate::validate::as_written(value),
-                    format!(
-                        "the `{CAPABILITY_SKILLS}` capability's `{PARAM_SKILLS_DIR}` names the \
-                         directory the agent `{}` loads its skills from, and gg cannot read a path \
-                         here; loading `{DEFAULT_SKILLS_DIR}` instead would give the agent a set \
-                         of skills nobody configured.",
-                        profile.id,
-                    ),
-                ));
-                DEFAULT_SKILLS_DIR
-            }
-        },
+) -> Option<PathBuf> {
+    let capability = profile.capability(CAPABILITY_SKILLS)?;
+    let declared = if capability.enabled {
+        let Some(declared) = crate::validate::required_param(
+            &capability.params,
+            CAPABILITY_SKILLS,
+            PARAM_SKILLS_DIR,
+            report,
+        ) else {
+            return NO_SKILLS_DIRECTORY;
+        };
+        declared
+    } else {
+        capability
+            .params
+            .get(PARAM_SKILLS_DIR)
+            .filter(|value| !value.is_null())?
+    };
+    let Some(configured) = declared
+        .as_str()
+        .map(str::trim)
+        .filter(|dir| !dir.is_empty())
+    else {
+        report.report(crate::validate::LaunchDefect::run_level(
+            crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_SKILLS_DIR),
+            crate::validate::as_written(declared),
+            format!(
+                "the `{CAPABILITY_SKILLS}` capability's `{PARAM_SKILLS_DIR}` names the directory \
+                 the agent `{}` loads its skills from, and gg cannot read a path here; it reaches \
+                 for no directory of its own, so the agent would open with a library nobody \
+                 authored.",
+                profile.id,
+            ),
+        ));
+        return NO_SKILLS_DIRECTORY;
     };
     let path = Path::new(configured);
-    if path.is_absolute() {
+    Some(if path.is_absolute() {
         path.to_path_buf()
     } else {
         workspace_dir.join(path)
-    }
+    })
 }
 
 /// Build the run's [`MemoriesRuntime`] from the capability set: when the
@@ -10150,7 +10321,11 @@ fn memories_startup_note(memories: &MemoriesRuntime) -> String {
 /// would otherwise offer that profile the board tools while the run around it had no board runtime,
 /// no auto-dispatch, and no worktrees, so every issue it filed would sit on the board forever.
 /// Mirrors how [`merge_agent_id`] reads the same capability's merge-agent param.
-fn board_owner(set: &GgCapabilitySet) -> Option<&GgAgentConfig> {
+///
+/// This is the profile the board's three ceilings are read off, and every other profile's are read
+/// by nothing — so a second board-carrying profile that declares a *different* one is
+/// [refused at launch](crate::validate) rather than quietly overruled.
+pub(crate) fn board_owner(set: &GgCapabilitySet) -> Option<&GgAgentConfig> {
     set.agents
         .iter()
         .find(|agent| agent.is_enabled(CAPABILITY_PROJECT_MANAGEMENT))
@@ -10165,10 +10340,15 @@ fn resolve_board(set: &GgCapabilitySet, ids: &ModuleIds) -> BoardRuntime {
     let Some(owner) = board_owner(set) else {
         return BoardRuntime::disabled();
     };
-    let caps = owner
-        .capability(CAPABILITY_PROJECT_MANAGEMENT)
-        .map(|cap| BoardCaps::resolve(&cap.params, &mut crate::validate::LaunchReport::Discarding))
-        .unwrap_or_default();
+    // `board_owner` found the profile by its *enabled* capability, so there is one to read the
+    // ceilings off; a set with none has no board at all rather than one bounded by figures gg chose.
+    let Some(capability) = owner.capability(CAPABILITY_PROJECT_MANAGEMENT) else {
+        return BoardRuntime::disabled();
+    };
+    let caps = BoardCaps::resolve(
+        &capability.params,
+        &mut crate::validate::LaunchReport::Discarding,
+    );
     BoardRuntime::new_in(caps, ids)
 }
 
@@ -10304,12 +10484,14 @@ struct PromptInputs<'a> {
     tasks: &'a TasksRuntime,
     /// The epic/issue board capability, for its ceilings.
     board: &'a BoardRuntime,
-    /// How much of a file one `read_file` call returns, so a capped run says so up front.
+    /// How much of a file one `read_file` call returns, so a capped run says so up front, or `None`
+    /// when the agent configures no read policy — in which case the prompt states no cap, because
+    /// there is none in force.
     ///
     /// There is no `shell` counterpart: the [output policy](OffloadPolicy) states its own tail on
     /// the output it truncates, and that a program may run a command at all is what `shell`'s brief
     /// says on the opening turn.
-    read_policy: ReadPolicy,
+    read_policy: Option<ReadPolicy>,
     /// This agent's model and the run's vision registry, so the prompt can state whether a
     /// reference image can actually be shown to it.
     vision: &'a VisionContext,
@@ -10844,14 +11026,17 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
     let offers_spawn = registry.offers(SPAWN_SUBAGENT_TOOL);
 
     // The read cap is only worth stating when `read_file` is actually offered and actually
-    // capped; an unlimited (or withheld) read contributes no prompt text. Whether the model
-    // can be shown an image is stated whenever `read_file` is offered at all — a text-only
-    // model that is not told so spends turns re-reading a mockup it will never see.
+    // capped; an unlimited read — and an agent that configures no read policy at all — contributes
+    // no prompt text, because there is no cap in force to describe. The cap is carried as the one
+    // `Option` the template reads, so the prompt cannot state a figure the policy does not have.
+    // Whether the model can be shown an image is stated whenever `read_file` is offered at all — a
+    // text-only model that is not told so spends turns re-reading a mockup it will never see.
     let offers_read = registry.offers(READ_FILE_TOOL);
     let read_file = ReadFileView {
         offered: offers_read,
-        capped: offers_read && read_policy.line_cap().is_some(),
-        line_cap: read_policy.line_cap().unwrap_or_default(),
+        line_cap: offers_read
+            .then(|| read_policy.as_ref().and_then(ReadPolicy::line_cap))
+            .flatten(),
         images: offers_read && !vision.declared_text_only(),
     };
 

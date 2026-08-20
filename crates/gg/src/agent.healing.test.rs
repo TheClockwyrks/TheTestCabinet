@@ -25,9 +25,10 @@ const FENCED_PROGRAM: &str = include_str!("testdata/round1-haiku-turn-03.txt");
 /// A capability set with responses-as-code enabled and `params` on it.
 fn healing_set(params: serde_json::Value) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
-    let mut capability = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
-    capability.params = params;
-    crate::tools::grant_configured(&mut set.agents[0], capability);
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        crate::tools::configured(CAPABILITY_RESPONSES_AS_CODE, params),
+    );
     set
 }
 
@@ -36,10 +37,10 @@ fn code_with(healing: HealingConfig) -> CodeSetup {
     CodeSetup {
         enabled: true,
         language: GgProgramLanguage::TypeScript,
-        limits: SandboxLimits::default(),
+        limits: SandboxLimits::AMPLE,
         healing,
         assistant_messages: AssistantMessageMode::None,
-        doc_view_types: crate::docs::DocViewTypes::default(),
+        doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
 
@@ -107,7 +108,7 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
         &registry,
         &emitter,
         no_limits(5),
-        code_with(HealingConfig::default()),
+        code_with(HealingConfig::SAFE_REPAIRS),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -237,7 +238,7 @@ async fn every_reply_is_compiled_rather_than_judged() {
         &registry,
         &emitter,
         no_limits(3),
-        code_with(HealingConfig::default()),
+        code_with(HealingConfig::SAFE_REPAIRS),
     )
     .await;
     assert_eq!(end.status, "exhausted", "no reply ended the session");
@@ -323,7 +324,7 @@ async fn disarming_a_strategy_changes_only_what_healing_returns() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
-    let mut healing = HealingConfig::default();
+    let mut healing = HealingConfig::SAFE_REPAIRS;
     healing.set(HealingStrategy::StripFences, false);
     // Prose, then a fenced program — the shape a model actually sends. With the strategy armed the
     // wrapper comes off and this runs; with it disarmed the whole reply goes to the compiler.

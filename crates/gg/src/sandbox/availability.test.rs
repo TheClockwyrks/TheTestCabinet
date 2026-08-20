@@ -159,7 +159,7 @@ fn the_memory_grant_follows_the_strategy() {
     let bound = |strategy| {
         CapabilityModules::inert().with(ModuleHandle::Memories(MemoriesRuntime::new(
             strategy,
-            MemoryCaps::for_strategy(strategy),
+            MemoryCaps::UNBOUNDED,
         )))
     };
     let facts = AgentFacts::default();
@@ -226,11 +226,8 @@ fn the_memory_grant_follows_the_strategy() {
 fn a_read_only_memory_holder_is_granted_no_write() {
     let profile = profile_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
     let modules = CapabilityModules::inert().with(ModuleHandle::Memories(
-        MemoriesRuntime::new(
-            MemoryStrategy::Markdown,
-            MemoryCaps::for_strategy(MemoryStrategy::Markdown),
-        )
-        .with_binding(GgMemoryScope::ReadOnly, MemoryAccess::ReadOnly),
+        MemoriesRuntime::new(MemoryStrategy::Markdown, MemoryCaps::UNBOUNDED)
+            .with_binding(GgMemoryScope::ReadOnly, MemoryAccess::ReadOnly),
     ));
     let facts = AgentFacts::default();
 
@@ -278,7 +275,9 @@ fn an_unbound_module_grants_none_of_its_capability() {
             SkillLibrary::loaded(dir.path()),
         ))))
         .with(ModuleHandle::Tasks(TasksRuntime::new(100)))
-        .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())));
+        .with(ModuleHandle::Board(
+            BoardRuntime::new(BoardCaps::detached()),
+        ));
     for id in [SKILLS_READ_SKILL, TASKS_ADD_TASK, BOARD_CREATE_ISSUE] {
         assert!(
             granted(&profile, &held, &facts, id),

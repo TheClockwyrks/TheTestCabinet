@@ -10,7 +10,9 @@
 
 // `GgTurnOutcome` and `GgTurnErrorKind` arrive through the `super::*` glob below — the module under
 // test imports them for its own wire mapping.
-use test_cabinet_core::gg::{GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgRunLimits};
+use test_cabinet_core::gg::{
+    AUTHORED_REPLAY_MAX_BYTES, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgRunLimits,
+};
 
 use crate::validate::{LaunchDefect, LaunchReport};
 
@@ -71,8 +73,8 @@ fn rate_limits(max_rate: f64, window: usize) -> RunLimits {
 }
 
 /// Ceilings with nothing armed at all — turns unbounded and every ceiling off. The baseline every
-/// accounting test varies one field of, built directly (not through the resolver, which arms gg's
-/// defaults) so a test isolates the one ceiling it is about.
+/// accounting test varies one field of, built directly rather than through the resolver so a test
+/// isolates the one ceiling it is about and owes nothing to the launch pass.
 fn bare_limits() -> RunLimits {
     RunLimits {
         max_turns: None,
@@ -82,6 +84,13 @@ fn bare_limits() -> RunLimits {
         max_cost: None,
         replay_max_bytes: None,
     }
+}
+
+/// The smallest limits block a launch accepts — the two required run-level values and no ceiling
+/// armed beyond them. Every resolution case varies one field of it, so each test is about the
+/// ceiling it names rather than about the values every configuration owes whatever it measures.
+fn required_only() -> GgRunLimits {
+    GgRunLimits::authored()
 }
 
 /// One error turn, of the type that carries no special meaning to any ceiling.
@@ -108,32 +117,54 @@ fn cost(comparable: f64, actual: f64) -> Option<Cost> {
 // Resolution — the truth table, row by row
 // ---------------------------------------------------------------------------------------------
 
+/// A set that writes no ceiling at all arms none of them — gg arms nothing nobody wrote — and is
+/// refused for the one run-level value that has no "off": the journal ceiling capture runs under.
 #[test]
-fn an_absent_limits_block_arms_the_error_defaults_and_leaves_turns_unbounded() {
-    // The host caps the wall-clock, so an unset turn ceiling is unbounded; what gg arms by default
-    // instead are the two error ceilings that end a run whose model has stopped making progress.
-    let limits = resolve_cleanly(GgRunLimits::default());
+fn an_absent_limits_block_arms_nothing_and_owes_the_journal_ceiling() {
+    let (limits, defects, warnings) = resolve(GgRunLimits::default());
 
-    assert_eq!(limits.max_turns, None, "turns are unbounded by default");
+    assert_eq!(
+        limits,
+        bare_limits(),
+        "every ceiling off, and the journal ceiling at its placeholder"
+    );
+    assert_eq!(limits.max_turns, None, "turns are unbounded");
     assert_eq!(limits.max_runtime, None);
     assert_eq!(
-        limits.max_consecutive_errors,
-        Some(DEFAULT_MAX_CONSECUTIVE_ERRORS)
+        limits.max_consecutive_errors, None,
+        "gg arms no error ceiling nobody wrote"
     );
-    assert_eq!(
-        limits.error_rate,
-        Some(ErrorRateLimit {
-            max_rate: DEFAULT_MAX_ERROR_RATE,
-            window: DEFAULT_ERROR_RATE_WINDOW,
-        })
-    );
+    assert_eq!(limits.error_rate, None);
     assert_eq!(limits.max_cost, None);
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(
+        defects[0].to_string(),
+        "limits.replayMaxBytes — the run writes no `replayMaxBytes`, which is the byte ceiling gg \
+         writes this run's capture journal under. gg substitutes nothing for a value nobody wrote, \
+         and every run is conducted under this one, so there is no absence for gg to read as \
+         \"off\"."
+    );
+}
+
+/// The smallest block a launch accepts arms nothing but the journal ceiling, and is refused for
+/// nothing — which is what makes "declares no ceiling" a configuration rather than an omission.
+#[test]
+fn the_required_values_alone_are_a_complete_declaration() {
+    let limits = resolve_cleanly(required_only());
+
+    assert_eq!(limits.max_turns, None);
+    assert_eq!(limits.max_runtime, None);
+    assert_eq!(limits.max_consecutive_errors, None);
+    assert_eq!(limits.error_rate, None);
+    assert_eq!(limits.max_cost, None);
+    assert_eq!(limits.replay_max_bytes, Some(AUTHORED_REPLAY_MAX_BYTES));
 }
 
 #[test]
 fn every_declared_ceiling_resolves_when_it_is_usable() {
     let limits = resolve_cleanly(GgRunLimits {
-        max_parallel: None,
         max_turns: Some(60),
         max_runtime_secs: Some(5400),
         max_consecutive_errors: Some(5),
@@ -141,6 +172,7 @@ fn every_declared_ceiling_resolves_when_it_is_usable() {
         error_rate_window: Some(10),
         max_cost: Some(25.0),
         replay_max_bytes: Some(1_024),
+        ..required_only()
     });
 
     assert_eq!(limits.max_turns, Some(60));
@@ -154,22 +186,23 @@ fn every_declared_ceiling_resolves_when_it_is_usable() {
         })
     );
     assert_eq!(limits.max_cost, Some(25.0));
+    assert_eq!(limits.replay_max_bytes, Some(1_024));
 }
 
 #[test]
 fn a_zero_turn_ceiling_is_refused_rather_than_read_as_unbounded() {
-    // The two spellings are not the same: an **absent** turn ceiling is unbounded, which is gg's
-    // documented default, while a declared `0` is a ceiling nothing could run under. Reading the
-    // second as the first is reading a ceiling as its own opposite — and the run that results is
-    // one nobody bounded, burning money, with a `maxTurns` in its own record.
+    // The two spellings are not the same: an **absent** turn ceiling leaves the ceiling unarmed,
+    // which is a declaration, while a declared `0` is a ceiling nothing could run under. Reading
+    // the second as the first is reading a ceiling as its own opposite — and the run that results
+    // is one nobody bounded, burning money, with a `maxTurns` in its own record.
     assert_eq!(
         sole_refusal(GgRunLimits {
             max_turns: Some(0),
-            ..GgRunLimits::default()
+            ..required_only()
         }),
         "limits.maxTurns = `0` — a run in which no agent may take a turn has nothing to do, so gg \
-         cannot arm the ceiling `maxTurns` declares. Omit the key to take gg's default, or give it \
-         a value it can be bounded by."
+         cannot arm the ceiling `maxTurns` declares. Omit the key to leave the ceiling unarmed, or \
+         give it a value a run can be bounded by."
     );
 }
 
@@ -178,7 +211,7 @@ fn a_zero_runtime_budget_is_refused() {
     assert!(
         sole_refusal(GgRunLimits {
             max_runtime_secs: Some(0),
-            ..GgRunLimits::default()
+            ..required_only()
         })
         .starts_with(
             "limits.maxRuntimeSecs = `0` — a budget of no seconds is spent before the run"
@@ -186,11 +219,28 @@ fn a_zero_runtime_budget_is_refused() {
     );
 }
 
+/// An absent consecutive-error ceiling is **unarmed**, not five: an agent stopped after failing
+/// several turns in a row was stopped by a threshold its operator chose.
+#[test]
+fn an_absent_consecutive_error_ceiling_leaves_it_unarmed() {
+    let limits = resolve_cleanly(GgRunLimits {
+        max_consecutive_errors: None,
+        ..required_only()
+    });
+
+    assert_eq!(limits.max_consecutive_errors, None);
+    assert!(
+        !limits.armed_summary().contains("consecutive"),
+        "and the launch line says so: {}",
+        limits.armed_summary()
+    );
+}
+
 #[test]
 fn a_zero_consecutive_error_ceiling_is_refused() {
     let declared = GgRunLimits {
         max_consecutive_errors: Some(0),
-        ..GgRunLimits::default()
+        ..required_only()
     };
 
     let (limits, _, _) = resolve(declared);
@@ -198,8 +248,8 @@ fn a_zero_consecutive_error_ceiling_is_refused() {
     assert_eq!(
         sole_refusal(declared),
         "limits.maxConsecutiveErrors = `0` — it would end an agent before its first turn, so gg \
-         cannot arm the ceiling `maxConsecutiveErrors` declares. Omit the key to take gg's \
-         default, or give it a value it can be bounded by."
+         cannot arm the ceiling `maxConsecutiveErrors` declares. Omit the key to leave the ceiling \
+         unarmed, or give it a value a run can be bounded by."
     );
 }
 
@@ -210,42 +260,55 @@ fn a_count_past_what_gg_holds_it_in_is_refused() {
     assert!(
         sole_refusal(GgRunLimits {
             max_consecutive_errors: Some(u64::from(u32::MAX) + 1),
-            ..GgRunLimits::default()
+            ..required_only()
         })
         .contains("cannot hold a ceiling above 4294967295")
     );
 }
 
-/// **Half a ceiling is the half that was written, over the default for the other.** Absent is not
-/// unrecognized: the missing half has a documented default, exactly as it does when *neither* half
-/// is written, and filling it in substitutes for nothing.
+/// **Neither half is the off switch.** A set that writes no error rate and no window arms no
+/// error-rate ceiling, and is refused for nothing: there is no figure gg would rather have.
 #[test]
-fn a_rate_without_a_window_arms_the_default_window() {
-    let limits = resolve_cleanly(GgRunLimits {
+fn neither_half_of_the_error_rate_leaves_it_unarmed() {
+    assert_eq!(resolve_cleanly(required_only()).error_rate, None);
+}
+
+/// **Half a ceiling is refused**, because the only thing that could complete it is a figure gg
+/// chose — and a rate over a window nobody wrote is a ceiling the operator believes they set.
+#[test]
+fn a_rate_without_a_window_is_refused() {
+    let declared = GgRunLimits {
         max_error_rate: Some(0.5),
-        ..GgRunLimits::default()
-    });
+        ..required_only()
+    };
+
+    let (limits, _, _) = resolve(declared);
+    assert_eq!(limits.error_rate, None);
     assert_eq!(
-        limits.error_rate,
-        Some(ErrorRateLimit {
-            max_rate: 0.5,
-            window: DEFAULT_ERROR_RATE_WINDOW,
-        })
+        sole_refusal(declared),
+        "limits.errorRateWindow — `maxErrorRate` is declared and `errorRateWindow` is not. \
+         `errorRateWindow` is the lookback the rate is measured over, and the minimum sample \
+         before it can fire, and the two halves stand or fall together: write both to arm the \
+         ceiling, or neither to leave it unarmed. gg will not complete a half-written ceiling with \
+         a figure of its own."
     );
 }
 
 #[test]
-fn a_window_without_a_rate_arms_the_default_rate() {
-    let limits = resolve_cleanly(GgRunLimits {
+fn a_window_without_a_rate_is_refused() {
+    let declared = GgRunLimits {
         error_rate_window: Some(10),
-        ..GgRunLimits::default()
-    });
-    assert_eq!(
-        limits.error_rate,
-        Some(ErrorRateLimit {
-            max_rate: DEFAULT_MAX_ERROR_RATE,
-            window: 10,
-        })
+        ..required_only()
+    };
+
+    let (limits, _, _) = resolve(declared);
+    assert_eq!(limits.error_rate, None);
+    assert!(
+        sole_refusal(declared).starts_with(
+            "limits.maxErrorRate — `errorRateWindow` is declared and `maxErrorRate` is not."
+        ),
+        "{}",
+        sole_refusal(declared)
     );
 }
 
@@ -254,7 +317,7 @@ fn a_rate_outside_zero_to_one_is_refused() {
     let declared = GgRunLimits {
         max_error_rate: Some(1.5),
         error_rate_window: Some(10),
-        ..GgRunLimits::default()
+        ..required_only()
     };
 
     let (limits, _, _) = resolve(declared);
@@ -274,7 +337,7 @@ fn a_rate_that_is_not_a_number_is_refused() {
         let declared = GgRunLimits {
             max_error_rate: Some(rate),
             error_rate_window: Some(10),
-            ..GgRunLimits::default()
+            ..required_only()
         };
 
         let (limits, defects, _) = resolve(declared);
@@ -289,7 +352,7 @@ fn a_zero_window_is_refused() {
     let declared = GgRunLimits {
         max_error_rate: Some(0.5),
         error_rate_window: Some(0),
-        ..GgRunLimits::default()
+        ..required_only()
     };
 
     let (limits, _, _) = resolve(declared);
@@ -307,7 +370,7 @@ fn both_halves_of_an_unusable_error_rate_are_refused_at_once() {
     let (_, defects, _) = resolve(GgRunLimits {
         max_error_rate: Some(2.0),
         error_rate_window: Some(0),
-        ..GgRunLimits::default()
+        ..required_only()
     });
 
     assert_eq!(
@@ -325,7 +388,7 @@ fn a_window_not_smaller_than_the_turn_ceiling_is_armed_but_warned_about() {
         max_turns: Some(8),
         max_error_rate: Some(0.5),
         error_rate_window: Some(8),
-        ..GgRunLimits::default()
+        ..required_only()
     };
 
     let (limits, _, _) = resolve(declared);
@@ -349,7 +412,7 @@ fn a_non_positive_cost_ceiling_is_refused() {
     for max_cost in [0.0, -1.0, f64::NAN] {
         let declared = GgRunLimits {
             max_cost: Some(max_cost),
-            ..GgRunLimits::default()
+            ..required_only()
         };
 
         let (limits, _, _) = resolve(declared);
@@ -364,6 +427,31 @@ fn a_non_positive_cost_ceiling_is_refused() {
     }
 }
 
+/// **The journal ceiling is required**, and its refusal says why in the one sentence an operator
+/// meeting it will want: capture runs on every session, so there is no absence to read as "off".
+#[test]
+fn an_absent_journal_ceiling_is_refused() {
+    let declared = GgRunLimits {
+        replay_max_bytes: None,
+        ..required_only()
+    };
+
+    let (limits, _, _) = resolve(declared);
+    assert_eq!(
+        limits.replay_max_bytes, None,
+        "the placeholder a refused launch carries; nothing is conducted under it"
+    );
+    let refusal = sole_refusal(declared);
+    assert!(
+        refusal.starts_with("limits.replayMaxBytes — the run writes no"),
+        "{refusal}"
+    );
+    assert!(
+        refusal.contains("no absence for gg to read as \"off\""),
+        "{refusal}"
+    );
+}
+
 #[test]
 fn a_zero_journal_ceiling_is_refused() {
     // The one ceiling that bounds the *observation* of a run rather than the run, and read on the
@@ -371,18 +459,22 @@ fn a_zero_journal_ceiling_is_refused() {
     // spelling of "no journal ceiling" for it to be read as.
     let declared = GgRunLimits {
         replay_max_bytes: Some(0),
-        ..GgRunLimits::default()
+        ..required_only()
     };
 
     let (limits, _, _) = resolve(declared);
     assert_eq!(
-        limits.replay_max_bytes,
-        Some(DEFAULT_REPLAY_MAX_BYTES),
-        "the refused value leaves the default standing; the launch is over either way"
+        limits.replay_max_bytes, None,
+        "the placeholder; the launch is over either way"
+    );
+    let refusal = sole_refusal(declared);
+    assert!(
+        refusal.starts_with("limits.replayMaxBytes = `0` — it would stop session capture before"),
+        "{refusal}"
     );
     assert!(
-        sole_refusal(declared)
-            .starts_with("limits.replayMaxBytes = `0` — it would stop session capture before")
+        refusal.contains("there is no reading of this run under which the journal has no ceiling"),
+        "the remedy does not offer an omission that is itself refused: {refusal}"
     );
 }
 
@@ -435,27 +527,21 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
         "nothing here was honoured, so there is nothing to advise about: {warnings:?}"
     );
     // The values that come back no longer decide anything — the run is refused — but the resolver
-    // stays total, so every mid-run caller of it still gets an answer.
-    assert_eq!(
-        limits,
-        RunLimits {
-            replay_max_bytes: Some(DEFAULT_REPLAY_MAX_BYTES),
-            ..bare_limits()
-        }
-    );
+    // stays total, so every mid-run caller of it still gets an answer. Every one of them is the
+    // named placeholder, and none is a figure gg picked.
+    assert_eq!(limits, bare_limits());
 }
 
 #[test]
 fn the_armed_summary_names_every_ceiling_in_force() {
     let armed = resolve_cleanly(GgRunLimits {
-        max_parallel: None,
         max_turns: Some(60),
         max_runtime_secs: Some(5400),
         max_consecutive_errors: Some(5),
         max_error_rate: Some(0.5),
         error_rate_window: Some(10),
         max_cost: Some(25.0),
-        replay_max_bytes: None,
+        ..required_only()
     });
 
     assert_eq!(

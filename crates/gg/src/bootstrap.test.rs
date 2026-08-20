@@ -64,8 +64,8 @@ fn agent<'a>(capabilities: &'a [String], operations: &'a [OperationId]) -> Boots
         capabilities,
         operations,
         role: EndingRole::Standard,
-        limits: SandboxLimits::default(),
-        doc_view_types: DocViewTypes::default(),
+        limits: SandboxLimits::AMPLE,
+        doc_view_types: DocViewTypes::RETURN_AND_ERRORS,
     }
 }
 

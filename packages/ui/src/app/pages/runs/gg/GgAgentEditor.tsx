@@ -33,7 +33,8 @@ import { GgEditorTabs, type GgEditorTab } from "./GgEditorTabs";
 import { GgHookList } from "./GgHookRows";
 import {
   agentParamErrors,
-  blankCapabilityDraft,
+  capabilityDraftFor,
+  armLoopDetection,
   loopDetectionError,
   loopDetectionWarning,
   setFeatureBundle,
@@ -143,20 +144,20 @@ export function GgAgentEditor({
       capabilities: {
         ...agent.capabilities,
         [id]: {
-          ...(agent.capabilities[id] ?? blankCapabilityDraft()),
+          ...(agent.capabilities[id] ?? capabilityDraftFor(id)),
           ...patch,
         },
       },
     });
   const setParam = (id: string, key: string, param: string) => {
-    const base = agent.capabilities[id] ?? blankCapabilityDraft();
+    const base = agent.capabilities[id] ?? capabilityDraftFor(id);
     updateCap(id, { params: { ...(base.params ?? {}), [key]: param } });
   };
   // Drop a param key entirely, which is a different state from setting it empty: a
   // `model` param defers to a slot exactly while its slot key is *present*, so "pin a
   // model instead" has to remove the key rather than blank it.
   const clearParam = (id: string, key: string) => {
-    const base = agent.capabilities[id] ?? blankCapabilityDraft();
+    const base = agent.capabilities[id] ?? capabilityDraftFor(id);
     const params = { ...(base.params ?? {}) };
     delete params[key];
     updateCap(id, { params });
@@ -171,7 +172,7 @@ export function GgAgentEditor({
       capabilities: {
         ...agent.capabilities,
         [cap.id]: {
-          ...(agent.capabilities[cap.id] ?? blankCapabilityDraft()),
+          ...(agent.capabilities[cap.id] ?? capabilityDraftFor(cap.id)),
           enabled,
         },
       },
@@ -184,8 +185,14 @@ export function GgAgentEditor({
   // Loop detection's switch and its knobs, written separately: the knobs survive the
   // switch going off, so an operator who tunes the detector and then disarms it finds
   // their settings still there when they arm it again.
+  // Arming seeds the five knobs it is short of, because an armed detector writes all
+  // five and gg lends none of them; disarming leaves every knob exactly as it is.
   const setLoopEnabled = (enabled: boolean) =>
-    onPatch({ loopDetection: { ...agent.loopDetection, enabled } });
+    onPatch({
+      loopDetection: enabled
+        ? armLoopDetection(agent.loopDetection)
+        : { ...agent.loopDetection, enabled },
+    });
   const setLoopKnob = (key: LoopDetectionSpec["key"], next: string) =>
     onPatch({
       loopDetection: {
@@ -517,12 +524,12 @@ export function GgAgentEditor({
                               onChange={(e) =>
                                 setLoopKnob(spec.key, e.target.value)
                               }
-                              // The bare figure. A placeholder is already read as
-                              // "what you get if you leave this empty", and prefixing
-                              // it doubled the width of every one of these fields to
-                              // say so five times over; each knob's hint says it in
-                              // words for anyone who wants it spelled out.
-                              placeholder={spec.ggDefault.toLocaleString(
+                              // The figure the knob was armed with, so a field an
+                              // operator has cleared still shows what putting it back
+                              // would mean. Bare, because a placeholder is already read
+                              // as "what goes here" and prefixing it doubled the width
+                              // of every one of these fields.
+                              placeholder={spec.authored.toLocaleString(
                                 "en-US",
                               )}
                             />

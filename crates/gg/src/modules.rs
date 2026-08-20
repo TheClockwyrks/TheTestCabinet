@@ -21,8 +21,7 @@
 //!
 //! [`Ownership`] is the knob that separates *"the agent is told what it holds, every turn"* from
 //! *"the agent may look it up"*. An [owned](Ownership::Owned) module contributes its prompt section
-//! and keeps its pinned block in the window on its own [refresh](Refresh) schedule — the only
-//! behaviour gg had before modules existed, and still the default. An
+//! and keeps its pinned block in the window on its own [refresh](Refresh) schedule. An
 //! [unowned](Ownership::Unowned) one contributes **nothing** to the automatically assembled prompt
 //! while remaining fully live: its tools still read and write it, its telemetry is still emitted,
 //! and it is still cloned, shared and transferred.
@@ -31,6 +30,13 @@
 //! instance can be shared between agents, or a task list handed from one state of a machine to the
 //! next, an agent can hold a working store it should be able to act on without paying for it in
 //! every request it makes.
+//!
+//! It is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and the two capabilities that offer it —
+//! [project management](CAPABILITY_PROJECT_MANAGEMENT) and
+//! [agent-managed context](CAPABILITY_AGENT_MANAGED_CONTEXT) — each **write** it when they are
+//! switched on. gg picks neither value for an operator: which of the two an agent is on is the whole
+//! of what this knob varies, so an enabled capability that names none
+//! [refuses the launch](resolve_ownership).
 //!
 //! # Copying: `fork` and `share`, never `Clone`
 //!
@@ -722,17 +728,6 @@ impl InheritedModules {
         }
     }
 
-    /// The offered memories, however they are organized — what a child that **names** no strategy
-    /// of its own binds.
-    ///
-    /// An inheriting profile that names a strategy is asking for a store organized that way, and
-    /// gets one only if that is what the spawner keeps ([`memories_organized_as`](Self::memories_organized_as)).
-    /// One that names none is asking for its spawner's notebook, whatever it is: the calls it is
-    /// offered are the store's own strategy's, because they are built from the module it bound.
-    pub fn offered(&self) -> Option<&MemoriesRuntime> {
-        self.memories.as_ref()
-    }
-
     /// The offered memories, but only if they are organized by `strategy` — otherwise `None`.
     ///
     /// A store is read by the calls its own strategy offers: a scratchpad handed to an agent
@@ -754,10 +749,9 @@ impl InheritedModules {
     /// An agent scoped [`inherited`](crate::memories::MemoryScope::Inherited) or `read-only` is
     /// configured to work in its spawner's notebook. If the spawner organizes it differently, gg
     /// cannot honour that: the calls the child is offered are its own strategy's, and they cannot
-    /// read the store it was pointed at. Giving it a fresh private notebook instead — which is what
-    /// gg did until this remediation — leaves a run whose record says two agents shared a store and
-    /// whose behaviour is two agents that never saw each other's memories, with nothing anywhere
-    /// saying which.
+    /// read the store it was pointed at. Giving it a fresh private notebook instead would leave a
+    /// run whose record says two agents shared a store and whose behaviour is two agents that never
+    /// saw each other's memories, with nothing anywhere saying which.
     ///
     /// A spawner that keeps **no** memories is not this: it is the documented arm in which an
     /// inheriting child gets its own store, and it returns `None`.
@@ -776,24 +770,55 @@ impl InheritedModules {
 /// configuration — the vocabulary a refusal offers back.
 const OWNERSHIPS: [&str; 2] = ["owned", "unowned"];
 
+/// The [`Ownership`] [`resolve_ownership`] answers with when the configuration decides none: a
+/// capability the profile does not declare or has switched **off**, whose module this agent does not
+/// hold, and an enabled one that writes no [`ownership`](MODULE_PARAM_OWNERSHIP) or writes one gg
+/// cannot read, which has refused the launch by the time this comes back.
+///
+/// `Ownership` has two values and one of them has to be named, so this is spelled
+/// [`Owned`](Ownership::Owned) — but it is named rather than reached through `Default` because
+/// nothing acts on it. A module gg does not hold has no prompt to be carried in, and a refused
+/// launch assembles no prompt at all.
+const OWNERSHIP_OF_A_REFUSED_LAUNCH: Ownership = Ownership::Owned;
+
 /// Resolve a module-backed capability's [`ownership`](MODULE_PARAM_OWNERSHIP) param.
 ///
-/// Absent or `null` takes the documented default, [`Owned`](Ownership::Owned). A value gg cannot
-/// read is reported into `report` and [refuses the launch](crate::validate): ownership is the knob
-/// that decides whether the agent is *told* what it holds every turn or has to look it up, so a
-/// typo resolved to `owned` would run a configuration nobody wrote — and the agent whose board was
-/// meant to cost it nothing would carry it in every request it made.
+/// **Required of an enabled capability**, and reported here at the constant it is read by: ownership
+/// is the knob that decides whether the agent is *told* what it holds every turn or has to look it
+/// up, so a figure gg picked would run a configuration nobody wrote — and the agent whose board was
+/// meant to cost it nothing would carry it in every request it made. A value gg cannot read is
+/// refused on the same terms, whichever way the switch is set, because a **disabled** capability
+/// still records the configuration the arm would have used and a typo skipped for a switch that
+/// happens to be off surfaces on the launch that flips it.
+///
+/// A capability the profile does not declare, or declares switched off, configures no ownership and
+/// is owed none: it answers [`OWNERSHIP_OF_A_REFUSED_LAUNCH`] in silence, and the two runtime callers
+/// reach it only for a capability they have already established is on.
 pub fn resolve_ownership(
     profile: &GgAgentConfig,
     capability: &str,
     report: &mut LaunchReport,
 ) -> Ownership {
-    let Some(raw) = profile
-        .capability(capability)
-        .and_then(|cap| cap.params.get(MODULE_PARAM_OWNERSHIP))
-        .filter(|value| !value.is_null())
-    else {
-        return Ownership::Owned;
+    let Some(declared) = profile.capability(capability) else {
+        return OWNERSHIP_OF_A_REFUSED_LAUNCH;
+    };
+    // An enabled capability owes the param and is told so at its own locus; a disabled one owes
+    // nothing, and only what it actually wrote is read.
+    let written = if declared.enabled {
+        crate::validate::required_param(
+            &declared.params,
+            capability,
+            MODULE_PARAM_OWNERSHIP,
+            report,
+        )
+    } else {
+        declared
+            .params
+            .get(MODULE_PARAM_OWNERSHIP)
+            .filter(|value| !value.is_null())
+    };
+    let Some(raw) = written else {
+        return OWNERSHIP_OF_A_REFUSED_LAUNCH;
     };
     let defect = |found: String, message: String| {
         LaunchDefect::run_level(
@@ -816,7 +841,7 @@ pub fn resolve_ownership(
                          `{other}` names neither."
                     ),
                 ));
-                Ownership::Owned
+                OWNERSHIP_OF_A_REFUSED_LAUNCH
             }
         },
         other => {
@@ -826,7 +851,7 @@ pub fn resolve_ownership(
                     "`{MODULE_PARAM_OWNERSHIP}` on the `{capability}` capability must be a string."
                 ),
             ));
-            Ownership::Owned
+            OWNERSHIP_OF_A_REFUSED_LAUNCH
         }
     }
 }
@@ -861,12 +886,15 @@ const MODULE_CAPABILITIES: [(&str, ModuleKind); 2] = [
 ];
 
 /// Read `profile`'s module configuration — today, the [`ownership`](MODULE_PARAM_OWNERSHIP) param of
-/// each module-backed capability — reporting every value gg cannot honour.
+/// each module-backed capability — reporting every value gg cannot honour and every enabled
+/// capability that writes none.
 ///
 /// Read whether or not the capability is switched **on**, which is the one thing to notice here. A
 /// disabled capability still records the configuration the arm would have used, and a typo skipped
 /// because a switch happened to be off is a typo that surfaces on the launch where it is flipped —
-/// by which point the operator is no longer looking at the document that has it.
+/// by which point the operator is no longer looking at the document that has it. What the switch
+/// decides is only whether the param is *owed*: [`resolve_ownership`] asks for it where the
+/// capability is on and judges what is there either way.
 pub fn check_ownership(profile: &GgAgentConfig, report: &mut LaunchReport) {
     for (capability, _) in MODULE_CAPABILITIES {
         resolve_ownership(profile, capability, report);
@@ -913,6 +941,12 @@ impl CapabilityModules {
     /// [unowned](Ownership::Unowned), so it is not shown a decomposition it has no tool to act on
     /// and no reason to go looking through for work other than the job it was given.
     pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
+        // Asked only where the capability is on, which is the condition under which the param is
+        // owed at all: the discarding sink asserts that nothing arrives, and an enabled capability
+        // short of its `ownership` is a defect the launch pass already reported. Off, the board is
+        // held [unowned](Ownership::Unowned) — not a resolved value but the answer to a different
+        // question, since a profile with no authoring capability is shown no decomposition it has
+        // no tool to act on.
         let board_ownership = if profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
             resolve_ownership(
                 profile,
@@ -939,6 +973,9 @@ impl CapabilityModules {
             } else {
                 SkillsRuntime::disabled()
             },
+            // The ownership is read only inside the enabled arm, for the reason the board's is:
+            // the param is owed by a capability that is on, and the launch pass has already proved
+            // this profile writes it.
             archive: if profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT) {
                 ArchiveRuntime::new_in(ctx.ids).with_ownership(resolve_ownership(
                     profile,

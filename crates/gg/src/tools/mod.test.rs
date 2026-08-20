@@ -202,19 +202,19 @@ fn read_policy_comes_from_the_read_file_capability() {
 
     assert_eq!(
         read_policy(&with_mode("default-cap", json!({ "lineCap": 500 }))),
-        ReadPolicy::DefaultCap(500)
+        Some(ReadPolicy::DefaultCap(500))
     );
     assert_eq!(
-        read_policy(&with_mode("unlimited", json!({}))),
-        ReadPolicy::Unlimited
+        read_policy(&with_mode("unlimited", json!({ "lineCap": 500 }))),
+        Some(ReadPolicy::Unlimited)
     );
-    // An unconfigured capability keeps the historical whole-file read.
-    assert_eq!(
-        read_policy(&set_with(vec![GgCapabilityConfig::enabled(
-            CAPABILITY_READ_FILE
-        )])),
-        ReadPolicy::Unlimited
-    );
+
+    // A capability that is absent, or present and switched off, has no policy at all: there is no
+    // `read_file` for one to govern, and gg picks no mode for a capability nobody configured.
+    assert_eq!(read_policy(&set_with(Vec::new())), None);
+    let mut disabled = with_mode("default-cap", json!({ "lineCap": 500 }));
+    disabled.capabilities[0].enabled = false;
+    assert_eq!(read_policy(&disabled), None);
 
     // The policy actually reaches the offered tool: a capped mode declares paging args.
     let registry =
@@ -246,35 +246,44 @@ fn shell_offload_comes_from_the_shell_capability() {
         }])
     };
 
-    let offloaded = shell_offload(&with_mode(
-        SHELL_OUTPUT_OFFLOAD,
-        json!({ "maxLines": 120, "maxChars": 9_000 }),
-    ));
-    let limits = offloaded.limits().expect("offloading is armed");
-    assert_eq!(
-        (limits.max_lines, limits.max_chars),
-        (Some(120), Some(9_000))
+    // Every resolution here is of a capability the launch pass would accept, so the sink is one
+    // that asserts nothing arrives.
+    let offloaded = shell_offload(
+        &with_mode(
+            SHELL_OUTPUT_OFFLOAD,
+            json!({ "maxLines": 120, "maxChars": 9_000 }),
+        ),
+        &mut crate::validate::LaunchReport::Discarding,
     );
+    let limits = offloaded.limits().expect("offloading is armed");
+    assert_eq!((limits.max_lines, limits.max_chars), (120, 9_000));
 
-    // An unconfigured capability gets the default mode at its default ceilings.
+    // A capability that is *absent* has no bargain to keep either.
     assert_eq!(
-        shell_offload(&set_with(vec![GgCapabilityConfig::enabled(
-            CAPABILITY_SHELL
-        )])),
-        OffloadPolicy::default()
+        shell_offload(
+            &set_with(Vec::new()),
+            &mut crate::validate::LaunchReport::Discarding
+        ),
+        OffloadPolicy::Inline
     );
 
     // A *disabled* shell capability resolves to inline whatever it declares: offloading is a
     // bargain (you see less, and grep back the rest) that an agent without the tool cannot keep its
     // side of — and the policy also governs the commands this agent's hooks run.
-    let mut disabled = with_mode(SHELL_OUTPUT_OFFLOAD, json!({ "maxLines": 120 }));
+    let mut disabled = with_mode(
+        SHELL_OUTPUT_OFFLOAD,
+        json!({ "maxLines": 120, "maxChars": 9_000 }),
+    );
     disabled.capabilities[0].enabled = false;
-    assert_eq!(shell_offload(&disabled), OffloadPolicy::Inline);
+    assert_eq!(
+        shell_offload(&disabled, &mut crate::validate::LaunchReport::Discarding),
+        OffloadPolicy::Inline
+    );
 
     // The policy actually reaches the offered tool: its description offers the file pair.
     let registry = ToolRegistry::from_capabilities(&with_mode(
         SHELL_OUTPUT_OFFLOAD,
-        json!({ "maxLines": 120 }),
+        json!({ "maxLines": 120, "maxChars": 9_000 }),
     ));
     let definition = registry
         .definitions()
@@ -407,7 +416,7 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
     let modules = || {
         CapabilityModules::inert().with(ModuleHandle::Memories(MemoriesRuntime::new(
             MemoryStrategy::Scratchpad,
-            MemoryCaps::default(),
+            MemoryCaps::UNBOUNDED,
         )))
     };
     let names = ["write_memory", "update_memory", "delete_memory"];
@@ -453,7 +462,7 @@ fn registry_offers_a_read_only_holder_the_read_calls_alone() {
 
     let read_only = |strategy| {
         CapabilityModules::inert().with(ModuleHandle::Memories(
-            MemoriesRuntime::new(strategy, MemoryCaps::for_strategy(strategy))
+            MemoriesRuntime::new(strategy, MemoryCaps::UNBOUNDED)
                 .with_binding(GgMemoryScope::ReadOnly, MemoryAccess::ReadOnly),
         ))
     };
@@ -547,8 +556,9 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     use test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT;
 
     let modules = || {
-        CapabilityModules::inert()
-            .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
+        CapabilityModules::inert().with(ModuleHandle::Board(BoardRuntime::new(
+            BoardCaps::detached(),
+        )))
     };
     let names = [
         "create_epic",
@@ -606,8 +616,9 @@ fn an_assigned_issue_earns_no_board_tools_without_the_board_capability() {
 
     let dispatched = ToolRegistry::from_run(
         &implementer,
-        &CapabilityModules::inert()
-            .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
+        &CapabilityModules::inert().with(ModuleHandle::Board(BoardRuntime::new(
+            BoardCaps::detached(),
+        ))),
         &AgentFacts::default(),
     );
     for name in [
@@ -1027,10 +1038,12 @@ fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
                 &skills_modules(library)
                     .with(ModuleHandle::Memories(MemoriesRuntime::new(
                         strategy,
-                        MemoryCaps::for_strategy(strategy),
+                        MemoryCaps::UNBOUNDED,
                     )))
                     .with(ModuleHandle::Tasks(TasksRuntime::new(100)))
-                    .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
+                    .with(ModuleHandle::Board(
+                        BoardRuntime::new(BoardCaps::detached()),
+                    ))
                     .with(ModuleHandle::Archive(ArchiveRuntime::new())),
                 &AgentFacts {
                     fsm,
@@ -1169,7 +1182,7 @@ fn each_memory_strategy_offers_its_own_tools() {
             &on,
             &CapabilityModules::inert().with(ModuleHandle::Memories(MemoriesRuntime::new(
                 strategy,
-                MemoryCaps::for_strategy(strategy),
+                MemoryCaps::UNBOUNDED,
             ))),
             &AgentFacts::default(),
         );

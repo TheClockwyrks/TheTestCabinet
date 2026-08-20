@@ -4,7 +4,7 @@ use serde_json::json;
 
 use super::*;
 use crate::validate::{LaunchDefect, LaunchReport};
-use test_cabinet_core::gg::{GgTaskStatus, GgTelemetryKind};
+use test_cabinet_core::gg::{GgCapabilityConfig, GgTaskStatus, GgTelemetryKind};
 
 /// The ceiling `params` resolves to, asserting gg honoured it exactly as written.
 fn max_tasks(params: Value) -> usize {
@@ -31,9 +31,13 @@ fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
     report.into_defects()
 }
 
+/// The ceiling the by-hand stores in these tests are built with. Generous enough that no DAG test
+/// is near it, and spelled here rather than resolved: nothing in a document configured it.
+const TEST_MAX_TASKS: usize = 100;
+
 /// A store with a generous cap for the DAG tests.
 fn store() -> TaskStore {
-    TaskStore::new(DEFAULT_MAX_TASKS)
+    TaskStore::new(TEST_MAX_TASKS)
 }
 
 /// Add a task with just an id and title (no description, no blockers).
@@ -338,12 +342,10 @@ fn context_block_surfaces_ready_vs_blocked() {
 }
 
 #[test]
-fn resolve_max_tasks_reads_the_param_or_defaults() {
-    assert_eq!(max_tasks(json!({})), DEFAULT_MAX_TASKS);
+fn resolve_max_tasks_reads_the_param_exactly_as_written() {
     assert_eq!(max_tasks(json!({ "maxTasks": 5 })), 5);
-    // An integral float names the same count, and an explicit `null` is an absence.
+    // An integral float names the same count.
     assert_eq!(max_tasks(json!({ "maxTasks": 5.0 })), 5);
-    assert_eq!(max_tasks(json!({ "maxTasks": null })), DEFAULT_MAX_TASKS);
 }
 
 #[test]
@@ -359,9 +361,48 @@ fn a_max_tasks_gg_cannot_honour_is_refused() {
     }
 }
 
+#[test]
+fn an_absent_max_tasks_is_refused() {
+    // gg has no ceiling to put here: a list bounded by a figure nobody wrote reads afterwards as a
+    // model that stopped planning at a number the configuration does not name. An explicit `null`
+    // is the same absence.
+    for params in [json!({}), json!({ "maxTasks": null })] {
+        let mut refused = REFUSED_MAX_TASKS;
+        let defects = reported(|report| {
+            refused = resolve_max_tasks(&params, report);
+        });
+        assert_eq!(defects.len(), 1, "{params}: {defects:?}");
+        assert_eq!(defects[0].locus, "tasks.params.maxTasks", "{params}");
+        assert_eq!(
+            refused, REFUSED_MAX_TASKS,
+            "{params}: the placeholder says the launch is already refused"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The capability switch
 // ---------------------------------------------------------------------------
+
+/// A profile whose tasks capability is `capability`, and nothing else of note.
+fn profile(capability: GgCapabilityConfig) -> GgAgentConfig {
+    let mut profile = GgAgentConfig::root();
+    profile
+        .capabilities
+        .retain(|held| held.id != CAPABILITY_TASKS);
+    profile.capabilities.push(capability);
+    profile
+}
+
+/// Everything the launch pass reads off `profile`'s tasks capability.
+fn checked(profile: &GgAgentConfig) -> Vec<LaunchDefect> {
+    reported(|report| check_launch(profile, report))
+}
+
+/// The loci `defects` name, in the order they were reported.
+fn loci(defects: &[LaunchDefect]) -> Vec<&str> {
+    defects.iter().map(|defect| defect.locus.as_str()).collect()
+}
 
 #[test]
 fn disabled_runtime_offers_nothing() {
@@ -369,6 +410,65 @@ fn disabled_runtime_offers_nothing() {
     assert!(!runtime.offers_tasks());
     assert!(runtime.state_event().is_none());
     assert!(runtime.context_block().is_none());
+    // There is no list, so there is no list to add to: the store carries the ceiling no document
+    // configured rather than one gg picked.
+    assert_eq!(runtime.max_tasks(), REFUSED_MAX_TASKS);
+}
+
+#[test]
+fn an_enabled_capability_short_of_a_param_refuses_the_launch() {
+    // Both keys at once, each at its own locus — an operator fixing one shared document wants every
+    // hole in one pass.
+    let defects = checked(&profile(GgCapabilityConfig {
+        id: CAPABILITY_TASKS.to_string(),
+        enabled: true,
+        implementation: None,
+        params: json!({}),
+    }));
+    assert_eq!(
+        loci(&defects),
+        ["tasks.params.maxTasks", "tasks.params.mode"],
+        "{defects:?}"
+    );
+}
+
+#[test]
+fn a_disabled_capability_is_short_of_nothing() {
+    // Off, the capability configures nothing, so there is nothing for it to be short of — but what
+    // it does write is still read, so a typo in it is a typo now rather than on the launch that
+    // flips the switch.
+    assert!(
+        checked(&profile(GgCapabilityConfig {
+            id: CAPABILITY_TASKS.to_string(),
+            enabled: false,
+            implementation: None,
+            params: json!({}),
+        }))
+        .is_empty()
+    );
+    let defects = checked(&profile(GgCapabilityConfig {
+        id: CAPABILITY_TASKS.to_string(),
+        enabled: false,
+        implementation: None,
+        params: json!({ "maxTasks": 0, "mode": "isues" }),
+    }));
+    assert_eq!(
+        loci(&defects),
+        ["tasks.params.maxTasks", "tasks.params.mode"],
+        "{defects:?}"
+    );
+}
+
+#[test]
+fn a_fully_specified_capability_launches() {
+    assert!(
+        checked(&profile(
+            GgCapabilityConfig::enabled(CAPABILITY_TASKS)
+                .with_param(PARAM_MAX_TASKS, 20)
+                .with_param(PARAM_MODE, TASK_MODE_ISSUES)
+        ))
+        .is_empty()
+    );
 }
 
 #[test]
@@ -402,8 +502,7 @@ fn enabled_runtime_emits_empty_state_and_no_block_until_a_task_exists() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn task_mode_resolves_from_params_and_defaults_to_simple() {
-    assert_eq!(task_mode(json!({})), TaskMode::Simple);
+fn task_mode_resolves_from_params() {
     assert_eq!(task_mode(json!({ "mode": "issues" })), TaskMode::Issues);
     assert_eq!(task_mode(json!({ "mode": "simple" })), TaskMode::Simple);
     // The alternate spellings the parse deliberately tolerates.
@@ -411,14 +510,18 @@ fn task_mode_resolves_from_params_and_defaults_to_simple() {
         task_mode(json!({ "mode": " Structured " })),
         TaskMode::Issues
     );
-    assert_eq!(task_mode(json!({ "mode": null })), TaskMode::Simple);
 }
 
 #[test]
 fn a_mode_gg_does_not_recognize_is_refused() {
     // Reading `isues` as `simple` would hold every task in the run to the wrong shape while the
-    // record named the other arm — and the two modes are the axis this capability is studied on.
-    for params in [json!({ "mode": "isues" }), json!({ "mode": 2 })] {
+    // record named the other arm — and the two modes are the axis this capability is studied on. A
+    // blank string names no shape either, so it earns the same line rather than the lighter one.
+    for params in [
+        json!({ "mode": "isues" }),
+        json!({ "mode": "" }),
+        json!({ "mode": 2 }),
+    ] {
         let defects = reported(|report| {
             resolve_task_mode(&params, report);
         });
@@ -429,8 +532,27 @@ fn a_mode_gg_does_not_recognize_is_refused() {
 }
 
 #[test]
+fn an_absent_mode_is_refused() {
+    // The two shapes are the axis this capability is studied on, so gg picks neither: a run held to
+    // one while its record names no mode at all is no experiment. An explicit `null` is the same
+    // absence.
+    for params in [json!({}), json!({ "mode": null })] {
+        let mut refused = TaskMode::Issues;
+        let defects = reported(|report| {
+            refused = resolve_task_mode(&params, report);
+        });
+        assert_eq!(defects.len(), 1, "{params}: {defects:?}");
+        assert_eq!(defects[0].locus, "tasks.params.mode", "{params}");
+        assert_eq!(
+            refused, REFUSED_TASK_MODE,
+            "{params}: the placeholder says the launch is already refused"
+        );
+    }
+}
+
+#[test]
 fn simple_mode_ignores_structured_fields() {
-    let mut store = TaskStore::with_mode(DEFAULT_MAX_TASKS, TaskMode::Simple);
+    let mut store = TaskStore::with_mode(TEST_MAX_TASKS, TaskMode::Simple);
     // Even if structured fields are passed, a simple-mode task stores none of them.
     store
         .add(
@@ -453,7 +575,7 @@ fn simple_mode_ignores_structured_fields() {
 
 #[test]
 fn issues_mode_requires_the_structured_fields() {
-    let mut store = TaskStore::with_mode(DEFAULT_MAX_TASKS, TaskMode::Issues);
+    let mut store = TaskStore::with_mode(TEST_MAX_TASKS, TaskMode::Issues);
     // A missing structured field is refused (nothing is added).
     assert_eq!(
         store.add("a", "A", None, StructuredFields::default(), &[]),
@@ -493,7 +615,7 @@ fn issues_mode_requires_the_structured_fields() {
 
 #[test]
 fn issues_mode_update_rejects_clearing_a_structured_field() {
-    let mut store = TaskStore::with_mode(DEFAULT_MAX_TASKS, TaskMode::Issues);
+    let mut store = TaskStore::with_mode(TEST_MAX_TASKS, TaskMode::Issues);
     store
         .add(
             "a",

@@ -117,13 +117,13 @@ fn one_slot_board() -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     crate::tools::grant_configured(
         &mut set.agents[0],
-        GgCapabilityConfig {
-            params: json!({
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({
                 PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID,
                 "maxRetries": 0,
             }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        ),
     );
     set.agents[0].subagents.push(GgSubagentRef::new(
         IMPLEMENTER,

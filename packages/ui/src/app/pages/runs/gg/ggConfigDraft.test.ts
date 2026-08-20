@@ -12,8 +12,12 @@ import {
 import {
   agentSaveError,
   agentStates,
+  armLoopDetection,
   bindModelSlots,
   blankAgentDraft,
+  blankHookDraft,
+  capabilityDraftFor,
+  capabilityParams,
   capabilityActive,
   capabilityGrantWarning,
   capabilitySetFromDraft,
@@ -32,26 +36,30 @@ import {
   type GgConfigDraft,
 } from "./ggConfigDraft";
 import {
+  AUTHORED_HOOK_TIMEOUT_SECS,
+  AUTHORED_MAX_PARALLEL,
+  AUTHORED_MEMORY_MAX_COUNT,
+  AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
+  AUTHORED_MEMORY_MAX_LEN_PER,
+  AUTHORED_REPLAY_MAX_MIB,
+  AUTHORED_SHELL_MAX_CHARS,
+  AUTHORED_SHELL_MAX_LINES,
   BUILT_IN_SKILL_OPTIONS,
+  BYTES_PER_MIB,
   CAPABILITIES,
-  DEFAULT_ERROR_RATE_WINDOW,
-  DEFAULT_MAX_CONSECUTIVE_ERRORS,
-  DEFAULT_MAX_ERROR_RATE,
-  DEFAULT_MAX_PARALLEL,
-  DEFAULT_MEMORY_MAX_COUNT,
-  DEFAULT_MEMORY_MAX_LEN_DESCRIPTION,
-  DEFAULT_MEMORY_MAX_LEN_PER,
-  DEFAULT_SHELL_MAX_CHARS,
-  DEFAULT_SHELL_MAX_LINES,
   FSM_CAP,
   FSM_CAP_ID,
+  LOOP_DETECTION_SPECS,
   RESPONSES_AS_CODE_CAP_ID,
   ROOT_AGENT,
   ROOT_PROFILE_ID,
   RUN_LIMIT_SPECS,
+  authoredImplementation,
   capabilitySpec,
+  requiresImplementation,
   paramApplies,
   type GgAgentMode,
+  type LoopDetectionSpec,
 } from "./ggCatalog";
 
 // One agent profile with only the fields a given assertion cares about; the rest take
@@ -81,6 +89,33 @@ function set(partial: Partial<GgCapabilitySet>): GgCapabilitySet {
 // A set whose single Root agent carries the given capabilities.
 function capSet(capabilities: GgCapabilityConfig[]): GgCapabilitySet {
   return { agents: [agent({ capabilities })] };
+}
+
+// The params a capability the editor has just switched on is written with — every
+// required control's authored value. A capability set is fully specified now, so this is
+// what every round-trip below carries besides the values its own fixture named, and
+// spelling it here keeps each assertion about the one thing it is testing.
+//
+// `params` supplies the required controls the catalog has no figure for: the program
+// language, which is the operator's own answer, and an `agent` param, which is only an
+// answer once a draft has a root to point at.
+function authoredParams(
+  capId: string,
+  params: Record<string, string> = {},
+): Record<string, unknown> {
+  const base = capabilityDraftFor(capId);
+  const parsed = capabilityParams(
+    capabilitySpec(capId)!,
+    { ...base, params: { ...base.params, ...params } },
+    true,
+  );
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.value;
+}
+
+// One loop-detection knob's catalog entry, for the figure arming the detector writes.
+function knobSpec(key: LoopDetectionSpec["key"]): LoopDetectionSpec {
+  return LOOP_DETECTION_SPECS.find((spec) => spec.key === key)!;
 }
 
 // The Root agent's capability rows in a draft / wire set.
@@ -311,7 +346,7 @@ describe("gg agents", () => {
     expect(back.agents[1]!.promptCacheTtl).toBeUndefined();
   });
 
-  it("round-trips loop detection knob for knob, writing no key when nobody armed it", () => {
+  it("fills in the knobs an armed stored detector was short of", () => {
     const configured = set({
       agents: [
         agent({
@@ -328,23 +363,44 @@ describe("gg agents", () => {
     });
     const draft = draftFromCapabilitySet(configured);
     expect(draft.agents[0]!.loopDetection.enabled).toBe(true);
+    // What the configuration named survives exactly, including the zero.
     expect(draft.agents[0]!.loopDetection.knobs.windowWords).toBe("512");
     expect(draft.agents[0]!.loopDetection.knobs.minSaturatedRun).toBe("0");
-    // A knob the configuration did not name is an empty field, which is exactly "take
-    // gg's default" — seeding it with the default figure would freeze today's number into
-    // every stored configuration.
-    expect(draft.agents[0]!.loopDetection.knobs.repeatThreshold).toBe("");
+    // What it did not name is filled in, in the field, where the operator can see and
+    // retune it: an armed detector trips on the five knobs together, and gg has no figure
+    // to lend for a missing one.
+    expect(draft.agents[0]!.loopDetection.knobs.repeatThreshold).toBe(
+      String(knobSpec("repeatThreshold").authored),
+    );
     // An agent that names no declaration loads disarmed, which is gg's own reading of
-    // the absent key.
+    // the absent key — and a disarmed detector owes no knobs.
     expect(draft.agents[1]!.loopDetection.enabled).toBe(false);
+    expect(draft.agents[1]!.loopDetection.knobs.repeatThreshold).toBe("");
 
     const back = capabilitySetFromDraft(draft, null);
     expect(back.agents[0]!.loopDetection).toEqual({
       enabled: true,
       windowWords: 512,
       minSaturatedRun: 0,
+      repeatThreshold: knobSpec("repeatThreshold").authored,
+      minOffenders: knobSpec("minOffenders").authored,
+      maxResponseChars: knobSpec("maxResponseChars").authored,
     });
     expect(back.agents[1]!.loopDetection).toBeUndefined();
+  });
+
+  it("refuses to save an armed detector a knob was cleared out of", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.loopDetection = armLoopDetection(
+      draft.agents[0]!.loopDetection,
+    );
+    expect(draftSaveError(draft)).toBeNull();
+    draft.agents[0]!.loopDetection.knobs.minOffenders = "";
+    expect(draftSaveError(draft)).toContain("Offenders to saturate");
+    // Disarming it is the other way to make the same configuration savable: an unarmed
+    // detector owes nothing, and keeps what it was tuned with.
+    draft.agents[0]!.loopDetection.enabled = false;
+    expect(draftSaveError(draft)).toBeNull();
   });
 
   it("keeps the knobs of a detector that was tuned and then switched off", () => {
@@ -364,6 +420,8 @@ describe("gg agents", () => {
   });
 
   it("writes no knob for a field left empty or half-typed", () => {
+    // Not a savable configuration — an armed detector names all five — but the
+    // serializer records what it is given rather than inventing the rest.
     const draft = emptyDraft();
     draft.agents[0]!.loopDetection = {
       enabled: true,
@@ -376,7 +434,7 @@ describe("gg agents", () => {
 
   it("refuses a loop-detection knob that is not a whole, non-negative count", () => {
     const draft = emptyDraft();
-    const knobs = draft.agents[0]!.loopDetection.knobs;
+    const knobs = armLoopDetection(draft.agents[0]!.loopDetection).knobs;
     draft.agents[0]!.loopDetection = {
       enabled: true,
       knobs: { ...knobs, windowWords: "-4" },
@@ -399,7 +457,7 @@ describe("gg agents", () => {
     // gg resolves this at launch by arming it as declared and warning; the console says the
     // same thing while it can still be fixed, and refuses nothing gg would accept.
     const draft = emptyDraft();
-    const knobs = draft.agents[0]!.loopDetection.knobs;
+    const knobs = armLoopDetection(draft.agents[0]!.loopDetection).knobs;
     const armed = {
       enabled: true,
       knobs: { ...knobs, windowWords: "8", minOffenders: "20" },
@@ -499,8 +557,8 @@ describe("gg agents", () => {
   it("refuses an issue filer with no implementer to assign issues to", () => {
     const draft = emptyDraft();
     draft.agents[0]!.capabilities["project-management"] = {
+      ...draft.agents[0]!.capabilities["project-management"]!,
       enabled: true,
-      params: {},
     };
     // Switching a capability on grants what it offers — the pairing the editor writes, and
     // what makes this agent a filer rather than one holding a board it cannot write to.
@@ -581,17 +639,34 @@ function healingOf(s: GgCapabilitySet): unknown {
 // The program language: the catalog's one required param, and the only one whose empty
 // field is an error rather than a deferral to gg.
 describe("gg program language", () => {
-  // A code agent the operator never touched still saves a language, because there is no
-  // default behind it: what gg reads is what the configuration says, and a document that
-  // says nothing is one gg refuses.
-  it("seeds a fresh code agent with a language it writes down", () => {
+  // The one value the form fills in for nobody: a language gg picked, or that the editor
+  // picked, would be a difference between two arms of a study that no document records. So
+  // a fresh code agent opens short of it and is refused until the operator answers.
+  it("asks a fresh code agent's operator for a language rather than choosing one", () => {
     const draft = emptyDraft();
     draft.agents[0]!.mode = "rac";
+    expect(draft.agents[0]!.capabilities[CODE]?.params?.language).toBe(
+      undefined,
+    );
+    expect(agentSaveError(draft, draft.agents[0]!.id)).toMatch(
+      /Program language needs a value/,
+    );
+
+    // Answered, it is written down — and everything else the capability requires was
+    // already in the form beside it.
+    draft.agents[0]!.capabilities[CODE] = {
+      ...draft.agents[0]!.capabilities[CODE]!,
+      params: {
+        ...draft.agents[0]!.capabilities[CODE]!.params,
+        language: LANG,
+      },
+    };
+    expect(agentSaveError(draft, draft.agents[0]!.id)).toBeNull();
     expect(
       setCaps(capabilitySetFromDraft(draft, null)).find(
         (cap) => cap.id === CODE,
       )?.params,
-    ).toEqual({ language: LANG });
+    ).toEqual(authoredParams(CODE, { language: LANG }));
   });
 
   // Reachable by opening a configuration stored before the param was required, or by
@@ -605,9 +680,13 @@ describe("gg program language", () => {
       params: { language: "" },
     };
     expect(agentSaveError(draft, draft.agents[0]!.id)).toMatch(
-      /Program language has no default/,
+      /Program language needs a value/,
     );
-    expect(draftSaveError(draft)).toMatch(/responses-as-code params/);
+    // The whole configuration's gate names the value, the profile and the capability —
+    // "which one?" is the whole of what an operator needs in order to fix it.
+    expect(draftSaveError(draft)).toMatch(
+      /Program language needs a value.*`Root`.*Responses as code/,
+    );
   });
 
   // The switch decides whether it may be left out, not whether it is read: a tool-calling
@@ -622,20 +701,39 @@ describe("gg program language", () => {
   });
 });
 
-// The `healing` toggles draft of the (single) agent, which holds the members moved off
-// their default rather than a raw off-list.
+// The `healing` toggles draft of the (single) agent, which holds the ids of the strategies
+// switched OFF.
 function healingDraft(draft: GgConfigDraft): string | undefined {
   return draftCaps(draft)[CODE]?.params?.healing;
 }
 
+// A draft whose one agent is a code agent with the language answered — the fixture every
+// assertion about a responses-as-code param starts from, since the capability is
+// specified in every respect but that one.
+function codeDraft(): GgConfigDraft {
+  const draft = emptyDraft();
+  const agent = draft.agents[0]!;
+  agent.mode = "rac";
+  agent.capabilities[CODE] = {
+    ...agent.capabilities[CODE]!,
+    enabled: true,
+    params: { ...agent.capabilities[CODE]!.params, language: LANG },
+  };
+  return draft;
+}
+
 describe("gg response-healing toggles", () => {
-  it("writes nothing when every strategy is left at its own default", () => {
-    const draft = emptyDraft();
-    draft.agents[0]!.capabilities[CODE] = {
-      ...draft.agents[0]!.capabilities[CODE]!,
-      enabled: true,
-    };
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
+  it("writes every strategy, because gg arms none of them itself", () => {
+    // An exhaustive toggle set: gg refuses a `healing` object that leaves a strategy
+    // unnamed, so what the editor saves is the whole membership as the checkboxes are
+    // showing it. A freshly switched-on capability shows the authored arms.
+    const draft = codeDraft();
+    expect(healingDraft(draft)).toBe("drop-doubled-response");
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "strip-fences": true,
+      "strip-prose": true,
+      "drop-doubled-response": false,
+    });
   });
 
   it("round-trips the strategies a configuration switches off", () => {
@@ -643,18 +741,27 @@ describe("gg response-healing toggles", () => {
       {
         id: CODE,
         enabled: true,
-        params: { language: LANG, healing: { "strip-prose": false } },
+        params: {
+          language: LANG,
+          healing: {
+            "strip-fences": true,
+            "strip-prose": false,
+            "drop-doubled-response": false,
+          },
+        },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draftCaps(draft)[CODE]?.params?.healing).toBe("strip-prose");
+    expect(healingDraft(draft)).toBe("strip-prose,drop-doubled-response");
     expect(draftCaps(draft)[CODE]?.extraParams).toEqual({});
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "strip-fences": true,
       "strip-prose": false,
+      "drop-doubled-response": false,
     });
   });
 
-  it("reads the `false` master switch as every strategy off", () => {
+  it("reads the `false` shorthand as every strategy off", () => {
     const configured = capSet([
       { id: CODE, enabled: true, params: { language: LANG, healing: false } },
     ]);
@@ -662,48 +769,31 @@ describe("gg response-healing toggles", () => {
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
       "strip-fences": false,
       "strip-prose": false,
+      "drop-doubled-response": false,
     });
   });
 
-  it("arms the one strategy gg leaves off, which no subtractive rule could express", () => {
-    // `drop-doubled-response` is the only repair that is off unless a configuration arms
-    // it — the half it deletes is valid code under any other reading — so the draft has to
-    // record a MOVE rather than an omission, and write `true` rather than nothing.
-    const draft = emptyDraft();
-    const cap = draft.agents[0]!.capabilities[CODE]!;
-    // The param belongs to the responses-as-code agent TYPE, so the agent has to be one
-    // for anything about it to be written at all.
-    draft.agents[0]!.mode = "rac";
-    draft.agents[0]!.capabilities[CODE] = {
-      ...cap,
-      enabled: true,
-      params: { ...cap.params, healing: "drop-doubled-response" },
-    };
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
-      "drop-doubled-response": true,
-    });
-  });
-
-  it("round-trips an armed default-off strategy back to the same key", () => {
+  it("reads the `true` shorthand as every strategy on, exactly as gg does", () => {
+    // The two scalar shorthands are gg's own and they are symmetric: `true` is every
+    // strategy armed — `drop-doubled-response` included — and `false` is every one off.
+    // Reading `true` as anything less would show an operator a repair unticked while the
+    // run armed it.
     const configured = capSet([
-      {
-        id: CODE,
-        enabled: true,
-        params: { language: LANG, healing: { "drop-doubled-response": true } },
-      },
+      { id: CODE, enabled: true, params: { language: LANG, healing: true } },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    // Moved off its default, so it is exactly what the draft records.
-    expect(healingDraft(draft)).toBe("drop-doubled-response");
+    expect(healingDraft(draft)).toBe("");
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "strip-fences": true,
+      "strip-prose": true,
       "drop-doubled-response": true,
     });
   });
 
-  it("leaves an unmentioned default-off strategy off rather than arming it", () => {
-    // A stored object names only what was moved, so every member it does not mention takes
-    // its own default — which for this one is off. Resolving the off-list off the entries
-    // alone would silently arm it on the next save.
+  it("preserves an object that leaves a strategy unnamed in the passthrough", () => {
+    // gg refuses such a document, and there is no arm the editor could show for the
+    // strategy nobody wrote — so it is carried through untouched rather than repaired into
+    // something the operator did not write.
     const configured = capSet([
       {
         id: CODE,
@@ -712,22 +802,13 @@ describe("gg response-healing toggles", () => {
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(healingDraft(draft)).toBe("strip-fences");
+    expect(healingDraft(draft)).toBe("drop-doubled-response");
+    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({
+      healing: { "strip-fences": false },
+    });
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
       "strip-fences": false,
     });
-  });
-
-  it("reads the `true` shorthand as the defaults, not as every strategy on", () => {
-    // The two scalar shorthands are deliberately asymmetric: `false` is the master switch
-    // and means every member off, while `true` means each member at its own default — so
-    // it must not arm the one that defaults off.
-    const configured = capSet([
-      { id: CODE, enabled: true, params: { language: LANG, healing: true } },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(healingDraft(draft)).toBe("");
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
   });
 
   it("preserves a value the control cannot represent in the passthrough", () => {
@@ -739,7 +820,10 @@ describe("gg response-healing toggles", () => {
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draftCaps(draft)[CODE]?.params?.healing).toBeUndefined();
+    // The checkboxes open at the authored arms, since there is nothing here they could
+    // stand for — and the passthrough is what the save writes, so what the operator did
+    // not see is not replaced by what they did.
+    expect(draftCaps(draft)[CODE]?.params?.healing).toBe("drop-doubled-response");
     expect(draftCaps(draft)[CODE]?.extraParams).toEqual({
       healing: { stripProse: false },
     });
@@ -749,12 +833,12 @@ describe("gg response-healing toggles", () => {
   });
 });
 
-// The `skills` capability's `builtIns` param: the second `toggles` control in the form,
-// over the eleven skills gg ships for its own tool families. It reads exactly like
-// `healing` — an absent key is every built-in offered, and only the withheld ones are
-// written — which is the property worth pinning, because a control that recorded the ON
-// members would make each saved configuration an explicit opt-in to a list gg is free to
-// grow.
+// The `skills` capability's `builtIns` param: the one **withholding** toggle set in the
+// form, over the twelve skills gg ships for its own tool families. It reads the opposite
+// way round from `healing`: the object names what is held BACK, and a family it does not
+// mention is offered — which is the property worth pinning, because a control that
+// recorded the ON members would make each saved configuration an explicit opt-in to a list
+// gg is free to grow.
 function builtInsOf(s: GgCapabilitySet): unknown {
   return setCaps(s).find((cap) => cap.id === "skills")?.params?.builtIns;
 }
@@ -782,18 +866,22 @@ describe("gg built-in skill toggles", () => {
       (p) => p.key === "builtIns",
     );
     expect(param?.kind).toBe("toggles");
+    expect(param?.toggleSet).toBe("withholding");
     expect(param?.options).toBe(BUILT_IN_SKILL_OPTIONS);
-    // No seeded value: the default arm is the empty draft, as for every toggle set.
+    // A toggle set is seeded from its members' own `seedOff` flags rather than from a
+    // `defaultValue` string, and none of the twelve carries one.
     expect(param?.defaultValue).toBeUndefined();
   });
 
-  it("writes nothing when every built-in is left on", () => {
+  it("writes the empty object when every built-in is left on", () => {
+    // The object names only what an operator withheld, so the twelve gg ships stay a list
+    // it can grow — and `{}` is what gg reads as "withhold nothing".
     const draft = emptyDraft();
     draft.agents[0]!.capabilities.skills = {
       ...draft.agents[0]!.capabilities.skills!,
       enabled: true,
     };
-    expect(builtInsOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
+    expect(builtInsOf(capabilitySetFromDraft(draft, null))).toEqual({});
   });
 
   it("round-trips the built-ins a configuration switches off", () => {
@@ -817,72 +905,79 @@ describe("gg built-in skill toggles", () => {
     });
   });
 
-  it("reads the `false` master switch as every built-in withheld", () => {
+  it("keeps a family the object names as offered offered", () => {
+    // A withholding set may name a family `true`; that says the same thing as leaving it
+    // out, and neither is a withholding.
+    const configured = capSet([
+      {
+        id: "skills",
+        enabled: true,
+        params: { builtIns: { "gg-shell": true, "gg-session": false } },
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftCaps(draft).skills?.params?.builtIns).toBe("gg-session");
+    expect(builtInsOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "gg-session": false,
+    });
+  });
+
+  it("preserves a scalar in the passthrough, since gg reads no family set from one", () => {
+    // `builtIns` has no `true`/`false` shorthand — gg refuses anything but an object — so
+    // there is nothing here the checkboxes could stand for.
     const configured = capSet([
       { id: "skills", enabled: true, params: { builtIns: false } },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(builtInsOf(capabilitySetFromDraft(draft, null))).toEqual(
-      Object.fromEntries(
-        BUILT_IN_SKILL_OPTIONS.map((option) => [option.value, false]),
-      ),
-    );
+    expect(draftCaps(draft).skills?.extraParams).toEqual({ builtIns: false });
+    expect(builtInsOf(capabilitySetFromDraft(draft, null))).toBe(false);
   });
 });
 
 // The `responses-as-code` capability's `docViewTypes` param: which SDK types a
 // documentation lookup opens beside the function it was asked for. Three INDEPENDENT
-// toggles reading exactly like `healing` above — `return` and `errors` on unless moved,
-// `parameters` off unless asked for — and whose per-agent scoping is the point: a root
-// that opens everything a signature names and a reviewer that opens nothing are the same
-// configuration.
+// toggles reading exactly like `healing` above — an exhaustive set naming all three — and
+// whose per-agent scoping is the point: a root that opens everything a signature names and
+// a reviewer that opens nothing are the same configuration.
 
 function docViewTypesOf(s: GgCapabilitySet): unknown {
   return setCaps(s).find((cap) => cap.id === CODE)?.params?.docViewTypes;
 }
 
 describe("gg documentation type toggles", () => {
-  it("writes nothing when every type is left at its own default", () => {
-    const draft = emptyDraft();
-    draft.agents[0]!.capabilities[CODE] = {
-      ...draft.agents[0]!.capabilities[CODE]!,
-      enabled: true,
-    };
-    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
+  it("writes all three types on a freshly switched-on capability", () => {
+    const draft = codeDraft();
+    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
+      return: true,
+      parameters: false,
+      errors: true,
+    });
   });
 
-  it("round-trips a default-on type a configuration switches off", () => {
+  it("round-trips a type a configuration switches off", () => {
     const configured = capSet([
       {
         id: CODE,
         enabled: true,
-        params: { language: LANG, docViewTypes: { errors: false } },
+        params: {
+          language: LANG,
+          docViewTypes: { return: true, parameters: false, errors: false },
+        },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("errors");
+    expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe(
+      "parameters,errors",
+    );
     expect(draftCaps(draft)[CODE]?.extraParams).toEqual({});
     expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
+      return: true,
+      parameters: false,
       errors: false,
     });
   });
 
-  it("round-trips the one type gg leaves off, which no subtractive rule could express", () => {
-    const configured = capSet([
-      {
-        id: CODE,
-        enabled: true,
-        params: { language: LANG, docViewTypes: { parameters: true } },
-      },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("parameters");
-    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
-      parameters: true,
-    });
-  });
-
-  it("reads the `false` master switch as every type withheld", () => {
+  it("reads the `false` shorthand as every type off", () => {
     const configured = capSet([
       {
         id: CODE,
@@ -893,11 +988,12 @@ describe("gg documentation type toggles", () => {
     const draft = draftFromCapabilitySet(configured);
     expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
       return: false,
+      parameters: false,
       errors: false,
     });
   });
 
-  it("reads the `true` shorthand as the defaults, not as every type on", () => {
+  it("reads the `true` shorthand as every type on, exactly as gg does", () => {
     const configured = capSet([
       {
         id: CODE,
@@ -907,7 +1003,11 @@ describe("gg documentation type toggles", () => {
     ]);
     const draft = draftFromCapabilitySet(configured);
     expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("");
-    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
+    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
+      return: true,
+      parameters: true,
+      errors: true,
+    });
   });
 
   it("is per agent, so two profiles can carry different types", () => {
@@ -919,7 +1019,14 @@ describe("gg documentation type toggles", () => {
             {
               id: CODE,
               enabled: true,
-              params: { language: LANG, docViewTypes: { parameters: true } },
+              params: {
+                language: LANG,
+                docViewTypes: {
+                  return: false,
+                  parameters: true,
+                  errors: false,
+                },
+              },
             },
           ],
         }),
@@ -938,7 +1045,7 @@ describe("gg documentation type toggles", () => {
     const draft = draftFromCapabilitySet(configured);
     expect(
       draft.agents.map((a) => a.capabilities[CODE]?.params?.docViewTypes),
-    ).toEqual(["parameters", "return,errors"]);
+    ).toEqual(["return,errors", "return,parameters,errors"]);
 
     const back = capabilitySetFromDraft(draft, null);
     expect(
@@ -946,8 +1053,11 @@ describe("gg documentation type toggles", () => {
         (a) => a.capabilities.find((cap) => cap.id === CODE)?.params,
       ),
     ).toEqual([
-      { language: LANG, docViewTypes: { parameters: true } },
-      { language: LANG, docViewTypes: { return: false, errors: false } },
+      authoredParams(CODE, { language: LANG, docViewTypes: "return,errors" }),
+      authoredParams(CODE, {
+        language: LANG,
+        docViewTypes: "return,parameters,errors",
+      }),
     ]);
   });
 });
@@ -1015,8 +1125,13 @@ describe("gg capability params", () => {
     expect(draftCaps(draft).memories?.params?.maxLenPerMemory).toBe("1500");
 
     const back = capabilitySetFromDraft(draft, null);
-    expect(paramsOf(back, "tasks")).toEqual({ maxTasks: 40 });
+    // What the fixture named, over the values every switched-on capability carries.
+    expect(paramsOf(back, "tasks")).toEqual({
+      ...authoredParams("tasks"),
+      maxTasks: 40,
+    });
     expect(paramsOf(back, "memories")).toEqual({
+      ...authoredParams("memories"),
       maxCount: 5,
       maxLenPerMemory: 1500,
       maxTotalLen: 6000,
@@ -1054,7 +1169,9 @@ describe("gg capability params", () => {
         },
       ]),
     );
-    expect(draftCaps(off)["project-management"]?.params?.reviewers).toBe("");
+    expect(draftCaps(off)["project-management"]?.params?.reviewers).toBe(
+      "false",
+    );
     expect(
       paramsOf(capabilitySetFromDraft(off, null), "project-management"),
     ).not.toHaveProperty("reviewers");
@@ -1089,6 +1206,7 @@ describe("gg capability params", () => {
     const draft = draftFromCapabilitySet(configured);
     expect(draftCaps(draft).skills?.params?.dir).toBe("docs/skills");
     expect(paramsOf(capabilitySetFromDraft(draft, null), "skills")).toEqual({
+      ...authoredParams("skills"),
       dir: "docs/skills",
     });
   });
@@ -1101,23 +1219,206 @@ describe("gg capability params", () => {
     expect(draftCaps(draft).tasks?.params?.maxTasks).toBe("10");
     expect(draftCaps(draft).tasks?.extraParams).toEqual({ futureKnob: 3 });
     expect(paramsOf(capabilitySetFromDraft(draft, null), "tasks")).toEqual({
+      ...authoredParams("tasks"),
       maxTasks: 10,
       futureKnob: 3,
     });
   });
 });
 
+// --- Fully specified ------------------------------------------------------------
+//
+// The editor is the thing that WRITES a gg configuration, and gg substitutes nothing for
+// what one leaves out — so what the editor writes has to be a document that says
+// everything gg will read. These are that promise, asked of the three things a capability
+// can be short of: its arm, a required param, and the on/off state of a required flag.
+
+describe("a fully specified capability", () => {
+  const savedCaps = (draft: GgConfigDraft) =>
+    setCaps(capabilitySetFromDraft(draft, null));
+
+  // Every capability on at once, which is the only way to ask this of all of them.
+  function everythingOn(): GgConfigDraft {
+    const draft = emptyDraft();
+    const agent = draft.agents[0]!;
+    for (const cap of CAPABILITIES) {
+      agent.capabilities[cap.id] = {
+        ...agent.capabilities[cap.id]!,
+        enabled: true,
+      };
+    }
+    return draft;
+  }
+
+  it("names its arm wherever a capability offers arms to choose between", () => {
+    const saved = savedCaps(everythingOn());
+    const armed = CAPABILITIES.filter(requiresImplementation);
+    expect(armed.map((cap) => cap.id)).toEqual([
+      "shell",
+      "read-file",
+      "compaction",
+      "memories",
+    ]);
+    for (const cap of armed) {
+      expect(saved.find((c) => c.id === cap.id)?.implementation).toBe(
+        authoredImplementation(cap),
+      );
+    }
+    // The one arm gg spells as the absent key: autoload's unlocked reading IS an
+    // unwritten implementation, so writing one would name an arm gg does not have.
+    expect(
+      saved.find((c) => c.id === "autoload-specs")?.implementation,
+    ).toBeUndefined();
+  });
+
+  it("fills in an arm a stored configuration named nowhere", () => {
+    const draft = draftFromCapabilitySet(
+      capSet([{ id: "memories", enabled: true, params: {} }]),
+    );
+    // In the picker, where the operator can see it and move it — not conjured on save.
+    expect(draft.agents[0]!.capabilities.memories?.implementation).toBe(
+      "scratchpad",
+    );
+    expect(draftSaveError(draft)).toBeNull();
+  });
+
+  it("refuses to save an enabled capability whose arm was cleared", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.capabilities.memories = {
+      ...draft.agents[0]!.capabilities.memories!,
+      enabled: true,
+      implementation: "",
+    };
+    expect(draftSaveError(draft)).toContain("Memory strategy");
+  });
+
+  it("refuses to save an enabled capability a required param was cleared out of", () => {
+    const draft = emptyDraft();
+    const shell = draft.agents[0]!.capabilities.shell!;
+    draft.agents[0]!.capabilities.shell = {
+      ...shell,
+      enabled: true,
+      params: { ...shell.params, maxLines: "" },
+    };
+    expect(draftSaveError(draft)).toContain("Max lines needs a value");
+    // And says which agent and which capability, which is the whole of what fixing it
+    // needs.
+    expect(draftSaveError(draft)).toContain("Shell");
+  });
+
+  it("asks nothing of a capability that is switched off", () => {
+    // Requirement is a property of the switch. A disabled capability configures nothing,
+    // so it is short of nothing — and what it carries is still written, which is what
+    // keeps the two arms of one comparison the same document with one switch moved.
+    const draft = emptyDraft();
+    const shell = draft.agents[0]!.capabilities.shell!;
+    draft.agents[0]!.capabilities.shell = {
+      ...shell,
+      enabled: false,
+      params: { ...shell.params, maxLines: "" },
+    };
+    expect(draftSaveError(draft)).toBeNull();
+    expect(
+      savedCaps(draft).find((c) => c.id === "shell")?.params,
+    ).not.toHaveProperty("maxLines");
+  });
+
+  it("writes both states of a required flag, so the slider's position is the value", () => {
+    const draft = emptyDraft();
+    const autoload = draft.agents[0]!.capabilities["autoload-specs"]!;
+    draft.agents[0]!.capabilities["autoload-specs"] = {
+      ...autoload,
+      enabled: true,
+    };
+    expect(
+      savedCaps(draft).find((c) => c.id === "autoload-specs")?.params,
+    ).toEqual({ images: false });
+
+    draft.agents[0]!.capabilities["autoload-specs"] = {
+      ...draft.agents[0]!.capabilities["autoload-specs"]!,
+      params: { images: "true" },
+    };
+    expect(
+      savedCaps(draft).find((c) => c.id === "autoload-specs")?.params,
+    ).toEqual({ images: true });
+  });
+});
+
+describe("a command hook's timeout", () => {
+  it("is written into a new hook and saved with it", () => {
+    const draft = emptyDraft();
+    draft.hooks = [{ ...blankHookDraft("session"), command: "./notify.sh" }];
+    expect(draft.hooks[0]!.timeoutSecs).toBe(
+      String(AUTHORED_HOOK_TIMEOUT_SECS),
+    );
+    expect(capabilitySetFromDraft(draft, null).hooks?.[0]?.action).toEqual({
+      type: "command",
+      command: "./notify.sh",
+      timeoutSecs: AUTHORED_HOOK_TIMEOUT_SECS,
+    });
+  });
+
+  it("is filled into a stored hook that declared none", () => {
+    const draft = draftFromCapabilitySet(
+      set({
+        hooks: [
+          {
+            event: "session-start",
+            action: { type: "command", command: "./seed.sh" },
+          },
+        ],
+      }),
+    );
+    expect(draft.hooks[0]!.timeoutSecs).toBe(
+      String(AUTHORED_HOOK_TIMEOUT_SECS),
+    );
+  });
+
+  it("refuses the save when it is cleared", () => {
+    const draft = emptyDraft();
+    draft.hooks = [
+      { ...blankHookDraft("session"), command: "./notify.sh", timeoutSecs: "" },
+    ];
+    expect(draftSaveError(draft)).toContain("needs a timeout");
+    // The other two command fields are inheritance rather than substitution, so neither
+    // is asked for: an absent cwd runs in the agent's workspace root, and an absent
+    // output mode follows the agent's own shell.
+    draft.hooks[0]!.timeoutSecs = "60";
+    expect(draftSaveError(draft)).toBeNull();
+  });
+});
+
 describe("gg run limits", () => {
-  it("seeds gg's documented defaults into a fresh form, and leaves turns unbounded", () => {
+  it("writes the two ceilings every run has, and arms no other", () => {
+    // A fresh configuration is fully specified where gg requires it and silent everywhere
+    // else: the pool and the journal are what every run has, and an error, turn, runtime or
+    // cost ceiling is armed only by an operator who wants one.
     expect(capabilitySetFromDraft(emptyDraft(), null).limits).toEqual({
-      maxParallel: DEFAULT_MAX_PARALLEL,
-      maxConsecutiveErrors: DEFAULT_MAX_CONSECUTIVE_ERRORS,
-      maxErrorRate: DEFAULT_MAX_ERROR_RATE,
-      errorRateWindow: DEFAULT_ERROR_RATE_WINDOW,
+      maxParallel: AUTHORED_MAX_PARALLEL,
+      replayMaxBytes: AUTHORED_REPLAY_MAX_MIB * BYTES_PER_MIB,
     });
     expect(RUN_LIMIT_SPECS.map((spec) => spec.key).sort()).toEqual(
       Object.keys(emptyDraft().limits).sort(),
     );
+  });
+
+  it("refuses to save a configuration a required ceiling was cleared out of", () => {
+    const draft = emptyDraft();
+    draft.limits.maxParallel = "";
+    expect(draftSaveError(draft)).toContain("Max parallel agents");
+    draft.limits.maxParallel = "8";
+    draft.limits.replayMaxBytes = "";
+    expect(draftSaveError(draft)).toContain("Session journal");
+  });
+
+  it("fills the two required ceilings into a configuration that named neither", () => {
+    // An older stored set opens with the figures in their fields, where the operator sees
+    // them before saving — not silently on the way out.
+    const draft = draftFromCapabilitySet(set({ limits: { maxTurns: 12 } }));
+    expect(draft.limits.maxParallel).toBe(String(AUTHORED_MAX_PARALLEL));
+    expect(draft.limits.replayMaxBytes).toBe(String(AUTHORED_REPLAY_MAX_MIB));
+    expect(draft.limits.maxConsecutiveErrors).toBe("");
+    expect(draftSaveError(draft)).toBeNull();
   });
 
   it("round-trips every ceiling a configuration declares", () => {
@@ -1133,19 +1434,21 @@ describe("gg run limits", () => {
     });
     const draft = draftFromCapabilitySet(configured);
     expect(draft.limits.maxCost).toBe("2.5");
-    expect(capabilitySetFromDraft(draft, null).limits).toEqual(
-      configured.limits,
-    );
+    expect(capabilitySetFromDraft(draft, null).limits).toEqual({
+      ...configured.limits,
+      // The two the stored set was short of, filled in and saved back as written.
+      maxParallel: AUTHORED_MAX_PARALLEL,
+      replayMaxBytes: AUTHORED_REPLAY_MAX_MIB * BYTES_PER_MIB,
+    });
     expect(draftSaveError(draft)).toBeNull();
     expect(runLimitsWarning(draft.limits)).toBeNull();
   });
 
-  it("saves half an error-rate ceiling, which gg arms over the other half's default", () => {
+  it("saves half an error-rate ceiling, which arms no ceiling at all", () => {
     const draft = emptyDraft();
-    // Clear the seeded default window so only the rate is set — the half-declared case.
-    // Each half has a documented default, so the written one is armed as written and the
-    // absent one takes gg's; refusing the save here would make the editor stricter than
-    // the contract.
+    // The rate and its window stand or fall together and gg lends neither half to the
+    // other, so a half-declared pair is inert rather than malformed — gg says so at
+    // launch, and refusing the save here would make the editor stricter than the contract.
     draft.limits.errorRateWindow = "";
     draft.limits.maxErrorRate = "0.5";
     expect(draftSaveError(draft)).toBeNull();
@@ -1280,6 +1583,7 @@ describe("a model slot a capability param defers to", () => {
       slotId,
     );
     expect(compactionParams(capabilitySetFromDraft(draft, null))).toEqual({
+      ...authoredParams("compaction"),
       modelSlot: "summarizer",
     });
   });
@@ -1312,6 +1616,7 @@ describe("a model slot a capability param defers to", () => {
       modelSlots: draft.modelSlots.map((s) => ({ ...s, name: "critic" })),
     };
     expect(compactionParams(capabilitySetFromDraft(renamed, null))).toEqual({
+      ...authoredParams("compaction"),
       modelSlot: "critic",
     });
   });
@@ -1355,24 +1660,25 @@ describe("params gated on the selected implementation", () => {
   it("offers the shell ceilings under the truncating modes only", () => {
     for (const key of ["maxLines", "maxChars"]) {
       const param = paramOf("shell", key);
-      expect(paramApplies(param, "")).toBe(true);
+      expect(paramApplies(param, "adaptive")).toBe(true);
       expect(paramApplies(param, "offload")).toBe(true);
       expect(paramApplies(param, "inline")).toBe(false);
     }
   });
 
-  it("seeds the shell ceilings to the defaults gg would apply anyway", () => {
+  it("seeds the shell ceilings to the figures a fresh capability is written with", () => {
     expect(paramOf("shell", "maxLines").defaultValue).toBe(
-      String(DEFAULT_SHELL_MAX_LINES),
+      String(AUTHORED_SHELL_MAX_LINES),
     );
     expect(paramOf("shell", "maxChars").defaultValue).toBe(
-      String(DEFAULT_SHELL_MAX_CHARS),
+      String(AUTHORED_SHELL_MAX_CHARS),
     );
   });
 
-  // gg's own defaults are `return` and `errors` on and `parameters` off, which an empty
-  // toggles draft already reads as — so seeding a value would only make the default arm
-  // look configured.
+  // The three types' own default arms are `return` and `errors` on and `parameters` off,
+  // which an empty toggles draft already reads as — so seeding a value would only record a
+  // member nobody moved, which is what the subtractive rule exists to avoid. The key is
+  // still written, because the capability requires it; it is written empty.
   it("seeds no documentation type toggles", () => {
     expect(paramOf("responses-as-code", "docViewTypes").defaultValue).toBe(
       undefined,
@@ -1381,7 +1687,7 @@ describe("params gated on the selected implementation", () => {
 
   it("offers the read-file line cap under the capped mode only", () => {
     const param = paramOf("read-file", "lineCap");
-    expect(paramApplies(param, "")).toBe(false);
+    expect(paramApplies(param, "unlimited")).toBe(false);
     expect(paramApplies(param, "default-cap")).toBe(true);
   });
 
@@ -1391,21 +1697,21 @@ describe("params gated on the selected implementation", () => {
     const applies = (key: string, strategy: string) =>
       paramApplies(paramOf("memories", key), strategy);
     expect([
-      applies("maxCount", ""),
+      applies("maxCount", "scratchpad"),
       applies("maxCount", "keyword-search"),
       applies("maxCount", "markdown"),
     ]).toEqual([true, true, false]);
     expect([
-      applies("maxTotalLen", ""),
+      applies("maxTotalLen", "scratchpad"),
       applies("maxTotalLen", "markdown"),
     ]).toEqual([true, false]);
     expect([
       applies("maxLenIndex", "markdown"),
-      applies("maxLenIndex", ""),
+      applies("maxLenIndex", "scratchpad"),
     ]).toEqual([true, false]);
     expect([
       applies("maxResults", "keyword-search"),
-      applies("maxResults", ""),
+      applies("maxResults", "scratchpad"),
     ]).toEqual([true, false]);
     // Two apply everywhere, and say so by naming no implementations at all.
     for (const key of ["maxLenPerMemory", "maxLenDescription"]) {
@@ -1413,26 +1719,32 @@ describe("params gated on the selected implementation", () => {
     }
   });
 
-  it("seeds the memory limits gg really defaults to, and nothing else", () => {
-    // A seeded field is a promise that leaving it alone changes nothing, so each of these
-    // has to be the figure `MemoryCaps::resolve` would have applied anyway.
+  it("writes all six memory limits, whichever strategy is selected", () => {
+    // A fresh capability selects the scratchpad, so the three limits the scratchpad reads
+    // carry its figures and the three it does not are written `0` — the params object's
+    // spelling of "no ceiling". All six are in the document either way: gg refuses a
+    // memories capability short of one, whichever arm it is on.
     expect(paramOf("memories", "maxCount").defaultValue).toBe(
-      String(DEFAULT_MEMORY_MAX_COUNT),
+      String(AUTHORED_MEMORY_MAX_COUNT),
     );
     expect(paramOf("memories", "maxLenPerMemory").defaultValue).toBe(
-      String(DEFAULT_MEMORY_MAX_LEN_PER),
+      String(AUTHORED_MEMORY_MAX_LEN_PER),
     );
-    // The description ceiling is a real default now (it used to be unlimited), so the
-    // field shows it rather than an empty box that implied there was none.
     expect(paramOf("memories", "maxLenDescription").defaultValue).toBe(
-      String(DEFAULT_MEMORY_MAX_LEN_DESCRIPTION),
+      String(AUTHORED_MEMORY_MAX_LEN_DESCRIPTION),
     );
-    // And the scratchpad's aggregate budget went the other way: gg imposes none, so
-    // seeding a figure would arm a ceiling nobody asked for on every configuration
-    // opened in the editor.
-    const total = paramOf("memories", "maxTotalLen");
-    expect(total.defaultValue).toBeUndefined();
-    expect(total.placeholder).toBe("unlimited");
+    for (const key of ["maxTotalLen", "maxLenIndex", "maxResults"]) {
+      expect(paramOf("memories", key).defaultValue).toBe("0");
+    }
+    expect(authoredParams("memories")).toEqual({
+      scope: "isolated",
+      maxCount: AUTHORED_MEMORY_MAX_COUNT,
+      maxLenPerMemory: AUTHORED_MEMORY_MAX_LEN_PER,
+      maxLenDescription: AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
+      maxTotalLen: 0,
+      maxLenIndex: 0,
+      maxResults: 0,
+    });
   });
 
   it("keeps a hidden param's stored value through a round-trip", () => {
@@ -1460,7 +1772,10 @@ describe("params gated on the selected implementation", () => {
     const shell = saved.agents?.[0]?.capabilities?.find(
       (c) => c.id === "shell",
     );
-    expect(shell?.params).toEqual({ maxLines: 40 });
+    expect(shell?.params).toEqual({
+      ...authoredParams("shell"),
+      maxLines: 40,
+    });
   });
 });
 
@@ -1813,10 +2128,8 @@ describe("a capability that is on and grants nothing", () => {
           capabilities: {
             ...agent.capabilities,
             [MANAGED.id]: {
+              ...capabilityDraftFor(MANAGED.id),
               enabled: true,
-              implementation: "",
-              params: {},
-              extraParams: {},
             },
           },
         },
@@ -1986,7 +2299,7 @@ describe("an agent's type", () => {
     const asCode = capabilitySetFromDraft(draft, null);
     expect(capsOf(asCode, "program-library")?.enabled).toBe(true);
     expect(capsOf(asCode, "responses-as-code")?.params).toEqual({
-      language: LANG,
+      ...authoredParams(CODE, { language: LANG }),
       imageViewCap: 4,
     });
 
@@ -2036,12 +2349,11 @@ describe("an agent's type", () => {
       ...draft.agents[0]!,
       mode: "tools",
     });
-    expect(committed.capabilities["program-library"]).toEqual({
-      enabled: false,
-      implementation: "",
-      params: {},
-      extraParams: {},
-    });
+    // Not blank: the defaults for the other type are what a *fresh* agent of it would
+    // have carried, which includes the values every capability of it is written with.
+    expect(committed.capabilities["program-library"]).toEqual(
+      capabilityDraftFor("program-library"),
+    );
     // A capability the catalog turns on by default comes back on, not merely blank —
     // "the defaults for that type" is what a fresh agent of it would have been.
     expect(
@@ -2072,14 +2384,24 @@ describe("an agent's type", () => {
 // migrated between lists on a save/load cycle would silently change which agents a gate
 // holds, which is exactly what the split exists to make explicit.
 describe("a configuration's two hook lists", () => {
+  // Both carry a timeout, because a command hook's is required: gg kills a hook at the
+  // ceiling the hook declares and has none of its own for one that declares nothing.
   const SESSION_HOOK = {
     event: "session-end" as const,
-    action: { type: "command" as const, command: "./notify.sh" },
+    action: {
+      type: "command" as const,
+      command: "./notify.sh",
+      timeoutSecs: AUTHORED_HOOK_TIMEOUT_SECS,
+    },
     name: "report",
   };
   const AGENT_HOOK = {
     event: "agent-stop" as const,
-    action: { type: "command" as const, command: "npm run build" },
+    action: {
+      type: "command" as const,
+      command: "npm run build",
+      timeoutSecs: AUTHORED_HOOK_TIMEOUT_SECS,
+    },
     name: "the build must pass",
   };
 

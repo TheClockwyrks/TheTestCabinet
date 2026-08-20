@@ -69,7 +69,7 @@ fn run_with(program: &str, modules: &[(&str, &str)]) -> Ran {
     warm();
     let log = CallLog::default();
     let state = fake::membrane_from(FakeOperationApi::new(&log));
-    drive(state, SandboxLimits::default(), program, modules, log)
+    drive(state, SandboxLimits::AMPLE, program, modules, log)
 }
 
 /// Run one program against a membrane and a set of limits the caller chose.
@@ -311,7 +311,7 @@ fn a_refused_call_reaches_standard_error_as_an_api_error() {
     let state = fake::membrane_with(&log, &[], None, crate::sandbox::fake::canned_outcome);
     let ran = drive(
         state,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         r#"import { files } from "gg";
 files.readFile("notes.md");
 "#,
@@ -353,7 +353,7 @@ fn a_runaway_loop_is_stopped_by_the_engine_rather_than_by_an_epoch_trap() {
     // by. They are the same value in production; they are two arguments here.
     let limits = SandboxLimits {
         timeout: std::time::Duration::from_millis(400),
-        ..SandboxLimits::default()
+        ..SandboxLimits::AMPLE
     };
     let capabilities = fake::all_capabilities();
     let operations = fake::all_operations();
@@ -613,7 +613,7 @@ readFile("a.ts", undefined, undefined);
 fn the_ecmascript_guest_binds_exactly_the_operations_gg_offers() {
     let log = CallLog::default();
     let state = fake::membrane_from(FakeOperationApi::new(&log));
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let mut store: Store<MembraneState<FakeOperationApi>> = bounded_store(state, limits);
     let component = super::component().expect("the guest encodes and compiles");
     let mut linker = wasmtime::component::Linker::new(crate::sandbox::engine::shared_engine());

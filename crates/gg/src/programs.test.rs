@@ -24,7 +24,9 @@ fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
     report.into_defects()
 }
 
-/// An agent profile enabling the library with `params`.
+/// An agent profile enabling the library with **exactly** `params` — written verbatim rather than
+/// merged over what the authoring catalog writes, because what most of these cases are about is a
+/// params block with a hole in it.
 fn profile(params: serde_json::Value) -> GgAgentConfig {
     let mut capability = GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY);
     capability.params = params;
@@ -148,20 +150,71 @@ fn a_disabled_capability_configures_nothing() {
     );
 }
 
+/// A written retention is honoured, and `0` is the widest one rather than the narrowest.
 #[test]
-fn keep_defaults_and_zero_means_unlimited() {
-    assert_eq!(library(&profile(json!({}))).keep, Some(DEFAULT_KEEP));
+fn a_written_keep_is_honoured_and_zero_means_every_program() {
     assert_eq!(library(&profile(json!({ "keep": 3 }))).keep, Some(3));
-    assert_eq!(library(&profile(json!({ "keep": 0 }))).keep, None);
+    assert_eq!(
+        library(&profile(json!({ "keep": 0 }))).keep,
+        KEEP_EVERY_PROGRAM
+    );
     // An integral float names the same retention — JSON has no integer type, and refusing `3.0`
     // would be a usability failure rather than a fallback fix.
     assert_eq!(library(&profile(json!({ "keep": 3.0 }))).keep, Some(3));
 }
 
+/// **An enabled library with no `keep` refuses the launch.** `0` already means *keep the whole
+/// session*, so an absence cannot be read as one without gg picking between two opposite
+/// statements — and a study that held twenty programs where its record said it held every one is
+/// the wrong-arm failure the refusal exists to prevent.
+#[test]
+fn an_absent_keep_is_refused() {
+    for params in [json!({}), json!({ "keep": null })] {
+        let defects = reported(|report| {
+            resolve_program_library(&profile(params.clone()), report);
+        });
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects[0].locus, "program-library.params.keep");
+        assert_eq!(defects[0].found, "", "an absence has no value as written");
+    }
+}
+
+/// …and the library it hands back is the named placeholder, not a retention of gg's choosing.
+#[test]
+fn a_refused_keep_resolves_to_the_placeholder() {
+    let mut report = LaunchReport::collecting();
+    let library = resolve_program_library(&profile(json!({})), &mut report);
+    assert!(!report.is_empty(), "the launch must already be refused");
+    assert_eq!(library.keep, KEEP_LAUNCH_REFUSED);
+    assert_ne!(
+        library.keep, KEEP_EVERY_PROGRAM,
+        "a refusal must not read as the widest setting an operator can ask for"
+    );
+}
+
+/// **A disabled capability is short of nothing.** It builds no library, and an absent `keep` on one
+/// is not a hole: there is no retention for a switched-off capability to have stated.
+#[test]
+fn a_disabled_capability_without_a_keep_is_not_refused() {
+    let defects = reported(|report| {
+        check_launch(
+            &GgAgentConfig {
+                capabilities: vec![GgCapabilityConfig {
+                    params: json!({}),
+                    ..GgCapabilityConfig::disabled(CAPABILITY_PROGRAM_LIBRARY)
+                }],
+                ..GgAgentConfig::root()
+            },
+            report,
+        );
+    });
+    assert!(defects.is_empty(), "{defects:?}");
+}
+
 #[test]
 fn an_unreadable_keep_is_refused() {
-    // Silently reverting to the default would run one arm of a study under another arm's name,
-    // which is exactly what the refusal exists to prevent.
+    // Reading a retention of gg's own choosing past it would run one arm of a study under another
+    // arm's name, which is exactly what the refusal exists to prevent.
     let defects = reported(|report| {
         resolve_program_library(&profile(json!({ "keep": "5" })), report);
     });
@@ -170,9 +223,9 @@ fn an_unreadable_keep_is_refused() {
     assert_eq!(defects[0].locus, "program-library.params.keep");
 }
 
-/// The retention of a **disabled** capability is judged too. It has no library to build, so the
-/// resolver never reads it — the launch check does, because a switched-off capability still records
-/// the retention the off arm would have kept.
+/// The retention a **disabled** capability *writes* is judged too. It has no library to build, so
+/// the resolver never reads it — the launch check does, because a switched-off capability still
+/// records the retention the off arm would have kept.
 #[test]
 fn a_disabled_capabilitys_retention_is_judged_at_launch() {
     let defects = reported(|report| {

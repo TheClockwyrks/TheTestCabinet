@@ -749,10 +749,14 @@ async fn an_exec_onto_a_smaller_window_compacts_before_the_successors_first_turn
         &mut set.agents[1],
         test_cabinet_core::gg::CAPABILITY_COMPACTION,
     );
-    // A window the predecessor's thread cannot possibly fit in.
+    // A window small enough that the thread the successor inherits is already past its
+    // compaction trigger — and large enough that the summary it writes is not, since the trigger
+    // is measured against the successor's own working window (its model's, less its own
+    // `summaryHeadroom`) and an agent whose condensed prefix still overflows that would compact at
+    // every turn boundary for the rest of the run.
     let windows = BTreeMap::from([
         ("mock/exec-before".to_string(), 200_000),
-        ("mock/exec-after".to_string(), 200),
+        ("mock/exec-after".to_string(), 400),
     ]);
     let events = run_exec(dir.path(), set, Some(windows)).await;
 
@@ -834,8 +838,7 @@ async fn a_turn_that_compacts_and_execs_hands_over_the_compacted_window() {
 /// therefore replays its script, so the cap is what stops the copy forking a copy — and what makes
 /// the depth refusal part of what this run covers.
 fn fork_set() -> GgCapabilitySet {
-    let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    subagents.params = json!({ "maxDepth": 1 });
+    let subagents = crate::tools::configured(CAPABILITY_SUBAGENTS, json!({ "maxDepth": 1 }));
     let mut root = GgAgentConfig {
         name: ROOT_AGENT.to_string(),
         model_id: "mock/fork".to_string(),

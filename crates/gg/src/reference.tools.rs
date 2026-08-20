@@ -35,19 +35,19 @@ use crate::tools::{
     capability_tools,
 };
 
-/// Every tool gg can offer, in [`ALL_TOOL_NAMES`] order, each carrying its default rendering, what
+/// Every tool gg can offer, in [`ALL_TOOL_NAMES`] order, each carrying its base rendering, what
 /// buys it, the run data it stands in for, and any policy variants.
 ///
 /// Emitting in the canonical vocabulary order rather than in registration order is deliberate: the
 /// union below is assembled from six registries, so registration order is an artifact of which one
 /// happened to contribute a tool first, and `ALL_TOOL_NAMES` is the one order that is *authored*.
 pub(crate) fn tools() -> Vec<GgToolReference> {
-    let defaults = maximal_definitions();
+    let base = maximal_definitions();
     let conditions = conditions::derive();
     ALL_TOOL_NAMES
         .iter()
         .filter_map(|name| {
-            let definition = defaults.iter().find(|d| d.name == **name)?;
+            let definition = base.iter().find(|d| d.name == **name)?;
             let variants = variants(name);
             let conditions = conditions.iter().find(|derived| derived.tool == *name);
             Some(GgToolReference {
@@ -129,9 +129,9 @@ const RUN_DATA_STAND_INS: &[(&str, &str)] = &[
 /// seen.
 ///
 /// The union runs over the two axes no single registry can cover — the three
-/// [memory strategies](MemoryStrategy) and standing in a machine or not — with every *policy* left
-/// at its default, since a policy's alternatives are emitted as [variants] rather than folded into
-/// the union.
+/// [memory strategies](MemoryStrategy) and standing in a machine or not — with every *policy* held
+/// at the [maximal configuration](MAXIMAL_CONFIGURATION)'s value, since a policy's alternatives are
+/// emitted as [variants] rather than folded into the union.
 ///
 /// For almost every tool "first seen" is not a choice at all: the registries that offer it offer it
 /// identically. The exception is the pair of memory calls whose wording turns on whether the
@@ -160,13 +160,14 @@ fn maximal_definitions() -> Vec<ToolDefinition> {
 }
 
 /// The maximal configurations, in the order a tool's rendering and its conditions are both taken
-/// from: every capability held, every module bound, every policy at its default, walked across the
-/// two axes along which no single registry is maximal.
+/// from: every capability held, every module bound, every policy at the
+/// [maximal configuration](MAXIMAL_CONFIGURATION)'s value, walked across the two axes along which
+/// no single registry is maximal.
 ///
-/// Ordered strategy-outermost so that the scratchpad — the **default** memory strategy — is visited
-/// first and the file-shaped strategies after it, which is what makes the entry for a tool offered
-/// by several of them the one a run that configured nothing would see wherever such a run offers it
-/// at all.
+/// Ordered strategy-outermost so that the scratchpad — the strategy a freshly authored memories
+/// capability carries — is visited first and the file-shaped strategies after it, which is what
+/// makes the entry for a tool offered by several of them the one an operator who adds the capability
+/// and changes nothing would see wherever such a run offers it at all.
 pub(crate) fn base_configurations() -> Vec<Configuration> {
     let mut configurations = Vec::new();
     for memories in [
@@ -185,7 +186,8 @@ pub(crate) fn base_configurations() -> Vec<Configuration> {
     configurations
 }
 
-/// The alternate renderings of `tool` under each non-default configuration, or empty for the tools
+/// The alternate renderings of `tool` under each configuration but the
+/// [maximal](MAXIMAL_CONFIGURATION) one the page's entry is rendered from, or empty for the tools
 /// whose definition nothing rewrites.
 ///
 /// Seven tools have any, and each is here because its *definition* — not merely its behaviour —
@@ -195,17 +197,18 @@ pub(crate) fn base_configurations() -> Vec<Configuration> {
 /// ceilings.
 ///
 /// **The limits are the deliberate hole in that rule, and it is worth being exact about how far it
-/// goes.** A limit is not only settable but *disableable* — `memories`' params map `0` to "no
-/// limit" ([`MemoryCaps::resolve`](crate::memories::MemoryCaps)) — and the descriptions state their
-/// limits by folding over the ones in force, so disabling one does not change a digit, it removes
-/// that clause; disabling all of them removes the whole parenthetical (`bounds_note` returns the
-/// empty string, and `edit_memory`/`search_memories` drop their sentences the same way). Four tools
-/// can be rendered that way: `write_memory`, `create_memory`, `edit_memory`, `search_memories`.
-/// Those renderings are **not on the page**, and no variant list could put them there: each limit
-/// is independently disableable, so the renderings are a subset lattice per tool crossed with the
-/// strategies — a page about ceilings again, and this time an exponential one. What the page shows
-/// is the rendering of a run at the documented defaults, which is what an operator who configures
-/// no limits is really sent.
+/// goes.** Every ceiling a memory tool states is a run's: gg has none of its own to lend the page,
+/// and each is not only settable but *disableable* — `memories`' params map `0` to "no limit"
+/// ([`MemoryCaps::resolve`](crate::memories::MemoryCaps)). The descriptions state their limits by
+/// folding over the ones in force, so a ceiling that is off does not change a digit, it removes
+/// that clause; with none in force the whole parenthetical goes (`bounds_note` returns the empty
+/// string, and `edit_memory`/`search_memories` drop their sentences the same way). Four tools carry
+/// such a clause: `write_memory`, `create_memory`, `edit_memory`, `search_memories`. No variant list
+/// could enumerate their renderings: each limit is independently disableable, so they are a subset
+/// lattice per tool crossed with the strategies — a page about ceilings again, and this time an
+/// exponential one. So the page's store is [bounded by nothing](crate::memories::MemoryCaps::UNBOUNDED)
+/// and every one of those clauses is absent, which is the one rendering that asserts no figure gg
+/// was never given.
 ///
 /// This is the one place where "what a model is shown" is narrower than "what some run could show a
 /// model", and it is narrow in a way a reader can reason about: the *calls*, their arguments and
@@ -228,14 +231,14 @@ pub(crate) fn base_configurations() -> Vec<Configuration> {
 ///   points at `search_memories` instead and `create_memory` stops requiring the `description` the
 ///   index line was made of.
 ///
-/// That last pair is the one whose entry is **not** the default memory strategy's. The default is
-/// the scratchpad, which offers neither call at all, so the entry is the markdown rendering the
-/// [union](maximal_definitions) reaches first and the variant is keyword-search's — the one case
-/// where the two halves of this module have to agree on an order.
+/// That last pair is the one whose entry is **not** the [maximal configuration](MAXIMAL_CONFIGURATION)'s
+/// memory strategy's. That is the scratchpad, which offers neither call at all, so the entry is the
+/// markdown rendering the [union](maximal_definitions) reaches first and the variant is
+/// keyword-search's — the one case where the two halves of this module have to agree on an order.
 ///
 /// Each is rendered by building a whole registry under that configuration and taking the one tool
 /// out of it, rather than by constructing the tool directly — so a variant is as much the real
-/// definition as the default is.
+/// definition as the entry beside it is.
 pub(super) fn variants(tool: &str) -> Vec<GgToolVariant> {
     let alternates: &[(&str, Configuration)] = match tool {
         "read_file" => &[(
@@ -361,22 +364,22 @@ impl Configuration {
 }
 
 /// **The maximal configuration**: every capability held, every module bound, a writable memory
-/// handle, a non-empty roster — with every *policy* at the default an operator who configured none
-/// of them gets, and the two union axes at their first value.
+/// handle, a non-empty roster — with every *policy* at the value a freshly authored capability
+/// carries, and the two union axes at their first value.
 ///
 /// It is the point every [condition](super::conditions) is measured from and the base every
-/// [variant](variants) modifies, so "maximal" and "default" meet in one constant: maximal in what is
-/// *offered*, default in how what is offered is *worded*.
+/// [variant](variants) modifies, so "maximal" and "as authored" meet in one constant: maximal in
+/// what is *offered*, as-authored in how what is offered is *worded*.
 pub(crate) const MAXIMAL_CONFIGURATION: Configuration = Configuration {
     read: READ_MODE_UNLIMITED,
     shell: SHELL_OUTPUT_ADAPTIVE,
     reviewers: false,
     tasks: TaskMode::Simple,
     memories: MemoryStrategy::Scratchpad,
-    // The one policy whose default is *not* what the maximal point uses, and the reason is the
-    // condition derivation rather than the rendering. `compact` is offered by two strategies for
-    // two different reasons — always under self-compaction, and under the *default*
-    // (self-summarization) only in code mode, since a code agent has no prose to answer a summary
+    // The one policy this maximal point does *not* hold at the value the authoring catalog writes,
+    // and the reason is the condition derivation rather than the rendering. `compact` is offered by
+    // two strategies for two different reasons — always under self-compaction, and under
+    // self-summarization only in code mode, since a code agent has no prose to answer a summary
     // request in. That is a disjunction across two axes, and the derivation can only see a
     // disjunction from a witness where **both** of its axes still have somewhere to move: measured
     // from a self-summarization witness, withholding `responses-as-code` withholds the tool, so the
@@ -384,12 +387,12 @@ pub(crate) const MAXIMAL_CONFIGURATION: Configuration = Configuration {
     // is offered `compact` — is predicted to be denied it. Measured from here, both axes survive
     // their own withholding and the pair scan finds the real sentence.
     //
-    // Measured, not reasoned: moving this field to the default makes
+    // Measured, not reasoned: moving this field to self-summarization makes
     // `the_derived_conditions_predict_every_registry` fail on exactly that configuration and
     // `the_disjunctive_conditions_name_both_alternatives` fail on the sentence. What it does *not*
-    // do is remove the tool from the page — the maximal profile holds `responses-as-code`, so the
-    // default strategy offers `compact` too. Which strategies really offer it is derived by moving
-    // this field, never asserted here.
+    // do is remove the tool from the page — the maximal profile holds `responses-as-code`, so
+    // self-summarization offers `compact` too. Which strategies really offer it is derived by
+    // moving this field, never asserted here.
     compaction: COMPACTION_STRATEGY_SELF_COMPACTION,
     capabilities: [true; CAPABILITY_AXES.len()],
     modules: [true; MODULE_AXES.len()],
@@ -484,10 +487,9 @@ fn capability(id: &'static str, configuration: &Configuration) -> GgCapabilityCo
         CAPABILITY_READ_FILE => implemented(id, configuration.read),
         CAPABILITY_MEMORIES => implemented(id, configuration.memories.id()),
         CAPABILITY_COMPACTION => implemented(id, configuration.compaction),
-        CAPABILITY_PROJECT_MANAGEMENT => GgCapabilityConfig {
-            params: json!({ PARAM_REVIEWERS: configuration.reviewers }),
-            ..GgCapabilityConfig::enabled(id)
-        },
+        CAPABILITY_PROJECT_MANAGEMENT => {
+            GgCapabilityConfig::enabled(id).with_param(PARAM_REVIEWERS, configuration.reviewers)
+        }
         _ => GgCapabilityConfig::enabled(id),
     }
 }
@@ -529,10 +531,9 @@ fn modules(configuration: &Configuration) -> CapabilityModules {
                 ]),
             ))),
             ModuleAxis::Memories => {
-                let memories = MemoriesRuntime::new(
-                    configuration.memories,
-                    MemoryCaps::for_strategy(configuration.memories),
-                );
+                // Bounded by nothing: the reference stands a store up to derive a *tool surface*
+                // from, no memory is ever written into it, and no tool definition names a ceiling.
+                let memories = MemoriesRuntime::new(configuration.memories, MemoryCaps::UNBOUNDED);
                 let scope = memories.scope();
                 ModuleHandle::Memories(memories.with_binding(
                     scope,
@@ -546,7 +547,7 @@ fn modules(configuration: &Configuration) -> CapabilityModules {
             ModuleAxis::Tasks => {
                 ModuleHandle::Tasks(TasksRuntime::with_mode(TASK_CEILING, configuration.tasks))
             }
-            ModuleAxis::Board => ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())),
+            ModuleAxis::Board => ModuleHandle::Board(BoardRuntime::new(BoardCaps::detached())),
             ModuleAxis::Archive => ModuleHandle::Archive(ArchiveRuntime::new()),
         });
     }

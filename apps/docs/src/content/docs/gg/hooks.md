@@ -40,7 +40,15 @@ every part of a hook's action gg would otherwise read past: a blank `command`
 (which would run nothing, exit 0 and pass every operation it gates), a `custom`
 hook carrying no `source`, an `output` mode that is not one of the shell's, and a
 `timeoutSecs` that is not a positive number of seconds. Each of them refuses the
-launch rather than falling back to gg's own default.
+launch.
+
+A command hook writes its own `timeoutSecs`. The ceiling a build or a test suite
+is killed at is a property of that check, so the operator states it and gg reads
+it. `cwd` and `output` stay optional, and each absence is inheritance rather than
+substitution: the command runs in the agent's workspace root, and its output
+follows the agent's own [shell](/gg/shell/) configuration. A `custom` or
+`built-in` script runs under the fixed ceiling gg holds its own hook scripts to,
+which no field on the hook changes.
 
 ```jsonc
 {
@@ -49,7 +57,7 @@ launch rather than falling back to gg's own default.
     {
       "event": "session-end",
       "name": "report",
-      "action": { "type": "command", "command": "./notify.sh" }
+      "action": { "type": "command", "command": "./notify.sh", "timeoutSecs": 60 }
     }
   ],
   "agents": [
@@ -60,7 +68,11 @@ launch rather than falling back to gg's own default.
         {
           "event": "agent-stop",
           "name": "the build must pass",
-          "action": { "type": "command", "command": "npm run build" }
+          "action": {
+            "type": "command",
+            "command": "npm run build",
+            "timeoutSecs": 900
+          }
         },
         {
           "event": "pre-write",
@@ -174,9 +186,9 @@ suite that prints a megabyte behaves the way a megabyte of `shell` output does.
   "action": {
     "type": "command",
     "command": "npm test",
-    "cwd": "web",          // relative to the agent's workspace, or absolute
-    "timeoutSecs": 600,    // default 300
-    "output": "inline"     // or omit, to follow the agent's own shell configuration
+    "timeoutSecs": 600,    // required on a command hook
+    "cwd": "web",          // optional; relative to the agent's workspace, or absolute
+    "output": "inline"     // optional; absent follows the agent's own shell configuration
   }
 }
 ```
@@ -270,4 +282,4 @@ name, and says under the event picker whether that event can be blocked.
 | --- | --- |
 | `event` | One of the ten [events](#the-events). |
 | `action` | The tagged union above: `command`, `built-in`, or `custom`. |
-| `name` | An operator's label, shown wherever gg reports this hook running or blocking. Optional: gg falls back to describing what it runs. |
+| `name` | An operator's label, shown wherever gg reports this hook running or blocking. Optional; an unlabelled hook is reported by what it runs. |

@@ -1,11 +1,11 @@
 import {
   BLOCKING_HOOK_EVENTS,
-  DEFAULT_HOOK_TIMEOUT_SECS,
+  AUTHORED_HOOK_TIMEOUT_SECS,
   GG_BUILTIN_HOOK_HINTS,
   GG_BUILTIN_HOOK_IDS,
   HOOK_DECISION_CONTRACT,
   HOOK_KINDS,
-  SHELL_OUTPUT_OPTIONS,
+  HOOK_OUTPUT_OPTIONS,
   hookEventsForScope,
   type GgHookScope,
 } from "./ggCatalog";
@@ -39,7 +39,9 @@ export function GgHookList({
   emptyNote: string;
 }) {
   const patch = (id: string, next: Partial<GgHookDraft>) =>
-    onChange(hooks.map((hook) => (hook.id === id ? { ...hook, ...next } : hook)));
+    onChange(
+      hooks.map((hook) => (hook.id === id ? { ...hook, ...next } : hook)),
+    );
   const remove = (id: string) =>
     onChange(hooks.filter((hook) => hook.id !== id));
   const add = () => onChange([...hooks, blankHookDraft(scope)]);
@@ -135,7 +137,8 @@ function HookRow({
           <FieldLabel
             label="Kind"
             hint={
-              kind?.hint ?? "What this hook runs, and how gg reads what came back."
+              kind?.hint ??
+              "What this hook runs, and how gg reads what came back."
             }
           />
           <select
@@ -221,7 +224,7 @@ function HookRow({
           <label className={gg.capParamField}>
             <FieldLabel
               label="Timeout (seconds)"
-              hint="How long it may run before it is killed. Blank uses gg's default, which is generous because a hook command is typically a build or a test suite."
+              hint="How long it may run before it is killed. Required: gg has no ceiling of its own to run a hook that declares none under, so a new hook opens on a generous figure — a hook command is typically a build or a test suite — and you keep it or change it."
             />
             <input
               className={runExec.input}
@@ -229,7 +232,7 @@ function HookRow({
               min={0}
               value={hook.timeoutSecs}
               disabled={readOnly}
-              placeholder={String(DEFAULT_HOOK_TIMEOUT_SECS)}
+              placeholder={String(AUTHORED_HOOK_TIMEOUT_SECS)}
               onChange={(e) => onPatch({ timeoutSecs: e.target.value })}
             />
           </label>
@@ -244,9 +247,9 @@ function HookRow({
               disabled={readOnly}
               onChange={(e) => onPatch({ output: e.target.value })}
             >
-              {SHELL_OUTPUT_OPTIONS.map((option) => (
+              {HOOK_OUTPUT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.value === "" ? "Follow the agent" : option.label}
+                  {option.label}
                 </option>
               ))}
             </select>

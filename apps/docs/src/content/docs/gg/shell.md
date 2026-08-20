@@ -4,7 +4,7 @@ title: "Shell"
 
 The `shell` capability contributes one tool, `shell`, which runs a command line
 through `sh -c` in the run's workspace and returns the merged stdout and stderr
-with the exit code. It is enabled in the default capability set, and it appears
+with the exit code. It is enabled in a fresh configuration, and it appears
 in the Models & tools group of the [configuration](/gg/configurations/) editor.
 
 ## Running a command
@@ -12,7 +12,7 @@ in the Models & tools group of the [configuration](/gg/configurations/) editor.
 A command runs with its working directory set to the workspace root, or to the
 agent's own worktree when it has one. It runs in its own process group, so a
 timeout kill reaches the whole tree rather than `sh` alone, under a per-call
-timeout that defaults to 120 seconds.
+timeout of 120 seconds, which the caller may raise or lower per call.
 
 A non-zero exit is a result rather than a failed call. The exit code and the
 output both come back so the agent can branch on them, because deciding whether
@@ -22,9 +22,10 @@ and one the timeout killed.
 
 Under [responses as code](/gg/responses-as-code/overview/) a program calls
 `gg.shell.shell(command, { timeoutSecs })` and is handed back the `exitCode`, the
-merged `output`, and whether that output was `truncated`. An omitted
-`timeoutSecs` takes the default; one that is not a positive number of seconds is
-an `invalid-argument` refusal, the same answer the tool surface gives. The
+merged `output`, and whether that output was `truncated`. A call naming no
+`timeoutSecs` runs under the 120-second call timeout; one that is not a positive
+number of seconds is an `invalid-argument` refusal, the same answer the tool
+surface gives. The
 requested timeout is clamped to 24 hours and then to whatever is left of the
 run's wall-clock budget, since a host call cannot be cut short once it is in
 flight. What the call does is carried by the function's own one-line brief, which
@@ -40,7 +41,7 @@ configurable arm rather than a fixed behavior.
 
 | Mode | Returned inline | On disk |
 | --- | --- | --- |
-| `adaptive` *(default)* | Exit code and paths on success, the tail on failure | Both |
+| `adaptive` | Exit code and paths on success, the tail on failure | Both |
 | `offload` | The tail, plus a note naming the files | Both |
 | `inline` | The whole output, capped at 16 KiB | Nothing |
 
@@ -80,7 +81,7 @@ is returned inline instead, with a note naming the write error.
 
 ### The two ceilings
 
-Both truncating modes read two params, and honor both when both are set:
+An enabled shell capability writes both ceilings, whichever mode it selects:
 
 - `maxLines` — the most trailing lines that come back inline. A trailing newline
   terminates the last line rather than starting a new one, so the count matches
@@ -89,15 +90,11 @@ Both truncating modes read two params, and honor both when both are set:
   rather than bytes, so a ceiling means the same thing whatever the output is
   written in.
 
-With both set, the tighter one decides, because the result has to satisfy both.
-gg's 16 KiB byte cap applies behind them under every mode.
+The tighter of the two decides, because the result has to satisfy both. gg's
+16 KiB byte cap applies behind them under every mode.
 
-Either ceiling alone is a complete instruction and leaves the other axis
-uncapped. A mode that names neither takes gg's defaults of 250 lines and 4096
-characters. A ceiling that is present and unreadable as a count refuses the
-launch.
-
-A mode gg does not recognize refuses the launch, naming the modes it does
+A missing ceiling, a ceiling gg cannot read as a count, and a mode gg does not
+recognize each refuse the launch, the last of them naming the modes gg does
 recognize. The refusal names every value in the configuration gg cannot honour
 exactly as written, so one pass fixes them all.
 
@@ -132,8 +129,9 @@ policy unless that hook names its own `output` mode. That mode is read from the
 same vocabulary and refuses the launch on the same terms. A script hook's stdout
 is its verdict and is always read whole.
 
-The policy is read only from an enabled `shell` capability. An absent or
-disabled one resolves to `inline`.
+The policy is read only from an enabled `shell` capability. An agent that holds
+no shell has no policy to apply, so hook output reaching this function comes back
+whole, under the byte cap alone.
 
 ### Example
 

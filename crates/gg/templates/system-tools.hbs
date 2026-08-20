@@ -14,7 +14,7 @@ A reply with no tool call is an error.
 {{#if readFile.offered}}
 ## Reading Files
 
-{{#if readFile.capped}}Reading a file returns {{readFile.lineCap}} lines per call unless you ask for more.{{/if}}
+{{#if readFile.lineCap}}Reading a file returns {{readFile.lineCap}} lines per call unless you ask for more.{{/if}}
 
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
 {{/if}}

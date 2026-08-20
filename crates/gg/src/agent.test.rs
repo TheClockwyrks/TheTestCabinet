@@ -188,10 +188,10 @@ fn no_code() -> CodeSetup {
     CodeSetup {
         enabled: false,
         language: GgProgramLanguage::TypeScript,
-        limits: SandboxLimits::default(),
-        healing: HealingConfig::default(),
+        limits: SandboxLimits::AMPLE,
+        healing: HealingConfig::SAFE_REPAIRS,
         assistant_messages: AssistantMessageMode::None,
-        doc_view_types: crate::docs::DocViewTypes::default(),
+        doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
 
@@ -199,8 +199,8 @@ fn no_code() -> CodeSetup {
 /// and the loop's behavior without one is the control every other case is read against.
 fn no_hooks() -> HooksSetup {
     HooksSetup {
-        runtime: Arc::new(HookRuntime::default()),
-        session: Arc::new(HookRuntime::default()),
+        runtime: Arc::new(HookRuntime::undeclared()),
+        session: Arc::new(HookRuntime::undeclared()),
         agent: HookAgent::new(ROOT_AGENT_ID, ROOT_AGENT),
     }
 }
@@ -216,14 +216,16 @@ fn stop_hook(command: &str) -> HooksSetup {
         action: GgHookAction::Command {
             command: command.to_string(),
             cwd: None,
-            timeout_secs: None,
+            // A ceiling every gate in these fixtures passes under, stated because a command hook
+            // states one: gg runs no hook under a ceiling nobody wrote.
+            timeout_secs: Some(30.0),
             output: None,
         },
         name: "the gate".to_string(),
     }];
     HooksSetup {
         runtime: Arc::new(HookRuntime::resolve_agent(&profile, Path::new(".")).unwrap()),
-        session: Arc::new(HookRuntime::default()),
+        session: Arc::new(HookRuntime::undeclared()),
         agent: HookAgent::new(ROOT_AGENT_ID, ROOT_AGENT),
     }
 }
@@ -248,7 +250,7 @@ fn broken_start_hook(dir: &Path) -> HooksSetup {
     }];
     HooksSetup {
         runtime: Arc::new(HookRuntime::resolve_agent(&profile, dir).unwrap()),
-        session: Arc::new(HookRuntime::default()),
+        session: Arc::new(HookRuntime::undeclared()),
         agent: HookAgent::new(ROOT_AGENT_ID, ROOT_AGENT),
     }
 }
@@ -326,8 +328,8 @@ async fn drive_root(
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code,
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -410,9 +412,10 @@ fn warn_messages(events: &[GgTelemetryEvent]) -> Vec<String> {
 /// code agent gets it.
 fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model_id);
-    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
-    cap.params = params;
-    crate::tools::grant_configured(&mut set.agents[0], cap);
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        crate::tools::configured(CAPABILITY_RESPONSES_AS_CODE, params),
+    );
     set
 }
 
@@ -1087,8 +1090,8 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -1146,8 +1149,8 @@ async fn drive_times_out_at_a_passed_deadline() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -1206,8 +1209,8 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -1294,8 +1297,8 @@ async fn drive_hooked(
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks,
                 ending_role,
@@ -1557,8 +1560,8 @@ async fn drive_ends_model_error_on_exhausted_retries() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -1614,8 +1617,8 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -1721,7 +1724,7 @@ fn every_held_module_contributes_its_prompt_section() {
         tasks: Some(TasksRuntime::new(7)),
         memories: Some(MemoriesRuntime::new(
             crate::memories::MemoryStrategy::Scratchpad,
-            crate::memories::MemoryCaps::default(),
+            crate::memories::MemoryCaps::UNBOUNDED,
         )),
         ..DisabledRuntimes::new()
     };
@@ -1748,7 +1751,8 @@ fn system_prompt_states_the_configured_read_cap() {
         .find(|cap| cap.id == CAPABILITY_READ_FILE)
         .expect("the minimal set offers read_file");
     read_file.implementation = Some("default-cap".to_string());
-    read_file.params = json!({ "lineCap": 42 });
+    read_file.params =
+        crate::tools::configured(CAPABILITY_READ_FILE, json!({ "lineCap": 42 })).params;
 
     let library = Arc::new(SkillLibrary::empty());
     let registry = ToolRegistry::from_run(
@@ -2234,11 +2238,12 @@ fn the_board_section_follows_the_agents_own_capability() {
 
     // The run has a board (some other profile owns it), but this agent may not author it.
     let mut runtimes = DisabledRuntimes::new();
-    runtimes.board = Some(BoardRuntime::new(BoardCaps::default()));
+    runtimes.board = Some(BoardRuntime::new(BoardCaps::detached()));
     let registry = ToolRegistry::from_run(
         &runtimes.profile,
-        &skills_modules(&library)
-            .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
+        &skills_modules(&library).with(ModuleHandle::Board(BoardRuntime::new(
+            BoardCaps::detached(),
+        ))),
         &AgentFacts::default(),
     );
     let prompt = system_prompt(runtimes.inputs(&registry));
@@ -2249,12 +2254,13 @@ fn the_board_section_follows_the_agents_own_capability() {
 
     // The same run, for the profile that *does* own the board: the section is rendered.
     let mut authoring = DisabledRuntimes::new();
-    authoring.board = Some(BoardRuntime::new(BoardCaps::default()));
+    authoring.board = Some(BoardRuntime::new(BoardCaps::detached()));
     crate::tools::grant(&mut authoring.profile, CAPABILITY_PROJECT_MANAGEMENT);
     let registry = ToolRegistry::from_run(
         &authoring.profile,
-        &skills_modules(&library)
-            .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
+        &skills_modules(&library).with(ModuleHandle::Board(BoardRuntime::new(
+            BoardCaps::detached(),
+        ))),
         &AgentFacts::default(),
     );
     let prompt = system_prompt(authoring.inputs(&registry));
@@ -2270,7 +2276,7 @@ fn the_board_section_follows_the_agents_own_capability() {
 fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
     let library = Arc::new(SkillLibrary::empty());
     let mut runtimes = DisabledRuntimes::new();
-    runtimes.board = Some(BoardRuntime::new(BoardCaps::default()));
+    runtimes.board = Some(BoardRuntime::new(BoardCaps::detached()));
     let registry = ToolRegistry::from_run(
         &runtimes.profile,
         &skills_modules(&library),
@@ -2393,7 +2399,7 @@ impl DisabledRuntimes {
             memories: self.memories.as_ref().expect("built"),
             tasks: self.tasks.as_ref().expect("built"),
             board: self.board.as_ref().expect("built"),
-            read_policy: ReadPolicy::default(),
+            read_policy: Some(ReadPolicy::Unlimited),
             vision: &self.vision,
             program_language: None,
             granted_capabilities: &self.granted_capabilities,
@@ -2575,7 +2581,7 @@ fn resolve_window_limit_takes_the_catalog_window_and_never_guesses() {
     let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(200_000)
     );
 
@@ -2583,16 +2589,11 @@ fn resolve_window_limit_takes_the_catalog_window_and_never_guesses() {
     // denominator would silently mis-scale every fullness figure and the compaction
     // trigger, so the launch check refuses the run instead.
     assert_eq!(
-        resolve_window_limit(&set, set.root(), &catalog, "mock/echo"),
+        resolve_window_limit(set.root(), &catalog, "mock/echo"),
         None
     );
     assert_eq!(
-        resolve_window_limit(
-            &set,
-            set.root(),
-            &BTreeMap::new(),
-            "anthropic/claude-opus-4.8"
-        ),
+        resolve_window_limit(set.root(), &BTreeMap::new(), "anthropic/claude-opus-4.8"),
         None
     );
 }
@@ -2640,7 +2641,7 @@ fn resolve_window_limit_narrows_with_the_param() {
     set.agents[0].capabilities.push(window_override(42_000));
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(42_000)
     );
 }
@@ -2678,12 +2679,11 @@ fn resolve_window_limit_reads_the_agents_own_override() {
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
 
     assert_eq!(
-        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(42_000)
     );
     assert_eq!(
         resolve_window_limit(
-            &set,
             set.agent("reviewer").expect("the second profile"),
             &catalog,
             "anthropic/claude-opus-4.8"
@@ -2708,7 +2708,6 @@ fn resolve_window_limit_ignores_a_disabled_override() {
     );
     assert_eq!(
         resolve_window_limit(
-            &set,
             set.root(),
             &windows("anthropic/claude-opus-4.8", 200_000),
             "anthropic/claude-opus-4.8"
@@ -2724,12 +2723,15 @@ fn resolve_window_limit_ignores_the_param_on_another_capability() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_SHELL {
-            cap.params = json!({ "windowLimit": 32_000 });
+            cap.params = crate::tools::configured(
+                CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+                json!({ "windowLimit": 32_000 }),
+            )
+            .params;
         }
     }
     assert_eq!(
         resolve_window_limit(
-            &set,
             set.root(),
             &windows("anthropic/claude-opus-4.8", 200_000),
             "anthropic/claude-opus-4.8"
@@ -2777,13 +2779,13 @@ fn resolve_window_limit_reserves_compaction_headroom() {
     crate::tools::grant(&mut set.agents[0], CAPABILITY_COMPACTION);
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(160_000)
     );
 
     set.agents[0].capabilities.push(window_override(50_000));
     assert_eq!(
-        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(40_000)
     );
 }
@@ -2799,11 +2801,11 @@ fn resolve_window_limit_is_per_model() {
         ("openai/gpt-5.4-mini".to_string(), 400_000),
     ]);
     assert_eq!(
-        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(200_000)
     );
     assert_eq!(
-        resolve_window_limit(&set, set.root(), &catalog, "openai/gpt-5.4-mini"),
+        resolve_window_limit(set.root(), &catalog, "openai/gpt-5.4-mini"),
         Some(400_000)
     );
 }
@@ -2948,8 +2950,8 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -3146,8 +3148,8 @@ async fn drive_enforces_memory_caps_end_to_end() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -3269,10 +3271,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
     let emitter = Emitter::with_sink(Some("run-markdown".to_string()), Box::new(sink.clone()));
 
     let strategy = crate::memories::MemoryStrategy::Markdown;
-    let memories = MemoriesRuntime::new(
-        strategy,
-        crate::memories::MemoryCaps::for_strategy(strategy),
-    );
+    let memories = MemoriesRuntime::new(strategy, crate::memories::MemoryCaps::UNBOUNDED);
     // A second handle on the same store, kept behind so the block gg *would* pin can be
     // read after `drive` has taken ownership of the runtime.
     let pinned = memories.shared();
@@ -3317,8 +3316,8 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -3406,8 +3405,8 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -3608,8 +3607,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -3740,8 +3739,8 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -3804,10 +3803,10 @@ fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
     crate::tools::grant_configured(
         &mut set.agents[0],
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
+        ),
     );
     set.agents[0]
         .subagents
@@ -4008,7 +4007,7 @@ fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRunt
     let skills = SkillsRuntime::new(Arc::clone(&library));
     let memories = MemoriesRuntime::new(
         crate::memories::MemoryStrategy::Scratchpad,
-        crate::memories::MemoryCaps::default(),
+        crate::memories::MemoryCaps::UNBOUNDED,
     );
     let tasks = TasksRuntime::new(50);
     let set = GgCapabilitySet::minimal("mock/echo");
@@ -4056,8 +4055,8 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -4225,8 +4224,8 @@ async fn drive_never_compacts_when_capability_off() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -4264,7 +4263,7 @@ async fn drive_never_compacts_when_capability_off() {
 /// A [`BoardRuntime`] holding one real epic and one real issue, so the pinned board block it
 /// produces is non-empty and would be visible in any window it were attached to.
 fn seeded_board() -> BoardRuntime {
-    let board = BoardRuntime::new(BoardCaps::default());
+    let board = BoardRuntime::new(BoardCaps::detached());
     {
         let handle = board.store();
         let mut store = handle.lock().unwrap();
@@ -4318,8 +4317,8 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -4358,10 +4357,10 @@ async fn the_board_block_is_withheld_from_an_agent_without_the_capability() {
     let mut authoring = GgAgentConfig::root();
     crate::tools::grant_configured(
         &mut authoring,
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
+        ),
     );
     authoring
         .subagents
@@ -4426,20 +4425,27 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
     assert!(!off.enabled);
     assert!(!off.can_evict && !off.can_archive);
 
-    // On, unconfigured: both reclaim tools, and the documented default breakdown length.
+    // On, authored the way a new capability is written: both reclaim tools, and the breakdown
+    // length the authoring catalog puts in the document. Nothing here is a figure gg stood in for
+    // an absent one — `GgCapabilityConfig::enabled` wrote it down, and the resolver read what was
+    // written.
+    let authored = test_cabinet_core::gg::authored_capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
+        .and_then(|entry| entry.params.get(PARAM_TOP_FILE_VIEWS))
+        .and_then(serde_json::Value::as_u64)
+        .expect("the authoring catalog writes a top-file-views figure") as usize;
     let mut on = GgAgentConfig::root();
     crate::tools::grant(&mut on, CAPABILITY_AGENT_MANAGED_CONTEXT);
-    let default = resolve(&on);
-    assert!(default.enabled && default.can_evict && default.can_archive);
-    assert_eq!(default.top_file_views, DEFAULT_TOP_FILE_VIEWS);
+    let written = resolve(&on);
+    assert!(written.enabled && written.can_evict && written.can_archive);
+    assert_eq!(written.top_file_views, authored);
     assert_eq!(
-        default.signal_options(),
+        written.signal_options(),
         UsageSignalOptions {
             can_evict: true,
             // A tool-calling agent has no `view` object, so the block must not point at `view.close`.
             program_language: None,
             can_archive: true,
-            top_file_views: DEFAULT_TOP_FILE_VIEWS,
+            top_file_views: authored,
         }
     );
 
@@ -4447,10 +4453,10 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
     let mut configured = GgAgentConfig::root();
     crate::tools::grant_configured(
         &mut configured,
-        GgCapabilityConfig {
-            params: json!({ PARAM_TOP_FILE_VIEWS: 12 }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-        },
+        crate::tools::configured(
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            json!({ PARAM_TOP_FILE_VIEWS: 12 }),
+        ),
     );
     assert_eq!(resolve(&configured).top_file_views, 12);
 
@@ -4531,8 +4537,8 @@ async fn drive_manages_context_end_to_end() {
                 amc: amc_with(Arc::clone(&archive)),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -4727,8 +4733,8 @@ async fn drive_without_amc_offers_no_context_management() {
                 amc: no_amc(),
                 autoload: no_autoload(),
                 persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
+                read_policy: Some(ReadPolicy::Unlimited),
+                shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
@@ -5293,10 +5299,10 @@ fn an_issue_filer_needs_an_implementer_to_assign_to() {
         };
         crate::tools::grant_configured(
             &mut root,
-            GgCapabilityConfig {
-                params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-                ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-            },
+            crate::tools::configured(
+                CAPABILITY_PROJECT_MANAGEMENT,
+                json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
+            ),
         );
         // …minus whichever of the board's calls this case withholds. Read-only board access is the
         // supported way to have an issue-less board, and under an allowlist it is expressed by
@@ -5445,9 +5451,14 @@ impl ClientFactory for ScriptedFactory {
 /// (model `mock/<id>`, on the root's primary `mock/primary`). Every profile may spawn every
 /// declared agent (a permissive test allowlist), and every profile carries the same depth cap so a
 /// child can spawn a grandchild.
+/// How many error turns in a row end an agent in a [`subagent_set`] run. Wide enough that a
+/// scripted agent doing its work is never stopped by it, narrow enough that one which never ends
+/// its session stops in a second rather than running the test out.
+const SPAWNED_ERROR_CEILING: u64 = 5;
+
 fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgCapabilitySet {
-    let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    subagents.params = json!({ "maxDepth": max_depth });
+    let subagents =
+        crate::tools::configured(CAPABILITY_SUBAGENTS, json!({ "maxDepth": max_depth }));
     // The delegation allowlist shared by every profile: the root plus each extra agent, by id.
     let allowlist: Vec<GgSubagentRef> = std::iter::once(ROOT_PROFILE_ID)
         .chain(extra_agents.iter().copied())
@@ -5476,7 +5487,11 @@ fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgC
         agents,
         limits: test_cabinet_core::gg::GgRunLimits {
             max_parallel: Some(max_parallel),
-            ..test_cabinet_core::gg::GgRunLimits::default()
+            // Declared, because gg arms no error ceiling nobody wrote: several of these fixtures
+            // script a child that answers without ever ending its session, and what stops such an
+            // agent is this ceiling and nothing else.
+            max_consecutive_errors: Some(SPAWNED_ERROR_CEILING),
+            ..test_cabinet_core::gg::GgRunLimits::authored()
         },
         ..GgCapabilitySet::default()
     }
@@ -5575,7 +5590,8 @@ fn memory_scope_set(scope: &str) -> GgCapabilitySet {
             .find(|capability| capability.id == CAPABILITY_MEMORIES)
             .expect("the default capabilities include memories");
         memories.enabled = true;
-        memories.params = json!({ "scope": scope });
+        memories.params =
+            crate::tools::configured(CAPABILITY_MEMORIES, json!({ "scope": scope })).params;
     }
     set
 }
@@ -6376,10 +6392,10 @@ fn issue_review_set(extra_slots: &[&str]) -> GgCapabilitySet {
     let mut set = subagent_set(4, 3, extra_slots);
     crate::tools::grant_configured(
         &mut set.agents[0],
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
+        ),
     );
     set
 }
@@ -6565,15 +6581,14 @@ fn last_issue_status(
 /// worked. (A set that let an agent file issues with nobody to assign them to is refused at launch.)
 fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
-    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT);
-    cap.params = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID });
+    let mut overrides = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID });
     if let Some(retries) = max_retries {
-        cap.params = json!({
-            PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID,
-            "maxRetries": retries,
-        });
+        overrides["maxRetries"] = json!(retries);
     }
-    crate::tools::grant_configured(&mut set.agents[0], cap);
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        crate::tools::configured(CAPABILITY_PROJECT_MANAGEMENT, overrides),
+    );
     set.agents[0].subagents.push(GgSubagentRef {
         agent_id: ROOT_PROFILE_ID.to_string(),
         description: String::new(),
@@ -6730,10 +6745,10 @@ fn split_project_set() -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     crate::tools::grant_configured(
         &mut set.agents[0],
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
+        ),
     );
     set.agents[0].subagents.push(GgSubagentRef::new(
         CODER_PROFILE_ID,
@@ -7302,8 +7317,11 @@ async fn an_issues_reviewers_all_have_to_approve() {
     // Reviewers are mandatory on this run, so an issue cannot be filed without naming them.
     for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
-            cap.params =
-                json!({ "reviewers": true, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID });
+            cap.params = crate::tools::configured(
+                CAPABILITY_PROJECT_MANAGEMENT,
+                json!({ "reviewers": true, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
+            )
+            .params;
         }
     }
     let inv = invocation(dir.path(), set);
@@ -7530,8 +7548,11 @@ async fn a_failed_issues_worktree_is_discarded_unmerged() {
     let mut set = issue_review_set(&[]);
     for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
-            cap.params =
-                json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID, "maxRetries": 0 });
+            cap.params = crate::tools::configured(
+                CAPABILITY_PROJECT_MANAGEMENT,
+                json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID, "maxRetries": 0 }),
+            )
+            .params;
         }
     }
     let inv = invocation(dir.path(), set);
@@ -7601,7 +7622,11 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
     let mut set = issue_review_set(&["merger"]);
     for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
-            cap.params = json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "merger" });
+            cap.params = crate::tools::configured(
+                CAPABILITY_PROJECT_MANAGEMENT,
+                json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "merger" }),
+            )
+            .params;
         }
     }
     let inv = invocation(dir.path(), set);
@@ -7715,9 +7740,16 @@ fn project_management_requires_a_shell_capable_merge_agent() {
         set
     };
 
-    // No merge agent at all.
+    // No merge agent at all — written `null`, since a capability authored the way a document
+    // authors one already names the root, and the absence is what this arm is about.
     let mut missing = base();
-    crate::tools::grant(&mut missing.agents[0], CAPABILITY_PROJECT_MANAGEMENT);
+    crate::tools::grant_configured(
+        &mut missing.agents[0],
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: serde_json::Value::Null }),
+        ),
+    );
     let err =
         crate::validate::refusal(&missing).expect_err("a board with no merge agent is refused");
     assert!(
@@ -7729,10 +7761,10 @@ fn project_management_requires_a_shell_capable_merge_agent() {
     let mut unknown = base();
     crate::tools::grant_configured(
         &mut unknown.agents[0],
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "nobody" }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "nobody" }),
+        ),
     );
     let err = crate::validate::refusal(&unknown).expect_err("an undeclared merge agent is refused");
     assert!(
@@ -7744,10 +7776,10 @@ fn project_management_requires_a_shell_capable_merge_agent() {
     let mut shell_less = base();
     crate::tools::grant_configured(
         &mut shell_less.agents[0],
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "merger" }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: "merger" }),
+        ),
     );
     let mut merger = GgAgentConfig {
         id: "merger".to_string(),
@@ -7824,10 +7856,10 @@ fn issue_review_e2e_set() -> GgCapabilitySet {
     };
     crate::tools::grant_configured(
         &mut root,
-        GgCapabilityConfig {
-            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        },
+        crate::tools::configured(
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
+        ),
     );
     root.subagents = vec![
         GgSubagentRef::new(ROOT_PROFILE_ID, &[GgSubagentScope::Implementer]),
@@ -8240,7 +8272,7 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
     );
     assert_eq!(
         seed.model_windows["mock/primary"],
-        resolve_window_limit(&set, set.root(), &inv.model_windows, "mock/primary")
+        resolve_window_limit(set.root(), &inv.model_windows, "mock/primary")
             .expect("a resolved window"),
         "the **resolved** window the fullness signal is measured against, not the catalog figure",
     );
@@ -9332,12 +9364,13 @@ async fn a_handoff_compactions_summarizer_call_reaches_the_record() {
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
-            id: CAPABILITY_COMPACTION.to_string(),
-            enabled: true,
             implementation: Some(
                 test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION.to_string(),
             ),
-            params: json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+            ..crate::tools::configured(
+                CAPABILITY_COMPACTION,
+                json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+            )
         },
     );
     // A window narrow enough that the thread crosses the trigger within a few turns, so the run
@@ -9524,10 +9557,10 @@ async fn every_agent_binds_its_client_under_its_provenance() {
     // A delegating root that also condenses on a **second** model, so both of one agent's client
     // resolutions happen in one session.
     let mut set = subagent_set(1, 3, &["subagent"]);
-    let mut compaction = GgCapabilityConfig::enabled(CAPABILITY_COMPACTION);
+    let mut compaction =
+        crate::tools::configured(CAPABILITY_COMPACTION, json!({ "model": "mock/condenser" }));
     compaction.implementation =
         Some(test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string());
-    compaction.params = json!({ "model": "mock/condenser" });
     crate::tools::grant_configured(&mut set.agents[0], compaction);
     let mut inv = invocation(dir.path(), set);
     inv.model_windows

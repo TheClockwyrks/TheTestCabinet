@@ -129,12 +129,14 @@ The language is the `language` param of the `responses-as-code` capability,
 resolved per agent. One run may therefore drive its root in one language and a
 reviewer subagent in another.
 
-gg has no default language, so the param is required wherever the capability is
-switched on. A value that is not a registered id refuses the launch, and so does
-an agent that names none at all; both refusals list the ids gg registers. A
-language gg picked would be a difference between two arms that no configuration
-records, which is the one difference a cross-language study cannot have. An
-agent with the capability off writes no programs and names no language.
+The param is written wherever the capability is switched on. A value that is not
+a registered id refuses the launch and lists the ids gg registers, which is what
+corrects a name the configuration already holds. An agent that names none at all
+refuses the launch too, at the param's own locus and in the terms every unwritten
+required param is refused in. A language gg picked would be a difference between
+two arms that no configuration records, which is the one difference a
+cross-language study cannot have. An agent with the capability off writes no
+programs and names no language.
 
 The answer is recorded as a scalar in two places, so a
 [query](/gg/analysis/query-language/) slices arms on it with no new vocabulary:

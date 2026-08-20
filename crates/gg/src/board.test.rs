@@ -5,12 +5,26 @@ use serde_json::json;
 
 use super::*;
 use crate::validate::{LaunchDefect, LaunchReport};
-use test_cabinet_core::gg::{GgIssueStatus, GgTelemetryKind};
+use test_cabinet_core::gg::{GgCapabilityConfig, GgIssueStatus, GgTelemetryKind};
 
-/// The caps `params` resolves to, asserting gg honoured every one of them exactly as written.
-fn caps(params: Value) -> BoardCaps {
+/// A **fully specified** project-management params object with `overrides` written over it.
+///
+/// All three ceilings are required of an enabled capability, so a case whose subject is one of them
+/// still has to write the other two — this is where they are written, once.
+fn specified(overrides: Value) -> Value {
+    let mut params = json!({ "maxEpics": 50, "maxIssues": 2_000, "maxRetries": 1 });
+    let target = params.as_object_mut().expect("an object");
+    for (key, value) in overrides.as_object().expect("an object") {
+        target.insert(key.clone(), value.clone());
+    }
+    params
+}
+
+/// The caps a [fully specified](specified) capability carrying `overrides` resolves to, asserting gg
+/// honoured every one of them exactly as written.
+fn caps(overrides: Value) -> BoardCaps {
     let mut report = LaunchReport::collecting();
-    let caps = BoardCaps::resolve(&params, &mut report);
+    let caps = BoardCaps::resolve(&specified(overrides), &mut report);
     let defects = report.into_defects();
     assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
     caps
@@ -23,9 +37,40 @@ fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
     report.into_defects()
 }
 
+/// The loci `defects` name, in the order they were reported.
+fn loci(defects: &[LaunchDefect]) -> Vec<&str> {
+    defects.iter().map(|defect| defect.locus.as_str()).collect()
+}
+
+/// A profile whose project-management capability is `capability`, and nothing else of note.
+fn profile(capability: GgCapabilityConfig) -> GgAgentConfig {
+    let mut profile = GgAgentConfig::root();
+    profile
+        .capabilities
+        .retain(|held| held.id != CAPABILITY_PROJECT_MANAGEMENT);
+    profile.capabilities.push(capability);
+    profile
+}
+
+/// A project-management capability switched to `enabled` and carrying `params` verbatim — the
+/// hand-written document, as against the [authored](GgCapabilityConfig::enabled) one.
+fn written(enabled: bool, params: Value) -> GgCapabilityConfig {
+    GgCapabilityConfig {
+        id: CAPABILITY_PROJECT_MANAGEMENT.to_string(),
+        enabled,
+        implementation: None,
+        params,
+    }
+}
+
+/// Everything the launch pass reads off `profile`'s project-management capability.
+fn checked(profile: &GgAgentConfig) -> Vec<LaunchDefect> {
+    reported(|report| check_launch(profile, report))
+}
+
 /// A store with generous caps for the board tests.
 fn store() -> BoardStore {
-    BoardStore::new(BoardCaps::default())
+    BoardStore::new(BoardCaps::detached())
 }
 
 /// Create an epic from `prefix`, with a synthetic title/description, returning its id (the
@@ -461,7 +506,7 @@ fn count_caps_are_enforced_per_kind() {
     let mut store = BoardStore::new(BoardCaps {
         max_epics: 1,
         max_issues: 1,
-        ..BoardCaps::default()
+        ..BoardCaps::detached()
     });
     add_epic(&mut store, "one");
     assert_eq!(
@@ -559,8 +604,7 @@ fn context_block_is_none_when_empty_and_renders_the_board_otherwise() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn caps_resolve_from_params_or_default() {
-    assert_eq!(caps(json!({})), BoardCaps::default());
+fn caps_resolve_from_params_exactly_as_written() {
     let resolved = caps(json!({ "maxEpics": 3, "maxIssues": 9 }));
     assert_eq!(resolved.max_epics, 3);
     assert_eq!(resolved.max_issues, 9);
@@ -571,17 +615,14 @@ fn caps_resolve_from_params_or_default() {
 
 #[test]
 fn a_board_ceiling_of_zero_is_refused() {
-    // A board that may hold no epic still offers `create_epic`, and refuses every use of it. Taking
-    // gg's default instead would bound the board at a number nobody wrote.
+    // A board that may hold no epic still offers `create_epic`, and refuses every use of it. Reading
+    // it as any other figure would bound the board at a number nobody wrote.
     let defects = reported(|report| {
-        BoardCaps::resolve(&json!({ "maxEpics": 0, "maxIssues": 0 }), report);
+        BoardCaps::resolve(&specified(json!({ "maxEpics": 0, "maxIssues": 0 })), report);
     });
 
     assert_eq!(
-        defects
-            .iter()
-            .map(|defect| defect.locus.clone())
-            .collect::<Vec<_>>(),
+        loci(&defects),
         [
             "project-management.params.maxEpics",
             "project-management.params.maxIssues"
@@ -595,18 +636,58 @@ fn a_board_ceiling_of_zero_is_refused() {
 
 #[test]
 fn a_board_ceiling_gg_cannot_read_is_refused() {
-    // `null` is deliberately not in this list: it is the documented spelling of "take the default",
-    // and an absent value is not an unrecognized one.
     for value in [json!("lots"), json!(-2), json!(1.5), json!(true)] {
         let defects = reported(|report| {
-            BoardCaps::resolve(&json!({ "maxIssues": value }), report);
+            BoardCaps::resolve(&specified(json!({ "maxIssues": value })), report);
         });
         assert_eq!(defects.len(), 1, "{value}: {defects:?}");
         assert_eq!(defects[0].locus, "project-management.params.maxIssues");
     }
+}
+
+#[test]
+fn an_absent_board_ceiling_is_refused() {
+    // Each of the three is required of an enabled capability, each at its own locus, and an explicit
+    // `null` is the same absence as leaving the key out. gg has no board to substitute: a board
+    // bounded by a figure nobody wrote refuses the model's calls at a ceiling the configuration does
+    // not name.
+    for key in ["maxEpics", "maxIssues", "maxRetries"] {
+        for absence in [None, Some(Value::Null)] {
+            let mut params = specified(json!({}));
+            let object = params.as_object_mut().expect("an object");
+            match absence {
+                None => object.remove(key),
+                Some(null) => object.insert(key.to_string(), null),
+            };
+            let defects = reported(|report| {
+                BoardCaps::resolve(&params, report);
+            });
+            assert_eq!(defects.len(), 1, "{key}: {defects:?}");
+            assert_eq!(defects[0].locus, format!("project-management.params.{key}"));
+        }
+    }
+}
+
+#[test]
+fn a_capability_short_of_every_ceiling_resolves_to_no_board() {
+    // Each hole at its own locus, and the caps that come back are the ones no document configured —
+    // a board nothing may be filed on, which is what a refused launch leaves behind.
+    let mut refused = BoardCaps::detached();
+    let defects = reported(|report| {
+        refused = BoardCaps::resolve(&json!({}), report);
+    });
     assert_eq!(
-        caps(json!({ "maxIssues": null })).max_issues,
-        DEFAULT_MAX_ISSUES
+        loci(&defects),
+        [
+            "project-management.params.maxEpics",
+            "project-management.params.maxIssues",
+            "project-management.params.maxRetries"
+        ],
+        "{defects:?}"
+    );
+    assert_eq!(
+        refused, REFUSED_BOARD_CAPS,
+        "the placeholder says the launch is already refused"
     );
 }
 
@@ -617,14 +698,17 @@ fn disabled_runtime_offers_nothing() {
     assert!(runtime.state_event().is_none());
     assert!(runtime.context_block().is_none());
     assert_eq!(runtime.issue_count(), 0);
+    // There is no board, so nothing may be filed on one: the store carries the ceilings no document
+    // configured rather than ones gg picked.
+    assert_eq!(runtime.caps(), REFUSED_BOARD_CAPS);
 }
 
 #[test]
 fn enabled_runtime_offers_caps_and_state() {
-    let runtime = BoardRuntime::new(BoardCaps::default());
+    let runtime = BoardRuntime::new(BoardCaps::detached());
     assert!(runtime.offers_board());
     // The ceilings the system prompt states come from the runtime.
-    assert_eq!(runtime.caps(), BoardCaps::default());
+    assert_eq!(runtime.caps(), BoardCaps::detached());
     // At session start the board is empty: a state event exists, but no context block yet.
     assert!(matches!(
         runtime.state_event(),
@@ -647,16 +731,14 @@ fn enabled_runtime_offers_caps_and_state() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn max_retries_resolves_from_params_and_defaults() {
-    assert_eq!(BoardCaps::default().max_retries, DEFAULT_MAX_RETRIES);
+fn max_retries_resolves_from_params() {
     assert_eq!(caps(json!({ "maxRetries": 3 })).max_retries, 3);
     // Zero is a valid retry count (one attempt only) — the one board ceiling whose zero means
-    // something — and a missing value keeps the default.
+    // something.
     assert_eq!(caps(json!({ "maxRetries": 0 })).max_retries, 0);
-    assert_eq!(caps(json!({})).max_retries, DEFAULT_MAX_RETRIES);
     // A retry count gg cannot read is refused, exactly as the two board ceilings are.
     let defects = reported(|report| {
-        BoardCaps::resolve(&json!({ "maxRetries": "twice" }), report);
+        BoardCaps::resolve(&specified(json!({ "maxRetries": "twice" })), report);
     });
     assert_eq!(defects.len(), 1, "{defects:?}");
     assert_eq!(defects[0].locus, "project-management.params.maxRetries");
@@ -865,4 +947,73 @@ fn runtime_state(store: &BoardStore) -> GgTelemetryKind {
     let runtime = BoardRuntime::new(store.caps());
     *runtime.store().lock().unwrap() = store.clone();
     runtime.state_event().expect("enabled runtime state")
+}
+
+// ---------------------------------------------------------------------------
+// The launch pass
+// ---------------------------------------------------------------------------
+
+#[test]
+fn an_enabled_capability_short_of_a_ceiling_refuses_the_launch() {
+    // All three at once, each at its own locus — an operator fixing one shared document wants every
+    // hole in one pass rather than a launch per hole.
+    let defects = checked(&profile(written(true, json!({}))));
+    assert_eq!(
+        loci(&defects),
+        [
+            "project-management.params.maxEpics",
+            "project-management.params.maxIssues",
+            "project-management.params.maxRetries"
+        ],
+        "{defects:?}"
+    );
+}
+
+#[test]
+fn a_disabled_capability_is_short_of_nothing() {
+    // Off, the capability configures nothing, so there is nothing for it to be short of — but what
+    // it does write is still read, so a typo in it is a typo now rather than on the launch that
+    // flips the switch.
+    assert!(checked(&profile(written(false, json!({})))).is_empty());
+    let defects = checked(&profile(written(
+        false,
+        json!({ "maxEpics": 0, "maxRetries": "twice" }),
+    )));
+    assert_eq!(
+        loci(&defects),
+        [
+            "project-management.params.maxEpics",
+            "project-management.params.maxRetries"
+        ],
+        "{defects:?}"
+    );
+}
+
+#[test]
+fn an_absent_reviewers_switch_is_the_setting() {
+    // The one optional param of this capability: absent, an issue's author names reviewers or leaves
+    // them out as it chooses, and gg records that rather than standing a value in for it.
+    let fully_specified = profile(written(true, specified(json!({}))));
+    assert!(checked(&fully_specified).is_empty());
+    assert!(!requires_reviewers(&fully_specified));
+    assert!(!requires_reviewers(&profile(written(
+        true,
+        specified(json!({ "reviewers": null }))
+    ))));
+    assert!(requires_reviewers(&profile(written(
+        true,
+        specified(json!({ "reviewers": true }))
+    ))));
+}
+
+#[test]
+fn a_reviewers_switch_gg_cannot_read_is_refused() {
+    // Reading `"true"` as *off* would walk straight past the gate that refuses an agent required to
+    // name reviewers with no reviewer in its roster.
+    let defects = checked(&profile(written(
+        true,
+        specified(json!({ "reviewers": "true" })),
+    )));
+    assert_eq!(loci(&defects), ["project-management.params.reviewers"]);
+    assert_eq!(defects[0].known, ["true", "false"]);
 }

@@ -90,8 +90,7 @@ fn full_system() -> SystemContext {
         fences_are_stripped: true,
         read_file: ReadFileView {
             offered: true,
-            capped: true,
-            line_cap: 250,
+            line_cap: Some(250),
             images: true,
         },
         skills: vec![skill("physics", "How to tune the simulation.")],
@@ -439,8 +438,7 @@ fn code_mode_states_image_support_and_neither_capability_contract() {
     // number the read's own result carries when it matters.
     let capped = code(ReadFileView {
         offered: true,
-        capped: true,
-        line_cap: 250,
+        line_cap: Some(250),
         images: true,
     });
     let flat_capped = flat(&capped);
@@ -1021,8 +1019,7 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
     let capped = SystemContext {
         read_file: ReadFileView {
             offered: true,
-            capped: true,
-            line_cap: 40,
+            line_cap: Some(40),
             images: true,
         },
         ..SystemContext::default()
@@ -1033,9 +1030,8 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
     let uncapped = SystemContext {
         read_file: ReadFileView {
             offered: true,
-            capped: false,
+            line_cap: None,
             images: true,
-            ..ReadFileView::default()
         },
         ..SystemContext::default()
     };
@@ -1849,8 +1845,7 @@ pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContex
         }],
         read_file: ReadFileView {
             offered: true,
-            capped: true,
-            line_cap: 250,
+            line_cap: Some(250),
             images: true,
         },
         code_headings: vec![CodeHeadingView {
@@ -2757,8 +2752,7 @@ fn an_override_renders_against_the_runs_own_context() {
     let context = SystemContext {
         read_file: ReadFileView {
             offered: true,
-            capped: true,
-            line_cap: 40,
+            line_cap: Some(40),
             images: false,
         },
         ..SystemContext::default()

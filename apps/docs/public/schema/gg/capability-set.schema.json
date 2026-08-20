@@ -6,7 +6,7 @@
       "properties": {
         "capabilities": {
           "default": [],
-          "description": "The capabilities this agent is configured with, each identified by a stable id.\nA capability absent from this list is off *and* unconfigured; one present but\n[disabled](GgCapabilityConfig::enabled) is off but records the configuration it\nwould have used, which keeps two configurations differing only in that switch comparable.",
+          "description": "The capabilities this agent is configured with, each identified by a stable id.\n\nA capability absent from this list is off *and* unconfigured, and absence from the list is\nthe **only** way to leave a capability unconfigured. One present and enabled is **fully\nspecified**: it writes an [`implementation`](GgCapabilityConfig::implementation) wherever\nthe capability offers arms and every param that capability requires, and a launch that finds\none of them missing is refused. One present but\n[disabled](GgCapabilityConfig::enabled) is off yet records the configuration it would have\nused, which keeps two configurations differing only in that switch comparable, and is held\nto nothing beyond the values it does write being honourable.\n\nAn id declared twice on one agent refuses the launch: the first declaration answers every\nlookup, so the second one's switch, arm and params would configure nothing while the run's\nrecord carried them.",
           "items": {
             "$ref": "#/$defs/GgCapabilityConfig"
           },
@@ -90,12 +90,12 @@
           "type": "string"
         },
         "implementation": {
-          "description": "The selected implementation of the capability, when it offers more than one\n(for example two compaction strategies or two memory strategies). `None` selects the\ndefault. This is the basis for A/B comparisons between implementations — which is exactly\nwhy a name the capability does not offer is a **launch failure** and never a fall back to\nthe default: the arm is the independent variable, and a run measured on one arm while its\nrecord names another is worse than no run.",
+          "description": "The arm this capability is configured on, for the five capabilities that offer arms to\nchoose between: [shell](CAPABILITY_SHELL), [read-file](CAPABILITY_READ_FILE),\n[memories](CAPABILITY_MEMORIES), [compaction](CAPABILITY_COMPACTION) and\n[autoload specifications](CAPABILITY_AUTOLOAD_SPECS).\n\n**An enabled capability that offers arms writes one.** Leaving it out refuses the launch\nrather than selecting one, because the arm is the independent variable and a run measured on\none arm while its record names another is worse than no run. The single exception is\nautoload specifications, whose one arm is [`locked`](AUTOLOAD_LOCKED_IMPL): there an\nunwritten implementation is itself the declaration that the seeded specifications are\nordinary file views, which is a reading of absence rather than a substitution for it.\n\nA name the capability does not offer refuses the launch, and so does any name at all on one\nof the sixteen capabilities that offer none. `Option` on the wire so a configuration already\nstored in the database still deserializes and still opens in the editor: what a missing\nrequired arm costs is the *launch*, not the parse. The\n[authoring catalog](gg_authoring_catalog) is what writes one into a new document.",
           "type": ["string", "null"]
         },
         "params": {
           "default": {},
-          "description": "Free-form parameters for the capability (for example a compaction threshold or\na subagent parallelism cap), interpreted by the capability itself. Defaults to\nan empty object."
+          "description": "The capability's parameters, interpreted by the capability itself.\n\n**An enabled capability writes every param it requires.** An absent one refuses the launch,\nnamed at its own locus beside every other defect in the document, because gg substitutes\nnothing: every figure a run is conducted and recorded under is a figure written here. A\nparam that is *optional* — [compaction](CAPABILITY_COMPACTION)'s\n[`model`](COMPACTION_PARAM_MODEL) and [`modelSlot`](COMPACTION_PARAM_MODEL_SLOT),\n[project management](CAPABILITY_PROJECT_MANAGEMENT)'s [`reviewers`](PARAM_REVIEWERS) — is\n**off when it is absent**, and that absence is the setting rather than a stand-in for a\nfigure.\n\nA **disabled** capability configures nothing and so requires nothing of itself, while the\nvalues written on it are still read and still refused if gg cannot honour them.\n\nThe object stays free-form on the wire — its keys are the selected capability's own\nvocabulary, which no shared type could express — and every key is checked against that\nvocabulary at launch. The [authoring catalog](gg_authoring_catalog) is what *writes* one;\nnothing that reads a configuration consults it. Deserializes to an empty object when the key\nis absent, so a stored document still parses and still opens in the editor."
         }
       },
       "required": ["id", "enabled"],
@@ -141,7 +141,7 @@
               "type": ["string", "null"]
             },
             "timeoutSecs": {
-              "description": "How long it may run before it is killed. Absent uses gg's default, which is generous\nbecause a hook command is typically a build or a test suite.",
+              "description": "How long it may run before it is killed. **Required** on a command hook: the ceiling a\nbuild or a test suite needs is nothing gg could know, and a hook killed at a figure\nnobody wrote is a gate that reports a failure the workspace did not have. An absent one\nrefuses the launch. `Option` on the wire so a stored configuration still deserializes\nand still opens in the editor.",
               "format": "double",
               "type": ["number", "null"]
             },
@@ -244,39 +244,39 @@
     },
     "GgLoopDetection": {
       "additionalProperties": false,
-      "description": "Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation\nloop**, and the knobs of the detector if so.\n\nSome models, on some turns, stop producing a reply and start producing a *period*: the same\nshort fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the\nprovider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is\nuseless as a turn, and — worst — enters the context window, where it makes the next turn more\nlikely to do the same thing.\n\nArming this is what switches that agent's model transport to **streaming**: the detector reads\nthe reply as it arrives and abandons the request the moment the repetition is unmistakable,\nwhich is the only point at which any of the loss above is still avoidable. An agent that leaves\nit off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport\nas much as it is a change of policy — which is exactly why it is off by default.\n\nIt is a **per-agent** (and therefore per-model) lever, like the\n[prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose\nroot runs on a model that loops has no reason to pay the streaming path for a reviewer that\ndoes not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nparam — a tool-calling model loops in exactly the same way, inside a tool call's arguments.\n\nEvery knob is optional and an absent one takes gg's own default (documented per field). A knob\n**set** to a value that cannot bound anything — a zero window, a zero threshold, a demand for\nno offenders — is a launch **failure**, on the same terms as [`GgRunLimits`]: a detector armed\non gg's defaults instead of the ones the profile wrote is a different detector.\n\nThe one exception is a declaration gg arms exactly as written and which is merely provably\ninert: [`min_offenders`](Self::min_offenders) above\n[`window_words`](Self::window_words) can never saturate, but both numbers are honoured to the\nletter, so it warns rather than refusing.\n\nSee the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm\nthese knobs parameterise.",
+      "description": "Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation\nloop**, and the knobs of the detector if so.\n\nSome models, on some turns, stop producing a reply and start producing a *period*: the same\nshort fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the\nprovider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is\nuseless as a turn, and — worst — enters the context window, where it makes the next turn more\nlikely to do the same thing.\n\nArming this is what switches that agent's model transport to **streaming**: the detector reads\nthe reply as it arrives and abandons the request the moment the repetition is unmistakable,\nwhich is the only point at which any of the loss above is still avoidable. An agent that leaves\nit off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport\nas much as it is a change of policy — which is exactly why it is off by default.\n\nIt is a **per-agent** (and therefore per-model) lever, like the\n[prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose\nroot runs on a model that loops has no reason to pay the streaming path for a reviewer that\ndoes not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nparam — a tool-calling model loops in exactly the same way, inside a tool call's arguments.\n\n**An armed detector writes all five knobs.** What the rule trips on is the whole set of them\ntogether — a lookback, a frequency, a breadth, a persistence and a backstop — so a detector\narmed on figures nobody chose measures gg rather than the model, and an armed detector missing\nany of them refuses the launch. An **unarmed** one owes none of them, and a knob written on one\nis still read and still judged as written, which is what keeps the armed and unarmed arms of one\ncomparison the same document with one switch moved. A knob **set** to a value that cannot bound\nanything — a zero window, a zero threshold, a demand for no offenders — is a launch **failure**,\non the same terms as [`GgRunLimits`].\n\nThe one exception is a declaration gg arms exactly as written and which is merely provably\ninert: [`min_offenders`](Self::min_offenders) above\n[`window_words`](Self::window_words) can never saturate, but both numbers are honoured to the\nletter, so it warns rather than refusing.\n\nSee the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm\nthese knobs parameterise.",
       "properties": {
         "enabled": {
           "default": false,
-          "description": "Whether the detector runs for this agent at all. `false` — the default — leaves the agent on\ngg's ordinary non-streaming transport and no reply is ever discarded; `true` arms the\ndetector **and** switches the transport to streaming, because a detector that can only read a\ncompleted reply has already let every cost it exists to avoid be paid.",
+          "description": "Whether the detector runs for this agent at all. `false`, which is what a profile that says\nnothing about loop detection reads as, leaves the agent on gg's ordinary non-streaming\ntransport and no reply is ever discarded; `true` arms the\ndetector **and** switches the transport to streaming, because a detector that can only read a\ncompleted reply has already let every cost it exists to avoid be paid.",
           "type": "boolean"
         },
         "maxResponseChars": {
-          "description": "A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not\n*repetitive* enough to trip the window rule. Absent takes gg's default (**250 000**); `0`\nturns the backstop off and leaves only the repetition rule.",
+          "description": "A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not\n*repetitive* enough to trip the window rule. Written and required on the terms\n[`window_words`](Self::window_words) is; `0` turns the backstop off and leaves only the\nrepetition rule, which is a declaration rather than an omission.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
         },
         "minOffenders": {
-          "description": "`M` — how many **distinct** offenders must be present at once for the window to count as\n*saturated*. Absent takes gg's default (**2**).\n\nMore than one is required because a single very common token (`the`, `0,`, a brace) is\nordinary; a loop repeats a whole fragment, so it saturates several words together.",
+          "description": "`M` — how many **distinct** offenders must be present at once for the window to count as\n*saturated*. Written and required on the terms [`window_words`](Self::window_words) is.\n\nMore than one is worth asking for because a single very common token (`the`, `0,`, a brace)\nis ordinary; a loop repeats a whole fragment, so it saturates several words together.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
         },
         "minSaturatedRun": {
-          "description": "`R` — how many consecutive words must arrive while the window stays saturated before gg\nabandons the reply. Absent takes gg's default (**3000**).\n\nThis is the term that separates a loop from legitimately repetitive *content*: a tilemap\nliteral or a long table saturates the window and then **ends**, while a loop saturates it and\nnever stops. Requiring the saturation to be sustained is what lets the detector be aggressive\nwithout discarding a reply that was merely dense. `0` means \"trip as soon as the window is\nsaturated\" — the unmodified frequency rule, and a deliberate choice rather than a mistake.",
+          "description": "`R` — how many consecutive words must arrive while the window stays saturated before gg\nabandons the reply. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nThis is the term that separates a loop from legitimately repetitive *content*: a tilemap\nliteral or a long table saturates the window and then **ends**, while a loop saturates it and\nnever stops. Requiring the saturation to be sustained is what lets the detector be aggressive\nwithout discarding a reply that was merely dense. `0` means \"trip as soon as the window is\nsaturated\" — the unmodified frequency rule, and a deliberate choice rather than a mistake.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
         },
         "repeatThreshold": {
-          "description": "`P` — how many times a single word may occur within the window before it counts as an\n*offender*. Absent takes gg's default (**32**, one word occupying more than an eighth of a\n256-word window).\n\nStrictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate\nrepetition (a dense data literal, a long table) at the cost of catching a loop later.",
+          "description": "`P` — how many times a single word may occur within the [window](Self::window_words) before\nit counts as an *offender*. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nStrictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate\nrepetition (a dense data literal, a long table) at the cost of catching a loop later.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
         },
         "windowWords": {
-          "description": "`N` — how many of the most recent words the detector looks back over when deciding whether a\nreply has become repetitive. Absent takes gg's default (**256**).\n\nA \"word\" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run\nexceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)\ndetectable at all rather than one unbounded word.",
+          "description": "`N` — how many of the most recent words the detector looks back over when deciding whether a\nreply has become repetitive, and the minimum sample: the repetition rule cannot fire until\nthis many words have arrived.\n\nOne of the five knobs an **armed** detector writes. What the rule trips on is the five of\nthem together, so a detector armed on figures nobody chose would measure gg rather than the\nmodel, and an armed detector missing any of them refuses the launch. An unarmed detector owes\nnone of them, and a knob written on one is still read and still judged as written.\n\nA \"word\" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run\nexceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)\ndetectable at all rather than one unbounded word.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -317,16 +317,16 @@
     },
     "GgRunLimits": {
       "additionalProperties": false,
-      "description": "The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that\nstop a session and record which one stopped it, plus the\n[parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.\n\nDeliberately **not** a [capability](GgCapabilityConfig): a capability is a feature a\nconfiguration switches on or off, with calls behind it; a ceiling is an operator's guardrail\nthat applies to every capability and to both execution modes at once. They live on the\n[capability set](GgCapabilitySet) rather than on the [launch envelope](GgInvocation) because\nthe set is what a run **records**, so a run stopped by a ceiling carries both the\n[breach](GgSessionSummary::limit_hit) and the [ceilings](GgSessionSummary::limits) that\nproduced it — where limits on the invocation would let a run record *which* ceiling was hit\nwhile making *what the ceiling was* unrecoverable.\n\n**The defaults catch a stuck run without capping a productive one.** gg's host (The Test\nCabinet) already enforces a wall-clock cap on every run, so a turn ceiling would mostly just cut\na run short before it is done, and the turn ceiling is therefore **unbounded** when unset. What\nis armed by default instead are the two error\nceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,\nand an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —\nthe host owns the clock, and gg will not invent a spend ceiling nobody asked for.\n\n**Absent takes the default; present-and-unhonourable fails the launch.** A field set to a value\nthat cannot bound anything — a zero turn or runtime ceiling, a zero window, a negative rate, a\nrate above `1.0`, a non-finite cost — is refused by name, not disarmed with a warning: an\noperator who wrote a ceiling believes the run is bounded, and a run that quietly became\nunbounded is the one case where the misconfiguration costs money. A **partially** declared error\nrate (a rate without a window, or a window without a rate) is refused on the same terms rather\nthan arming nothing. The run records the ceilings that were actually in force on\n[`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.\n\nOne combination stays a warning, because gg honours it exactly as written:\n[`error_rate_window`](Self::error_rate_window) at or above\n[`max_turns`](Self::max_turns) arms both numbers to the letter and merely leaves the rate\nceiling able to fire only on the last turn. Which of the two knobs was meant is genuinely\nunknowable, so gg says so and runs what was asked for.\n\nSee the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each\nceiling is accounted (per agent or run-wide) and what breaching it does to the run.",
+      "description": "The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that\nstop a session and record which one stopped it, plus the\n[parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.\n\nDeliberately **not** a [capability](GgCapabilityConfig): a capability is a feature a\nconfiguration switches on or off, with calls behind it; a ceiling is an operator's guardrail\nthat applies to every capability and to both execution modes at once. They live on the\n[capability set](GgCapabilitySet) rather than on the [launch envelope](GgInvocation) because\nthe set is what a run **records**, so a run stopped by a ceiling carries both the\n[breach](GgSessionSummary::limit_hit) and the [ceilings](GgSessionSummary::limits) that\nproduced it — where limits on the invocation would let a run record *which* ceiling was hit\nwhile making *what the ceiling was* unrecoverable.\n\n**Two are required and five are armed by being written.**\n[`max_parallel`](Self::max_parallel) and [`replay_max_bytes`](Self::replay_max_bytes) bound\nevery run gg conducts — the pool it runs agents in and the journal it writes as it goes — and\nneither has a figure that means \"no cap\", so an absent one refuses the launch.\n[`max_turns`](Self::max_turns), [`max_runtime_secs`](Self::max_runtime_secs),\n[`max_cost`](Self::max_cost), [`max_consecutive_errors`](Self::max_consecutive_errors) and\n[`max_error_rate`](Self::max_error_rate) with its [window](Self::error_rate_window) are each\n**unarmed when the configuration leaves them out**. gg arms no ceiling nobody wrote: an agent\nstopped for looping on errors was stopped by a threshold an operator chose, which is what makes\nthe stop a finding rather than an artefact of the harness. The host (The Test Cabinet) enforces\na wall-clock cap on every run regardless.\n\n**Present and unhonourable fails the launch.** A field set to a value that cannot bound\nanything — a zero turn or runtime ceiling, a zero window, a negative rate, a rate above `1.0`, a\nnon-finite cost — is refused by name rather than disarmed with a warning: an operator who wrote\na ceiling believes the run is bounded, and a run that quietly became unbounded is the one case\nwhere the misconfiguration costs money. A **partially** declared error rate (a rate without a\nwindow, or a window without a rate) is refused on the same terms rather than arming nothing. The\nrun records the ceilings that were in force on [`GgSessionSummary::limits`], and records an\nunarmed one as unbounded.\n\nOne combination stays a warning, because gg honours it exactly as written:\n[`error_rate_window`](Self::error_rate_window) at or above\n[`max_turns`](Self::max_turns) arms both numbers to the letter and merely leaves the rate\nceiling able to fire only on the last turn. Which of the two knobs was meant is genuinely\nunknowable, so gg says so and runs what was asked for.\n\nSee the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each\nceiling is accounted (per agent or run-wide) and what breaching it does to the run.",
       "properties": {
         "errorRateWindow": {
-          "description": "How many of an agent's most recent turns [`max_error_rate`](Self::max_error_rate) is\nmeasured over — and, deliberately, the minimum sample: the ceiling cannot fire until the\nagent has taken this many turns, so one number does both jobs. The earliest turn this\nceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says \"stop on\nany error\", which is a legitimate declaration rather than an accident. Absent (together with\n[`max_error_rate`](Self::max_error_rate)) means gg's default window of **50**.",
+          "description": "How many of an agent's most recent turns [`max_error_rate`](Self::max_error_rate) is\nmeasured over — and, deliberately, the minimum sample: the ceiling cannot fire until the\nagent has taken this many turns, so one number does both jobs. The earliest turn this\nceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says \"stop on\nany error\", which is a legitimate declaration rather than an accident. Absent together with\n[`max_error_rate`](Self::max_error_rate) leaves the ceiling **unarmed**; absent while the\nrate is written refuses the launch.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
         },
         "maxConsecutiveErrors": {
-          "description": "How many **error turns in a row** end an agent. **Absent means gg's default of 5**; set it\nexplicitly to widen or tighten the ceiling. `0` is refused rather than read as \"off\" — it\nwould end an agent before its first turn, so it is not a ceiling gg can honour.\n\nA turn is an error when the work it *declared* could not be carried out as declared: a\nmodel call that failed, a program that did not compile, one that threw uncaught, or one the\nsandbox stopped at a ceiling. A tool call that failed\n**inside** an otherwise successful program is not one — the program handled it, which is\nthe entire point of the typed tool surface, and counting it would make the one capability\nthat expects failures the one capability that cannot survive them.",
+          "description": "How many **error turns in a row** end an agent. **Absent leaves it unarmed** — gg arms no\nerror ceiling nobody wrote, so an agent stopped by this one was stopped by a threshold its\noperator chose. `0` is refused rather than read as \"off\": it would end an agent before its\nfirst turn, so it is not a ceiling gg can honour, and leaving the key out is how a\nconfiguration says there is none.\n\nA turn is an error when the work it *declared* could not be carried out as declared: a\nmodel call that failed, a program that did not compile, one that threw uncaught, or one the\nsandbox stopped at a ceiling. A tool call that failed\n**inside** an otherwise successful program is not one — the program handled it, which is\nthe entire point of the typed tool surface, and counting it would make the one capability\nthat expects failures the one capability that cannot survive them.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -337,12 +337,12 @@
           "type": ["number", "null"]
         },
         "maxErrorRate": {
-          "description": "The fraction of recent turns that may be errors before an agent is stopped, in `0.0..=1.0`.\nBreached only **strictly above** the value, matching \"more than X%\": at `0.5` over a window\nof ten, five errors is not a breach and six is. Needs\n[`error_rate_window`](Self::error_rate_window); either alone fails the launch.\n\nWhen **both** this and the window are absent, gg's default arms an error rate of **0.4 over\nthe last 50 turns**. A partial declaration (this without the window, or the window without\nthis) neither falls back to the default nor arms nothing — it is refused, because half a\nceiling is a ceiling the operator believes they have.",
+          "description": "The fraction of recent turns that may be errors before an agent is stopped, in `0.0..=1.0`.\nBreached only **strictly above** the value, matching \"more than X%\": at `0.5` over a window\nof ten, five errors is not a breach and six is. Needs\n[`error_rate_window`](Self::error_rate_window); either alone fails the launch.\n\nThe two halves stand or fall together. Writing both arms the ceiling and writing neither\nleaves it **unarmed**; writing one half is refused, because a rate with no window and a\nwindow with no rate each describe a ceiling gg has no threshold to judge against, and half a\nceiling is a ceiling the operator believes they have.",
           "format": "double",
           "type": ["number", "null"]
         },
         "maxParallel": {
-          "description": "How many of the run's agents may **run at once**, counting the root and every subagent,\nissue implementer and reviewer alike. **Absent means gg's default of\n16**; set it explicitly to widen or tighten the pool. `0` is refused — a run with no agent\nable to run could not start at all, so it is a ceiling gg cannot honour rather than a way\nof writing \"no cap\".\n\nUnlike every other field here it **stops nothing** — it *queues*. An agent spawned while the\npool is full is created normally and waits for a slot, so a configuration cannot lose work by\nsetting this low, only serialize it. An agent that **suspends** itself (blocking on its\nsubagents or on an [issue](CAPABILITY_PROJECT_MANAGEMENT)) frees its slot while it waits and\ndoes not count against the cap, and takes priority over any not-yet-started agent when a slot\nfrees — a suspended agent is holding work that is already half-done, and starting a new agent\nahead of it is how a fleet fills its pool with agents that are all waiting on each other.\n\nIt is run-level rather than per-agent because it bounds the *run's* concurrency: a cap each\nprofile declared for itself would not add up to a number the operator could reason about. The\none per-agent exception is [agent-persistence](CAPABILITY_AGENT_PERSISTENCE), which caps a\nsingle profile at one instance *within* this pool.",
+          "description": "How many of the run's agents may **run at once**, counting the root and every subagent,\nissue implementer and reviewer alike.\n\n**Required.** Every configuration states it, because gg runs every agent out of this one\npool and there is no figure that means \"no cap\": `0` describes a run with no agent able to\nrun, which is not a run. An absent one and a `0` each refuse the launch.\n\nUnlike every other field here it **stops nothing** — it *queues*. An agent spawned while the\npool is full is created normally and waits for a slot, so a configuration cannot lose work by\nsetting this low, only serialize it. An agent that **suspends** itself (blocking on its\nsubagents or on an [issue](CAPABILITY_PROJECT_MANAGEMENT)) frees its slot while it waits and\ndoes not count against the cap, and takes priority over any not-yet-started agent when a slot\nfrees — a suspended agent is holding work that is already half-done, and starting a new agent\nahead of it is how a fleet fills its pool with agents that are all waiting on each other.\n\nIt is run-level rather than per-agent because it bounds the *run's* concurrency: a cap each\nprofile declared for itself would not add up to a number the operator could reason about. The\none per-agent exception is [agent-persistence](CAPABILITY_AGENT_PERSISTENCE), which caps a\nsingle profile at one instance *within* this pool.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -360,7 +360,7 @@
           "type": ["integer", "null"]
         },
         "replayMaxBytes": {
-          "description": "The per-run ceiling, in bytes, on the\n[session capture journal](crate::gg_session_journal) gg writes as it runs. **Absent means\ngg's default of 256 MiB.**\n\nThe odd one out here, and deliberately so: every other ceiling **stops the run**, and\nthis one stops only the *observation* of it. Crossing it stops capture and marks the\nrecord [truncated](crate::gg_session_record::GgSessionTruncationReason::ByteCeiling) — capture\ndegrades, it never fails the run it observes, because a debugging artifact that can end\na paid run is worse than no artifact. It lives on this type rather than on a capability's\nparams because capture is on for every run whatever the set says, so a ceiling parked on a\ncapability would be unreadable by exactly the runs that need it.\n\n`0` cannot bound anything (it would stop capture before its first line) and is **refused**,\non the same terms as [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`. Omit the\nkey to take the default; there is no spelling of \"no ceiling\" here, because there is no run\nthat wants one.",
+          "description": "The per-run ceiling, in bytes, on the\n[session capture journal](crate::gg_session_journal) gg writes as it runs.\n\n**Required.** gg writes the journal on every run whatever the set says, so there is no run\nthis ceiling does not apply to and no spelling of \"no ceiling\" here, because there is no run\nthat wants one. An absent one refuses the launch.\n\nThe odd one out here, and deliberately so: every other ceiling **stops the run**, and\nthis one stops only the *observation* of it. Crossing it stops capture and marks the\nrecord [truncated](crate::gg_session_record::GgSessionTruncationReason::ByteCeiling) — capture\ndegrades, it never fails the run it observes, because a debugging artifact that can end\na paid run is worse than no artifact. It lives on this type rather than on a capability's\nparams because capture is on for every run whatever the set says, so a ceiling parked on a\ncapability would be unreadable by exactly the runs that need it.\n\n`0` cannot bound anything — it would stop capture before its first line — and is\n**refused**, on the same terms as\n[`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -382,8 +382,8 @@
           "type": "string"
         },
         "scopes": {
-          "default": ["subagent"],
-          "description": "**What** this agent may use the target for. An entry may carry several scopes — the same\nprofile is often both a reasonable implementer and a reasonable reviewer — and one that\ncarries none can be used for nothing, which is how a reference is disabled without deleting\nit. An entry that names no scope takes the default,\n[`Subagent`](GgSubagentScope::Subagent) alone.",
+          "default": [],
+          "description": "**What** this agent may use the target for — one or more. An entry may carry several scopes:\nthe same profile is often both a reasonable implementer and a reasonable reviewer.\n\nAn entry that names none can be used for nothing, and is\n[refused at launch](https://docs.testcabinet.ai/gg/configurations/) rather than read as a\nscope gg chose for it — a roster line that permits nothing is a delegation the document\ndescribes and the run cannot make.",
           "items": {
             "$ref": "#/$defs/GgSubagentScope"
           },
@@ -426,12 +426,19 @@
             {
               "enabled": true,
               "id": "shell",
-              "params": {}
+              "implementation": "adaptive",
+              "params": {
+                "maxChars": 4096,
+                "maxLines": 250
+              }
             },
             {
               "enabled": true,
               "id": "read-file",
-              "params": {}
+              "implementation": "unlimited",
+              "params": {
+                "lineCap": 250
+              }
             },
             {
               "enabled": true,
@@ -451,17 +458,32 @@
             {
               "enabled": true,
               "id": "skills",
-              "params": {}
+              "params": {
+                "builtIns": {},
+                "dir": ".gg/skills"
+              }
             },
             {
               "enabled": true,
               "id": "memories",
-              "params": {}
+              "implementation": "scratchpad",
+              "params": {
+                "maxCount": 64,
+                "maxLenDescription": 256,
+                "maxLenIndex": 0,
+                "maxLenPerMemory": 4096,
+                "maxResults": 0,
+                "maxTotalLen": 0,
+                "scope": "isolated"
+              }
             },
             {
               "enabled": true,
               "id": "tasks",
-              "params": {}
+              "params": {
+                "maxTasks": 100,
+                "mode": "simple"
+              }
             }
           ],
           "id": "root",
@@ -526,7 +548,7 @@
     },
     "limits": {
       "$ref": "#/$defs/GgRunLimits",
-      "description": "The **run-level guardrails** this run is bounded by — the turn, runtime, error and\ncost ceilings that stop a session and record which one stopped it, plus the\n[parallelism cap](GgRunLimits::max_parallel) that bounds how many of its agents run\nat once.\n\nThey ride on the capability set rather than on the [launch envelope](GgInvocation)\nbecause the set is what a run *records*: a ceiling that stopped a run is only\ninterpretable beside the value it was set to. They are deliberately not a\ncapability — a capability is a feature a configuration switches on or off, a ceiling is an\noperator's guardrail over every capability at once — so they never appear in the\n[`cap.*`](crate::gg_query) document namespace.\nA set that declares none omits the key entirely."
+      "description": "The **run-level guardrails** this run is bounded by — the turn, runtime, error and\ncost ceilings that stop a session and record which one stopped it, plus the\n[parallelism cap](GgRunLimits::max_parallel) that bounds how many of its agents run\nat once.\n\nThey ride on the capability set rather than on the [launch envelope](GgInvocation)\nbecause the set is what a run *records*: a ceiling that stopped a run is only\ninterpretable beside the value it was set to. They are deliberately not a\ncapability — a capability is a feature a configuration switches on or off, a ceiling is an\noperator's guardrail over every capability at once — so they never appear in the\n[`cap.*`](crate::gg_query) document namespace.\n\nTwo of them are **required**: [`maxParallel`](GgRunLimits::max_parallel) and\n[`replayMaxBytes`](GgRunLimits::replay_max_bytes), because gg conducts every run under both\nand neither has an off it could take instead. The five ceilings are each armed by writing a\nfigure and left unarmed by leaving it out. A set that declares nothing at all omits the key\nentirely and still deserializes — and is refused at launch, naming the two it owes."
     },
     "modelSlots": {
       "description": "The [launch-time model parameters](GgModelSlot) this set declares, for the\n[agent bindings](GgAgentConfig::model_slot) that defer to one instead of pinning\na model. Empty for a fully pinned set — and empty on the set a run *records*,\nbecause launching resolves every deferred binding first.",

@@ -258,18 +258,28 @@ Three sliders sit in the capability's Features box, and each is per agent.
 Board tools: `create_epic`, `create_issue`, `update_issue`,
 `set_issue_blocked_by`, `remove_epic`, `remove_issue`, and `wait_for_issue`.
 
-| Param | Default | Meaning |
-| --- | --- | --- |
-| `mergeAgentId` | required | The id of the shell-capable agent gg dispatches to resolve a conflicted merge of an accepted issue's worktree. |
-| `maxEpics` | 50 | Maximum epics on the board. |
-| `maxIssues` | 2000 | Maximum issues on the board. |
-| `maxRetries` | 1 | Re-dispatches of a failed assignment before the issue is marked failed; may be 0 for one attempt only. A review round is not a retry. |
-| `reviewers` | off | The Reviewers required feature above. |
-| `ownership` | `owned` | `unowned` keeps the board tools and drops the pinned block and the prompt section. |
+| Param | Meaning |
+| --- | --- |
+| `mergeAgentId` | The id of the shell-capable agent gg dispatches to resolve a conflicted merge of an accepted issue's worktree. |
+| `maxEpics` | Maximum epics on the board. |
+| `maxIssues` | Maximum issues on the board. |
+| `maxRetries` | Re-dispatches of a failed assignment before the issue is marked failed; may be 0 for one attempt only. A review round is not a retry. |
+| `ownership` | `owned` puts the board in the holder's prompt, `unowned` keeps the board tools and drops the pinned block and the prompt section. |
+| `reviewers` | The Reviewers required feature above. Optional: absent, an issue names reviewers or leaves them out as its author chooses. |
 
-An absent param takes its default above. A param carrying a value gg cannot
-honour exactly as written refuses the launch, alongside every other such value in
-the capability set.
+An enabled project-management capability writes every param but `reviewers`. An
+absent one of those five, and any param carrying a value gg cannot honour exactly
+as written, refuse the launch alongside every other such value in the capability
+set.
+
+A run keeps **one** board, so four of those params configure the run rather than
+the agent that wrote them: `mergeAgentId` and the three ceilings. gg reads them
+off the first profile with the capability switched on, and a second
+board-carrying profile that declares a *different* figure refuses the launch —
+the document would say two things and the run can only do one. Every such profile
+writing the *same* figure is the ordinary shape, and is what an editor offering
+the params per agent produces. `ownership` and `reviewers` are genuinely
+per-agent: they decide what each holder is told and what each filer must name.
 
 Switched off, there are no board tools, no prompt text, no context block, no
 board telemetry, and no auto-dispatch.

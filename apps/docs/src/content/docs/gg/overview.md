@@ -84,8 +84,9 @@ harness becomes a laboratory. It must be:
   configurations.
 - Honoured exactly as written. gg checks the whole set before the first turn,
   and a value it cannot honour refuses the launch. One refusal names every such
-  value in the set, so one pass over the configuration fixes them all. A value
-  left absent takes its capability's documented default.
+  value in the set, so one pass over the configuration fixes them all. An
+  enabled capability is written out in full, and a required value left absent
+  refuses the launch with the rest.
 
 That last property is what makes the recorded configuration the configuration a
 result was produced under: every run that produced a result ran the set its
@@ -292,8 +293,8 @@ the console is [Configurations](/gg/configurations/).
 - [Program library](/gg/program-library/) — keep every program an agent runs, so
   it can fetch one back, patch it, and hand it over to be run again.
 - Close documentation (`docview-close`) — let an agent take a [documentation
-  view](/gg/responses-as-code/views/) back out of its own window. Off by
-  default. It is its own capability because closing takes back a page the agent
+  view](/gg/responses-as-code/views/) back out of its own window. It is its own
+  capability because closing takes back a page the agent
   still holds, and it disturbs a prompt prefix the documentation band otherwise
   keeps intact for a whole session.
 

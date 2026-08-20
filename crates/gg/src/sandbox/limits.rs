@@ -105,6 +105,14 @@ use serde_json::Value;
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
 use wasmtime::ResourceLimiter;
 
+/// The two params this module reads, re-exported from the crate that owns gg's configuration
+/// vocabulary: the spelling a document is written in and the spelling gg reads it by are one
+/// constant, so a key cannot be renamed on one side of the wire alone.
+///
+/// The names are **contract-visible** — they are what the console's capability catalogue offers and
+/// what persisted run data records — so they do not change with the sandbox underneath them.
+pub use test_cabinet_core::gg::{PARAM_MAX_MEMORY_BYTES, PARAM_TIMEOUT_SECS};
+
 /// The sandbox limits one program runs under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SandboxLimits {
@@ -119,56 +127,65 @@ pub struct SandboxLimits {
     pub max_memory_bytes: usize,
 }
 
-/// The [default](SandboxLimits::default) execution timeout: **30 seconds** of guest CPU.
-///
-/// This is a pure infinite-loop guard, not a work ration. The heaviest *honest* program measured —
-/// reading, rewriting and writing back twenty 64 KiB files — spends about 1.8 s of guest CPU, so
-/// 30 s leaves it more than an order of magnitude of headroom while still stopping a `while (true)
-/// {}` in about half a minute. It is deliberately far longer than any single response needs, so it
-/// is never reached outside a program that does not terminate.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
-
-impl Default for SandboxLimits {
-    /// The [default timeout](DEFAULT_TIMEOUT) and a 256 MiB linear-memory cap.
+impl SandboxLimits {
+    /// **No program runs under these** — what an agent whose profile does not switch
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) on carries.
     ///
-    /// 256 MiB of linear memory is ≈25× the 10.3 MiB the guest engine occupies at rest, which
-    /// leaves ample room for the strings a real program builds while still denying a runaway
-    /// allocation long before it can disturb the host.
-    fn default() -> Self {
-        Self {
-            timeout: DEFAULT_TIMEOUT,
-            max_memory_bytes: 268_435_456,
-        }
-    }
+    /// A tool-calling agent allocates no `Store` and evaluates nothing, so there is nothing here
+    /// for a ceiling to bound and no ceiling for its profile to have written. Zero on both is the
+    /// statement rather than a figure: were a program somehow reached with these, it would be
+    /// stopped before its first back-edge and loudly, which is the failure mode to want.
+    pub const NO_PROGRAM: Self = Self {
+        timeout: Duration::ZERO,
+        max_memory_bytes: 0,
+    };
+
+    /// The ceilings a resolver hands back once it has [refused the launch](crate::validate).
+    ///
+    /// Its name rather than its value is the point: the run it belongs to does not start, so no
+    /// program is ever run under it, and the next reader of the line that produced it can see that
+    /// gg armed no ceiling of its own choosing.
+    pub const LAUNCH_REFUSED: Self = Self::NO_PROGRAM;
+
+    /// **Ceilings wide enough that no honest program approaches either** — 30 s of guest CPU and
+    /// 256 MiB of linear memory — which is what gg's own cases run a fixture program under.
+    ///
+    /// The heaviest honest program measured, reading and rewriting twenty 64 KiB files, spends
+    /// about 1.8 s of guest CPU; 256 MiB is ≈25× the 10.3 MiB the ECMAScript guest engine occupies
+    /// at rest.
+    ///
+    /// `#[cfg(test)]`, because it is a fixture and not a figure gg would stand in for an absent
+    /// one: a run's ceilings come from that run's own document or the launch is refused.
+    #[cfg(test)]
+    pub(crate) const AMPLE: Self = Self {
+        timeout: Duration::from_secs(30),
+        max_memory_bytes: 268_435_456,
+    };
 }
-
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param bounding **one
-/// program's** guest-CPU execution, in seconds. Absent takes [`DEFAULT_TIMEOUT`].
-pub const PARAM_TIMEOUT_SECS: &str = "timeoutSecs";
-
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param capping the guest's
-/// linear memory, in bytes. Absent takes [`SandboxLimits::default`]'s 256 MiB.
-pub const PARAM_MAX_MEMORY_BYTES: &str = "maxMemoryBytes";
 
 /// Resolve the [sandbox limits](SandboxLimits) from **one agent's**
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability params —
 /// [`timeoutSecs`](PARAM_TIMEOUT_SECS) and [`maxMemoryBytes`](PARAM_MAX_MEMORY_BYTES).
 ///
-/// An absent capability, or an absent or `null` param, takes the
-/// [default](SandboxLimits::default). A param that is **present** and names no ceiling gg can arm —
-/// a non-number, a zero, a negative, an infinity — [refuses the launch](crate::validate) rather
-/// than leaving the default standing: a study that deliberately starves the sandbox to measure what
-/// that does would otherwise run at gg's ordinary ceilings under the starved arm's name, and every
-/// program in it would succeed for the wrong reason. The default comes back anyway to keep the
-/// resolver total for the per-turn calls that re-read it.
+/// **An enabled capability writes both.** Neither has an "off" a program could run under, and gg
+/// arms no ceiling nobody wrote: a study that deliberately starves the sandbox to measure what that
+/// does would otherwise run at ceilings of gg's choosing under the starved arm's name, and every
+/// program in it would succeed for the wrong reason. An absent or `null` param, and one that is
+/// present and names no ceiling gg can arm — a non-number, a zero, a negative, an infinity —
+/// [refuse the launch](crate::validate) on exactly the same terms.
+///
+/// An **absent** capability runs no program, so it resolves to [`NO_PROGRAM`](SandboxLimits::NO_PROGRAM)
+/// and nothing is required of it. A capability that is present and **disabled** requires nothing of
+/// itself either, and the ceilings written on one are still read and still refused if gg could not
+/// arm them, which is what keeps the on and off arms of one comparison the same document with one
+/// switch moved. Having reported, this resolver hands back
+/// [`LAUNCH_REFUSED`](SandboxLimits::LAUNCH_REFUSED), which is what keeps it total for the per-turn
+/// calls that re-read it.
 ///
 /// It takes an [agent profile](GgAgentConfig) and not the run's whole set on purpose:
 /// responses-as-code is a per-agent capability, so a reviewer agent may run under ceilings its
 /// spawner does not. Every caller resolves the profile of the agent whose turn is about to run
 /// (`Orchestrator::code_setup`), which is what makes these per-agent rather than per-run.
-///
-/// The param NAMES are contract-visible (they are what the console's capability catalogue offers
-/// and what persisted run data records), so they do not change with the sandbox underneath them.
 ///
 /// There is deliberately **no clamping** of any param: a study may starve the sandbox on purpose
 /// to measure what that does. What protects the operator from a mystifying failure is the error
@@ -177,27 +194,64 @@ pub fn resolve_sandbox_limits(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) -> SandboxLimits {
-    let mut limits = SandboxLimits::default();
     let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
-        return limits;
+        return SandboxLimits::NO_PROGRAM;
     };
+    if !capability.enabled {
+        // Read for the refusals alone: a switched-off capability bounds no program, and what it
+        // writes is judged now rather than on the launch that flips the switch.
+        positive_secs(&capability.params, false, report);
+        max_memory_bytes(&capability.params, false, report);
+        return SandboxLimits::NO_PROGRAM;
+    }
+    // Both are read before either absence is answered, so one refusal names every ceiling the
+    // profile is short of rather than the first.
+    let (Some(timeout), Some(max_memory_bytes)) = (
+        positive_secs(&capability.params, true, report),
+        max_memory_bytes(&capability.params, true, report),
+    ) else {
+        return SandboxLimits::LAUNCH_REFUSED;
+    };
+    SandboxLimits {
+        timeout,
+        max_memory_bytes,
+    }
+}
 
-    if let Some(secs) = positive_secs(&capability.params, report) {
-        limits.timeout = secs;
-    }
-    if let Some(bytes) = crate::validate::positive_count_param(
-        &capability.params,
-        CAPABILITY_RESPONSES_AS_CODE,
-        PARAM_MAX_MEMORY_BYTES,
-        "a guest given no memory at all could not run even its own setup, so every turn would fail \
-         identically",
-        report,
-    ) {
-        // A cap wider than this platform's address space is not a cap; saturating keeps the
-        // configured intent ("as much as possible") rather than wrapping it into something small.
-        limits.max_memory_bytes = usize::try_from(bytes).unwrap_or(usize::MAX);
-    }
-    limits
+/// The [`maxMemoryBytes`](PARAM_MAX_MEMORY_BYTES) param as a **byte count**, or `None` once the
+/// launch is refused — because the capability is on and wrote none, or because what it wrote names
+/// no cap.
+///
+/// `enabled` is whether the capability carrying these params is switched on, which is the whole of
+/// what makes the param required: a disabled capability is short of nothing, and what it did write
+/// is read on the ordinary terms.
+fn max_memory_bytes(
+    params: &Value,
+    enabled: bool,
+    report: &mut crate::validate::LaunchReport,
+) -> Option<usize> {
+    const STARVED: &str = "a guest given no memory at all could not run even its own setup, so \
+                           every turn would fail identically";
+    let bytes = if enabled {
+        crate::validate::required_positive_count_param(
+            params,
+            CAPABILITY_RESPONSES_AS_CODE,
+            PARAM_MAX_MEMORY_BYTES,
+            STARVED,
+            report,
+        )?
+    } else {
+        crate::validate::positive_count_param(
+            params,
+            CAPABILITY_RESPONSES_AS_CODE,
+            PARAM_MAX_MEMORY_BYTES,
+            STARVED,
+            report,
+        )?
+    };
+    // A cap wider than this platform's address space is not a cap; saturating keeps the configured
+    // intent ("as much as possible") rather than wrapping it into something small.
+    Some(usize::try_from(bytes).unwrap_or(usize::MAX))
 }
 
 /// The sandbox half of one profile's contribution to the
@@ -207,24 +261,40 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::Launc
     resolve_sandbox_limits(profile, report);
 }
 
-/// The [`timeoutSecs`](PARAM_TIMEOUT_SECS) param as a **duration**, or `None` when it is absent or
-/// `null` — in which case [`DEFAULT_TIMEOUT`] stands.
+/// The [`timeoutSecs`](PARAM_TIMEOUT_SECS) param as a **duration**, or `None` once the launch is
+/// refused — because the capability is on and wrote none, or because what it wrote names no
+/// ceiling.
+///
+/// `enabled` is whether the capability carrying these params is switched on, which is the whole of
+/// what makes the param required: a disabled capability is short of nothing, and what it did write
+/// is read on the ordinary terms.
 ///
 /// A **fractional value is honoured** — `{"timeoutSecs": 0.5}` is half a second — because the param
 /// is a wall-clock time and a study measuring a very short ceiling has every reason to ask for one.
 /// This is the one numeric capability param that is not read as a count, which is why it does not go
-/// through [`positive_count_param`](crate::validate::positive_count_param). A value so large it
+/// through [`required_count_param`](crate::validate::required_count_param). A value so large it
 /// overflows a `Duration` saturates at the near-eternal [`Duration::MAX`], keeping the configured
 /// intent ("effectively no timeout") rather than wrapping it into something small.
 ///
 /// Zero, a negative, an infinity and anything that is not a number are [reported](crate::validate)
-/// and refuse the launch: none of them names a ceiling, and a program run under gg's default while
-/// its record named theirs is the wrong-arm failure the refusal exists to prevent.
-fn positive_secs(params: &Value, report: &mut crate::validate::LaunchReport) -> Option<Duration> {
-    let value = params.get(PARAM_TIMEOUT_SECS)?;
-    if value.is_null() {
-        return None;
-    }
+/// and refuse the launch: none of them names a ceiling, and gg arms none of its own in their place.
+fn positive_secs(
+    params: &Value,
+    enabled: bool,
+    report: &mut crate::validate::LaunchReport,
+) -> Option<Duration> {
+    let value = if enabled {
+        crate::validate::required_param(
+            params,
+            CAPABILITY_RESPONSES_AS_CODE,
+            PARAM_TIMEOUT_SECS,
+            report,
+        )?
+    } else {
+        params
+            .get(PARAM_TIMEOUT_SECS)
+            .filter(|value| !value.is_null())?
+    };
     match value.as_f64() {
         Some(secs) if secs.is_finite() && secs > 0.0 => {
             Some(Duration::try_from_secs_f64(secs).unwrap_or(Duration::MAX))
@@ -235,9 +305,8 @@ fn positive_secs(params: &Value, report: &mut crate::validate::LaunchReport) -> 
                 crate::validate::as_written(value),
                 format!(
                     "the `{PARAM_TIMEOUT_SECS}` param bounds one program's guest CPU in seconds \
-                     and must be a positive number; gg cannot read a ceiling from this, and \
-                     running at its default instead would time programs out at a bound nobody \
-                     wrote."
+                     and must be a positive number; gg cannot read a ceiling from this, and it \
+                     arms none of its own in place of one nobody wrote."
                 ),
             ));
             None

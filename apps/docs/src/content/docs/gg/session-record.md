@@ -43,8 +43,9 @@ ceiling is recorded as its kept tail, with the whole payload's byte count and
 content address alongside it.
 
 A per-run byte ceiling bounds the worst case. It is `replayMaxBytes`, among the
-run's [execution limits](/gg/execution-limits/), and it is 256 MiB unless a
-configuration says otherwise; the console's editor offers it as Session
+run's [execution limits](/gg/execution-limits/), and every configuration writes
+one — a journal gg bounded at a figure nobody chose is a record truncated on gg's
+terms rather than the run's. The console's editor offers it as Session
 journal (MiB) and writes the byte count itself. Crossing it stops capture and
 marks the record truncated. Capture degrades rather than failing the run it
 observes.

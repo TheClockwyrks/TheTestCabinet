@@ -1102,8 +1102,9 @@ pub(super) struct CodeTurn<'a> {
     pub(super) turn: u64,
     /// The workspace root and vision context every tool call is executed against.
     pub(super) tool_ctx: &'a ToolContext,
-    /// The read policy `read_file` is bound with — whether ambient reads are permitted.
-    pub(super) read_policy: ReadPolicy,
+    /// The read policy `read_file` is bound with — whether ambient reads are permitted — or `None`
+    /// when this agent has no read-file capability and the call is not bound at all.
+    pub(super) read_policy: Option<ReadPolicy>,
     /// The output policy `shell` is bound with — how much of a command's output a program's
     /// `system.shell(…)` gets back, and whether the whole of it is kept on disk.
     pub(super) shell_offload: &'a OffloadPolicy,
@@ -1951,7 +1952,7 @@ pub(super) struct LoopOperationApi {
     // cloned/borrowed-by-value loop state:
     spawner: Agent,
     tool_ctx: ToolContext,
-    read_policy: ReadPolicy,
+    read_policy: Option<ReadPolicy>,
     shell_offload: OffloadPolicy,
     board: BoardRuntime,
     /// The filing rules this agent's `create_issue` calls are checked against — see
@@ -2731,8 +2732,21 @@ impl OperationApi for LoopOperationApi {
         self.serviced(
             FILES_READ_FILE,
             json!({ "path": path, "offset": offset, "limit": limit }),
-            |api| {
-                ReadFileTool::new(api.read_policy).read(&api.tool_ctx, path.clone(), offset, limit)
+            |api| match api.read_policy {
+                Some(policy) => {
+                    ReadFileTool::new(policy).read(&api.tool_ctx, path.clone(), offset, limit)
+                }
+                // Belt to the membrane's braces, as the memory-scope gate above is: the call is
+                // bound only for an agent whose read-file capability configures a policy, so a
+                // program reaching here without one asked for a call this agent does not have. gg
+                // reads no file under a policy nobody wrote.
+                None => ToolOutcome::failed(
+                    ToolFailure::Unavailable,
+                    format!(
+                        "`{}` is not available.",
+                        spell(api.language, FILES_READ_FILE)
+                    ),
+                ),
             },
         )
     }

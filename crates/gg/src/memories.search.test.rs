@@ -7,7 +7,7 @@ use super::*;
 /// A keyword-search store holding `memories`, each `(slug, description, body)`.
 fn store_of(memories: &[(&str, &str, &str)]) -> MemoryStore {
     let strategy = MemoryStrategy::KeywordSearch;
-    let mut store = MemoryStore::new(strategy, MemoryCaps::for_strategy(strategy));
+    let mut store = MemoryStore::new(strategy, MemoryCaps::UNBOUNDED);
     for (name, description, body) in memories {
         store
             .create("", name, description, body, MemoryCode::default())
@@ -96,7 +96,7 @@ fn results_are_capped_at_max_results() {
     let strategy = MemoryStrategy::KeywordSearch;
     let caps = MemoryCaps {
         max_results: Some(2),
-        ..MemoryCaps::for_strategy(strategy)
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(strategy, caps);
     for n in 0..5 {
@@ -113,7 +113,7 @@ fn an_unlimited_page_size_returns_every_match() {
     let strategy = MemoryStrategy::KeywordSearch;
     let caps = MemoryCaps {
         max_results: None,
-        ..MemoryCaps::for_strategy(strategy)
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(strategy, caps);
     for n in 0..30 {

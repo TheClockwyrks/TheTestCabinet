@@ -36,18 +36,20 @@ use super::{ScriptedFactory, invocation};
 /// The scope is the only variable — everything else is the smallest configuration that produces two
 /// agents with memories between them.
 fn inherited_memories_set(child_scope: GgMemoryScope) -> GgCapabilitySet {
-    let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    subagents.params = json!({ "maxDepth": 3 });
+    let subagents = crate::tools::configured(CAPABILITY_SUBAGENTS, json!({ "maxDepth": 3 }));
     let roster = vec![GgSubagentRef {
         agent_id: "reader".to_string(),
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     }];
     let profile = |id: &str, name: &str, model: &str, scope: Option<GgMemoryScope>| {
-        let mut memories = GgCapabilityConfig::enabled(CAPABILITY_MEMORIES);
-        if let Some(scope) = scope {
-            memories.params = json!({ MEMORY_PARAM_SCOPE: scope.as_str() });
-        }
+        let memories = match scope {
+            Some(scope) => crate::tools::configured(
+                CAPABILITY_MEMORIES,
+                json!({ MEMORY_PARAM_SCOPE: scope.as_str() }),
+            ),
+            None => GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
+        };
         GgAgentConfig {
             id: id.to_string(),
             name: name.to_string(),

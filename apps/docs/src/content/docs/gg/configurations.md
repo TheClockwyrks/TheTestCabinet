@@ -44,17 +44,20 @@ the session journal. They apply to every capability and to both execution modes
 at once, so they sit beside the configuration's identity rather than inside a
 capability group.
 
-An empty field takes gg's own default for that ceiling. Turns per agent,
-wall-clock seconds and cost are the three that are absent when left empty; every
-other field has a value gg applies whether or not the configuration states one.
-Each default is listed in [Execution limits](/gg/execution-limits/).
+Max parallel agents and the session journal's size are required: gg runs under
+both on every run, and neither has an off it could take instead. Turns per agent,
+wall-clock seconds, cost, consecutive errors, and the error rate with its window
+are each armed by writing a figure and unarmed by leaving the field empty. gg
+arms no ceiling the configuration did not write. [Execution
+limits](/gg/execution-limits/) states what each one bounds.
 
 One capability is worth knowing before running a compaction study. The [context
 window override](/gg/context-visibility/#the-window-a-run-is-measured-against)
 narrows the window a run is measured against, so a compaction arm can be
 exercised against a million-token model without spending a million tokens of
 input to reach a boundary. It can only narrow, since the model's real window is
-a hard limit, and it is off by default.
+a hard limit, and a profile that leaves the capability off is measured against
+the model's own window.
 
 ## Agents
 
@@ -112,15 +115,19 @@ A roster entry's scopes are `subagent` (spawnable with `spawn_subagent`),
 and `reviewer` (namable among an issue's reviewers). The three are independent:
 a profile trusted to write code is not automatically trusted to review it, and
 an agent with no [subagents](/gg/subagents/) capability still uses its roster to
-staff issues. Every such call names its target by its [id](#identity), and gg
-refuses one the roster does not list in the right scope. A profile may list
+staff issues. An entry naming no scope permits nothing at all and refuses the
+launch — gg grants none of the three on an operator's behalf, and the editor
+removes a roster row by clearing its last scope rather than saving one that can
+be used for nothing. Every such call names its target by its [id](#identity),
+and gg refuses one the roster does not list in the right scope. A profile may list
 itself, which allows recursion. The `subagent` scope is also the allowlist
 [`exec`](/gg/fork-and-exec/) is checked against.
 
 Two capabilities backed by a [module](/gg/modules/), project management and
 agent-managed context, carry an `ownership` param deciding whether the agent's
-prompt carries that module or only its tools do. Left alone it is `owned`. The
-other module-backed capabilities always sit in the agent's prompt.
+prompt carries that module or only its tools do. Each of them writes it, `owned`
+or `unowned`. The other module-backed capabilities always sit in the agent's
+prompt.
 
 ### Identity
 
@@ -350,22 +357,43 @@ mode:
 
 A launch refuses a capability set carrying any value gg cannot honour exactly as
 written, and names every one of them at once, so a single pass over the
-configuration fixes them all. A value left absent takes the documented default
-for its capability. The one exception is the RaC `language`, which has no
-default and is required of every agent writing programs. The check runs at the
-top of gg's own session frame, inside
-the run container and before the first turn, so a refusal costs no model spend.
-It lives there and nowhere else on purpose: it is the one place that can call
-gg's own resolvers, and a second copy of the vocabulary anywhere else is exactly
-the drift these refusals exist to delete.
+configuration fixes them all. gg substitutes nothing for a value the document
+leaves out:
+
+- An enabled capability is fully specified. It writes an `implementation`
+  wherever the capability offers arms, and it writes every param that capability
+  requires.
+- A required value that is absent refuses the launch, named at its own locus
+  beside every other defect in the document.
+- An optional value's absence is itself a setting: no ceiling, no override, no
+  summarizer model. gg records the absence and runs without the thing the value
+  would have configured.
+- A capability the agent's list leaves out configures nothing, and so does one
+  written into the list and switched off. Neither requires anything.
+
+Each capability page states which of its params are required and what an optional
+one's absence turns off.
+
+The check runs at the top of gg's own session frame, inside the run container and
+before the first turn, so a refusal costs no model spend. It lives there and
+nowhere else on purpose: it is the one place that can call gg's own resolvers, and
+a second copy of the vocabulary anywhere else is exactly the drift these refusals
+exist to delete.
+
+The console pre-fills a fresh capability with an implementation and a starting set
+of params. That is authoring: it writes figures into the document for the operator
+to keep or change, and the document that reaches gg carries whatever they left
+there. gg reads that document and chooses nothing on its own, so every figure a
+run is conducted and recorded under is a figure the configuration states.
 
 Every value is read whether its capability is switched **on or off**. A disabled
 capability still records the configuration the arm would have used — which is
 what keeps the on and off arms of one comparison symmetric, and is what the
 editor writes — so a typo in it is a typo an operator hears about now rather than
-on the launch where they flip the switch.
+on the launch where they flip the switch. What a disabled capability does not
+carry is an obligation to be complete, since it configures nothing.
 
-Four of those refusals are about the **shape** of a set rather than about one
+Five of those refusals are about the **shape** of a set rather than about one
 value, and each of them is a declaration gg would otherwise read past:
 
 - A capability id declared twice on one agent. A capability is looked up by id
@@ -373,13 +401,19 @@ value, and each of them is a declaration gg would otherwise read past:
   would configure nothing while the run's record carried them.
 - An `implementation` on a capability that offers no implementations to choose
   between. Only Compaction, Memories, Read File, Shell and Autoload
-  Specifications have arms; anywhere else the name selects nothing.
-- A run-level param written on an agent that is not the first. The subagent
-  recursion bound is read once for the whole run, off the first profile.
-  Writing the *same* value on every profile is fine and is what the editor
-  does; writing a *different* one is a document that says two things.
+  Specifications read one; anywhere else the name selects nothing. Each of those
+  five pages states whether the capability names an arm wherever it is enabled.
+- A run-level param that **diverges** from the one in force. The subagent
+  recursion bound is read once for the whole run, off the first profile, and the
+  [board](/gg/project-management/)'s three ceilings once off the first profile
+  with that capability on. Writing the *same* value on every profile is fine and
+  is what the editor does; writing a *different* one is a document that says two
+  things.
 - Two agents naming two different merge agents, or one naming something gg
   cannot read as a name. The board is the run's, so it has one merge agent.
+- A roster entry naming no scope. What a target may be used for is the whole of
+  what a roster entry says, and an entry permitting nothing is a delegation the
+  document describes and the run cannot make.
 
 The [orchestrator](/orchestrators/overview/) dimension does not apply to a gg
 run (see [Overview](/gg/overview/#how-gg-fits-into-the-test-cabinet)). gg is

@@ -119,8 +119,9 @@ million-token model without spending a million tokens of input per boundary:
 give the run a 100k window and the same summarize-and-restart behaviour plays
 out an order of magnitude sooner.
 
-Narrowing is its own capability, Context Window Override, off by default, so a
-normal run is measured against the model's full window.
+Narrowing is its own capability, Context Window Override, and an enabled one
+writes the `windowLimit` it narrows to. A profile that leaves the capability off
+is measured against the model's full window.
 
 ## Reading the graph
 

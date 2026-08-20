@@ -99,7 +99,7 @@ fn evaluate(
             modules,
             ending,
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         FakeOperationApi::with(&log, responder),
     );
@@ -1082,7 +1082,7 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
             modules: &[],
             ending: RunEnding::None,
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         api,
     );
@@ -1298,7 +1298,7 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
             modules: &[],
             ending: RunEnding::None,
         },
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         api,
     );

@@ -56,9 +56,19 @@ export type GgAgentConfig = {
   name: string;
   /**
    * The capabilities this agent is configured with, each identified by a stable id.
-   * A capability absent from this list is off *and* unconfigured; one present but
-   * [disabled](GgCapabilityConfig::enabled) is off but records the configuration it
-   * would have used, which keeps two configurations differing only in that switch comparable.
+   *
+   * A capability absent from this list is off *and* unconfigured, and absence from the list is
+   * the **only** way to leave a capability unconfigured. One present and enabled is **fully
+   * specified**: it writes an [`implementation`](GgCapabilityConfig::implementation) wherever
+   * the capability offers arms and every param that capability requires, and a launch that finds
+   * one of them missing is refused. One present but
+   * [disabled](GgCapabilityConfig::enabled) is off yet records the configuration it would have
+   * used, which keeps two configurations differing only in that switch comparable, and is held
+   * to nothing beyond the values it does write being honourable.
+   *
+   * An id declared twice on one agent refuses the launch: the first declaration answers every
+   * lookup, so the second one's switch, arm and params would configure nothing while the run's
+   * record carried them.
    */
   capabilities: Array<GgCapabilityConfig>;
   /**
@@ -194,11 +204,13 @@ export type GgSubagentRef = {
    */
   description: string;
   /**
-   * **What** this agent may use the target for. An entry may carry several scopes — the same
-   * profile is often both a reasonable implementer and a reasonable reviewer — and one that
-   * carries none can be used for nothing, which is how a reference is disabled without deleting
-   * it. An entry that names no scope takes the default,
-   * [`Subagent`](GgSubagentScope::Subagent) alone.
+   * **What** this agent may use the target for — one or more. An entry may carry several scopes:
+   * the same profile is often both a reasonable implementer and a reasonable reviewer.
+   *
+   * An entry that names none can be used for nothing, and is
+   * [refused at launch](https://docs.testcabinet.ai/gg/configurations/) rather than read as a
+   * scope gg chose for it — a roster line that permits nothing is a delegation the document
+   * describes and the run cannot make.
    */
   scopes: Array<GgSubagentScope>;
 };
@@ -266,10 +278,14 @@ export type GgPromptCacheTtl = "standard" | "extended";
  * does not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
  * param — a tool-calling model loops in exactly the same way, inside a tool call's arguments.
  *
- * Every knob is optional and an absent one takes gg's own default (documented per field). A knob
- * **set** to a value that cannot bound anything — a zero window, a zero threshold, a demand for
- * no offenders — is a launch **failure**, on the same terms as [`GgRunLimits`]: a detector armed
- * on gg's defaults instead of the ones the profile wrote is a different detector.
+ * **An armed detector writes all five knobs.** What the rule trips on is the whole set of them
+ * together — a lookback, a frequency, a breadth, a persistence and a backstop — so a detector
+ * armed on figures nobody chose measures gg rather than the model, and an armed detector missing
+ * any of them refuses the launch. An **unarmed** one owes none of them, and a knob written on one
+ * is still read and still judged as written, which is what keeps the armed and unarmed arms of one
+ * comparison the same document with one switch moved. A knob **set** to a value that cannot bound
+ * anything — a zero window, a zero threshold, a demand for no offenders — is a launch **failure**,
+ * on the same terms as [`GgRunLimits`].
  *
  * The one exception is a declaration gg arms exactly as written and which is merely provably
  * inert: [`min_offenders`](Self::min_offenders) above
@@ -281,15 +297,22 @@ export type GgPromptCacheTtl = "standard" | "extended";
  */
 export type GgLoopDetection = {
   /**
-   * Whether the detector runs for this agent at all. `false` — the default — leaves the agent on
-   * gg's ordinary non-streaming transport and no reply is ever discarded; `true` arms the
+   * Whether the detector runs for this agent at all. `false`, which is what a profile that says
+   * nothing about loop detection reads as, leaves the agent on gg's ordinary non-streaming
+   * transport and no reply is ever discarded; `true` arms the
    * detector **and** switches the transport to streaming, because a detector that can only read a
    * completed reply has already let every cost it exists to avoid be paid.
    */
   enabled: boolean;
   /**
    * `N` — how many of the most recent words the detector looks back over when deciding whether a
-   * reply has become repetitive. Absent takes gg's default (**256**).
+   * reply has become repetitive, and the minimum sample: the repetition rule cannot fire until
+   * this many words have arrived.
+   *
+   * One of the five knobs an **armed** detector writes. What the rule trips on is the five of
+   * them together, so a detector armed on figures nobody chose would measure gg rather than the
+   * model, and an armed detector missing any of them refuses the launch. An unarmed detector owes
+   * none of them, and a knob written on one is still read and still judged as written.
    *
    * A "word" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run
    * exceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)
@@ -297,9 +320,9 @@ export type GgLoopDetection = {
    */
   windowWords?: number;
   /**
-   * `P` — how many times a single word may occur within the window before it counts as an
-   * *offender*. Absent takes gg's default (**32**, one word occupying more than an eighth of a
-   * 256-word window).
+   * `P` — how many times a single word may occur within the [window](Self::window_words) before
+   * it counts as an *offender*. Written and required on the terms
+   * [`window_words`](Self::window_words) is.
    *
    * Strictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate
    * repetition (a dense data literal, a long table) at the cost of catching a loop later.
@@ -307,15 +330,16 @@ export type GgLoopDetection = {
   repeatThreshold?: number;
   /**
    * `M` — how many **distinct** offenders must be present at once for the window to count as
-   * *saturated*. Absent takes gg's default (**2**).
+   * *saturated*. Written and required on the terms [`window_words`](Self::window_words) is.
    *
-   * More than one is required because a single very common token (`the`, `0,`, a brace) is
-   * ordinary; a loop repeats a whole fragment, so it saturates several words together.
+   * More than one is worth asking for because a single very common token (`the`, `0,`, a brace)
+   * is ordinary; a loop repeats a whole fragment, so it saturates several words together.
    */
   minOffenders?: number;
   /**
    * `R` — how many consecutive words must arrive while the window stays saturated before gg
-   * abandons the reply. Absent takes gg's default (**3000**).
+   * abandons the reply. Written and required on the terms
+   * [`window_words`](Self::window_words) is.
    *
    * This is the term that separates a loop from legitimately repetitive *content*: a tilemap
    * literal or a long table saturates the window and then **ends**, while a loop saturates it and
@@ -326,8 +350,9 @@ export type GgLoopDetection = {
   minSaturatedRun?: number;
   /**
    * A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not
-   * *repetitive* enough to trip the window rule. Absent takes gg's default (**250 000**); `0`
-   * turns the backstop off and leaves only the repetition rule.
+   * *repetitive* enough to trip the window rule. Written and required on the terms
+   * [`window_words`](Self::window_words) is; `0` turns the backstop off and leaves only the
+   * repetition rule, which is a declaration rather than an omission.
    */
   maxResponseChars?: number;
 };
@@ -394,18 +419,45 @@ export type GgCapabilityConfig = {
    */
   enabled: boolean;
   /**
-   * The selected implementation of the capability, when it offers more than one
-   * (for example two compaction strategies or two memory strategies). `None` selects the
-   * default. This is the basis for A/B comparisons between implementations — which is exactly
-   * why a name the capability does not offer is a **launch failure** and never a fall back to
-   * the default: the arm is the independent variable, and a run measured on one arm while its
-   * record names another is worse than no run.
+   * The arm this capability is configured on, for the five capabilities that offer arms to
+   * choose between: [shell](CAPABILITY_SHELL), [read-file](CAPABILITY_READ_FILE),
+   * [memories](CAPABILITY_MEMORIES), [compaction](CAPABILITY_COMPACTION) and
+   * [autoload specifications](CAPABILITY_AUTOLOAD_SPECS).
+   *
+   * **An enabled capability that offers arms writes one.** Leaving it out refuses the launch
+   * rather than selecting one, because the arm is the independent variable and a run measured on
+   * one arm while its record names another is worse than no run. The single exception is
+   * autoload specifications, whose one arm is [`locked`](AUTOLOAD_LOCKED_IMPL): there an
+   * unwritten implementation is itself the declaration that the seeded specifications are
+   * ordinary file views, which is a reading of absence rather than a substitution for it.
+   *
+   * A name the capability does not offer refuses the launch, and so does any name at all on one
+   * of the sixteen capabilities that offer none. `Option` on the wire so a configuration already
+   * stored in the database still deserializes and still opens in the editor: what a missing
+   * required arm costs is the *launch*, not the parse. The
+   * [authoring catalog](gg_authoring_catalog) is what writes one into a new document.
    */
   implementation?: string;
   /**
-   * Free-form parameters for the capability (for example a compaction threshold or
-   * a subagent parallelism cap), interpreted by the capability itself. Defaults to
-   * an empty object.
+   * The capability's parameters, interpreted by the capability itself.
+   *
+   * **An enabled capability writes every param it requires.** An absent one refuses the launch,
+   * named at its own locus beside every other defect in the document, because gg substitutes
+   * nothing: every figure a run is conducted and recorded under is a figure written here. A
+   * param that is *optional* — [compaction](CAPABILITY_COMPACTION)'s
+   * [`model`](COMPACTION_PARAM_MODEL) and [`modelSlot`](COMPACTION_PARAM_MODEL_SLOT),
+   * [project management](CAPABILITY_PROJECT_MANAGEMENT)'s [`reviewers`](PARAM_REVIEWERS) — is
+   * **off when it is absent**, and that absence is the setting rather than a stand-in for a
+   * figure.
+   *
+   * A **disabled** capability configures nothing and so requires nothing of itself, while the
+   * values written on it are still read and still refused if gg cannot honour them.
+   *
+   * The object stays free-form on the wire — its keys are the selected capability's own
+   * vocabulary, which no shared type could express — and every key is checked against that
+   * vocabulary at launch. The [authoring catalog](gg_authoring_catalog) is what *writes* one;
+   * nothing that reads a configuration consults it. Deserializes to an empty object when the key
+   * is absent, so a stored document still parses and still opens in the editor.
    */
   params: Record<string, unknown>;
 };
@@ -461,7 +513,12 @@ export type GgCapabilitySet = {
    * capability — a capability is a feature a configuration switches on or off, a ceiling is an
    * operator's guardrail over every capability at once — so they never appear in the
    * [`cap.*`](crate::gg_query) document namespace.
-   * A set that declares none omits the key entirely.
+   *
+   * Two of them are **required**: [`maxParallel`](GgRunLimits::max_parallel) and
+   * [`replayMaxBytes`](GgRunLimits::replay_max_bytes), because gg conducts every run under both
+   * and neither has an off it could take instead. The five ceilings are each armed by writing a
+   * figure and left unarmed by leaving it out. A set that declares nothing at all omits the key
+   * entirely and still deserializes — and is refused at launch, naming the two it owes.
    */
   limits?: GgRunLimits;
   /**
@@ -989,21 +1046,21 @@ export type GgSkillState = {
  * characters of a memory's **body** (its `description` is a short one-liner, like a
  * skill's).
  *
- * # Which limits apply, and what they default to
+ * # Which limits apply
  *
- * Every limit is optional — `None` is **unlimited**, which a run configures by setting the
- * param to `0` — and which ones a run resolves depends on the
- * [strategy](CAPABILITY_MEMORIES) its `implementation` selected. A limit a strategy does
- * not use is always `None`:
+ * An enabled capability writes all six params whichever strategy it selects, so one sweep hands
+ * every arm the same params block; `0` is how a limit is turned off, and a param a strategy does
+ * not apply is `None` here whatever the params said. The resolved figures are therefore the
+ * configuration's, never gg's:
  *
- * | Limit | Param | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |
- * | --- | --- | --- | --- | --- |
- * | [`max_count`](Self::max_count) | `maxCount` | 8 | — | unlimited |
- * | [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |
- * | [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |
- * | [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |
- * | [`max_len_description`](Self::max_len_description) | `maxLenDescription` | unlimited | unlimited | unlimited |
- * | [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |
+ * | Limit | Param | Applies under |
+ * | --- | --- | --- |
+ * | [`max_count`](Self::max_count) | [`maxCount`](PARAM_MAX_COUNT) | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD), [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |
+ * | [`max_len_per_memory`](Self::max_len_per_memory) | [`maxLenPerMemory`](PARAM_MAX_LEN_PER_MEMORY) | every strategy |
+ * | [`max_total_len`](Self::max_total_len) | [`maxTotalLen`](PARAM_MAX_TOTAL_LEN) | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) |
+ * | [`max_len_index`](Self::max_len_index) | [`maxLenIndex`](PARAM_MAX_LEN_INDEX) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) |
+ * | [`max_len_description`](Self::max_len_description) | [`maxLenDescription`](PARAM_MAX_LEN_DESCRIPTION) | every strategy |
+ * | [`max_results`](Self::max_results) | [`maxResults`](PARAM_MAX_RESULTS) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |
  *
  * [memories]: https://docs.testcabinet.ai/gg/memories/
  * [skills]: https://docs.testcabinet.ai/gg/skills/
@@ -1034,8 +1091,8 @@ export type GgMemoryCaps = {
    * The maximum length, in characters, of a memory's one-line **description** — the part
    * of a memory a strategy shows up front (every line of a
    * [`markdown`](MEMORY_STRATEGY_MARKDOWN) index is one), which is why a run that wants a
-   * tight index bounds it here rather than trusting the model to be terse. Off by default
-   * (`null` is unlimited) and applies under every strategy.
+   * tight index bounds it here rather than trusting the model to be terse. Applies under every
+   * strategy; `null` is unlimited, which a configuration asks for by writing `0`.
    */
   maxLenDescription: number | null;
   /**
@@ -1112,10 +1169,11 @@ export type GgMemoryPeak = {
  * Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the
  * [`scope`](MEMORY_PARAM_SCOPE) param, resolved.
  *
- * [`Isolated`](Self::Isolated) is the default: a subagent starts with an empty notebook and
- * nothing it writes is seen by anyone else, which is the right answer for a configuration that
- * wants each agent measured on its own curation. The other three bind the *same* store to several
- * holders, which is what makes a study of shared, accumulated knowledge possible at all.
+ * [`Isolated`](Self::Isolated) is what the [authoring catalog](gg_authoring_catalog) writes into
+ * a new document: a subagent starts with an empty notebook and nothing it writes is seen by
+ * anyone else, which is the right answer for a configuration that wants each agent measured on
+ * its own curation. The other three bind the *same* store to several holders, which is what makes
+ * a study of shared, accumulated knowledge possible at all.
  *
  * Two rules make the four coherent, and they are the ones a configuration's reader has to know:
  *
@@ -1493,22 +1551,26 @@ export type GgReviewer = {
  * produced it — where limits on the invocation would let a run record *which* ceiling was hit
  * while making *what the ceiling was* unrecoverable.
  *
- * **The defaults catch a stuck run without capping a productive one.** gg's host (The Test
- * Cabinet) already enforces a wall-clock cap on every run, so a turn ceiling would mostly just cut
- * a run short before it is done, and the turn ceiling is therefore **unbounded** when unset. What
- * is armed by default instead are the two error
- * ceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,
- * and an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —
- * the host owns the clock, and gg will not invent a spend ceiling nobody asked for.
+ * **Two are required and five are armed by being written.**
+ * [`max_parallel`](Self::max_parallel) and [`replay_max_bytes`](Self::replay_max_bytes) bound
+ * every run gg conducts — the pool it runs agents in and the journal it writes as it goes — and
+ * neither has a figure that means "no cap", so an absent one refuses the launch.
+ * [`max_turns`](Self::max_turns), [`max_runtime_secs`](Self::max_runtime_secs),
+ * [`max_cost`](Self::max_cost), [`max_consecutive_errors`](Self::max_consecutive_errors) and
+ * [`max_error_rate`](Self::max_error_rate) with its [window](Self::error_rate_window) are each
+ * **unarmed when the configuration leaves them out**. gg arms no ceiling nobody wrote: an agent
+ * stopped for looping on errors was stopped by a threshold an operator chose, which is what makes
+ * the stop a finding rather than an artefact of the harness. The host (The Test Cabinet) enforces
+ * a wall-clock cap on every run regardless.
  *
- * **Absent takes the default; present-and-unhonourable fails the launch.** A field set to a value
- * that cannot bound anything — a zero turn or runtime ceiling, a zero window, a negative rate, a
- * rate above `1.0`, a non-finite cost — is refused by name, not disarmed with a warning: an
- * operator who wrote a ceiling believes the run is bounded, and a run that quietly became
- * unbounded is the one case where the misconfiguration costs money. A **partially** declared error
- * rate (a rate without a window, or a window without a rate) is refused on the same terms rather
- * than arming nothing. The run records the ceilings that were actually in force on
- * [`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.
+ * **Present and unhonourable fails the launch.** A field set to a value that cannot bound
+ * anything — a zero turn or runtime ceiling, a zero window, a negative rate, a rate above `1.0`, a
+ * non-finite cost — is refused by name rather than disarmed with a warning: an operator who wrote
+ * a ceiling believes the run is bounded, and a run that quietly became unbounded is the one case
+ * where the misconfiguration costs money. A **partially** declared error rate (a rate without a
+ * window, or a window without a rate) is refused on the same terms rather than arming nothing. The
+ * run records the ceilings that were in force on [`GgSessionSummary::limits`], and records an
+ * unarmed one as unbounded.
  *
  * One combination stays a warning, because gg honours it exactly as written:
  * [`error_rate_window`](Self::error_rate_window) at or above
@@ -1522,10 +1584,11 @@ export type GgReviewer = {
 export type GgRunLimits = {
   /**
    * How many of the run's agents may **run at once**, counting the root and every subagent,
-   * issue implementer and reviewer alike. **Absent means gg's default of
-   * 16**; set it explicitly to widen or tighten the pool. `0` is refused — a run with no agent
-   * able to run could not start at all, so it is a ceiling gg cannot honour rather than a way
-   * of writing "no cap".
+   * issue implementer and reviewer alike.
+   *
+   * **Required.** Every configuration states it, because gg runs every agent out of this one
+   * pool and there is no figure that means "no cap": `0` describes a run with no agent able to
+   * run, which is not a run. An absent one and a `0` each refuse the launch.
    *
    * Unlike every other field here it **stops nothing** — it *queues*. An agent spawned while the
    * pool is full is created normally and waits for a slot, so a configuration cannot lose work by
@@ -1554,9 +1617,11 @@ export type GgRunLimits = {
    */
   maxRuntimeSecs?: number;
   /**
-   * How many **error turns in a row** end an agent. **Absent means gg's default of 5**; set it
-   * explicitly to widen or tighten the ceiling. `0` is refused rather than read as "off" — it
-   * would end an agent before its first turn, so it is not a ceiling gg can honour.
+   * How many **error turns in a row** end an agent. **Absent leaves it unarmed** — gg arms no
+   * error ceiling nobody wrote, so an agent stopped by this one was stopped by a threshold its
+   * operator chose. `0` is refused rather than read as "off": it would end an agent before its
+   * first turn, so it is not a ceiling gg can honour, and leaving the key out is how a
+   * configuration says there is none.
    *
    * A turn is an error when the work it *declared* could not be carried out as declared: a
    * model call that failed, a program that did not compile, one that threw uncaught, or one the
@@ -1572,9 +1637,9 @@ export type GgRunLimits = {
    * of ten, five errors is not a breach and six is. Needs
    * [`error_rate_window`](Self::error_rate_window); either alone fails the launch.
    *
-   * When **both** this and the window are absent, gg's default arms an error rate of **0.4 over
-   * the last 50 turns**. A partial declaration (this without the window, or the window without
-   * this) neither falls back to the default nor arms nothing — it is refused, because half a
+   * The two halves stand or fall together. Writing both arms the ceiling and writing neither
+   * leaves it **unarmed**; writing one half is refused, because a rate with no window and a
+   * window with no rate each describe a ceiling gg has no threshold to judge against, and half a
    * ceiling is a ceiling the operator believes they have.
    */
   maxErrorRate?: number;
@@ -1583,8 +1648,9 @@ export type GgRunLimits = {
    * measured over — and, deliberately, the minimum sample: the ceiling cannot fire until the
    * agent has taken this many turns, so one number does both jobs. The earliest turn this
    * ceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says "stop on
-   * any error", which is a legitimate declaration rather than an accident. Absent (together with
-   * [`max_error_rate`](Self::max_error_rate)) means gg's default window of **50**.
+   * any error", which is a legitimate declaration rather than an accident. Absent together with
+   * [`max_error_rate`](Self::max_error_rate) leaves the ceiling **unarmed**; absent while the
+   * rate is written refuses the launch.
    */
   errorRateWindow?: number;
   /**
@@ -1605,8 +1671,11 @@ export type GgRunLimits = {
   maxCost?: number;
   /**
    * The per-run ceiling, in bytes, on the
-   * [session capture journal](crate::gg_session_journal) gg writes as it runs. **Absent means
-   * gg's default of 256 MiB.**
+   * [session capture journal](crate::gg_session_journal) gg writes as it runs.
+   *
+   * **Required.** gg writes the journal on every run whatever the set says, so there is no run
+   * this ceiling does not apply to and no spelling of "no ceiling" here, because there is no run
+   * that wants one. An absent one refuses the launch.
    *
    * The odd one out here, and deliberately so: every other ceiling **stops the run**, and
    * this one stops only the *observation* of it. Crossing it stops capture and marks the
@@ -1616,10 +1685,9 @@ export type GgRunLimits = {
    * params because capture is on for every run whatever the set says, so a ceiling parked on a
    * capability would be unreadable by exactly the runs that need it.
    *
-   * `0` cannot bound anything (it would stop capture before its first line) and is **refused**,
-   * on the same terms as [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`. Omit the
-   * key to take the default; there is no spelling of "no ceiling" here, because there is no run
-   * that wants one.
+   * `0` cannot bound anything — it would stop capture before its first line — and is
+   * **refused**, on the same terms as
+   * [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`.
    */
   replayMaxBytes?: number;
 };
@@ -1782,8 +1850,11 @@ export type GgHookAction =
        */
       cwd?: string;
       /**
-       * How long it may run before it is killed. Absent uses gg's default, which is generous
-       * because a hook command is typically a build or a test suite.
+       * How long it may run before it is killed. **Required** on a command hook: the ceiling a
+       * build or a test suite needs is nothing gg could know, and a hook killed at a figure
+       * nobody wrote is a gate that reports a failure the workspace did not have. An absent one
+       * refuses the launch. `Option` on the wire so a stored configuration still deserializes
+       * and still opens in the editor.
        */
       timeoutSecs?: number;
       /**

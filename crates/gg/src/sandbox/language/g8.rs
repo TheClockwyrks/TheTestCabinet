@@ -386,7 +386,7 @@ fn drive(arm: GgProgramLanguage, program: &str) -> Read {
         crate::sandbox::language(arm),
         program,
         scope,
-        SandboxLimits::default(),
+        SandboxLimits::AMPLE,
         None,
         api,
     );

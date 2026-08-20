@@ -52,7 +52,7 @@ the program names it the way it names anything else.
 ## Response healing
 
 [Response healing](/gg/response-healing/) is the one pass between the reply and
-the compiler, it only deletes, and it is armed by default. The healed text is
+the compiler, and it only deletes. The healed text is
 the model's program for every purpose downstream: it is what compiles, what
 runs, what the [program library](/gg/program-library/) records, and what the next
 prompt carries as the assistant message.

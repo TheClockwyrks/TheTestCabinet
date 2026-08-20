@@ -12,10 +12,34 @@
 //! choosing where to cut the transcript.
 
 use super::*;
-use crate::loopguard::DEFAULT_WINDOW_WORDS;
+use crate::loopguard::LoopGuardConfig;
 use crate::model::{FinishReason, Message, ToolDefinition};
 use serde_json::json;
 use test_cabinet_core::gg::{GgSlotBinding, PRIMARY_SLOT};
+
+/// The detector an [`armed_declaration`] resolves to. An armed declaration writes all five knobs,
+/// so a test about the binding has to state them; the figures are arbitrary and no assertion here
+/// turns on which they are.
+const ARMED_KNOBS: LoopGuardConfig = LoopGuardConfig {
+    window_words: 256,
+    repeat_threshold: 32,
+    min_offenders: 2,
+    min_saturated_run: 3_000,
+    max_response_chars: 250_000,
+};
+
+/// A fully specified armed declaration — the shape a stored configuration carries once the detector
+/// is switched on.
+fn armed_declaration() -> GgLoopDetection {
+    GgLoopDetection {
+        enabled: true,
+        window_words: Some(ARMED_KNOBS.window_words as u64),
+        repeat_threshold: Some(u64::from(ARMED_KNOBS.repeat_threshold)),
+        min_offenders: Some(ARMED_KNOBS.min_offenders as u64),
+        min_saturated_run: Some(ARMED_KNOBS.min_saturated_run as u64),
+        max_response_chars: Some(ARMED_KNOBS.max_response_chars as u64),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Transcript helpers
@@ -158,12 +182,9 @@ fn a_client_streams_exactly_when_its_agent_armed_the_detector() {
     let unarmed = client.with_loop_detection(GgLoopDetection::default());
     assert!(!unarmed.streams());
 
-    let armed = unarmed.with_loop_detection(GgLoopDetection {
-        enabled: true,
-        ..GgLoopDetection::default()
-    });
+    let armed = unarmed.with_loop_detection(armed_declaration());
     assert!(armed.streams());
-    assert_eq!(armed.loop_guard, Some(LoopGuardConfig::default()));
+    assert_eq!(armed.loop_guard, Some(ARMED_KNOBS));
 }
 
 /// A declared knob reaches the detector the client will judge its replies with, rather than being
@@ -179,18 +200,18 @@ fn a_declared_knob_reaches_the_clients_detector() {
         None,
     )
     .with_loop_detection(GgLoopDetection {
-        enabled: true,
         min_saturated_run: Some(64),
         max_response_chars: Some(0),
-        ..GgLoopDetection::default()
+        ..armed_declaration()
     });
 
     let config = client.loop_guard.expect("armed");
     assert_eq!(config.min_saturated_run, 64);
     // Zero is one of the two knobs whose zero means something: the backstop is off.
     assert_eq!(config.max_response_chars, 0);
-    // Everything unsaid takes gg's default.
-    assert_eq!(config.window_words, DEFAULT_WINDOW_WORDS);
+    // And the knobs this case did not vary reach the detector as the declaration wrote them —
+    // there is nothing else they could have come from.
+    assert_eq!(config.window_words, ARMED_KNOBS.window_words);
 }
 
 /// The binding is how a per-agent lever reaches the client, exactly as it is for the prompt-cache
@@ -212,9 +233,8 @@ fn a_binding_carries_its_agents_loop_detection_into_the_client() {
     );
     let watched = OpenRouterClient::from_binding(
         &GgSlotBinding::new(PRIMARY_SLOT, "openai/gpt-5.6").with_loop_detection(GgLoopDetection {
-            enabled: true,
             window_words: Some(64),
-            ..GgLoopDetection::default()
+            ..armed_declaration()
         }),
         Some("session"),
     );

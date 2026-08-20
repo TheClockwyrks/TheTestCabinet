@@ -2,8 +2,8 @@
 //! agent's own configuration, and which types each of the three selects.
 //!
 //! The flags are the thing the whole transitive rule exists to be *measurable* about, so both halves
-//! are asserted: a typo must not silently leave a flag at a default the study did not ask for, and
-//! the three must actually differ in what they open on a real arm's catalogue.
+//! are asserted: neither a typo nor a silence may leave a flag at a setting the study did not ask
+//! for, and the three must actually differ in what they open on a real arm's catalogue.
 
 use serde_json::json;
 use test_cabinet_core::gg::{
@@ -97,52 +97,99 @@ fn on(capabilities: &[&str], language: GgProgramLanguage) -> DocsRuntime {
 // Resolution
 // ---------------------------------------------------------------------------
 
-/// A capability that says nothing about it takes **the defaults** — `return` and `errors` on,
-/// `parameters` off. Four spellings say nothing: an absent key, a null, an explicit `true`, and an
-/// object that toggles nothing.
+/// **A capability that says nothing about it is refused**, at the param's own locus. How much
+/// documentation one lookup places is an axis a study slices on, and the
+/// [agent surface](crate::telemetry) records the resolved set, so a flag set of gg's choosing would
+/// leave a run whose every record names a configuration nobody wrote.
 #[test]
-fn absent_doc_view_types_takes_the_defaults() {
-    let defaults = only(&[DocViewType::Return, DocViewType::Errors]);
-    for params in [
-        json!({}),
-        json!({ "docViewTypes": null }),
-        json!({ "docViewTypes": true }),
-        json!({ "docViewTypes": {} }),
-    ] {
-        assert_eq!(types_of(&set_with(params.clone())), defaults, "{params}");
+fn an_absent_doc_view_types_is_refused() {
+    for params in [json!({}), json!({ "docViewTypes": null })] {
+        let (types, defects) = reported(&set_with(params.clone()));
+        assert_eq!(
+            types,
+            DocViewTypes::LAUNCH_REFUSED,
+            "{params}: the resolver stays total, on a named placeholder"
+        );
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(
+            defects[0].locus, "responses-as-code.params.docViewTypes",
+            "{params}"
+        );
+        assert_eq!(defects[0].found, "", "an absence has no value as written");
     }
-    assert_eq!(types_of(&GgAgentConfig::root()), defaults);
-    assert_eq!(DocViewTypes::default(), defaults);
 }
 
-/// **`false` is the master switch**: every flag off, whatever the defaults say.
+/// **An object naming two of the three is refused, at the one it left out** — and the empty object
+/// is short of all three at once.
 #[test]
-fn the_master_switch_withholds_every_type() {
+fn an_object_leaving_a_flag_out_is_refused() {
+    for missing in DocViewType::ALL {
+        let toggles: serde_json::Map<String, serde_json::Value> = DocViewType::ALL
+            .into_iter()
+            .filter(|flag| *flag != missing)
+            .map(|flag| (flag.id().to_string(), json!(true)))
+            .collect();
+        let (_, defects) = reported(&set_with(json!({ "docViewTypes": toggles })));
+        assert_eq!(defects.len(), 1, "{} -> {defects:?}", missing.id());
+        assert_eq!(
+            defects[0].locus,
+            format!("responses-as-code.params.docViewTypes.{}", missing.id())
+        );
+    }
+
+    let (_, defects) = reported(&set_with(json!({ "docViewTypes": {} })));
+    let loci: Vec<&str> = defects.iter().map(|defect| defect.locus.as_str()).collect();
+    assert_eq!(
+        loci,
+        DocViewType::ALL
+            .iter()
+            .map(|flag| format!("responses-as-code.params.docViewTypes.{}", flag.id()))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// **An agent that takes no code turn opens no documentation view**, so a profile without the
+/// capability resolves to every flag off and is short of nothing.
+#[test]
+fn an_absent_capability_opens_no_types() {
+    assert_eq!(types_of(&GgAgentConfig::root()), DocViewTypes::OFF);
+}
+
+/// **The two words that state a whole set.** `true` opens every type and `false` opens none; there
+/// is nothing between them a single word can say.
+#[test]
+fn the_master_switch_states_a_whole_set_in_either_direction() {
+    assert_eq!(
+        types_of(&set_with(json!({ "docViewTypes": true }))),
+        DocViewTypes::EVERY
+    );
     let resolved = types_of(&set_with(json!({ "docViewTypes": false })));
     assert_eq!(resolved, DocViewTypes::OFF);
     for flag in DocViewType::ALL {
+        assert!(DocViewTypes::EVERY.enabled(flag), "{}", flag.id());
         assert!(!resolved.enabled(flag), "{}", flag.id());
     }
 }
 
-/// **Each flag is toggled on its own**, and the two directions travel through one arm of the
-/// resolver: `false` withholds a default-on type and `true` adds the default-off one.
+/// **Each flag is read on its own**, and both directions travel through one arm of the resolver.
 #[test]
 fn each_flag_is_toggled_independently() {
     assert_eq!(
-        types_of(&set_with(json!({ "docViewTypes": { "parameters": true } }))),
-        only(&[
-            DocViewType::Return,
-            DocViewType::Parameters,
-            DocViewType::Errors
-        ]),
+        types_of(&set_with(
+            json!({ "docViewTypes": { "return": true, "parameters": true, "errors": true } })
+        )),
+        DocViewTypes::EVERY,
     );
     assert_eq!(
-        types_of(&set_with(json!({ "docViewTypes": { "return": false } }))),
+        types_of(&set_with(
+            json!({ "docViewTypes": { "return": false, "parameters": false, "errors": true } })
+        )),
         only(&[DocViewType::Errors]),
     );
     assert_eq!(
-        types_of(&set_with(json!({ "docViewTypes": { "errors": false } }))),
+        types_of(&set_with(
+            json!({ "docViewTypes": { "return": true, "parameters": false, "errors": false } })
+        )),
         only(&[DocViewType::Return]),
     );
     assert_eq!(
@@ -179,18 +226,21 @@ fn every_configuration_has_its_own_id() {
         .id(),
         "return+parameters+errors"
     );
-    assert_eq!(DocViewTypes::default().id(), "return+errors");
+    assert_eq!(DocViewTypes::EVERY.id(), "return+parameters+errors");
+    assert_eq!(DocViewTypes::RETURN_AND_ERRORS.id(), "return+errors");
 }
 
 /// A key naming no flag gg knows **refuses the launch**, never guessed at: the flags are levers a
 /// study slices on, and the [agent surface](crate::telemetry) records the *resolved* set, so a typo
-/// read as the default would leave a run whose every record says it ran the arm it did not.
+/// gg read past would leave a run whose every record says it ran the arm it did not.
 #[test]
 fn an_unknown_doc_view_types_key_is_refused() {
-    let (types, defects) = reported(&set_with(json!({ "docViewTypes": { "returns": true } })));
+    let (types, defects) = reported(&set_with(json!({ "docViewTypes": {
+        "return": true, "parameters": false, "errors": true, "returns": true
+    } })));
     assert_eq!(
         types,
-        DocViewTypes::default(),
+        DocViewTypes::RETURN_AND_ERRORS,
         "the resolver stays total, and the unknown key changed nothing"
     );
     assert_eq!(defects.len(), 1, "{defects:?}");
@@ -210,10 +260,9 @@ fn an_unknown_doc_view_types_key_is_refused() {
 #[test]
 fn a_non_boolean_toggle_is_refused() {
     for unreadable in [json!(0), json!("off"), json!(null), json!([])] {
-        let (types, defects) = reported(&set_with(
-            json!({ "docViewTypes": { "return": unreadable.clone() } }),
-        ));
-        assert_eq!(types, DocViewTypes::default(), "{unreadable}");
+        let (_, defects) = reported(&set_with(json!({ "docViewTypes": {
+            "return": unreadable.clone(), "parameters": false, "errors": true
+        } })));
         assert_eq!(defects.len(), 1, "{unreadable} -> {defects:?}");
         assert_eq!(
             defects[0].locus, "responses-as-code.params.docViewTypes.return",
@@ -227,7 +276,11 @@ fn a_non_boolean_toggle_is_refused() {
 fn a_value_that_names_no_set_of_toggles_is_refused() {
     for unreadable in [json!("return"), json!("off"), json!(2), json!([])] {
         let (types, defects) = reported(&set_with(json!({ "docViewTypes": unreadable.clone() })));
-        assert_eq!(types, DocViewTypes::default(), "the resolver stays total");
+        assert_eq!(
+            types,
+            DocViewTypes::LAUNCH_REFUSED,
+            "the resolver stays total, on a named placeholder"
+        );
         assert_eq!(defects.len(), 1, "{unreadable} -> {defects:?}");
         assert_eq!(
             defects[0].locus, "responses-as-code.params.docViewTypes",
@@ -247,7 +300,9 @@ fn a_value_that_names_no_set_of_toggles_is_refused() {
 #[test]
 fn surrounding_whitespace_does_not_hide_a_flag() {
     assert_eq!(
-        types_of(&set_with(json!({ "docViewTypes": { " errors ": false } }))),
+        types_of(&set_with(json!({ "docViewTypes": {
+            "return": true, "parameters": false, " errors ": false
+        } }))),
         only(&[DocViewType::Return])
     );
 }
@@ -262,6 +317,20 @@ fn a_disabled_capabilitys_doc_view_types_is_still_read() {
     let set = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: json!({ "docViewTypes": false }),
+            ..GgCapabilityConfig::disabled(CAPABILITY_RESPONSES_AS_CODE)
+        }],
+        ..GgAgentConfig::root()
+    };
+    assert_eq!(types_of(&set), DocViewTypes::OFF);
+}
+
+/// **…and a disabled capability that writes nothing is short of nothing.** Requirement is a
+/// property of the switch, so the arm that is off has no flag set to have stated.
+#[test]
+fn a_disabled_capability_requires_no_flag_set() {
+    let set = GgAgentConfig {
+        capabilities: vec![GgCapabilityConfig {
+            params: json!({}),
             ..GgCapabilityConfig::disabled(CAPABILITY_RESPONSES_AS_CODE)
         }],
         ..GgAgentConfig::root()

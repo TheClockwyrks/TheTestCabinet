@@ -356,10 +356,8 @@ async fn a_program_compacts_its_own_context_window() {
     crate::tools::grant_configured(
         &mut set.agents[0],
         GgCapabilityConfig {
-            id: CAPABILITY_COMPACTION.to_string(),
-            enabled: true,
             implementation: Some(COMPACTION_STRATEGY_SELF_COMPACTION.to_string()),
-            params: json!({}),
+            ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
         },
     );
 
@@ -427,7 +425,7 @@ async fn responses_as_code_completion_is_gated_by_an_agent_stop_hook() {
         action: test_cabinet_core::gg::GgHookAction::Command {
             command: "test -f ready.txt".to_string(),
             cwd: None,
-            timeout_secs: None,
+            timeout_secs: Some(30.0),
             output: None,
         },
         name: "ready".to_string(),
@@ -641,7 +639,7 @@ async fn a_program_gets_the_offloaded_tail_and_the_paths_to_the_rest() {
         .find(|capability| capability.id == CAPABILITY_SHELL)
         .expect("the minimal set enables shell");
     shell.implementation = Some(SHELL_OUTPUT_OFFLOAD.to_string());
-    shell.params = json!({ "maxLines": 3 });
+    shell.params = crate::tools::configured(CAPABILITY_SHELL, json!({ "maxLines": 3 })).params;
 
     let program = "import * as gg from \"gg\";\nconst out = gg.shell.shell(\"for i in $(seq 1 60); do echo line-$i; done\").output;\n\
                    gg.files.writeFile(\"seen.txt\", out);";
@@ -826,16 +824,16 @@ async fn a_program_subagent_still_honours_the_scheduler() {
         // The documentation-view type flags are per agent, so the two profiles take opposite
         // arms of them: every type against none at all.
         let types = if agent.id == ROOT_PROFILE_ID {
-            json!({ "parameters": true })
+            json!({ "return": true, "parameters": true, "errors": true })
         } else {
             json!(false)
         };
         crate::tools::grant_configured(
             agent,
-            GgCapabilityConfig {
-                params: json!({ "docViewTypes": types }),
-                ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
-            },
+            crate::tools::configured(
+                CAPABILITY_RESPONSES_AS_CODE,
+                json!({ "docViewTypes": types }),
+            ),
         );
     }
     let inv = invocation(dir.path(), set);
@@ -2032,7 +2030,13 @@ async fn the_armed_healing_strategies_are_logged_and_recorded() {
         &dir,
         code_set(
             "mock/primary",
-            json!({ "healing": { "strip-prose": false } }),
+            json!({
+                "healing": {
+                    "strip-fences": true,
+                    "strip-prose": false,
+                    "drop-doubled-response": false,
+                },
+            }),
         ),
         vec![code_reply(FINISHING_PROGRAM)],
     )
@@ -2165,9 +2169,10 @@ async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
 /// A capability set with responses-as-code **and** the [program library](crate::programs) on.
 fn library_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
     let mut set = code_set(model_id, json!({}));
-    let mut cap = GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY);
-    cap.params = params;
-    crate::tools::grant_configured(&mut set.agents[0], cap);
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        crate::tools::configured(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY, params),
+    );
     set
 }
 

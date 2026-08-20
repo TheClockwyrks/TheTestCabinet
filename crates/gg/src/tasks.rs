@@ -50,7 +50,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_TASKS, GgAgentConfig, GgContextSource, GgModuleOrigin, GgTaskEntry, GgTaskStatus,
-    GgTelemetryKind,
+    GgTelemetryKind, TASK_MODE_ISSUES, TASK_MODE_SIMPLE, TASK_MODES,
 };
 
 use crate::dag::{self, DagNode};
@@ -61,34 +61,56 @@ use crate::modules::{
 };
 use crate::prompts::{self, TaskItemView, TasksBlockContext};
 
-/// Default ceiling on the number of tasks the list may hold at once. Generous — a task
-/// list is the model's plan, not a transcript — but bounded so a runaway loop cannot fill
-/// the window with tasks. Overridable via the tasks capability's `maxTasks` param.
-pub const DEFAULT_MAX_TASKS: usize = 100;
+/// The tasks capability's two params, [named by core](test_cabinet_core::gg) so the vocabulary a
+/// document is written in and the vocabulary gg reads it by are one declaration.
+pub(crate) use test_cabinet_core::gg::{PARAM_MAX_TASKS, PARAM_MODE};
 
-/// The tasks capability param naming the [maximum number of tasks](TaskStore::max_tasks).
-pub(crate) const PARAM_MAX_TASKS: &str = "maxTasks";
-
-/// The tasks capability param naming the list [mode](TaskMode).
-pub(crate) const PARAM_MODE: &str = "mode";
-
-/// Resolve the task-count ceiling from a tasks-capability `params` object.
+/// The ceiling a list carries when **no document configured one**.
 ///
-/// An absent `maxTasks` takes [`DEFAULT_MAX_TASKS`]. A present one is honoured exactly as written,
-/// and one gg cannot honour — a value it cannot read as a whole count, or a `0`, which would give
-/// the model a list it may never add to — is [reported](crate::validate) and refuses the launch. A
-/// list bounded by a number nobody wrote is the same wrong-experiment failure a mistyped
-/// `implementation` is: every `add_task` past the ceiling is refused, and a study reading the run
-/// afterwards sees a model that stopped planning.
+/// Two readers reach it. [`resolve_max_tasks`] hands it back once it has reported that an enabled
+/// capability writes no `maxTasks`, or writes one gg cannot honour — a resolver stays total, so it
+/// answers even after it has refused the launch, and the name is what tells the next reader of that
+/// line that no operator chose this figure. A [disabled](TasksRuntime::disabled) runtime holds a
+/// store bounded by it for the same reason: a capability that is off has no list, not a list on
+/// gg's ceiling.
+///
+/// `0` is the honest figure for both. A list that may hold no task will never be added to, which is
+/// exactly the state of a run whose launch is over and of a run that was never offered `add_task`.
+const REFUSED_MAX_TASKS: usize = 0;
+
+/// The shape a list carries when **no document configured one** — read on the terms
+/// [`REFUSED_MAX_TASKS`] is, and reached by the same two readers.
+///
+/// A [`TaskStore`] holds a mode whatever else is true of it, so this is the one field of an
+/// unconfigured list that cannot be `0`. Nothing is ever held to it: a refused launch takes no turn,
+/// and a disabled capability offers no `add_task` for the shape to govern.
+const REFUSED_TASK_MODE: TaskMode = TaskMode::Simple;
+
+/// What a `maxTasks` of zero would mean, in the capability's own terms — the clause a refusal hands
+/// the operator, written once because both readers of the key state the same consequence.
+const EMPTY_LIST_CONSEQUENCE: &str =
+    "a list the model may never add a task to offers a call whose every use is refused";
+
+/// Resolve the task-count ceiling from an **enabled** tasks capability's `params` object.
+///
+/// `maxTasks` is required, so an absent one is [reported](crate::validate) at its own locus and
+/// refuses the launch rather than taking a figure gg picked. So is a value gg cannot read as a whole
+/// count, and so is `0`, which would give the model a list it may never add to. A list bounded by a
+/// number nobody wrote is the same wrong-experiment failure a mistyped `implementation` is: every
+/// `add_task` past the ceiling is refused, and a study reading the run afterwards sees a model that
+/// stopped planning.
+///
+/// Every one of those hands back [`REFUSED_MAX_TASKS`], because the resolver is total and the launch
+/// is already over.
 pub fn resolve_max_tasks(params: &Value, report: &mut crate::validate::LaunchReport) -> usize {
-    crate::validate::positive_count_param(
+    crate::validate::required_positive_count_param(
         params,
         CAPABILITY_TASKS,
         PARAM_MAX_TASKS,
-        "a list the model may never add a task to offers a call whose every use is refused",
+        EMPTY_LIST_CONSEQUENCE,
         report,
     )
-    .map_or(DEFAULT_MAX_TASKS, |max| {
+    .map_or(REFUSED_MAX_TASKS, |max| {
         usize::try_from(max).unwrap_or(usize::MAX)
     })
 }
@@ -98,16 +120,17 @@ pub fn resolve_max_tasks(params: &Value, report: &mut crate::validate::LaunchRep
 /// The two modes are the same list — an agent-scoped, compaction-surviving blocked-by DAG —
 /// differing only in what a task **must** carry:
 ///
-/// - [`Simple`](Self::Simple) (the default): a lightweight to-do — a title and an optional
-///   description.
+/// - [`Simple`](Self::Simple): a lightweight to-do — a title and an optional description.
 /// - [`Issues`](Self::Issues): the task requires the same **structured sections** as a
 ///   [project-management board issue](crate::board) — an in-scope, an out-of-scope, and a
 ///   completion criteria (a title stays required, a description stays optional) — so a task is
 ///   scoped and acceptance-criteria'd without pulling in the global board and its auto-dispatch.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// Neither is the one gg picks: the two shapes are the axis this capability is studied on, so an
+/// enabled capability names one and gg substitutes neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskMode {
     /// A lightweight to-do: title (+ optional description).
-    #[default]
     Simple,
     /// A structured item: title, in-scope, out-of-scope, and completion criteria required (like a
     /// board [issue](crate::board)).
@@ -117,18 +140,18 @@ pub enum TaskMode {
 impl TaskMode {
     /// The two modes, in the spelling a refusal offers back — the canonical name of each, not the
     /// alternates [`parse`](Self::parse) also accepts.
-    pub const ALL: [&'static str; 2] = ["simple", "issues"];
+    pub const ALL: [&'static str; 2] = TASK_MODES;
 
     /// Parse a `mode` param token, tolerating a couple of natural spellings.
     ///
-    /// A token gg does not recognize is [reported](crate::validate) and refuses the launch;
-    /// [`Simple`](Self::Simple) comes back so the parse stays total, and by then the run is over.
-    /// Reading `isues` as `simple` would hold every task in the run to the wrong shape while the
-    /// record named the other arm.
+    /// A token gg does not recognize — and a blank one, which names no shape either — is
+    /// [reported](crate::validate) and refuses the launch; [`REFUSED_TASK_MODE`] comes back so the
+    /// parse stays total, and by then the run is over. Reading `isues` as `simple` would hold every
+    /// task in the run to the wrong shape while the record named the other arm.
     pub fn parse(raw: &str, report: &mut crate::validate::LaunchReport) -> Self {
         match raw.trim().to_ascii_lowercase().as_str() {
-            "issues" | "issue" | "structured" => TaskMode::Issues,
-            "simple" | "" => TaskMode::Simple,
+            TASK_MODE_ISSUES | "issue" | "structured" => TaskMode::Issues,
+            TASK_MODE_SIMPLE => TaskMode::Simple,
             _ => {
                 report.report(
                     crate::validate::LaunchDefect::run_level(
@@ -136,13 +159,13 @@ impl TaskMode {
                         raw,
                         format!(
                             "the `{CAPABILITY_TASKS}` capability's `{PARAM_MODE}` names a list \
-                             shape gg does not have; reading it as the default would hold every \
-                             task in the run to a shape nobody configured."
+                             shape gg does not have; reading it as either shape would hold every \
+                             task in the run to one nobody configured."
                         ),
                     )
                     .known(Self::ALL),
                 );
-                TaskMode::Simple
+                REFUSED_TASK_MODE
             }
         }
     }
@@ -153,17 +176,30 @@ impl TaskMode {
     }
 }
 
-/// Resolve the list [mode](TaskMode) from a tasks-capability `params` object: `mode` selects
-/// `simple` (the default) or `issues`.
+/// Resolve the list [mode](TaskMode) from an **enabled** tasks capability's `params` object:
+/// [`mode`](PARAM_MODE) names one of [`TASK_MODES`].
 ///
-/// Absent or `null` takes the default. Anything else is read as the token it must be — a value that
-/// is not even a string is [reported](crate::validate) here, and one that is a string gg does not
-/// recognize by [`TaskMode::parse`].
+/// It is required, so an absent or `null` `mode` is [reported](crate::validate) at its own locus
+/// rather than read as either shape. Anything present is read as the token it must be — a value that
+/// is not even a string is reported here, and one that is a string gg does not recognize by
+/// [`TaskMode::parse`]. All three hand back [`REFUSED_TASK_MODE`], by which point the launch is
+/// already refused.
 pub fn resolve_task_mode(params: &Value, report: &mut crate::validate::LaunchReport) -> TaskMode {
-    match params.get(PARAM_MODE) {
-        None | Some(Value::Null) => TaskMode::default(),
-        Some(Value::String(raw)) => TaskMode::parse(raw, report),
-        Some(other) => {
+    let Some(declared) =
+        crate::validate::required_param(params, CAPABILITY_TASKS, PARAM_MODE, report)
+    else {
+        return REFUSED_TASK_MODE;
+    };
+    read_task_mode(declared, report)
+}
+
+/// One declared `mode` value read as a [`TaskMode`] — the half of [`resolve_task_mode`] that judges
+/// what is written, shared with the [disabled](check_disabled_params) reader so a typo on an off
+/// capability earns exactly the line it would on an on one.
+fn read_task_mode(declared: &Value, report: &mut crate::validate::LaunchReport) -> TaskMode {
+    match declared {
+        Value::String(raw) => TaskMode::parse(raw, report),
+        other => {
             report.report(
                 crate::validate::LaunchDefect::run_level(
                     crate::validate::param_locus(CAPABILITY_TASKS, PARAM_MODE),
@@ -175,7 +211,7 @@ pub fn resolve_task_mode(params: &Value, report: &mut crate::validate::LaunchRep
                 )
                 .known(TaskMode::ALL),
             );
-            TaskMode::default()
+            REFUSED_TASK_MODE
         }
     }
 }
@@ -183,15 +219,36 @@ pub fn resolve_task_mode(params: &Value, report: &mut crate::validate::LaunchRep
 /// The tasks capability's whole contribution to the [launch pass](crate::validate::validate_launch):
 /// the ceiling and the mode `profile` declares, read exactly as the run will read them.
 ///
-/// The params are read whether the capability is switched **on** or off, on the terms the pass reads
-/// every other capability's: a disabled capability records the configuration the arm would have
-/// used, so a typo in it is a typo now rather than on the launch that flips the switch.
+/// Switched **on**, the capability is fully specified, so both params go through the resolvers the
+/// run itself uses and an absent one is reported at the same `PARAM_*` constant the run reads it by.
+/// Switched **off** it requires nothing of itself — it records the configuration the arm would have
+/// used, and a hole in that is a hole in nothing — but what it *does* write is still read, so a typo
+/// in it is a typo now rather than on the launch that flips the switch.
 pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
-    let Some(params) = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params) else {
+    let Some(capability) = profile.capability(CAPABILITY_TASKS) else {
         return;
     };
-    resolve_max_tasks(params, report);
-    resolve_task_mode(params, report);
+    if capability.enabled {
+        resolve_max_tasks(&capability.params, report);
+        resolve_task_mode(&capability.params, report);
+        return;
+    }
+    check_disabled_params(&capability.params, report);
+}
+
+/// What the pass reads off a **disabled** tasks capability: the same two values, honoured or refused
+/// on the same terms as an enabled capability's, with their absence requiring nothing.
+fn check_disabled_params(params: &Value, report: &mut crate::validate::LaunchReport) {
+    crate::validate::positive_count_param(
+        params,
+        CAPABILITY_TASKS,
+        PARAM_MAX_TASKS,
+        EMPTY_LIST_CONSEQUENCE,
+        report,
+    );
+    if let Some(declared) = params.get(PARAM_MODE).filter(|value| !value.is_null()) {
+        read_task_mode(declared, report);
+    }
 }
 
 /// The lifecycle status of a [`Task`].
@@ -911,31 +968,36 @@ impl TasksRuntime {
 
     /// A disabled runtime (the tasks capability is off): no tools, no prompt text, no
     /// context block, no telemetry.
+    ///
+    /// Its store is the list [no document configured](REFUSED_MAX_TASKS) — nothing may be added to
+    /// it, which is what "there is no task list" means — and nothing can reach it either way, since
+    /// the capability being off is what makes every task tool absent.
     pub fn disabled() -> Self {
         Self {
             enabled: false,
-            ..Self::with_mode(DEFAULT_MAX_TASKS, TaskMode::Simple)
+            ..Self::with_mode(REFUSED_MAX_TASKS, REFUSED_TASK_MODE)
         }
     }
 
     /// Build the tasks module `profile` configures: when the [tasks](CAPABILITY_TASKS) capability
-    /// is enabled, an empty DAG holding at most the [count](resolve_max_tasks) its params resolve
-    /// in the [mode](TaskMode) they name; otherwise a [disabled](Self::disabled) module (an
-    /// configuration with the capability off).
+    /// is enabled, an empty DAG holding at most the [count](resolve_max_tasks) its params state in
+    /// the [mode](resolve_task_mode) they name.
+    ///
+    /// A capability that is **absent from the profile's list, or present and off**, is the
+    /// declaration that this agent has no task list, so it resolves to a
+    /// [disabled](Self::disabled) module rather than to a list on figures nobody wrote.
     pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
-        if !profile.is_enabled(CAPABILITY_TASKS) {
+        let Some(capability) = profile
+            .capability(CAPABILITY_TASKS)
+            .filter(|capability| capability.enabled)
+        else {
             return Self::disabled();
-        }
+        };
         // A discarding sink: `check_launch` read these same params, through these same resolvers,
-        // before the run started and refused it if either was unhonourable.
+        // before the run started and refused it if either was absent or unhonourable.
         let report = &mut crate::validate::LaunchReport::Discarding;
-        let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
-        let max_tasks = params.map_or(DEFAULT_MAX_TASKS, |params| {
-            resolve_max_tasks(params, report)
-        });
-        let mode = params.map_or_else(TaskMode::default, |params| {
-            resolve_task_mode(params, report)
-        });
+        let max_tasks = resolve_max_tasks(&capability.params, report);
+        let mode = resolve_task_mode(&capability.params, report);
         Self::with_mode_in(max_tasks, mode, ctx.ids)
     }
 
@@ -1097,19 +1159,17 @@ impl Module for TasksRuntime {
         profile: &GgAgentConfig,
         ctx: &ModuleResolveCtx<'_>,
     ) -> Result<(), AdoptError> {
-        if !profile.is_enabled(CAPABILITY_TASKS) {
+        let Some(capability) = profile
+            .capability(CAPABILITY_TASKS)
+            .filter(|capability| capability.enabled)
+        else {
             return Err(AdoptError::Disabled);
-        }
+        };
         // A discarding sink: `check_launch` read these same params, through these same resolvers,
-        // before the run started and refused it if either was unhonourable.
+        // before the run started and refused it if either was absent or unhonourable.
         let report = &mut crate::validate::LaunchReport::Discarding;
-        let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
-        let max_tasks = params.map_or(DEFAULT_MAX_TASKS, |params| {
-            resolve_max_tasks(params, report)
-        });
-        let mode = params.map_or_else(TaskMode::default, |params| {
-            resolve_task_mode(params, report)
-        });
+        let max_tasks = resolve_max_tasks(&capability.params, report);
+        let mode = resolve_task_mode(&capability.params, report);
         self.store
             .lock()
             .expect("task store lock")

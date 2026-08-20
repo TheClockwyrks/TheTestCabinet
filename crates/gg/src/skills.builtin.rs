@@ -30,26 +30,30 @@
 //!
 //! # Selecting them
 //!
-//! Each is a checkbox on the skills capability: the `builtIns` param records the ones an operator
-//! switched **off**, so an unconfigured run gets all of them and a run that wants to measure an
-//! agent without a manual can withhold exactly the families it means to.
+//! Each is a checkbox on the skills capability: the [`builtIns`](PARAM_BUILT_INS) param records the
+//! ones an operator switched **off**, so `{}` offers all of them and a run that wants to measure an
+//! agent without a manual withholds exactly the families it means to. Every enabled skills
+//! capability writes the param, which is what makes `{}` a declaration that the whole catalogue was
+//! meant rather than a silence gg read as one.
 
 use std::collections::BTreeSet;
 
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_SKILLS, GgProgramLanguage};
+use test_cabinet_core::gg::{CAPABILITY_SKILLS, GgAgentConfig, GgProgramLanguage};
 
 use super::{CodeFiles, Skill, parse_skill};
 use crate::ending::EndingRole;
 use crate::model::ToolDefinition;
 use crate::sandbox::OperationId;
 
-/// The `params` key on the [skills](test_cabinet_core::gg::CAPABILITY_SKILLS) capability naming
-/// which built-in skills the agent is offered.
+/// The `params` key on the [skills](CAPABILITY_SKILLS) capability naming which built-in skills the
+/// agent is offered — read here, declared with the capability it belongs to.
 ///
-/// Read the way every toggle set is: an object of `{ "<id>": false }` recording only the ones
-/// switched **off**, so an absent param — the default — offers all of them.
-pub const PARAM_BUILT_INS: &str = "builtIns";
+/// An object of `{ "<id>": false }` recording only the ones switched **off**, so `{}` is the
+/// declaration that offers every family. Required of an enabled capability: an absent `builtIns`
+/// would be gg deciding which of its own manuals an agent gets, and the arm of a skills study that
+/// withheld none is a thing an operator writes rather than a thing gg assumes.
+pub use test_cabinet_core::gg::PARAM_BUILT_INS;
 
 /// One family gg ships a skill for: what the skill is called, what it is for, and how to tell
 /// whether this agent has any of it.
@@ -202,8 +206,14 @@ pub(crate) const FAMILIES: &[Family] = &[
 /// [granted](crate::sandbox::Grants), handed down from the loop so that this catalogue, the
 /// membrane and the model's own lookups are built from one reading of one profile. `role` is the
 /// [ending role](EndingRole) the agent was dispatched in, which decides which verdict calls its
-/// session family carries; `params` is the skills capability's params, read for the
-/// [`builtIns`](PARAM_BUILT_INS) toggles.
+/// session family carries.
+///
+/// `profile` is the agent's own configuration rather than the skills capability's `params`, because
+/// the built-ins **are** the [skills](CAPABILITY_SKILLS) capability and nothing else: a profile that
+/// does not declare it, or declares it switched **off**, is offered no catalogue at all and this
+/// answers with none. A params object on its own cannot say that — an absent capability and one
+/// that withholds nothing hand down the same empty block — and a manual generated for an agent with
+/// no `read_skill` is prose nothing in the run could open.
 ///
 /// `program_language` picks which of the two arms a family's skill is built in — `Some(l)` is the
 /// code arm, written in `l`'s spellings, and `None` is the native one. The language and "is this the
@@ -224,11 +234,23 @@ pub fn builtin_skills(
     capabilities: &[String],
     operations: &[OperationId],
     program_language: Option<GgProgramLanguage>,
-    params: &Value,
+    profile: &GgAgentConfig,
 ) -> Vec<Skill> {
+    // No skills capability on this profile, or one switched off: the agent holds no catalogue, so
+    // there is none of gg's own to join to it.
+    let Some(capability) = profile
+        .capability(CAPABILITY_SKILLS)
+        .filter(|capability| capability.enabled)
+    else {
+        return Vec::new();
+    };
     // A discarding sink: `check_launch` read this same param, through this same resolver, before
-    // the run started and refused the launch if any toggle was one gg could not honour.
-    let off = switched_off(params, &mut crate::validate::LaunchReport::Discarding);
+    // the run started — and refused the launch if it was absent or held a toggle gg could not
+    // honour.
+    let off = switched_off(
+        &capability.params,
+        &mut crate::validate::LaunchReport::Discarding,
+    );
     let offered: BTreeSet<&str> = offered.iter().map(String::as_str).collect();
     let docs = program_language.map(|language| {
         crate::docs::DocsRuntime::new(capabilities.to_vec(), role, operations, language)
@@ -247,22 +269,49 @@ pub fn builtin_skills(
         .collect()
 }
 
-/// The ids an operator switched **off** in the `builtIns` param.
+/// The set gg answers with when the [`builtIns`](PARAM_BUILT_INS) param cannot be read — because an
+/// enabled capability wrote none, or because what it wrote is not a set of families.
 ///
-/// The same shape every toggle set uses: an object whose `false` entries are the withheld ones, so
-/// an absent or `null` param offers every family. An `id` that names no family gg ships, a value
-/// that is not a toggle, and a `builtIns` that is not an object all
-/// [refuse the launch](crate::validate): each of them switches **nothing** off while reading as an
-/// instruction that something was, and a run offered a skill its configuration says it withheld is
-/// the wrong-arm failure in its purest form — the skills experiment measured on the arm it was
-/// written to exclude.
+/// **Empty**, and empty because there is nothing left to withhold from: the launch is already
+/// refused by the time it comes back, and no agent will be offered the catalogue it would have
+/// narrowed. It is written here rather than reached through `Default` so the next reader of the two
+/// call sites can see which of the two empties they are looking at — this one, or the `{}` an
+/// operator wrote to offer every family.
+fn withholding_of_a_refused_launch() -> BTreeSet<String> {
+    BTreeSet::new()
+}
+
+/// The ids an operator switched **off** in the [`builtIns`](PARAM_BUILT_INS) param of an **enabled**
+/// skills capability.
+///
+/// Required, and read here at the constant it is named by: a capability that is on and writes no
+/// `builtIns` [refuses the launch](crate::validate), because the alternative is gg choosing which of
+/// its own manuals the agent gets and a record that says the operator did. `{}` is how every family
+/// is asked for.
+///
+/// Only for a capability the caller has established is **on** — requirement is a property of the
+/// switch, and a disabled capability's written toggles are read by
+/// [`withheld_families`] directly. An `id` that names no family gg ships, a value
+/// that is not a toggle, and a `builtIns` that is not an object all refuse the launch on either
+/// path: each of them switches **nothing** off while reading as an instruction that something was,
+/// and a run offered a skill its configuration says it withheld is the wrong-arm failure in its
+/// purest form — the skills experiment measured on the arm it was written to exclude.
 fn switched_off(params: &Value, report: &mut crate::validate::LaunchReport) -> BTreeSet<String> {
-    let Some(value) = params.get(PARAM_BUILT_INS) else {
-        return BTreeSet::new();
+    let Some(value) =
+        crate::validate::required_param(params, CAPABILITY_SKILLS, PARAM_BUILT_INS, report)
+    else {
+        return withholding_of_a_refused_launch();
     };
-    if value.is_null() {
-        return BTreeSet::new();
-    }
+    withheld_families(value, report)
+}
+
+/// One written [`builtIns`](PARAM_BUILT_INS) value read as a set of withheld families — the half of
+/// [`switched_off`] that judges what is there, shared with the **disabled** capability whose toggles
+/// are still read and still refused if gg cannot honour them.
+fn withheld_families(
+    value: &Value,
+    report: &mut crate::validate::LaunchReport,
+) -> BTreeSet<String> {
     let locus = || crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_BUILT_INS);
     let Some(toggles) = value.as_object() else {
         report.report(
@@ -277,7 +326,7 @@ fn switched_off(params: &Value, report: &mut crate::validate::LaunchReport) -> B
             )
             .known(FAMILIES.iter().map(|family| family.id)),
         );
-        return BTreeSet::new();
+        return withholding_of_a_refused_launch();
     };
     let mut off = BTreeSet::new();
     for (id, on) in toggles {
@@ -316,12 +365,23 @@ fn switched_off(params: &Value, report: &mut crate::validate::LaunchReport) -> B
 /// The skills capability's built-ins half of the [launch pass](crate::validate::validate_launch):
 /// the [`builtIns`](PARAM_BUILT_INS) toggles `profile` declares, read exactly as the run will read
 /// them.
-pub fn check_launch(
-    profile: &test_cabinet_core::gg::GgAgentConfig,
-    report: &mut crate::validate::LaunchReport,
-) {
-    if let Some(capability) = profile.capability(CAPABILITY_SKILLS) {
+///
+/// An **enabled** capability is read the way the run reads it, so a `builtIns` it does not write is
+/// refused here. A **disabled** one is owed nothing — it configures no catalogue — but whatever it
+/// *does* write is still judged, which is what keeps the two arms of a built-ins comparison one
+/// document with one switch moved.
+pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    let Some(capability) = profile.capability(CAPABILITY_SKILLS) else {
+        return;
+    };
+    if capability.enabled {
         switched_off(&capability.params, report);
+    } else if let Some(written) = capability
+        .params
+        .get(PARAM_BUILT_INS)
+        .filter(|value| !value.is_null())
+    {
+        withheld_families(written, report);
     }
 }
 

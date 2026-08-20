@@ -85,7 +85,12 @@ fn a_use_opens_one_view_per_declared_function() {
     let (_knowledge, docs) = used_csv_tools();
     let mut context = window();
 
-    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &docs,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
 
     assert_eq!(open(&context), ["csvTools.parse", "csvTools.widen"]);
     let body = context
@@ -120,9 +125,19 @@ fn a_repeat_use_opens_nothing_new() {
     let (_knowledge, docs) = used_csv_tools();
     let mut context = window();
 
-    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &docs,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
     let first = open(&context);
-    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &docs,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
 
     assert_eq!(open(&context), first);
 }
@@ -137,7 +152,12 @@ fn a_repeat_use_opens_nothing_new() {
 fn a_view_a_use_opened_is_closable() {
     let (_knowledge, docs) = used_csv_tools();
     let mut context = window();
-    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &docs,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
 
     let closed = context.close_docviews(Some("csvTools.parse"));
 
@@ -161,7 +181,12 @@ fn a_view_a_use_opened_is_closable() {
 fn an_instance_with_nothing_loaded_re_derives_no_view_of_a_loaded_module() {
     let (_knowledge, loader) = used_csv_tools();
     let mut context = window();
-    open_loaded_docviews(&mut context, &loader, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &loader,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
     let keys = open(&context);
     assert_eq!(keys.len(), 2, "the loading instance holds both pages");
 
@@ -197,7 +222,12 @@ fn an_instance_with_nothing_loaded_re_derives_no_view_of_a_loaded_module() {
 fn a_carried_window_drops_the_views_of_a_module_the_arriving_instance_has_not_loaded() {
     let (_knowledge, loader) = used_csv_tools();
     let mut context = window();
-    open_loaded_docviews(&mut context, &loader, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &loader,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
     let sdk = loader
         .docview_key("readFile")
         .expect("an agent granted everything binds it");
@@ -247,7 +277,12 @@ fn an_instance_with_nothing_loaded_still_re_derives_the_sdk_views() {
 fn the_instance_that_loaded_the_module_keeps_its_views_across_a_boundary() {
     let (_knowledge, docs) = used_csv_tools();
     let mut context = window();
-    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &docs,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
     let keys = open(&context);
 
     let carried: Vec<String> = crate::compaction::restore_docviews(&context, &docs)
@@ -277,7 +312,12 @@ fn the_instance_that_loaded_the_module_keeps_its_views_across_a_boundary() {
 fn a_revised_module_documents_what_it_now_offers() {
     let (mut knowledge, docs) = used_csv_tools();
     let mut context = window();
-    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &docs,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
     assert_eq!(open(&context), ["csvTools.parse", "csvTools.widen"]);
 
     knowledge
@@ -291,7 +331,7 @@ fn a_revised_module_documents_what_it_now_offers() {
         .expect("the revision loads");
 
     assert_eq!(
-        docs.use_views("csvTools", DocViewTypes::default()),
+        docs.use_views("csvTools", DocViewTypes::RETURN_AND_ERRORS),
         ["csvTools.parseStrict"],
         "a use of the revision opens what it now offers"
     );
@@ -318,7 +358,12 @@ fn a_use_of_a_revised_module_replaces_the_page_it_changed() {
     let (mut knowledge, docs) = used_csv_tools();
     let mut context = window();
     context.begin_turn(1);
-    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &docs,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
     let widen_at = context
         .items()
         .iter()
@@ -343,7 +388,12 @@ export const DELIMITER = \",\";
         .expect("the revision loads");
 
     context.begin_turn(2);
-    open_loaded_docviews(&mut context, &docs, DocViewTypes::default(), "csvTools");
+    open_loaded_docviews(
+        &mut context,
+        &docs,
+        DocViewTypes::RETURN_AND_ERRORS,
+        "csvTools",
+    );
 
     assert_eq!(open(&context), ["csvTools.widen", "csvTools.parse"]);
     let revised = context

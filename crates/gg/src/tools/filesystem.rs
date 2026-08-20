@@ -30,7 +30,8 @@
 //! [unlimited](ReadPolicy::Unlimited) (the whole file, one call) or a
 //! [default cap](ReadPolicy::DefaultCap) (N lines unless the model explicitly asks for
 //! more). The capped mode takes `offset`/`limit` so the agent can page through a file; the
-//! unlimited mode offers neither, because there is nothing to page.
+//! unlimited mode offers neither, because there is nothing to page. An enabled capability names
+//! the mode and writes the cap it is conducted at; gg selects neither on an operator's behalf.
 //!
 //! Neither mode can refuse a whole-file read — see [`ReadPolicy`] for why that is a property
 //! rather than an accident.
@@ -62,6 +63,13 @@ use super::{
     ToolContext, ToolFailure, ToolOutcome, invalid_argument, required_str, saturating_u32,
 };
 use test_cabinet_core::gg::CAPABILITY_READ_FILE;
+// The read vocabulary — the two mode ids and the one param — is `crates/core`'s, because the
+// console writes a read-file capability with the same names this reads it back by. Re-exported
+// rather than imported so `crate::tools` still names them for the modules that only ever say which
+// mode a configuration is on.
+pub use test_cabinet_core::gg::{
+    PARAM_LINE_CAP, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED, READ_MODES,
+};
 
 use crate::model::{ImageContent, ToolDefinition};
 
@@ -90,27 +98,10 @@ pub(crate) const READ_FILE_CAP: usize = 256 * 1024;
 /// succeeds.
 const IMAGE_ATTACH_CAP: u64 = 8 * 1024 * 1024;
 
-/// The read-file capability's `lineCap` param: the default number of lines a
-/// [default-capped](ReadPolicy::DefaultCap) read returns.
-pub const PARAM_LINE_CAP: &str = "lineCap";
-
-/// The [implementation](test_cabinet_core::gg::GgCapabilityConfig::implementation) id
-/// selecting the unlimited read mode — a call returns the whole file. The default, so a
-/// capability set that says nothing about read modes behaves as gg always has.
-pub const READ_MODE_UNLIMITED: &str = "unlimited";
-
-/// The implementation id selecting the default-capped read mode: a call returns
-/// [`lineCap`](PARAM_LINE_CAP) lines unless the agent explicitly asks for more, which is
-/// honored.
-pub const READ_MODE_DEFAULT_CAP: &str = "default-cap";
-
-/// The line cap the [default-capped](ReadPolicy::DefaultCap) read mode uses when its capability
-/// declares no [`lineCap`](PARAM_LINE_CAP).
-pub const DEFAULT_READ_LINE_CAP: usize = 250;
-
-/// The two read modes, in the spelling a [refusal](crate::validate) offers back. The
-/// [default](READ_MODE_UNLIMITED) is first.
-pub const READ_MODES: [&str; 2] = [READ_MODE_UNLIMITED, READ_MODE_DEFAULT_CAP];
+/// What a [`lineCap`](PARAM_LINE_CAP) of zero would do, in the capability's own terms — the clause
+/// a [refusal](crate::validate) carries, written once so both readers of the param say it the same
+/// way.
+const LINE_CAP_CONSEQUENCE: &str = "a cap of no lines would make every read return nothing";
 
 // ---------------------------------------------------------------------------
 // Read policy
@@ -131,54 +122,86 @@ pub const READ_MODES: [&str; 2] = [READ_MODE_UNLIMITED, READ_MODE_DEFAULT_CAP];
 /// deliberately no mode that refuses: a hard ceiling would make it impossible to put a document
 /// in front of an agent in full, and gg has one caller that must be able to
 /// ([autoloaded specifications](crate::agent), which seed a case's specs whole).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+///
+/// The third variant is not a mode: [`LaunchRefused`](Self::LaunchRefused) is what a total resolver
+/// answers with once the launch it was reading is already refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadPolicy {
-    /// Return the whole file in one call, with no `offset`/`limit` arguments — gg's
-    /// original behavior, and the control arm. The default, so an unconfigured
-    /// read-file capability reads exactly as gg always has.
-    #[default]
+    /// Return the whole file in one call, with no `offset`/`limit` arguments — the control arm,
+    /// selected by [`unlimited`](READ_MODE_UNLIMITED).
     Unlimited,
     /// Return this many lines per call *by default*, honoring any larger `limit` the agent
     /// explicitly asks for. The cap is a nudge rather than a ceiling.
     DefaultCap(usize),
+    /// **Not a read mode: the launch is already refused.** What [`resolve`](Self::resolve) hands
+    /// back once it has nothing left to select from — the capability named no arm, or named one gg
+    /// has no mode for, or wrote no [`lineCap`](PARAM_LINE_CAP) the capped arm could be conducted
+    /// at. The resolver is total, so it answers with something; this is the something, and its name
+    /// is what tells the next reader of that line that no run is going to reach it.
+    ///
+    /// It is deliberately not one of the two arms. Resolving a hole to `Unlimited` is precisely the
+    /// substitution the [refusal](crate::validate) exists to prevent: it would hand an agent
+    /// uncapped reads under the capped arm's name and record the study as though the capped arm had
+    /// been conducted.
+    LaunchRefused,
 }
 
 impl ReadPolicy {
-    /// Resolve the policy from the read-file capability's `implementation` and `params`.
+    /// Resolve the policy from an **enabled** read-file capability's `implementation` and `params`.
     ///
-    /// An **absent** implementation resolves to [`Unlimited`](Self::Unlimited), the historical
-    /// behavior, so a capability set that says nothing about read modes reads exactly as gg always
-    /// has; an absent or `null` [`lineCap`](PARAM_LINE_CAP) takes [`DEFAULT_READ_LINE_CAP`].
+    /// Enabled is the caller's to establish: the [`lineCap`](PARAM_LINE_CAP) is required of a
+    /// capability that offers a `read_file` and of nothing else, so a declaration that offers none
+    /// is read by [`check_declaration`] instead.
     ///
-    /// A **present** implementation gg does not recognize [refuses the launch](crate::validate)
-    /// rather than resolving to `unlimited`, and this is the sharpest case of that rule in gg: the
-    /// implementation is the *arm selector* of the read-cap experiment, so a typo'd `defaultcap`
-    /// silently handed its agent **unlimited** reads while the run's record named the capped arm —
-    /// the two arms of the study, run as one. A `lineCap` gg cannot read as a whole number of one or
-    /// more is refused on the same terms. `Unlimited` still comes back, because by then the launch is
-    /// over and the resolver has to stay total for the mid-run calls that re-read a profile.
+    /// Three ways a declaration leaves nothing to select, and all three end at
+    /// [`LaunchRefused`](Self::LaunchRefused):
     ///
-    /// The `lineCap` is read whether or not the selected mode uses it, on the terms every knob in gg
-    /// is judged by: a value is honourable or it is not, and which arm happens to consult it is a
-    /// different question from whether it was written correctly.
+    /// - **No arm.** The mode is the read-cap experiment's own variable and gg selects none on an
+    ///   operator's behalf. Reporting the absence belongs to the launch pass, which is the one
+    ///   reader that can see the switch, so nothing is said here.
+    /// - **An arm gg has no mode for.** Reported here, and this is the sharpest case of the rule in
+    ///   gg: a typo'd `defaultcap` read as `unlimited` hands its agent uncapped reads while the
+    ///   run's record names the capped arm — the two arms of the study, conducted as one.
+    /// - **No `lineCap`, or one that is no whole number of lines of one or more.** Reported at the
+    ///   param's own locus by [`required_positive_count_param`](crate::validate::required_positive_count_param),
+    ///   which is the only way this reads it, so the param cannot be reached without the reaching
+    ///   being the reporting.
+    ///
+    /// The `lineCap` is required whichever arm is selected, on the terms every knob in gg is judged
+    /// by: a sweep that varies the mode over one shared params block is judged the same way on every
+    /// launch in it, and which arm happens to consult a value is a different question from whether
+    /// it was written.
     pub fn resolve(
         implementation: Option<&str>,
         params: &Value,
         report: &mut crate::validate::LaunchReport,
     ) -> Self {
-        let cap = crate::validate::positive_count_param(
+        let cap = crate::validate::required_positive_count_param(
             params,
             CAPABILITY_READ_FILE,
             PARAM_LINE_CAP,
-            "a cap of no lines would make every read return nothing",
+            LINE_CAP_CONSEQUENCE,
             report,
-        )
-        .map_or(DEFAULT_READ_LINE_CAP, |cap| {
-            usize::try_from(cap).unwrap_or(usize::MAX)
-        });
+        );
+        Self::select(implementation, cap, report)
+    }
+
+    /// The mode `implementation` names, at whatever `cap` survived being read — the half of
+    /// [`resolve`](Self::resolve) that is the same question whether or not the capability offers a
+    /// `read_file`, so [`check_declaration`] asks it too and an unrecognized mode is refused
+    /// wherever it is written.
+    fn select(
+        implementation: Option<&str>,
+        cap: Option<u64>,
+        report: &mut crate::validate::LaunchReport,
+    ) -> Self {
+        // Saturating rather than refusing: a cap past `usize` is a number of lines no file has, and
+        // "every line of it" is exactly what the operator asked for.
+        let cap = cap.map(|cap| usize::try_from(cap).unwrap_or(usize::MAX));
         match implementation.map(str::trim) {
-            Some(READ_MODE_DEFAULT_CAP) => Self::DefaultCap(cap),
-            Some(READ_MODE_UNLIMITED) | Some("") | None => Self::Unlimited,
+            Some(READ_MODE_UNLIMITED) => Self::Unlimited,
+            Some(READ_MODE_DEFAULT_CAP) => cap.map_or(Self::LaunchRefused, Self::DefaultCap),
+            Some("") | None => Self::LaunchRefused,
             Some(unknown) => {
                 report.report(
                     crate::validate::LaunchDefect::run_level(
@@ -193,7 +216,7 @@ impl ReadPolicy {
                     )
                     .known(READ_MODES),
                 );
-                Self::Unlimited
+                Self::LaunchRefused
             }
         }
     }
@@ -201,9 +224,12 @@ impl ReadPolicy {
     /// The line cap in force, or `None` under [`Unlimited`](Self::Unlimited). Read by the tool
     /// itself (to window a read) and by the [system prompt](crate::prompts), which states the cap
     /// up front so the model is not left to discover it one truncated read at a time.
+    ///
+    /// [`LaunchRefused`](Self::LaunchRefused) answers `None` as well, because there is no cap to
+    /// state and no run to state it in.
     pub fn line_cap(&self) -> Option<usize> {
         match *self {
-            Self::Unlimited => None,
+            Self::Unlimited | Self::LaunchRefused => None,
             Self::DefaultCap(cap) => Some(cap),
         }
     }
@@ -216,12 +242,68 @@ impl ReadPolicy {
     /// makes a whole-file read reachable from every mode.
     fn window(&self, requested: Option<usize>) -> Option<usize> {
         match (*self, requested) {
-            (Self::Unlimited, _) => None,
+            // A refused launch offers no window either, and nothing reaches this to be windowed.
+            (Self::Unlimited | Self::LaunchRefused, _) => None,
             (Self::DefaultCap(cap), None) => Some(cap),
             // The default cap is exactly the one the agent can talk its way past.
             (Self::DefaultCap(_), Some(want)) => Some(want),
         }
     }
+}
+
+/// The read half of one profile's contribution to the
+/// [launch pass](crate::validate::validate_launch): the [read mode](ReadPolicy) and the line cap it
+/// declares, read exactly as the run will read them.
+///
+/// **The switch decides which reading it gets.** An enabled capability offers a `read_file` and is
+/// therefore owed a cap, so it goes through [`ReadPolicy::resolve`] — the same function, reading the
+/// same [`PARAM_LINE_CAP`], that [`read_policy`](super::read_policy) will call on the first turn. A
+/// disabled one offers nothing and is short of nothing; what it carries is the configuration the
+/// capped arm *would* have run at, so it is read by [`check_declaration`] and every value in it is
+/// still judged.
+pub fn check_launch(
+    profile: &test_cabinet_core::gg::GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) {
+    let Some(capability) = profile.capability(CAPABILITY_READ_FILE) else {
+        return;
+    };
+    if capability.enabled {
+        ReadPolicy::resolve(
+            capability.implementation.as_deref(),
+            &capability.params,
+            report,
+        );
+    } else {
+        check_declaration(
+            capability.implementation.as_deref(),
+            &capability.params,
+            report,
+        );
+    }
+}
+
+/// Everything a **disabled** read-file capability's declaration is judged on: the mode it names,
+/// and the [`lineCap`](PARAM_LINE_CAP) it writes, each read exactly as an enabled one's is.
+///
+/// What it is *not* judged on is absence. A capability that offers no `read_file` configures
+/// nothing, so there is no cap it could be short of — and requiring one here would refuse the very
+/// document that expresses the off arm of a comparison. Everything written is still read, which is
+/// what keeps the two arms of that comparison one document with one switch moved rather than two
+/// documents judged differently.
+fn check_declaration(
+    implementation: Option<&str>,
+    params: &Value,
+    report: &mut crate::validate::LaunchReport,
+) {
+    let cap = crate::validate::positive_count_param(
+        params,
+        CAPABILITY_READ_FILE,
+        PARAM_LINE_CAP,
+        LINE_CAP_CONSEQUENCE,
+        report,
+    );
+    ReadPolicy::select(implementation, cap, report);
 }
 
 // ---------------------------------------------------------------------------

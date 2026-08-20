@@ -684,11 +684,11 @@ fn a_use_selects_a_view_per_callable_declaration() {
         ),
     ]);
     assert_eq!(
-        docs.use_views("csvTools", DocViewTypes::default()),
+        docs.use_views("csvTools", DocViewTypes::RETURN_AND_ERRORS),
         ["csvTools.parse"]
     );
     assert!(
-        docs.use_views("jsonTools", DocViewTypes::default())
+        docs.use_views("jsonTools", DocViewTypes::RETURN_AND_ERRORS)
             .is_empty(),
         "and a key naming no loaded module selects nothing"
     );
@@ -740,8 +740,7 @@ fn the_type_flags_select_a_loaded_declarations_own_types() {
         docs.use_views("csvTools", DocViewTypes::only(DocViewType::Parameters)),
         ["csvTools.parse", "csvTools.Options"]
     );
-    let mut every = DocViewTypes::default();
-    every.set(DocViewType::Parameters, true);
+    let every = DocViewTypes::EVERY;
     let both = docs.use_views("csvTools", every);
     assert_eq!(
         both,
@@ -851,11 +850,11 @@ fn a_use_opens_only_the_module_it_names() {
     );
     let docs = everything(GgProgramLanguage::TypeScript, EndingRole::Standard).reading(loaded);
     assert_eq!(
-        docs.use_views("csvTools", DocViewTypes::default()),
+        docs.use_views("csvTools", DocViewTypes::RETURN_AND_ERRORS),
         ["csvTools.parse"]
     );
     assert_eq!(
-        docs.use_views("jsonTools", DocViewTypes::default()),
+        docs.use_views("jsonTools", DocViewTypes::RETURN_AND_ERRORS),
         ["jsonTools.read"]
     );
 }
@@ -1097,8 +1096,7 @@ fn opening_a_loaded_declaration_by_name_places_its_types() {
 #[test]
 fn a_use_and_a_lookup_place_the_same_types_beside_one_declaration() {
     let docs = csv_tools_naming_both();
-    let mut every = DocViewTypes::default();
-    every.set(DocViewType::Parameters, true);
+    let every = DocViewTypes::EVERY;
     for types in [
         DocViewTypes::OFF,
         DocViewTypes::only(DocViewType::Return),
@@ -1121,8 +1119,7 @@ fn a_use_and_a_lookup_place_the_same_types_beside_one_declaration() {
 #[test]
 fn a_loaded_type_key_opens_no_further_types() {
     let docs = csv_tools_naming_both();
-    let mut every = DocViewTypes::default();
-    every.set(DocViewType::Parameters, true);
+    let every = DocViewTypes::EVERY;
     assert!(docs.types_to_open("csvTools.Row", every).is_empty());
     assert!(
         docs.types_to_open("csvTools", every).is_empty(),

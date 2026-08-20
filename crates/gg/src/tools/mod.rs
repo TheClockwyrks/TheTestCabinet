@@ -120,8 +120,8 @@ pub use data::{
 /// collapse into one blob-pool entry. Neither is part of the tool API.
 pub(crate) use filesystem::READ_FILE_CAP;
 pub use filesystem::{
-    EditFileTool, ListDirTool, PARAM_LINE_CAP, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP,
-    READ_MODE_UNLIMITED, ReadFileTool, ReadPolicy, WriteFileTool,
+    EditFileTool, ListDirTool, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED,
+    ReadFileTool, ReadPolicy, WriteFileTool,
 };
 pub use memories::{
     CREATE_MEMORY_TOOL, CreateMemoryTool, DELETE_MEMORY_TOOL, DeleteMemoryTool, EDIT_MEMORY_TOOL,
@@ -129,7 +129,7 @@ pub use memories::{
     UPDATE_MEMORY_TOOL, UpdateMemoryTool, WRITE_MEMORY_TOOL, WriteMemoryTool, is_memory_tool,
     read_only_refusal,
 };
-pub use shell::{OffloadPolicy, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_TOOL};
+pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub(crate) use shell::{
     ShellExecution, ShellRequest, ShellRunner, ShellStatus, real_shell, run_command,
 };
@@ -313,42 +313,37 @@ pub fn ungranted_tools(capabilities: &GgAgentConfig) -> Vec<String> {
 /// The [read policy](ReadPolicy) `read_file` runs under for a capability set: the
 /// [read-file](CAPABILITY_READ_FILE) capability's implementation and params.
 ///
-/// A set that does not configure the capability at all reads files
-/// [unlimited](ReadPolicy::Unlimited), the default policy.
+/// `None` when the capability is **absent or disabled**, which is not a policy but the statement
+/// that there is no `read_file` to have one. gg substitutes no mode for a capability nobody
+/// configured: an unconfigured read-file capability is one the profile left out, and a profile that
+/// left it out offers no reads at all.
 ///
 /// Resolved both here (to build the tool) and by the [loop](crate::agent), which states the
 /// resulting cap in the [system prompt](crate::prompts) — one resolution, so what the prompt
 /// promises and what the tool enforces cannot drift apart.
-pub fn read_policy(capabilities: &GgAgentConfig) -> ReadPolicy {
-    capabilities
+pub fn read_policy(capabilities: &GgAgentConfig) -> Option<ReadPolicy> {
+    let capability = capabilities
         .capability(CAPABILITY_READ_FILE)
-        // A discarding sink: the launch pass read this same capability, through this same resolver,
-        // and refused the run if its mode or its cap was one gg could not honour.
-        .map(|cap| {
-            ReadPolicy::resolve(
-                cap.implementation.as_deref(),
-                &cap.params,
-                &mut crate::validate::LaunchReport::Discarding,
-            )
-        })
-        .unwrap_or_default()
+        .filter(|capability| capability.enabled)?;
+    // A discarding sink: the launch pass read this same capability, through this same resolver, and
+    // refused the run if its mode or its cap was one gg could not honour.
+    Some(ReadPolicy::resolve(
+        capability.implementation.as_deref(),
+        &capability.params,
+        &mut crate::validate::LaunchReport::Discarding,
+    ))
 }
 
 /// The tools' contribution to one profile's half of the
 /// [launch pass](crate::validate::validate_launch): the [read policy](ReadPolicy) and the
 /// [shell output policy](OffloadPolicy) it declares, read exactly as the run will read them.
 ///
-/// The read capability's params are read whether it is switched on or off, on the terms the pass
-/// reads every other capability's: a disabled capability records the configuration the arm would
-/// have used, so a typo in it is a typo now rather than on the launch that flips the switch.
+/// Each half reads its capability the way the run will — an enabled one through the resolver that
+/// builds the tool, a disabled one through the reader that requires nothing of it — so a value the
+/// launch accepts is one the first turn resolves identically, and a value it refuses is one no turn
+/// ever sees.
 pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
-    if let Some(capability) = profile.capability(CAPABILITY_READ_FILE) {
-        ReadPolicy::resolve(
-            capability.implementation.as_deref(),
-            &capability.params,
-            report,
-        );
-    }
+    filesystem::check_launch(profile, report);
     shell::check_launch(profile, report);
 }
 
@@ -366,20 +361,30 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::Launc
 /// resulting ceiling in the [system prompt](crate::prompts) — one resolution, so what the prompt
 /// promises and what the tool enforces cannot drift apart.
 ///
-/// An absent or disabled capability resolves to [inline](OffloadPolicy::Inline) rather than to the
-/// [default](OffloadPolicy::default) mode: the default is a bargain struck with an agent that has
-/// the `shell` tool, and there is nobody here to strike it with.
-pub fn shell_offload(capabilities: &GgAgentConfig) -> OffloadPolicy {
+/// An absent or disabled capability resolves to [inline](OffloadPolicy::Inline). That is a statement
+/// about a missing capability rather than a substituted param: offloading is a bargain struck with
+/// an agent that has the `shell` tool, and there is nobody here to strike it with, so the answer is
+/// the mode that keeps whatever a hook produces in front of the agent whole.
+///
+/// The `report` is the sink every resolver takes. Mid-run it is
+/// [`Discarding`](crate::validate::LaunchReport::Discarding), because the launch pass read this same
+/// capability through this same resolver. The launch pass itself has one other reader — the
+/// [hooks gate](crate::hooks), which needs the policy a hook's `output` override is measured against
+/// — and it reads through [`already_reported`](crate::validate::LaunchReport::already_reported),
+/// since [`shell::check_launch`] owns every defect this capability carries and naming one twice is
+/// exactly what a refusal must not do.
+pub fn shell_offload(
+    capabilities: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) -> OffloadPolicy {
     capabilities
         .capability(CAPABILITY_SHELL)
         .filter(|capability| capability.enabled)
-        // A discarding sink: the launch pass read this same capability, through this same resolver,
-        // and refused the run if its mode or its ceilings were ones gg could not honour.
         .map(|capability| {
             OffloadPolicy::resolve(
                 capability.implementation.as_deref(),
                 &capability.params,
-                &mut crate::validate::LaunchReport::Discarding,
+                report,
             )
         })
         .unwrap_or(OffloadPolicy::Inline)
@@ -739,16 +744,20 @@ impl ToolRegistry {
         if capabilities.is_enabled(CAPABILITY_SHELL) {
             // Like `read_file`, `shell` reads its own capability's implementation/params to decide
             // how much of what it produces one call returns.
-            tools.push(Box::new(shell::ShellTool::new(shell_offload(capabilities))));
+            tools.push(Box::new(shell::ShellTool::new(shell_offload(
+                capabilities,
+                // Mid-run: the launch pass read this same capability through this same resolver.
+                &mut crate::validate::LaunchReport::Discarding,
+            ))));
         }
 
         // Each filesystem primitive is its own capability, so a study can withhold or
         // reconfigure one without disturbing the others. `read_file` additionally reads its
-        // capability's implementation/params to decide how much of a file one call returns.
-        if capabilities.is_enabled(CAPABILITY_READ_FILE) {
-            tools.push(Box::new(filesystem::ReadFileTool::new(read_policy(
-                capabilities,
-            ))));
+        // capability's implementation/params to decide how much of a file one call returns — and
+        // that resolution *is* the enabled check, since a policy exists exactly when a read tool
+        // does.
+        if let Some(policy) = read_policy(capabilities) {
+            tools.push(Box::new(filesystem::ReadFileTool::new(policy)));
         }
         if capabilities.is_enabled(CAPABILITY_WRITE_FILE) {
             tools.push(Box::new(filesystem::WriteFileTool));
@@ -865,20 +874,15 @@ impl ToolRegistry {
         // of the prompt a provider caches, so introducing a tool at the moment the window is
         // fullest would invalidate the cached prefix at the most expensive point in the run. Like
         // the two reclaim tools it only validates here; the loop performs the rewrite.
-        if CompactionStrategy::resolve(
-            capabilities
-                .capability(CAPABILITY_COMPACTION)
-                .filter(|capability| capability.enabled)
-                .and_then(|capability| capability.implementation.as_deref()),
-            // Writable, not merely enabled: a read-only memory holder cannot satisfy a memory
-            // compaction, so its run condenses in prose and is offered the tool that goes with
-            // that — see `CompactionStrategy::resolve`.
-            capabilities.is_enabled(CAPABILITY_MEMORIES) && modules.memories().is_writable(),
-            // Mid-run: the launch pass already read this profile's `implementation`.
-            &mut crate::validate::LaunchReport::Discarding,
-        )
-        .offers_compact_tool(capabilities.is_enabled(CAPABILITY_RESPONSES_AS_CODE))
-            && capabilities.is_enabled(CAPABILITY_COMPACTION)
+        if capabilities.is_enabled(CAPABILITY_COMPACTION)
+            && CompactionStrategy::resolve(
+                capabilities
+                    .capability(CAPABILITY_COMPACTION)
+                    .and_then(|capability| capability.implementation.as_deref()),
+                // Mid-run: the launch pass already read this profile's `implementation`.
+                &mut crate::validate::LaunchReport::Discarding,
+            )
+            .offers_compact_tool(capabilities.is_enabled(CAPABILITY_RESPONSES_AS_CODE))
         {
             tools.push(Box::new(context::CompactTool));
         }
@@ -1151,6 +1155,34 @@ fn invalid_argument(message: impl Into<String>) -> ToolOutcome {
     ArgumentError(message.into()).into()
 }
 
+/// **The capability `id` names, authored the way a document authors one, with `params` merged over
+/// what the [catalog](test_cabinet_core::gg::gg_authoring_catalog) wrote** — the shape a fixture
+/// wants whenever it varies *some* of a capability's configuration.
+///
+/// Merged rather than replaced, and that is the whole of why it exists. An enabled capability is
+/// [fully specified](crate::validate): a params object written out wholesale is a document short of
+/// every key it did not mention, and it refuses its own launch naming params the fixture never meant
+/// to have an opinion about. A fixture varying `maxRetries` is saying one thing about `maxRetries`,
+/// not that the board has no ceilings.
+///
+/// A `params` that is not an object replaces the catalog's outright, because that is a fixture
+/// asserting what gg does with a params block it cannot read.
+#[cfg(test)]
+pub(crate) fn configured(
+    id: &str,
+    params: serde_json::Value,
+) -> test_cabinet_core::gg::GgCapabilityConfig {
+    let mut capability = test_cabinet_core::gg::GgCapabilityConfig::enabled(id);
+    let Some(overrides) = params.as_object() else {
+        capability.params = params;
+        return capability;
+    };
+    for (key, value) in overrides {
+        capability = capability.with_param(key, value.clone());
+    }
+    capability
+}
+
 /// **Switch `capability` on for `profile` and grant every call it offers**, on both surfaces — the
 /// shape the console's agent editor writes when an operator turns a capability on, and therefore the
 /// shape a fixture wants whenever what it is testing is the capability rather than the allowlist.
@@ -1198,7 +1230,7 @@ pub(crate) fn grant_configured(
         && let Some(params) = capability.params.as_object_mut()
     {
         params
-            .entry(crate::sandbox::PARAM_LANGUAGE)
+            .entry(test_cabinet_core::gg::PARAM_LANGUAGE)
             .or_insert_with(|| {
                 serde_json::json!(test_cabinet_core::gg::GgProgramLanguage::TypeScript.id())
             });

@@ -493,7 +493,7 @@ fn run_against_the_membrane(
     operations: Vec<OperationId>,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> Ran {
-    let limits = SandboxLimits::default();
+    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = FakeOperationApi::with(&log, responder);
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");

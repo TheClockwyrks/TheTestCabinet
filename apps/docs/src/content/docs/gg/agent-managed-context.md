@@ -145,9 +145,9 @@ two differ twice over:
 ### Closing documentation views
 
 Closing a documentation view is `gg.docs.close` and `gg.docs.closeAll`, bought
-by the `docview-close` capability, which is off by default. An agent that lacks
-the capability is refused by name. `gg.views.close` reaches the documentation
-band in no configuration.
+by the `docview-close` capability, which an agent holds only where its profile
+enables it. An agent that lacks the capability is refused by name.
+`gg.views.close` reaches the documentation band in no configuration.
 
 The reason is a property nothing else in the window has: opening documentation
 only ever appends to the prompt, since re-opening a page whose text is unchanged
@@ -256,15 +256,16 @@ Two sliders sit in the capability's Features box, and each is per agent.
 
 ## Parameters
 
-| Param | Default | Meaning |
-| --- | --- | --- |
-| `topFileViews` | 5 | Files named under Top File Views, largest first. |
+| Param | Meaning |
+| --- | --- |
+| `topFileViews` | Files named under Top File Views, largest first. |
+| `ownership` | `owned` or `unowned`, on the terms above. |
 
-It is set per agent, because how many reads a window holds at once differs
-enormously between an agent that opens two specs and one crawling a codebase.
-Absent, it takes the default above. Carrying a value gg cannot honour exactly as
-written, it refuses the launch, alongside every other such value in the
-capability set.
+Both are set per agent, and an enabled capability writes both. How many reads a
+window holds at once differs enormously between an agent that opens two specs
+and one crawling a codebase, so `topFileViews` is a figure the profile states. An
+absent param, and one carrying a value gg cannot honour exactly as written,
+refuse the launch alongside every other such value in the capability set.
 
 ## Telemetry and the console
 

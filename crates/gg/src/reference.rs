@@ -67,8 +67,8 @@
 //! `<state>`) and each tool [says which of them it carries](self::tools::run_data), tested against the
 //! constants gg substituted rather than against angle brackets, which ordinary prose contains too.
 //! A definition that varies with a *configuration* is handled the other way round, because every one
-//! of its renderings is a real one: one is the entry — the default configuration's, wherever the
-//! default offers the tool at all — and each of the rest is a
+//! of its renderings is a real one: one is the entry — the maximal configuration's, wherever that
+//! configuration offers the tool at all — and each of the rest is a
 //! [variant](test_cabinet_core::gg_reference::GgToolVariant) labelled with the configuration that
 //! produces it.
 

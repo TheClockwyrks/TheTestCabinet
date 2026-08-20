@@ -3,7 +3,7 @@
 //! context-block derivations. The two file-shaped strategies are tested in
 //! `memories.files.test.rs`, and the keyword ranking in `memories.search.test.rs`.
 
-use serde_json::json;
+use serde_json::{Value, json};
 use test_cabinet_core::gg::GgTelemetryKind;
 
 use super::*;
@@ -36,6 +36,44 @@ fn tiny_caps() -> MemoryCaps {
 /// A scratchpad store bounded by [`tiny_caps`].
 fn tiny_store() -> MemoryStore {
     MemoryStore::new(MemoryStrategy::Scratchpad, tiny_caps())
+}
+
+/// One memories capability carrying exactly `params`, on or off.
+///
+/// Built by hand rather than [authored](GgCapabilityConfig::enabled): what these cases are about is
+/// a document short of, or wrong about, one value, and the authoring catalog writes documents that
+/// are neither.
+fn capability(enabled: bool, params: Value) -> GgCapabilityConfig {
+    GgCapabilityConfig {
+        id: CAPABILITY_MEMORIES.to_string(),
+        enabled,
+        implementation: None,
+        params,
+    }
+}
+
+/// The six limits an enabled memories capability writes, as a params object — every one of them
+/// `0`, which is how a run lifts one — with `overrides` merged over them.
+fn every_limit(overrides: Value) -> Value {
+    let mut params = json!({
+        PARAM_MAX_COUNT: 0,
+        PARAM_MAX_LEN_PER_MEMORY: 0,
+        PARAM_MAX_TOTAL_LEN: 0,
+        PARAM_MAX_LEN_INDEX: 0,
+        PARAM_MAX_LEN_DESCRIPTION: 0,
+        PARAM_MAX_RESULTS: 0,
+    });
+    for (key, value) in overrides.as_object().expect("an object of overrides") {
+        params[key] = value.clone();
+    }
+    params
+}
+
+/// A fully specified, enabled memories capability: all six limits, with `overrides` merged over
+/// them. The document a case that is not itself about an absence starts from, so that whatever it
+/// does not name bounds nothing.
+fn specified(overrides: Value) -> GgCapabilityConfig {
+    capability(true, every_limit(overrides))
 }
 
 // ---------------------------------------------------------------------------
@@ -287,28 +325,65 @@ fn update_swaps_the_old_body_out_of_the_total_before_checking() {
 // Caps resolution
 // ---------------------------------------------------------------------------
 
-/// An absent params object — and an explicitly `null` limit — takes every default. **Absent is not
-/// unrecognized**, and that is what this case pins.
+/// **Every limit an enabled capability leaves out refuses the launch**, named at its own key.
+///
+/// gg substitutes nothing: a limit is what a memories arm is *bounded* by, and a run bounded by a
+/// figure nobody wrote is one whose numbers cannot be compared with the arm beside it — and nothing
+/// in its record would say why. An explicit `null` is an absence, on exactly the same terms.
 #[test]
-fn caps_default_when_params_are_absent() {
-    let strategy = MemoryStrategy::Scratchpad;
-    assert_eq!(
-        MemoryCaps::resolve(strategy, &json!({}), &mut honoured()),
-        MemoryCaps::default()
-    );
-    assert_eq!(
-        MemoryCaps::resolve(
-            strategy,
-            &json!({ "maxLenPerMemory": null }),
-            &mut honoured()
-        ),
-        MemoryCaps::default()
-    );
+fn an_enabled_capability_short_of_a_limit_is_refused() {
+    for key in [
+        PARAM_MAX_COUNT,
+        PARAM_MAX_LEN_PER_MEMORY,
+        PARAM_MAX_TOTAL_LEN,
+        PARAM_MAX_LEN_INDEX,
+        PARAM_MAX_LEN_DESCRIPTION,
+        PARAM_MAX_RESULTS,
+    ] {
+        for short in [
+            {
+                let mut params = every_limit(json!({}));
+                params.as_object_mut().unwrap().remove(key);
+                capability(true, params)
+            },
+            specified(json!({ key: Value::Null })),
+        ] {
+            let defects = reported(|report| {
+                MemoryCaps::resolve(MemoryStrategy::Scratchpad, &short, report);
+            });
+            assert_eq!(defects.len(), 1, "{key} -> {defects:?}");
+            assert_eq!(defects[0].locus, format!("memories.params.{key}"));
+            assert!(
+                defects[0].message.contains("substitutes nothing"),
+                "{}",
+                defects[0].message
+            );
+        }
+    }
 }
 
-/// A limit gg cannot read is **refused**, not replaced by the default. A limit is what a memories
-/// arm is bounded by, so a run silently bounded by gg's default cannot be compared with the arm
-/// beside it — and nothing in its record would say why.
+/// **A disabled capability is owed nothing.** It bounds no memories, so there is no limit for it to
+/// be short of; what it carries is the configuration the arm *would* have used, which is what lets
+/// the on and off arms of one comparison be one document with one switch moved.
+#[test]
+fn a_disabled_capability_is_owed_no_limit() {
+    let off = capability(false, json!({}));
+    let caps = MemoryCaps::resolve(MemoryStrategy::Scratchpad, &off, &mut honoured());
+    assert_eq!(caps, MemoryCaps::UNBOUNDED);
+
+    // Everything it *does* write is still read, so a typo in the off arm is heard about now rather
+    // than on the launch that flips the switch.
+    let off = capability(false, json!({ PARAM_MAX_COUNT: "lots" }));
+    let defects = reported(|report| {
+        MemoryCaps::resolve(MemoryStrategy::Scratchpad, &off, report);
+    });
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "memories.params.maxCount");
+}
+
+/// A limit gg cannot read is **refused**, and the limit it would have set stands at the
+/// [placeholder](LIMIT_OF_A_REFUSED_LAUNCH) — the resolver is total, and the run is not going to
+/// start.
 #[test]
 fn a_limit_gg_cannot_read_is_refused() {
     for value in [
@@ -318,15 +393,16 @@ fn a_limit_gg_cannot_read_is_refused() {
         json!(true),
         json!([10]),
     ] {
-        let params = json!({ "maxLenPerMemory": value });
+        let capability = specified(json!({ PARAM_MAX_LEN_PER_MEMORY: value.clone() }));
         let defects = reported(|report| {
             assert_eq!(
-                MemoryCaps::resolve(MemoryStrategy::Scratchpad, &params, report),
-                MemoryCaps::default(),
+                MemoryCaps::resolve(MemoryStrategy::Scratchpad, &capability, report)
+                    .max_len_per_memory,
+                LIMIT_OF_A_REFUSED_LAUNCH,
                 "the resolver stays total"
             );
         });
-        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects.len(), 1, "{value} -> {defects:?}");
         assert_eq!(defects[0].locus, "memories.params.maxLenPerMemory");
     }
 }
@@ -338,7 +414,7 @@ fn a_limit_gg_cannot_read_is_refused() {
 fn an_integral_float_is_a_valid_limit() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Scratchpad,
-        &json!({ "maxCount": 3.0, "maxTotalLen": 2.5e2 }),
+        &specified(json!({ PARAM_MAX_COUNT: 3.0, PARAM_MAX_TOTAL_LEN: 2.5e2 })),
         &mut honoured(),
     );
     assert_eq!(caps.max_count, Some(3));
@@ -349,11 +425,11 @@ fn an_integral_float_is_a_valid_limit() {
 fn caps_resolve_each_param_when_present() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Scratchpad,
-        &json!({
-            "maxCount": 3,
-            "maxLenPerMemory": 100,
-            "maxTotalLen": 250,
-        }),
+        &specified(json!({
+            PARAM_MAX_COUNT: 3,
+            PARAM_MAX_LEN_PER_MEMORY: 100,
+            PARAM_MAX_TOTAL_LEN: 250,
+        })),
         &mut honoured(),
     );
     assert_eq!(caps.max_count, Some(3));
@@ -361,23 +437,31 @@ fn caps_resolve_each_param_when_present() {
     assert_eq!(caps.max_total_len, Some(250));
 }
 
-/// `0` is how a run **disables** a limit — the one spelling for "unlimited" — and a disabled limit
+/// `0` is how a run **lifts** a limit — the one spelling for "no bound at all" — and a lifted limit
 /// is `None` rather than a zero the guards would then have to special-case.
 #[test]
-fn a_zero_param_disables_that_limit() {
+fn a_zero_param_lifts_that_limit() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Scratchpad,
-        &json!({ "maxCount": 0, "maxTotalLen": 0 }),
+        &specified(json!({ PARAM_MAX_LEN_PER_MEMORY: 4_096 })),
         &mut honoured(),
     );
     assert_eq!(caps.max_count, None);
     assert_eq!(caps.max_total_len, None);
-    // The limits that were not named keep their defaults.
-    assert_eq!(caps.max_len_per_memory, Some(DEFAULT_MAX_LEN_PER_MEMORY));
+    // The one limit this document did bound is bounded.
+    assert_eq!(caps.max_len_per_memory, Some(4_096));
 
-    // And an unlimited store really is unlimited: past the default count, with a huge body.
-    let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
-    for n in 0..DEFAULT_MAX_COUNT + 4 {
+    // And an unlimited store really is unlimited: far past any figure gg used to pick, with a
+    // huge body on each.
+    let mut store = MemoryStore::new(
+        MemoryStrategy::Scratchpad,
+        MemoryCaps::resolve(
+            MemoryStrategy::Scratchpad,
+            &specified(json!({})),
+            &mut honoured(),
+        ),
+    );
+    for n in 0..200 {
         store
             .write(
                 "",
@@ -388,37 +472,28 @@ fn a_zero_param_disables_that_limit() {
             )
             .unwrap();
     }
-    assert_eq!(store.count(), DEFAULT_MAX_COUNT + 4);
+    assert_eq!(store.count(), 200);
 }
 
 /// The description limit applies under **every** strategy — unlike the others, which each belong to
-/// one or two — and every strategy defaults it to the same number.
+/// one or two.
 ///
 /// It is the one field every turn pays for, wherever it appears: an index line and a search hit are
 /// mostly description. So it is bounded everywhere rather than left to hope.
 #[test]
-fn the_description_cap_defaults_everywhere_and_is_configurable_everywhere() {
-    for strategy in [
-        MemoryStrategy::Scratchpad,
-        MemoryStrategy::Markdown,
-        MemoryStrategy::KeywordSearch,
-    ] {
-        assert_eq!(
-            MemoryCaps::for_strategy(strategy).max_len_description,
-            Some(DEFAULT_MAX_LEN_DESCRIPTION),
-            "{strategy:?} bounds descriptions by default"
-        );
+fn the_description_cap_is_configurable_under_every_strategy() {
+    for strategy in MemoryStrategy::ALL {
         let caps = MemoryCaps::resolve(
             strategy,
-            &json!({ "maxLenDescription": 40 }),
+            &specified(json!({ PARAM_MAX_LEN_DESCRIPTION: 40 })),
             &mut honoured(),
         );
         assert_eq!(caps.max_len_description, Some(40), "{strategy:?}");
     }
-    // And `0` disables it, the same spelling every other limit uses.
+    // And `0` lifts it, the same spelling every other limit uses.
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Markdown,
-        &json!({ "maxLenDescription": 0 }),
+        &specified(json!({})),
         &mut honoured(),
     );
     assert_eq!(caps.max_len_description, None);
@@ -431,7 +506,7 @@ fn the_description_cap_defaults_everywhere_and_is_configurable_everywhere() {
 fn the_description_cap_refuses_a_long_one_liner() {
     let caps = MemoryCaps {
         max_len_description: Some(20),
-        ..MemoryCaps::default()
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
     let long = "a".repeat(21);
@@ -477,7 +552,7 @@ fn the_description_cap_is_reported_before_the_body_caps() {
     let caps = MemoryCaps {
         max_len_per_memory: Some(5),
         max_len_description: Some(5),
-        ..MemoryCaps::default()
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
     let err = store
@@ -492,26 +567,17 @@ fn the_description_cap_is_reported_before_the_body_caps() {
     assert!(matches!(err, MemoryError::DescriptionCap { .. }), "{err:?}");
 }
 
-/// **The deliberate exception.** A param a strategy does not use is ignored rather than rejected, so
-/// one sweep can hand every arm the same params block — and it is not read at all, so even a value
-/// gg could not have honoured on such a key is accepted here. The arm that *does* use the key is
-/// where the operator hears about it.
+/// **The shared params block.** A limit the selected strategy does not apply bounds nothing under
+/// it, so one sweep can hand every arm the same block — and the block is still written whole and
+/// still read whole, which is what makes it the same block.
 #[test]
-fn a_param_the_strategy_does_not_use_is_ignored() {
+fn a_limit_the_strategy_does_not_apply_bounds_nothing() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Scratchpad,
-        &json!({ "maxLenIndex": 4_096, "maxResults": 10 }),
+        &specified(json!({ PARAM_MAX_LEN_INDEX: 4_096, PARAM_MAX_RESULTS: 10 })),
         &mut honoured(),
     );
     assert_eq!(caps.max_len_index, None);
-    assert_eq!(caps.max_results, None);
-
-    // …including one that is not a count at all.
-    let caps = MemoryCaps::resolve(
-        MemoryStrategy::Scratchpad,
-        &json!({ "maxResults": "lots" }),
-        &mut honoured(),
-    );
     assert_eq!(caps.max_results, None);
 }
 

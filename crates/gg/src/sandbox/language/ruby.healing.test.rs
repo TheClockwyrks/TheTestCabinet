@@ -43,7 +43,7 @@ pub(super) const FIXTURES: &[&str] = &[
 fn healed(reply: &str) -> Healed {
     heal(
         reply,
-        &HealingConfig::default(),
+        &HealingConfig::SAFE_REPAIRS,
         crate::sandbox::language(GgProgramLanguage::Ruby).healing(),
     )
 }
@@ -66,7 +66,7 @@ fn ruby() -> &'static dyn Dialect {
 #[test]
 fn a_doubled_response_is_still_halved() {
     let program = "rows = GG::Files.list_dir(\"src\")\nGG::Views.open_text(\"rows\", rows.inspect)";
-    let mut config = HealingConfig::default();
+    let mut config = HealingConfig::SAFE_REPAIRS;
     config.set(HealingStrategy::DropDoubledResponse, true);
     let result = heal(
         &format!("{program}{program}"),

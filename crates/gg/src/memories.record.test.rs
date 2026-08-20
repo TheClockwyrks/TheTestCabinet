@@ -12,10 +12,10 @@ use test_cabinet_core::gg::{GgMemoryChange, GgTelemetryKind};
 
 use super::*;
 
-/// A scratchpad store with room to work in — these tests are about what is recorded, not about
-/// what is refused.
+/// A scratchpad store bounded by nothing — these tests are about what is recorded, not about what
+/// is refused.
 fn store() -> MemoryStore {
-    MemoryStore::new(MemoryStrategy::Scratchpad, MemoryCaps::default())
+    MemoryStore::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED)
 }
 
 /// Every revision the store has recorded, as the telemetry a holder streams for it.
@@ -191,7 +191,7 @@ fn the_log_accumulates_rather_than_draining() {
 fn a_refused_mutation_is_not_recorded() {
     let caps = MemoryCaps {
         max_len_per_memory: Some(4),
-        ..MemoryCaps::default()
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
     store
@@ -207,10 +207,7 @@ fn a_refused_mutation_is_not_recorded() {
 /// search/replace rather than the fragment that was swapped in.
 #[test]
 fn the_file_shaped_calls_are_recorded_too() {
-    let mut store = MemoryStore::new(
-        MemoryStrategy::Markdown,
-        MemoryCaps::for_strategy(MemoryStrategy::Markdown),
-    );
+    let mut store = MemoryStore::new(MemoryStrategy::Markdown, MemoryCaps::UNBOUNDED);
     store
         .create("", "layout", "the layout", "a grid", MemoryCode::default())
         .unwrap();
@@ -343,7 +340,7 @@ fn the_state_event_reports_the_peaks() {
 /// as it likes before the loop next drains.
 #[test]
 fn the_runtime_drains_a_whole_batch() {
-    let runtime = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    let runtime = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::UNBOUNDED);
     {
         let mut store = runtime.store().lock().unwrap().clone();
         // Mutating a clone must not reach the runtime — the shared handle is the store.
@@ -387,7 +384,19 @@ fn a_disabled_runtime_reports_no_revisions() {
 fn the_state_event_reports_the_description_cap() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Markdown,
-        &json!({ "maxLenDescription": 80 }),
+        &GgCapabilityConfig {
+            id: CAPABILITY_MEMORIES.to_string(),
+            enabled: true,
+            implementation: None,
+            params: json!({
+                PARAM_MAX_COUNT: 0,
+                PARAM_MAX_LEN_PER_MEMORY: 0,
+                PARAM_MAX_TOTAL_LEN: 0,
+                PARAM_MAX_LEN_INDEX: 0,
+                PARAM_MAX_LEN_DESCRIPTION: 80,
+                PARAM_MAX_RESULTS: 0,
+            }),
+        },
         &mut LaunchReport::Discarding,
     );
     let store = MemoryStore::new(MemoryStrategy::Markdown, caps);

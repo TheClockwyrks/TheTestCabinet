@@ -45,11 +45,6 @@ use crate::modules::{
 use crate::sandbox::ProgramLanguage;
 use crate::validate::{LaunchDefect, LaunchReport};
 
-/// The default directory skills are loaded from, relative to the run workspace, when the
-/// capability does not configure one via its `dir` param. `core`'s workspace seeding may
-/// place authored skills here before the run starts.
-pub const DEFAULT_SKILLS_DIR: &str = ".gg/skills";
-
 /// The file extension a skill file must have to be loaded from a skills directory.
 const SKILL_EXTENSION: &str = "md";
 
@@ -175,8 +170,10 @@ impl Skill {
 ///
 /// Skills are keyed by their front-matter [`name`](Skill::name); the catalog is ordered
 /// by name for a stable prompt listing and telemetry order. An [`empty`](Self::empty)
-/// library (no skills directory, or the capability off) offers nothing.
-#[derive(Debug, Clone, Default)]
+/// library (no skills directory, or the capability off) offers nothing, and is the only way to
+/// come by a library with nothing in it — there is no `Default` here, because "no skills" is a
+/// state a caller says it means rather than one it falls into.
+#[derive(Debug, Clone)]
 pub struct SkillLibrary {
     skills: Vec<Skill>,
 }
@@ -214,10 +211,10 @@ impl SkillLibrary {
     ///
     /// Two things are deliberately not defects. An entry whose name begins with a **dot** is
     /// tooling's (`.gitkeep`, `.DS_Store`), never an authored skill, and is skipped in silence. And
-    /// a **missing** directory yields an [`empty`](Self::empty) library: skills are optional, and the
-    /// default `.gg/skills` is absent from every workspace that authored none. A `dir` the
-    /// capability explicitly **named** and gg cannot open is a different thing entirely, and the
-    /// [workspace gate](crate::validate::validate_workspace) refuses it.
+    /// a **missing** directory yields an [`empty`](Self::empty) library rather than a defect *here*:
+    /// which directory an agent loads from is its profile's to name, and whether the workspace
+    /// carries the one it named is the [workspace gate](crate::validate::validate_workspace)'s
+    /// question, asked once after seeding. This reads what is there.
     ///
     /// The result is ordered by skill name.
     pub fn load(dir: &Path, report: &mut LaunchReport) -> Self {

@@ -34,8 +34,8 @@
 //! of the two surfaces being independent rather than one being the other's subset by construction.
 
 use test_cabinet_core::gg::{
-    CAPABILITY_COMPACTION, CAPABILITY_FORK, CAPABILITY_MEMORIES, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SUBAGENTS, GgAgentConfig,
+    CAPABILITY_COMPACTION, CAPABILITY_FORK, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SUBAGENTS,
+    GgAgentConfig,
 };
 
 use crate::compaction::CompactionStrategy;
@@ -155,18 +155,22 @@ fn serviceable(
         // `compact` exists only under the strategies that hand the rewrite to the working model
         // itself. Under a handoff strategy a separate model owns it, so a program that could declare
         // one would be driving a compaction its configuration deliberately delegated elsewhere.
-        CONTEXT_COMPACT => CompactionStrategy::resolve(
-            profile
-                .capability(CAPABILITY_COMPACTION)
-                .filter(|capability| capability.enabled)
-                .and_then(|capability| capability.implementation.as_deref()),
-            // Writable, not merely enabled: a read-only memory holder cannot satisfy a memory
-            // compaction, so its run condenses in prose and gets the call that goes with that.
-            profile.is_enabled(CAPABILITY_MEMORIES) && modules.memories().is_writable(),
-            // Mid-run: the launch pass already read this profile's `implementation`.
-            &mut crate::validate::LaunchReport::Discarding,
-        )
-        .offers_compact_tool(profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE)),
+        //
+        // The switch is read first and on its own: a capability that is off compacts by no strategy
+        // at all, and resolving its unwritten arm would answer with
+        // [`NO_COMPACTION`](CompactionStrategy::NO_COMPACTION) — a placeholder, not an arm, and one
+        // no call may be offered off.
+        CONTEXT_COMPACT => {
+            profile.is_enabled(CAPABILITY_COMPACTION)
+                && CompactionStrategy::resolve(
+                    profile
+                        .capability(CAPABILITY_COMPACTION)
+                        .and_then(|capability| capability.implementation.as_deref()),
+                    // Mid-run: the launch pass already read this profile's `implementation`.
+                    &mut crate::validate::LaunchReport::Discarding,
+                )
+                .offers_compact_tool(profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE))
+        }
 
         // A spawn needs a roster entry to name; an empty allowlist means this agent delegates to
         // no one.

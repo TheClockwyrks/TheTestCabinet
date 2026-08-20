@@ -2,7 +2,7 @@
 //! [keyword-search](MemoryStrategy::KeywordSearch)'s absence of one, the create/read/edit/delete
 //! surface they share, and the strategy resolution that selects between them.
 
-use serde_json::json;
+use serde_json::{Value, json};
 use test_cabinet_core::gg::GgTelemetryKind;
 
 use super::*;
@@ -19,16 +19,46 @@ fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
     report.into_defects()
 }
 
-/// A markdown store with the documented defaults.
+/// A markdown store bounded by nothing — these cases are about the index, not about the ceilings.
 fn markdown_store() -> MemoryStore {
-    let strategy = MemoryStrategy::Markdown;
-    MemoryStore::new(strategy, MemoryCaps::for_strategy(strategy))
+    MemoryStore::new(MemoryStrategy::Markdown, MemoryCaps::UNBOUNDED)
 }
 
-/// A keyword-search store with the documented defaults.
+/// A keyword-search store bounded by nothing, for the same reason.
 fn keyword_store() -> MemoryStore {
-    let strategy = MemoryStrategy::KeywordSearch;
-    MemoryStore::new(strategy, MemoryCaps::for_strategy(strategy))
+    MemoryStore::new(MemoryStrategy::KeywordSearch, MemoryCaps::UNBOUNDED)
+}
+
+/// One memories capability carrying exactly `params`, on or off.
+///
+/// Built by hand rather than [authored](GgCapabilityConfig::enabled): what these cases are about is
+/// a document short of, or wrong about, one value, and the authoring catalog writes documents that
+/// are neither.
+fn capability(enabled: bool, params: Value) -> GgCapabilityConfig {
+    GgCapabilityConfig {
+        id: CAPABILITY_MEMORIES.to_string(),
+        enabled,
+        implementation: None,
+        params,
+    }
+}
+
+/// An enabled memories capability writing all six limits — every one of them `0`, which is how a
+/// run lifts one — with `overrides` merged over them. The fully specified document a case that is
+/// not itself about an absence starts from, so that whatever it does not name bounds nothing.
+fn specified(overrides: Value) -> GgCapabilityConfig {
+    let mut params = json!({
+        PARAM_MAX_COUNT: 0,
+        PARAM_MAX_LEN_PER_MEMORY: 0,
+        PARAM_MAX_TOTAL_LEN: 0,
+        PARAM_MAX_LEN_INDEX: 0,
+        PARAM_MAX_LEN_DESCRIPTION: 0,
+        PARAM_MAX_RESULTS: 0,
+    });
+    for (key, value) in overrides.as_object().expect("an object of overrides") {
+        params[key] = value.clone();
+    }
+    capability(true, params)
 }
 
 // ---------------------------------------------------------------------------
@@ -51,14 +81,18 @@ fn strategy_resolves_from_the_implementation() {
     );
 }
 
-/// An **absent** (or `null`, or empty) strategy takes the documented default. Absent is not
-/// unrecognized, and that is what this case pins.
+/// An **absent** (or `null`, or blank) strategy is the one absence this resolver does not report.
+///
+/// It is a defect on an enabled capability — and [`check_implementation`](crate::validate) refuses
+/// it there, because it can see the switch and this cannot. What comes back here is the
+/// [placeholder](STRATEGY_OF_A_REFUSED_LAUNCH), silently, so the hole is named once by the reader
+/// that can tell which document it is in.
 #[test]
-fn an_absent_strategy_takes_the_default() {
+fn an_absent_strategy_is_not_this_resolvers_to_report() {
     for absent in [None, Some(""), Some("  ")] {
         assert_eq!(
             MemoryStrategy::resolve(absent, &mut honoured()),
-            MemoryStrategy::Scratchpad,
+            STRATEGY_OF_A_REFUSED_LAUNCH,
             "{absent:?}"
         );
     }
@@ -73,7 +107,7 @@ fn an_unknown_strategy_is_refused() {
         let defects = reported(|report| {
             assert_eq!(
                 MemoryStrategy::resolve(Some(unknown), report),
-                MemoryStrategy::Scratchpad,
+                STRATEGY_OF_A_REFUSED_LAUNCH,
                 "the resolver stays total"
             );
         });
@@ -89,33 +123,80 @@ fn an_unknown_strategy_is_refused() {
     }
 }
 
+/// Which of the six limits each strategy **applies**: a key the selected arm bounds nothing by is
+/// `None` however the params read it, and the arm that does bound something by it is where the
+/// figure is enforced. Every one of them is still written and still read — see
+/// [`a_limit_the_strategy_does_not_apply_is_still_required`].
 #[test]
-fn each_strategy_defaults_to_its_documented_limits() {
-    let markdown = MemoryCaps::for_strategy(MemoryStrategy::Markdown);
-    assert_eq!(markdown.max_len_index, Some(DEFAULT_MAX_LEN_INDEX));
-    assert_eq!(markdown.max_len_per_memory, Some(DEFAULT_MAX_LEN_PER_FILE));
-    // The index is what bounds the population; there is no separate count limit.
+fn each_strategy_applies_the_limits_it_has_something_to_bound() {
+    let all = json!({
+        PARAM_MAX_COUNT: 10,
+        PARAM_MAX_LEN_PER_MEMORY: 20,
+        PARAM_MAX_TOTAL_LEN: 30,
+        PARAM_MAX_LEN_INDEX: 40,
+        PARAM_MAX_LEN_DESCRIPTION: 50,
+        PARAM_MAX_RESULTS: 60,
+    });
+
+    let markdown = MemoryCaps::resolve(
+        MemoryStrategy::Markdown,
+        &specified(all.clone()),
+        &mut honoured(),
+    );
+    assert_eq!(markdown.max_len_index, Some(40));
+    assert_eq!(markdown.max_len_per_memory, Some(20));
+    assert_eq!(markdown.max_len_description, Some(50));
+    // The index is what bounds a markdown run's population, and there is no pinned block of
+    // bodies to sum or search to page.
     assert_eq!(markdown.max_count, None);
     assert_eq!(markdown.max_total_len, None);
+    assert_eq!(markdown.max_results, None);
 
-    let keyword = MemoryCaps::for_strategy(MemoryStrategy::KeywordSearch);
-    assert_eq!(keyword.max_len_per_memory, Some(DEFAULT_MAX_LEN_PER_FILE));
-    assert_eq!(keyword.max_results, Some(DEFAULT_MAX_RESULTS));
-    // Unlimited by default — a run that wants a ceiling sets `maxCount`.
-    assert_eq!(keyword.max_count, None);
+    let keyword = MemoryCaps::resolve(
+        MemoryStrategy::KeywordSearch,
+        &specified(all),
+        &mut honoured(),
+    );
+    assert_eq!(keyword.max_count, Some(10));
+    assert_eq!(keyword.max_len_per_memory, Some(20));
+    assert_eq!(keyword.max_results, Some(60));
+    assert_eq!(keyword.max_len_description, Some(50));
+    // Nothing is pinned, so there is no aggregate and no index to bound.
+    assert_eq!(keyword.max_total_len, None);
     assert_eq!(keyword.max_len_index, None);
 }
 
+/// **The shared params block, read from both ends.** A key the selected strategy does not apply is
+/// still required of an enabled capability and still read — one sweep hands every arm the same
+/// block, so a block that left out the keys its own arm ignores could not be the block beside it,
+/// and a figure gg could not have honoured is heard about on every arm rather than on one.
 #[test]
-fn keyword_search_resolves_its_own_params() {
-    let caps = MemoryCaps::resolve(
-        MemoryStrategy::KeywordSearch,
-        &json!({ "maxCount": 40, "maxLenPerMemory": 500, "maxResults": 5 }),
-        &mut honoured(),
-    );
-    assert_eq!(caps.max_count, Some(40));
-    assert_eq!(caps.max_len_per_memory, Some(500));
-    assert_eq!(caps.max_results, Some(5));
+fn a_limit_the_strategy_does_not_apply_is_still_required() {
+    let mut short = specified(json!({}));
+    short
+        .params
+        .as_object_mut()
+        .unwrap()
+        .remove(PARAM_MAX_RESULTS);
+    let defects = reported(|report| {
+        assert_eq!(
+            MemoryCaps::resolve(MemoryStrategy::Scratchpad, &short, report).max_results,
+            LIMIT_OF_A_REFUSED_LAUNCH,
+        );
+    });
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "memories.params.maxResults");
+
+    // …and a value gg could not read on such a key is reported on that arm too.
+    let unreadable = specified(json!({ PARAM_MAX_RESULTS: "lots" }));
+    let defects = reported(|report| {
+        assert_eq!(
+            MemoryCaps::resolve(MemoryStrategy::Scratchpad, &unreadable, report).max_results,
+            None,
+        );
+    });
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "memories.params.maxResults");
 }
 
 /// Both file limits are individually disableable with `0`, which is what "it must be possible to
@@ -124,7 +205,7 @@ fn keyword_search_resolves_its_own_params() {
 fn markdown_limits_can_be_disabled_individually() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Markdown,
-        &json!({ "maxLenIndex": 0, "maxLenPerMemory": 0 }),
+        &specified(json!({ PARAM_MAX_LEN_INDEX: 0, PARAM_MAX_LEN_PER_MEMORY: 0 })),
         &mut honoured(),
     );
     assert_eq!(caps.max_len_index, None);
@@ -262,7 +343,7 @@ fn create_enforces_the_per_memory_limit() {
     let strategy = MemoryStrategy::Markdown;
     let caps = MemoryCaps {
         max_len_per_memory: Some(10),
-        ..MemoryCaps::for_strategy(strategy)
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(strategy, caps);
     assert_eq!(
@@ -287,7 +368,7 @@ fn create_is_refused_when_the_index_entry_would_not_fit() {
     let caps = MemoryCaps {
         // Room for exactly one `- `aaa` — dd` line and no more.
         max_len_index: Some(12),
-        ..MemoryCaps::for_strategy(strategy)
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(strategy, caps);
     store
@@ -334,7 +415,7 @@ fn keyword_search_enforces_a_count_limit_when_one_is_configured() {
     let strategy = MemoryStrategy::KeywordSearch;
     let caps = MemoryCaps {
         max_count: Some(2),
-        ..MemoryCaps::for_strategy(strategy)
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(strategy, caps);
     store
@@ -455,7 +536,7 @@ fn edit_enforces_the_per_memory_limit() {
     let strategy = MemoryStrategy::Markdown;
     let caps = MemoryCaps {
         max_len_per_memory: Some(12),
-        ..MemoryCaps::for_strategy(strategy)
+        ..MemoryCaps::UNBOUNDED
     };
     let mut store = MemoryStore::new(strategy, caps);
     store
@@ -520,10 +601,7 @@ fn delete_removes_the_memory_and_its_index_entry() {
 /// window, so a block carrying them would defeat the strategy it is meant to implement.
 #[test]
 fn markdown_pins_the_index_alone() {
-    let runtime = MemoriesRuntime::new(
-        MemoryStrategy::Markdown,
-        MemoryCaps::for_strategy(MemoryStrategy::Markdown),
-    );
+    let runtime = MemoriesRuntime::new(MemoryStrategy::Markdown, MemoryCaps::UNBOUNDED);
     assert!(runtime.context_block().is_none(), "nothing to show yet");
 
     runtime
@@ -553,10 +631,7 @@ fn markdown_pins_the_index_alone() {
 /// Keyword-search pins nothing at all — that is the arm of the study it exists to be.
 #[test]
 fn keyword_search_pins_nothing() {
-    let runtime = MemoriesRuntime::new(
-        MemoryStrategy::KeywordSearch,
-        MemoryCaps::for_strategy(MemoryStrategy::KeywordSearch),
-    );
+    let runtime = MemoriesRuntime::new(MemoryStrategy::KeywordSearch, MemoryCaps::UNBOUNDED);
     runtime
         .store()
         .lock()
@@ -570,13 +645,19 @@ fn keyword_search_pins_nothing() {
 fn the_state_event_reports_the_strategy_and_its_limits() {
     let runtime = MemoriesRuntime::new(
         MemoryStrategy::Markdown,
-        MemoryCaps::for_strategy(MemoryStrategy::Markdown),
+        MemoryCaps::resolve(
+            MemoryStrategy::Markdown,
+            &specified(json!({ PARAM_MAX_LEN_INDEX: 4_096, PARAM_MAX_COUNT: 40 })),
+            &mut honoured(),
+        ),
     );
     let GgTelemetryKind::MemoryState { strategy, caps, .. } = runtime.state_event().unwrap() else {
         panic!("expected a MemoryState");
     };
     assert_eq!(strategy, "markdown");
-    assert_eq!(caps.max_len_index, Some(DEFAULT_MAX_LEN_INDEX as u64));
+    assert_eq!(caps.max_len_index, Some(4_096));
+    // A limit this strategy does not apply is absent from the telemetry, however the params read
+    // it: the run is not holding the model to it.
     assert_eq!(caps.max_count, None);
 }
 

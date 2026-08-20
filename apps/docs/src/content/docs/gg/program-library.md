@@ -102,10 +102,11 @@ nothing until it asks.
 { "id": "program-library", "enabled": true, "params": { "keep": 20 } }
 ```
 
-`keep` is how many of the agent's most recent programs are retained, and is 20
-when absent. `0` keeps every program of the session. A `keep` gg cannot read as a
-retention refuses the launch, so a study never holds a different number of
-programs than its configuration says.
+`keep` is how many of the agent's most recent programs are retained, and an
+enabled program-library capability writes it. `0` keeps every program of the
+session. An absent `keep`, and one gg cannot read as a retention, refuse the
+launch, so a study never holds a different number of programs than its
+configuration says.
 
 Retention is per agent: a run may keep programs for its implementer and not for
 its reviewer. The launch log names each agent that keeps programs, how many each

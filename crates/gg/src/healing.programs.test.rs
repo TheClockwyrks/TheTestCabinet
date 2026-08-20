@@ -19,9 +19,10 @@ use super::tests::{
 };
 use super::*;
 
-/// Heal with `drop-doubled-response` armed on top of the defaults — the configuration an operator
-/// writes for a model observed to double its completions, and the only one under which any case in
-/// the section below fires.
+/// Heal with `drop-doubled-response` armed on top of the
+/// [safe repairs](HealingConfig::SAFE_REPAIRS) — the configuration an operator writes for a model
+/// observed to double its completions, and the only one under which any case in the section below
+/// fires.
 fn healed_doubled(reply: &str) -> Healed {
     healed_with(HealingStrategy::DropDoubledResponse, reply)
 }
@@ -300,10 +301,10 @@ fn an_empty_reply_declines_and_counts_nothing() {
 /// The strategy is **off** unless a configuration arms it, so the operator's own case is left
 /// untouched by a run that did not ask for the repair.
 ///
-/// This is the asymmetry that makes it the one default-off strategy: the deleted half is valid code
-/// under any reading other than "the transport duplicated this".
+/// This is the asymmetry that makes it the one strategy an operator arms deliberately: the deleted
+/// half is valid code under any reading other than "the transport duplicated this".
 #[test]
-fn the_doubled_reply_is_left_alone_under_the_default_configuration() {
+fn the_doubled_reply_is_left_alone_where_a_configuration_did_not_arm_it() {
     let reply = "foo();\nbar();foo();\nbar();";
     let result = healed(reply);
     assert_eq!(result.program, reply, "an unarmed strategy fired");
@@ -338,7 +339,7 @@ fn a_program_with_one_statement_among_its_comments_is_a_program() {
 /// the type-strip with its fence on, which is the whole cost that arm exists to measure.
 #[test]
 fn a_fenced_program_is_untouched_when_fences_are_disarmed() {
-    let mut config = HealingConfig::default();
+    let mut config = HealingConfig::SAFE_REPAIRS;
     config.set(HealingStrategy::StripFences, false);
     let reply = "```ts\nconst x = 1;\n```";
     let result = heal(reply, &config, dialect());
@@ -410,7 +411,7 @@ fn fixture_dialect() -> &'static dyn Dialect {
 /// free on the day it is registered.
 #[test]
 fn the_skeleton_repairs_what_needs_no_dialect_at_all() {
-    let mut config = HealingConfig::default();
+    let mut config = HealingConfig::SAFE_REPAIRS;
     config.set(HealingStrategy::DropDoubledResponse, true);
 
     let fenced = heal("```\ntotal = 1 + 2\n```", &config, &INERT);
@@ -444,7 +445,7 @@ fn an_inert_dialect_declines_every_repair_that_needs_one() {
         "Here is the program.\n\nconst total = 1;\n\nThat should do it.",
     ];
     for reply in cases {
-        let result = heal(reply, &HealingConfig::default(), &INERT);
+        let result = heal(reply, &HealingConfig::SAFE_REPAIRS, &INERT);
         assert_eq!(
             result.program,
             reply.trim(),
@@ -468,10 +469,10 @@ fn the_dialect_decides_which_fenced_block_is_the_program() {
                  And the same thing again, elsewhere:\n\n\
                  ```fixture\ntotal = 1 + 2\n```\n";
 
-    let typescript = heal(reply, &HealingConfig::default(), dialect());
+    let typescript = heal(reply, &HealingConfig::SAFE_REPAIRS, dialect());
     assert_eq!(typescript.program, "const total = 1 + 2;");
 
-    let fixture = heal(reply, &HealingConfig::default(), fixture_dialect());
+    let fixture = heal(reply, &HealingConfig::SAFE_REPAIRS, fixture_dialect());
     assert_eq!(fixture.program, "total = 1 + 2");
 }
 

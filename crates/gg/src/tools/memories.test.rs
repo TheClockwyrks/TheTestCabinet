@@ -56,7 +56,12 @@ fn tiny_caps() -> MemoryCaps {
 
 #[tokio::test]
 async fn write_memory_saves_and_reports_usage() {
-    let (store, ctx, _dir) = fixture(MemoryCaps::default());
+    // "1 of N" is a count against a ceiling, so this case has to declare one: a store bounded by
+    // nothing reports how many memories it holds and nothing to compare that against.
+    let (store, ctx, _dir) = fixture(MemoryCaps {
+        max_count: Some(64),
+        ..MemoryCaps::UNBOUNDED
+    });
     let tool = WriteMemoryTool::new(store.clone());
 
     let outcome = tool
@@ -78,7 +83,7 @@ async fn write_memory_saves_and_reports_usage() {
 
 #[tokio::test]
 async fn write_memory_surfaces_a_duplicate_as_a_tool_error() {
-    let (store, ctx, _dir) = fixture(MemoryCaps::default());
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
     let tool = WriteMemoryTool::new(store.clone());
     let args = json!({ "name": "dup", "description": "d", "body": "b" });
 
@@ -129,7 +134,7 @@ async fn write_memory_surfaces_a_cap_breach_as_a_revise_or_evict_error() {
 
 #[tokio::test]
 async fn write_memory_validates_missing_arguments() {
-    let (store, ctx, _dir) = fixture(MemoryCaps::default());
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
     let tool = WriteMemoryTool::new(store);
 
     let outcome = tool
@@ -141,7 +146,7 @@ async fn write_memory_validates_missing_arguments() {
 
 #[tokio::test]
 async fn update_memory_revises_or_reports_not_found() {
-    let (store, ctx, _dir) = fixture(MemoryCaps::default());
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
     let write = WriteMemoryTool::new(store.clone());
     let update = UpdateMemoryTool::new(store.clone());
 
@@ -174,7 +179,7 @@ async fn update_memory_revises_or_reports_not_found() {
 
 #[tokio::test]
 async fn delete_memory_evicts_or_reports_not_found() {
-    let (store, ctx, _dir) = fixture(MemoryCaps::default());
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
     let write = WriteMemoryTool::new(store.clone());
     let delete = DeleteMemoryTool::new(store.clone());
 

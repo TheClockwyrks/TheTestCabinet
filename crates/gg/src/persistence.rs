@@ -273,7 +273,8 @@ impl PersistenceSetup {
 /// one. That means the *envelope* follows the run's protocol — a synthesized `read_file` call/result
 /// pair on the tool-calling path, a synthesized program opening a file view on the
 /// [responses-as-code](crate::sandbox) path, where there are no tools to call and an assistant turn
-/// is a program. Each view is read through this agent's own `read_policy`, so a re-opened window is the same
+/// is a program. Each view is read through this agent's own `read_policy` — and an agent that
+/// configures none re-opens nothing, because it is offered no read at all. So a re-opened window is the same
 /// size the agent's own reads are, and a paged view is re-read over the region it covered rather than
 /// from the top of the file. The views are ordinary [ephemeral](crate::context::Retention::Ephemeral)
 /// reads — compaction may summarize them and agent-managed context may evict them, exactly as if the
@@ -289,7 +290,7 @@ impl PersistenceSetup {
 pub async fn restore_file_views(
     context: &mut ContextModel,
     views: &[OpenFileView],
-    read_policy: ReadPolicy,
+    read_policy: Option<ReadPolicy>,
     tool_ctx: &ToolContext,
     language: GgProgramLanguage,
     emitter: &Emitter,
@@ -302,6 +303,11 @@ pub async fn restore_file_views(
         .into_iter()
         .map(|open| open.path)
         .collect();
+    // Nothing to re-open a view *through*: a profile that configures no read policy is offered no
+    // `read_file`, so the desk it is resuming was never assembled by reading files either.
+    let Some(read_policy) = read_policy else {
+        return 0;
+    };
     let reader = ReadFileTool::new(read_policy);
     let mut restored = 0;
     for (index, view) in views.iter().enumerate() {

@@ -225,10 +225,9 @@ impl Axis {
     /// caller set it.
     ///
     /// The distinction has exactly one subject and it is worth stating: the compaction axis reports
-    /// the strategy gg [resolves](CompactionStrategy::resolve), which folds two configurations onto
-    /// one value when a memory-compaction run cannot write its memories. Deriving in resolved
-    /// coordinates and predicting in resolved coordinates is what keeps the condition and the check
-    /// asking the same question.
+    /// the strategy gg [resolves](CompactionStrategy::resolve) from the name the configuration
+    /// carries, rather than the name itself. Deriving in resolved coordinates and predicting in
+    /// resolved coordinates is what keeps the condition and the check asking the same question.
     fn observe(self, configuration: &Configuration) -> usize {
         match self {
             Self::Capability(axis) => usize::from(configuration.holds(axis)),
@@ -240,23 +239,15 @@ impl Axis {
                 .position(|strategy| *strategy == configuration.memories)
                 .unwrap_or_default(),
             Self::CompactionStrategy => {
-                // The two inputs `from_run` gives the resolver, read exactly the way it reads
-                // them — and the second is the trap. It asks
-                // `is_enabled(MEMORIES) && modules.memories().is_writable()`, and an **unbound**
-                // memories module answers that it *is* writable: a disabled holder must not read
-                // as a restriction the run never asked for. So an agent holding the capability
-                // with no store resolves `memory-compaction` to `Memory` rather than to the
-                // summarization fallback, and a reading that consulted the access flag alone
-                // would predict the opposite tool set. The verification test found this; nothing
-                // else would have.
-                let memories = module_axis(ModuleAxis::Memories);
-                let writable = configuration.holds(capability_axis(CAPABILITY_MEMORIES))
-                    && (!configuration.binds(memories) || configuration.memory_writable);
+                // The one input `from_run` gives the resolver, read exactly the way it reads it.
+                // A strategy resolves to itself whatever the agent's memory access is: an arm gg
+                // cannot conduct refuses the launch rather than resolving to another, so there is
+                // no fold here for a prediction to get wrong.
+                //
                 // Every value on this axis is drawn from `COMPACTION_STRATEGIES`, so there is
                 // nothing here a resolver could fail to read.
                 let resolved = CompactionStrategy::resolve(
                     Some(configuration.compaction),
-                    writable,
                     &mut crate::validate::LaunchReport::Discarding,
                 )
                 .id();
@@ -362,30 +353,6 @@ impl Axis {
             }
         }
     }
-}
-
-/// The position of `id` in [`CAPABILITY_AXES`].
-///
-/// # Panics
-///
-/// If a capability gg's own configuration reads is not an axis. That is a build-time truth rather
-/// than a run-time condition — the list is a constant and the caller passes a constant — and it is
-/// spelled as a panic because the alternative is deriving every condition against the wrong axis
-/// and reporting it confidently.
-fn capability_axis(id: &str) -> usize {
-    CAPABILITY_AXES
-        .iter()
-        .position(|axis| *axis == id)
-        .expect("every capability the derivation reads is an axis")
-}
-
-/// The position of `module` in [`MODULE_AXES`]. Panics for the reason
-/// [`capability_axis`] does.
-fn module_axis(module: ModuleAxis) -> usize {
-    MODULE_AXES
-        .iter()
-        .position(|axis| *axis == module)
-        .expect("every module the derivation reads is an axis")
 }
 
 /// One thing that must be true of a run, on one axis: the axis, and the values at which the tool is

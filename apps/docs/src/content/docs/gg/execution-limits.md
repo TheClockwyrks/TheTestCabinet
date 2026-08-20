@@ -95,28 +95,29 @@ for the runs a ceiling stopped. A discarded reply counts towards neither the
 errors nor the turns, because the request was retried and the turn was judged on
 whatever the retry produced.
 
-## Defaults
+## What is required and what is armed
 
-The host (The Test Cabinet) enforces a wall-clock cap on every run, so the turn
-ceiling is unbounded when unset. What gg arms by default are the two error
-ceilings that end a run whose model has stopped making progress.
+Two of the seven keys are required, because gg conducts every run under them and
+neither has an off it could take instead.
 
-- `maxConsecutiveErrors` defaults to 5. Five failing turns in a row ends the
-  agent.
-- `maxErrorRate` defaults to 0.4 over an `errorRateWindow` of 50. Once an agent
-  has taken 50 turns, more than 40% of its recent turns being errors ends it.
+- `maxParallel` bounds the running pool. A run with no agent able to run is not a
+  run, so there is no figure that means "no cap".
+- `replayMaxBytes` bounds the [session capture journal](/gg/session-record/),
+  which gg writes on every run.
 
-Runtime and cost stay off when unset. `maxParallel` defaults to 16 and
-`replayMaxBytes` to 256 MiB. A ceiling that is set replaces its default, and each
-error-rate half replaces its own: a set declaring only `maxErrorRate` arms it
-over the default window of 50, and one declaring only `errorRateWindow` judges it
-against the default rate of 0.4.
+The other five are ceilings, and a ceiling is armed by writing it. `maxTurns`,
+`maxRuntimeSecs`, `maxCost`, `maxConsecutiveErrors`, and `maxErrorRate` with its
+`errorRateWindow` are each unarmed when the configuration leaves them out. gg
+arms no error ceiling nobody wrote: an agent stopped for looping on errors was
+stopped by a threshold the operator chose, which is what makes the stop a
+finding rather than an artefact of the harness. The host (The Test Cabinet)
+enforces a wall-clock cap on every run regardless.
 
 The run records the ceilings that were in force on the session summary, beside
-the breach if there was one, including an unset turn ceiling recorded as
-unbounded. The run also logs one `info` line at launch naming every armed
-ceiling, or *"no execution ceiling is armed; the run is bounded only by the
-host's clock"* when a configuration disables everything.
+the breach if there was one, and records an unarmed ceiling as unbounded. The run
+also logs one `info` line at launch naming every armed ceiling, or *"no execution
+ceiling is armed; the run is bounded only by the host's clock"* when a
+configuration arms none.
 
 ## The ceilings
 
@@ -124,7 +125,7 @@ host's clock"* when a configuration disables everything.
 
 How many of the run's agents may run at once: the root and every subagent, issue
 implementer and reviewer, counted together regardless of which profile or model
-each runs on. The default is 16.
+each runs on. Every configuration states it.
 
 An agent spawned while the pool is full is created normally and waits for a
 slot, so setting this low serializes a run without losing any of its work. There
@@ -172,12 +173,10 @@ It is evaluated after every recorded outcome, including a good one. A good turn
 can be the turn that fills the window, and a window that becomes judgeable at
 three errors in four is judged then.
 
-Each half stands on its own. Both are absent by default and both have one, so a
-set that declares only the rate arms it over gg's default window, and one that
-declares only the window judges it against gg's default rate — the same reading
-as the set that declares neither. Filling in the half that was not written
-substitutes for nothing; what refuses the launch is a half gg cannot arm as
-written.
+The two halves stand or fall together. A set that writes both arms the ceiling; a
+set that writes neither leaves it unarmed; a set that writes one half refuses the
+launch, because a rate with no window and a window with no rate each describe a
+ceiling gg has no threshold to judge against.
 
 ### `maxCost`
 
@@ -475,24 +474,23 @@ ceiling that produced it:
 }
 ```
 
-A set that declares nothing omits the key entirely, so every stored
-configuration round-trips unchanged. In the console the limits are a Run limits
-fieldset above the capability groups in the
-[configuration](/gg/configurations/) editor, one field per key. A fresh
-configuration shows gg's defaults in the fields that have one, so an empty
-parallelism, error-ceiling or journal field takes that default, while an empty
-`maxTurns`, `maxRuntimeSecs` or `maxCost` leaves that ceiling off.
+In the console the limits are a Run limits fieldset above the capability groups
+in the [configuration](/gg/configurations/) editor, one field per key. A fresh
+configuration is seeded with parallelism and journal figures for the operator to
+keep or change, and with the five ceiling fields empty. An empty ceiling field is
+an unarmed ceiling.
 
-An absent key takes its default. A key that is present is armed exactly as
-written, and one gg cannot arm that way refuses the launch. The refusal names
-every such key in the set at once, so a single pass over the document fixes them
-all. A count declared as an integral JSON number is read as that integer, so
-`60` and `60.0` are one declaration.
+A key that is present is armed exactly as written, and one gg cannot arm that way
+refuses the launch. So does an absent `maxParallel` or `replayMaxBytes`. The
+refusal names every such key in the set at once, so a single pass over the
+document fixes them all. A count declared as an integral JSON number is read as
+that integer, so `60` and `60.0` are one declaration.
 
 | Declaration | Result |
 | --- | --- |
-| `limits`, or any key in it, absent | the defaults above |
-| one error-rate half declared, the other not | the declared half armed as written, over the other's default |
+| `maxParallel` or `replayMaxBytes` absent, `limits` absent altogether | refused |
+| any of the five ceilings absent | that ceiling unarmed |
+| one error-rate half declared, the other not | refused |
 | `maxErrorRate: 0.0` | armed: any error at all, once the window is full |
 | `errorRateWindow` ≥ a set `maxTurns` | armed as declared, warned that it can fire only on the last turn |
 | any key but `maxErrorRate` declared `0` or negative | refused |
