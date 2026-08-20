@@ -759,7 +759,7 @@ print("still here")
             &[],
             SandboxLimits {
                 timeout: budget,
-                ..SandboxLimits::default()
+                ..SandboxLimits::AMPLE
             },
             canned_outcome,
         );
