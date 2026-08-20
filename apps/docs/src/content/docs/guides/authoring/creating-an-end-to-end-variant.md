@@ -26,7 +26,7 @@ apply to a variant's specs as much as to the common ones.
 A variant lives in its own file under `variants/` and is listed in the `variants`
 array in `test-case.toml`. Its `spec`, `reference`, `proof`, review, and
 `[[domain]]` entries are additive on top of the common ones. It may also declare
-its own `workspace`, which replaces the common workspace, and its own
+its own starter project, which replaces the common one, and its own
 `reference_implementation`.
 
 The rules the variant's mode adds reach the model in one of two ways: through a
@@ -83,21 +83,26 @@ For Gyre this meant widening the static-obstacle statements in the playfield,
 physics, and flow specs so the gyre branch can carry the moving, rotating
 obstacle rules.
 
-### 4. Give the variant a workspace, if its state differs
+### 4. Give the variant a starter project, if its state differs
 
-A variant may declare its own `workspace`, which REPLACES the common one rather
-than layering on it — so a variant workspace is the whole seeded project, not a
-patch over the case's. Declare one only when the variant genuinely changes what
-the starter project must hold, and build it from the common workspace so the two
-stay identical everywhere they are not deliberately different.
+A variant may declare its own starter project, which replaces the common one
+rather than layering on it, so a variant's project is the whole seeded project.
+Declare one only when the variant genuinely changes what the starter project must
+hold, and build it from the common one so the two stay identical everywhere they
+are not deliberately different.
+
+Under [manifest format 2](/testing/end-to-end/manifests/#manifest-formats) that
+is a `[workspaces]` table naming one directory per engine, and it replaces the
+case's whole table, so a variant that declares one covers every engine the case
+supports. Under format 1 it is the single `workspace` key.
 
 Gyre needs one: its state carries the obstacle clock and both obstacles' live
-poses, and its debug API adds a `setObstacleClock` operation, so
-`workspaces/gyre/` is `workspaces/base/` plus those three additions and the
-constants naming the sway and spin figures.
+poses, and its debug API adds a `setObstacleClock` operation, so each
+`workspaces/gyre/<engine>/` is the matching `workspaces/base/<engine>/` plus those
+three additions and the constants naming the sway and spin figures.
 
 A variant that changes only the rules, and not the shape of the state or the
-debug surface, declares no `workspace` and seeds the common one.
+debug surface, declares no starter project and seeds the common one.
 
 ### 5. Create the variant file and list it
 
@@ -112,13 +117,18 @@ trailing `.hbs` stripped.
 slug = "gyre"
 name = "Gyre"
 description = "The obstacles sway and rotate, so the ball bounces off tilted faces."
-workspace = "workspaces/gyre"
-
 # Keyed by engine slug, because the build a reference demonstrates differs under
-# each. The table must name every engine the case supports and nothing else, so
-# with one supported engine, naming it alone IS the complete table.
+# each. The table must name every engine the case supports and nothing else.
 [reference_implementation]
-simple-2d = "reference-impl-simple-2d/gyre"
+none = "references/none/gyre"
+"simple-2d" = "references/simple-2d/gyre"
+
+# One starter project per engine, replacing the case's whole `[workspaces]` table
+# for runs of this variant. Under manifest format 1 this is a single `workspace`
+# key instead.
+[workspaces]
+none = "workspaces/gyre/none"
+"simple-2d" = "workspaces/gyre/simple-2d"
 
 # A category of graded points that only this variant's mode introduces. The case
 # manifest declares `[review] format = 2`; a variant inherits it and must not
@@ -131,7 +141,7 @@ title = "Gyre"
 id = "oriented-bounce"
 title = "Oriented bounces"
 description = "The ball bounces off the obstacles' tilted faces at oriented angles."
-validation = { script = "validation/simple-2d/gyre/oriented-bounce.test.ts", outputs = [
+validation = { script = "gyre/oriented-bounce.test.ts", outputs = [
   { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "video" },
 ] }
 ```
@@ -144,12 +154,12 @@ variants = [
 ]
 ```
 
-A `script` path on an engine-backed case must carry the engine segment —
-`validation/<engine>/…` — because the runner stages the directory for the run's
-engine into the built workspace at `validation/` and reaches a suite by dropping
-exactly that segment. A path that omits it names no suite of the run's engine, so
-the point is reported as undecided and left to the reviewer rather than failed.
-See [The Suite](/engines/simple-2d/validators/the-suite/).
+Under [manifest format 2](/testing/end-to-end/manifests/#manifest-formats) a
+`script` path is relative to the engine's validator project, and the case ships
+that suite under `validation/<engine>/` for every engine it supports. Resolution
+holds the declaration against each of them, so one declaration decides the point
+the same way whichever engine ran. See
+[The Suite](/engines/simple-2d/validators/the-suite/).
 
 Rules enforced at resolution:
 

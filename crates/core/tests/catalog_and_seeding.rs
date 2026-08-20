@@ -91,7 +91,7 @@ fn carom_instrumentation_renders_per_variant_ball_count() {
     let seed_instrumentation = |variant_slug: &str| -> String {
         let variant = version.variant(variant_slug).expect("variant");
         let specs = version.seeded_specs(variant);
-        let workspace = version.workspace_for(variant);
+        let workspace = version.workspace_for(variant, "none");
 
         let seed_base = tempfile::tempdir().expect("temp dir");
         let fake_image = seed_base.path().join("title-source.png");
@@ -339,11 +339,25 @@ fn resolves_carom_from_its_manifest() {
                     .filter_map(|sub| sub.validation.as_ref().map(|v| (sub.id.clone(), v))),
             );
             for (id, validation) in validations {
+                // A per-engine validator names a suite inside every supported
+                // engine's validator project rather than one host file, so it is
+                // checked against each project rather than against a single path.
                 assert!(
-                    validation.script.is_file(),
-                    "carom point `{id}` names a validator that is not a file: {}",
-                    validation.script.display()
+                    validation.script.is_none(),
+                    "carom point `{id}` should declare its validator per engine"
                 );
+                for engine in version.engine_slugs() {
+                    let suite = version
+                        .root
+                        .join("validation")
+                        .join(&engine)
+                        .join(&validation.script_rel);
+                    assert!(
+                        suite.is_file(),
+                        "carom point `{id}` names no validator for engine `{engine}`: {}",
+                        suite.display()
+                    );
+                }
                 assert!(
                     validation.script_rel.ends_with(".test.ts"),
                     "carom point `{id}` should be decided by a vitest validator, not `{}`",
@@ -370,7 +384,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
     // the standard mode.
     let base = version.variant("base").expect("base variant");
     let specs = version.seeded_specs(base);
-    let workspace = version.workspace_for(base);
+    let workspace = version.workspace_for(base, "none");
 
     // Stand in for a rendered reference screenshot. The seeder copies the file
     // verbatim, so its bytes do not need to be a real PNG for this contract test
@@ -504,7 +518,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
             test_case: &version,
             variant: base,
             specs: &specs,
-            workspace: version.workspace_for(base),
+            workspace: version.workspace_for(base, "none"),
             references: &[],
             live_preview: None,
             prior_game_jam_entries: &[],

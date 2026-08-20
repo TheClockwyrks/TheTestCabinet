@@ -13,7 +13,6 @@ use std::process::Command;
 
 use crate::adversarial_validator::AdversarialValidator;
 use crate::browser::{self, ScriptOutputSpec, StaticServer};
-use crate::engine::ResolvedEngine;
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
@@ -147,11 +146,11 @@ impl Validator for BuildValidator {
         // built on no runtime has its instrumentation driven in a browser. A script or
         // validator that could not be run against a conformant build fails the checklist
         // point it backs; neither affects the run's terminal state.
-        let debug_scripts = match scripted_validation(artifacts) {
+        let debug_scripts = match scripted_validation(test_case, artifacts) {
             ScriptedValidation::Vitest(engine) => crate::vitest_validator::run_vitest_suites(
                 test_case,
                 variant,
-                engine,
+                &engine,
                 artifacts,
                 &build_commands.install,
             ),
@@ -397,27 +396,40 @@ impl BuildValidator {
 }
 
 /// Which path decides a case's scripted review points for a given collected tree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ScriptedValidation<'a> {
-    /// The run was built on an [engine](crate::engine) that vendors a runtime. The
-    /// case's validators for that engine are a vitest project run in process against
-    /// the build's own modules (see [`crate::vitest_validator`]).
-    Vitest(&'a ResolvedEngine),
-    /// The run vendored no runtime. The build is served as a static site and its
-    /// [instrumentation](crate::test_case::Instrumentation) driven in a browser.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ScriptedValidation {
+    /// The case ships a validator project for the run's [engine](crate::engine): a
+    /// vitest project run in process against the build's own modules (see
+    /// [`crate::vitest_validator`]), carrying the engine slug whose project runs.
+    Vitest(String),
+    /// The case ships no validator project for the run's engine, so its points are
+    /// decided by driving the build's
+    /// [instrumentation](crate::test_case::Instrumentation) in a browser.
     Browser,
 }
 
-/// The scripted-validation path for `artifacts`.
+/// The scripted-validation path for `test_case` over `artifacts`.
 ///
-/// The selection is read off the tree's own description rather than passed in,
-/// because the tree is what the engine was vendored into. A tree that records no
-/// engine, and a tree whose engine vendors no runtime, are the same answer: drive the
-/// build in a browser, exactly as every case predating engines is validated.
-pub(crate) fn scripted_validation(artifacts: &ArtifactCollection) -> ScriptedValidation<'_> {
-    match artifacts.engine_runtime() {
-        Some(engine) => ScriptedValidation::Vitest(engine),
-        None => ScriptedValidation::Browser,
+/// The question is whether the case ships a validator project for the engine the
+/// run was built on, which is a fact about the case and the tree together: a case
+/// declares its validators per engine, and the tree records which engine it was
+/// seeded for. A case that ships one has its points decided in process, against the
+/// build's own modules, whether or not that engine vendors a runtime — an
+/// engineless project is TypeScript a suite can import exactly as an engine-backed
+/// one is. A case that ships none has its build driven in a browser, which is how
+/// every case predating validator projects is decided.
+pub(crate) fn scripted_validation(
+    test_case: &TestCaseVersion,
+    artifacts: &ArtifactCollection,
+) -> ScriptedValidation {
+    let slug = artifacts
+        .engine
+        .as_ref()
+        .map_or(crate::engine::NONE_SLUG, |engine| engine.slug());
+    if crate::vitest_validator::has_project(test_case, slug) {
+        ScriptedValidation::Vitest(slug.to_string())
+    } else {
+        ScriptedValidation::Browser
     }
 }
 
@@ -649,12 +661,19 @@ pub fn drive_scripted_items(
             })
             .collect();
 
+        // A per-engine validator names a suite inside a validator project, not one
+        // script a browser can drive, so it has no host path here. A case declaring
+        // them ships a project for every engine it supports, which is what this path
+        // is chosen over — so reaching this with one is a case whose project went
+        // missing, and the whole stage degrades rather than deciding the point.
+        let script = validation.script.as_deref()?;
+
         // Drive the build. An `Err` is an infra fault (no browser), which is
         // host-wide — degrade the entire stage rather than gate on the environment.
         let tmp = media_dir.join(format!(".drive-{}", unit.verdict_id));
         let drive = match browser::drive_script(
             url,
-            &validation.script,
+            script,
             handle,
             instrumentation.tick_hz,
             &tmp,

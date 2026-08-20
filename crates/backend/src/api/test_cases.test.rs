@@ -57,7 +57,7 @@ fn manifest() -> StoredManifest {
         audio: None,
         prompt_template: "build it".to_string(),
         common_specs: vec![],
-        workspace: vec![],
+        workspace: Default::default(),
         init: None,
         assets: vec![],
         packages: vec![],
@@ -75,28 +75,41 @@ fn manifest() -> StoredManifest {
 #[test]
 fn a_variant_reference_build_url_is_folded_onto_the_matching_variant() {
     // The reference-implementation URLs are read from the database keyed by variant
-    // slug, not resolved from the manifest. `version_response` must place a URL on
-    // exactly the variant it belongs to and leave a variant absent from the map
-    // (here `extra`) as `None`.
+    // slug and then by engine, not resolved from the manifest. `version_response`
+    // must place them on exactly the variant they belong to, keep the engines apart,
+    // and leave a variant absent from the map (here `extra`) empty.
     let manifest = manifest();
     let reference_builds = HashMap::from([(
         "base".to_string(),
-        "https://carom-v1-0-1-base.test-cabinet-references.pages.dev".to_string(),
+        std::collections::BTreeMap::from([
+            (
+                "none".to_string(),
+                "https://carom-v1-0-1-base-none.test-cabinet-references.pages.dev".to_string(),
+            ),
+            (
+                "simple-2d".to_string(),
+                "https://carom-v1-0-1-base-simple-2d.test-cabinet-references.pages.dev".to_string(),
+            ),
+        ]),
     )]);
 
     let response = version_response(&manifest, &reference_builds, &HashMap::new()).unwrap();
 
     let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
     assert_eq!(
-        base.reference_build.as_deref(),
-        Some("https://carom-v1-0-1-base.test-cabinet-references.pages.dev")
+        base.reference_builds.get("none").map(String::as_str),
+        Some("https://carom-v1-0-1-base-none.test-cabinet-references.pages.dev")
+    );
+    assert_eq!(
+        base.reference_builds.get("simple-2d").map(String::as_str),
+        Some("https://carom-v1-0-1-base-simple-2d.test-cabinet-references.pages.dev")
     );
     let extra = response
         .variants
         .iter()
         .find(|v| v.slug == "extra")
         .unwrap();
-    assert_eq!(extra.reference_build, None);
+    assert!(extra.reference_builds.is_empty());
 }
 
 #[test]
@@ -220,14 +233,14 @@ fn a_non_performance_version_omits_the_cases_field() {
 #[test]
 fn no_reference_builds_leaves_every_variant_without_one() {
     // The empty-map case (no variant of this version has a deployed reference
-    // implementation): every variant resolves to `None`.
+    // implementation): every variant resolves to an empty map.
     let manifest = manifest();
     let response = version_response(&manifest, &HashMap::new(), &HashMap::new()).unwrap();
     assert!(
         response
             .variants
             .iter()
-            .all(|v| v.reference_build.is_none())
+            .all(|v| v.reference_builds.is_empty())
     );
 }
 

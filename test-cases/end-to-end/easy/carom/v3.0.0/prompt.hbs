@@ -7,20 +7,20 @@ Your project root is `{{workspace}}`. Build the game there.
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
 away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints it,
-Prettier formats it, and `src/main.ts` already creates the engine over the page's
-canvas and runs the game.
+Prettier formats it, and `src/main.ts` already stands the runtime up over the
+page's canvas and runs the game.
 
 **What is missing is the game itself: `src/game.ts`.** It exports `game`, a
 `Game<CaromState>` whose `initialize`, `update`, and `render` all throw
 `"not implemented"`. Implement those three functions, splitting the work across
 new modules under `src/` however suits you.
 
-Four files and the project's configuration are the case's and **must not be
-edited**: `src/main.ts` (the entry point), `src/constants.ts` (every figure the
-specification fixes), `src/debug.ts` (the `window.__carom` automation surface),
-`index.html`, and `package.json`, `tsconfig.json`, `vite.config.ts`,
-`vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
-and `.gitignore`.
+The case's own files and the project's configuration **must not be edited**:
+`src/main.ts` (the entry point),{{#if (eq engine.slug "none")}} `src/host.ts` (the
+runtime),{{/if}} `src/constants.ts` (every figure the specification fixes),
+`src/debug.ts` (the `window.__carom` automation surface), `index.html`, and
+`package.json`, `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+`eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
 
 `CaromState`, declared in full in `src/game.ts`, is a contract: keep every field
 under its declared name, type, and meaning, and hold no game state anywhere else.
@@ -28,6 +28,19 @@ under its declared name, type, and meaning, and hold no game state anywhere else
 name, and piece of screen copy the specification fixes — import them, and never
 restate one as a literal.
 
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This build runs on no engine: the runtime it needs is part of the project, in
+`src/host.ts`. Import it from there; there is nothing to add to `package.json`
+for it and nothing to install.
+
+`src/host.ts` is the authoritative description of the runtime's API, and its doc
+comments cover every member the game receives. Read it before you start. The
+specification in `specs/` describes the game and does not restate the runtime, so
+work from that file rather than from assumptions about how such a runtime usually
+behaves.
+{{else}}
 ## The {{engine.name}} engine
 
 This build runs on the **{{engine.name}}** engine, installed as a dependency of
@@ -40,14 +53,15 @@ in `specs/` describes the game and does not restate the engine — so work from
 those pages rather than from assumptions about how such a runtime usually behaves.
 They also carry a complete worked example of unit-testing a game built on it,
 which is the shape your own tests should take.
+{{/if}}
 
-Build the game **on** the engine rather than beside it. The engine owns the frame
-loop and the delta time it hands your update, the input actions the player drives
-the game with, the audio, asset loading, and the on-screen debug overlay: do not
-write your own frame loop, read keyboard events yourself, drive the Web Audio API
-yourself, or draw the overlay yourself. Register what the game needs with the
-engine and use what it gives back. What remains yours is the game itself — its
-simulation and everything it draws.
+Build the game **on** the runtime rather than beside it. The runtime owns the
+frame loop and the delta time it hands your update, the input actions the player
+drives the game with, the audio, asset loading, and the on-screen debug overlay:
+do not write your own frame loop, read keyboard events yourself, drive the Web
+Audio API yourself, or draw the overlay yourself. Register what the game needs
+with the runtime and use what it gives back. What remains yours is the game
+itself — its simulation and everything it draws.
 
 ## What to read first
 

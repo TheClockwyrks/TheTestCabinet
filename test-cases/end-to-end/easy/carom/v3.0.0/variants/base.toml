@@ -21,20 +21,19 @@ description = "Fixed obstacles and a single ball — the reference game."
 # "Reference" tab. It is **never seeded into a run** — handing a model the finished
 # game would defeat the test — so it takes no part in this variant's seed set.
 #
-# The key keeps its table form, keyed by engine slug, even though the case now
-# supports exactly one engine. The table must name every engine the case supports
-# and nothing else, so naming `simple-2d` alone IS the complete table — and the form
-# says out loud which runtime the directory is a reference for, which the bare-path
-# form ("this build, for every supported engine") would leave implicit. The `none`
-# entry went out with the engine: `reference-impl/base` was a hand-written build with
-# its own frame loop, keyboard handling, and Web Audio graph, and this case no longer
-# has an engine it could be the answer for.
+# The key is a table keyed by engine slug, because the build a reference
+# demonstrates differs under each: `references/none/base` carries its own runtime in
+# `src/host.ts`, and `references/simple-2d/base` hands the same surfaces to the
+# vendored engine. The game either one implements is identical, which is what makes
+# a run on one engine comparable with a run on the other. The table must name every
+# engine the case supports and nothing else.
 #
 # This is also what `tcab capture-baselines` drives to produce the baseline half of
 # this variant's validation media: the same vitest validator suites that decide a
 # run's points, run against the authored answer.
 [reference_implementation]
-simple-2d = "reference-impl-simple-2d/base"
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
 
 # Serve direction is declared per variant rather than commonly, and lives in the
 # case's COMMON `gameplay` category: a variant may reuse a common category's id to add
@@ -57,8 +56,8 @@ id = "serve-initial"
 title = "Initial serve direction"
 description = "The very first serve of a match always travels toward player one."
 # Automated validation: start fresh matches and read the first serve's horizontal
-# direction (toward player one). See validation/simple-2d/gameplay/serve-initial.test.ts.
-validation = { script = "validation/simple-2d/gameplay/serve-initial.test.ts", outputs = [
+# direction (toward player one). See validation/<engine>/gameplay/serve-initial.test.ts.
+validation = { script = "gameplay/serve-initial.test.ts", outputs = [
   { id = "serve", name = "First serve toward player one", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -67,8 +66,8 @@ title = "Serve after scoring on player one"
 description = "After a point is scored on player one (player two scores), the next serve travels toward player one, the receiver."
 # Automated validation: drive a real point out the left goal, then read the next
 # serve's horizontal direction (toward player one). See
-# validation/simple-2d/gameplay/serve-after-p1.test.ts.
-validation = { script = "validation/simple-2d/gameplay/serve-after-p1.test.ts", outputs = [
+# validation/<engine>/gameplay/serve-after-p1.test.ts.
+validation = { script = "gameplay/serve-after-p1.test.ts", outputs = [
   { id = "serve", name = "Serve toward player one after a point on player one", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -77,7 +76,7 @@ title = "Serve after scoring on player two"
 description = "After a point is scored on player two (player one scores), the next serve travels toward player two, the receiver."
 # Automated validation: drive a real point out the right goal, then read the next
 # serve's horizontal direction (toward player two). See
-# validation/simple-2d/gameplay/serve-after-p2.test.ts.
-validation = { script = "validation/simple-2d/gameplay/serve-after-p2.test.ts", outputs = [
+# validation/<engine>/gameplay/serve-after-p2.test.ts.
+validation = { script = "gameplay/serve-after-p2.test.ts", outputs = [
   { id = "serve", name = "Serve toward player two after a point on player two", kind = "video" },
 ] }

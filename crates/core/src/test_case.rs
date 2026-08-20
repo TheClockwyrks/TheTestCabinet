@@ -29,6 +29,29 @@ use crate::error::{Error, Result};
 /// empty default (see [`GameJamManifest::into_case`]).
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 struct Manifest {
+    /// The **manifest format** this file is authored in. Defaults to
+    /// [`MANIFEST_FORMAT_LEGACY`], which is what every version authored before the
+    /// key existed is, so a manifest that declares nothing keeps resolving unchanged.
+    ///
+    /// The format decides how a case says which starter project a run is seeded
+    /// with, and therefore which cases may name an [engine](crate::engine) at all:
+    ///
+    /// * [`MANIFEST_FORMAT_LEGACY`] has one `workspace` directory for the whole case
+    ///   and cannot name an engine. A run of it is the engineless run, and the one
+    ///   workspace is the project that run is seeded with.
+    /// * [`MANIFEST_FORMAT_ENGINES`] has a `[workspaces]` table naming one directory
+    ///   **per engine** and no `workspace` key at all. A starter project is written
+    ///   against a runtime — its `package.json` depends on the engine, its
+    ///   case-owned modules are written against the engine's API — so one directory
+    ///   cannot stand for two engines, and the format that supports engines is the
+    ///   one that makes the per-engine directory the only way to say it.
+    ///
+    /// The two are exclusive in both directions, and resolution says so: a legacy
+    /// manifest declaring `[workspaces]`, an engine list, or an `[[engine]]` table is
+    /// rejected, and a [`MANIFEST_FORMAT_ENGINES`] manifest declaring `workspace` is
+    /// rejected. Neither is a silently-ignored key.
+    #[serde(default = "default_manifest_format")]
+    format: u32,
     /// The case's **stable identity**, recorded in every run and used as the
     /// definition-store key. **Required.** It is declared explicitly rather than
     /// derived from the folder name so identity is **decoupled from the folder**:
@@ -195,14 +218,30 @@ struct Manifest {
     /// `[[spec]]` tables.
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
-    /// Optional starter **workspace** directory, relative to the version folder.
+    /// Optional starter **workspace** directory, relative to the version folder —
+    /// the [`MANIFEST_FORMAT_LEGACY`] spelling, and illegal under
+    /// [`MANIFEST_FORMAT_ENGINES`].
+    ///
     /// Its contents are copied into the root of the run's workspace before the
     /// specs are seeded, giving every run a baseline project to build on (for
     /// example a `package.json`). A variant may override it with its own
     /// directory (see [`ManifestVariant::workspace`]). `None` seeds no starter
-    /// files.
+    /// files. A legacy case supports no engine, so the one directory is the
+    /// engineless run's project and resolution files it under
+    /// [`NONE_SLUG`].
     #[serde(default)]
     workspace: Option<PathBuf>,
+    /// The starter **workspace directory per engine**, relative to the version
+    /// folder — the [`MANIFEST_FORMAT_ENGINES`] spelling, and illegal under
+    /// [`MANIFEST_FORMAT_LEGACY`].
+    ///
+    /// Keyed by [engine](crate::engine) slug, and it must name exactly the engines
+    /// the case supports: naming one it does not support is a typo, and omitting one
+    /// it does would leave a run of that engine with nothing to seed. A variant may
+    /// replace the whole table with one of its own (see
+    /// [`ManifestVariant::workspaces`]).
+    #[serde(default)]
+    workspaces: BTreeMap<String, PathBuf>,
     /// Optional **init** command, run inside the run container once the workspace
     /// and specs are seeded and before the harness starts. It can be a plain
     /// command (for example `npm install`) or invoke a file the workspace
@@ -349,6 +388,11 @@ struct ManifestIdentity {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GameJamManifest {
+    /// The **manifest format** this jam is authored in. See [`Manifest::format`]:
+    /// a jam names its starter project and its engines by exactly the same two
+    /// spellings a test case does, so it is gated by exactly the same rule.
+    #[serde(default = "default_manifest_format")]
+    format: u32,
     /// The jam's **stable identity** (the definition-store key). See
     /// [`Manifest::slug`].
     slug: String,
@@ -387,6 +431,10 @@ struct GameJamManifest {
     /// [`Manifest::workspace`].
     #[serde(default)]
     workspace: Option<PathBuf>,
+    /// The starter workspace directory per engine, the engines-format spelling of
+    /// [`Self::workspace`]. See [`Manifest::workspaces`].
+    #[serde(default)]
+    workspaces: BTreeMap<String, PathBuf>,
     /// Optional init command run once after the workspace is seeded and before the
     /// harness starts. See [`Manifest::init`].
     #[serde(default)]
@@ -436,6 +484,7 @@ impl GameJamManifest {
     /// than duplicating it.
     fn into_case(self) -> (Manifest, ManifestVariant) {
         let manifest = Manifest {
+            format: self.format,
             slug: self.slug,
             name: self.name,
             difficulty: GAME_JAM_DIFFICULTY.to_string(),
@@ -448,6 +497,7 @@ impl GameJamManifest {
             test_type: TestType::GameJam,
             experimental: self.experimental,
             workspace: self.workspace,
+            workspaces: self.workspaces,
             init: self.init,
             packages: self.packages,
             engines: self.engines,
@@ -980,11 +1030,25 @@ struct ManifestVariant {
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
     /// Optional starter **workspace** directory for this variant, relative to the
-    /// version folder. When present it **replaces** the case's common workspace
-    /// for runs of this variant (it is not additive), so a variant can ship a
-    /// different baseline project. `None` falls back to the common workspace.
+    /// version folder — the [`MANIFEST_FORMAT_LEGACY`] spelling, and illegal under
+    /// [`MANIFEST_FORMAT_ENGINES`].
+    ///
+    /// When present it **replaces** the case's common workspace for runs of this
+    /// variant (it is not additive), so a variant can ship a different baseline
+    /// project. `None` falls back to the common workspace.
     #[serde(default)]
     workspace: Option<PathBuf>,
+    /// The starter **workspace directory per engine** for this variant — the
+    /// [`MANIFEST_FORMAT_ENGINES`] spelling, and illegal under
+    /// [`MANIFEST_FORMAT_LEGACY`].
+    ///
+    /// When present it **replaces** the case's whole `[workspaces]` table for runs
+    /// of this variant, so it must itself name exactly the engines the case
+    /// supports; a variant cannot override one engine's project and inherit
+    /// another's, because the two halves would be different baselines of the same
+    /// variant. Empty falls back to the case's table.
+    #[serde(default)]
+    workspaces: BTreeMap<String, PathBuf>,
     /// Reference views this variant declares in addition to the common
     /// references. Declared as a `reference` array of inline `{ view, path }`
     /// tables. A variant-specific reference lets one view (for example the title
@@ -1220,7 +1284,11 @@ struct ManifestReviewItem {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestReviewValidation {
     /// The debug-driver script path, relative to the version folder (by convention
-    /// `validation/<item>.mjs`). Reporter-side — never seeded into a run.
+    /// `validation/<item>.mjs`) under [`MANIFEST_FORMAT_LEGACY`], or relative to
+    /// the engine's validator project (for example `gameplay/serve-speed.test.ts`)
+    /// under [`MANIFEST_FORMAT_ENGINES`], where the case ships one project per
+    /// engine and the same point is decided by the same-named suite in each.
+    /// Reporter-side — never seeded into a run.
     script: PathBuf,
     /// The media outputs the script produces, each captured from both the model's
     /// build and the reference implementation for the reviewer's side-by-side.
@@ -2396,6 +2464,87 @@ pub struct WorkspaceFile {
     pub dest: PathBuf,
 }
 
+/// The starter workspace files a case seeds, **keyed by [engine](crate::engine)
+/// slug**.
+///
+/// A starter project is written against a runtime: its `package.json` declares the
+/// engine's dependency, and the case-owned modules it ships are written against
+/// that engine's API. One directory therefore cannot stand for two engines, so a
+/// case that supports more than one ships one project per engine and this is the
+/// resolved form of that. Resolution guarantees the keys are exactly
+/// [`TestCaseVersion::engines`], so a run of any supported engine finds an entry;
+/// read one with [`TestCaseVersion::workspace_for`] rather than indexing.
+///
+/// A [legacy](MANIFEST_FORMAT_LEGACY) case names one directory and supports no
+/// engine, so its files land under [`NONE_SLUG`] and the map has exactly that one
+/// key — which is why nothing downstream needs to know which format a case was
+/// authored in.
+///
+/// It deserializes from **either** shape: the map it serializes as, and the bare
+/// list a definition stored before workspaces were keyed by engine carries. Such a
+/// definition is a legacy case (nothing else could have been stored), so its list
+/// is read as the engineless project, exactly as resolving that manifest today
+/// produces.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct EngineWorkspaces(BTreeMap<String, Vec<WorkspaceFile>>);
+
+impl EngineWorkspaces {
+    /// The files seeded for `engine`, or an empty slice when the case seeds none
+    /// for it.
+    pub fn get(&self, engine: &str) -> &[WorkspaceFile] {
+        self.0.get(engine).map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether no engine has any starter file — the case seeds no workspace at all.
+    pub fn is_empty(&self) -> bool {
+        self.0.values().all(Vec::is_empty)
+    }
+
+    /// Every file of every engine, in engine order. The set a fetch or a rewrite
+    /// walks, where which engine a file belongs to does not matter.
+    pub fn files(&self) -> impl Iterator<Item = &WorkspaceFile> {
+        self.0.values().flatten()
+    }
+
+    /// Every file of every engine, mutably, in engine order.
+    pub fn files_mut(&mut self) -> impl Iterator<Item = &mut WorkspaceFile> {
+        self.0.values_mut().flatten()
+    }
+
+    /// The engine slugs this carries an entry for, in slug order.
+    pub fn engines(&self) -> impl Iterator<Item = &str> {
+        self.0.keys().map(String::as_str)
+    }
+
+    /// Record `files` as the project seeded for `engine`.
+    pub fn insert(&mut self, engine: impl Into<String>, files: Vec<WorkspaceFile>) {
+        self.0.insert(engine.into(), files);
+    }
+}
+
+impl FromIterator<(String, Vec<WorkspaceFile>)> for EngineWorkspaces {
+    fn from_iter<I: IntoIterator<Item = (String, Vec<WorkspaceFile>)>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<'de> Deserialize<'de> for EngineWorkspaces {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        /// The two shapes on the wire, told apart by their JSON kind alone.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            ByEngine(BTreeMap<String, Vec<WorkspaceFile>>),
+            Engineless(Vec<WorkspaceFile>),
+        }
+        Ok(match Wire::deserialize(deserializer)? {
+            Wire::ByEngine(by_engine) => Self(by_engine),
+            Wire::Engineless(files) => Self(BTreeMap::from([(NONE_SLUG.to_string(), files)])),
+        })
+    }
+}
+
 /// The commands the validator runs to build a produced implementation into a
 /// served static site, resolved from the manifest's required `[build]` table.
 ///
@@ -3003,12 +3152,13 @@ pub struct Variant {
     pub description: Option<String>,
     /// Specs this variant seeds in addition to the case's common specs.
     pub specs: Vec<SpecFile>,
-    /// Starter workspace files for this variant, when it overrides the case's
-    /// common workspace. `Some` **replaces** the common workspace for this
-    /// variant (it is not additive); `None` falls back to
+    /// Starter workspace files for this variant, per [engine](crate::engine), when
+    /// it overrides the case's common workspace. `Some` **replaces** the common
+    /// workspace for this variant (it is not additive, and it replaces the whole
+    /// per-engine table rather than one engine's entry); `None` falls back to
     /// [`TestCaseVersion::common_workspace`]. Resolve the effective set for a
-    /// variant with [`TestCaseVersion::workspace_for`].
-    pub workspace: Option<Vec<WorkspaceFile>>,
+    /// variant and engine with [`TestCaseVersion::workspace_for`].
+    pub workspace: Option<EngineWorkspaces>,
     /// Reference views this variant declares in addition to the case's common
     /// references. Rendered and seeded only when this variant is selected, so a
     /// view such as the title menu can differ per variant.
@@ -3191,11 +3341,21 @@ pub struct Instrumentation {
 /// once from the model's build and once from the reference implementation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewValidation {
-    /// Absolute host path to the debug-driver script (resolved inside the version
-    /// folder from the manifest's relative `script`).
-    pub script: PathBuf,
-    /// The version-folder-relative script path, kept for display in the run's
-    /// script list (for example `validation/ball-spin.mjs`).
+    /// Absolute host path to the debug-driver script, for a case that has one —
+    /// a [legacy](MANIFEST_FORMAT_LEGACY) case, whose single script is driven in a
+    /// browser.
+    ///
+    /// `None` for a case that declares its validators **per engine** (see
+    /// [`MANIFEST_FORMAT_ENGINES`]): the same point is decided by the same-named
+    /// suite in each engine's validator project, so which file on the host decides
+    /// it is a property of the run's engine rather than of the case, and the
+    /// validator resolves it from [`Self::script_rel`] against the project it
+    /// staged.
+    pub script: Option<PathBuf>,
+    /// The script path as the case declared it, kept for display in the run's
+    /// script list: version-folder-relative for a legacy case (for example
+    /// `validation/ball-spin.mjs`), and relative to the engine's validator project
+    /// for a per-engine case (for example `gameplay/serve-speed.test.ts`).
     pub script_rel: String,
     /// The media outputs the script produces, in declared order.
     pub outputs: Vec<ReviewOutput>,
@@ -3880,10 +4040,12 @@ pub struct TestCaseVersion {
     pub common_specs: Vec<SpecFile>,
     /// Starter workspace files seeded for every variant that does not override
     /// the workspace (the common set, enumerated from the manifest's `workspace`
-    /// directory). Empty when the case declares no workspace. A variant may
-    /// replace these with its own (see [`Variant::workspace`]); the effective set
-    /// for a variant is [`Self::workspace_for`].
-    pub common_workspace: Vec<WorkspaceFile>,
+    /// directory or its `[workspaces]` table), keyed by [engine](crate::engine)
+    /// slug. Empty when the case declares no workspace. A variant may replace these
+    /// with its own (see [`Variant::workspace`]); the effective set for a variant
+    /// and engine is [`Self::workspace_for`].
+    #[serde(default)]
+    pub common_workspace: EngineWorkspaces,
     /// The command run inside the run container once the workspace and specs are
     /// seeded and before the harness starts (the manifest's `init`). `None` when
     /// the case declares no init step. See [`crate::RunEngine::execute`].
@@ -4014,16 +4176,22 @@ impl TestCaseVersion {
             .collect()
     }
 
-    /// The starter workspace files seeded for a variant: the variant's own set
-    /// when it overrides the workspace, otherwise the case's common workspace.
-    /// Unlike specs, a variant's workspace **replaces** the common one rather
-    /// than layering on top, so this returns one or the other rather than a
+    /// The starter workspace files seeded for a variant on `engine`: the variant's
+    /// own set when it overrides the workspace, otherwise the case's common
+    /// workspace. Unlike specs, a variant's workspace **replaces** the common one
+    /// rather than layering on top, so this returns one or the other rather than a
     /// concatenation.
-    pub fn workspace_for<'a>(&'a self, variant: &'a Variant) -> &'a [WorkspaceFile] {
+    ///
+    /// Keyed by engine because a starter project is written against a runtime, so a
+    /// case supporting more than one engine ships one project per engine. Empty when
+    /// the case seeds no workspace, and empty for an engine this case does not
+    /// support — resolution guarantees an entry for every one it does.
+    pub fn workspace_for<'a>(&'a self, variant: &'a Variant, engine: &str) -> &'a [WorkspaceFile] {
         variant
             .workspace
-            .as_deref()
+            .as_ref()
             .unwrap_or(&self.common_workspace)
+            .get(engine)
     }
 
     /// The reference implementation for `variant` on the engine named by `engine`:
@@ -4413,6 +4581,53 @@ impl TestCaseCatalog {
             )));
         }
 
+        // The manifest format, and the two spellings it decides between. A case says
+        // which starter project a run is seeded with in exactly one way, and which way
+        // is a property of the format rather than something a manifest may mix: the
+        // legacy `workspace` names one directory and admits no engine, and the engines
+        // format's `[workspaces]` names one directory per engine and is the only place
+        // an engine may be declared at all. Reading a key the case's format does not
+        // admit would be reading a declaration the author did not make, so each is
+        // refused by name here rather than silently ignored.
+        if !MANIFEST_FORMATS.contains(&manifest.format) {
+            return Err(invalid(format!(
+                "`format` {} is not a manifest format; valid formats are: {}",
+                manifest.format,
+                MANIFEST_FORMATS
+                    .iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        }
+        let declares_engine = !manifest.engines.is_empty() || !manifest.engine_tables.is_empty();
+        if manifest.format == MANIFEST_FORMAT_ENGINES {
+            if manifest.workspace.is_some() {
+                return Err(invalid(format!(
+                    "`workspace` is not a key of manifest format {MANIFEST_FORMAT_ENGINES}; a \
+                     starter project is written against a runtime, so declare one directory per \
+                     engine in a `[workspaces]` table instead"
+                )));
+            }
+        } else {
+            if !manifest.workspaces.is_empty() {
+                return Err(invalid(format!(
+                    "`[workspaces]` is a key of manifest format {MANIFEST_FORMAT_ENGINES}; \
+                     manifest format {} declares a single `workspace`, and a case wanting one \
+                     project per engine declares `format = {MANIFEST_FORMAT_ENGINES}`",
+                    manifest.format
+                )));
+            }
+            if declares_engine {
+                return Err(invalid(format!(
+                    "an engine may only be declared by manifest format \
+                     {MANIFEST_FORMAT_ENGINES}, which seeds one starter project per engine; \
+                     manifest format {} has a single `workspace` and runs engineless",
+                    manifest.format
+                )));
+            }
+        }
+
         // Every declared path must stay inside the version folder, keeping the
         // version self-contained.
         let resolve_inside = |rel: &Path, kind: &str| -> Result<PathBuf> {
@@ -4605,6 +4820,28 @@ impl TestCaseCatalog {
             }
             variant_manifests
         };
+
+        // The format gate again, over the variant files: a variant spells its own
+        // starter project the same way its case does, so a variant reaching for the
+        // other format's key is refused by name exactly as the case would be.
+        for variant in &variant_manifests {
+            if manifest.format == MANIFEST_FORMAT_ENGINES {
+                if variant.workspace.is_some() {
+                    return Err(invalid(format!(
+                        "variant `{}` declares `workspace`, which is not a key of manifest \
+                         format {MANIFEST_FORMAT_ENGINES}; declare one directory per engine in \
+                         a `[workspaces]` table instead",
+                        variant.slug
+                    )));
+                }
+            } else if !variant.workspaces.is_empty() {
+                return Err(invalid(format!(
+                    "variant `{}` declares `[workspaces]`, which is a key of manifest format \
+                     {MANIFEST_FORMAT_ENGINES}",
+                    variant.slug
+                )));
+            }
+        }
 
         // Resolve one scoring domain: a reviewer rates each independently and the
         // run's overall rating is the worst across them. The id keys a recorded
@@ -5787,156 +6024,6 @@ impl TestCaseCatalog {
             }
         };
 
-        // Resolve a starter workspace directory into the list of files it seeds.
-        // The directory must exist inside the version folder; each file's `dest`
-        // is its path relative to that directory, so `workspaces/base/package.json`
-        // seeds to `package.json` at the run's root. Shared by the common
-        // workspace and each variant's override.
-        let resolve_workspace = |dir: &Path, kind: &str| -> Result<Vec<WorkspaceFile>> {
-            let path = resolve_inside(dir, kind)?;
-            if !path.is_dir() {
-                return Err(invalid(format!(
-                    "{kind} `{}` is not a directory",
-                    dir.display()
-                )));
-            }
-            let mut files = Vec::new();
-            collect_workspace_files(&path, &path, &mut files).map_err(|err| {
-                invalid(format!("could not read {kind} `{}`: {err}", dir.display()))
-            })?;
-            // Stable, dest-ordered so seeding and the stored manifest are
-            // deterministic regardless of directory read order.
-            files.sort_by(|a, b| a.dest.cmp(&b.dest));
-            Ok(files)
-        };
-        let common_workspace = match &manifest.workspace {
-            Some(dir) => resolve_workspace(dir, "workspace")?,
-            None => Vec::new(),
-        };
-
-        // The init command, when declared, runs in the container after seeding; a
-        // blank string would be a no-op the author almost certainly did not mean,
-        // so reject it rather than silently running nothing.
-        if let Some(init) = &manifest.init
-            && init.trim().is_empty()
-        {
-            return Err(invalid("init must not be empty when declared".to_string()));
-        }
-
-        // The site-facing description is validated to exist when declared, with
-        // the same self-containment guard as every other path, but it is never
-        // seeded into a run.
-        let description_path = match &manifest.description {
-            Some(description) => {
-                let path = resolve_inside(description, "description")?;
-                if !path.is_file() {
-                    return Err(invalid(format!(
-                        "description `{}` does not exist",
-                        description.display()
-                    )));
-                }
-                Some(path)
-            }
-            None => None,
-        };
-
-        // The per-version changelog is required: every version must record what
-        // changed in it. It is validated to exist with the same self-containment
-        // guard as the description, and is likewise never seeded into a run — it is
-        // purely site-facing.
-        let changelog_path = resolve_inside(&manifest.changelog, "changelog")?;
-        if !changelog_path.is_file() {
-            return Err(invalid(format!(
-                "changelog `{}` does not exist",
-                manifest.changelog.display()
-            )));
-        }
-
-        let mut asset_paths = Vec::with_capacity(manifest.assets.len());
-        for asset in &manifest.assets {
-            let path = resolve_inside(asset, "asset")?;
-            if !path.exists() {
-                return Err(invalid(format!(
-                    "asset `{}` does not exist",
-                    asset.display()
-                )));
-            }
-            asset_paths.push(path);
-        }
-        // The run-relative dest of each seeded asset, used by the per-variant
-        // collision check below. An asset keeps its path relative to the version
-        // folder when seeded (a directory recursively under that path).
-        let asset_dests: Vec<PathBuf> = asset_paths
-            .iter()
-            .map(|path| {
-                path.strip_prefix(&root)
-                    .map(Path::to_path_buf)
-                    .unwrap_or_else(|_| path.clone())
-            })
-            .collect();
-
-        // Packages: the Test Cabinet runtime libraries this case's build consumes.
-        // They are consumed by a built game, so only a case that builds a program —
-        // an end-to-end or full-stack case — may declare them, and each name must be
-        // one this repo actually ships into the run image (see [`SHIPPABLE_PACKAGES`]).
-        // The harness does not modify the shipped `package.json`; the case's own
-        // workspace `package.json` must already depend on each declared package via
-        // its baked-in `file:` spec (see [`tcab_package_file_dep`]). Validate that
-        // here so a misconfigured manifest fails at resolution rather than leaving the
-        // model to discover the missing dependency at run time.
-        if !manifest.packages.is_empty() {
-            if !matches!(
-                test_type,
-                TestType::EndToEnd | TestType::FullStack | TestType::GameJam
-            ) {
-                return Err(invalid(
-                    "`packages` is only valid for an end-to-end, full-stack, or game-jam case"
-                        .to_string(),
-                ));
-            }
-            let package_json = common_workspace
-                .iter()
-                .find(|file| file.dest == Path::new("package.json"))
-                .ok_or_else(|| {
-                    invalid(
-                        "a case that declares `packages` must ship a workspace containing a \
-                         `package.json` at its root (the file that declares the dependency)"
-                            .to_string(),
-                    )
-                })?;
-            let declared = match read_package_dependencies(&package_json.source_path) {
-                Ok(declared) => declared,
-                Err(detail) => return Err(invalid(detail)),
-            };
-            for package in &manifest.packages {
-                if !is_shippable_package(package) {
-                    return Err(invalid(format!(
-                        "package `{package}` is not a shippable Test Cabinet package; \
-                         valid names are: {}",
-                        shippable_package_names()
-                    )));
-                }
-                let expected = tcab_package_file_dep(package);
-                match declared.get(package) {
-                    Some(spec) if spec == &expected => {}
-                    Some(spec) => {
-                        return Err(invalid(format!(
-                            "package `{package}` is declared in the workspace `package.json` as \
-                             `{spec}`, but must be `{expected}` so it resolves to its baked-in \
-                             copy in the run image"
-                        )));
-                    }
-                    None => {
-                        return Err(invalid(format!(
-                            "package `{package}` is declared in `packages` but is not a \
-                             dependency of the workspace `package.json`; add \
-                             `\"{package}\": \"{expected}\"` to its dependencies"
-                        )));
-                    }
-                }
-            }
-        }
-
         // Engines: the runtimes a run of this version may be built on. This is a
         // compatibility *gate* rather than a dependency declaration — the engine is
         // chosen per run and its package is vendored by the seeder, not by the case
@@ -5951,7 +6038,7 @@ impl TestCaseCatalog {
         // depending on the vendored engine) could not build engineless at all, so
         // being held to offering that run would be a promise the case cannot keep.
         // A case that genuinely builds both ways lists `none` alongside.
-        let engines = {
+        let (engines, engines_vendor_runtime) = {
             if (!manifest.engines.is_empty() || !manifest.engine_tables.is_empty())
                 && !matches!(
                     test_type,
@@ -6054,30 +6141,244 @@ impl TestCaseCatalog {
                 };
                 engines.push(support);
             }
-            // The engine's `file:` dependency is written into the seeded workspace's
-            // `package.json` at seed time — the one place seeding edits that file —
-            // so a case supporting an engine with a runtime must ship one for the
-            // seeder to edit. Check the common workspace only: a variant's workspace
-            // *replaces* it, and the engine is a case-wide claim, so a case-wide file
-            // is what has to be there.
-            if vendors_runtime
-                && !common_workspace
-                    .iter()
-                    .any(|file| file.dest == Path::new("package.json"))
-            {
-                return Err(invalid(
-                    "a case that declares an engine providing a runtime must ship a workspace \
-                     containing a `package.json` at its root (the file the engine dependency is \
-                     written into when the run is seeded)"
-                        .to_string(),
-                ));
-            }
-            engines
+            (engines, vendors_runtime)
         };
         // The supported *slugs*, in resolved order — what a per-engine table is
         // held against and what a refusal lists. The ranges are irrelevant to both:
         // a reference implementation answers for an engine, not for a version of it.
         let engine_slugs: Vec<String> = engines.iter().map(|engine| engine.slug.clone()).collect();
+
+        // Resolve a starter workspace directory into the list of files it seeds.
+        // The directory must exist inside the version folder; each file's `dest`
+        // is its path relative to that directory, so `workspaces/base/package.json`
+        // seeds to `package.json` at the run's root. Shared by the common
+        // workspace and each variant's override.
+        let resolve_workspace = |dir: &Path, kind: &str| -> Result<Vec<WorkspaceFile>> {
+            let path = resolve_inside(dir, kind)?;
+            if !path.is_dir() {
+                return Err(invalid(format!(
+                    "{kind} `{}` is not a directory",
+                    dir.display()
+                )));
+            }
+            let mut files = Vec::new();
+            collect_workspace_files(&path, &path, &mut files).map_err(|err| {
+                invalid(format!("could not read {kind} `{}`: {err}", dir.display()))
+            })?;
+            // Stable, dest-ordered so seeding and the stored manifest are
+            // deterministic regardless of directory read order.
+            files.sort_by(|a, b| a.dest.cmp(&b.dest));
+            Ok(files)
+        };
+
+        // Resolve a `[workspaces]` table: one starter directory per engine. The table
+        // must name **exactly** the engines the case supports — naming one it does not
+        // is a typo, and omitting one it does would leave a run of that engine with
+        // nothing to seed — so both halves are checked here rather than discovered by
+        // a run. An empty table declares no starter project at all, which is the
+        // engines-format spelling of an absent `workspace`. `owner` names a variant
+        // when the table is a variant's own, and is `None` for the case's.
+        let resolve_engine_workspaces = |table: &BTreeMap<String, PathBuf>,
+                                         supported: &[String],
+                                         kind: &str,
+                                         owner: Option<&str>|
+         -> Result<EngineWorkspaces> {
+            let where_ = match owner {
+                Some(variant) => format!("variant `{variant}` "),
+                None => String::new(),
+            };
+            if table.is_empty() {
+                return Ok(EngineWorkspaces::default());
+            }
+            for slug in table.keys() {
+                if !supported.contains(slug) {
+                    return Err(invalid(format!(
+                        "{where_}`{kind}` names engine `{slug}`, which this case does not \
+                         support (supported: {})",
+                        supported.join(", ")
+                    )));
+                }
+            }
+            let mut resolved = EngineWorkspaces::default();
+            for slug in supported {
+                let dir = table.get(slug).ok_or_else(|| {
+                    invalid(format!(
+                        "{where_}`{kind}` names no workspace for engine `{slug}`; the table \
+                         must cover every engine the case supports ({})",
+                        supported.join(", ")
+                    ))
+                })?;
+                resolved.insert(slug.clone(), resolve_workspace(dir, kind)?);
+            }
+            Ok(resolved)
+        };
+        // The starter project, per engine. A project is written against a runtime,
+        // so the two manifest formats spell this differently and resolution reads
+        // whichever the case's `format` admits (the format gate above has already
+        // refused the other spelling):
+        //
+        //   * A legacy case names one `workspace` directory and supports `none`
+        //     alone, so its files land under that slug and nothing downstream needs
+        //     to know which format the case was authored in.
+        //   * An engines-format case names a `[workspaces]` table covering exactly
+        //     the engines it supports, and each entry resolves the same way.
+        //
+        // Either way an absent declaration seeds nothing, which is a case that hands
+        // the model a bare repository.
+        let common_workspace: EngineWorkspaces = match manifest.format {
+            MANIFEST_FORMAT_ENGINES => {
+                resolve_engine_workspaces(&manifest.workspaces, &engine_slugs, "workspaces", None)?
+            }
+            _ => match &manifest.workspace {
+                Some(dir) => EngineWorkspaces::from_iter([(
+                    NONE_SLUG.to_string(),
+                    resolve_workspace(dir, "workspace")?,
+                )]),
+                None => EngineWorkspaces::default(),
+            },
+        };
+
+        // The engine's `file:` dependency is written into the seeded workspace's
+        // `package.json` at seed time — the one place seeding edits that file — so a
+        // case supporting an engine with a runtime must ship one for the seeder to
+        // edit. Check the common workspace only: a variant's workspace *replaces* it,
+        // and the engine is a case-wide claim, so a case-wide file is what has to be
+        // there.
+        if engines_vendor_runtime
+            && !common_workspace
+                .files()
+                .any(|file| file.dest == Path::new("package.json"))
+        {
+            return Err(invalid(
+                "a case that declares an engine providing a runtime must ship a workspace \
+                 containing a `package.json` at its root (the file the engine dependency is \
+                 written into when the run is seeded)"
+                    .to_string(),
+            ));
+        }
+
+        // The init command, when declared, runs in the container after seeding; a
+        // blank string would be a no-op the author almost certainly did not mean,
+        // so reject it rather than silently running nothing.
+        if let Some(init) = &manifest.init
+            && init.trim().is_empty()
+        {
+            return Err(invalid("init must not be empty when declared".to_string()));
+        }
+
+        // The site-facing description is validated to exist when declared, with
+        // the same self-containment guard as every other path, but it is never
+        // seeded into a run.
+        let description_path = match &manifest.description {
+            Some(description) => {
+                let path = resolve_inside(description, "description")?;
+                if !path.is_file() {
+                    return Err(invalid(format!(
+                        "description `{}` does not exist",
+                        description.display()
+                    )));
+                }
+                Some(path)
+            }
+            None => None,
+        };
+
+        // The per-version changelog is required: every version must record what
+        // changed in it. It is validated to exist with the same self-containment
+        // guard as the description, and is likewise never seeded into a run — it is
+        // purely site-facing.
+        let changelog_path = resolve_inside(&manifest.changelog, "changelog")?;
+        if !changelog_path.is_file() {
+            return Err(invalid(format!(
+                "changelog `{}` does not exist",
+                manifest.changelog.display()
+            )));
+        }
+
+        let mut asset_paths = Vec::with_capacity(manifest.assets.len());
+        for asset in &manifest.assets {
+            let path = resolve_inside(asset, "asset")?;
+            if !path.exists() {
+                return Err(invalid(format!(
+                    "asset `{}` does not exist",
+                    asset.display()
+                )));
+            }
+            asset_paths.push(path);
+        }
+        // The run-relative dest of each seeded asset, used by the per-variant
+        // collision check below. An asset keeps its path relative to the version
+        // folder when seeded (a directory recursively under that path).
+        let asset_dests: Vec<PathBuf> = asset_paths
+            .iter()
+            .map(|path| {
+                path.strip_prefix(&root)
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|_| path.clone())
+            })
+            .collect();
+
+        // Packages: the Test Cabinet runtime libraries this case's build consumes.
+        // They are consumed by a built game, so only a case that builds a program —
+        // an end-to-end or full-stack case — may declare them, and each name must be
+        // one this repo actually ships into the run image (see [`SHIPPABLE_PACKAGES`]).
+        // The harness does not modify the shipped `package.json`; the case's own
+        // workspace `package.json` must already depend on each declared package via
+        // its baked-in `file:` spec (see [`tcab_package_file_dep`]). Validate that
+        // here so a misconfigured manifest fails at resolution rather than leaving the
+        // model to discover the missing dependency at run time.
+        if !manifest.packages.is_empty() {
+            if !matches!(
+                test_type,
+                TestType::EndToEnd | TestType::FullStack | TestType::GameJam
+            ) {
+                return Err(invalid(
+                    "`packages` is only valid for an end-to-end, full-stack, or game-jam case"
+                        .to_string(),
+                ));
+            }
+            let package_json = common_workspace
+                .files()
+                .find(|file| file.dest == Path::new("package.json"))
+                .ok_or_else(|| {
+                    invalid(
+                        "a case that declares `packages` must ship a workspace containing a \
+                         `package.json` at its root (the file that declares the dependency)"
+                            .to_string(),
+                    )
+                })?;
+            let declared = match read_package_dependencies(&package_json.source_path) {
+                Ok(declared) => declared,
+                Err(detail) => return Err(invalid(detail)),
+            };
+            for package in &manifest.packages {
+                if !is_shippable_package(package) {
+                    return Err(invalid(format!(
+                        "package `{package}` is not a shippable Test Cabinet package; \
+                         valid names are: {}",
+                        shippable_package_names()
+                    )));
+                }
+                let expected = tcab_package_file_dep(package);
+                match declared.get(package) {
+                    Some(spec) if spec == &expected => {}
+                    Some(spec) => {
+                        return Err(invalid(format!(
+                            "package `{package}` is declared in the workspace `package.json` as \
+                             `{spec}`, but must be `{expected}` so it resolves to its baked-in \
+                             copy in the run image"
+                        )));
+                    }
+                    None => {
+                        return Err(invalid(format!(
+                            "package `{package}` is declared in `packages` but is not a \
+                             dependency of the workspace `package.json`; add \
+                             `\"{package}\": \"{expected}\"` to its dependencies"
+                        )));
+                    }
+                }
+            }
+        }
 
         // Resolve one reference mapping. A reference is either an HTML mockup
         // rendered to a screenshot (`path`) or a static image/video served as-is
@@ -6283,13 +6584,53 @@ impl TestCaseCatalog {
                          pass/fail verdict to decide"
                     )));
                 }
-                let script = resolve_inside(&v.script, "review_item validation script")?;
-                if !script.is_file() {
-                    return Err(invalid(format!(
-                        "{label} validation script `{}` is not a file",
-                        v.script.display()
-                    )));
-                }
+                // Where the declared script lives depends on the manifest format,
+                // because what a case declares does. A legacy case names one script
+                // under the version folder and a browser drives it. A per-engine case
+                // names a suite inside a validator project, and it ships one project
+                // per engine, so the same declaration must resolve in EVERY engine's
+                // project — a point decided under one engine and left to the reviewer
+                // under another would be the same case graded two ways.
+                let script = if manifest.format == MANIFEST_FORMAT_ENGINES {
+                    if escapes_folder(&v.script) {
+                        return Err(invalid(format!(
+                            "{label} validation script `{}` escapes the version folder",
+                            v.script.display()
+                        )));
+                    }
+                    let project_file = crate::vitest_validator::VITEST_CONFIG_FILE;
+                    for engine in &engine_slugs {
+                        let project = root
+                            .join(crate::validator::VALIDATION_SCRIPT_DIR)
+                            .join(engine);
+                        if !project.join(project_file).is_file() {
+                            return Err(invalid(format!(
+                                "{label} declares a `validation` script, so the case must ship a \
+                                 `{dir}/{engine}/{project_file}` validator project for every \
+                                 engine it supports",
+                                dir = crate::validator::VALIDATION_SCRIPT_DIR
+                            )));
+                        }
+                        if !project.join(&v.script).is_file() {
+                            return Err(invalid(format!(
+                                "{label} validation script `{}` is not a file in engine \
+                                 `{engine}`'s validator project (`{dir}/{engine}/`)",
+                                v.script.display(),
+                                dir = crate::validator::VALIDATION_SCRIPT_DIR
+                            )));
+                        }
+                    }
+                    None
+                } else {
+                    let script = resolve_inside(&v.script, "review_item validation script")?;
+                    if !script.is_file() {
+                        return Err(invalid(format!(
+                            "{label} validation script `{}` is not a file",
+                            v.script.display()
+                        )));
+                    }
+                    Some(script)
+                };
                 // Every automated validation must produce proof: at least one media
                 // output (a screenshot or clip) a reviewer can see, synthesized
                 // side-by-side against the reference baseline. A `validation` with no
@@ -6779,10 +7120,29 @@ impl TestCaseCatalog {
             }
             let variant_domains: Vec<Domain> = effective_domains[domains.len()..].to_vec();
             // A variant's workspace, when declared, replaces the common workspace
-            // for this variant rather than layering on top of it.
-            let workspace = match &variant.workspace {
-                Some(dir) => Some(resolve_workspace(dir, "variant workspace")?),
-                None => None,
+            // for this variant rather than layering on top of it — and under the
+            // engines format it replaces the whole per-engine table, so a variant
+            // that declares one covers every engine the case supports.
+            let workspace = match manifest.format {
+                MANIFEST_FORMAT_ENGINES => {
+                    if variant.workspaces.is_empty() {
+                        None
+                    } else {
+                        Some(resolve_engine_workspaces(
+                            &variant.workspaces,
+                            &engine_slugs,
+                            "workspaces",
+                            Some(&variant.slug),
+                        )?)
+                    }
+                }
+                _ => match &variant.workspace {
+                    Some(dir) => Some(EngineWorkspaces::from_iter([(
+                        NONE_SLUG.to_string(),
+                        resolve_workspace(dir, "variant workspace")?,
+                    )])),
+                    None => None,
+                },
             };
 
             // A variant's reference implementation, when declared, is the authored
@@ -6924,9 +7284,13 @@ impl TestCaseCatalog {
             // tree. Two of them landing on the same dest would clobber each other,
             // so any collision across them — for example a workspace that ships a
             // file at a spec's `dest` — is rejected here rather than silently
-            // resolved at seed time. The effective workspace is the variant's own
-            // when it overrides, otherwise the case's common workspace.
-            let workspace_files = workspace.as_deref().unwrap_or(&common_workspace);
+            // resolved at seed time.
+            //
+            // Everything but the workspace is the same whichever engine a run
+            // selects, so those claims are made once here and the workspace — which
+            // is one project per engine, of which a run seeds exactly one — is
+            // checked against them per engine below.
+            let workspaces = workspace.as_ref().unwrap_or(&common_workspace);
             let mut seeded_dests: std::collections::BTreeMap<PathBuf, &'static str> =
                 std::collections::BTreeMap::new();
             let mut claim = |dest: PathBuf, kind: &'static str| -> Result<()> {
@@ -6939,9 +7303,6 @@ impl TestCaseCatalog {
                 }
                 Ok(())
             };
-            for file in workspace_files {
-                claim(file.dest.clone(), "workspace")?;
-            }
             for spec in common_specs.iter().chain(specs.iter()) {
                 claim(spec.dest.clone(), "spec")?;
             }
@@ -7062,6 +7423,22 @@ impl TestCaseCatalog {
                     PathBuf::from(manifest.asset_kind.config_dest()),
                     "tool config",
                 )?;
+            }
+            // A run seeds one engine's starter project, so each project is checked
+            // against everything else the run seeds on its own. Two engines' projects
+            // sharing a dest is not a collision — they never land in the same tree.
+            for engine in workspaces.engines() {
+                let mut with_workspace = seeded_dests.clone();
+                for file in workspaces.get(engine) {
+                    if let Some(prev) = with_workspace.insert(file.dest.clone(), "workspace") {
+                        return Err(invalid(format!(
+                            "variant `{}` on engine `{engine}` seeds two entries ({prev} and \
+                             workspace) to the same dest `{}`",
+                            variant.slug,
+                            file.dest.display()
+                        )));
+                    }
+                }
             }
 
             // The variant's own review entries, in whichever grammar the case
@@ -7489,6 +7866,31 @@ pub fn version_key(version: &str) -> Vec<u64> {
 /// can override it per invocation.
 fn default_max_runtime_hours() -> f64 {
     1.0
+}
+
+/// The **legacy** manifest format: one `workspace` directory for the whole case,
+/// and no [engine](crate::engine) may be named.
+///
+/// It is what every version authored before the `format` key existed is, and what a
+/// manifest omitting the key still means, so a frozen version resolves exactly as it
+/// always did.
+pub const MANIFEST_FORMAT_LEGACY: u32 = 1;
+
+/// The manifest format that carries **engines**: a `[workspaces]` table naming one
+/// starter directory per engine, and no `workspace` key.
+///
+/// A starter project is written against a runtime, so the format that lets a case
+/// name an engine is the same format that makes the per-engine directory the only
+/// way to declare one.
+pub const MANIFEST_FORMAT_ENGINES: u32 = 2;
+
+/// Every manifest format a `test-case.toml` may declare, lowest first — what a
+/// refusal lists so an unknown value is one step from being fixed.
+const MANIFEST_FORMATS: &[u32] = &[MANIFEST_FORMAT_LEGACY, MANIFEST_FORMAT_ENGINES];
+
+/// The manifest format applied when a manifest omits `format`.
+fn default_manifest_format() -> u32 {
+    MANIFEST_FORMAT_LEGACY
 }
 
 /// The supported-engine set a [`TestCaseVersion`] deserializes to when the wire

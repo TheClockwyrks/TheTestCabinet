@@ -31,8 +31,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    NONE_SLUG, SystemCommandRunner, TestCaseCatalog, TestCaseVersion, VALIDATION_BASELINE_DIR,
-    Variant, capture_baseline_media, find_build_output,
+    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, VALIDATION_BASELINE_DIR, Variant,
+    capture_baseline_media, find_build_output,
 };
 
 use crate::cli::CaptureBaselinesArgs;
@@ -46,10 +46,15 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
         .resolve(&args.slug, &version)
         .with_context(|| format!("resolving {}@{}", args.slug, version))?;
 
-    let targets = select_targets(&test_case, args.variant.as_deref(), args.all_variants)?;
+    let targets = select_targets(
+        &test_case,
+        args.variant.as_deref(),
+        args.engine.as_deref(),
+        args.all_variants,
+    )?;
 
     println!(
-        "tcab capture-baselines: {}@{} ({} variant(s))",
+        "tcab capture-baselines: {}@{} ({} reference build(s))",
         test_case.slug,
         test_case.version,
         targets.len(),
@@ -57,12 +62,12 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
 
     if args.dry_run {
         println!("\n--dry-run: nothing was built or written.");
-        for variant in &targets {
-            println!("  {} ", variant.slug);
-            println!("    reference: {}", reference_dir(variant).display());
+        for target in &targets {
+            println!("  {} ", target.label());
+            println!("    reference: {}", target.dir.display());
             println!(
                 "    baseline:  {}",
-                baseline_dir(&test_case, &variant.slug).display()
+                baseline_dir(&test_case, &target.variant.slug).display()
             );
         }
         return Ok(());
@@ -79,21 +84,21 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
     // a multi-variant sweep still makes progress; the command exits non-zero if any
     // failed. This mirrors `publish-reference`, which shares these helpers.
     let mut failures = 0usize;
-    for variant in &targets {
+    for target in &targets {
         let result = async {
-            let out = build_reference(&runner, variant, &build.install, &build.build).await?;
-            capture_variant_baseline(&test_case, variant, &out)
+            let out = build_reference(&runner, *target, &build.install, &build.build).await?;
+            capture_variant_baseline(&test_case, *target, &out)
         }
         .await;
         if let Err(err) = result {
-            eprintln!("  {} — failed: {err:#}", variant.slug);
+            eprintln!("  {} — failed: {err:#}", target.label());
             failures += 1;
         }
     }
 
     if failures > 0 {
         bail!(
-            "{failures} of {} variant baseline(s) failed to capture",
+            "{failures} of {} reference build(s) failed to capture",
             targets.len()
         );
     }
@@ -105,43 +110,49 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
 /// this same capture inline before deploying.
 pub(super) fn capture_variant_baseline(
     test_case: &TestCaseVersion,
-    variant: &Variant,
+    target: Target<'_>,
     out: &Path,
 ) -> Result<()> {
-    let written = generate_baseline(test_case, variant, out)?;
+    let written = generate_baseline(test_case, target.variant, out)?;
     if written > 0 {
         println!(
             "  {} — wrote {written} baseline media file(s) to {}",
-            variant.slug,
-            baseline_dir(test_case, &variant.slug).display()
+            target.label(),
+            baseline_dir(test_case, &target.variant.slug).display()
         );
     } else {
-        println!(
-            "  {} — no scripted review items; nothing to capture",
-            variant.slug
-        );
+        println!("  {} — nothing to capture", target.label());
     }
     Ok(())
 }
 
-/// The reference-implementation directory of a pre-filtered target variant, for
-/// the engineless [`NONE_SLUG`] engine.
+/// One thing to publish or capture: a variant's reference implementation **on one
+/// engine**.
 ///
-/// Both commands filter their targets down to variants that declare a
-/// `reference_implementation` before reaching here, so the absence of one is a
-/// programming error rather than a user-facing one.
-///
-/// A variant's reference implementations are keyed by engine, and these two
-/// commands select none: publishing a reference build and capturing validation
-/// baselines both address the engineless build, which is the only one a case is
-/// guaranteed to have. Capturing per-engine media is a separate job, and it will
-/// take the engine as an argument rather than reinterpreting this one.
-pub(super) fn reference_dir(variant: &Variant) -> &Path {
-    variant
-        .reference_impls
-        .get(NONE_SLUG)
-        .map(PathBuf::as_path)
-        .expect("targets are pre-filtered to variants with a reference_impl")
+/// A variant's reference implementations are keyed by engine, because the build a
+/// reference demonstrates genuinely differs under each — an engineless one carries
+/// its own runtime, an engine-backed one hands the same surfaces to the runtime it
+/// vendors. So the unit both commands work in is the pair, not the variant: a case
+/// supporting two engines has two reference builds per variant, each built and
+/// deployed on its own, and the case's Reference tab lets a reader switch between
+/// them.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Target<'a> {
+    /// The variant this build implements.
+    pub(super) variant: &'a Variant,
+    /// The engine slug it is the answer for.
+    pub(super) engine: &'a str,
+    /// The buildable directory, inside the version folder.
+    pub(super) dir: &'a Path,
+}
+
+impl Target<'_> {
+    /// How a target is named in this command's output: `<variant>@<engine>`, which
+    /// is the identity the lockfile, the deploy alias, and the reviewer's engine
+    /// switch all agree on.
+    pub(super) fn label(&self) -> String {
+        format!("{}@{}", self.variant.slug, self.engine)
+    }
 }
 
 /// Run the case's own install then build from the variant's reference-impl
@@ -153,25 +164,25 @@ pub(super) fn reference_dir(variant: &Variant) -> &Path {
 /// [`find_build_output`] looks — the same contract a run's playable build follows.
 pub(super) async fn build_reference(
     runner: &SystemCommandRunner,
-    variant: &Variant,
+    target: Target<'_>,
     install: &str,
     build: &str,
 ) -> Result<PathBuf> {
-    let dir = reference_dir(variant);
-    println!("  {} — building ({})", variant.slug, dir.display());
+    let dir = target.dir;
+    println!("  {} — building ({})", target.label(), dir.display());
 
     // Install runs first; if it fails the build never runs.
     run_build_step(runner, dir, install)
         .await
-        .with_context(|| format!("installing dependencies for variant `{}`", variant.slug))?;
+        .with_context(|| format!("installing dependencies for `{}`", target.label()))?;
     run_build_step(runner, dir, build)
         .await
-        .with_context(|| format!("building variant `{}`", variant.slug))?;
+        .with_context(|| format!("building `{}`", target.label()))?;
 
     find_build_output(dir).with_context(|| {
         format!(
-            "the reference build for variant `{}` produced no dist/build/out directory in {}",
-            variant.slug,
+            "the reference build for `{}` produced no dist/build/out directory in {}",
+            target.label(),
             dir.display()
         )
     })
@@ -233,11 +244,23 @@ fn generate_baseline(test_case: &TestCaseVersion, variant: &Variant, out: &Path)
         // or "could not drive" (no browser). Distinguish: the former is fine, the
         // latter would leave the committed baseline incomplete, so it is an error.
         None => {
+            // A validator declared PER ENGINE names a suite inside a vitest project
+            // rather than a script a browser drives, and such a suite captures no
+            // media at all — so a case whose points are all decided that way has no
+            // baseline to produce and this is "nothing to do", not a failure. A case
+            // with a browser script that could not be driven is the failure.
             let has_scripts = test_case.instrumentation.is_some()
                 && test_case
                     .review_items_for(variant)
                     .iter()
-                    .any(|item| item.validation.is_some());
+                    .flat_map(|item| {
+                        item.validation.iter().chain(
+                            item.sub_items
+                                .iter()
+                                .filter_map(|sub| sub.validation.as_ref()),
+                        )
+                    })
+                    .any(|validation| validation.script.is_some());
             if has_scripts {
                 bail!(
                     "could not drive the reference implementation for variant `{}` to \
@@ -310,33 +333,77 @@ pub(super) fn resolve_version(
 pub(super) fn select_targets<'a>(
     test_case: &'a TestCaseVersion,
     variant: Option<&str>,
+    engine: Option<&str>,
     _all_variants: bool,
-) -> Result<Vec<&'a Variant>> {
-    if let Some(slug) = variant {
-        let selected = test_case
-            .variant(slug)
-            .with_context(|| format!("selecting variant `{slug}`"))?;
-        if !selected.reference_impls.contains_key(NONE_SLUG) {
-            bail!(
-                "variant `{slug}` of {}@{} declares no `reference_implementation`",
+) -> Result<Vec<Target<'a>>> {
+    // The variants in play: the one named, or every variant of the case. A named
+    // variant with no reference implementation at all is an explicit error, because
+    // the operator asked for something that does not exist.
+    let variants: Vec<&Variant> = match variant {
+        Some(slug) => {
+            let selected = test_case
+                .variant(slug)
+                .with_context(|| format!("selecting variant `{slug}`"))?;
+            if selected.reference_impls.is_empty() {
+                bail!(
+                    "variant `{slug}` of {}@{} declares no `reference_implementation`",
+                    test_case.slug,
+                    test_case.version
+                );
+            }
+            vec![selected]
+        }
+        None => test_case.variants.iter().collect(),
+    };
+
+    // Each variant contributes one target per engine it declares a reference for,
+    // narrowed by `--engine` when one is named. An engine the case does not support
+    // is a typo worth refusing by name rather than resolving to an empty sweep.
+    if let Some(engine) = engine
+        && !test_case.supports_engine(engine)
+    {
+        bail!(
+            "{}@{} does not support engine `{engine}` (supported: {})",
+            test_case.slug,
+            test_case.version,
+            test_case.engine_slugs().join(", ")
+        );
+    }
+    let mut targets = Vec::new();
+    for selected in variants {
+        for slug in test_case.engine_slugs() {
+            if engine.is_some_and(|wanted| wanted != slug) {
+                continue;
+            }
+            if let Some(dir) = test_case.reference_impl_for(selected, &slug) {
+                targets.push(Target {
+                    variant: selected,
+                    // Borrowed from the variant's own key so the target outlives this
+                    // loop's copy of the slug.
+                    engine: selected
+                        .reference_impls
+                        .get_key_value(&slug)
+                        .map(|(key, _)| key.as_str())
+                        .unwrap_or_default(),
+                    dir,
+                });
+            }
+        }
+    }
+    if targets.is_empty() {
+        match engine {
+            Some(engine) => bail!(
+                "no variant of {}@{} declares a `reference_implementation` for engine \
+                 `{engine}`; nothing to do",
                 test_case.slug,
                 test_case.version
-            );
+            ),
+            None => bail!(
+                "no variant of {}@{} declares a `reference_implementation`; nothing to do",
+                test_case.slug,
+                test_case.version
+            ),
         }
-        return Ok(vec![selected]);
-    }
-
-    let targets: Vec<&Variant> = test_case
-        .variants
-        .iter()
-        .filter(|v| v.reference_impls.contains_key(NONE_SLUG))
-        .collect();
-    if targets.is_empty() {
-        bail!(
-            "no variant of {}@{} declares a `reference_implementation`; nothing to do",
-            test_case.slug,
-            test_case.version
-        );
     }
     Ok(targets)
 }

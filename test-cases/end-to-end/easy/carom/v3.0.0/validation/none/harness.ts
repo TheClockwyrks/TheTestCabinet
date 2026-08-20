@@ -1,0 +1,1076 @@
+// Carom — the shared validator harness. CASE-PROVIDED.
+//
+// Every check in this suite is an ordinary vitest test that runs IN THE SAME
+// PROCESS as the build. It imports the runtime and the build's own modules,
+// creates a runtime over a canvas it owns and a clock it chose, and steps the
+// game with `engine.advance`. Nothing drives a browser, nothing polls, and no
+// wall-clock time passes: a check asks for a number of frames and gets exactly
+// that number, at exactly the deltas its clock supplied.
+//
+// WHAT A CHECK READS. The game's own state (through `src/debug.ts`'s `snapshot`),
+// the runtime's frame counter, the events the runtime broadcast, and — for the
+// rendering checks — the pixels on the canvas or the calls the 2D context
+// received. Nothing here fabricates an outcome: the scenario helpers below only
+// ARRANGE the world through `src/debug.ts`, and the real `update` the build wrote
+// is what runs from there.
+//
+// WHY `src/debug.ts` RATHER THAN RAW ASSIGNMENT. The case supplies that module,
+// so its operations are the same in every build: `startMatch` opens on the
+// pre-serve countdown, a control op takes the paddles from the player and the AI,
+// a posed `vy` persists across frames, and `reset` gives everything back. Posing
+// through it is how a scenario is reproducible, and it is the seam the case's
+// specification documents.
+//
+// THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
+// 120 Hz tick and every duration below is a whole number of them — which is the
+// unit the tolerances in this suite were established in. A check that is
+// specifically about the step size (gameplay/delta-time-independent) builds its
+// own harnesses with clocks of its own.
+
+import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
+import {
+  ConstantClock,
+  createHost,
+  type Clock,
+  type Host,
+  type SurfaceMetrics,
+  type Viewport,
+} from "../src/host";
+import {
+  BALL_R,
+  COLOR,
+  FIELD_CX,
+  FIELD_CY,
+  FIELD_H,
+  FIELD_W,
+  LAYOUT,
+  P1_X1,
+  P2_X0,
+} from "../src/constants";
+import {
+  createDebugApi,
+  type CaromDebugApi,
+  type CaromSnapshot,
+} from "../src/debug";
+import { game, type CaromState, type Mode, type Side } from "../src/game";
+
+/**
+ * The frame the suite steps in, in milliseconds.
+ *
+ * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * fixes no timestep, because the runtime hands the game whatever elapsed time a
+ * frame really took. Fixing it here makes a duration a whole number of frames, so
+ * a tolerance can be stated in ticks and mean the same thing on every machine.
+ */
+export const TICK_HZ = 120;
+export const TICK_MS = 1000 / TICK_HZ;
+
+/** Seconds of simulated time in `ticks` frames of the default clock. */
+export function seconds(ticks: number): number {
+  return ticks / TICK_HZ;
+}
+
+/** A speed in px/s from a displacement measured over `ticks` frames. */
+export function speedOverTicks(delta: number, ticks: number): number {
+  return (Math.abs(delta) * TICK_HZ) / ticks;
+}
+
+/** The angle from horizontal of a velocity, in degrees, ignoring direction. */
+export function angleDeg(v: { vx: number; vy: number }): number {
+  return (Math.atan2(Math.abs(v.vy), Math.abs(v.vx)) * 180) / Math.PI;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The harness                                                                */
+/* -------------------------------------------------------------------------- */
+
+/** One recorded operation on the 2D context, in the order the render made it. */
+export type DrawCall =
+  | { kind: "call"; method: string; args: unknown[] }
+  | { kind: "set"; property: string; value: unknown };
+
+/** One cue the build played, as the runtime announced it. */
+export interface PlayedCue {
+  cue: string;
+  t: number;
+  gain: number;
+}
+
+/** One asset the build asked for and did not get. */
+export interface AssetFailure {
+  path: string;
+  reason: string;
+}
+
+export interface HarnessOptions {
+  /** The clock each frame takes its delta from. Defaults to 120 Hz. */
+  clock?: Clock;
+  /** The element's laid-out CSS width. Defaults to the logical field width. */
+  cssWidth?: number;
+  /** The element's laid-out CSS height. Defaults to the logical field height. */
+  cssHeight?: number;
+  /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
+  dpr?: number;
+}
+
+/** How far a sweep may run, and how many frames separate two samples. */
+export interface UntilOptions {
+  maxFrames?: number;
+  poll?: number;
+}
+
+/** What a sweep found: whether the predicate ever held, and where it stopped. */
+export interface UntilResult {
+  hit: boolean;
+  /** Frames advanced before the sample that ended the sweep. */
+  frames: number;
+  snapshot: CaromSnapshot;
+}
+
+export interface Harness {
+  readonly engine: Host<CaromState>;
+  /** The live state the game built. Read it, or pose it through `debug`. */
+  readonly state: CaromState;
+  /** The case's own debug surface, over this harness's state. */
+  readonly debug: CaromDebugApi;
+  /** The real 2D context, for `getImageData`. Draw calls also reach it. */
+  readonly ctx: SKRSContext2D;
+  /** Every call and property set the render made, oldest first. */
+  readonly calls: DrawCall[];
+  /** Every cue the build played, oldest first. */
+  readonly cues: PlayedCue[];
+  /** Every asset the build failed to load, oldest first. */
+  readonly assetFailures: AssetFailure[];
+
+  /** A fresh read of the game's state through the case's `snapshot`. */
+  snapshot(): CaromSnapshot;
+  /** Run `frames` frames back to back. */
+  advance(frames: number): Promise<void>;
+  /** Advance until `predicate` holds, sampling every `poll` frames. */
+  until(
+    predicate: (snapshot: CaromSnapshot) => boolean,
+    options?: UntilOptions,
+  ): Promise<UntilResult>;
+  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
+  runFor(ms: number): Promise<void>;
+
+  /** Press a key and leave it down, as a player holding it would. */
+  hold(code: string): void;
+  /** Release a key held by `hold`. */
+  release(code: string): void;
+  /**
+   * Press and release a key, then run the one frame that delivers its edge.
+   *
+   * The runtime discards an edge nothing consumed by the end of the frame it was
+   * armed in, so a tap that ran no frame would never reach the game.
+   */
+  tap(code: string): Promise<void>;
+
+  /** Where a logical point lands in the canvas's backing store. */
+  device(x: number, y: number): { x: number; y: number };
+  /** The device pixel under a logical point, as `[r, g, b, a]`. */
+  pixel(x: number, y: number): [number, number, number, number];
+
+  /** Drop the runtime's listeners and release the canvas. */
+  dispose(): void;
+}
+
+/** A `KeyboardEvent`-shaped event: the runtime reads `code` and `repeat`. */
+class KeyEvent extends Event {
+  readonly code: string;
+  readonly repeat: boolean;
+
+  constructor(type: "keydown" | "keyup", code: string, repeat = false) {
+    super(type);
+    this.code = code;
+    this.repeat = repeat;
+  }
+}
+
+function toDevice(
+  view: Viewport,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  return {
+    x: Math.round(view.offsetX + x * view.scale),
+    y: Math.round(view.offsetY + y * view.scale),
+  };
+}
+
+/**
+ * A proxy that records every call and property set on its way to the real
+ * context, so one frame produces both a pixel buffer to sample and a call list
+ * to inspect.
+ */
+function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
+  return new Proxy(target, {
+    get(object, property) {
+      const value = Reflect.get(object, property, object) as unknown;
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]): unknown => {
+        calls.push({ kind: "call", method: String(property), args });
+        return (value as (...rest: unknown[]) => unknown).apply(object, args);
+      };
+    },
+    set(object, property, value) {
+      calls.push({ kind: "set", property: String(property), value });
+      return Reflect.set(object, property, value, object);
+    },
+  });
+}
+
+/** Every argument list `method` was called with, in order. */
+export function callsTo(
+  calls: readonly DrawCall[],
+  method: string,
+): unknown[][] {
+  return calls.flatMap((call) =>
+    call.kind === "call" && call.method === method ? [call.args] : [],
+  );
+}
+
+/** Every value `property` was set to, in order. */
+export function setsOf(
+  calls: readonly DrawCall[],
+  property: string,
+): unknown[] {
+  return calls.flatMap((call) =>
+    call.kind === "set" && call.property === property ? [call.value] : [],
+  );
+}
+
+/**
+ * Build a runtime over a canvas of the harness's own, initialize the build's
+ * game, and hand back everything a check reads.
+ *
+ * The options passed to the factory are the ones the specification fixes — the
+ * design size, the background, and the touch layout — so one harness serves every
+ * build of this case. Everything else the build decided lives inside
+ * `src/game.ts`.
+ */
+export async function createHarness(
+  options: HarnessOptions = {},
+): Promise<Harness> {
+  const cssWidth = options.cssWidth ?? FIELD_W;
+  const cssHeight = options.cssHeight ?? FIELD_H;
+  const dpr = options.dpr ?? 1;
+
+  const canvas = createCanvas(
+    Math.round(cssWidth * dpr),
+    Math.round(cssHeight * dpr),
+  );
+  const ctx = canvas.getContext("2d");
+  const calls: DrawCall[] = [];
+  const recorded = recorder(ctx, calls);
+  const element = Object.assign(canvas, {
+    style: {} as CSSStyleDeclaration,
+    getContext: (): SKRSContext2D => recorded,
+  }) as unknown as HTMLCanvasElement;
+
+  const keys = new EventTarget();
+  const surface: SurfaceMetrics = {
+    cssWidth: () => cssWidth,
+    cssHeight: () => cssHeight,
+    dpr: () => dpr,
+    events: () => keys,
+  };
+
+  const engine = createHost<CaromState>({
+    canvas: element,
+    width: FIELD_W,
+    height: FIELD_H,
+    game,
+    background: COLOR.bg,
+    layout: LAYOUT,
+    clock: options.clock ?? new ConstantClock(TICK_MS),
+    surface,
+  });
+
+  // Subscribed BEFORE `initialize`, which is what makes the game's own loading
+  // observable: construction runs no game code, so nothing has happened yet.
+  const assetFailures: AssetFailure[] = [];
+  const cues: PlayedCue[] = [];
+  engine.events.on("asset:failed", ({ path, reason }) => {
+    assetFailures.push({ path, reason });
+  });
+  engine.events.on("cue:played", (played) => {
+    cues.push(played);
+  });
+
+  const state = await engine.initialize();
+  const debug = createDebugApi(state);
+
+  const dispatch = (type: "keydown" | "keyup", code: string): void => {
+    keys.dispatchEvent(new KeyEvent(type, code));
+  };
+
+  const harness: Harness = {
+    engine,
+    state,
+    debug,
+    ctx,
+    calls,
+    cues,
+    assetFailures,
+
+    snapshot: () => debug.snapshot(),
+
+    advance: (frames) => engine.advance(frames),
+
+    async until(predicate, untilOptions = {}) {
+      const maxFrames = untilOptions.maxFrames ?? 600;
+      const poll = Math.max(1, untilOptions.poll ?? 1);
+
+      let snapshot = debug.snapshot();
+      if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
+
+      let frames = 0;
+      while (frames < maxFrames) {
+        const step = Math.min(poll, maxFrames - frames);
+        await engine.advance(step);
+        frames += step;
+        snapshot = debug.snapshot();
+        if (predicate(snapshot)) return { hit: true, frames, snapshot };
+      }
+      return { hit: false, frames, snapshot };
+    },
+
+    async runFor(ms) {
+      const controller = new AbortController();
+      const running = engine.run({ signal: controller.signal });
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      controller.abort();
+      await running;
+    },
+
+    hold: (code) => dispatch("keydown", code),
+    release: (code) => dispatch("keyup", code),
+    async tap(code) {
+      dispatch("keydown", code);
+      dispatch("keyup", code);
+      await engine.advance(1);
+    },
+
+    device: (x, y) => toDevice(engine.viewport(), x, y),
+    pixel: (x, y) => {
+      const point = toDevice(engine.viewport(), x, y);
+      const { data } = ctx.getImageData(point.x, point.y, 1, 1);
+      return [data[0], data[1], data[2], data[3]];
+    },
+
+    dispose: () => engine.destroy(),
+  };
+
+  return harness;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Scenario helpers                                                           */
+/* -------------------------------------------------------------------------- */
+//
+// Each of these poses a situation through `src/debug.ts` and then lets the real
+// simulation run. They are the in-process descendants of the old browser suite's
+// `validation/_helpers.mjs`, and the geometry and the tolerances they encode are
+// the same ones that suite established.
+
+/** Off-lane parking height for a paddle a scenario must keep out of the way. */
+export const PARKED_CY = 150;
+
+/** The lane down the middle of the field that clears both obstacles. */
+export const CLEAR_LANE_Y = FIELD_CY;
+
+/**
+ * How far in front of a paddle contact the ball is posed, in frames of approach.
+ *
+ * The contact itself is the same one a zero-lead pose makes immediately; the
+ * run-up buys the scenario a real approach, and — because a posed `vy` persists —
+ * it is also what lets a SWINGING paddle be moving at the moment it strikes,
+ * having travelled the same distance the ball did.
+ */
+export const LEAD_TICKS = 60; // 0.5 s at 120 Hz
+
+/** Park both paddles out of the mid-field lane so a shot down it is unobstructed. */
+export function clearPaddles(h: Harness): void {
+  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  h.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
+}
+
+/**
+ * Open a driven match and run it up to live play.
+ *
+ * `serve()` only expires the pre-serve hold; the LAUNCH is the build's own, on
+ * the frame after. So this sweeps until the game reports live play, which is the
+ * state every posed scenario below assumes — posing a ball while the game is
+ * still counting down would have the build's serve overwrite the pose.
+ */
+export async function startPlaying(
+  h: Harness,
+  mode: Mode = "versus",
+): Promise<UntilResult> {
+  h.debug.reset();
+  h.debug.startMatch(mode);
+  h.debug.serve();
+  return h.until((s) => s.screen === "playing", { maxFrames: 60, poll: 1 });
+}
+
+/** Start a match from the title the way a player does: menu keys only. */
+export async function startWithKeys(h: Harness, mode: Mode): Promise<void> {
+  h.debug.reset();
+  // SOLO is the first entry; VERSUS is one down.
+  if (mode === "versus") await h.tap("ArrowDown");
+  await h.tap("Enter");
+}
+
+/* ---- Goals --------------------------------------------------------------- */
+
+/**
+ * Aim the ball at one goal edge, down the lane that clears both obstacles.
+ * `edge` is the edge the ball exits: "right" scores for player one, "left" for
+ * player two.
+ */
+export function arrangeGoal(h: Harness, edge: Side): void {
+  clearPaddles(h);
+  h.debug.setBall(0, {
+    x: FIELD_CX,
+    y: CLEAR_LANE_Y,
+    vx: edge === "right" ? 600 : -600,
+    vy: 0,
+    spin: 0,
+  });
+}
+
+/**
+ * Run the real physics until the point resolves — a scored point returns to the
+ * countdown, a match point to the match-over screen — and report that instant.
+ */
+export function driveGoal(
+  h: Harness,
+  options: UntilOptions = {},
+): Promise<UntilResult> {
+  return h.until((s) => s.screen !== "playing", {
+    maxFrames: options.maxFrames ?? 360,
+    poll: options.poll ?? 6,
+  });
+}
+
+/* ---- Paddle contact ------------------------------------------------------ */
+
+/** Where a ball is posed to sit just off a paddle's front face. */
+export function nearBallX(side: Side): number {
+  return side === "left" ? P1_X1 + BALL_R + 10 : P2_X0 - BALL_R - 10;
+}
+
+export interface PaddleHitOptions {
+  /** Where the struck paddle is when the ball arrives. */
+  cy?: number;
+  /** The velocity it holds through the run-up and the contact, in px/s. */
+  vy?: number;
+  /** The height the ball arrives at. */
+  ballY?: number;
+  /** How fast the ball approaches, in px/s. */
+  approachSpeed?: number;
+  /** An explicit start x, for a contact whose paddle must not be led upstream. */
+  startX?: number;
+  /** Frames of approach posed in front of the contact. */
+  leadTicks?: number;
+}
+
+/**
+ * Pose a contact on `side`: that paddle at `cy` moving at `vy`, the other parked,
+ * and a ball aimed straight at the struck paddle's front face at `ballY`.
+ *
+ * With a lead, the paddle starts the run-up's worth of travel UPSTREAM so it
+ * arrives at `cy` as the ball does — which is what lets a swinging paddle really
+ * be moving at contact rather than pinned against a bound.
+ */
+export function arrangePaddleHit(
+  h: Harness,
+  side: Side,
+  options: PaddleHitOptions = {},
+): void {
+  const {
+    cy = FIELD_CY,
+    vy = 0,
+    ballY = FIELD_CY,
+    approachSpeed = 400,
+    startX,
+    leadTicks = 0,
+  } = options;
+
+  const other: Side = side === "left" ? "right" : "left";
+  const lead = seconds(leadTicks);
+  h.debug.setPaddle(side, { cy: cy - vy * lead, vy });
+  h.debug.setPaddle(other, { cy: PARKED_CY, vy: 0 });
+
+  const near = nearBallX(side);
+  const runUp = approachSpeed * lead;
+  const x = startX ?? (side === "left" ? near + runUp : near - runUp);
+  h.debug.setBall(0, {
+    x,
+    y: ballY,
+    vx: side === "left" ? -approachSpeed : approachSpeed,
+    vy: 0,
+    spin: 0,
+  });
+}
+
+export interface PaddleHitResult {
+  hit: boolean;
+  ball: CaromSnapshot["ball"];
+  /** The struck paddle, at the instant of the rebound. */
+  paddle: { cy: number; vy: number };
+  snapshot: CaromSnapshot;
+}
+
+/**
+ * Run the real simulation until the ball comes off `side`'s front face, and
+ * report the ball the instant it rebounds — before spin decays or curves the
+ * flight. Sampled every frame, because the instant is what is read.
+ */
+export async function drivePaddleHit(
+  h: Harness,
+  side: Side,
+  options: { maxFrames?: number; leadTicks?: number } = {},
+): Promise<PaddleHitResult> {
+  const maxFrames = (options.maxFrames ?? 72) + (options.leadTicks ?? 0);
+  const rebounded =
+    side === "left"
+      ? (s: CaromSnapshot): boolean => s.ball.vx > 0
+      : (s: CaromSnapshot): boolean => s.ball.vx < 0;
+  const swept = await h.until(rebounded, { maxFrames, poll: 1 });
+  return {
+    hit: swept.hit,
+    ball: swept.snapshot.ball,
+    paddle: swept.snapshot.paddles[side],
+    snapshot: swept.snapshot,
+  };
+}
+
+/* ---- Rally speed --------------------------------------------------------- */
+
+/** Two still, centred paddles and a ball launched level down the middle. */
+export async function arrangeRally(h: Harness): Promise<void> {
+  await startPlaying(h);
+  h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
+  h.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
+  h.debug.setBall(0, {
+    x: FIELD_CX,
+    y: FIELD_CY,
+    vx: -500,
+    vy: 0,
+    spin: 0,
+  });
+}
+
+/**
+ * Play a real rally and report the ball's speed after each successive paddle
+ * hit. Speed is constant between hits, so each leg sweeps coarsely until the
+ * horizontal direction reverses. Stops early if play ever leaves the field.
+ */
+export async function driveRallySpeeds(
+  h: Harness,
+  hits = 24,
+): Promise<number[]> {
+  const speeds: number[] = [];
+  let previousSign = -1; // the ball is launched toward the left paddle
+
+  for (let hit = 0; hit < hits; hit += 1) {
+    const sign = Math.sign(h.snapshot().ball.vx);
+    if (sign !== 0) previousSign = sign;
+    const want = -previousSign;
+
+    let leftPlay = false;
+    const leg = await h.until(
+      (s) => {
+        if (s.screen !== "playing") {
+          leftPlay = true;
+          return true;
+        }
+        return Math.sign(s.ball.vx) === want && s.ball.vx !== 0;
+      },
+      { maxFrames: 600, poll: 6 },
+    );
+    if (leftPlay || !leg.hit) break;
+    speeds.push(leg.snapshot.ball.speed);
+    previousSign = want;
+  }
+  return speeds;
+}
+
+/* ---- Held movement ------------------------------------------------------- */
+
+export interface MoveResult {
+  start: number;
+  end: number;
+  /** The struck paddle's Δcy: negative is upward. */
+  delta: number;
+  /** Each paddle's Δcy, so a check can also confirm the other stayed still. */
+  otherDelta: { left: number; right: number };
+}
+
+/**
+ * Hold a movement key for `ticks` frames and report how far each paddle moved.
+ * Nothing here calls a control op, so the game stays under normal player control
+ * and the paddles respond exactly as they do for a player.
+ */
+export async function holdMove(
+  h: Harness,
+  side: Side,
+  code: string,
+  options: { ticks?: number } = {},
+): Promise<MoveResult> {
+  const ticks = options.ticks ?? 36; // 0.3 s
+  const before = h.snapshot().paddles;
+  h.hold(code);
+  await h.advance(ticks);
+  const after = h.snapshot().paddles;
+  h.release(code);
+
+  const moved = (which: Side): number => after[which].cy - before[which].cy;
+  return {
+    start: before[side].cy,
+    end: after[side].cy,
+    delta: moved(side),
+    otherDelta: { left: moved("left"), right: moved("right") },
+  };
+}
+
+/* ---- The Solo AI --------------------------------------------------------- */
+
+/**
+ * A live Solo match with the human paddle parked, ball 0 posed by `ball`, the AI
+ * paddle started at `paddleCy`, and the AI handed control of it. Running time
+ * forward from here pits the real opponent against the posed shot.
+ */
+export async function arrangeAiScenario(
+  h: Harness,
+  scenario: {
+    paddleCy: number;
+    ball: { x: number; y: number; vx: number; vy?: number };
+  },
+): Promise<void> {
+  await startPlaying(h, "solo");
+  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  h.debug.setPaddle("right", { cy: scenario.paddleCy, vy: 0 });
+  h.debug.setBall(0, { vy: 0, spin: 0, ...scenario.ball });
+  h.debug.setAiControl(true);
+}
+
+export type AiOutcome = "blocked" | "scored" | "timeout";
+
+/**
+ * Run the posed Solo shot to its resolution.
+ *
+ * "blocked" — the AI reached the ball and sent it back. "scored" — the shot got
+ * past it and player one's score went up. The ball must be SEEN travelling toward
+ * the AI before a leftward velocity can count as a block, so the posed approach
+ * itself never reads as one.
+ */
+export async function driveAiScenario(
+  h: Harness,
+  options: UntilOptions = {},
+): Promise<{ result: AiOutcome; snapshot: CaromSnapshot }> {
+  const start = h.snapshot().score.p1;
+  let sawIncoming = false;
+  let result: AiOutcome = "timeout";
+
+  const swept = await h.until(
+    (s) => {
+      if (s.ball.vx > 0) sawIncoming = true;
+      if (s.score.p1 > start) {
+        result = "scored";
+        return true;
+      }
+      if (sawIncoming && s.ball.vx < 0 && s.ball.x < FIELD_W) {
+        result = "blocked";
+        return true;
+      }
+      return false;
+    },
+    { maxFrames: options.maxFrames ?? 480, poll: options.poll ?? 2 },
+  );
+  return { result, snapshot: swept.snapshot };
+}
+
+/**
+ * A live Solo match with the AI paddle far from a ball moving toward it, so the
+ * real opponent chases at its own speed for as long as a check watches.
+ */
+export async function arrangeAiChase(
+  h: Harness,
+  options: { paddleCy?: number; ballY?: number } = {},
+): Promise<void> {
+  await startPlaying(h, "solo");
+  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  h.debug.setPaddle("right", { cy: options.paddleCy ?? 120, vy: 0 });
+  h.debug.setBall(0, {
+    x: FIELD_CX,
+    y: options.ballY ?? 650,
+    vx: 200,
+    vy: 0,
+    spin: 0,
+  });
+  h.debug.setAiControl(true);
+}
+
+/** How fast the AI paddle travels while it is chasing, in px/s. */
+export async function driveAiChaseSpeed(
+  h: Harness,
+  options: { ticks?: number } = {},
+): Promise<{ speed: number; delta: number }> {
+  const ticks = options.ticks ?? 12;
+  const before = h.snapshot().paddles.right.cy;
+  await h.advance(ticks);
+  const after = h.snapshot().paddles.right.cy;
+  return {
+    speed: speedOverTicks(after - before, ticks),
+    delta: after - before,
+  };
+}
+
+/**
+ * A live Solo match with a ball aimed to arrive at the AI's front face while the
+ * AI is still sweeping down through the lane, so it strikes while moving.
+ */
+export async function arrangeAiMovingHit(h: Harness): Promise<void> {
+  await startPlaying(h, "solo");
+  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  h.debug.setPaddle("right", { cy: 180, vy: 0 }); // above the lane
+  h.debug.setBall(0, { x: 1072, y: FIELD_CY, vx: 500, vy: 0, spin: 0 });
+  h.debug.setAiControl(true);
+}
+
+/* ---- Obstacle bank shots -------------------------------------------------- */
+
+/**
+ * Line the ball up 180 px short of `faceX`, level with the obstacle at `y`,
+ * travelling straight at that face. `from` is the side it approaches from.
+ */
+export function arrangeObstacleBounce(
+  h: Harness,
+  shot: { faceX: number; y: number; from: Side; speed?: number },
+): void {
+  const speed = shot.speed ?? 600;
+  clearPaddles(h);
+  h.debug.setBall(0, {
+    x: shot.from === "left" ? shot.faceX - 180 : shot.faceX + 180,
+    y: shot.y,
+    vx: shot.from === "left" ? speed : -speed,
+    vy: 0,
+    spin: 0,
+  });
+}
+
+/** Run the real collision until the ball reflects off the struck face. */
+export function driveObstacleBounce(
+  h: Harness,
+  from: Side,
+  options: UntilOptions = {},
+): Promise<UntilResult> {
+  const reversed =
+    from === "left"
+      ? (s: CaromSnapshot): boolean => s.ball.vx < 0
+      : (s: CaromSnapshot): boolean => s.ball.vx > 0;
+  return h.until(reversed, {
+    maxFrames: options.maxFrames ?? 240,
+    poll: options.poll ?? 1,
+  });
+}
+
+/* ---- A ball in open flight ------------------------------------------------ */
+
+/**
+ * A live match with the ball posed in mid-flight, clear of the obstacles so a
+ * short flight is a straight line. Spin is zeroed so the path is predictable.
+ */
+export async function arrangeLiveBall(
+  h: Harness,
+  ball: { x: number; y: number; vx: number; vy?: number },
+  mode: Mode = "versus",
+): Promise<void> {
+  await startPlaying(h, mode);
+  clearPaddles(h);
+  h.debug.setBall(0, { spin: 0, vy: 0, ...ball });
+}
+
+/* ========================================================================== */
+/* Rendering, input, audio, pause and UI                                      */
+/* ========================================================================== */
+//
+// The second half of the suite — the checks that read what was DRAWN, what was
+// PLAYED, and what the keyboard did — needs three things the scenario helpers
+// above do not provide: a cue record stamped with the frame each cue fired on,
+// a colour sampler over the rendered canvas, and a way to ask what a single
+// frame's render actually asked the context for. They are gathered here rather
+// than folded in above so the two halves of this file stay separable.
+
+import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
+
+/* ---- Controls tolerances -------------------------------------------------- */
+
+/**
+ * A clearly non-trivial paddle displacement, in logical px.
+ *
+ * The controls checks are about which paddle a key moves and which way, not how
+ * fast — the speed is the `paddle-movement` category's point, and stating it in
+ * both places would fail one build twice for one fault. At the specified 720 px/s
+ * the 36-frame hold below travels 216 px, so this bound is crossed several times
+ * over by any build in the right ballpark and never by one that did not move.
+ */
+export const MOVE_MIN = 40;
+
+/** How far a paddle a key must NOT touch may drift, in logical px. */
+export const STILL_MAX = 6;
+
+/* ---- Cues ----------------------------------------------------------------- */
+
+/** A cue the build played, and the frame of the run it played on. */
+export interface TimedCue {
+  cue: string;
+  /** The frame loop's simulated time when it played, in milliseconds. */
+  t: number;
+  /** The cue's gain: zero while the bus is muted, positive otherwise. */
+  gain: number;
+  /** The frame it played on, 1-based, as `engine.frame().count` reports. */
+  frame: number;
+}
+
+/**
+ * Record every cue the build plays from now on, stamped with its frame.
+ *
+ * The runtime publishes `cue:played` synchronously from inside `audio.play`, so
+ * the handler runs while the frame that played it is still running and
+ * `engine.frame().count` is that frame's own number. That is what lets a check
+ * assert not merely that a cue sounded but that it sounded on the frame of the
+ * collision — which is what tells a build that plays a cue on the right event
+ * apart from one that plays it on every frame, or a frame late.
+ */
+export function watchCues(h: Harness): TimedCue[] {
+  const played: TimedCue[] = [];
+  h.engine.events.on("cue:played", ({ cue, t, gain }) => {
+    played.push({ cue, t, gain, frame: h.engine.frame().count });
+  });
+  return played;
+}
+
+/* ---- Colour --------------------------------------------------------------- */
+
+/** A sampled colour, each channel 0–255. */
+export interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/**
+ * The on-field points the colour checks sample, in logical px, valid on the
+ * scene `arrangeColorScene` poses.
+ *
+ * Each sits well inside the shape it names — a paddle is 16 wide and an obstacle
+ * 20, so a point on the centre line is 8 px from the nearest edge and the 4 px
+ * cluster below stays inside the solid body. That margin is the point: a curved
+ * or rounded edge is anti-aliased and blends toward whatever is behind it, so a
+ * sample on the rim would read as a mixture rather than as the fill.
+ */
+export const COLOR_POINTS = {
+  leftPaddle: { x: (P1_X0 + P1_X1) / 2, y: FIELD_CY },
+  rightPaddle: { x: (P2_X0 + P2_X1) / 2, y: FIELD_CY },
+  obstacle: OBSTACLE_CENTERS[0],
+  /** A clean mid-field spot, clear of the paddles, both obstacles, and the net. */
+  ball: { x: 300, y: FIELD_CY },
+  /** An empty patch of field, clear of every drawn element. */
+  background: { x: 500, y: 650 },
+} as const;
+
+/**
+ * The rendered colour at a logical point, averaged over a small cluster.
+ *
+ * The centre pixel plus four neighbours 4 px out, all of which stay inside the
+ * solid body of every shape sampled, so one stray anti-aliased or glow pixel
+ * cannot swing the reading.
+ */
+export function sampleColor(h: Harness, x: number, y: number): Rgb {
+  const offsets: readonly (readonly [number, number])[] = [
+    [0, 0],
+    [4, 0],
+    [-4, 0],
+    [0, 4],
+    [0, -4],
+  ];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const [dx, dy] of offsets) {
+    const [pr, pg, pb] = h.pixel(x + dx, y + dy);
+    r += pr;
+    g += pg;
+    b += pb;
+  }
+  return {
+    r: r / offsets.length,
+    g: g / offsets.length,
+    b: b / offsets.length,
+  };
+}
+
+/** A `#rrggbb` colour from `src/constants.ts`, as channels to compare against. */
+export function hexRgb(hex: string): Rgb {
+  const value = Number.parseInt(hex.replace("#", ""), 16);
+  return {
+    r: (value >> 16) & 0xff,
+    g: (value >> 8) & 0xff,
+    b: value & 0xff,
+  };
+}
+
+/** Euclidean distance between two colours, 0 to about 441. */
+export function colorDistance(a: Rgb, b: Rgb): number {
+  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+}
+
+/** Every point in `COLOR_POINTS`, sampled off the canvas as it stands. */
+export function sampleScene(
+  h: Harness,
+): Record<keyof typeof COLOR_POINTS, Rgb> {
+  return {
+    leftPaddle: sampleColor(
+      h,
+      COLOR_POINTS.leftPaddle.x,
+      COLOR_POINTS.leftPaddle.y,
+    ),
+    rightPaddle: sampleColor(
+      h,
+      COLOR_POINTS.rightPaddle.x,
+      COLOR_POINTS.rightPaddle.y,
+    ),
+    obstacle: sampleColor(h, COLOR_POINTS.obstacle.x, COLOR_POINTS.obstacle.y),
+    ball: sampleColor(h, COLOR_POINTS.ball.x, COLOR_POINTS.ball.y),
+    background: sampleColor(
+      h,
+      COLOR_POINTS.background.x,
+      COLOR_POINTS.background.y,
+    ),
+  };
+}
+
+/**
+ * Pose a clean, static colour scene and paint it: a live match with both paddles
+ * centred and the ball parked at the mid-field sample point, so each sample
+ * point renders an unobstructed, solid body.
+ *
+ * The settle is longer than the trail's own life on purpose. Posing the ball
+ * teleports it, and the samples it left along the way would otherwise still be
+ * drawn as a streak across the field; a still ball for `TRAIL_TIME` retires
+ * every one of them, so what is sampled is the ball rather than its wake.
+ */
+export async function arrangeColorScene(h: Harness): Promise<void> {
+  await startPlaying(h, "versus");
+  h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
+  h.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
+  h.debug.setBall(0, {
+    x: COLOR_POINTS.ball.x,
+    y: COLOR_POINTS.ball.y,
+    vx: 0,
+    vy: 0,
+    spin: 0,
+  });
+  await h.advance(Math.ceil(TRAIL_TIME * TICK_HZ) + 4);
+}
+
+/* ---- Reading one frame's render ------------------------------------------- */
+
+/** Every string the frame drew, through `fillText` or `strokeText`. */
+export function drawnText(calls: readonly DrawCall[]): string[] {
+  return [
+    ...callsTo(calls, "fillText"),
+    ...callsTo(calls, "strokeText"),
+  ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
+}
+
+/**
+ * Whether the frame drew `text` as part of some run of text, ignoring case.
+ *
+ * Substring rather than equality on purpose: the copy a check asserts is the
+ * case's own, but how a build presents it is the build's, and a menu entry is
+ * commonly drawn with a selection marker or padding around it. Requiring the
+ * exact run would fail a screen that shows precisely the right words.
+ */
+export function drewText(calls: readonly DrawCall[], text: string): boolean {
+  const wanted = text.trim().toLowerCase();
+  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+}
+
+/**
+ * The geometry calls a frame made, by name.
+ *
+ * Enough of a count to compare two frames of the same scene: a frame that drew a
+ * trail asked for strictly more of these than the same frame with the ball at
+ * rest, whatever shape the build chose to draw it as.
+ */
+export const DRAW_METHODS: readonly string[] = [
+  "arc",
+  "ellipse",
+  "rect",
+  "roundRect",
+  "fillRect",
+  "strokeRect",
+  "moveTo",
+  "lineTo",
+  "quadraticCurveTo",
+  "bezierCurveTo",
+  "fill",
+  "stroke",
+  "drawImage",
+];
+
+/** How many drawing operations the frame issued. */
+export function drawOps(calls: readonly DrawCall[]): number {
+  return calls.filter(
+    (call) => call.kind === "call" && DRAW_METHODS.includes(call.method),
+  ).length;
+}
+
+/**
+ * Every logical point a frame's drawing calls named.
+ *
+ * A trail is a sequence of draws rather than one shape, so where a render put
+ * its geometry is the direct reading of it: the coordinates behind the ball are
+ * the trail, and the ones at the ball are the ball. The leading pair of
+ * arguments is the position for every method listed, except the curve calls,
+ * whose control points come first and whose endpoint is the last pair.
+ */
+export function drawnPoints(
+  calls: readonly DrawCall[],
+): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = [];
+  const push = (x: unknown, y: unknown): void => {
+    if (typeof x === "number" && typeof y === "number") points.push({ x, y });
+  };
+
+  for (const call of calls) {
+    if (call.kind !== "call") continue;
+    const { method, args } = call;
+    if (
+      method === "arc" ||
+      method === "ellipse" ||
+      method === "rect" ||
+      method === "roundRect" ||
+      method === "fillRect" ||
+      method === "strokeRect" ||
+      method === "moveTo" ||
+      method === "lineTo" ||
+      method === "drawImage"
+    ) {
+      push(args[0], args[1]);
+    } else if (method === "quadraticCurveTo") {
+      push(args[0], args[1]);
+      push(args[2], args[3]);
+    } else if (method === "bezierCurveTo") {
+      push(args[0], args[1]);
+      push(args[2], args[3]);
+      push(args[4], args[5]);
+    }
+  }
+  return points;
+}

@@ -26,6 +26,7 @@
 //! it is kept inside the keyed directory (not seeded) so a definition and its
 //! derived artifacts move and expire as a unit.
 
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -201,10 +202,11 @@ pub struct StoredManifest {
     /// workspace destination, `template` whether it is a `.hbs` the runner renders).
     pub common_specs: Vec<StoredSpec>,
     /// Common starter workspace files (directory already expanded to individual
-    /// files), seeded into the run root for every variant that does not override
-    /// the workspace. Defaulted for manifests stored before the field existed.
+    /// files), per [engine](test_cabinet_core::engine), seeded into the run root for
+    /// every variant that does not override the workspace. Defaulted for manifests
+    /// stored before the field existed.
     #[serde(default)]
-    pub workspace: Vec<StoredWorkspaceFile>,
+    pub workspace: StoredWorkspace,
     /// The init command run in the run container after seeding, or `None`.
     /// Defaulted for manifests stored before the field existed.
     #[serde(default)]
@@ -506,6 +508,52 @@ pub struct StoredWorkspaceFile {
     pub dest: String,
 }
 
+/// The starter project a [`StoredManifest`] carries, keyed by
+/// [engine](test_cabinet_core::engine) slug.
+///
+/// A case ships one project per engine, because a project is written against a
+/// runtime: its `package.json` declares the engine's dependency and its case-owned
+/// modules are written against that engine's API. Ingest always writes the map, so
+/// that is what a stored manifest serializes as.
+///
+/// A manifest stored before the key was an engine map carries a bare list. Such a
+/// case supported no engine — nothing else could have been stored — so the list is
+/// read as the engineless project, which is exactly what re-ingesting that manifest
+/// produces.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StoredWorkspace {
+    /// One set of starter files per engine slug.
+    ByEngine(BTreeMap<String, Vec<StoredWorkspaceFile>>),
+    /// A legacy flat list: the engineless project.
+    Engineless(Vec<StoredWorkspaceFile>),
+}
+
+impl Default for StoredWorkspace {
+    fn default() -> Self {
+        Self::ByEngine(BTreeMap::new())
+    }
+}
+
+impl StoredWorkspace {
+    /// Whether the case seeds no starter file for any engine.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::ByEngine(by_engine) => by_engine.values().all(Vec::is_empty),
+            Self::Engineless(files) => files.is_empty(),
+        }
+    }
+
+    /// Every file, whichever shape this is in — what an artifact sweep walks, where
+    /// the engine a file belongs to does not matter.
+    pub fn files(&self) -> Box<dyn Iterator<Item = &StoredWorkspaceFile> + '_> {
+        match self {
+            Self::ByEngine(by_engine) => Box::new(by_engine.values().flatten()),
+            Self::Engineless(files) => Box::new(files.iter()),
+        }
+    }
+}
+
 /// A variant persisted in a [`StoredManifest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredVariant {
@@ -517,11 +565,12 @@ pub struct StoredVariant {
     pub description: Option<String>,
     /// Additive specs.
     pub specs: Vec<StoredSpec>,
-    /// The variant's workspace override (directory expanded to files), when it
-    /// replaces the common workspace for this variant. `None` inherits the common
-    /// workspace. Defaulted for manifests stored before the field existed.
+    /// The variant's workspace override (directory expanded to files, per
+    /// [engine](test_cabinet_core::engine)), when it replaces the common workspace
+    /// for this variant. `None` inherits the common workspace. Defaulted for
+    /// manifests stored before the field existed.
     #[serde(default)]
-    pub workspace: Option<Vec<StoredWorkspaceFile>>,
+    pub workspace: Option<StoredWorkspace>,
     /// Additive references.
     pub references: Vec<StoredReference>,
     /// Additive proof-of-implementation artifacts. Defaulted for manifests stored
@@ -649,8 +698,16 @@ pub struct StoredReviewItem {
 /// writes it beside the version, and runs it against the build's debug API.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredReviewValidation {
-    /// The version-folder-relative debug-driver script key (forward-slashed).
+    /// The debug-driver script key (forward-slashed): version-folder-relative for a
+    /// case with one script, or relative to each engine's validator project when
+    /// [`Self::per_engine`] is set.
     pub script: String,
+    /// Whether the case declares this validator **per engine**, so `script` names a
+    /// suite inside every engine's validator project rather than one file under the
+    /// version folder. Defaulted for manifests stored before the field existed, all
+    /// of which name one file.
+    #[serde(default)]
+    pub per_engine: bool,
     /// The media outputs the script produces, in declared order.
     #[serde(default)]
     pub outputs: Vec<StoredReviewOutput>,

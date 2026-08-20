@@ -197,10 +197,11 @@ interface SnapshotCaseFile {
     // The variant's own scoring domains (additive to the common ones), rated only
     // when this variant is selected.
     domains?: SnapshotDomain[];
-    // The absolute URL of this variant's reference-implementation build (emitted
-    // by the Rust snapshot export as camelCase `referenceBuild`). Null/absent when
-    // the variant declares no `reference_implementation`.
-    referenceBuild?: string | null;
+    // The absolute URLs of this variant's reference-implementation builds, keyed by
+    // the engine each was built for (emitted by the Rust snapshot export as
+    // camelCase `referenceBuilds`). Absent when the variant declares no
+    // `reference_implementation`, and on a snapshot written before the field.
+    referenceBuilds?: Record<string, string>;
     // An ASSET-GENERATION variant's published reference frames: the indices whose
     // rendered image and action log `tcab publish-reference` uploaded to this very
     // bucket. Null/absent when the variant has no published asset reference (every
@@ -517,11 +518,12 @@ interface AssembledVariant {
   // The variant's effective scoring domains (common + its own) — the set a run of
   // this variant is rated against.
   domains: AssembledDomain[];
-  // The absolute URL of this variant's reference-implementation build, or null
-  // when it declares none. Carried through verbatim from the snapshot (already a
-  // fully-qualified Cloudflare Pages URL), it is the case-variant analogue of a
-  // run's playable build and drives whether the case-detail Reference tab appears.
-  referenceBuild: string | null;
+  // The absolute URLs of this variant's reference-implementation builds, one per
+  // engine, or empty when it declares none. Carried through verbatim from the
+  // snapshot (each already a fully-qualified Cloudflare Pages URL), they are the
+  // case-variant analogue of a run's playable build and drive whether the
+  // case-detail Reference tab appears and what its engine switch offers.
+  referenceBuilds: Record<string, string>;
   // An asset-generation variant's published reference frames (indices only). The
   // other shape a reference implementation takes, and the other signal that drives
   // the Reference tab; the frame images and action logs themselves are resolved
@@ -777,9 +779,9 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       referenceScreenshots,
       reviewItems,
       domains,
-      // The reference-implementation build URL, carried through verbatim (null
-      // when the variant declares none).
-      referenceBuild: variant.referenceBuild ?? null,
+      // The reference-implementation build URLs, one per engine, carried through
+      // verbatim (empty when the variant declares none).
+      referenceBuilds: variant.referenceBuilds ?? {},
       // The published asset-reference frame indices, carried through verbatim. The
       // objects they address are resolved into absolute URLs in `loadSnapshot`,
       // where the snapshot base is in hand.

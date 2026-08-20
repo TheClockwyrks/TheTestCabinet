@@ -48,7 +48,6 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
-use crate::engine::ResolvedEngine;
 use crate::execution::ArtifactCollection;
 use crate::test_case::{TestCaseVersion, Variant};
 use crate::validation::{Assertion, AutoVerdict, DebugScriptResult};
@@ -102,7 +101,7 @@ const TRUNCATION_MARKER: &str = " … output truncated … ";
 pub(crate) fn run_vitest_suites(
     test_case: &TestCaseVersion,
     variant: &Variant,
-    engine: &ResolvedEngine,
+    engine: &str,
     artifacts: &ArtifactCollection,
     install_command: &str,
 ) -> Vec<DebugScriptResult> {
@@ -111,10 +110,7 @@ pub(crate) fn run_vitest_suites(
     if units.is_empty() {
         return Vec::new();
     }
-    let suites: Vec<Suite> = units
-        .iter()
-        .map(|unit| Suite::of(unit, engine.slug()))
-        .collect();
+    let suites: Vec<Suite> = units.iter().map(|unit| Suite::of(unit, engine)).collect();
 
     let results = match execute(test_case, engine, artifacts, install_command) {
         Ok(reports) => suites
@@ -129,7 +125,7 @@ pub(crate) fn run_vitest_suites(
             .collect::<Vec<_>>(),
         Err(reason) => {
             tracing::warn!(
-                engine = engine.slug(),
+                engine,
                 reason,
                 "the case's validators could not be run; every point they back is left for the reviewer",
             );
@@ -137,7 +133,7 @@ pub(crate) fn run_vitest_suites(
         }
     };
     tracing::info!(
-        engine = engine.slug(),
+        engine,
         points = results.len(),
         decided = results.iter().filter(|result| result.ran).count(),
         passed = results
@@ -153,6 +149,24 @@ pub(crate) fn run_vitest_suites(
     results
 }
 
+/// The directory holding `engine`'s validator project inside the case's version
+/// folder. A case declares its validators per engine, and this is where it puts
+/// them.
+pub(crate) fn project_dir(test_case: &TestCaseVersion, engine: &str) -> PathBuf {
+    test_case.root.join(VALIDATION_SCRIPT_DIR).join(engine)
+}
+
+/// Whether the case ships a validator project for `engine`.
+///
+/// The presence of the project's own `vitest.config.ts` is the whole test: the
+/// project is what makes the suites runnable, and a case that ships one has said
+/// its points are decided in process rather than by driving a browser.
+pub(crate) fn has_project(test_case: &TestCaseVersion, engine: &str) -> bool {
+    project_dir(test_case, engine)
+        .join(VITEST_CONFIG_FILE)
+        .is_file()
+}
+
 /// Stage the case's validator project, run vitest over it, and return the parsed
 /// per-file reports.
 ///
@@ -161,19 +175,16 @@ pub(crate) fn run_vitest_suites(
 /// having run because of it.
 fn execute(
     test_case: &TestCaseVersion,
-    engine: &ResolvedEngine,
+    engine: &str,
     artifacts: &ArtifactCollection,
     install_command: &str,
 ) -> Result<Vec<SuiteReport>, String> {
     let repo = &artifacts.repo_path;
-    let project = test_case
-        .root
-        .join(VALIDATION_SCRIPT_DIR)
-        .join(engine.slug());
+    let project = project_dir(test_case, engine);
     if !project.join(VITEST_CONFIG_FILE).is_file() {
         return Err(format!(
-            "the case declares no `{VALIDATION_SCRIPT_DIR}/{}/{VITEST_CONFIG_FILE}` validator project",
-            engine.slug(),
+            "the case declares no `{VALIDATION_SCRIPT_DIR}/{engine}/{VITEST_CONFIG_FILE}` \
+             validator project",
         ));
     }
     stage_project(&project, &repo.join(VALIDATION_SCRIPT_DIR))?;
@@ -630,15 +641,21 @@ impl Suite {
 
 /// The collected tree's path for a validator declared at `script_rel`.
 ///
-/// A case declares its validators per engine at
-/// `validation/<engine>/<category>/<item>.test.ts`, and the directory for the run's
-/// engine is staged into the tree at `validation/`, so the engine level is exactly
-/// what the staged path drops. `None` when the declared path names no validator of
-/// this engine, which is a case that declared a script the run's engine has none of.
+/// A case ships one validator project per engine under
+/// `validation/<engine>/`, and the project for the run's engine is staged into the
+/// tree at `validation/`. So a declaration relative to the project — which is what
+/// a case declaring its validators per engine writes — simply gains that one level,
+/// and it names the same suite whichever engine ran.
+///
+/// A case that instead names the whole version-folder path has the engine level
+/// dropped: `validation/<engine>/<rest>` staged at `validation/` is
+/// `validation/<rest>`. `None` when such a path names a validator of some **other**
+/// engine, which is a case that declared a script the run's engine has none of.
 pub(crate) fn staged_path(script_rel: &str, engine_slug: &str) -> Option<String> {
-    let prefix = format!("{VALIDATION_SCRIPT_DIR}/{engine_slug}/");
-    script_rel
-        .strip_prefix(&prefix)
+    let Some(rest) = script_rel.strip_prefix(&format!("{VALIDATION_SCRIPT_DIR}/")) else {
+        return Some(format!("{VALIDATION_SCRIPT_DIR}/{script_rel}"));
+    };
+    rest.strip_prefix(&format!("{engine_slug}/"))
         .map(|rest| format!("{VALIDATION_SCRIPT_DIR}/{rest}"))
 }
 

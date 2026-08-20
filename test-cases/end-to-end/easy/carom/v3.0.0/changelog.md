@@ -1,28 +1,43 @@
-## Carom is a TypeScript project built on the Simple 2D engine
+## Carom is a TypeScript project, on either of two engines
 
 This version stops asking a model for a self-contained HTML page and asks it for
 one module of a real project instead. A run is seeded with a complete TypeScript
 workspace — Vite, `tsc`, ESLint, Prettier and Vitest already configured, an
-`index.html` holding the canvas, and the three case-owned modules the checks read
+`index.html` holding the canvas, and the case-owned modules the checks read
 through — and the model writes `src/game.ts`. Everything the specification fixes
 as a number now has a name in `src/constants.ts`, and the specs cite those names
 rather than restating the figures.
 
-The runtime is the [Simple 2D](/engines/simple-2d/) engine, declared as
-`[[engine]] slug = "simple-2d"` with `min_version = "1.0.0"`. The engine owns the
-frame loop (which hands the game the real elapsed time of each frame, never a
-mandated fixed timestep), keyboard input as named actions, audio as named cues,
-and the debug overlay. What stays the build's is the game.
+The runtime that project stands on owns the frame loop (which hands the game the
+real elapsed time of each frame, never a mandated fixed timestep), keyboard input
+as named actions, audio as named cues, and the debug overlay. What stays the
+build's is the game.
 
-## This version does not support the engineless run
+## Two engines, one game
 
-Earlier versions of Carom ran under no engine at all, and `v3.0.0` does not. The
-seeded workspace's `package.json` depends on the engine package, which only an
-engine run vendors in, so an engineless run could not install — let alone build.
-The manifest therefore declares `simple-2d` alone, and `none` is no longer folded
-into a case's supported set once the case has declared an engine. Runs recorded
-against `v2.1.0` and earlier are untouched: those versions are frozen and still
-resolve, and still support the engineless run they were written for.
+`v3.0.0` supports the engineless run and the [Simple 2D](/engines/simple-2d/)
+engine, and the game is the same under both. What differs is where the runtime
+comes from: `simple-2d` vendors it as a package at seed time, and `none` has the
+seeded project carry it as `src/host.ts`.
+
+Saying that takes a new manifest format. A starter project is written against a
+runtime — its `package.json`, its `src/main.ts`, and the module contract it fixes
+— so one directory cannot stand for two engines. `format = 2` replaces the single
+`workspace` key with a `[workspaces]` table naming one directory per engine, and
+it is the only format that may declare an engine at all; a `format = 1` manifest
+keeps its single `workspace` and runs engineless, which is what every frozen
+version is. The same rule reaches the validators: a review item names its suite
+relative to the engine's validator project (`gameplay/serve-speed.test.ts`), and
+the case ships that suite in `validation/none/` and `validation/simple-2d/` alike,
+so a point is decided the same way whichever engine ran.
+
+Because the two projects fix the same module contract, the specs, the review
+items, the domains and the validators are identical across engines, and a score
+recorded under one engine is comparable with a score recorded under the other.
+
+Each variant also ships a reference implementation per engine, under
+`references/<engine>/<variant>/`, and the case's Reference tab offers a switch
+between them.
 
 ## The produced code is type-checked, linted, formatted and tested
 
@@ -35,10 +50,10 @@ results are carried on the run.
 
 Every one of this version's objective review points names a **validator**: a
 TypeScript test file under `validation/`, run by Vitest **in process** against the
-game the build produced. A validator imports the engine and the build's own
-`src/game.ts`, stands an engine up over an `@napi-rs/canvas` canvas with a clock
+game the build produced. A validator imports the runtime and the build's own
+`src/game.ts`, stands the runtime up over an `@napi-rs/canvas` canvas with a clock
 of its own, and steps it an exact number of frames. It reads behavior from the
-game's state, audio from the engine's `cue:played` event, and drawing from either
+game's state, audio from the runtime's `cue:played` event, and drawing from either
 pixel readback or a recording wrapper around the 2D context.
 
 Nothing drives a browser and no wall-clock time passes, so a scenario is
@@ -51,8 +66,8 @@ for some of them.
 `window.__carom` keeps `reset`, `snapshot`, and the control operations that pose a
 scenario — `startMatch`, `serve`, `setScore`, `setPaddle`, `setBall`,
 `setAiControl`, and gyre's `setObstacleClock` — because each speaks about Carom's
-own world, which no engine can know. What they no longer sit beside are `step`,
-`setAutoStep`, `keyDown`, `keyUp` and `press`: the engine owns the clock and the
+own world, which no runtime can know. What they no longer sit beside are `step`,
+`setAutoStep`, `keyDown`, `keyUp` and `press`: the runtime owns the clock and the
 actions, so the build is not asked for them twice.
 
 ## Reference mockups and proof captures are retired

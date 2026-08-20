@@ -251,10 +251,10 @@ interface ResolvedVersion {
     // The variant's own additive scoring domains (rated only when this variant is
     // selected, on top of the case's common ones).
     domains?: Domain[];
-    // The absolute URL of this variant's reference implementation, recorded in the
-    // backend's `case_reference_build` table. Null when the variant declares none;
-    // absent on a backend that predates the field.
-    referenceBuild?: string | null;
+    // The absolute URLs of this variant's reference implementations, keyed by the
+    // engine each was built for, from the backend's `case_reference_build` table.
+    // Absent on a backend that predates the field.
+    referenceBuilds?: Record<string, string>;
     // An ASSET-GENERATION variant's published reference frames: the indices whose
     // rendered image + action log `tcab publish-reference` uploaded to the public
     // snapshot bucket. Null when none is published; absent on a backend that
@@ -498,11 +498,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
           domains: [...(r.domains ?? []), ...(v.domains ?? [])],
-          // The variant's reference-implementation build URL, carried through
-          // verbatim (already an absolute Cloudflare Pages URL — the backend
-          // records exactly what `tcab publish-reference` deployed). Null when the
-          // variant declares none.
-          referenceBuild: v.referenceBuild ?? null,
+          // The variant's reference-implementation build URLs, one per engine,
+          // carried through verbatim (each already an absolute Cloudflare Pages URL
+          // — the backend records exactly what `tcab publish-reference` deployed).
+          // Empty when the variant declares none.
+          referenceBuilds: v.referenceBuilds ?? {},
           // An asset-generation variant's published reference frames. Carried as
           // indices only — the frame images and action logs live in the public
           // snapshot bucket, addressed by key (see `referenceMediaKey`). Null on a

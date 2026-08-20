@@ -39,12 +39,17 @@ describe("PlayableEmbed", () => {
 
 describe("ReferencePlayable", () => {
   it("embeds the reference build inline when the variant declares one", () => {
-    render(<ReferencePlayable referenceBuild={BUILD} variantName="Base" />);
+    render(
+      <ReferencePlayable
+        referenceBuilds={{ none: BUILD }}
+        variantName="Base"
+      />,
+    );
     expect(document.querySelector("iframe")?.getAttribute("src")).toBe(BUILD);
   });
 
   it("shows a placeholder when the variant declares no reference build", () => {
-    render(<ReferencePlayable referenceBuild={null} variantName="Base" />);
+    render(<ReferencePlayable referenceBuilds={{}} variantName="Base" />);
     expect(
       screen.getByText(/no reference implementation for this variant/i),
     ).toBeInTheDocument();

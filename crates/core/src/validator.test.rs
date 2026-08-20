@@ -18,34 +18,79 @@ fn resolved(slug: &str) -> crate::engine::ResolvedEngine {
         .unwrap_or_else(|err| panic!("`{slug}` is a built-in engine: {err}"))
 }
 
+/// A case rooted at `root`, used for the scripted-validation selection tests.
+fn version_rooted_at(root: &std::path::Path) -> crate::test_case::TestCaseVersion {
+    let mut version = asset_version();
+    version.root = root.to_path_buf();
+    version
+}
+
+/// Give `version` a validator project for `engine`, as a case shipping one does.
+fn write_validator_project(version: &crate::test_case::TestCaseVersion, engine: &str) {
+    let project = version.root.join("validation").join(engine);
+    std::fs::create_dir_all(&project).expect("validator project directory");
+    std::fs::write(project.join("vitest.config.ts"), b"export default {}\n")
+        .expect("validator project config");
+}
+
 #[test]
-fn a_tree_built_on_an_engine_runtime_has_its_validators_run_as_a_vitest_project() {
-    let engine = resolved("simple-2d");
-    let artifacts = ArtifactCollection::new("/runs/impl").built_on(Some(engine.clone()));
+fn a_case_shipping_a_validator_project_for_the_run_s_engine_runs_it() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let version = version_rooted_at(dir.path());
+    write_validator_project(&version, "simple-2d");
+    let artifacts = ArtifactCollection::new("/runs/impl").built_on(Some(resolved("simple-2d")));
 
     assert_eq!(
-        scripted_validation(&artifacts),
-        ScriptedValidation::Vitest(&engine),
-        "an engine that vendors a runtime routes to the vitest runner",
+        scripted_validation(&version, &artifacts),
+        ScriptedValidation::Vitest("simple-2d".to_string()),
+        "the case ships that engine's validator project, so its points are decided in process",
     );
 }
 
 #[test]
-fn a_tree_built_on_no_runtime_is_driven_in_a_browser() {
-    // Both spellings of "no runtime" are the same answer: a run that explicitly
-    // selected `none`, and a tree that recorded no selection at all (a republish, a
-    // `tcab validate` predating engines). Every frozen case version is one of these.
+fn an_engineless_run_of_a_case_shipping_its_project_runs_it_too() {
+    // The engineless project is TypeScript a suite imports exactly as an
+    // engine-backed one is, so what decides the path is the project the case ships
+    // rather than whether the run vendored a runtime. Both spellings of "no engine"
+    // — a run that selected `none`, and a tree that recorded no selection at all —
+    // resolve to the same project.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let version = version_rooted_at(dir.path());
+    write_validator_project(&version, crate::engine::NONE_SLUG);
+
     let selected_none =
         ArtifactCollection::new("/runs/impl").built_on(Some(resolved(crate::engine::NONE_SLUG)));
     let nothing_recorded = ArtifactCollection::new("/runs/impl");
 
     assert_eq!(
-        scripted_validation(&selected_none),
-        ScriptedValidation::Browser
+        scripted_validation(&version, &selected_none),
+        ScriptedValidation::Vitest(crate::engine::NONE_SLUG.to_string()),
     );
     assert_eq!(
-        scripted_validation(&nothing_recorded),
+        scripted_validation(&version, &nothing_recorded),
+        ScriptedValidation::Vitest(crate::engine::NONE_SLUG.to_string()),
+    );
+}
+
+#[test]
+fn a_case_shipping_no_project_for_the_run_s_engine_is_driven_in_a_browser() {
+    // Two ways to arrive here: a case that ships no validator project at all (every
+    // case predating them), and one that ships a project for some OTHER engine.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let nothing = version_rooted_at(dir.path());
+    let artifacts = ArtifactCollection::new("/runs/impl").built_on(Some(resolved("simple-2d")));
+    assert_eq!(
+        scripted_validation(&nothing, &artifacts),
         ScriptedValidation::Browser,
+    );
+
+    let other = tempfile::tempdir().expect("temp dir");
+    let elsewhere = version_rooted_at(other.path());
+    write_validator_project(&elsewhere, crate::engine::NONE_SLUG);
+    assert_eq!(
+        scripted_validation(&elsewhere, &artifacts),
+        ScriptedValidation::Browser,
+        "a project for another engine decides nothing about this run",
     );
 }
 
@@ -269,7 +314,7 @@ fn asset_version() -> TestCaseVersion {
         particle: None,
         audio: None,
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
@@ -519,7 +564,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         particle: None,
         audio: None,
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),

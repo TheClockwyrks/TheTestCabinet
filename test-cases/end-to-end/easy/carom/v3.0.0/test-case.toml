@@ -1,10 +1,19 @@
-slug = "pong"
 # The Test Cabinet test case manifest.
 #
 # Declares, for this exact version, which files are seeded into a run, which
-# engine a run may select, how the produced implementation is built and checked,
+# engines a run may select, how the produced implementation is built and checked,
 # and what a reviewer grades. The testing harness reads this file to resolve a
 # `TestCaseVersion`; see `docs/test-cases.md`.
+
+# The manifest format. Format 2 seeds one starter project PER ENGINE, through the
+# `[workspaces]` table below, and it is the only format that may name an engine —
+# a starter project is written against a runtime, so one directory cannot stand
+# for two. Format 1's single `workspace` key is illegal here.
+format = 2
+
+# The case's stable identity, recorded in every run. It stays `pong` because runs
+# published before the folder was renamed reference it.
+slug = "pong"
 
 # Human-readable display name for this test case.
 name = "Carom"
@@ -46,28 +55,15 @@ prompt = "prompt.hbs"
 # unbounded. Carom is an easy case, so 90 minutes is comfortably more than a
 # healthy build needs while still catching a session that never terminates.
 max_runtime_hours = 1.5
-# Starter workspace seeded into the root of every run before the specs. It is a
-# complete TypeScript project the model builds inside rather than a bare
-# `package.json`: the Vite/TypeScript/ESLint/Prettier/Vitest configuration the
-# `[toolchain]` commands below run against, an `index.html` holding the canvas,
-# and the three case-owned modules a validator imports — `src/constants.ts` (every
-# tunable this specification fixes), `src/debug.ts` (the `window.__carom` surface),
-# and `src/main.ts` (the browser entry that builds the engine and runs it). The
-# model writes `src/game.ts`. The engine is written into the project's
-# `package.json` and vendored in at seed time, so the build imports it by its bare
-# package name. A variant may override this with its own `workspace` directory,
-# which gyre does: its state carries the obstacle clock and both obstacles' live
-# poses, and its debug API adds `setObstacleClock`. The seeded files land at the
-# run root (`workspaces/base/package.json` seeds to `package.json`).
-workspace = "workspaces/base"
 
 # Init command, run in the run container once the workspace and specs are seeded
-# and before the harness starts. It installs the workspace's dependencies —
-# including the vendored engine, the TypeScript toolchain the `[toolchain]`
-# commands invoke, and the headless canvas the model's own vitest tests can draw
-# through — and downloads the Playwright Chromium build (the base image ships the
-# OS libraries Chromium links against, but not the browser binary), so the model
-# can build the game and look at it in a browser without any further setup.
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
 init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
@@ -96,46 +92,76 @@ init = "npm install && npx playwright install chromium"
 # and countdown points out of the common set and declaring them per variant, which
 # is a change to how the case is graded rather than a port of the variant. See
 # `changelog.md`.
-# This list is a root key, so it must precede the first table header (`[build]`).
+# This list is a root key, so it must precede the first table header.
 variants = [
   "variants/base.toml",
   "variants/gyre.toml",
 ]
 
-# The engine a run of this case may select, with the version range this case
-# version supports. An engine is the runtime the produced game is built on — the
-# frame loop and the delta time it hands the game, the input actions a player
-# drives it with, the audio bus, asset loading, and the on-screen diagnostics. It
-# is a *run dimension*, chosen per run alongside the model, the harness, and the
-# variant, and recorded on the run; it is not a property of the game.
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics. It is a *run dimension*, chosen per run alongside the
+# model, the harness, and the variant, and recorded on the run; it is not a
+# property of the game.
 #
-# Carom v3 supports `simple-2d` and nothing else. Earlier versions also offered
-# `none` — no runtime at all, the build writing its own frame loop, keyboard
-# handling, Web Audio graph, and debug overlay — and v3 drops it, because the whole
-# case is now written against the engine: the seeded workspace declares the engine
-# as a dependency and fixes the module contract (`src/constants.ts`,
-# `src/debug.ts`, `src/main.ts`, and the `src/game.ts` the build writes), and this
-# case's validators are vitest suites that import that contract and the engine
-# directly. None of that has a meaning under no runtime, so a run with no engine is
-# refused rather than silently seeded a project it cannot satisfy.
+# Carom supports two, and the game is the same under both. What differs is where
+# the runtime comes from: `simple-2d` vendors it as a package, and `none` has the
+# seeded project carry it as `src/host.ts`. Both projects fix the same module
+# contract — `src/constants.ts`, `src/debug.ts`, `src/main.ts`, and the
+# `src/game.ts` the build writes — so the specs, the review items, and the
+# validators are the same for either, and a score recorded under one engine is
+# comparable with a score recorded under the other.
 #
-# The range is pinned because a specification is written against a runtime
-# contract. `min_version` is the 1.0.0 API the specs and the validators are written
-# against; there is deliberately no `max_version`, so a later 1.x or 2.x from the
-# host package store is accepted as it lands. Widening or moving a range means a
-# new case version, so the pin is the statement that THIS spec set matches THIS
-# contract.
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` carries a range and is named in an
+# `[[engine]]` table. The range is pinned because a specification is written
+# against a runtime contract: `min_version` is the 1.0.0 API the specs and the
+# validators are written against, and there is deliberately no `max_version`, so a
+# later 1.x or 2.x from the host package store is accepted as it lands. Widening or
+# moving a range means a new case version, so the pin is the statement that THIS
+# spec set matches THIS contract.
 #
-# What this table deliberately does NOT do is describe the engine. An engine ships
-# its own documentation from its own package, and seeding puts it in the run for
-# the model to read, so the specs seeded from this folder never restate the
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
 # engine's API and never fall out of date when it changes. Where a spec speaks of
-# the engine it does so only to state what is specific to *this game* under it —
+# the runtime it does so only to state what is specific to *this game* under it —
 # which surfaces the build still supplies, Carom's touch layout, and Carom's cue
-# names — never to teach the engine.
+# names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
 [[engine]]
 slug = "simple-2d"
 min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. Each is a complete TypeScript project the model builds inside rather
+# than a bare `package.json`: the Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, an `index.html`
+# holding the canvas, and the case-owned modules a validator imports —
+# `src/constants.ts` (every tunable this specification fixes), `src/debug.ts` (the
+# `window.__carom` surface), and `src/main.ts` (the browser entry that stands the
+# runtime up and runs it). The model writes `src/game.ts`, and writes the same
+# `src/game.ts` whichever engine ran.
+#
+# There is one directory per engine because the runtime is what differs:
+#   - `none`      seeds `src/host.ts` alongside the rest, so the project carries
+#                 its own frame loop, canvas fit, input, audio, and overlay, and
+#                 depends on no runtime package.
+#   - `simple-2d` seeds no such module and declares the engine in its
+#                 `package.json` instead; the package is vendored in at seed time,
+#                 so the build imports it by its bare package name.
+#
+# A variant may replace this whole table with one of its own, which gyre does: its
+# state carries the obstacle clock and both obstacles' live poses, and its debug
+# API adds `setObstacleClock`. The seeded files land at the run root
+# (`workspaces/base/none/package.json` seeds to `package.json`).
+[workspaces]
+none = "workspaces/base/none"
+"simple-2d" = "workspaces/base/simple-2d"
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
@@ -280,7 +306,7 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # automatically (the reviewer can override); one without is left to the reviewer.
 #
 # EVERY point on this checklist now carries a validation script. Each is a vitest
-# suite under `validation/simple-2d/<category>/<item id>.test.ts` that runs in the
+# suite under `validation/<engine>/<category>/<item id>.test.ts` that runs in the
 # same process as the build. The `simple-2d` level is the ENGINE the suite is
 # written against — a validator speaks one engine's vocabulary, so a case that
 # supported a second engine would carry a second directory beside this one — and
@@ -322,8 +348,8 @@ title = "Debug and automation API present"
 description = "The build exposes the whole window.__carom debug and automation API and the read-only debug overlay described in specs/instrumentation.md, backed by a deterministic, steppable core."
 # Automated validation: reflect that every required operation is installed as a
 # function and that a snapshot reports the full documented shape, then capture the
-# live match that was driven. See validation/simple-2d/instrumentation/debug-api.test.ts.
-validation = { script = "validation/simple-2d/instrumentation/debug-api.test.ts", outputs = [
+# live match that was driven. See validation/<engine>/instrumentation/debug-api.test.ts.
+validation = { script = "instrumentation/debug-api.test.ts", outputs = [
   { id = "state", name = "The driven in-game state", kind = "image" },
 ] }
 
@@ -335,10 +361,10 @@ title = "Gameplay"
 [[review.categories.items]]
 id = "serve-speed"
 title = "Serve speed"
-description = "A served ball leaves at the base serve speed of 520 px/s."
+description = "A served ball leaves at the base serve speed of 520 units per second."
 # Automated validation: start a fresh match, serve, and read the ball's launch speed
-# (~520 px/s). See validation/simple-2d/gameplay/serve-speed.test.ts.
-validation = { script = "validation/simple-2d/gameplay/serve-speed.test.ts", outputs = [
+# (~520 units per second). See validation/<engine>/gameplay/serve-speed.test.ts.
+validation = { script = "gameplay/serve-speed.test.ts", outputs = [
   { id = "serve", name = "A ball leaving at the serve speed", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -347,8 +373,8 @@ title = "Countdown length"
 description = "The pre-serve countdown lasts a fixed 1.0 s at match start and after each point before the ball serves."
 # Automated validation: start a match and advance until the ball serves, confirming
 # the hold lasts ~1.0 s of simulated time on the validator's own clock. See
-# validation/simple-2d/gameplay/countdown-length.test.ts.
-validation = { script = "validation/simple-2d/gameplay/countdown-length.test.ts", outputs = [
+# validation/<engine>/gameplay/countdown-length.test.ts.
+validation = { script = "gameplay/countdown-length.test.ts", outputs = [
   { id = "countdown", name = "The pre-serve countdown running out", kind = "video" },
 ] }
 # Scoring is checked per side — one point for each goal — so a build that scores on
@@ -358,8 +384,8 @@ id = "scoring-p1"
 title = "Player one scores past the right goal"
 description = "A ball crossing the right goal edge scores a point for player one (the left player)."
 # Automated validation: drive a real ball out the right goal and confirm player one's
-# score increments and player two's does not. See validation/simple-2d/gameplay/scoring-p1.test.ts.
-validation = { script = "validation/simple-2d/gameplay/scoring-p1.test.ts", outputs = [
+# score increments and player two's does not. See validation/<engine>/gameplay/scoring-p1.test.ts.
+validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
   { id = "goal", name = "Player one scoring past the right goal", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -367,8 +393,8 @@ id = "scoring-p2"
 title = "Player two scores past the left goal"
 description = "A ball crossing the left goal edge scores a point for player two (the right player)."
 # Automated validation: drive a real ball out the left goal and confirm player two's
-# score increments and player one's does not. See validation/simple-2d/gameplay/scoring-p2.test.ts.
-validation = { script = "validation/simple-2d/gameplay/scoring-p2.test.ts", outputs = [
+# score increments and player one's does not. See validation/<engine>/gameplay/scoring-p2.test.ts.
+validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
   { id = "goal", name = "Player two scoring past the left goal", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -377,8 +403,8 @@ title = "Match win at 11, lead by 2"
 description = "The match is first to 11 and must be won by two clear points."
 # Automated validation: from 10-9, drive a real point across the goal to 11-9 and
 # confirm the match ends with the correct winner and final score. See
-# validation/simple-2d/gameplay/match-win.test.ts.
-validation = { script = "validation/simple-2d/gameplay/match-win.test.ts", outputs = [
+# validation/<engine>/gameplay/match-win.test.ts.
+validation = { script = "gameplay/match-win.test.ts", outputs = [
   { id = "game-over", name = "Match-over screen", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -386,8 +412,8 @@ id = "deuce"
 title = "Deuce past 10-10"
 description = "Any tie at or above 10-10 keeps playing until one player leads by two."
 # Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
-# a further point to 12-10 must. See validation/simple-2d/gameplay/deuce.test.ts.
-validation = { script = "validation/simple-2d/gameplay/deuce.test.ts", outputs = [
+# a further point to 12-10 must. See validation/<engine>/gameplay/deuce.test.ts.
+validation = { script = "gameplay/deuce.test.ts", outputs = [
   { id = "deuce", name = "The deciding deuce point", kind = "video" },
 ] }
 # Pausing is checked around the pre-serve countdown: that it is allowed there (not
@@ -399,8 +425,8 @@ title = "Pausing during the countdown"
 description = "The game can be paused during the pre-serve countdown, not only once the ball is in play."
 # Automated validation: start a match (which opens on the countdown), dispatch a
 # pause key there, and confirm the game pauses. See
-# validation/simple-2d/gameplay/pause-during-countdown.test.ts.
-validation = { script = "validation/simple-2d/gameplay/pause-during-countdown.test.ts", outputs = [
+# validation/<engine>/gameplay/pause-during-countdown.test.ts.
+validation = { script = "gameplay/pause-during-countdown.test.ts", outputs = [
   { id = "paused", name = "Paused during the pre-serve countdown", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -410,8 +436,8 @@ description = "While the game is paused the pre-serve countdown does not advance
 # Automated validation: pause during the countdown, then let far more than the hold
 # elapse in both simulation and real time — the game must stay paused with the ball
 # still held, and resume back into the countdown. See
-# validation/simple-2d/gameplay/countdown-frozen.test.ts.
-validation = { script = "validation/simple-2d/gameplay/countdown-frozen.test.ts", outputs = [
+# validation/<engine>/gameplay/countdown-frozen.test.ts.
+validation = { script = "gameplay/countdown-frozen.test.ts", outputs = [
   { id = "countdown", name = "The countdown frozen while paused", kind = "video" },
 ] }
 # Beatable AI is checked as three separate points, all in Solo, each driving the real
@@ -423,10 +449,10 @@ validation = { script = "validation/simple-2d/gameplay/countdown-frozen.test.ts"
 id = "ai-intercepts"
 title = "Beatable AI — runs down a reachable shot (Solo)"
 description = "In Solo the AI is competent: a ball aimed to arrive a moderate distance from its paddle, within reach at its movement speed, is tracked down and blocked."
-# Automated validation: drive the real AI against a shot ~200 px off its paddle's
+# Automated validation: drive the real AI against a shot ~200 units off its paddle's
 # start — within its reach — and confirm it blocks it (player one does not score). See
-# validation/simple-2d/gameplay/ai-intercepts.test.ts.
-validation = { script = "validation/simple-2d/gameplay/ai-intercepts.test.ts", outputs = [
+# validation/<engine>/gameplay/ai-intercepts.test.ts.
+validation = { script = "gameplay/ai-intercepts.test.ts", outputs = [
   { id = "block", name = "The AI running down and blocking a reachable shot", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -435,8 +461,8 @@ title = "Beatable AI — a fast shot out of reach gets past (Solo)"
 description = "In Solo the AI is clearly beatable and not superhuman: a fast shot placed well out of its reach — arriving before a paddle moving at its speed could cover the distance — gets past it and scores."
 # Automated validation: drive the real AI against a fast, low-angle shot arriving far
 # from its start and confirm the shot gets past it (player one scores) — an AI that
-# moved faster than it should would block it. See validation/simple-2d/gameplay/ai-outrun.test.ts.
-validation = { script = "validation/simple-2d/gameplay/ai-outrun.test.ts", outputs = [
+# moved faster than it should would block it. See validation/<engine>/gameplay/ai-outrun.test.ts.
+validation = { script = "gameplay/ai-outrun.test.ts", outputs = [
   { id = "scored", name = "A fast shot outrunning the AI paddle", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -446,8 +472,8 @@ description = "In Solo the AI does not predict bank shots: a fast, steep shot th
 # Automated validation: drive the real AI against a fast, steep shot that banks off a
 # wall and confirm the shot gets past it (player one scores) — an AI that predicted
 # the reflected destination, or moved too fast, would block it. See
-# validation/simple-2d/gameplay/ai-no-predict.test.ts.
-validation = { script = "validation/simple-2d/gameplay/ai-no-predict.test.ts", outputs = [
+# validation/<engine>/gameplay/ai-no-predict.test.ts.
+validation = { script = "gameplay/ai-no-predict.test.ts", outputs = [
   { id = "scored", name = "A bank shot beating the AI paddle", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -457,8 +483,8 @@ description = "During normal play the game runs on its own: it advances on the e
 # Automated validation: hand the game a real wall clock, let the loop run itself for
 # a stretch of real time, and confirm the ball moved — a build that only advances
 # when something pokes it stays where it was put. See
-# validation/simple-2d/gameplay/advances-in-real-time.test.ts.
-validation = { script = "validation/simple-2d/gameplay/advances-in-real-time.test.ts", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
+# validation/<engine>/gameplay/advances-in-real-time.test.ts.
+validation = { script = "gameplay/advances-in-real-time.test.ts", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 # The simulation is driven by elapsed time, not by a count of frames. The frame clock
 # is the engine's and a validator supplies it, so this is checkable head-on: the same
 # scenario is replayed under several clocks and the outcomes must agree.
@@ -472,8 +498,8 @@ description = "One scenario — a ball banked off a wall into the paddle, and th
 # in step size are compared, never a position: the sharpest of them is the game time
 # each drive took, read from the engine's own frame clock, because a build that
 # advances per frame rather than per second traces the identical path and can only give
-# itself away on the clock. See validation/simple-2d/gameplay/delta-time-independent.test.ts.
-validation = { script = "validation/simple-2d/gameplay/delta-time-independent.test.ts", outputs = [
+# itself away on the clock. See validation/<engine>/gameplay/delta-time-independent.test.ts.
+validation = { script = "gameplay/delta-time-independent.test.ts", outputs = [
   { id = "drive", name = "The scenario driven under a varying clock", kind = "video" },
 ] }
 
@@ -489,8 +515,8 @@ id = "hit-center"
 title = "Hit angle — center returns straight"
 description = "A center hit off a stationary paddle sends the ball straight across, with no vertical angle."
 # Automated validation: read back the outgoing angle of a real stationary-paddle
-# bounce at the paddle center (~0 deg). See validation/simple-2d/paddles/hit-center.test.ts.
-validation = { script = "validation/simple-2d/paddles/hit-center.test.ts", outputs = [
+# bounce at the paddle center (~0 deg). See validation/<engine>/paddles/hit-center.test.ts.
+validation = { script = "paddles/hit-center.test.ts", outputs = [
   { id = "straight", name = "A straight center hit", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -498,8 +524,8 @@ id = "hit-edge"
 title = "Hit angle — edge deflects steeply"
 description = "An extreme-edge hit off a stationary paddle sends the ball off at a steep angle of about 55 degrees."
 # Automated validation: read back the outgoing angle of a real stationary-paddle
-# bounce at the extreme edge (~55 deg). See validation/simple-2d/paddles/hit-edge.test.ts.
-validation = { script = "validation/simple-2d/paddles/hit-edge.test.ts", outputs = [
+# bounce at the extreme edge (~55 deg). See validation/<engine>/paddles/hit-edge.test.ts.
+validation = { script = "paddles/hit-edge.test.ts", outputs = [
   { id = "deflection", name = "A steep edge deflection", kind = "video" },
 ] }
 # Rally acceleration is checked as two separate points — that a hit speeds the ball
@@ -511,23 +537,23 @@ title = "Rally accelerates after each hit"
 description = "Each paddle hit speeds the ball up slightly (about 1.04x), so a rally accelerates gradually hit by hit."
 # Automated validation: drive a real straight rally and record the ball's speed after
 # each paddle hit — the per-hit ratio is ~1.04 and the sequence never decreases while
-# below the cap. See validation/simple-2d/paddles/rally-accelerates.test.ts.
-validation = { script = "validation/simple-2d/paddles/rally-accelerates.test.ts", outputs = [
+# below the cap. See validation/<engine>/paddles/rally-accelerates.test.ts.
+validation = { script = "paddles/rally-accelerates.test.ts", outputs = [
   { id = "acceleration", name = "A rally accelerating hit by hit", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "rally-caps"
 title = "Rally speed caps at the ceiling"
-description = "The per-hit speed-up stops at a ceiling (980 px/s): the ball plateaus there and never exceeds it, however long the rally."
+description = "The per-hit speed-up stops at a ceiling (980 units per second): the ball plateaus there and never exceeds it, however long the rally."
 # Automated validation: drive a real straight rally to its ceiling and confirm the
-# ball's speed plateaus at 980 and never exceeds it. See validation/simple-2d/paddles/rally-caps.test.ts.
-validation = { script = "validation/simple-2d/paddles/rally-caps.test.ts", outputs = [
+# ball's speed plateaus at 980 and never exceeds it. See validation/<engine>/paddles/rally-caps.test.ts.
+validation = { script = "paddles/rally-caps.test.ts", outputs = [
   { id = "ceiling", name = "A rally plateauing at the speed ceiling", kind = "video" },
 ] }
 
 # --- Paddle Movement ----------------------------------------------------------
 # How fast each paddle moves under each way it is controlled: the human paddle at
-# 720 px/s in Solo and for both players in Versus, and the AI paddle at its own,
+# 720 units per second in Solo and for both players in Versus, and the AI paddle at its own,
 # deliberately slower speed. Each is driven the way it really moves — a held key for
 # the human paddles, the real AI's chase for the opponent — and its rate is measured
 # back.
@@ -537,37 +563,37 @@ title = "Paddle Movement"
 [[review.categories.items]]
 id = "speed-solo-player"
 title = "Human paddle speed (Solo)"
-description = "In Solo the human's paddle (left) moves at about 720 px/s while a movement key is held."
+description = "In Solo the human's paddle (left) moves at about 720 units per second while a movement key is held."
 # Automated validation: hold a movement key and measure the left paddle's rate. See
-# validation/simple-2d/paddle-movement/speed-solo-player.test.ts.
-validation = { script = "validation/simple-2d/paddle-movement/speed-solo-player.test.ts", outputs = [
+# validation/<engine>/paddle-movement/speed-solo-player.test.ts.
+validation = { script = "paddle-movement/speed-solo-player.test.ts", outputs = [
   { id = "move", name = "The human paddle moving at its speed (Solo)", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "speed-solo-ai"
 title = "AI paddle speed (Solo)"
-description = "In Solo the AI's paddle (right) chases the ball at a competent rate that stays slower than the human's 720 px/s, so the opponent is beatable."
+description = "In Solo the AI's paddle (right) chases the ball at a competent rate that stays slower than the human's 720 units per second, so the opponent is beatable."
 # Automated validation: hand the real AI its paddle, give it a ball to chase, and
-# measure its rate (competent, under 720). See validation/simple-2d/paddle-movement/speed-solo-ai.test.ts.
-validation = { script = "validation/simple-2d/paddle-movement/speed-solo-ai.test.ts", outputs = [
+# measure its rate (competent, under 720). See validation/<engine>/paddle-movement/speed-solo-ai.test.ts.
+validation = { script = "paddle-movement/speed-solo-ai.test.ts", outputs = [
   { id = "move", name = "The AI paddle chasing at its speed", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "speed-versus-p1"
 title = "Player one paddle speed (Versus)"
-description = "In Versus player one's paddle (left) moves at about 720 px/s while a movement key is held."
+description = "In Versus player one's paddle (left) moves at about 720 units per second while a movement key is held."
 # Automated validation: hold a movement key and measure the left paddle's rate. See
-# validation/simple-2d/paddle-movement/speed-versus-p1.test.ts.
-validation = { script = "validation/simple-2d/paddle-movement/speed-versus-p1.test.ts", outputs = [
+# validation/<engine>/paddle-movement/speed-versus-p1.test.ts.
+validation = { script = "paddle-movement/speed-versus-p1.test.ts", outputs = [
   { id = "move", name = "Player one's paddle moving at its speed (Versus)", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "speed-versus-p2"
 title = "Player two paddle speed (Versus)"
-description = "In Versus player two's paddle (right) moves at about 720 px/s while a movement key is held."
+description = "In Versus player two's paddle (right) moves at about 720 units per second while a movement key is held."
 # Automated validation: hold a movement key and measure the right paddle's rate. See
-# validation/simple-2d/paddle-movement/speed-versus-p2.test.ts.
-validation = { script = "validation/simple-2d/paddle-movement/speed-versus-p2.test.ts", outputs = [
+# validation/<engine>/paddle-movement/speed-versus-p2.test.ts.
+validation = { script = "paddle-movement/speed-versus-p2.test.ts", outputs = [
   { id = "move", name = "Player two's paddle moving at its speed (Versus)", kind = "video" },
 ] }
 
@@ -587,8 +613,8 @@ id = "bounce-a-left"
 title = "Bounces off obstacle A (left face)"
 description = "The ball reflects off the left face of the near mid-field obstacle, enabling a bank shot from that side."
 # Automated validation: fire a real shot at obstacle A's left face and confirm it
-# reflects, staying on the near side. See validation/simple-2d/ball/bounce-a-left.test.ts.
-validation = { script = "validation/simple-2d/ball/bounce-a-left.test.ts", outputs = [
+# reflects, staying on the near side. See validation/<engine>/ball/bounce-a-left.test.ts.
+validation = { script = "ball/bounce-a-left.test.ts", outputs = [
   { id = "bank", name = "Bank shot off obstacle A's left face", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -596,8 +622,8 @@ id = "bounce-a-right"
 title = "Bounces off obstacle A (right face)"
 description = "The ball reflects off the right face of the near mid-field obstacle, enabling a bank shot from that side."
 # Automated validation: fire a real shot at obstacle A's right face and confirm it
-# reflects, staying on the near side. See validation/simple-2d/ball/bounce-a-right.test.ts.
-validation = { script = "validation/simple-2d/ball/bounce-a-right.test.ts", outputs = [
+# reflects, staying on the near side. See validation/<engine>/ball/bounce-a-right.test.ts.
+validation = { script = "ball/bounce-a-right.test.ts", outputs = [
   { id = "bank", name = "Bank shot off obstacle A's right face", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -605,8 +631,8 @@ id = "bounce-b-left"
 title = "Bounces off obstacle B (left face)"
 description = "The ball reflects off the left face of the far mid-field obstacle, enabling a bank shot from that side."
 # Automated validation: fire a real shot at obstacle B's left face and confirm it
-# reflects, staying on the near side. See validation/simple-2d/ball/bounce-b-left.test.ts.
-validation = { script = "validation/simple-2d/ball/bounce-b-left.test.ts", outputs = [
+# reflects, staying on the near side. See validation/<engine>/ball/bounce-b-left.test.ts.
+validation = { script = "ball/bounce-b-left.test.ts", outputs = [
   { id = "bank", name = "Bank shot off obstacle B's left face", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -614,8 +640,8 @@ id = "bounce-b-right"
 title = "Bounces off obstacle B (right face)"
 description = "The ball reflects off the right face of the far mid-field obstacle, enabling a bank shot from that side."
 # Automated validation: fire a real shot at obstacle B's right face and confirm it
-# reflects, staying on the near side. See validation/simple-2d/ball/bounce-b-right.test.ts.
-validation = { script = "validation/simple-2d/ball/bounce-b-right.test.ts", outputs = [
+# reflects, staying on the near side. See validation/<engine>/ball/bounce-b-right.test.ts.
+validation = { script = "ball/bounce-b-right.test.ts", outputs = [
   { id = "bank", name = "Bank shot off obstacle B's right face", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -625,8 +651,8 @@ description = "A ball striking a vertical face close to one end of an obstacle b
 # Automated validation: graze three obstacle corners at a shallow angle, arriving on a
 # vertical face just inside its end, and confirm each reflects on ONE axis — the
 # horizontal velocity reverses while the vertical one keeps its sign. See
-# validation/simple-2d/ball/corner-graze.test.ts.
-validation = { script = "validation/simple-2d/ball/corner-graze.test.ts", outputs = [
+# validation/<engine>/ball/corner-graze.test.ts.
+validation = { script = "ball/corner-graze.test.ts", outputs = [
   { id = "graze", name = "Three corner grazes, each banking off a single face", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -634,9 +660,9 @@ id = "no-tunnel"
 title = "Never tunnels through at high speed"
 description = "The ball never tunnels through an obstacle, paddle, or wall, even at high speed."
 # Automated validation: fire real shots at an obstacle, a paddle, and a wall at the
-# 980 px/s rally ceiling — the fastest the spec allows the ball to move — and confirm
-# none tunnel through. See validation/simple-2d/ball/no-tunnel.test.ts.
-validation = { script = "validation/simple-2d/ball/no-tunnel.test.ts", outputs = [
+# 980 units per second rally ceiling — the fastest the spec allows the ball to move — and confirm
+# none tunnel through. See validation/<engine>/ball/no-tunnel.test.ts.
+validation = { script = "ball/no-tunnel.test.ts", outputs = [
   { id = "fast", name = "High-speed rebound without tunneling", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -645,8 +671,8 @@ title = "Obstacle bounce keeps the ball's speed"
 description = "Bouncing off a mid-field obstacle does not speed the ball up — only a paddle hit does. The ball leaves an obstacle at the same speed it arrived."
 # Automated validation: fire a real shot at an obstacle and read the ball's speed
 # before and after the bounce — an obstacle reflects the ball without accelerating it,
-# unlike a paddle. See validation/simple-2d/ball/obstacle-no-speedup.test.ts.
-validation = { script = "validation/simple-2d/ball/obstacle-no-speedup.test.ts", outputs = [
+# unlike a paddle. See validation/<engine>/ball/obstacle-no-speedup.test.ts.
+validation = { script = "ball/obstacle-no-speedup.test.ts", outputs = [
   { id = "bank", name = "A bank shot keeping its speed", kind = "video" },
 ] }
 
@@ -659,8 +685,8 @@ id = "stationary"
 title = "No spin from a stationary paddle"
 description = "A stationary paddle imparts no new spin, so the return stays straight."
 # Automated validation: a real stationary-paddle contact imparts no spin, so the
-# return stays straight. See validation/simple-2d/spin/stationary.test.ts.
-validation = { script = "validation/simple-2d/spin/stationary.test.ts", outputs = [
+# return stays straight. See validation/<engine>/spin/stationary.test.ts.
+validation = { script = "spin/stationary.test.ts", outputs = [
   { id = "straight", name = "Straight return, no curve", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -669,8 +695,8 @@ title = "No spin at the field bound"
 description = "A paddle pinned at the field bound imparts no spin even while the movement key is held into the bound."
 # Automated validation: a paddle pinned at the bound while holding the key into it
 # imparts no spin (its real velocity clamps to zero), while the same held key
-# mid-field does. See validation/simple-2d/spin/at-bound.test.ts.
-validation = { script = "validation/simple-2d/spin/at-bound.test.ts", outputs = [
+# mid-field does. See validation/<engine>/spin/at-bound.test.ts.
+validation = { script = "spin/at-bound.test.ts", outputs = [
   { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "video" },
 ] }
 # A paddle swung as it strikes imparts spin — checked for each way a paddle is
@@ -683,8 +709,8 @@ id = "moving-solo-player"
 title = "Human paddle imparts spin while moving (Solo)"
 description = "In Solo the human's paddle (left), swung as it strikes, curves the ball's flight."
 # Automated validation: a real downward-swung left-paddle contact imparts significant
-# positive spin. See validation/simple-2d/spin/moving-solo-player.test.ts.
-validation = { script = "validation/simple-2d/spin/moving-solo-player.test.ts", outputs = [
+# positive spin. See validation/<engine>/spin/moving-solo-player.test.ts.
+validation = { script = "spin/moving-solo-player.test.ts", outputs = [
   { id = "curve", name = "A curved shot off the moving human paddle (Solo)", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -692,8 +718,8 @@ id = "moving-solo-ai"
 title = "AI paddle imparts spin while moving (Solo)"
 description = "In Solo the AI's paddle (right), moving as it strikes, curves the ball's flight just as a human paddle does."
 # Automated validation: the real AI strikes the ball while chasing and imparts
-# significant spin from its motion. See validation/simple-2d/spin/moving-solo-ai.test.ts.
-validation = { script = "validation/simple-2d/spin/moving-solo-ai.test.ts", outputs = [
+# significant spin from its motion. See validation/<engine>/spin/moving-solo-ai.test.ts.
+validation = { script = "spin/moving-solo-ai.test.ts", outputs = [
   { id = "curve", name = "A curved shot off the moving AI paddle", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -701,8 +727,8 @@ id = "moving-versus-p1"
 title = "Player one imparts spin while moving (Versus)"
 description = "In Versus player one's paddle (left), swung as it strikes, curves the ball's flight; an upward swing curves it the opposite way from a downward one."
 # Automated validation: a real upward-swung left-paddle contact imparts significant
-# negative spin. See validation/simple-2d/spin/moving-versus-p1.test.ts.
-validation = { script = "validation/simple-2d/spin/moving-versus-p1.test.ts", outputs = [
+# negative spin. See validation/<engine>/spin/moving-versus-p1.test.ts.
+validation = { script = "spin/moving-versus-p1.test.ts", outputs = [
   { id = "curve", name = "A curved shot off player one's moving paddle (Versus)", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -710,8 +736,8 @@ id = "moving-versus-p2"
 title = "Player two imparts spin while moving (Versus)"
 description = "In Versus player two's paddle (right), swung as it strikes, curves the ball's flight."
 # Automated validation: a real downward-swung right-paddle contact imparts significant
-# positive spin. See validation/simple-2d/spin/moving-versus-p2.test.ts.
-validation = { script = "validation/simple-2d/spin/moving-versus-p2.test.ts", outputs = [
+# positive spin. See validation/<engine>/spin/moving-versus-p2.test.ts.
+validation = { script = "spin/moving-versus-p2.test.ts", outputs = [
   { id = "curve", name = "A curved shot off player two's moving paddle (Versus)", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -720,8 +746,8 @@ title = "Spin decays"
 description = "Imparted spin decays back to straight within roughly a couple of seconds."
 # Automated validation: impart real spin, then step the real simulation forward and
 # confirm the spin falls to roughly half after one half-life and to a small fraction
-# after ~2 s. See validation/simple-2d/spin/decay.test.ts.
-validation = { script = "validation/simple-2d/spin/decay.test.ts", outputs = [
+# after ~2 s. See validation/<engine>/spin/decay.test.ts.
+validation = { script = "spin/decay.test.ts", outputs = [
   { id = "decay", name = "A curved shot straightening out", kind = "video" },
 ] }
 
@@ -738,8 +764,8 @@ id = "paddle-solo-player"
 title = "Human paddle frozen while paused (Solo)"
 description = "While paused, the human's paddle (left, in Solo) does not move even with a movement key held."
 # Automated validation: pause, hold a movement key, and confirm the left paddle does
-# not move. See validation/simple-2d/pause/paddle-solo-player.test.ts.
-validation = { script = "validation/simple-2d/pause/paddle-solo-player.test.ts", outputs = [
+# not move. See validation/<engine>/pause/paddle-solo-player.test.ts.
+validation = { script = "pause/paddle-solo-player.test.ts", outputs = [
   { id = "frozen", name = "The human paddle held still while paused (Solo)", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -747,8 +773,8 @@ id = "paddle-solo-ai"
 title = "AI paddle frozen while paused (Solo)"
 description = "While paused, the AI's paddle (right, in Solo) does not move even with a ball to chase."
 # Automated validation: pose a ball for the AI to chase, pause, and confirm the AI
-# paddle does not move. See validation/simple-2d/pause/paddle-solo-ai.test.ts.
-validation = { script = "validation/simple-2d/pause/paddle-solo-ai.test.ts", outputs = [
+# paddle does not move. See validation/<engine>/pause/paddle-solo-ai.test.ts.
+validation = { script = "pause/paddle-solo-ai.test.ts", outputs = [
   { id = "frozen", name = "The AI paddle held still while paused", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -756,8 +782,8 @@ id = "paddle-versus-p1"
 title = "Player one paddle frozen while paused (Versus)"
 description = "While paused, player one's paddle (left, in Versus) does not move even with a movement key held."
 # Automated validation: pause, hold a movement key, and confirm the left paddle does
-# not move. See validation/simple-2d/pause/paddle-versus-p1.test.ts.
-validation = { script = "validation/simple-2d/pause/paddle-versus-p1.test.ts", outputs = [
+# not move. See validation/<engine>/pause/paddle-versus-p1.test.ts.
+validation = { script = "pause/paddle-versus-p1.test.ts", outputs = [
   { id = "frozen", name = "Player one's paddle held still while paused (Versus)", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -765,8 +791,8 @@ id = "paddle-versus-p2"
 title = "Player two paddle frozen while paused (Versus)"
 description = "While paused, player two's paddle (right, in Versus) does not move even with a movement key held."
 # Automated validation: pause, hold a movement key, and confirm the right paddle does
-# not move. See validation/simple-2d/pause/paddle-versus-p2.test.ts.
-validation = { script = "validation/simple-2d/pause/paddle-versus-p2.test.ts", outputs = [
+# not move. See validation/<engine>/pause/paddle-versus-p2.test.ts.
+validation = { script = "pause/paddle-versus-p2.test.ts", outputs = [
   { id = "frozen", name = "Player two's paddle held still while paused (Versus)", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -774,8 +800,8 @@ id = "ball-suspended"
 title = "Ball suspended while paused"
 description = "A ball in flight hangs exactly where it was while the game is paused, rather than drifting on behind the pause menu."
 # Automated validation: pause a ball in flight and confirm it does not move over a
-# long paused stretch. See validation/simple-2d/pause/ball-suspended.test.ts.
-validation = { script = "validation/simple-2d/pause/ball-suspended.test.ts", outputs = [
+# long paused stretch. See validation/<engine>/pause/ball-suspended.test.ts.
+validation = { script = "pause/ball-suspended.test.ts", outputs = [
   { id = "suspended", name = "A ball hanging still while paused", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -783,8 +809,8 @@ id = "ball-continues"
 title = "Ball continues after unpausing"
 description = "After unpausing, the ball carries on from exactly where it was suspended, at its preserved velocity, rather than teleporting to a new position."
 # Automated validation: pause a ball in flight, resume, and confirm one step advances
-# it from the paused position with no teleport. See validation/simple-2d/pause/ball-continues.test.ts.
-validation = { script = "validation/simple-2d/pause/ball-continues.test.ts", outputs = [
+# it from the paused position with no teleport. See validation/<engine>/pause/ball-continues.test.ts.
+validation = { script = "pause/ball-continues.test.ts", outputs = [
   { id = "continues", name = "The ball resuming from where it was paused", kind = "video" },
 ] }
 
@@ -800,31 +826,31 @@ title = "Single Player Controls"
 [[review.categories.items]]
 id = "up"
 title = "Up arrow moves the paddle"
-validation = { script = "validation/simple-2d/controls-solo/up.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "video" }] }
+validation = { script = "controls-solo/up.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "video" }] }
 [[review.categories.items]]
 id = "down"
 title = "Down arrow moves the paddle"
-validation = { script = "validation/simple-2d/controls-solo/down.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "video" }] }
+validation = { script = "controls-solo/down.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "video" }] }
 [[review.categories.items]]
 id = "w"
 title = "W moves the paddle"
-validation = { script = "validation/simple-2d/controls-solo/w.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "video" }] }
+validation = { script = "controls-solo/w.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "video" }] }
 [[review.categories.items]]
 id = "s"
 title = "S moves the paddle"
-validation = { script = "validation/simple-2d/controls-solo/s.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "video" }] }
+validation = { script = "controls-solo/s.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "video" }] }
 [[review.categories.items]]
 id = "escape"
 title = "Esc pauses"
-validation = { script = "validation/simple-2d/controls-solo/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+validation = { script = "controls-solo/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
 [[review.categories.items]]
 id = "p"
 title = "P pauses"
-validation = { script = "validation/simple-2d/controls-solo/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+validation = { script = "controls-solo/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
 [[review.categories.items]]
 id = "m"
 title = "M toggles mute"
-validation = { script = "validation/simple-2d/controls-solo/m.test.ts", outputs = [
+validation = { script = "controls-solo/m.test.ts", outputs = [
   { id = "mute", name = "Title after toggling mute", kind = "image" },
 ] }
 
@@ -838,31 +864,31 @@ title = "Multi Player Controls"
 [[review.categories.items]]
 id = "up"
 title = "Up arrow moves player two's paddle"
-validation = { script = "validation/simple-2d/controls-versus/up.test.ts", outputs = [{ id = "move", name = "Right paddle moving up", kind = "video" }] }
+validation = { script = "controls-versus/up.test.ts", outputs = [{ id = "move", name = "Right paddle moving up", kind = "video" }] }
 [[review.categories.items]]
 id = "down"
 title = "Down arrow moves player two's paddle"
-validation = { script = "validation/simple-2d/controls-versus/down.test.ts", outputs = [{ id = "move", name = "Right paddle moving down", kind = "video" }] }
+validation = { script = "controls-versus/down.test.ts", outputs = [{ id = "move", name = "Right paddle moving down", kind = "video" }] }
 [[review.categories.items]]
 id = "w"
 title = "W moves player one's paddle"
-validation = { script = "validation/simple-2d/controls-versus/w.test.ts", outputs = [{ id = "move", name = "Left paddle moving up", kind = "video" }] }
+validation = { script = "controls-versus/w.test.ts", outputs = [{ id = "move", name = "Left paddle moving up", kind = "video" }] }
 [[review.categories.items]]
 id = "s"
 title = "S moves player one's paddle"
-validation = { script = "validation/simple-2d/controls-versus/s.test.ts", outputs = [{ id = "move", name = "Left paddle moving down", kind = "video" }] }
+validation = { script = "controls-versus/s.test.ts", outputs = [{ id = "move", name = "Left paddle moving down", kind = "video" }] }
 [[review.categories.items]]
 id = "escape"
 title = "Esc pauses"
-validation = { script = "validation/simple-2d/controls-versus/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+validation = { script = "controls-versus/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
 [[review.categories.items]]
 id = "p"
 title = "P pauses"
-validation = { script = "validation/simple-2d/controls-versus/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+validation = { script = "controls-versus/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
 [[review.categories.items]]
 id = "m"
 title = "M toggles mute"
-validation = { script = "validation/simple-2d/controls-versus/m.test.ts", outputs = [
+validation = { script = "controls-versus/m.test.ts", outputs = [
   { id = "mute", name = "Title after toggling mute", kind = "image" },
 ] }
 
@@ -883,8 +909,8 @@ title = "Left paddle color"
 description = "The left (player one) paddle renders in a distinct, visible color — clearly different from the field background and from the right paddle, so the two players are told apart."
 # Automated validation: sample the rendered pixels at the left paddle, right paddle,
 # and an empty patch of field, and confirm the left paddle stands apart from both. See
-# validation/simple-2d/color/left-paddle.test.ts.
-validation = { script = "validation/simple-2d/color/left-paddle.test.ts", outputs = [
+# validation/<engine>/color/left-paddle.test.ts.
+validation = { script = "color/left-paddle.test.ts", outputs = [
   { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -893,8 +919,8 @@ title = "Right paddle color"
 description = "The right (player two / AI) paddle renders in a distinct, visible color — clearly different from the field background and from the left paddle, so the two players are told apart."
 # Automated validation: sample the rendered pixels at the right paddle, left paddle,
 # and an empty patch of field, and confirm the right paddle stands apart from both.
-# See validation/simple-2d/color/right-paddle.test.ts.
-validation = { script = "validation/simple-2d/color/right-paddle.test.ts", outputs = [
+# See validation/<engine>/color/right-paddle.test.ts.
+validation = { script = "color/right-paddle.test.ts", outputs = [
   { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -903,8 +929,8 @@ title = "Obstacle color"
 description = "The mid-field obstacles render in a distinct, visible color — clearly different from the field background and from both paddles, so an obstacle is not mistaken for a paddle."
 # Automated validation: sample the rendered pixels at an obstacle center, both paddle
 # centers, and an empty patch of field, and confirm the obstacle stands apart from all
-# of them. See validation/simple-2d/color/obstacle.test.ts.
-validation = { script = "validation/simple-2d/color/obstacle.test.ts", outputs = [
+# of them. See validation/<engine>/color/obstacle.test.ts.
+validation = { script = "color/obstacle.test.ts", outputs = [
   { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -913,8 +939,8 @@ title = "Ball color"
 description = "The ball renders in a distinct, visible color — clearly different from the field background — so it reads cleanly in play."
 # Automated validation: sample the rendered pixels at the ball and an empty patch of
 # field, and confirm the ball stands apart from the background. See
-# validation/simple-2d/color/ball.test.ts.
-validation = { script = "validation/simple-2d/color/ball.test.ts", outputs = [
+# validation/<engine>/color/ball.test.ts.
+validation = { script = "color/ball.test.ts", outputs = [
   { id = "scene", name = "The posed field showing the ball color", kind = "image" },
 ] }
 
@@ -938,8 +964,8 @@ description = "The entire 1280x720 field stays visible, fitted, and centered at 
 # the viewport the engine derived back: the whole field is inside the surface at each,
 # the aspect ratio is preserved, and the letterboxing is even on both axes, with the
 # first frame checked before anything has been driven. See
-# validation/simple-2d/rendering/window-fit.test.ts.
-validation = { script = "validation/simple-2d/rendering/window-fit.test.ts", outputs = [
+# validation/<engine>/rendering/window-fit.test.ts.
+validation = { script = "rendering/window-fit.test.ts", outputs = [
   { id = "fit", name = "The field fitted and centered in an off-aspect window", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -950,8 +976,8 @@ description = "The ball leaves a continuous, tapering motion trail — a smooth 
 # behind the ball are lit along its recent path and fade with distance from it,
 # rather than being either bare field or a row of separated blobs, and the lit run is
 # longer behind a fast ball than a slow one. Captured for a person to judge whether
-# it actually reads as a comet. See validation/simple-2d/rendering/trail.test.ts.
-validation = { script = "validation/simple-2d/rendering/trail.test.ts", outputs = [
+# it actually reads as a comet. See validation/<engine>/rendering/trail.test.ts.
+validation = { script = "rendering/trail.test.ts", outputs = [
   { id = "trail", name = "The trail behind a ball at speed", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -959,8 +985,8 @@ id = "state-title"
 title = "Title / main menu"
 description = "The title / main menu state is reachable and correct, with the menu rendered cleanly and navigable."
 # Automated validation: reset to the title and capture it. See
-# validation/simple-2d/ui/state-title.test.ts.
-validation = { script = "validation/simple-2d/ui/state-title.test.ts", outputs = [
+# validation/<engine>/ui/state-title.test.ts.
+validation = { script = "ui/state-title.test.ts", outputs = [
   { id = "title", name = "The title / main menu", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -968,8 +994,8 @@ id = "state-howto"
 title = "How to play"
 description = "The how-to-play state is reachable and correct."
 # Automated validation: navigate the menu to How to Play and capture it. See
-# validation/simple-2d/ui/state-howto.test.ts.
-validation = { script = "validation/simple-2d/ui/state-howto.test.ts", outputs = [
+# validation/<engine>/ui/state-howto.test.ts.
+validation = { script = "ui/state-howto.test.ts", outputs = [
   { id = "howto", name = "The how-to-play screen", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -977,8 +1003,8 @@ id = "state-pause"
 title = "Pause (resume/restart/quit)"
 description = "The pause state is reachable and correct, offering resume, restart, and quit."
 # Automated validation: pause a live match and capture the pause menu. See
-# validation/simple-2d/ui/state-pause.test.ts.
-validation = { script = "validation/simple-2d/ui/state-pause.test.ts", outputs = [
+# validation/<engine>/ui/state-pause.test.ts.
+validation = { script = "ui/state-pause.test.ts", outputs = [
   { id = "pause", name = "The pause menu", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -986,8 +1012,8 @@ id = "state-matchover"
 title = "Match over (play again/menu)"
 description = "The match-over state is reachable and correct, offering play again and menu."
 # Automated validation: drive a real match to its end and capture the match-over
-# screen. See validation/simple-2d/ui/state-matchover.test.ts.
-validation = { script = "validation/simple-2d/ui/state-matchover.test.ts", outputs = [
+# screen. See validation/<engine>/ui/state-matchover.test.ts.
+validation = { script = "ui/state-matchover.test.ts", outputs = [
   { id = "matchover", name = "The match-over screen", kind = "image" },
 ] }
 
@@ -1008,8 +1034,8 @@ id = "paddle-hit"
 title = "Paddle-hit cue"
 description = "A distinct short cue plays when the ball strikes a paddle."
 # Automated validation: drive a real paddle contact and confirm the `paddle-hit` cue
-# is played on that frame. See validation/simple-2d/audio/paddle-hit.test.ts.
-validation = { script = "validation/simple-2d/audio/paddle-hit.test.ts", outputs = [
+# is played on that frame. See validation/<engine>/audio/paddle-hit.test.ts.
+validation = { script = "audio/paddle-hit.test.ts", outputs = [
   { id = "hit", name = "The paddle hit whose cue is checked", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -1017,8 +1043,8 @@ id = "wall-bounce"
 title = "Wall bounce cue"
 description = "A distinct short cue plays when the ball bounces off the side wall of the playfield (the top or bottom edge)."
 # Automated validation: fire the ball into a wall and confirm the `wall-bounce` cue
-# is played on that frame. See validation/simple-2d/audio/wall-bounce.test.ts.
-validation = { script = "validation/simple-2d/audio/wall-bounce.test.ts", outputs = [
+# is played on that frame. See validation/<engine>/audio/wall-bounce.test.ts.
+validation = { script = "audio/wall-bounce.test.ts", outputs = [
   { id = "bounce", name = "The wall bounce whose cue is checked", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -1027,8 +1053,8 @@ title = "Obstacle bounce cue"
 description = "A distinct short cue plays when the ball bounces off a mid-field obstacle."
 # Automated validation: fire the ball into an obstacle and confirm the
 # `obstacle-bounce` cue is played on that frame. See
-# validation/simple-2d/audio/obstacle-bounce.test.ts.
-validation = { script = "validation/simple-2d/audio/obstacle-bounce.test.ts", outputs = [
+# validation/<engine>/audio/obstacle-bounce.test.ts.
+validation = { script = "audio/obstacle-bounce.test.ts", outputs = [
   { id = "bounce", name = "The obstacle bounce whose cue is checked", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -1036,7 +1062,7 @@ id = "scoring"
 title = "Scoring cue"
 description = "A cue plays when a point is scored."
 # Automated validation: drive a real point and confirm the `score` cue is played on
-# that frame. See validation/simple-2d/audio/scoring.test.ts.
-validation = { script = "validation/simple-2d/audio/scoring.test.ts", outputs = [
+# that frame. See validation/<engine>/audio/scoring.test.ts.
+validation = { script = "audio/scoring.test.ts", outputs = [
   { id = "score", name = "The scored point whose cue is checked", kind = "video" },
 ] }

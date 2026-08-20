@@ -128,7 +128,7 @@ function testCaseDetail(slug: string): TestCaseDetail {
         referenceScreenshots: [],
         reviewItems: [],
         domains: [],
-        referenceBuild: null,
+        referenceBuilds: {},
       },
     ],
   } as unknown as TestCaseDetail;

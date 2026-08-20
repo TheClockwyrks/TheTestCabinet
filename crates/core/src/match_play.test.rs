@@ -71,7 +71,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         particle: None,
         audio: None,
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),

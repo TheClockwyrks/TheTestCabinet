@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -45,7 +45,7 @@ function variant(extra: Partial<VariantSummary> = {}): VariantSummary {
   return {
     slug: "base",
     name: "Base",
-    referenceBuild: null,
+    referenceBuilds: {},
     referenceSheet: null,
     ...extra,
   } as VariantSummary;
@@ -127,7 +127,7 @@ describe("TestCaseReferencePage", () => {
     expect(screen.getByText("Run")).toBeTruthy();
 
     // A published sheet is a reference in its own right, so the layout offers the
-    // tab off that signal alone — no `referenceBuild` involved.
+    // tab off that signal alone — no `referenceBuilds` involved.
     expect(screen.getByRole("link", { name: "Reference" })).toBeTruthy();
   });
 
@@ -176,7 +176,9 @@ describe("TestCaseReferencePage", () => {
           testType: "end-to-end",
           sheet: null,
           variants: [
-            variant({ referenceBuild: "https://ref.example/carom/base/" }),
+            variant({
+              referenceBuilds: { none: "https://ref.example/carom/base/" },
+            }),
           ],
         }),
       ],
@@ -185,8 +187,50 @@ describe("TestCaseReferencePage", () => {
     galleryData.mockReturnValue({ canExecute: false, arena: undefined });
     renderReference();
 
-    const frame = screen.getByTitle("Reference implementation for Base");
+    const frame = screen.getByTitle("Reference implementation for Base on None");
     expect(frame.getAttribute("src")).toBe("https://ref.example/carom/base/");
+    // One published build is nothing to choose between, so no switch is offered.
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+  });
+
+  it("switches between the reference builds of two engines", () => {
+    // A variant has one reference build per engine, because the build a reference
+    // demonstrates differs under each. Both are published here, so the tab offers
+    // the switch and the embed follows it.
+    catalog.mockReturnValue({
+      testCases: [
+        testCase({
+          testType: "end-to-end",
+          sheet: null,
+          variants: [
+            variant({
+              referenceBuilds: {
+                none: "https://ref.example/carom/base/none/",
+                "simple-2d": "https://ref.example/carom/base/simple-2d/",
+              },
+            }),
+          ],
+        }),
+      ],
+      status: "ready",
+    });
+    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
+    renderReference();
+
+    // The catalog order leads with the engineless build, so that is what loads.
+    expect(
+      screen
+        .getByTitle("Reference implementation for Base on None")
+        .getAttribute("src"),
+    ).toBe("https://ref.example/carom/base/none/");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Simple 2D" }));
+
+    expect(
+      screen
+        .getByTitle("Reference implementation for Base on Simple 2D")
+        .getAttribute("src"),
+    ).toBe("https://ref.example/carom/base/simple-2d/");
   });
 
   it("shows the no-reference placeholder when the variant declares neither", () => {

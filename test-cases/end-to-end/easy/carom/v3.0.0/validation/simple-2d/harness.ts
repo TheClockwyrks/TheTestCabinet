@@ -1,14 +1,14 @@
 // Carom — the shared validator harness. CASE-PROVIDED.
 //
 // Every check in this suite is an ordinary vitest test that runs IN THE SAME
-// PROCESS as the build. It imports the engine and the build's own modules,
-// creates an engine over a canvas it owns and a clock it chose, and steps the
+// PROCESS as the build. It imports the runtime and the build's own modules,
+// creates a runtime over a canvas it owns and a clock it chose, and steps the
 // game with `engine.advance`. Nothing drives a browser, nothing polls, and no
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas its clock supplied.
 //
 // WHAT A CHECK READS. The game's own state (through `src/debug.ts`'s `snapshot`),
-// the engine's frame counter, the events the engine broadcast, and — for the
+// the runtime's frame counter, the events the runtime broadcast, and — for the
 // rendering checks — the pixels on the canvas or the calls the 2D context
 // received. Nothing here fabricates an outcome: the scenario helpers below only
 // ARRANGE the world through `src/debug.ts`, and the real `update` the build wrote
@@ -58,7 +58,7 @@ import { game, type CaromState, type Mode, type Side } from "../src/game";
  * The frame the suite steps in, in milliseconds.
  *
  * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
- * fixes no timestep, because the engine hands the game whatever elapsed time a
+ * fixes no timestep, because the runtime hands the game whatever elapsed time a
  * frame really took. Fixing it here makes a duration a whole number of frames, so
  * a tolerance can be stated in ticks and mean the same thing on every machine.
  */
@@ -89,7 +89,7 @@ export type DrawCall =
   | { kind: "call"; method: string; args: unknown[] }
   | { kind: "set"; property: string; value: unknown };
 
-/** One cue the build played, as the engine announced it. */
+/** One cue the build played, as the runtime announced it. */
 export interface PlayedCue {
   cue: string;
   t: number;
@@ -151,7 +151,7 @@ export interface Harness {
     predicate: (snapshot: CaromSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
+  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
   runFor(ms: number): Promise<void>;
 
   /** Press a key and leave it down, as a player holding it would. */
@@ -161,7 +161,7 @@ export interface Harness {
   /**
    * Press and release a key, then run the one frame that delivers its edge.
    *
-   * The engine discards an edge nothing consumed by the end of the frame it was
+   * The runtime discards an edge nothing consumed by the end of the frame it was
    * armed in, so a tap that ran no frame would never reach the game.
    */
   tap(code: string): Promise<void>;
@@ -171,11 +171,11 @@ export interface Harness {
   /** The device pixel under a logical point, as `[r, g, b, a]`. */
   pixel(x: number, y: number): [number, number, number, number];
 
-  /** Drop the engine's listeners and release the canvas. */
+  /** Drop the runtime's listeners and release the canvas. */
   dispose(): void;
 }
 
-/** A `KeyboardEvent`-shaped event: the engine reads `code` and `repeat`. */
+/** A `KeyboardEvent`-shaped event: the runtime reads `code` and `repeat`. */
 class KeyEvent extends Event {
   readonly code: string;
   readonly repeat: boolean;
@@ -241,12 +241,12 @@ export function setsOf(
 }
 
 /**
- * Build an engine over a canvas of the harness's own, initialize the build's
+ * Build a runtime over a canvas of the harness's own, initialize the build's
  * game, and hand back everything a check reads.
  *
- * The options passed to `createEngine` are the ones the specification fixes —
- * the design size, the background, and the touch layout — so one harness serves
- * every build of this case. Everything else the build decided lives inside
+ * The options passed to the factory are the ones the specification fixes — the
+ * design size, the background, and the touch layout — so one harness serves every
+ * build of this case. Everything else the build decided lives inside
  * `src/game.ts`.
  */
 export async function createHarness(
@@ -839,7 +839,7 @@ export interface TimedCue {
 /**
  * Record every cue the build plays from now on, stamped with its frame.
  *
- * The engine publishes `cue:played` synchronously from inside `audio.play`, so
+ * The runtime publishes `cue:played` synchronously from inside `audio.play`, so
  * the handler runs while the frame that played it is still running and
  * `engine.frame().count` is that frame's own number. That is what lets a check
  * assert not merely that a cue sounded but that it sounded on the frame of the

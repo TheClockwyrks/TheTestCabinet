@@ -75,10 +75,13 @@ impl BackendClient for StubBackend {
                 dest: std::path::PathBuf::from("specs/overview.md"),
                 kind: Default::default(),
             }],
-            common_workspace: vec![WorkspaceFile {
-                source_path: std::path::PathBuf::from("workspaces/base/package.json"),
-                dest: std::path::PathBuf::from("package.json"),
-            }],
+            common_workspace: EngineWorkspaces::from_iter([(
+                crate::engine::NONE_SLUG.to_string(),
+                vec![WorkspaceFile {
+                    source_path: std::path::PathBuf::from("workspaces/base/package.json"),
+                    dest: std::path::PathBuf::from("package.json"),
+                }],
+            )]),
             init: Some("npm install".to_string()),
             asset_paths: vec![std::path::PathBuf::from("assets/ball.png")],
             packages: Vec::new(),
@@ -120,7 +123,7 @@ impl BackendClient for StubBackend {
                 scored: true,
                 validation: Some(crate::test_case::ReviewValidation {
                     // Store-relative until materialization roots it on disk.
-                    script: std::path::PathBuf::from("validation/ball-spin.mjs"),
+                    script: Some(std::path::PathBuf::from("validation/ball-spin.mjs")),
                     script_rel: "validation/ball-spin.mjs".to_string(),
                     outputs: vec![crate::test_case::ReviewOutput {
                         id: "spin".to_string(),
@@ -233,11 +236,11 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
     // The workspace file is rooted at the store dir too, with its run-relative
     // dest preserved, and the init command carried through.
     assert_eq!(
-        version.common_workspace[0].source_path,
+        version.common_workspace.get(crate::engine::NONE_SLUG)[0].source_path,
         store.join("workspaces/base/package.json")
     );
     assert_eq!(
-        version.common_workspace[0].dest,
+        version.common_workspace.get(crate::engine::NONE_SLUG)[0].dest,
         std::path::PathBuf::from("package.json")
     );
     assert_eq!(version.init.as_deref(), Some("npm install"));
@@ -271,8 +274,8 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
         .as_ref()
         .expect("the item carries its validation driver");
     assert_eq!(
-        item_validation.script,
-        store.join("validation/ball-spin.mjs")
+        item_validation.script.as_deref(),
+        Some(store.join("validation/ball-spin.mjs").as_path())
     );
     assert_eq!(item_validation.script_rel, "validation/ball-spin.mjs");
     assert_eq!(item_validation.outputs[0].id, "spin");
@@ -775,8 +778,8 @@ async fn resolve_version_carries_instrumentation_and_item_validation() {
         .as_ref()
         .expect("the item's validation driver survives the wire");
     assert_eq!(
-        validation.script,
-        std::path::PathBuf::from("validation/ball-spin.mjs"),
+        validation.script.as_deref(),
+        Some(std::path::Path::new("validation/ball-spin.mjs")),
         "the script is the store-relative key until materialization roots it"
     );
     assert_eq!(validation.script_rel, "validation/ball-spin.mjs");

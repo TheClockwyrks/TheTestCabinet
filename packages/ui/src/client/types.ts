@@ -198,12 +198,12 @@ export interface VariantInfo {
   // case's common domains plus this variant's own additive ones — so a run is
   // always rated on exactly the domains that apply to its selected variant.
   domains: Domain[];
-  // The absolute URL of this variant's reference implementation — the correct,
-  // authored static build the backend records in `case_reference_build` and serves
-  // on the resolved version (camelCase `referenceBuild`). Null when the variant
-  // declares no `reference_implementation`, and absent on a backend that predates
-  // the field.
-  referenceBuild?: string | null;
+  // The absolute URLs of this variant's reference implementations — the correct,
+  // authored static builds the backend records in `case_reference_build` and serves
+  // on the resolved version (camelCase `referenceBuilds`), keyed by the engine each
+  // was built for. Empty when the variant declares no `reference_implementation`,
+  // and absent on a backend that predates the field.
+  referenceBuilds?: Record<string, string>;
   // The published reference frames for this variant of an ASSET-GENERATION case:
   // the frame indices whose rendered image and action log were uploaded to the
   // public snapshot bucket by `tcab publish-reference`. An asset reference is data,
@@ -211,7 +211,7 @@ export interface VariantInfo {
   // themselves are addressed by the deterministic keys in
   // `crates/core/src/asset_reference.rs`. Null when no reference is published for
   // the variant, and absent on a backend that predates the field. Mutually
-  // exclusive with `referenceBuild` in practice: a case is one test type.
+  // exclusive with `referenceBuilds` in practice: a case is one test type.
   referenceSheet?: ReferenceSheet | null;
 }
 

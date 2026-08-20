@@ -3511,12 +3511,23 @@ async fn list_summaries_any_slice_covers_every_terminal_state() {
 async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
     let db = Db::connect_in_memory().await.unwrap();
 
-    let entry = |slug: &str, version: &str, variant: &str, url: &str| ReferenceBuildEntry {
-        slug: slug.to_string(),
-        version: version.to_string(),
-        variant: variant.to_string(),
-        url: url.to_string(),
-    };
+    let entry =
+        |slug: &str, version: &str, variant: &str, engine: &str, url: &str| ReferenceBuildEntry {
+            slug: slug.to_string(),
+            version: version.to_string(),
+            variant: variant.to_string(),
+            engine: engine.to_string(),
+            url: url.to_string(),
+        };
+    // What the reconcile stored for one variant on one engine.
+    let url_of =
+        |map: &std::collections::HashMap<String, std::collections::BTreeMap<String, String>>,
+         variant: &str,
+         engine: &str| {
+            map.get(variant)
+                .and_then(|by_engine| by_engine.get(engine))
+                .cloned()
+        };
 
     // Reconciling an empty desired set against an empty table changes nothing.
     assert!(
@@ -3531,10 +3542,30 @@ async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
             .is_empty()
     );
 
-    // First reconcile records two variants and reports a change.
+    // First reconcile records two variants — one of them on two engines, which are
+    // separate builds with separate URLs — and reports a change.
     let desired = vec![
-        entry("carom", "v1.1.0", "base", "https://base.example.pages.dev"),
-        entry("carom", "v1.1.0", "gyre", "https://gyre.example.pages.dev"),
+        entry(
+            "carom",
+            "v1.1.0",
+            "base",
+            "none",
+            "https://base-none.example.pages.dev",
+        ),
+        entry(
+            "carom",
+            "v1.1.0",
+            "base",
+            "simple-2d",
+            "https://base-s2d.example.pages.dev",
+        ),
+        entry(
+            "carom",
+            "v1.1.0",
+            "gyre",
+            "none",
+            "https://gyre.example.pages.dev",
+        ),
     ];
     assert!(
         db.sync_reference_builds(&desired, "2026-07-13T00:00:00Z")
@@ -3545,10 +3576,15 @@ async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
         .reference_builds_for_version("carom", "v1.1.0")
         .await
         .unwrap();
-    assert_eq!(map.len(), 2);
+    assert_eq!(map.len(), 2, "two variants");
     assert_eq!(
-        map.get("base").map(String::as_str),
-        Some("https://base.example.pages.dev")
+        url_of(&map, "base", "none").as_deref(),
+        Some("https://base-none.example.pages.dev")
+    );
+    assert_eq!(
+        url_of(&map, "base", "simple-2d").as_deref(),
+        Some("https://base-s2d.example.pages.dev"),
+        "one variant's two engines are two rows, not one overwriting the other"
     );
 
     // Re-running with the identical set is a no-op — no change, so no snapshot refresh.
@@ -3558,12 +3594,14 @@ async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
             .unwrap()
     );
 
-    // A moved URL plus a dropped variant reconciles in place: base's URL updates and
-    // gyre is pruned (absent from the new desired set — the lockfile is authoritative).
+    // A moved URL plus dropped rows reconciles in place: base's engineless URL
+    // updates, and base's other engine and gyre are pruned (absent from the new
+    // desired set — the lockfile is authoritative).
     let desired = vec![entry(
         "carom",
         "v1.1.0",
         "base",
+        "none",
         "https://base-2.example.pages.dev",
     )];
     assert!(
@@ -3577,8 +3615,12 @@ async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
         .unwrap();
     assert_eq!(map.len(), 1, "gyre pruned");
     assert_eq!(
-        map.get("base").map(String::as_str),
+        url_of(&map, "base", "none").as_deref(),
         Some("https://base-2.example.pages.dev")
+    );
+    assert!(
+        url_of(&map, "base", "simple-2d").is_none(),
+        "the engine the lockfile no longer lists is pruned too"
     );
 
     // Reconciling to an empty set prunes everything that remains.

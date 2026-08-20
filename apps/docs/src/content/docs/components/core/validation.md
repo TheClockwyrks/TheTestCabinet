@@ -79,7 +79,10 @@ Observation has three channels:
 
 A validator is written against one engine's API and uses that engine's own
 vocabulary, so a case supporting several engines ships a validator per verdict
-unit per engine.
+unit per engine. A review item names its suite relative to the engine's validator
+project, and the case ships that suite under `validation/<engine>/` for every
+engine it supports. Resolution holds the declaration against each of them, so a
+point is decided the same way whichever engine ran.
 
 Each validator produces an auto verdict, decided from a list of assertions and
 passing only when every assertion passed.
@@ -87,7 +90,13 @@ passing only when every assertion passed.
 ### Running the validators
 
 The validators for the run's engine are a vitest project of the case's own,
-separate from the build's. Deciding the run's points means running that project:
+separate from the build's. A case that ships one for the run's engine has its
+points decided in process, and one that ships none has its build driven in a
+browser instead. Whether the engine vendors a runtime does not enter into it: an
+engineless project is TypeScript a suite imports exactly as an engine-backed one
+is.
+
+Deciding the run's points means running that project:
 
 - Stage the case's `validation/<engine>/` directory into the collected tree at
   `validation/`. The sibling layout is what the case's project requires, since its

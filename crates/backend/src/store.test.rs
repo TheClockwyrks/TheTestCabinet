@@ -64,10 +64,13 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             template: true,
             kind: Default::default(),
         }],
-        workspace: vec![StoredWorkspaceFile {
-            source: "workspaces/base/package.json".to_string(),
-            dest: "package.json".to_string(),
-        }],
+        workspace: StoredWorkspace::ByEngine(std::collections::BTreeMap::from([(
+            "none".to_string(),
+            vec![StoredWorkspaceFile {
+                source: "workspaces/base/package.json".to_string(),
+                dest: "package.json".to_string(),
+            }],
+        )])),
         init: Some("npm install".to_string()),
         assets: vec![],
         packages: vec![],
@@ -119,6 +122,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             // the reporter-side validation driver.
             validation: Some(StoredReviewValidation {
                 script: "validation/ball-spin.mjs".to_string(),
+                per_engine: false,
                 outputs: vec![StoredReviewOutput {
                     id: "spin".to_string(),
                     name: "Spin".to_string(),

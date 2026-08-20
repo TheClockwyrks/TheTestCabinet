@@ -55,7 +55,7 @@ fn version(root: PathBuf, items: Vec<ReviewItem>) -> TestCaseVersion {
         particle: None,
         audio: None,
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
@@ -123,7 +123,7 @@ fn sub_item(id: &str, script_rel: &str) -> SubReviewItem {
 
 fn validation(script_rel: &str) -> ReviewValidation {
     ReviewValidation {
-        script: PathBuf::from(script_rel),
+        script: Some(PathBuf::from(script_rel)),
         script_rel: script_rel.to_string(),
         outputs: Vec::new(),
     }
@@ -463,7 +463,13 @@ fn a_case_with_no_validator_project_for_the_engine_reports_every_point_as_not_ru
     let test_case = version(root.path().to_path_buf(), items);
     let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
 
-    let results = run_vitest_suites(&test_case, &variant(), &engine(), &artifacts, "npm ci");
+    let results = run_vitest_suites(
+        &test_case,
+        &variant(),
+        engine().slug(),
+        &artifacts,
+        "npm ci",
+    );
 
     assert_eq!(results.len(), 2, "every declared point is still reported");
     for result in &results {
@@ -493,7 +499,14 @@ fn a_case_declaring_no_validators_reports_nothing() {
     let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
 
     assert!(
-        run_vitest_suites(&test_case, &variant(), &engine(), &artifacts, "npm ci").is_empty(),
+        run_vitest_suites(
+            &test_case,
+            &variant(),
+            engine().slug(),
+            &artifacts,
+            "npm ci"
+        )
+        .is_empty(),
         "there is nothing to run and nothing to record",
     );
 }

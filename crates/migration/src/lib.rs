@@ -54,6 +54,7 @@ mod m20260815_000028_create_coverage_settings;
 mod m20260815_000029_create_ladder;
 mod m20260818_000030_create_gg_agent;
 mod m20260818_000031_add_gg_config_agent_sources;
+mod m20260820_000032_add_case_reference_build_engine;
 
 pub struct Migrator;
 
@@ -95,6 +96,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260815_000029_create_ladder::Migration),
             Box::new(m20260818_000030_create_gg_agent::Migration),
             Box::new(m20260818_000031_add_gg_config_agent_sources::Migration),
+            Box::new(m20260820_000032_add_case_reference_build_engine::Migration),
         ]
     }
 }

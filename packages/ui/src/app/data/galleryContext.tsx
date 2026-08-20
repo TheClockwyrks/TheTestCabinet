@@ -504,7 +504,7 @@ export interface GalleryDataInput {
    * `crates/core/src/asset_reference.rs`.
    *
    * Omitted (or returning null) by a host with no snapshot bucket configured — the
-   * end-to-end analogue of a variant that declares no {@link referenceBuild}, and
+   * end-to-end analogue of a variant that declares no {@link referenceBuilds}, and
    * the Reference tab degrades to a short placeholder rather than broken images.
    */
   referenceMediaUrl?: (
