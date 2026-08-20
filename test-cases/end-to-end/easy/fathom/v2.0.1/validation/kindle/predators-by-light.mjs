@@ -7,7 +7,7 @@
 import {
   DIRS,
   denAllExcept,
-  findSightLine,
+  poseSightLine,
   pred,
   quietBoard,
   startPlaying,
@@ -27,9 +27,12 @@ export default function item() {
     id: "kindle.predators-by-light",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // 128 px: beyond the light (96), inside the circle (192). Posed, so the distance
+      // this item turns on is the one it asked for rather than whatever the build's own
+      // maze happened to offer at four tiles of straight corridor.
+      line = await poseSightLine(api, 4);
       await denAllExcept(api, ["gloamfin"]);
-      line = findSightLine(snap, 4); // 128 px: beyond the light (96), inside the circle (192)
       await api.call("setPredator", "gloamfin", {
         tx: line.pred.tx,
         ty: line.pred.ty,

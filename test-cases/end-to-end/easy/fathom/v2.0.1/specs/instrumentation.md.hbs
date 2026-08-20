@@ -101,6 +101,56 @@ simulation, never announced by the op itself.
   The real depth-scaling (`specs/progression.md`) then governs the derived values: the
   predator roster (how many of each hunter) and the sonar range recompute from `d`, so
   a caller sets the depth and reads the scaled results back from `snapshot()`.
+- `setMaze(rows)` replaces the maze layout with the one given. `rows` is an array of
+  strings in exactly the form `snapshot().tiles` reports it: `grid.rows` strings of
+  `grid.cols` characters each, using `'#'` wall, `'.'` corridor, `'g'` the den gate and
+  `'d'` den interior. A layout of the wrong size, or carrying any other character, is
+  invalid and the call fails loudly rather than guessing what was meant.
+
+  This exists for the same reason `setCreatureAI` does. You design the maze
+  (`specs/maze.md`) and a conforming layout is yours to invent, so a scenario that needs
+  a particular shape — a straight run of a given length, a corner to turn, a corridor
+  ending in rock, two tiles with rock between them — can only go looking for one in the
+  maze you drew, and take whatever it finds. What it finds differs from build to build:
+  the same scenario gets a different amount of room, a different approach, sometimes no
+  usable spot at all. Posing the geometry directly makes what a check observes depend on
+  the behavior it is checking rather than on the layout it happened to land in.
+
+  The posed layout is a fixture, not a generated maze. It is used exactly as given and
+  is **not** required to satisfy the rules of `specs/maze.md` — a scenario may well want
+  a dead end, a single straight hallway, or no den at all, none of which a real maze may
+  have. Do not validate it against those rules, and do not repair it.
+
+  Because such a board is legal, the game has to keep running on one. Anything that
+  normally happens at a structure the layout does not have simply does not happen, and is
+  never an error: with no den gate, the bonus-drifter cadence
+  (`specs/gameplay.md`) has nowhere to admit a drifter from and so admits none, and a
+  predator posed back to a den that is not there is held out of play as
+  `setPredator(kind, "den")` describes. A build must not throw, stall, or fall back to
+  the generated maze because a fixture is missing a structure.
+
+  Everything derived from the maze is rebuilt from the new layout: passability for the
+  forager and for predators, predator pathing, the sonar flood, the wall autotile, the
+  den and its gate, and the wrap tunnel — which is the row, if any, whose left-edge and
+  right-edge tiles are both open. At most one row may be pierced that way, and a layout
+  with `'d'` or `'g'` tiles must carry exactly one `'g'`; anything else is invalid and
+  fails loudly like a bad size.
+
+  The board is then in the state a freshly generated maze starts in: plankton sit on
+  every corridor tile outside the den, revealed-tile memory is cleared back to fog, and
+  every predator is returned to the den and held there exactly as
+  `setPredator(kind, "den")` holds it — on a layout with no den chamber they are simply
+  held out of play, not drawn, not moving and unable to make contact, until a later
+  `setPredator` poses them onto a tile. The forager is placed on the first corridor tile
+  in reading order (top row first, left to right), which is a defined resting place
+  rather than a meaningful one: a caller poses it where the scenario wants it next.
+
+  What it does NOT do is change what the game is doing. Score, lives, depth and the
+  cooldowns are untouched, and so is the screen: a call made during live play leaves the
+  game in live play, and does not open a dive countdown the way descending to a new maze
+  does. It swaps the board out underneath the dive rather than beginning one — a caller
+  that wanted a countdown would have asked for a dive. The layout holds until the next
+  `reset`, or until a descent generates the next maze.
 - `setForager(state)` places the forager. `state` may set `tx` and `ty` (a tile the
   forager is moved to, snapped to that tile's center through the movement system) and
   `dir` (its facing, one of `"up"`, `"down"`, `"left"`, `"right"`). The tile must be

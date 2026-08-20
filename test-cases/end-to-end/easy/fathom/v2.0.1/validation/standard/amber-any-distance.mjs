@@ -6,7 +6,7 @@
 import {
   amberInProfile,
   denAllExcept,
-  findFarTile,
+  poseApart,
   quietBoard,
   sampleMoteProfile,
   startPlaying,
@@ -20,9 +20,13 @@ export default function item() {
     id: "standard.amber-any-distance",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor, and 9 tiles off across solid
+      // rock a separate ring to patrol. Sealed off rather than merely distant, so
+      // "far away" holds for the whole watch instead of only until the patrol
+      // arrives — a real maze is one connected region and cannot offer that.
+      const far = (await poseApart(api, 9)).far; // far out in the dark
       await denAllExcept(api, []);
-      const far = findFarTile(snap, snap.forager, 9); // far out in the dark
       await api.call("spawnDrifter", { tx: far.tx, ty: far.ty });
       await quietBoard(api);
     },

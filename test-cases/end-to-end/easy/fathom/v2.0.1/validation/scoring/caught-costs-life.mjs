@@ -13,7 +13,7 @@
 // the gap tests contact as the game produces it, and shows it happening.
 import {
   denAllExcept,
-  findSightLine,
+  poseSightLine,
   quietBoard,
   startPlaying,
   ticksFor,
@@ -27,8 +27,8 @@ export default function item() {
     id: "scoring.caught-costs-life",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const line = findSightLine(snap, 3); // 96 px of straight corridor to close
+      await startPlaying(api);
+      const line = await poseSightLine(api, 3); // 96 px of straight corridor to close
       await denAllExcept(api, ["gloamfin"]);
       // The forager first, and PARKED: `chase` fixes on wherever it is standing when the
       // mode is set, so it is the tile the Gloamfin comes for.

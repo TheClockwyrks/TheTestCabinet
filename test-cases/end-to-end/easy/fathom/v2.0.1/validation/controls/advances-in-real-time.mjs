@@ -21,22 +21,37 @@
 // is missing. Two stills taken around the settle show it honestly. The record pass opens a fresh
 // page, so its `arrange` sees the boot clock too.
 //
-// THE WITNESS IS A PREDATOR, NOT THE FORAGER. The forager is the player's, and sits exactly where
-// it was left unless something presses a key. The predators swim their own patrol, so they are
-// what moves when — and only when — the game is running itself.
+// THE WITNESS IS THE FORAGER UNDER A HELD KEY. It used to be a patrolling predator, on the grounds
+// that the forager sits where it was left unless something presses a key — so this presses one.
+// Holding a direction is an input op, which changes nothing about `autoStep`
+// (`specs/instrumentation.md`), and a held key only sets the desired direction: the travel itself
+// happens in the fixed-step update the frame loop drives. So a forager that moves is proof the
+// build ran its own loop, and a frozen build's forager sits exactly still.
+//
+// The predator was the wrong witness twice over. It wanders where its own mind takes it, so what
+// this measured — the straight line between where it stood at each end of the window — is its
+// DISPLACEMENT, not how far it swam: a patrol that rounds a corner and comes back covers a couple
+// of hundred px and reports nearly zero. A run failed here at `0.53 px` of predator displacement
+// while its clock advanced the full `2.0 s` and its forager swam `258 px`, which is the item's own
+// claim holding perfectly. And the predator roster is the den's to schedule
+// (`specs/predators.md`), so which hunter is out, and whether it is still filing through the gate,
+// varies between conforming builds. The forager under a held key is none of those things: it is
+// driven, its direction is the one this check chose, and how far it should have gone is arithmetic.
 
-import { unmetPrecondition } from "../_helpers.mjs";
+import { poseStraightRun, DIR_KEY, unmetPrecondition } from "../_helpers.mjs";
 
-// Two seconds of real time. A predator covers ground at its own pace, and two seconds is enough
-// for the pair of stills to show it somewhere clearly different.
+// Two seconds of real time. At the forager's `128 px/s` that is eight tiles, enough for the pair
+// of stills to show it somewhere clearly different.
 const SETTLE_MS = 2000;
 // Half the settle. Deliberately generous: the claim is that the game advances ITSELF, not that it
 // keeps perfect time, and a build that clamps its per-frame delta (ordinary spiral-of-death
 // protection) legally loses time to a stall. A running build lands near 2.0; a frozen one reports 0.
 const MIN_ADVANCE = SETTLE_MS / 1000 / 2;
-// The floor a patrolling predator must cover, in logical px. They move at ~64-116 px/s, so even a
-// clock managing a sixth of real time carries one 20 px. A second, independent witness: it says the
-// SIMULATION ran, not merely that a counter ticked up.
+// The floor the forager must cover, in logical px. It swims at `128 px/s` (`specs/movement.md`), so
+// two seconds is `256 px` and even a clock managing a sixth of real time carries it `42 px`. The
+// floor is `20 px` — under a tile, and far under any of that — because this is a second,
+// independent witness that the SIMULATION ran, not a measurement of how fast it runs. A frozen
+// build reports `0`.
 const MIN_TRAVEL = 20;
 // A beat so the record pass has an `act` to replay; the verdict is already fixed by `arrange`.
 const TAIL_TICKS = 120;
@@ -53,26 +68,35 @@ export default function item() {
       await api.call("startDive");
       await api.call("beginPlay"); // end the dive countdown now, so the reef is already live
 
+      // A corridor long enough to hold the whole window: twelve tiles is `384 px` against the
+      // `256 px` the forager covers in two seconds, so it never runs out of water and the travel
+      // below is bounded by the clock rather than by rock. The spare pocket keeps pellets the
+      // forager cannot reach, so grazing the run cannot clear the maze mid-measurement.
+      const run = await poseStraightRun(api, 12, { spare: true });
+      await api.call("setForager", { tx: run.tx, ty: run.ty, dir: run.dir });
+      await api.call("setBrightness", 1); // so the two stills show a lit corridor, not the dark
+
       const before = await api.snapshot();
-      const hunter0 = (before.predators || [])[0];
-      if (before.screen !== "playing" || !hunter0) {
+      if (before.screen !== "playing") {
         throw unmetPrecondition(
-          `the dive is not live with a predator on the reef (screen ${before.screen}, ` +
-            `${(before.predators || []).length} predator(s)), so there is nothing moving to observe`,
+          `the dive is not live (screen ${before.screen}), so there is nothing running to observe`,
         );
       }
       await api.screenshot("before");
 
-      // The measurement: real wall-clock time, with nothing driving the build but its own loop.
+      // The measurement: real wall-clock time, with the key held and nothing driving the build but
+      // its own loop. `keyDown` and `settle` both leave `autoStep` exactly as the build booted it.
+      await api.call("keyDown", DIR_KEY[run.dir]);
       await api.settle(SETTLE_MS);
 
       const after = await api.snapshot();
-      const hunter1 = (after.predators || [])[0];
       advanced = after.simTime - before.simTime;
-      travelled = hunter1
-        ? Math.hypot(hunter1.x - hunter0.x, hunter1.y - hunter0.y)
-        : 0;
+      travelled = Math.hypot(
+        after.forager.x - before.forager.x,
+        after.forager.y - before.forager.y,
+      );
       await api.screenshot("after");
+      await api.call("keyUp", DIR_KEY[run.dir]);
     },
 
     async act(api) {
@@ -86,7 +110,7 @@ export default function item() {
         MIN_ADVANCE,
       );
       check.expectGt(
-        "...and a predator actually swam, so the simulation ran rather than a counter ticking",
+        "...and the forager actually swam under a held key, so the simulation ran rather than a counter ticking",
         travelled,
         MIN_TRAVEL,
       );

@@ -3,14 +3,13 @@
 
 import {
   COLS,
-  GATE_COL,
-  GATE_ROW,
   GRID_X,
   GRID_Y,
   MAZE,
+  START_COL,
+  START_ROW,
   ROWS,
   TILE,
-  WRAP_ROW,
 } from "./constants";
 import { Dir, dirVec, Tile } from "./types";
 
@@ -20,26 +19,117 @@ export interface Cell {
 }
 
 export class Maze {
-  readonly tiles: Tile[][] = [];
+  tiles: Tile[][] = [];
+
+  // Derived from whatever layout is loaded rather than fixed in constants, so a posed
+  // layout (`setMaze`, specs/instrumentation.md) brings its own den, gate and wrap
+  // tunnel with it. -1 means the layout has none.
+  wrapRow = -1;
+  gateCol = -1;
+  gateRow = -1;
+  /** Where the forager stands on a fresh trench. */
+  startCol = START_COL;
+  startRow = START_ROW;
+  /** Every den-interior tile, in reading order: the parking slots. */
+  denTiles: Cell[] = [];
 
   constructor() {
+    this.load(MAZE, { col: START_COL, row: START_ROW });
+  }
+
+  /**
+   * Replace the layout. `rows` is the `snapshot().tiles` form — one string per row,
+   * `'#'` wall, `'.'` corridor, `'g'`/`'G'` the den gate, `'d'`/`'D'` den interior.
+   * `start` fixes the forager's resting tile; without one it is the first corridor
+   * tile in reading order, as a posed layout gets.
+   */
+  load(rows: readonly string[], start?: Cell): void {
+    if (rows.length !== ROWS) {
+      throw new Error(
+        `setMaze: expected ${ROWS} rows, received ${rows.length}`,
+      );
+    }
+    this.tiles = [];
     for (let r = 0; r < ROWS; r++) {
+      const src = rows[r];
+      if (src.length !== COLS) {
+        throw new Error(
+          `setMaze: row ${r} has ${src.length} characters, expected ${COLS}`,
+        );
+      }
       const row: Tile[] = [];
-      const src = MAZE[r];
       for (let c = 0; c < COLS; c++) {
         const ch = src[c];
-        row.push(
+        const tile =
           ch === "#"
             ? Tile.Wall
-            : ch === "D"
-              ? Tile.Den
-              : ch === "G"
-                ? Tile.Gate
-                : Tile.Open,
-        );
+            : ch === "."
+              ? Tile.Open
+              : ch === "d" || ch === "D"
+                ? Tile.Den
+                : ch === "g" || ch === "G"
+                  ? Tile.Gate
+                  : null;
+        if (tile === null) {
+          throw new Error(
+            `setMaze: unknown tile character ${JSON.stringify(ch)} at (${c}, ${r})`,
+          );
+        }
+        row.push(tile);
       }
       this.tiles.push(row);
     }
+
+    this.wrapRow = -1;
+    for (let r = 0; r < ROWS; r++) {
+      if (this.tiles[r][0] !== Tile.Open) continue;
+      if (this.tiles[r][COLS - 1] !== Tile.Open) continue;
+      if (this.wrapRow >= 0) {
+        throw new Error(
+          `setMaze: rows ${this.wrapRow} and ${r} both pierce the border; at most one wrap tunnel is allowed`,
+        );
+      }
+      this.wrapRow = r;
+    }
+
+    this.gateCol = -1;
+    this.gateRow = -1;
+    this.denTiles = [];
+    let gates = 0;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (this.tiles[r][c] === Tile.Den) this.denTiles.push({ col: c, row: r });
+        if (this.tiles[r][c] !== Tile.Gate) continue;
+        gates++;
+        this.gateCol = c;
+        this.gateRow = r;
+      }
+    }
+    if (gates > 1 || (gates === 0 && this.denTiles.length > 0)) {
+      throw new Error(
+        `setMaze: a layout with a den must carry exactly one gate, found ${gates}`,
+      );
+    }
+
+    if (start) {
+      this.startCol = start.col;
+      this.startRow = start.row;
+    } else {
+      const first = this.firstOpen();
+      if (!first) throw new Error("setMaze: the layout has no corridor tile");
+      this.startCol = first.col;
+      this.startRow = first.row;
+    }
+  }
+
+  /** The first corridor tile in reading order, or null on a layout with none. */
+  firstOpen(): Cell | null {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (this.tiles[r][c] === Tile.Open) return { col: c, row: r };
+      }
+    }
+    return null;
   }
 
   inBounds(c: number, r: number): boolean {
@@ -86,12 +176,12 @@ export class Maze {
 
   // ---- wrap-aware neighbour --------------------------------------------
   // Returns the tile one step in `d` from (col,row), applying the horizontal
-  // wrap tunnel at WRAP_ROW.
+  // wrap tunnel on the loaded layout's wrap row.
   step(col: number, row: number, d: Dir): Cell {
     const v = dirVec(d);
     let c = col + v.x;
     const r = row + v.y;
-    if (row === WRAP_ROW) {
+    if (row === this.wrapRow) {
       if (c < 0) c = COLS - 1;
       else if (c >= COLS) c = 0;
     }
@@ -99,7 +189,7 @@ export class Maze {
   }
 
   isWrapEdge(c: number, r: number): boolean {
-    return r === WRAP_ROW && (c === 0 || c === COLS - 1);
+    return r === this.wrapRow && (c === 0 || c === COLS - 1);
   }
 
   // The wall autotile frame index (0..15) for a wall cell: bitmask of which
@@ -115,7 +205,7 @@ export class Maze {
   }
 
   isGate(c: number, r: number): boolean {
-    return c === GATE_COL && r === GATE_ROW;
+    return c === this.gateCol && r === this.gateRow;
   }
 
   // ---- corridor flood (sonar) ------------------------------------------

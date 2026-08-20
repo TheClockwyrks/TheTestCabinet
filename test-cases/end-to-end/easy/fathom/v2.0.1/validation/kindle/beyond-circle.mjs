@@ -5,7 +5,7 @@
 // the build a frame to paint, and reads back what was drawn where the drifter is.
 import {
   denAllExcept,
-  findFarTile,
+  poseApart,
   quietBoard,
   sampleColor,
   startPlaying,
@@ -23,9 +23,13 @@ export default function item() {
     id: "kindle.beyond-circle",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor, and 9 tiles off across solid
+      // rock a separate ring to patrol. Sealed off rather than merely distant, so
+      // "far away" holds for the whole watch instead of only until the patrol
+      // arrives — a real maze is one connected region and cannot offer that.
+      const far = (await poseApart(api, 9, { spare: true })).far; // beyond the vision circle
       await denAllExcept(api, []);
-      const far = findFarTile(snap, snap.forager, 9); // beyond the vision circle
       await api.call("spawnDrifter", { tx: far.tx, ty: far.ty });
       await quietBoard(api);
     },

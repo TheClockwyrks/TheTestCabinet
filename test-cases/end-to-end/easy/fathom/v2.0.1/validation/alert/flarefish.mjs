@@ -5,7 +5,7 @@
 // is exactly what the recorded clip shows.
 import {
   denAllExcept,
-  findSightLine,
+  poseSightLine,
   pred,
   quietBoard,
   startPlaying,
@@ -18,8 +18,8 @@ export default function item() {
     id: "alert.flarefish",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const line = findSightLine(snap, 3);
+      await startPlaying(api);
+      const line = await poseSightLine(api, 3);
       await denAllExcept(api, ["flarefish"]);
       await api.call("setPredator", "flarefish", {
         tx: line.pred.tx,

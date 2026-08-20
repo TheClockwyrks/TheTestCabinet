@@ -16,7 +16,7 @@
 // caught here rather than passing on its own bookkeeping.
 import {
   startPlaying,
-  findFarTile,
+  poseApart,
   pred,
   TICK,
   ticksFor,
@@ -57,6 +57,7 @@ export default function item() {
   let count4;
   let speed1;
   let speed4;
+  let far;
   let pulse1;
   let pulse4;
 
@@ -65,6 +66,13 @@ export default function item() {
 
     async arrange(api) {
       await startPlaying(api);
+      // A sealed ring for the Gloamfin to patrol, well clear of the forager, so the two
+      // speed readings below are of a hunter wandering rather than one that found
+      // someone. Posed once here: `setDepth` recomputes the roster and the sonar range
+      // (specs/instrumentation.md) but leaves the maze alone, so the same board serves
+      // both depths. The forager's own room is long enough for a pulse to run its full
+      // 9-tile range, which is the number this item compares against the HUD.
+      far = (await poseApart(api, 8, { near: 12 })).far;
     },
 
     async act(api) {
@@ -72,10 +80,9 @@ export default function item() {
       await api.call("setDepth", 1);
       s1 = await api.snapshot();
       count1 = s1.predators.length;
-      const far1 = findFarTile(s1, s1.forager, 8);
       await api.call("setPredator", "gloamfin", {
-        tx: far1.tx,
-        ty: far1.ty,
+        tx: far.tx,
+        ty: far.ty,
         mode: "wander",
       });
       await api.advance(30); // 30 ticks = 0.25 s: let it settle to its patrol speed
@@ -86,10 +93,9 @@ export default function item() {
       await api.call("setDepth", 4);
       s4 = await api.snapshot();
       count4 = s4.predators.length;
-      const far4 = findFarTile(s4, s4.forager, 8);
       await api.call("setPredator", "gloamfin", {
-        tx: far4.tx,
-        ty: far4.ty,
+        tx: far.tx,
+        ty: far.ty,
         mode: "wander",
       });
       await api.advance(30);

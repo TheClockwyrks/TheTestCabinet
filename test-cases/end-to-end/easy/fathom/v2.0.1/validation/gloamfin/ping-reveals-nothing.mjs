@@ -5,7 +5,7 @@
 // be well in flight is `act`, and is what the clip shows.
 import {
   denAllExcept,
-  findFarTile,
+  poseApart,
   pred,
   quietBoard,
   startPlaying,
@@ -36,9 +36,13 @@ export default function item() {
     id: "gloamfin.ping-reveals-nothing",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor, and 11 tiles off across solid
+      // rock a separate ring to patrol. Sealed off rather than merely distant, so
+      // "far away" holds for the whole watch instead of only until the patrol
+      // arrives — a real maze is one connected region and cannot offer that.
+      const far = (await poseApart(api, 11)).far; // beyond its ping range, so no acquire
       await denAllExcept(api, ["gloamfin"]);
-      const far = findFarTile(snap, snap.forager, 11); // beyond its ping range, so no acquire
       await api.call("setPredator", "gloamfin", {
         tx: far.tx,
         ty: far.ty,

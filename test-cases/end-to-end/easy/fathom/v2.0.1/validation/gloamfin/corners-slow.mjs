@@ -5,7 +5,7 @@
 // measurement itself, so it is `act` and is what the clip shows.
 import {
   FORAGER_SPEED,
-  findCorner,
+  poseCorner,
   isOpen,
   pred,
   quietBoard,
@@ -23,8 +23,12 @@ export default function item() {
     id: "gloamfin.corners-slow",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const c = findCorner(snap);
+      await startPlaying(api);
+      // The corner is posed, not hunted for: which junctions a maze offers, how much arm
+      // sits past them and how much run leads in are the build's own invention
+      // (`specs/maze.md`), and all three decide what a sweep across the turn measures.
+      const c = await poseCorner(api, { arm: 4 });
+      const snap = await api.snapshot();
       // Forager on the perpendicular arm; Gloamfin on the approach arm, chasing — its path
       // to the forager turns a perpendicular corner at the junction.
       //

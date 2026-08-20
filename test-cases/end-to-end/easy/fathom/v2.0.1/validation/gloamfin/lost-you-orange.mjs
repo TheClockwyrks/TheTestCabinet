@@ -16,8 +16,7 @@
 import {
   actGloamPings,
   denAllExcept,
-  findFarTile,
-  findSightLine,
+  poseSightLine,
   quietBoard,
   startPlaying,
   ticksFor,
@@ -30,8 +29,10 @@ export default function item() {
     id: "gloamfin.lost-you-orange",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const line = findSightLine(snap, 3);
+      await startPlaying(api);
+      // The corridor the chase runs down, plus a sealed pocket well clear of it for the
+      // forager to slip away to.
+      const line = await poseSightLine(api, 3, { refugeGap: 9 });
       await denAllExcept(api, ["gloamfin"]);
       await api.call("setForager", {
         tx: line.forager.tx,
@@ -45,8 +46,7 @@ export default function item() {
       });
       // Now move the forager far away, so when the Gloamfin reaches the fix it is empty —
       // and park it there, so it cannot drift back into hearing range mid-watch.
-      const far = findFarTile(snap, line.forager, 9);
-      await quietBoard(api, far);
+      await quietBoard(api, line.refuge);
     },
 
     async act(api) {

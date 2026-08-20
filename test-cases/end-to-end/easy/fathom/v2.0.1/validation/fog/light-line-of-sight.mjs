@@ -1,110 +1,166 @@
 // fog.light-line-of-sight: passive light does not bend around corners — a predator
 // behind rock is not lit even though it is well within light range.
 //
-// The occluded pair and the widened light are posed instantly (`arrange`); `act` watches
-// the predator for as long as the rock is actually between them, which is both the
-// measurement and the clip.
+// THE SHAPE OF THE EVIDENCE IS THE POINT. An earlier form of this item posed the two on
+// either side of a rock band, parked the forager, and captured a still. The still was of
+// an unlit predator — which is to say, of nothing: a dark stretch of trench. A reviewer
+// looking at it cannot tell a build that correctly hides a predator around a corner from
+// one that has no predator there at all, or from one whose light is simply broken.
 //
-// TWO THINGS THIS ITEM HAS TO GET RIGHT, neither of which is the assertion.
+// So the scenario now MOVES, and the clip carries the whole claim. The forager swims down
+// a corridor with the predator waiting around a blind corner: for the length of that
+// corridor there is rock on the line and the predator is not drawn, and the moment the
+// forager reaches the corner the line opens and the predator appears. Both halves are
+// filmed, so the reveal is visible and its timing is the assertion.
 //
-// The pair must be SOLIDLY occluded. `findOccludedPair` now requires a full tile of rock
-// on the sight line (see there): a pair whose line merely clips a wall corner is one
-// conforming builds can honestly disagree about, and scoring a build on which side of
-// that hair it lands is not a test of anything.
+// AND THE REVEAL IS ALSO WHAT MAKES THE CHECK NON-VACUOUS. "Not lit" is the easiest thing
+// in the world to satisfy by accident — a predator out of range, a light that reaches
+// nothing, a build that never draws predators at all would each pass it. The pair is
+// posed so the predator is inside the light's `160 px` reach (`V = 96 + 64 G`,
+// specs/gameplay.md) the whole time, and the second assertion requires it to actually be
+// drawn once the rock moves out of the way. A build that fails to reveal it then has not
+// passed this item quietly; it fails on the control.
 //
-// And the predator must be watched only while the wall is still doing the work. It is
-// posed to `wander`, so it patrols — through the real AI, which is the point — and a
-// patrol eventually rounds the corner into the open, where being lit is correct. So the
-// sweep stops the moment the sight line clears, and the verdict is "it was never lit
-// while the rock was between us". Posing its heading AWAY from the junction (`dir` is
-// part of `setPredator`) buys that window: without it the predator is posed carrying
-// whatever facing it had, which may point straight at the corner, and it can be standing
-// in plain sight a tenth of a second later — with the captured still showing exactly
-// that, the opposite of what the item says.
+// THE PREDATOR IS HELD STILL (`setCreatureAI(false)`, specs/instrumentation.md). It is
+// scenery here, not a subject: what is under test is whether LIGHT bends, and a patrol
+// that wanders off mid-clip — or around the corner into plain view — turns the reveal
+// into an accident of where its own mind took it. Held, the only thing that changes
+// between "not drawn" and "drawn" is where the forager is standing.
 import {
-  startPlaying,
-  findOccludedPair,
+  DIR_KEY,
   denAllExcept,
-  losClear,
-  openNeighborDirs,
+  parkForager,
+  poseMaze,
   pred,
-  stepTile,
-  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
-/** The open direction out of `tile` that leads furthest from `away` (a tile). */
-function facingAwayFrom(snap, tile, away) {
-  let best = null;
-  let bestD = -Infinity;
-  for (const d of openNeighborDirs(snap, tile.tx, tile.ty)) {
-    const [nc, nr] = stepTile(snap, tile.tx, tile.ty, d);
-    const dd = Math.abs(nc - away.tx) + Math.abs(nr - away.ty);
-    if (dd > bestD) {
-      bestD = dd;
-      best = d;
-    }
-  }
-  return best;
-}
+// The blind corner. The forager starts at `S` and swims right; the Gloamfin waits at `P`
+// down the arm past the junction `J`, with rock on every line between them until the
+// forager reaches the corner itself.
+//
+// The distances are what keep the check honest. `S` to `P` is three tiles across and
+// three down — `136 px` apart, comfortably inside the `160 px` the light reaches at
+// `G = 1` — so the predator is in range from the first frame and only the rock is
+// hiding it. From `J` the arm runs straight down, `96 px` of clear line.
+//
+// The pocket off to the right holds pellets the forager can never reach, so grazing the
+// corridor cannot clear the maze and descend in the middle of the clip.
+const BLIND_CORNER = [
+  "S..J    ...",
+  "   .",
+  "   .",
+  "   P",
+];
+
+// How near the corner the forager may get and still have its tick judged as "blind", in
+// tiles. Two, so a whole tile of rock is on the line however either party rounds it.
+//
+// WHY THERE IS A GUARD BAND AT ALL. Whether a predator is visible from a given spot is a
+// question about PIXELS — where the two bodies actually are — and this check knows only
+// which tiles they are on. Those two answers disagree for a few ticks either side of the
+// corner: a forager whose center is three px short of the junction tile is, to the build,
+// already looking down the arm, while a tile-based reading still calls it blocked. Builds
+// were failed on three or four such ticks out of ninety, for a disagreement `specs/*` does
+// not settle in either direction — light is "line of sight" (specs/gameplay.md) and
+// nothing fixes the geometry it is traced in.
+//
+// So the transition is not judged at all. The claim this item makes is about a predator
+// that is plainly around a corner, and it is asked where the answer is plain: two tiles
+// back along the corridor, and again once the forager is on the arm with the predator
+// straight ahead. What happens in the tile between is the build's business.
+const BLIND_MARGIN_TILES = 2;
 
 export default function item() {
-  let litWhileBlind = false;
-  let samples = 0;
+  let litWhileBlind = 0;
+  let blindSamples = 0;
+  let litWhenClear = 0;
+  let clearSamples = 0;
+  let corner;
 
   return {
     id: "fog.light-line-of-sight",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      // A Gloamfin senses nothing by light, but it HEARS within 64 px, so the occluded
-      // pair is kept beyond that (minDist 70) to isolate line-of-sight as the only cause,
-      // and within the widened light (maxDist 150 < V = 160 px) so the light would reach
-      // it but for the wall.
-      const bp = findOccludedPair(snap, { minDist: 70, maxDist: 150 });
+      await startPlaying(api);
+      const board = await poseMaze(api, BLIND_CORNER);
       await denAllExcept(api, ["gloamfin"]);
-      const facing = facingAwayFrom(snap, bp.pred, bp.forager);
+      corner = board.mark("J");
+      await api.call("setForager", { ...board.mark("S"), dir: "right" });
       await api.call("setPredator", "gloamfin", {
-        tx: bp.pred.tx,
-        ty: bp.pred.ty,
-        ...(facing ? { dir: facing } : {}),
+        ...board.mark("P"),
+        dir: "up", // facing the junction it will be revealed from, so the reveal is head-on
         mode: "wander",
       });
-      // The forager is a bystander here: park it (facing a wall, so it cannot drift into
-      // the pair's geometry) and quiet the board so it cannot graze its way past the
-      // `G = 1` this poses.
-      await quietBoard(api, bp.forager);
-      await api.call("setBrightness", 1); // V = 160 px, well past the gap to the pair
+      // Scenery, not a subject — see the header.
+      await api.call("setCreatureAI", false);
+      await api.call("setBrightness", 1); // V = 160 px: the predator is in range throughout
     },
 
     async act(api) {
-      // The still is taken FIRST, while the rock is still between them — that instant is
-      // what the item is about. Taking it at the end instead would frame whatever the
-      // sweep stopped on, which is by definition the moment the predator stepped OUT of
-      // cover and became lit, so the evidence would show the opposite of the verdict.
-      await api.settle(120); // a REAL pause so the posed scene is painted
-      await api.screenshot("los");
-
-      // Sample every 6 ticks (0.05 s) for up to 1.5 s, stopping when the predator's own
-      // patrol brings it out from behind the rock.
-      for (let i = 0; i < 30; i++) {
+      // Swim to the corner, then turn down it, classifying every tick by WHERE the forager
+      // is standing (see BLIND_MARGIN_TILES). So the verdict never depends on hitting an
+      // exact tick: what matters is that the predator is dark for all of the blind stretch
+      // and drawn for some of the clear one.
+      const sample = async () => {
         const s = await api.snapshot();
         const g = pred(s, "gloamfin");
-        if (losClear(s, s.forager.tx, s.forager.ty, g.tx, g.ty)) break;
-        samples++;
-        if (g.lit) litWhileBlind = true;
-        await api.advance(6);
+        if (!g) return s;
+        const f = s.forager;
+        if (f.ty === corner.ty && f.tx <= corner.tx - BLIND_MARGIN_TILES) {
+          // Back along the corridor: rock is unambiguously on the line.
+          blindSamples += 1;
+          if (g.lit) litWhileBlind += 1;
+        } else if (f.ty > corner.ty) {
+          // On the arm, with the predator straight ahead down open corridor.
+          clearSamples += 1;
+          if (g.lit) litWhenClear += 1;
+        }
+        // Anything else is the corner itself — see BLIND_MARGIN_TILES.
+        return s;
+      };
+
+      await api.call("keyDown", DIR_KEY.right);
+      // 90 ticks = 0.75 s: three tiles of swimming with the predator hidden around the
+      // corner, which is the half of the clip that shows the light NOT bending.
+      for (let i = 0; i < 90; i++) {
+        await api.advance(1);
+        await sample();
       }
+      await api.call("keyUp", DIR_KEY.right);
+      await api.call("keyDown", DIR_KEY.down);
+      // 30 ticks = one tile onto the arm: far enough that the predator is straight ahead
+      // down open corridor and plainly lit, and no further. It sits three tiles along and
+      // contact costs a life even with its mind switched off.
+      for (let i = 0; i < 30; i++) {
+        await api.advance(1);
+        await sample();
+      }
+      await api.call("keyUp", DIR_KEY.down);
+      // AND PARKED, not merely released. `specs/movement.md` lets a forager with no key
+      // held carry on swimming (see `parkForager`), so on those builds the beat below is
+      // another tile and a half of travel — which walked it into the predator and ended
+      // the clip on the dive countdown instead of on the reveal it exists to show.
+      await parkForager(api);
+      await api.advance(36); // a beat on the revealed predator before the clip ends
+      await api.screenshot("los");
     },
 
     async assert(api, check) {
-      check.expectGt(
-        "the predator stayed behind the rock long enough to read",
-        samples,
+      check.expectOk(
+        "the scenario ran with the rock between them for a stretch, then clear of it",
+        blindSamples > 0 && clearSamples > 0,
+      );
+      check.expectEq(
+        "a predator behind rock is never lit by the light, however close",
+        litWhileBlind,
         0,
       );
+      // The control: without this, "never lit" is satisfied by a predator that is simply
+      // out of range, or by a build that never draws predators at all.
       check.expectOk(
-        "a predator behind rock is never lit by the light, however close",
-        litWhileBlind === false,
+        "and it IS lit once the forager rounds the corner, so the light did reach that far",
+        litWhenClear > 0,
       );
     },
   };

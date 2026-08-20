@@ -5,7 +5,7 @@
 // sim, so it is `act` and is what the clip shows.
 import {
   denAllExcept,
-  findSightLine,
+  poseSightLine,
   pred,
   quietBoard,
   startPlaying,
@@ -18,8 +18,8 @@ export default function item() {
     id: "lanternjaw.light-range",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const line = findSightLine(snap, 3); // 96 px apart, clear line of sight
+      await startPlaying(api);
+      const line = await poseSightLine(api, 3); // 96 px apart, clear line of sight
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setPredator", "lanternjaw", {
         tx: line.pred.tx,

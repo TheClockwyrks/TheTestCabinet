@@ -8,21 +8,19 @@
 // THE FORAGER HAS TO ACTUALLY STAND STILL, and that is the whole difficulty. Every
 // corridor tile carries a pellet and every pellet re-arms the hold, so a forager that
 // swims even a little during the 1.8 s window grazes its way to a `G` that never falls
-// and the item reports a decay bug against a build that decays perfectly well. That is
-// what used to happen: the tile was chosen by `findOpenWithNeighbor(snap, "right")` —
-// which guarantees an open corridor to the RIGHT — and the forager was posed with no
-// facing at all, so a build that leaves its facing alone and keeps going (a reading
-// `specs/movement.md` allows; see `parkForager`) set off down precisely the corridor the
-// finder had gone looking for.
+// and the item reports a decay bug against a build that decays perfectly well. Standing
+// still is not something a tile can be asked for either: a forager posed with no facing
+// on a tile with corridor beside it may legitimately keep going (`specs/movement.md`
+// leaves that open; see `parkForager`), and on a build's own maze the tile it was posed
+// on came with whatever corridors that maze had put there.
 //
-// So the tile is now chosen for how WALLED-IN it is rather than for one open side
-// (`findEnclosedTile`), and the forager is parked facing one of those walls
-// (`parkForager`), which pins it under either reading of a forager at rest. The item
-// then says so out loud: if the forager did leave its tile, that is reported as the
-// finding rather than blamed on the decay it was measuring.
+// So the tile is POSED as a dead end — corridor on exactly one side — and the forager is
+// parked facing the rock (`parkForager`), which pins it under either reading of a forager
+// at rest. The item then says so out loud: if the forager did leave its tile, that is
+// reported as the finding rather than blamed on the decay it was measuring.
 import {
   startPlaying,
-  findEnclosedTile,
+  poseMaze,
   parkForager,
   denAllExcept,
 } from "../_helpers.mjs";
@@ -38,11 +36,23 @@ export default function item() {
     id: "brightness.holds-decays",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       // Nearly two seconds is long enough for a released hunter to reach the forager,
       // and a life lost resets brightness along with everything else.
       await denAllExcept(api, []);
-      home = findEnclosedTile(snap);
+      // A SEALED TILE, not a dead end. The forager is the subject here and it must not
+      // move: every corridor tile carries a plankton (`specs/gameplay.md`) and each one
+      // eaten re-arms the hold, so a forager that swims at all makes the decay this item
+      // measures unmeasurable. Facing it at rock is not enough — `specs/movement.md` has a
+      // blocked forager "reach a wall and stop", but a build that turns it aside instead
+      // simply left the dead end and grazed, and the item then reported a decay bug against
+      // a build whose decay was fine. A tile with no open neighbour at all takes the
+      // question away from every build equally: there is nowhere to turn to.
+      //
+      // Nothing here needs the forager connected to anything — it stands still and its own
+      // brightness is read — so sealing it costs the scenario nothing. The larder
+      // `stampLayout` adds keeps the board unclearable (see there).
+      home = (await poseMaze(api, ["H"])).mark("H");
       await parkForager(api, home);
     },
 

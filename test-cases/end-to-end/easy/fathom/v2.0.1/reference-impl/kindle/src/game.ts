@@ -21,8 +21,6 @@ import {
   FLARE_INTERVAL,
   FLARE_RADIUS,
   FORAGER_SPEED,
-  GATE_COL,
-  GATE_ROW,
   GLOAMFIN_CHASE_SPEED,
   GLOAMFIN_HEAR_RANGE,
   GLOAMFIN_PING_INTERVAL,
@@ -44,9 +42,7 @@ import {
   SONAR_COOLDOWN,
   SONAR_MARK_TIME,
   sonarRange,
-  START_COL,
   START_LIVES,
-  START_ROW,
   TILE,
   VISION_GAIN,
   VISION_MIN,
@@ -94,7 +90,7 @@ export class Game {
   lives = START_LIVES;
   depth = 1;
 
-  forager = new Forager(START_COL, START_ROW, FORAGER_SPEED);
+  forager = new Forager(this.maze.startCol, this.maze.startRow, FORAGER_SPEED);
   predators: Predator[] = [];
   drifters: Drifter[] = [];
   clouds: Ink[] = [];
@@ -160,9 +156,13 @@ export class Game {
   }
 
   private buildPredators(): void {
-    // Den spawn tiles inside the den bounds (specs/maze.md), reused in order; each
-    // predator leaves RELEASE_STAGGER seconds after the one before it.
-    const denTiles: [number, number][] = [
+    // Den spawn tiles, reused in order; each predator leaves RELEASE_STAGGER seconds
+    // after the one before it. The preferred slots fill the den chamber from its middle
+    // outwards, and are used for whichever of them the loaded layout actually marks as
+    // den; a posed layout (`setMaze`, specs/instrumentation.md) with a den somewhere else
+    // falls back to its own den tiles, and one with no den at all parks them on the start
+    // tile, where they are held out of play and neither drawn nor able to touch anyone.
+    const preferred: [number, number][] = [
       [17, 8],
       [18, 8],
       [16, 8],
@@ -170,6 +170,15 @@ export class Game {
       [17, 7],
       [18, 7],
     ];
+    let denTiles: [number, number][] = preferred.filter(([c, r]) =>
+      this.maze.isDen(c, r),
+    );
+    if (!denTiles.length) {
+      denTiles = this.maze.denTiles.map((t) => [t.col, t.row]);
+    }
+    if (!denTiles.length) {
+      denTiles = [[this.maze.startCol, this.maze.startRow]];
+    }
     this.predators = this.predatorRoster().map((kind, i) => {
       const [tx, ty] = denTiles[i % denTiles.length];
       return new Predator(kind, tx, ty, i * RELEASE_STAGGER);
@@ -247,7 +256,11 @@ export class Game {
   }
 
   private resetPositions(): void {
-    this.forager = new Forager(START_COL, START_ROW, FORAGER_SPEED);
+    this.forager = new Forager(
+      this.maze.startCol,
+      this.maze.startRow,
+      FORAGER_SPEED,
+    );
     this.buildPredators();
     this.denPredators();
     this.drifters = [];
@@ -654,7 +667,9 @@ export class Game {
       this.driftT -= dt;
       if (this.driftT <= 0 && this.planktonLeft > 0) {
         this.driftT = DRIFTER_INTERVAL;
-        this.drifters.push(new Drifter(GATE_COL, GATE_ROW - 1, DRIFTER_SPEED));
+        this.drifters.push(
+          new Drifter(this.maze.gateCol, this.maze.gateRow - 1, DRIFTER_SPEED),
+        );
       }
     }
   }
@@ -737,6 +752,24 @@ export class Game {
   // Place the forager, at rest, on an open corridor tile (snapped to its center
   // through the same coordinate frame play uses). Injected input then moves it
   // through the game's normal movement code.
+  // Replace the maze layout with a posed fixture (specs/instrumentation.md). The
+  // layout is used exactly as given: it is NOT checked against the maze rules of
+  // specs/maze.md, because the shapes a scenario wants — a bare straight hallway, a
+  // corridor ending in rock, a board with no den — are deliberately not mazes.
+  //
+  // Everything the trench derives comes back from the new layout: `Maze.load` re-reads
+  // the den, the gate and the wrap tunnel, and the fresh `buildTrench` below re-seeds
+  // plankton on the new corridors, clears fog back to unrevealed and returns every
+  // predator to the den. Score, lives and depth are the dive's, not the maze's, and
+  // are left alone.
+  debugSetMaze(rows: string[]): void {
+    if (!Array.isArray(rows)) {
+      throw new Error("__fathom.setMaze(rows): expected an array of row strings");
+    }
+    this.maze.load(rows);
+    this.buildTrench(true);
+  }
+
   debugSetForager(state: { tx?: number; ty?: number; dir?: string }): void {
     const f = this.forager;
     if (
@@ -818,8 +851,8 @@ export class Game {
   // Add a bonus drifter (default at the den gate), which then wanders through the
   // real drifter code.
   debugSpawnDrifter(state?: { tx?: number; ty?: number }): void {
-    const tx = state?.tx ?? GATE_COL;
-    const ty = state?.ty ?? GATE_ROW - 1;
+    const tx = state?.tx ?? this.maze.gateCol;
+    const ty = state?.ty ?? this.maze.gateRow - 1;
     this.drifters.push(new Drifter(tx, ty, DRIFTER_SPEED));
   }
 

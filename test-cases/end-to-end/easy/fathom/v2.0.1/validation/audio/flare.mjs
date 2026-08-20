@@ -11,7 +11,7 @@ import {
   armAudio,
   audioCount,
   denAllExcept,
-  findFarTile,
+  poseApart,
   pred,
   quietBoard,
   startPlaying,
@@ -26,14 +26,13 @@ export default function item() {
     id: "audio.flare",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor and, 8 tiles off across solid rock, a
+      // sealed ring for the Flarefish to patrol. On a posed straight line the tile gap
+      // IS the euclidean gap, so 8 tiles is 256 px — clear of the bloom's 192 px
+      // radius without having to hunt for a tile that is far by both measures at once.
+      const far = (await poseApart(api, 8)).far;
       await denAllExcept(api, ["flarefish"]);
-      const far = findFarTile(snap, snap.forager, 8, {
-        // "Far" here means OUTSIDE the bloom, which is a euclidean radius — a
-        // manhattan-8 tile can sit at 181 px, inside it. One tile of margin past
-        // FLARE_RADIUS so a Flarefish that has drifted a little is still clear.
-        minPx: FLARE_RADIUS + snap.grid.tile,
-      });
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,

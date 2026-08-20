@@ -18,7 +18,7 @@
 import {
   DIR_KEY,
   denAllExcept,
-  findInkStandoff,
+  poseInkStandoff,
   parkForager,
   pred,
   startPlaying,
@@ -38,8 +38,9 @@ export default function item() {
     clipMs: 12000,
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      line = findInkStandoff(snap, { gap: 3 });
+      await startPlaying(api);
+      line = await poseInkStandoff(api, { gap: 3 });
+      const snap = await api.snapshot();
       // The ground it has to cover to the tile its fix goes stale on, before the linger
       // can even start running.
       gap = tileGapPx(snap.grid, line.pred, line.ink);

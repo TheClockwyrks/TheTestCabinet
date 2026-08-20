@@ -17,12 +17,9 @@
 // light could have been drawing it, so nothing but memory can still be.
 import {
   startPlaying,
-  findSightLine,
-  corridorDistances,
+  poseSightLine,
   denAllExcept,
   pred,
-  unmetPrecondition,
-  SONAR_RANGE_BASE,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -35,8 +32,10 @@ export default function item() {
     id: "fog.predators-not-remembered",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const line = findSightLine(snap, 3); // forager + gloamfin 3 tiles apart, clear LOS
+      await startPlaying(api);
+      // Forager and Gloamfin three tiles apart with clear line of sight, and a sealed
+      // pocket for the forager to move to when the light has to leave the Gloamfin.
+      const line = await poseSightLine(api, 3, { refugeGap: 9 });
       await denAllExcept(api, ["gloamfin"]);
       await api.call("setForager", {
         tx: line.forager.tx,
@@ -48,18 +47,12 @@ export default function item() {
         mode: "wander",
       });
       await api.call("setBrightness", 1); // widen the light so the Gloamfin's tile is lit
-      // Where the forager will be moved to so the light leaves the Gloamfin: past the
-      // reach of the Gloamfin's own ping, measured along the corridors the ping floods.
-      const reach = SONAR_RANGE_BASE + 1;
-      const dist = corridorDistances(snap, line.pred, reach + 4);
-      const found = [...dist].find(([, d]) => d > reach);
-      if (!found) {
-        throw unmetPrecondition(
-          `no corridor tile more than ${reach} tiles from the predator to move the forager to`,
-        );
-      }
-      const [c, r] = found[0].split(",").map(Number);
-      far = { tx: c, ty: r };
+      // Where the forager will be moved to so the light leaves the Gloamfin. The pocket
+      // is sealed off from the Gloamfin's corridor, so no corridor route joins the two at
+      // all and its own ping — which floods along corridors — can never reach the forager
+      // there. That is what the search this replaces was reaching for: somewhere far
+      // enough that nothing but the light could still be drawing the body.
+      far = line.refuge;
     },
 
     async act(api) {

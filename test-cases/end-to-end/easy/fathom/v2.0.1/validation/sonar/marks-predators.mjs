@@ -6,7 +6,7 @@
 // the front sweep over it is the real sim, so it is `act` — and that sweep is the clip.
 import {
   denAllExcept,
-  findSonarSenseTiles,
+  poseSonarSense,
   pred,
   quietBoard,
   startPlaying,
@@ -20,9 +20,9 @@ export default function item() {
     id: "sonar.marks-predators",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       await denAllExcept(api, ["flarefish"]);
-      const [target] = findSonarSenseTiles(snap, snap.forager, 1);
+      const [target] = await poseSonarSense(api, 1);
       await api.call("setPredator", "flarefish", {
         tx: target.tx,
         ty: target.ty,

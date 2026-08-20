@@ -4,7 +4,7 @@
 // so the watch for the alert is `act` and is what the clip depicts.
 import {
   denAllExcept,
-  findSightLine,
+  poseSightLine,
   pred,
   quietBoard,
   startPlaying,
@@ -17,8 +17,8 @@ export default function item() {
     id: "alert.gloamfin",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const line = findSightLine(snap, 2); // inside close hearing
+      await startPlaying(api);
+      const line = await poseSightLine(api, 2); // inside close hearing
       await denAllExcept(api, ["gloamfin"]);
       await api.call("setPredator", "gloamfin", {
         tx: line.pred.tx,

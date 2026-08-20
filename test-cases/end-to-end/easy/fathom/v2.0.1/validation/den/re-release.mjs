@@ -79,6 +79,16 @@ export default function item() {
       const s = await api.snapshot();
       // Onto the forager's own tile, fixed on it: the real chase-and-contact code then
       // takes the life, on its own terms.
+      //
+      // THE DEATH IS A TRIGGER HERE, NOT A SUBJECT, AND THE POSE IS DELIBERATELY INSTANT.
+      // What this item reads is the release schedule that follows, and that schedule is
+      // timed in seconds from the death — so every moment spent staging a prettier catch
+      // is a moment the other two hunters' den timers keep running before the clock this
+      // item cares about even starts. Posing the hunter a tile away so it could be seen
+      // swimming in did exactly that: it moved a build's measured stagger from `5 s` to
+      // `1.75 s` and failed it, for a scenario decoration. The item's own text says the
+      // life is simply taken, so the clip owes a reviewer the RE-RELEASE — which is what
+      // it films — rather than the blow.
       await api.call("setPredator", "lanternjaw", {
         tx: s.forager.tx,
         ty: s.forager.ty,
@@ -88,6 +98,7 @@ export default function item() {
         max: ticksFor(4),
         poll: 2,
       });
+      await api.advance(24); // 0.2 s on the death itself, so the clip does not cut on impact
       if (!caught.hit) {
         // A predator posed onto the forager's tile did not catch it within four seconds.
         // Whether contact costs a life is `scoring/caught-costs-life`'s verdict, not

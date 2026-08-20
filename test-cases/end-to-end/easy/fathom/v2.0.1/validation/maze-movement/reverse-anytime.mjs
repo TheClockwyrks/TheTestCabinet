@@ -15,7 +15,7 @@
 // mid-tile" at all, and failed builds whose reversal is exactly right.
 import {
   startPlaying,
-  findStraightRun,
+  poseMaze,
   DIR_KEY,
   OPP,
   DIRS,
@@ -30,16 +30,31 @@ export default function item() {
     id: "maze-movement.reverse-anytime",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      run = findStraightRun(snap, 4);
-      const [dc, dr] = DIRS[run.dir];
-      // A tile inside the run, so both forward and backward are open.
-      await api.call("setForager", { tx: run.tx + dc, ty: run.ty + dr });
+      await startPlaying(api);
+      // A straight corridor with corridor on BOTH sides of the start tile `S`, so the
+      // forager can swim forward and then reverse without either heading meeting rock.
+      // `specs/maze.md` fixes no run length, so the run is posed rather than hunted for.
+      // Room on BOTH sides of `S`: three tiles of forward run to be seen swimming down
+      // before the reversal, and enough behind it to swim back through for the tail.
+      const board = await poseMaze(api, ["......S........"]);
+      run = { ...board.mark("S"), dir: "right" };
+      await api.call("setForager", { tx: run.tx, ty: run.ty });
     },
 
     async act(api) {
       await api.call("keyDown", DIR_KEY[run.dir]);
-      await api.advance(12); // 12 ticks = the old 0.1 s: moving, mid-tile
+      // 72 ticks = 0.6 s of swimming BEFORE the reversal, and the whole point of the length
+      // is the clip: this item is about a forager turning around, so a reviewer has to watch
+      // it going one way first. The old 12 ticks was 0.1 s — two or three frames at the 25 fps
+      // the record pass writes — so the clip opened on a forager that had all but already
+      // turned, and the reversal it is named for was over before the eye caught it.
+      //
+      // 72 rather than a round tile count because the reversal has to land MID-TILE (the rule
+      // is that it needs no junction). At 128 px/s a tile is 30 ticks, so any multiple of 30
+      // would park the forager exactly on a center — the one place a turn is unremarkable.
+      // 72 ticks is 76.8 px: two tiles and 12.8 px, the same offset into a tile the old 12
+      // ticks reached, two tiles further down the corridor.
+      await api.advance(72);
       moving = (await api.snapshot()).forager;
       // Still mid-tile: let go of forward and press the opposite, so exactly one
       // direction key is held and the reversal is the only thing under test.

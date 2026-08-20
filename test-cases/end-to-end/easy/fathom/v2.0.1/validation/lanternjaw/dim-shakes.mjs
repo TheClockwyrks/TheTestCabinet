@@ -31,8 +31,9 @@
 // so they are `act`.
 import {
   startPlaying,
-  findDimStandoff,
+  poseDimStandoff,
   denAllExcept,
+  clearUnderfoot,
   parkForager,
   pred,
   quietBoard,
@@ -62,8 +63,9 @@ export default function item() {
     clipMs: 12000,
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      line = findDimStandoff(snap);
+      await startPlaying(api);
+      line = await poseDimStandoff(api);
+      const snap = await api.snapshot();
       // What the two clearance assertions are measured from: how far the slip sits from
       // the stale fix the hunter ends up standing on, and how far it sits from where the
       // hunter starts — which is the furthest it ever is from the forager.
@@ -92,11 +94,19 @@ export default function item() {
       const bright = pred(await api.snapshot(), "lanternjaw");
       fixed = bright.state;
       brightRange = bright.detectRange;
-      // Go dim and slip away, together — the spec's counter. The slip is a pose rather than
-      // a swim, so the forager never crosses the shrinking range in plain sight on its way
-      // out and hands the hunter a fresh fix as it goes.
+      // Go dim and slip away, together — the spec's counter. Dimming FIRST is what makes
+      // the slip invisible: the pose is not a swim, so a forager still lit as it moved
+      // would simply be seen arriving and hand the hunter a fresh fix on its new tile,
+      // which is the opposite of slipping away. `arrange` has already stripped the board
+      // (`quietBoard`), so there is no pellet under the slip tile to re-brighten `G` and
+      // hand back the range this is taking away.
       await api.call("setBrightness", 0);
       await parkForager(api, line.slip);
+      // The slip lands on a corridor tile, so it lands on a pellet — worth `G = 0.34` and
+      // a Lanternjaw reach of `193 px` while it decays, against a slip that sits `192 px`
+      // from the stale fix. Settle it before the linger is timed, or the scenario hands
+      // the hunter back the very sight it just took away.
+      await clearUnderfoot(api);
       // Long enough for either reading of giving up — the linger counted from the moment it
       // lost the forager, or counted from arriving at the stale fix. A flat wait covered
       // only the first: see `untilGivesUp`.
@@ -135,6 +145,15 @@ export default function item() {
         reachFromStart,
         BRIGHT_RANGE,
       );
+      // Two ways to fail this, and they are different findings, so they are named apart.
+      // A hunter that RUNS THE FORAGER DOWN — dim, from beyond its own reported range — is
+      // not lingering too long, it is tracking something it cannot see; reporting that as
+      // "the fix did not lapse" sends a reader looking at timers instead of at sensing.
+      check.expectOk(
+        "it does not run the dim forager down from beyond its own range (it is not tracking what it cannot see)",
+        !lapsed.caught,
+      );
+      if (lapsed.caught) return;
       check.expectOk(
         "the shrunk range cannot re-find it, so the fix lapses (back to wandering)",
         lapsed.gaveUp,

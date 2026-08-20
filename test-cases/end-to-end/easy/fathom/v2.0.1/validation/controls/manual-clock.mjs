@@ -47,7 +47,7 @@
 // whichever of them a build animates, the larger movement is the one that answers this.
 // With the clock properly held, both are zero.
 import {
-  findStraightRun,
+  poseStraightRun,
   startPlaying,
   unmetPrecondition,
 } from "../_helpers.mjs";
@@ -97,7 +97,16 @@ export default function item() {
       // Set the shot up: a corridor to swim down and the light to see it by, so the pair
       // of stills is a picture a reviewer can read. Control ops only — none of them
       // touches `autoStep` (specs/instrumentation.md).
-      const run = findStraightRun(opening, 3);
+      const run = await poseStraightRun(api, 6, { spare: true });
+      // `setMaze` returns every predator to the den, and a denned predator holds still
+      // whether or not the clock is running — which would leave "nothing swam" proving
+      // nothing. One is put back on the reef so there is something out there that a
+      // build still running its own clock would visibly carry across the corridor.
+      await api.call("setPredator", "gloamfin", {
+        tx: run.tx + 4,
+        ty: run.ty,
+        mode: "wander",
+      });
       await api.call("setForager", { tx: run.tx, ty: run.ty, dir: run.dir });
       await api.call("setBrightness", 1);
 

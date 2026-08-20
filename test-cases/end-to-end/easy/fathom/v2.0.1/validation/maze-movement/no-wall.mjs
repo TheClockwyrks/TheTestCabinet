@@ -4,7 +4,14 @@
 // held key that fails to move the forager is the real sim, so it is `act`. The key stays
 // held through the tail so the clip shows the forager pressed against the rock, going
 // nowhere — which is the whole point.
-import { startPlaying, findOpenWithWall, DIR_KEY } from "../_helpers.mjs";
+import { startPlaying, poseMaze, DIR_KEY } from "../_helpers.mjs";
+
+// A short corridor that ENDS in rock, with the forager parked at `W` against that end.
+// Everything outside the art is wall, so the tile east of `W` is the rock this item is
+// about. Posed rather than found: which tiles have a wall on which side is a property of
+// the maze a build invented, and the direction that happened to be walled decided which
+// key this item pressed.
+const DEAD_END = ["...W"];
 
 export default function item() {
   let dir;
@@ -15,20 +22,10 @@ export default function item() {
     id: "maze-movement.no-wall",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      dir = null;
-      let spot = null;
-      for (const d of ["up", "right", "down", "left"]) {
-        try {
-          spot = findOpenWithWall(snap, d);
-          dir = d;
-          break;
-        } catch {
-          /* try the next direction */
-        }
-      }
-      if (!dir) throw new Error("no open tile bordered by a wall");
-      await api.call("setForager", { tx: spot.tx, ty: spot.ty });
+      await startPlaying(api);
+      const board = await poseMaze(api, DEAD_END);
+      dir = "right"; // into the rock that closes the corridor east of `W`
+      await api.call("setForager", board.mark("W"));
     },
 
     async act(api) {

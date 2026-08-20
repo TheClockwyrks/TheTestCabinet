@@ -39,12 +39,11 @@ import {
   FLARE_RADIUS,
   boardDisturbance,
   denAllExcept,
-  findRemotestTile,
+  poseApart,
   parkForager,
   pred,
   quietBoard,
   startPlaying,
-  stepTile,
   ticksFor,
   unmetPrecondition,
 } from "../_helpers.mjs";
@@ -92,36 +91,14 @@ function separation(snap) {
   return Math.hypot(p.x - snap.forager.x, p.y - snap.forager.y);
 }
 
-/**
- * The forager's home tile and its four neighbors — where `quietBoard` left the single
- * plankton it did not strip. The forager must never be re-posed onto that pellet: eating
- * it clears the maze and descends, which re-dens every predator mid-measurement.
- * `poseLastPlankton` promises only "an open tile adjacent to the forager"
- * (`specs/instrumentation.md`) and `snapshot` does not report plankton, so the whole
- * neighborhood is what a scenario can name.
- */
-function pelletZone(snap, home) {
-  const zone = new Set([`${home.tx},${home.ty}`]);
-  for (const dir of ["up", "down", "left", "right"]) {
-    const [c, r] = stepTile(snap, home.tx, home.ty, dir);
-    zone.add(`${c},${r}`);
-  }
-  return zone;
-}
 
 /**
- * Move the forager to the tile furthest from where the Flarefish is now, and park it
- * facing rock there so it stays put. Best effort — no `minPx` floor — so it always takes
- * the roomiest tile the maze offers rather than turning a berth into a verdict.
+ * Put the forager back in its own sealed room and park it there. A safety net rather than
+ * a routine step: the two rooms do not join, so on a conforming build the Flarefish never
+ * closes on it at all.
  */
-async function stepAside(api, snap, zone) {
-  const p = pred(snap, "flarefish");
-  const away = findRemotestTile(
-    snap,
-    { tx: p.tx, ty: p.ty },
-    { exclude: (c, r) => zone.has(`${c},${r}`) },
-  );
-  return parkForager(api, away);
+async function stepAside(api) {
+  return parkForager(api, board.near);
 }
 
 /**
@@ -132,7 +109,7 @@ async function stepAside(api, snap, zone) {
  * `advance`, which is real time in the record pass, for the gap that is the measurement.
  * Returns `until`'s shape — `{ snap, hit, spent }`.
  */
-async function watch(api, predicate, { max, live, zone }) {
+async function watch(api, predicate, { max, live }) {
   let snap = await api.snapshot();
   if (predicate(snap)) return { snap, hit: true, spent: 0 };
   for (let spent = 0; spent < max; spent += GUARD_POLL) {
@@ -140,16 +117,17 @@ async function watch(api, predicate, { max, live, zone }) {
     else await api.skip(GUARD_POLL);
     snap = await api.snapshot();
     if (predicate(snap)) return { snap, hit: true, spent: spent + GUARD_POLL };
-    if (separation(snap) < KEEP_CLEAR) snap = await stepAside(api, snap, zone);
+    if (separation(snap) < KEEP_CLEAR) snap = await stepAside(api);
   }
   return { snap, hit: false, spent: max };
 }
+
+let board;
 
 export default function item() {
   let first;
   let second;
   let quiet;
-  let zone;
   let flared = false;
 
   return {
@@ -162,24 +140,26 @@ export default function item() {
 
     async arrange(api) {
       await startPlaying(api);
+      // The berth this item needs, posed rather than hoped for: the forager's own room,
+      // and across solid rock a sealed ring for the Flarefish to patrol. On a build's own
+      // maze — one connected region (`specs/maze.md`) — no berth is permanent, and this
+      // item has to hold one for the twenty seconds two flares take; the sweeps below
+      // still step the forager aside if a build somehow closes the gap, but on a board
+      // where the two rooms do not join there is nothing for them to react to.
+      board = await poseApart(api, 10, { ring: 4 });
       quiet = await denAllExcept(api, ["flarefish"]);
       // The floor of the light-sense range, `R = 128 px`: the forager is a bystander
       // here, so it gives off as little as the spec lets it (`G = 0` is where a dive
       // starts anyway) and only the bloom's radius decides how wide a berth it needs.
       await api.call("setBrightness", 0);
       const home = await quietBoard(api);
-      zone = pelletZone(home, home.forager);
 
       // The walk up to a flare, restarted from a fresh far tile if the wander finds the
       // forager despite the berth. Re-posing costs the item nothing: what is timed is the
       // gap between two flares that come AFTER this, so an interrupted walk-up is simply
       // a walk-up that has to be taken again.
       for (let attempt = 0; attempt < SWEEP_ATTEMPTS; attempt++) {
-        const now = await api.snapshot();
-        const far = findRemotestTile(now, now.forager, {
-          exclude: (c, r) => zone.has(`${c},${r}`),
-          minPx: FLARE_RADIUS + 128, // 320 px: the bloom, and four tiles it has to cross
-        });
+        const far = board.far; // the sealed ring, well outside the bloom's reach
         await api.call("setPredator", "flarefish", {
           tx: far.tx,
           ty: far.ty,
@@ -191,7 +171,7 @@ export default function item() {
             const p = pred(s, "flarefish");
             return p.flaring === true || p.state !== "wander";
           },
-          { max: ticksFor(FIRST_FLARE_MAX), zone },
+          { max: ticksFor(FIRST_FLARE_MAX) },
         );
         flared = first.hit && pred(first.snap, "flarefish").flaring === true;
         if (flared || !first.hit) break;
@@ -216,19 +196,45 @@ export default function item() {
       const out = await watch(
         api,
         (s) => pred(s, "flarefish").flaring === false,
-        {
-          max: ticksFor(5),
-          zone,
-        },
+        { max: ticksFor(5) },
       );
       // And one last unconditional step aside, so the gap opens on the widest berth the
       // maze has to give. The forager stepping out of the way is not interesting footage,
       // and this is the one move that can be made before the camera starts.
-      await stepAside(api, out.snap, zone);
+      await stepAside(api);
     },
 
     async act(api) {
       if (!flared) return;
+      // OPEN ON THE FIRST BLOOM. `arrange` hunted for it, and `arrange` is not filmed at
+      // the speed it happened — so the clip used to open on the empty gap AFTER that
+      // flare and show seven seconds of dark trench before the second one arrived. A
+      // reviewer watching an item about the interval BETWEEN two flares needs to see both
+      // ends of it. The bloom is a second long, so a second of real time here catches it
+      // whole, and the gap this item actually times starts from the same place either way.
+      await api.advance(ticksFor(1));
+      // Let the first flare CYCLE finish before looking for the next one.
+      //
+      // A flare is a sequence — "a `0.5 s` charge-up glow that telegraphs it", then the
+      // bloom, then the fade (`specs/predators/flarefish.md`) — and `flaring` is the flag
+      // for the middle of it. Watching for the flag to rise again, starting from the
+      // moment it first rose, counts any second rise within the same cycle as a second
+      // flare. A run did exactly that: its bloom and its charge came in the wrong order,
+      // so the flag rose at `6.5 s`, fell, and rose again at `7.5 s`, and this item read a
+      // one-second cadence and failed a Flarefish whose flares were in fact `7 s` apart.
+      // The ordering is a real defect and it is not this item's: this item times the gap
+      // between flares, so it waits for one flare to be wholly over before timing to the
+      // next.
+      await api.skipUntil(
+        (s) => {
+          const p = pred(s, "flarefish");
+          return (
+            (p.flaring !== true && p.flareCharging !== true) ||
+            p.state !== "wander"
+          );
+        },
+        { max: ticksFor(4), poll: 6 },
+      );
       // Watch out the gap for the next bloom — or for the Flarefish being pulled out of
       // its wander, which ends the flare cycle by design ("while chasing it stops
       // flaring", specs/predators.md) and leaves nothing to time.
@@ -238,7 +244,7 @@ export default function item() {
           const p = pred(s, "flarefish");
           return p.flaring === true || p.state !== "wander";
         },
-        { max: ticksFor(GAP_MAX), live: true, zone },
+        { max: ticksFor(GAP_MAX), live: true },
       );
       const p = pred(second.snap, "flarefish");
       if (!p.flaring && p.state !== "wander") {

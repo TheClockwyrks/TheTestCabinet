@@ -25,7 +25,7 @@ import {
   TICK,
   armAudio,
   audioCount,
-  findMoveKeyTile,
+  poseStraightRun,
   startPlaying,
 } from "../_helpers.mjs";
 
@@ -39,11 +39,11 @@ export default function item() {
     id: "audio.eat",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       // Armed first: the gesture is real user input and takes real time, which is time
       // the pose would otherwise have to survive.
       await armAudio(api);
-      const spot = findMoveKeyTile(snap, "right");
+      const spot = await poseStraightRun(api, 8, { spare: true });
       dir = "right";
       await api.call("setForager", {
         tx: spot.tx,

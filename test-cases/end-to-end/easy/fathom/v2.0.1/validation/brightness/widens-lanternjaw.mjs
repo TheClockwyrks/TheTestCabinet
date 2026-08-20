@@ -5,7 +5,7 @@
 // a low G and then at a high one.
 import {
   denAllExcept,
-  findOpenWithNeighbor,
+  poseStraightRun,
   pred,
   quietBoard,
   startPlaying,
@@ -19,11 +19,16 @@ export default function item() {
     id: "brightness.widens-lanternjaw",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const spot = findOpenWithNeighbor(snap, "right");
+      await startPlaying(api);
+      // A posed corridor: the pair stands on it with room to the right, rather than on
+      // whichever tile a build's own maze happened to leave open that way. The Lanternjaw
+      // goes four tiles along it — `setMaze` rests the forager on the run's first tile,
+      // and a hunter posed onto that same tile simply eats it, which costs a life and
+      // re-dens every predator before the range can be read.
+      const spot = await poseStraightRun(api, 8, { spare: true });
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setPredator", "lanternjaw", {
-        tx: spot.tx,
+        tx: spot.tx + 4,
         ty: spot.ty,
         mode: "wander",
       });

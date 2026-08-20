@@ -7,8 +7,9 @@ import {
   GLOAMFIN_PING_INTERVAL,
   actGloamPings,
   denAllExcept,
-  findFarTile,
+  poseApart,
   quietBoard,
+  showOverlay,
   startPlaying,
   ticksFor,
 } from "../_helpers.mjs";
@@ -20,15 +21,23 @@ export default function item() {
     id: "gloamfin.ping-cadence",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor, and 10 tiles off across solid
+      // rock a separate ring to patrol. Sealed off rather than merely distant, so
+      // "far away" holds for the whole watch instead of only until the patrol
+      // arrives — a real maze is one connected region and cannot offer that.
+      const far = (await poseApart(api, 10)).far; // far, so it wanders and self-pings
       await denAllExcept(api, ["gloamfin"]);
-      const far = findFarTile(snap, snap.forager, 10); // far, so it wanders and self-pings
       await api.call("setPredator", "gloamfin", {
         tx: far.tx,
         ty: far.ty,
         mode: "wander",
       });
       await quietBoard(api);
+      // the Gloamfin must sit beyond its own ping range, far out in the dark, so the clip would
+      // otherwise be a black screen; the overlay reports its state and speed on the
+      // frame without touching the simulation (see `showOverlay`).
+      await showOverlay(api);
     },
 
     async act(api) {

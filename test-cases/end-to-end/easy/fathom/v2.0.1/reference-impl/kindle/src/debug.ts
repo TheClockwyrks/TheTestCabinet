@@ -35,6 +35,7 @@ export interface FathomDebugApi {
   setDepth(d: number): void;
   setForager(state: ForagerPose): void;
   setBrightness(g: number): void;
+  setMaze(rows: string[]): void;
   setPredator(kind: string, state: PredatorPose): void;
   spawnDrifter(state?: { tx?: number; ty?: number }): void;
   poseLastPlankton(): void;
@@ -104,6 +105,10 @@ export function installDebugApi(game: Game): void {
 
     setBrightness(g) {
       game.debugSetBrightness(g);
+    },
+
+    setMaze(rows) {
+      game.debugSetMaze(rows);
     },
 
     setPredator(kind, state) {

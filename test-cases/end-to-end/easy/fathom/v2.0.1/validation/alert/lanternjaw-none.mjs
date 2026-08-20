@@ -4,7 +4,7 @@
 // any alert consumes time, so it is `act`, and the clip shows exactly that acquisition.
 import {
   denAllExcept,
-  findSightLine,
+  poseSightLine,
   pred,
   quietBoard,
   startPlaying,
@@ -18,8 +18,8 @@ export default function item() {
     id: "alert.lanternjaw-none",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const line = findSightLine(snap, 3);
+      await startPlaying(api);
+      const line = await poseSightLine(api, 3);
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setPredator", "lanternjaw", {
         tx: line.pred.tx,

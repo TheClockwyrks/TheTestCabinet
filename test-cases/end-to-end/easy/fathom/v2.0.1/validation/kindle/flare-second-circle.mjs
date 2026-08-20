@@ -6,7 +6,7 @@
 // sampling that follows are both `act`.
 import {
   denAllExcept,
-  findFarTile,
+  poseApart,
   luminance,
   openTiles,
   pred,
@@ -32,9 +32,11 @@ export default function item() {
     id: "kindle.flare-second-circle",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor and, across solid rock, a sealed ring
+      // for the Flarefish to patrol — so "far away" holds for the whole watch.
+      const far = (await poseApart(api, 11, { spare: true })).far; // beyond the vision circle, and stays far
       await denAllExcept(api, ["flarefish"]);
-      const far = findFarTile(snap, snap.forager, 11); // beyond the vision circle, and stays far
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,

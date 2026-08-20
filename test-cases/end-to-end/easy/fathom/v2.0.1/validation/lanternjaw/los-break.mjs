@@ -5,7 +5,7 @@
 // — no fix — is the real sim, so it is `act`.
 import {
   denAllExcept,
-  findOccludedPair,
+  poseOccludedPair,
   pred,
   quietBoard,
   startPlaying,
@@ -18,8 +18,8 @@ export default function item() {
     id: "lanternjaw.los-break",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const bp = findOccludedPair(snap); // within the R=320 range, LOS blocked by rock
+      await startPlaying(api);
+      const bp = await poseOccludedPair(api); // within the R=320 range, LOS blocked by rock
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setPredator", "lanternjaw", {
         tx: bp.pred.tx,

@@ -16,7 +16,7 @@
 import {
   DIR_KEY,
   denAllExcept,
-  findInkStandoff,
+  poseInkStandoff,
   parkForager,
   pred,
   startPlaying,
@@ -37,10 +37,11 @@ export default function item() {
     clipMs: 12000,
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       // gap 2: the Lanternjaw stands inside the 80 px cloud the forager is about to drop,
       // which is the least ambiguous form of "blinded by ink" the spec describes.
-      line = findInkStandoff(snap, { gap: 2 });
+      line = await poseInkStandoff(api, { gap: 2 });
+      const snap = await api.snapshot();
       // The ground between the hunter and the tile its fix will go stale on, which is what
       // it has to cover before its linger can even start running.
       gap = tileGapPx(snap.grid, line.pred, line.ink);

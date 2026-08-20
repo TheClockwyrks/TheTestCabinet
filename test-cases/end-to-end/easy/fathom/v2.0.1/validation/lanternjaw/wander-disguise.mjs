@@ -8,7 +8,7 @@ import {
   DRIFTER_SPEED,
   PREDATOR_SPEED,
   denAllExcept,
-  findSonarTarget,
+  poseApart,
   pred,
   quietBoard,
   startPlaying,
@@ -23,9 +23,11 @@ export default function item() {
     id: "lanternjaw.wander-disguise",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       await denAllExcept(api, ["lanternjaw"]);
-      target = findSonarTarget(snap, snap.forager); // beyond the light, so it stays undetected
+      // A sealed ring well beyond the forager's light, so the Lanternjaw patrols in its
+      // disguise for the whole watch instead of only until it happens to find anyone.
+      target = (await poseApart(api, 9)).far;
       await api.call("setPredator", "lanternjaw", {
         tx: target.tx,
         ty: target.ty,

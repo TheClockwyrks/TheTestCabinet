@@ -5,7 +5,7 @@
 // Which tiles are revealed is only known after the flood has run, so the pulse, the
 // choice of the two tiles and the sampling are all `act`.
 import {
-  findStraightRun,
+  poseStraightRun,
   luminance,
   openTiles,
   quietBoard,
@@ -27,11 +27,11 @@ export default function item() {
     id: "kindle.vision-circle",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       // Stand on a long straight corridor and clear the board first: the forager cannot
       // eat (so brightness — and the vision circle — stay at rest), and a single pulse
       // reveals tiles straight down the corridor well past the vision circle.
-      const run = findStraightRun(snap, 9);
+      const run = await poseStraightRun(api, 9, { spare: true }); // posed: `specs/maze.md` fixes no run length
       // Parked, not merely placed: every distance below is measured from the forager,
       // so a build whose forager swims off on its own would move the frame of reference
       // mid-measurement as well as eating the last pellet.

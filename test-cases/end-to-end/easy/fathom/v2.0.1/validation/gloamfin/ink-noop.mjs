@@ -24,7 +24,7 @@ import {
   GLOAMFIN_HEAR,
   TICK,
   denAllExcept,
-  findInkStandoff,
+  poseInkStandoff,
   pred,
   startPlaying,
   ticksFor,
@@ -41,10 +41,10 @@ export default function item() {
     id: "gloamfin.ink-noop",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       // gap 3: the Gloamfin starts OUTSIDE the 80 px cloud (96 px away), so the clip
       // shows it entering the ink rather than beginning inside it.
-      line = findInkStandoff(snap, { gap: 3 });
+      line = await poseInkStandoff(api, { gap: 3 });
       await denAllExcept(api, ["gloamfin"]);
       // The forager first: `chase` fixes on wherever it is standing when the mode is set,
       // and that tile is where the cloud is about to go. Facing the way it will break

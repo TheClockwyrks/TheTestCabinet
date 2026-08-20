@@ -45,7 +45,7 @@ export default function item() {
 
     async assert(api, check) {
       check.expectLe(
-        "openness is low — corridors, not rooms",
+        "mean openness is low — the board reads as corridors overall (a single wide spot is `maze/corridors-one-wide`)",
         p.openness,
         MAZE_OPENNESS_MAX,
       );

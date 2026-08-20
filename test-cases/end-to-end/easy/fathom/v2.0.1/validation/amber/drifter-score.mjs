@@ -28,7 +28,7 @@ import {
   SCORE_PLANKTON,
   TICK,
   denAllExcept,
-  findStraightRun,
+  poseStraightRun,
   startPlaying,
   ticksFor,
 } from "../_helpers.mjs";
@@ -42,12 +42,12 @@ export default function item() {
     id: "amber.drifter-score",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       await denAllExcept(api, []); // den every predator so none disturbs the run-up
       await api.call("setCreatureAI", false); // the drifter waits where it is put
       // Four tiles: the forager at one end and the drifter three along, a gap it crosses
       // in about 0.75 s — long enough to watch, short enough to be the clip.
-      run = findStraightRun(snap, 4);
+      run = await poseStraightRun(api, 4, { spare: true }); // posed: `specs/maze.md` fixes no run length
       const [dc, dr] = { right: [1, 0], down: [0, 1] }[run.dir];
       await api.call("setForager", { tx: run.tx, ty: run.ty, dir: run.dir });
       await api.call("spawnDrifter", {

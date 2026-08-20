@@ -12,9 +12,9 @@
 // tiles to spare, and a reviewer reading a green line was told the light reveals the walls
 // it lands on when it barely does. So the item now names a specific wall the light must
 // land on, chosen so that no honest build can disagree that it does (see
-// `findLitWallProbe`), and asks the other half of the same spec sentence too: the light
+// `poseLitWallProbe`), and asks the other half of the same spec sentence too: the light
 // "stops there", so the tile behind that wall must stay black.
-import { findLitWallProbe, startPlaying } from "../_helpers.mjs";
+import { poseLitWallProbe, startPlaying } from "../_helpers.mjs";
 
 export default function item() {
   let probe;
@@ -27,8 +27,8 @@ export default function item() {
     id: "fog.light-reveals-walls",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      probe = findLitWallProbe(snap);
+      await startPlaying(api);
+      probe = await poseLitWallProbe(api);
       await api.call("setForager", {
         tx: probe.tx,
         ty: probe.ty,
@@ -55,9 +55,8 @@ export default function item() {
         `the light reveals the wall closing the corridor ${probe.run + 1} tiles ${probe.dir}`,
         revealed(probe.wall),
       );
-      // Only a wall with a far side can be shown to have stopped the light. A corridor
-      // that ends at the maze border has none, and `findLitWallProbe` falls back to one
-      // only when the maze offers nothing else.
+      // Only a wall with a far side can be shown to have stopped the light: a corridor
+      // that ends at the maze border has none. The posed corridor always carries one.
       if (probe.behind) {
         check.expectOk(
           "and stops there — the tile behind that wall stays black fog",

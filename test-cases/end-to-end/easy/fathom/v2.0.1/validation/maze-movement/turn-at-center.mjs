@@ -14,7 +14,24 @@
 // holding the approach key — rode on an unspecified tie-break: against a build that
 // resolves it oldest-first the forager simply never turned, which ALSO made the
 // "not taken mid-tile" assertion pass for the wrong reason.
-import { startPlaying, findCorner, DIR_KEY } from "../_helpers.mjs";
+import { startPlaying, poseMaze, DIR_KEY } from "../_helpers.mjs";
+
+// A right-angle junction: the forager starts at `B`, swims right into the junction `J`,
+// and the buffered turn takes it down the arm below. `B` is the tile immediately behind
+// the junction, because the timings in `act` are measured from one tile out: the forager
+// buffers the turn 14 ticks in — `14.9 px`, mid-tile and short of the `16 px` half-tile —
+// and reaches the center over the 36 that follow. The corridor CONTINUES past `J`, so a
+// forager that never takes the turn swims straight on rather than being stopped by rock;
+// the turn has to be the thing that moves it. Three tiles of arm give the turn somewhere
+// to go. Which junctions a maze offers, and how much room sits either side of them, is
+// the build's own invention (`specs/maze.md`), so the corner this item is named for is
+// posed rather than found.
+const CORNER = [
+  "BJ.",
+  " . ",
+  " . ",
+  " . ",
+];
 
 export default function item() {
   let c;
@@ -25,8 +42,16 @@ export default function item() {
     id: "maze-movement.turn-at-center",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      c = findCorner(snap);
+      await startPlaying(api);
+      const board = await poseMaze(api, CORNER);
+      const j = board.mark("J");
+      c = {
+        junction: j,
+        approach: "right",
+        back: board.mark("B"),
+        perp: "down",
+        perpTile: { tx: j.tx, ty: j.ty + 1 },
+      };
       // Approach the junction from the tile behind it.
       await api.call("setForager", { tx: c.back.tx, ty: c.back.ty });
     },

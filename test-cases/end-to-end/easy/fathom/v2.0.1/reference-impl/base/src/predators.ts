@@ -17,8 +17,6 @@ import {
   FLARE_RADIUS,
   FLARE_REARM,
   FLAREFISH_SPEED,
-  GATE_COL,
-  GATE_ROW,
   GLOAMFIN_CHASE_RECOVER,
   GLOAMFIN_CHASE_SPEED,
   GLOAMFIN_CORNER_SPEED,
@@ -458,11 +456,11 @@ export function updatePredator(p: Predator, dt: number, w: World): void {
       p,
       dt,
       w.maze,
-      () => greedyDir(p, GATE_COL, GATE_ROW - 1, canDen, w.maze),
+      () => greedyDir(p, w.maze.gateCol, w.maze.gateRow - 1, canDen, w.maze),
       canDen,
       () => true,
     );
-    if (p.row <= GATE_ROW - 1 && !w.maze.isDen(p.col, p.row)) {
+    if (p.row <= w.maze.gateRow - 1 && !w.maze.isDen(p.col, p.row)) {
       p.state = PredState.Patrol;
     }
     return;

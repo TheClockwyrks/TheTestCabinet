@@ -6,7 +6,7 @@
 // ping travelling out and the Gloamfin turning.
 import {
   denAllExcept,
-  findSonarSenseTiles,
+  poseSonarSense,
   pred,
   quietBoard,
   startPlaying,
@@ -20,9 +20,9 @@ export default function item() {
     id: "sonar.heard-by-gloamfin",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       await denAllExcept(api, ["gloamfin"]);
-      const [target] = findSonarSenseTiles(snap, snap.forager, 1); // beyond hearing, inside the flood
+      const [target] = await poseSonarSense(api, 1); // beyond hearing, inside the flood
       await api.call("setPredator", "gloamfin", {
         tx: target.tx,
         ty: target.ty,

@@ -25,7 +25,7 @@ import {
   FLARE_RADIUS,
   TICK,
   denAllExcept,
-  findFarTile,
+  poseApart,
   losClear,
   openTiles,
   pred,
@@ -60,14 +60,13 @@ export default function item() {
     id: "flarefish.flare-lock",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor and, 8 tiles off across solid rock, a
+      // sealed ring for the Flarefish to patrol. On a posed straight line the tile gap
+      // IS the euclidean gap, so 8 tiles is 256 px — clear of the bloom's 192 px
+      // radius without having to hunt for a tile that is far by both measures at once.
+      const far = (await poseApart(api, 8)).far;
       await denAllExcept(api, ["flarefish"]);
-      const far = findFarTile(snap, snap.forager, 8, {
-        // "Far" here means OUTSIDE the bloom, which is a euclidean radius — a
-        // manhattan-8 tile can sit at 181 px, inside it. One tile of margin past
-        // FLARE_RADIUS so a Flarefish that has drifted a little is still clear.
-        minPx: FLARE_RADIUS + snap.grid.tile,
-      });
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,
@@ -104,6 +103,12 @@ export default function item() {
 
     async act(api) {
       if (!bloom.hit) return;
+      // A beat on the bloom BEFORE the forager is in it. `arrange` skipped the wait for
+      // the flare, so without this the clip opens on a forager already standing inside a
+      // bloom that is already fading, and the acquisition — the thing the item is named
+      // for — is over in the first frame or two. A quarter second of the flare burning on
+      // its own gives the reveal somewhere to happen: flare, then forager, then lock.
+      await api.advance(30);
       await api.call("setForager", spot); // inside the burning bloom, wall between
       // The lock is evaluated as the bloom burns, so a conforming build acquires on the
       // next tick; poll at TICK so the read lands there and the Flarefish cannot drift

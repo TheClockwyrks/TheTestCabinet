@@ -5,9 +5,10 @@
 import {
   PREDATOR_SPEED,
   denAllExcept,
-  findFarTile,
+  poseApart,
   pred,
   quietBoard,
+  showOverlay,
   startPlaying,
 } from "../_helpers.mjs";
 
@@ -19,15 +20,23 @@ export default function item() {
     id: "gloamfin.wander-speed",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor, and 8 tiles off across solid
+      // rock a separate ring to patrol. Sealed off rather than merely distant, so
+      // "far away" holds for the whole watch instead of only until the patrol
+      // arrives — a real maze is one connected region and cannot offer that.
+      const far = (await poseApart(api, 8)).far; // far, so it just wanders
       await denAllExcept(api, ["gloamfin"]);
-      const far = findFarTile(snap, snap.forager, 8); // far, so it just wanders
       await api.call("setPredator", "gloamfin", {
         tx: far.tx,
         ty: far.ty,
         mode: "wander",
       });
       await quietBoard(api);
+      // the wander it measures happens eight tiles away in the dark, so the clip would
+      // otherwise be a black screen; the overlay reports its state and speed on the
+      // frame without touching the simulation (see `showOverlay`).
+      await showOverlay(api);
     },
 
     async act(api) {

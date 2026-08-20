@@ -3,7 +3,14 @@
 // The straight run is posed instantly (`arrange`); the measured half-second of held input
 // is the real sim, so it is `act`. The key stays held through the tail so the clip shows
 // the forager still swimming rather than stopping the moment the reading was taken.
-import { startPlaying, findStraightRun, DIR_KEY } from "../_helpers.mjs";
+import { startPlaying, poseMaze, DIR_KEY } from "../_helpers.mjs";
+
+// A straight corridor to swim, with the forager starting at `S`. Eight tiles is the
+// half-second measured below (two tiles at `128 px/s`) plus the `0.9 s` tail the clip
+// runs on, with room to spare, so the forager never reaches the end and the reading is
+// of a forager swimming rather than one that ran out of corridor. `specs/maze.md` fixes
+// no run length, so posing the run is the only way to know there is one.
+const CORRIDOR = ["S........."];
 
 export default function item() {
   let run;
@@ -13,8 +20,9 @@ export default function item() {
     id: "maze-movement.constant-speed",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      run = findStraightRun(snap, 6);
+      await startPlaying(api);
+      const board = await poseMaze(api, CORRIDOR);
+      run = { ...board.mark("S"), dir: "right" };
       await api.call("setForager", { tx: run.tx, ty: run.ty });
     },
 

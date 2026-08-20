@@ -5,7 +5,7 @@
 // pulse, the choice of tile, the two samples and the return trip are all `act`. The
 // return uses `setForager`, a control op — `reset` in act would freeze the recording.
 import {
-  findStraightRun,
+  poseStraightRun,
   isOpen,
   luminance,
   openTiles,
@@ -29,11 +29,11 @@ export default function item() {
     id: "kindle.memory-windowed",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       // Stand on a long straight corridor and clear the board so the forager cannot eat
       // (the vision circle stays at rest) and a single pulse reveals tiles straight down
       // the corridor well past the vision circle.
-      const run = findStraightRun(snap, 9);
+      const run = await poseStraightRun(api, 9, { spare: true }); // posed: `specs/maze.md` fixes no run length
       // Parked, not merely placed: every distance below is measured from the forager,
       // so a build whose forager swims off on its own would move the frame of reference
       // mid-measurement as well as eating the last pellet.

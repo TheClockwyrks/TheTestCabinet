@@ -44,7 +44,7 @@ export const MONO =
 // ---- The maze ----------------------------------------------------------
 // A mirror-symmetric (about the vertical centerline between cols 17 and 18),
 // one-tile-wide, fully-connected, dead-end-free braided maze with a solid
-// border pierced only by the horizontal wrap tunnel on WRAP_ROW. Symbols:
+// border pierced only by a horizontal wrap tunnel. Symbols:
 //   '#' wall (solid rock)   '.' open corridor
 //   'D' den interior (open, but the forager may not enter)
 //   'G' the single den gate (passable only by predators)
@@ -72,15 +72,13 @@ export const MAZE: string[] = [
   "####################################",
 ];
 
-export const WRAP_ROW = 13; // the horizontal wrap tunnel row (col 0 <-> col 35)
-export const GATE_COL = 17; // the den gate column (gate tile at row 6)
-export const GATE_ROW = 6;
-// Den interior bounds (inclusive), for predator den logic / plankton exclusion.
-export const DEN_C0 = 16;
-export const DEN_C1 = 19;
-export const DEN_R0 = 7;
-export const DEN_R1 = 9;
-// The forager's fixed spawn tile (lower half, on/near the centerline).
+// The wrap-tunnel row, the den gate and the den interior are READ OFF the layout above
+// by `Maze.load` rather than named here: `setMaze` (specs/instrumentation.md) can
+// replace that layout with one whose den and tunnel sit somewhere else entirely, and a
+// second copy of them here could only fall out of step with it.
+
+// The forager's spawn tile on the layout above (lower half, on/near the centerline). A
+// posed layout has no designed spawn, so `Maze.load` takes its first corridor tile.
 export const START_COL = 17;
 export const START_ROW = 15;
 

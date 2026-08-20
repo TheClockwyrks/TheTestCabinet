@@ -525,7 +525,7 @@ id = "light-line-of-sight"
 title = "Light is line-of-sight"
 description = "Passive light does not bend around corners: a predator behind rock is not lit even though it is well within light range."
 validation = { script = "validation/fog/light-line-of-sight.mjs", outputs = [
-  { id = "los", name = "A predator hidden around a blind corner", kind = "image" },
+  { id = "los", name = "A predator hidden around a blind corner, revealed on rounding it", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "light-reveals-walls"
@@ -764,7 +764,7 @@ id = "no-tell"
 title = "No bulb or ping of its own"
 description = "The Flarefish gives off no amber bulb and no ping — between flares its body is unrevealed unless your light or sonar reaches it."
 validation = { script = "validation/flarefish/no-tell.mjs", outputs = [
-  { id = "notell", name = "The Flarefish unrevealed between flares", kind = "image" },
+  { id = "notell", name = "A Flarefish's flare fading, leaving nothing of it drawn", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "flare-cadence"
@@ -816,7 +816,7 @@ validation = { script = "validation/den/stagger.mjs", outputs = [
 [[review.categories.items]]
 id = "re-release"
 title = "Losing a life restarts the schedule"
-description = "Losing a life returns every predator to the den, and they re-release on the same staggered schedule, giving you a moment to reorient."
+description = "Losing a life returns every predator to the den, and they re-release on the same staggered schedule, giving you a moment to reorient. The clip is of that re-release: the life itself is taken by placing a hunter on the forager, so the death is instant rather than a chase to watch."
 validation = { script = "validation/den/re-release.mjs", outputs = [
   { id = "rerelease", name = "The den refilling on a death and emptying again in turn", kind = "video" },
 ] }

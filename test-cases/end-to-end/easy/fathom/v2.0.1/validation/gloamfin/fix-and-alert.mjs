@@ -5,7 +5,7 @@
 // chase takes the real sim, so it is `act` and is what the clip shows.
 import {
   denAllExcept,
-  findSightLine,
+  poseSightLine,
   pred,
   quietBoard,
   startPlaying,
@@ -19,8 +19,8 @@ export default function item() {
     id: "gloamfin.fix-and-alert",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const line = findSightLine(snap, 2); // 64 px — inside close hearing
+      await startPlaying(api);
+      const line = await poseSightLine(api, 2); // 64 px — inside close hearing
       await denAllExcept(api, ["gloamfin"]);
       await api.call("setPredator", "gloamfin", {
         tx: line.pred.tx,

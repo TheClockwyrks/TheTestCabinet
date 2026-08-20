@@ -148,11 +148,29 @@ export function uvOf(x, y) {
 
 /** The row of the horizontal wrap tunnel (both border columns open), or -1. */
 export function wrapRow(snap) {
+  const rows = wrapRows(snap);
+  return rows.length === 1 ? rows[0] : -1;
+}
+
+/**
+ * EVERY row whose left-edge and right-edge tiles are both open — the rows that pierce
+ * the border. `specs/maze.md` allows exactly one ("One horizontal wrap tunnel pierces
+ * the left and right border"), so a structural read wants the whole list: none means the
+ * build drew no tunnel, and more than one means it drew a border it did not seal.
+ */
+export function wrapRows(snap) {
   const { tiles, grid } = snap;
+  const found = [];
   for (let r = 0; r < grid.rows; r++) {
-    if (isOpen(tiles, 0, r) && isOpen(tiles, grid.cols - 1, r)) return r;
+    if (isOpen(tiles, 0, r) && isOpen(tiles, grid.cols - 1, r)) found.push(r);
   }
-  return -1;
+  return found;
+}
+
+/** True if any tile on row `r` is the den interior or its gate. */
+export function rowTouchesDen(snap, r) {
+  const line = snap.tiles[r] ?? "";
+  return line.includes("d") || line.includes("g");
 }
 
 /** One tile step in `dir` from (c, r), applying the horizontal wrap tunnel. */
@@ -224,18 +242,6 @@ export function unconstructibleOr(snap, reason) {
   return unmetPrecondition(reason);
 }
 
-/** An open tile whose neighbor in `dir` is also open (a mover can go that way). */
-export function findOpenWithNeighbor(snap, dir) {
-  const { tiles, grid } = snap;
-  for (let r = 1; r < grid.rows - 1; r++) {
-    for (let c = 1; c < grid.cols - 1; c++) {
-      if (!isOpen(tiles, c, r)) continue;
-      const [nc, nr] = stepTile(snap, c, r, dir);
-      if (isOpen(tiles, nc, nr)) return { tx: c, ty: r };
-    }
-  }
-  throw unmetPrecondition(`no open tile with an open ${dir} neighbor`);
-}
 
 /**
  * The tile to test ONE movement key on: open corridor, with somewhere to swim in `dir`,
@@ -292,78 +298,7 @@ export function findOpenWithNeighbor(snap, dir) {
  */
 export const MOVE_KEY_MAX_RUN = 3;
 
-export function findMoveKeyTile(snap, dir) {
-  const { tiles, grid } = snap;
-  const back = OPP[dir];
-  const [dc, dr] = DIRS[dir];
-  let best = null;
-  for (let r = 1; r < grid.rows - 1; r++) {
-    for (let c = 1; c < grid.cols - 1; c++) {
-      if (!isOpen(tiles, c, r)) continue;
-      const open = openNeighborDirs(snap, c, r);
-      if (!open.includes(dir)) continue;
-      // A full crossroads has no rock to face, so nothing can pin a forager there.
-      const walls = ["up", "down", "left", "right"].filter(
-        (d) => !open.includes(d),
-      );
-      const perp = walls.find((d) => d !== back);
-      if (!perp && !walls.includes(back)) continue;
-      let run = 1;
-      while (
-        run < MOVE_KEY_MAX_RUN &&
-        isOpen(tiles, c + dc * (run + 1), r + dr * (run + 1))
-      ) {
-        run += 1;
-      }
-      // Stopped against rock across the corridor outranks everything (it is what makes
-      // the key an ordinary turn rather than a reversal); being backed into the closed
-      // end comes next; open corridor ahead breaks the remaining ties.
-      const score = (perp ? 8 : 0) + (walls.includes(back) ? 4 : 0) + run;
-      if (!best || score > best.score) {
-        best = { tx: c, ty: r, facing: perp ?? back, run, score };
-      }
-    }
-  }
-  if (best) return best;
-  throw unconstructibleOr(
-    snap,
-    `no open tile with an open ${dir} neighbor and a wall to face`,
-  );
-}
 
-/**
- * The most WALLED-IN open tile on the board — the one with the fewest open neighbours,
- * so a bystander parked there has the least corridor to slip away down.
- *
- * WHY A BYSTANDER NEEDS THIS AND `findOpenWithNeighbor` IS THE WRONG TOOL FOR IT. The
- * finders above pick a tile by ONE side: `findOpenWithNeighbor(snap, "right")` promises
- * an open corridor to the right and says nothing about the other three. That is exactly
- * right for a check that drives the forager that way, and exactly wrong for one that
- * needs it to stand still — it guarantees the one thing a resting forager can swim off
- * down. A build whose forager keeps going when no key is held (a reading
- * `specs/movement.md` allows; see `parkForager`) then grazes its way along that corridor
- * for the whole measurement, re-arming the brightness hold at every pellet.
- *
- * `parkForager` answers that by facing the forager at a wall, which pins it under either
- * reading — but only if the tile HAS a wall to face, and it is the caller who chose the
- * tile. So choose one that does, and while at it the one with the most walls available.
- * A conforming maze has no dead ends (`specs/maze.md`), so the best on offer is two open
- * sides and two walls; this returns whichever tile comes closest.
- */
-export function findEnclosedTile(snap) {
-  let best = null;
-  let bestOpen = 5;
-  for (const [c, r] of openTiles(snap)) {
-    const n = openNeighborDirs(snap, c, r).length;
-    if (n < bestOpen) {
-      bestOpen = n;
-      best = { tx: c, ty: r };
-      if (n <= 2) break; // nothing tighter exists in a maze with no dead ends
-    }
-  }
-  if (!best) throw unmetPrecondition("no open tile to park a bystander on");
-  return best;
-}
 
 /**
  * A spot to read "light reveals the walls it lands on" from: an open tile the forager can
@@ -399,141 +334,9 @@ export function findEnclosedTile(snap) {
  */
 export const LIT_WALL_MAX_RUN = 3;
 
-export function findLitWallProbe(snap) {
-  const { tiles, grid, visibility } = snap;
-  const dark = (t) =>
-    Boolean(visibility[t.ty]) && visibility[t.ty][t.tx] === "u";
-  const inGrid = (t) =>
-    t.tx >= 0 && t.tx < grid.cols && t.ty >= 0 && t.ty < grid.rows;
-  // A corridor that ends at the maze border is still rock the light lands on, but it has
-  // no far side, so the shadow half cannot be asked there. Such a probe is the fallback,
-  // taken only if the maze offers no interior wall to look at.
-  let borderProbe = null;
-  for (let r = 1; r < grid.rows - 1; r++) {
-    for (let c = 1; c < grid.cols - 1; c++) {
-      if (!isOpen(tiles, c, r)) continue;
-      const open = openNeighborDirs(snap, c, r);
-      const flanks = ["up", "down", "left", "right"].filter(
-        (d) => !open.includes(d),
-      );
-      if (!flanks.length) continue;
-      const flankWalls = flanks.map((d) => {
-        const [fc, fr] = DIRS[d];
-        return { tx: c + fc, ty: r + fr };
-      });
-      for (const dir of open) {
-        // A wall to face that is not the way we are looking, so the forager stands still
-        // without blocking its own view down the corridor.
-        const facing = flanks.find((d) => d !== dir);
-        if (!facing) continue;
-        const [dc, dr] = DIRS[dir];
-        let run = 0;
-        while (
-          run < LIT_WALL_MAX_RUN &&
-          isOpen(tiles, c + dc * (run + 1), r + dr * (run + 1))
-        ) {
-          run += 1;
-        }
-        const wall = { tx: c + dc * (run + 1), ty: r + dr * (run + 1) };
-        if (!isWall(tiles, wall.tx, wall.ty)) continue;
-        const behind = { tx: c + dc * (run + 2), ty: r + dr * (run + 2) };
-        const hasBehind = inGrid(behind);
-        const reads = [wall, ...flankWalls, ...(hasBehind ? [behind] : [])];
-        if (!reads.every(dark)) continue;
-        const probe = {
-          tx: c,
-          ty: r,
-          facing,
-          dir,
-          run,
-          wall,
-          behind: hasBehind ? behind : null,
-          flankWalls,
-        };
-        if (hasBehind) return probe;
-        borderProbe ??= probe;
-      }
-    }
-  }
-  if (borderProbe) return borderProbe;
-  throw unconstructibleOr(
-    snap,
-    `no unlit corridor of ${LIT_WALL_MAX_RUN} tiles or fewer ending in rock, with a wall to stand against`,
-  );
-}
 
-/** An open tile whose neighbor in `dir` is a wall (a mover cannot go that way). */
-export function findOpenWithWall(snap, dir) {
-  const { tiles, grid } = snap;
-  for (let r = 1; r < grid.rows - 1; r++) {
-    for (let c = 1; c < grid.cols - 1; c++) {
-      if (!isOpen(tiles, c, r)) continue;
-      const [nc, nr] = stepTile(snap, c, r, dir);
-      if (isWall(tiles, nc, nr)) return { tx: c, ty: r };
-    }
-  }
-  throw unmetPrecondition(`no open tile with a ${dir} wall`);
-}
 
-/**
- * A straight run of `len` open tiles in one axis-aligned direction. Returns the
- * run's start tile and its direction, so a mover placed at the start and driven in
- * `dir` travels the run without turning or stopping.
- */
-export function findStraightRun(snap, len) {
-  const { tiles, grid } = snap;
-  for (let r = 1; r < grid.rows - 1; r++) {
-    let run = 0;
-    for (let c = 0; c < grid.cols; c++) {
-      run = isOpen(tiles, c, r) ? run + 1 : 0;
-      if (run >= len) return { tx: c - len + 1, ty: r, dir: "right" };
-    }
-  }
-  for (let c = 1; c < grid.cols - 1; c++) {
-    let run = 0;
-    for (let r = 0; r < grid.rows; r++) {
-      run = isOpen(tiles, c, r) ? run + 1 : 0;
-      if (run >= len) return { tx: c, ty: r - len + 1, dir: "down" };
-    }
-  }
-  throw unmetPrecondition(`no straight corridor run of length ${len}`);
-}
 
-/**
- * A corner/junction: a tile J open in an approach axis (a tile behind it to start
- * from) AND a perpendicular open arm, so a mover approaching J and then turning
- * takes a genuine perpendicular corner at J's center.
- */
-export function findCorner(snap) {
-  const { tiles, grid } = snap;
-  for (let r = 2; r < grid.rows - 2; r++) {
-    for (let c = 2; c < grid.cols - 2; c++) {
-      if (!isOpen(tiles, c, r)) continue;
-      const dirs = openNeighborDirs(snap, c, r);
-      for (const approach of ["right", "down", "left", "up"]) {
-        const back = OPP[approach];
-        if (!dirs.includes(back)) continue;
-        const perps =
-          approach === "right" || approach === "left"
-            ? ["up", "down"]
-            : ["left", "right"];
-        for (const perp of perps) {
-          if (!dirs.includes(perp)) continue;
-          const [bc, br] = stepTile(snap, c, r, back);
-          const [pc, pr] = stepTile(snap, c, r, perp);
-          return {
-            junction: { tx: c, ty: r },
-            approach,
-            back: { tx: bc, ty: br },
-            perp,
-            perpTile: { tx: pc, ty: pr },
-          };
-        }
-      }
-    }
-  }
-  throw unconstructibleOr(snap, "no corner/junction found");
-}
 
 /** Straight-line tile visibility, mirroring the reference supercover (walls block). */
 export function losClear(snap, fc, fr, tc, tr) {
@@ -604,194 +407,9 @@ export function wallSpan(snap, fc, fr, tc, tr) {
   return (inside / n) * len;
 }
 
-/**
- * The CLOSEST pair of open tiles whose straight line of sight is SOLIDLY BLOCKED by
- * rock — a forager tile and a predator tile with a wall between them — within a
- * euclidean distance band (tile-center to tile-center, in logical pixels). This is the
- * general OCCLUSION the sensing checks need: light and line-of-sight are stopped by
- * walls, so a predator behind rock is neither lit nor sensed. It requires no particular
- * corner shape (an L bend, two parallel corridors one wall apart, a bend around the den
- * — any wall on the sight line does), which is why it works on any real one-wide maze
- * rather than only one that happens to have a tight blind corner. Returns { forager,
- * pred, tiles } (tiles = manhattan distance), matching the old findBlindPair shape.
- *
- * `minDist` defaults low (a pair comfortably inside any sensing radius); raise it past
- * the Gloamfin's 64 px hearing when a check must isolate SIGHT from hearing. `maxDist`
- * keeps the pair inside the relevant sensing range, so the wall — not distance — is the
- * only thing between them.
- *
- * WHY A WALL-SPAN FLOOR AND NOT JUST `losClear`. Taking the closest blocked pair used
- * to hand these checks a CORNER CLIP: tiles two steps apart around a bend, whose sight
- * line grazes the tip of one wall tile for a few pixels (see `wallSpan`). Two things go
- * wrong there, and both were real. A build whose own sight tracer steps over that
- * corner is scored as lighting a predator through rock when it did nothing of the sort.
- * And the predator is posed a single step out of view, so the moment the scenario runs
- * its own wander carries it around the corner and into the light within a tenth of a
- * second — which turns the verdict into a race against the pose and leaves the captured
- * still showing a predator standing in plain sight, the opposite of what the item says.
- * Requiring a full tile of rock on the line fixes both at once: the occlusion is one no
- * tracer disagrees about, and the predator starts far enough back that nothing it does
- * in the measurement window can expose it. A conforming maze has thousands of such
- * pairs; this is not a scarce shape.
- *
- * When no such pair exists in the band, the maze is locally open where this check
- * needed rock. That is legitimate only on a conforming maze, so this distinguishes the
- * two causes: if the build ALSO breaks a required corridor proportion (openness /
- * mazing / density — the properties that force occlusion to exist; see
- * mazeProportionChecks), the missing scenario is the build's fault and this throws a
- * HARD failure; otherwise the scenario was simply unconstructible and it throws an
- * unmet precondition (exempt).
- */
-export function findOccludedPair(
-  snap,
-  { minDist = 40, maxDist = 150, minWallSpan } = {},
-) {
-  const { tiles, grid } = snap;
-  // One whole tile of rock on the sight line, in the build's own tile size.
-  const wallFloor = minWallSpan ?? grid.tile;
-  const opens = [];
-  for (let r = 1; r < grid.rows - 1; r++) {
-    for (let c = 1; c < grid.cols - 1; c++) {
-      if (isOpen(tiles, c, r)) opens.push([c, r]);
-    }
-  }
-  let best = null;
-  let bestD = Infinity;
-  for (const [fc, fr] of opens) {
-    const a = tileCenter(grid, fc, fr);
-    for (const [pc, pr] of opens) {
-      if (fc === pc && fr === pr) continue;
-      const b = tileCenter(grid, pc, pr);
-      const d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (d < minDist || d > maxDist || d >= bestD) continue;
-      if (losClear(snap, fc, fr, pc, pr)) continue; // want sight BLOCKED
-      if (wallSpan(snap, fc, fr, pc, pr) < wallFloor) continue; // and solidly so
-      best = {
-        forager: { tx: fc, ty: fr },
-        pred: { tx: pc, ty: pr },
-        tiles: Math.abs(fc - pc) + Math.abs(fr - pr),
-      };
-      bestD = d;
-    }
-  }
-  if (best) return best;
-  throw unconstructibleOr(
-    snap,
-    `no pair in the ${minDist}-${maxDist} px band with ${wallFloor} px of rock on the sight line`,
-  );
-}
 
-/**
- * A pair of open tiles on the SAME straight corridor a chosen number of tiles
- * apart, with clear line of sight between them. Returns { forager, pred, dir, tiles }.
- */
-export function findSightLine(snap, gapTiles) {
-  const run = findStraightRun(snap, gapTiles + 1);
-  const [dc, dr] = DIRS[run.dir];
-  return {
-    forager: { tx: run.tx, ty: run.ty },
-    pred: { tx: run.tx + dc * gapTiles, ty: run.ty + dr * gapTiles },
-    dir: run.dir,
-    tiles: gapTiles,
-  };
-}
 
-/**
- * A straight-corridor standoff for the ink items: the tile the forager drops its cloud
- * on, the tile the predator waits on `gap` tiles further along that same corridor, and
- * the direction the forager then swims to get CLEAR of its own cloud — which leaves the
- * cloud squarely between the two.
- *
- * WHY THE RETREAT IS PART OF THE GEOMETRY. Ink is released "centered on the forager"
- * (`specs/gameplay.md`) and nothing else can place it, so a scenario that poses the two
- * a couple of tiles apart and inks has BOTH of them standing inside the same `80 px`
- * cloud. The check still decides correctly, but the evidence it captures shows a
- * predator and a forager swallowed by one blot, which is not what "ink between them"
- * looks like and is not what a reviewer needs to see. Swimming the forager `clearTiles`
- * back afterwards is what separates them: `80 px` is 2.5 tiles, so three tiles of
- * retreat is the least that puts the forager outside its own cloud, and the corridor
- * must be long enough to hold that retreat, the ink tile, and the gap.
- *
- * The line is kept STRAIGHT so the cloud is the only thing between them — a bent route
- * would put rock on the sight line too, and a sight-based predator losing its fix would
- * no longer be attributable to the ink. The wrap-tunnel row is skipped so a retreat
- * cannot slip through the seam and re-emerge on the far side of the maze.
- *
- * Returns `{ ink, pred, dir, flee, clearTiles }` — `dir` points from the ink tile at the
- * predator, `flee` is the way the forager swims out of the cloud.
- */
-export function findInkStandoff(snap, { gap, clearTiles = 3 }) {
-  const { tiles, grid } = snap;
-  const need = clearTiles + 1 + gap;
-  const wrap = wrapRow(snap);
-  const run = (cells, dir) => {
-    let len = 0;
-    for (let i = 0; i < cells.length; i++) {
-      len = isOpen(tiles, cells[i][0], cells[i][1]) ? len + 1 : 0;
-      if (len >= need) {
-        const start = cells[i - need + 1];
-        const [dc, dr] = DIRS[dir];
-        const ink = {
-          tx: start[0] + dc * clearTiles,
-          ty: start[1] + dr * clearTiles,
-        };
-        return {
-          ink,
-          pred: { tx: ink.tx + dc * gap, ty: ink.ty + dr * gap },
-          dir,
-          flee: OPP[dir],
-          clearTiles,
-        };
-      }
-    }
-    return null;
-  };
-  for (let r = 1; r < grid.rows - 1; r++) {
-    if (r === wrap) continue;
-    const cells = [];
-    for (let c = 1; c < grid.cols - 1; c++) cells.push([c, r]);
-    const found = run(cells, "right");
-    if (found) return found;
-  }
-  for (let c = 1; c < grid.cols - 1; c++) {
-    const cells = [];
-    for (let r = 1; r < grid.rows - 1; r++) cells.push([c, r]);
-    const found = run(cells, "down");
-    if (found) return found;
-  }
-  throw unmetPrecondition(
-    `no straight corridor run of ${need} tiles to stand an ink cloud between a forager ` +
-      `and a predator ${gap} tiles away`,
-  );
-}
 
-/**
- * An open tile whose center is well BEYOND the passive light (euclidean > 140 px, so
- * past both V and the g=0 light-sense range) yet within the sonar flood's reach
- * (manhattan <= 6 tiles from `from`). Used to place a predator that the light cannot
- * touch but a sonar pulse will sweep over. `from` is a tile {tx, ty}.
- */
-export function findSonarTarget(snap, from) {
-  const { grid } = snap;
-  const a = tileCenter(grid, from.tx, from.ty);
-  let best = null;
-  let bestD = Infinity;
-  for (const [c, r] of openTiles(snap)) {
-    const man = Math.abs(c - from.tx) + Math.abs(r - from.ty);
-    if (man > 6) continue;
-    const p = tileCenter(grid, c, r);
-    const d = Math.hypot(p.x - a.x, p.y - a.y);
-    if (d <= 140 || d >= 260) continue;
-    // Prefer the closest qualifying tile, so it is comfortably inside the flood.
-    if (d < bestD) {
-      bestD = d;
-      best = { tx: c, ty: r };
-    }
-  }
-  if (!best)
-    throw new Error("no sonar target beyond the light but inside the flood");
-  return best;
-}
 
 /**
  * Corridor (BFS) distance in tiles from `from` to every reachable open tile, wrap-
@@ -820,185 +438,9 @@ export function corridorDistances(snap, from, maxDist = 12) {
   return dist;
 }
 
-/**
- * `count` open tiles a sonar pulse WILL sweep over — inside the flood (corridor
- * distance 3..7, comfortably within the E=9-tile reach at depth 1) yet BEYOND the
- * forager's passive light (straight-line sight blocked, so the tile is unlit and no
- * light-sensing predator on it acquires the forager first). Nearest first. `from` is
- * a tile {tx, ty}. Distinct tiles.
- */
-export function findSonarSenseTiles(snap, from, count = 1) {
-  const dist = corridorDistances(snap, from, 9);
-  const cand = [];
-  for (const [k, dd] of dist) {
-    if (dd < 3 || dd > 7) continue;
-    const [c, r] = k.split(",").map(Number);
-    if (losClear(snap, from.tx, from.ty, c, r)) continue; // want sight BLOCKED (unlit)
-    cand.push({ tx: c, ty: r, d: dd });
-  }
-  cand.sort((a, b) => a.d - b.d);
-  if (cand.length < count) {
-    throw unmetPrecondition(
-      `need ${count} sonar sense tile(s) beyond the light but inside the flood`,
-    );
-  }
-  return cand.slice(0, count);
-}
 
-/**
- * An open tile at least `minMan` tiles (manhattan) from `from` ({tx, ty}) — and, when
- * `minPx` is given, at least that far in a straight line as well.
- *
- * WHY THERE IS A PIXEL FLOOR AS WELL AS A TILE ONE. A manhattan count and a sensing
- * RADIUS are different shapes, so a caller that means "outside the Flarefish's `192 px`
- * flare" cannot say so in tiles: a tile 8 apart on the manhattan grid sits as close as
- * `8 / sqrt(2)` ≈ 5.66 tiles ≈ `181 px` when the offset is diagonal, which is INSIDE the
- * bloom. A check that poses a predator "far, so it flares harmlessly" and picks the tile
- * by manhattan alone is therefore betting on where the maze happened to leave its open
- * tiles — it holds on one layout and quietly stops holding on the next, which is the
- * worst way for a precondition to fail. Every radius the spec fixes (the flare, the
- * light detection ranges, the Kindle vision circle) is euclidean, so a caller that means
- * one of them passes it here in px and gets a tile that is actually outside it.
- */
-export function findFarTile(snap, from, minMan, { minPx = 0 } = {}) {
-  const a = tileCenter(snap.grid, from.tx, from.ty);
-  for (const [c, r] of openTiles(snap)) {
-    if (Math.abs(c - from.tx) + Math.abs(r - from.ty) < minMan) continue;
-    if (minPx > 0) {
-      const p = tileCenter(snap.grid, c, r);
-      if (Math.hypot(p.x - a.x, p.y - a.y) < minPx) continue;
-    }
-    return { tx: c, ty: r };
-  }
-  throw unmetPrecondition(
-    `no open tile at least ${minMan} tiles away` +
-      (minPx > 0 ? ` and ${minPx} px clear in a straight line` : ""),
-  );
-}
 
-/**
- * The open tile FURTHEST from `from` ({tx, ty}) by BOTH of the distances that decide
- * whether a predator can reach it — for parking a bystander forager out of a wandering
- * hunter's way.
- *
- * WHY NOT SIMPLY THE FURTHEST TILE. Two different distances matter, and a tile that is
- * remote by one can be next door by the other:
- *
- *   * A Flarefish's bloom is a EUCLIDEAN radius that ignores walls
- *     (`specs/predators/flarefish.md`), so a tile a long corridor route away is not clear
- *     of it if the rock between them is one tile thick.
- *   * How FAST a predator can close is corridor distance, and the wrap tunnel joins the
- *     two mouths of the maze — as far apart in pixels as tiles get — as adjacent tiles
- *     (`specs/maze.md`), so the opposite edge can be one step away.
- *
- * So each candidate scores the SMALLER of the two (corridor tiles converted to px), and
- * the highest score wins: a tile is only as far from the hunter as its nearest approach.
- *
- * `exclude(c, r)` drops tiles the caller must not stand on. `minPx` is a floor on the
- * winning score, and throws `unmetPrecondition` when nothing clears it — pass `0` (the
- * default) for a best-effort placement that always returns the roomiest tile there is.
- * Tiles the corridor flood cannot reach from `from` are skipped rather than scored
- * infinite: `specs/maze.md` requires one connected region, so an unreachable tile means
- * the flood and the maze disagree, which is not a distance to trust a scenario to.
- */
-export function findRemotestTile(snap, from, { exclude, minPx = 0 } = {}) {
-  const { grid } = snap;
-  const origin = tileCenter(grid, from.tx, from.ty);
-  const paths = corridorDistances(snap, from, grid.cols * grid.rows);
-  let best = null;
-  for (const [c, r] of openTiles(snap)) {
-    if (exclude && exclude(c, r)) continue;
-    const path = paths.get(`${c},${r}`);
-    if (path === undefined) continue;
-    const p = tileCenter(grid, c, r);
-    const score = Math.min(
-      Math.hypot(p.x - origin.x, p.y - origin.y),
-      path * grid.tile,
-    );
-    if (!best || score > best.score) best = { tx: c, ty: r, score };
-  }
-  if (!best || best.score < minPx) {
-    throw unmetPrecondition(
-      `no open tile ${minPx} px clear of (${from.tx}, ${from.ty}) by both the straight ` +
-        `line and the corridor route` +
-        (best ? ` (the roomiest is ${Math.round(best.score)} px)` : ""),
-    );
-  }
-  return { tx: best.tx, ty: best.ty };
-}
 
-/**
- * The standoff `lanternjaw/dim-shakes` needs: three tiles on ONE straight corridor — where
- * the hunter waits, where it fixes on the forager, and where the forager slips to when it
- * goes dark. Returns `{ pred, fix, slip, dir }`.
- *
- * WHY ALL THREE MUST SHARE ONE SIGHT LINE. The item's claim is that DIMMING is what shakes
- * the fix — that the range shrank under the distance. That only means anything if the
- * hunter can still SEE the tile the forager slipped to: if the slip goes behind rock, the
- * fix is broken by line of sight and the range plays no part. The earlier scenario chose
- * the slip tile by clearance alone (`findSlipTile`, now gone), which in a one-wide maze put
- * it around a corner nearly every time, and the item quietly stopped testing its own
- * subject: a build whose detection range never shrank at all traced identically to the
- * reference, tile for tile, and passed.
- *
- * So the geometry pins all three distances on one open line:
- *
- *   [pred] --predTiles-- [fix] --------slipTiles-------- [slip]
- *
- *   * `pred`→`fix` is short — the hunter senses the bright forager and fixes on it through
- *     its own sensing code, which is what makes the fix real rather than posed.
- *   * `fix`→`slip` must exceed the DIM range `R = 128 px`, so a hunter standing on the
- *     stale fix — where its linger leaves it — cannot re-find the forager once dark.
- *   * `pred`→`slip` must stay inside the BRIGHT range `R = 320 px`, so a build whose range
- *     never shrinks DOES re-find it, from the moment of the slip onwards, and fails. This
- *     is the whole discriminator, and it is why the slip cannot simply be moved further
- *     away: distance alone must never be enough to explain the loss.
- *
- * The wrap row is skipped, as in `findInkStandoff`, so a slip cannot land across the seam
- * and read as a distance it is not.
- *
- * The defaults ask for a `9`-tile run, which is LESS than the `10` the item used to need
- * for its sight line alone — a scenario that is now easier to construct, not harder.
- */
-export function findDimStandoff(snap, { predTiles = 2, slipTiles = 6 } = {}) {
-  const { tiles, grid } = snap;
-  const need = predTiles + 1 + slipTiles;
-  const wrap = wrapRow(snap);
-  const run = (cells, dir) => {
-    let len = 0;
-    for (let i = 0; i < cells.length; i++) {
-      len = isOpen(tiles, cells[i][0], cells[i][1]) ? len + 1 : 0;
-      if (len < need) continue;
-      const start = cells[i - need + 1];
-      const [dc, dr] = DIRS[dir];
-      const at = (n) => ({ tx: start[0] + dc * n, ty: start[1] + dr * n });
-      return {
-        pred: at(0),
-        fix: at(predTiles),
-        slip: at(predTiles + slipTiles),
-        dir,
-      };
-    }
-    return null;
-  };
-  for (let r = 1; r < grid.rows - 1; r++) {
-    if (r === wrap) continue;
-    const cells = [];
-    for (let c = 1; c < grid.cols - 1; c++) cells.push([c, r]);
-    const found = run(cells, "right");
-    if (found) return found;
-  }
-  for (let c = 1; c < grid.cols - 1; c++) {
-    const cells = [];
-    for (let r = 1; r < grid.rows - 1; r++) cells.push([c, r]);
-    const found = run(cells, "down");
-    if (found) return found;
-  }
-  throw unmetPrecondition(
-    `no straight corridor run of ${need} tiles to stand a hunter, its fix and a slip ` +
-      `tile ${slipTiles} tiles further along on one sight line`,
-  );
-}
 
 // ---- The den (central predator chamber) --------------------------------------
 // The snapshot tiles mark the den interior as 'd' and the den gate as 'g'
@@ -1294,6 +736,401 @@ export function mazeProportionChecks(snap) {
   ].map((m) => ({ ...m, ok: m.value >= m.min && m.value <= m.max }));
 }
 
+// ---- Posed layouts (setMaze) -------------------------------------------------
+
+/**
+ * Stamp a small piece of ASCII art into a full-size maze layout, ready for `setMaze`
+ * (`specs/instrumentation.md`).
+ *
+ * WHY ITEMS POSE THEIR OWN GEOMETRY. You design the maze (`specs/maze.md`), so a
+ * scenario that needs a shape — a straight run of a given length, a corner to turn, a
+ * corridor ending in rock, two tiles with rock between them — can only go hunting for
+ * one in the maze this build happened to draw, and take whatever it finds. What it
+ * finds differs from build to build: a different amount of room, a different approach,
+ * sometimes nothing usable. An item that poses the shape it is about measures the
+ * behaviour it names instead of the layout it landed in.
+ *
+ * The art is the fixture, drawn the way it reads on screen — one string per row, one
+ * character per tile:
+ *
+ *   `#` or a space   rock
+ *   `.`              corridor
+ *   `d` / `g`        den interior / the den gate (a fixture needs neither)
+ *   any A-Z letter   corridor, AND a named anchor the item can ask for by that letter
+ *
+ * Anchors are what keeps an item readable: it draws the corridor it wants and labels
+ * the two tiles that matter, rather than computing offsets. `F........P` is a ten-tile
+ * straight run with the forager's tile at one end and the predator's at the other.
+ *
+ * Everything outside the art is rock. The art is centred in the build's OWN reported
+ * grid (`snap.grid`) unless `at` places it, so a build whose maze is not the reference's
+ * `36 x 18` still gets its fixture stamped somewhere valid rather than a layout of the
+ * wrong size. A letter used twice yields both tiles, in reading order.
+ *
+ * Returns `{ rows, marks, at }` — `rows` is the layout to pose, `marks` maps each letter
+ * to its tiles, `at` is the top-left tile the art was stamped at.
+ */
+export function stampLayout(snap, art, { at, larder = true } = {}) {
+  const { cols, rows: gridRows } = snap.grid;
+  const h = art.length;
+  const w = Math.max(...art.map((line) => line.length));
+  const top = at ? at.ty : Math.floor((gridRows - h) / 2);
+  const left = at ? at.tx : Math.floor((cols - w) / 2);
+  if (top < 0 || left < 0 || top + h > gridRows || left + w > cols) {
+    throw unmetPrecondition(
+      `a ${w}x${h} fixture does not fit this build's ${cols}x${gridRows} grid at (${left}, ${top})`,
+    );
+  }
+  const grid = Array.from({ length: gridRows }, () => new Array(cols).fill("#"));
+  const marks = {};
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < art[r].length; c++) {
+      const ch = art[r][c];
+      if (ch === "#" || ch === " ") continue;
+      const tx = left + c;
+      const ty = top + r;
+      if (ch === "." || ch === "d" || ch === "g") {
+        grid[ty][tx] = ch;
+        continue;
+      }
+      if (!/[A-Z]/.test(ch)) {
+        throw new Error(
+          `stampLayout: unknown fixture character ${JSON.stringify(ch)} at art (${c}, ${r})`,
+        );
+      }
+      grid[ty][tx] = ".";
+      (marks[ch] ??= []).push({ tx, ty });
+    }
+  }
+  // THE LARDER: a walled-off row of corridor the forager can never reach, in the last row
+  // of the grid, added to every fixture unless a scenario asks for it not to be.
+  //
+  // WHY EVERY FIXTURE GETS ONE. Plankton sit on every corridor tile (`specs/gameplay.md`)
+  // and eating the last one clears the maze and descends — which resets the board, re-dens
+  // every predator and ends the scenario. A fixture is a handful of tiles, so a forager
+  // that keeps swimming can eat all of them in a couple of seconds, and whether it does is
+  // not something a check gets to decide: `specs/movement.md` lets a forager with no key
+  // held carry on, and a build may turn it at a wall rather than stop it (see
+  // `parkForager`). Runs were lost exactly that way — the forager grazed its own corridor
+  // empty mid-measurement and the round ended under the check.
+  //
+  // Pellets it cannot reach fix that outright: `planktonRemaining` never reaches zero, so
+  // no amount of grazing can clear the maze, whatever the forager does. It costs the
+  // scenario nothing, because the tiles are sealed off from everything else in the fixture.
+  //
+  // The scenarios that are ABOUT clearing the maze (`scoring/descend-on-clear`,
+  // `scoring/cleared-bonus`, `states/cleared`, `audio/descend`) run on the build's own maze
+  // and use `poseLastPlankton`, so they never see this.
+  if (larder) {
+    const row = gridRows - 1;
+    if (grid[row].some((cell) => cell !== "#")) {
+      throw new Error(
+        "stampLayout: the fixture reaches the last row, which the larder needs; pass { larder: false } and keep the board unclearable another way",
+      );
+    }
+    for (let c = 1; c <= Math.min(3, cols - 2); c++) grid[row][c] = ".";
+  }
+
+  return { rows: grid.map((row) => row.join("")), marks, at: { tx: left, ty: top } };
+}
+
+/**
+ * Pose a fixture (see `stampLayout`) as the maze and return what the scenario needs to
+ * place things on it: `{ snap, mark, all, at }`, where `snap` is the state after the
+ * layout is in place, `mark(letter)` is the single tile that letter labels and
+ * `all(letter)` every tile it labels.
+ *
+ * `setMaze` leaves the dive on a fresh board — plankton on every corridor tile, fog
+ * back to unrevealed, every predator held in the den — so a caller poses the forager and
+ * the predators it wants afterwards, exactly as it would on a generated maze.
+ */
+export async function poseMaze(api, art, opts) {
+  const before = await api.snapshot();
+  const fixture = stampLayout(before, art, opts);
+  await api.call("setMaze", fixture.rows);
+  // If the build read the new board as a new maze and opened a dive countdown, put it back
+  // into live play. `specs/instrumentation.md` asks `setMaze` to swap the board out underneath
+  // the dive and leave the screen alone, so this should be a no-op — but the op is new, its
+  // first wording was open enough to be read either way, and a countdown here is a scenario
+  // that has not started rather than a finding. Every scenario below needs live play, none of
+  // them is ABOUT which screen `setMaze` leaves, and `beginPlay` is the documented way to end
+  // a countdown now, so normalising here keeps that reading out of fifty-odd unrelated
+  // verdicts. A build that stays in play never sees this call.
+  if ((await api.snapshot()).screen === "countdown") {
+    await api.call("beginPlay");
+  }
+  const snap = await api.snapshot();
+  const one = (letter) => {
+    const hits = fixture.marks[letter];
+    if (!hits || hits.length !== 1) {
+      throw new Error(
+        `poseMaze: fixture labels ${letter} ${hits ? hits.length : 0} times, expected exactly one`,
+      );
+    }
+    return hits[0];
+  };
+  return {
+    snap,
+    at: fixture.at,
+    mark: one,
+    all: (letter) => fixture.marks[letter] ?? [],
+  };
+}
+
+/**
+ * A straight corridor posed as the whole board. Returns the same shape `findStraightRun`
+ * did — `{ tx, ty, dir, len }`, the run's first tile and the way it runs — so a mover
+ * placed at `tx, ty` and driven in `dir` travels `len` tiles without turning.
+ */
+export async function poseStraightRun(api, len, { spare = false } = {}) {
+  // A sealed pocket well clear of the run. It does two jobs for scenarios that swim the
+  // whole run: it keeps plankton on the board that the forager cannot reach, so grazing
+  // the run cannot clear the maze and collect the clear bonus mid-measurement; and it
+  // leaves ground the light has never touched, for reading a build's own fog color.
+  const tail = spare ? " ".repeat(8) + "..." : "";
+  const board = await poseMaze(api, ["S" + ".".repeat(len - 1) + tail]);
+  const s = board.mark("S");
+  return { tx: s.tx, ty: s.ty, dir: "right", len };
+}
+
+/**
+ * Two tiles on one straight corridor, `gapTiles` apart with clear line of sight, posed as
+ * the whole board. The same shape `findSightLine` returned, plus `toForager`, the heading
+ * that points from the predator back down the corridor at the forager.
+ *
+ * `lead` and `tail` are spare corridor beyond each of them, for scenarios that then swim
+ * someone out of place; the default tile each way is enough for a mover to be under way
+ * without either end running into rock the instant it starts.
+ */
+export async function poseSightLine(
+  api,
+  gapTiles,
+  { lead = 1, tail = 1, refugeGap = 0 } = {},
+) {
+  let art = ".".repeat(lead) + "F" + ".".repeat(gapTiles - 1) + "P" + ".".repeat(tail);
+  // A sealed-off pocket `refugeGap` tiles further on, for scenarios that then send the
+  // forager somewhere the predator's light, ping or patrol cannot follow. Sealed rather
+  // than merely distant: the whole point of moving it is that what happens next cannot
+  // be the predator arriving.
+  if (refugeGap > 0) art += " ".repeat(refugeGap) + "R..";
+  const board = await poseMaze(api, [art]);
+  return {
+    forager: board.mark("F"),
+    pred: board.mark("P"),
+    dir: "right",
+    toForager: "left",
+    tiles: gapTiles,
+    refuge: refugeGap > 0 ? board.mark("R") : null,
+  };
+}
+
+/**
+ * A right-angle junction posed as the whole board, in the shape `findCorner` returned:
+ * `{ junction, approach, back, perp, perpTile }`. A mover placed on `back` and driven
+ * along `approach` reaches `junction` and can turn onto `perp`. Both arms run on past the
+ * junction, so a mover that does NOT turn keeps going rather than being stopped by rock.
+ */
+export async function poseCorner(api, { arm = 4 } = {}) {
+  const art = ["B" + "J" + ".".repeat(arm)];
+  for (let i = 0; i < arm; i++) art.push(" ." + " ".repeat(arm));
+  const board = await poseMaze(api, art);
+  const j = board.mark("J");
+  return {
+    junction: j,
+    approach: "right",
+    back: board.mark("B"),
+    perp: "down",
+    perpTile: { tx: j.tx, ty: j.ty + 1 },
+  };
+}
+
+/**
+ * Two tiles that are far apart AND cannot reach each other: the forager's corridor and,
+ * across solid rock, a separate ring for a creature to patrol. Returns `{ near, far }`.
+ *
+ * WHY THE TWO HALVES ARE SEALED OFF FROM EACH OTHER. These scenarios want a creature that
+ * keeps to itself — wandering, pinging, flaring — while the forager stands somewhere else
+ * as a bystander. On a real maze "somewhere else" is only ever a head start: a patrol
+ * crosses the whole board in a few seconds, so a long watch ends with the creature
+ * arriving, finding the forager and making the item about something other than its
+ * subject. A posed board can do what a real maze may not (`specs/maze.md` requires one
+ * connected region; `setMaze` does not) and simply put them in different rooms, so "far
+ * away" holds for as long as the item needs rather than for as long as luck allows.
+ *
+ * The ring is a loop rather than a hallway so a patrol has somewhere to go and keeps
+ * moving, instead of pacing a dead end.
+ */
+export async function poseApart(api, minTiles, { ring = 3, spare = false, near = 3 } = {}) {
+  // `near` is how much corridor the forager's own room has. It matters whenever the
+  // scenario measures something that TRAVELS along corridors — a sonar pulse floods by
+  // corridor step, so a pulse cast in a three-tile room reports a three-tile reach
+  // however far its range is set.
+  const gap = Math.max(2, minTiles - near);
+  const pad = " ".repeat(gap);
+  // A third sealed pocket, far from BOTH the others, for scenarios that need somewhere
+  // the light has never reached — a patch of the board still under fog to read a
+  // build's own unrevealed color from, which the two occupied rooms cannot provide.
+  const tail = spare ? " ".repeat(8) + "..." : "";
+  const lead = "N" + ".".repeat(near - 1);
+  const blank = " ".repeat(near);
+  const art = [
+    lead + pad + "F" + ".".repeat(ring) + tail,
+    blank + pad + "." + " ".repeat(ring - 1) + ".",
+    blank + pad + "." + ".".repeat(ring),
+  ];
+  const board = await poseMaze(api, art);
+  return { near: board.mark("N"), far: board.mark("F") };
+}
+
+/**
+ * A straight-corridor ink standoff posed as the whole board, in the shape
+ * `findInkStandoff` returned: `{ ink, pred, dir, flee, clearTiles }`. The forager inks on
+ * `ink`, the predator waits `gap` tiles along the same corridor, and `flee` is the way the
+ * forager then swims to get clear of its own `80 px` cloud — which leaves the cloud
+ * squarely between the two. `clearTiles` of corridor sit behind the ink tile for that
+ * retreat, so the whole manoeuvre has room without depending on the run a build's own
+ * maze happened to offer.
+ */
+export async function poseInkStandoff(api, { gap, clearTiles = 3 }) {
+  const art = ".".repeat(clearTiles) + "I" + ".".repeat(gap - 1) + "P";
+  const board = await poseMaze(api, [art]);
+  return {
+    ink: board.mark("I"),
+    pred: board.mark("P"),
+    dir: "right",
+    flee: "left",
+    clearTiles,
+  };
+}
+
+/**
+ * Two open tiles with rock on the line between them, posed as the whole board — the
+ * shape `findOccludedPair` returned, `{ forager, pred, tiles }`. `tiles` is how far apart
+ * they stand, which decides whether the pair sits inside a sensing radius the item cares
+ * about: the default two tiles is `64 px`.
+ *
+ * WHY A SOLID BAND RATHER THAN ONE ROCK ON THE LINE. These items watch a predator that is
+ * still patrolling, so what matters is not that ONE pair of tiles is occluded but that
+ * every tile the predator can reach is. A single rock with a way around it gives the
+ * predator tiles at grazing angles where a check's own raycast and a build's line of
+ * sight can legitimately disagree — and the item then reads that disagreement as a
+ * predator lit through rock. Two parallel corridors with a full band of rock between them
+ * leave no such tile: every line from one corridor to the other crosses solid rock,
+ * whatever either party rounds.
+ */
+export async function poseOccludedPair(api, { tiles = 2, len = 5 } = {}) {
+  const art = ["F" + ".".repeat(len - 1)];
+  for (let i = 1; i < tiles; i++) art.push("");           // a solid band of rock between
+  art.push("P" + ".".repeat(len - 1));
+  const board = await poseMaze(api, art);
+  return { forager: board.mark("F"), pred: board.mark("P"), tiles };
+}
+
+/**
+ * A dog-leg corridor posed as the whole board, returning the tiles a sonar pulse from the
+ * forager reaches around the bend — the shape `findSonarSenseTiles` returned, nearest
+ * first: `[{ tx, ty, d }]`, where `d` is the corridor distance from the forager.
+ *
+ * These are tiles the pulse can flood to but the LIGHT cannot see: the return leg sits
+ * directly under the outward leg with a band of rock between, so every line from the
+ * forager to a target crosses solid rock while the corridor still joins them in a few
+ * steps. That separation is the whole point of these items — anything revealed out there
+ * was revealed by the sonar and not by standing close — and on a build's own maze it
+ * depended on the maze happening to bend the right way within the pulse's reach.
+ */
+export async function poseSonarSense(api, count = 1) {
+  const board = await poseMaze(api, ["F..", "  .", "..."]);
+  const f = board.mark("F");
+  // Pose the forager onto `F` rather than trusting where `setMaze` left it. The op puts it
+  // on "the first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — and a build that reads that differently left the
+  // forager on the far arm of this dog-leg, a tile from the predator the item needs it to be
+  // unable to see. The tiles below are measured as corridor distances from `F`, so `F` is
+  // where the forager has to be.
+  await api.call("setForager", { tx: f.tx, ty: f.ty });
+  // Nearest first, matching the order the finder this replaces returned.
+  return [
+    { tx: f.tx + 2, ty: f.ty + 2, d: 4 },
+    { tx: f.tx + 1, ty: f.ty + 2, d: 5 },
+    { tx: f.tx, ty: f.ty + 2, d: 6 },
+  ].slice(0, count);
+}
+
+/**
+ * A short corridor closed by rock, posed as the whole board, in the shape
+ * `findLitWallProbe` returned: `{ tx, ty, facing, dir, run, wall, behind, flankWalls }`.
+ *
+ * The forager stands at one end facing down the corridor; `wall` is the rock that closes
+ * it `run + 1` tiles away, `behind` the corridor tile on the far side of that rock, and
+ * `flankWalls` the rock the forager itself stands against. `behind` is what makes the
+ * item decidable — it is a tile the light must NOT reach — and a corridor that simply ran
+ * into the maze border, as one found on a build's own maze often does, has no far side at
+ * all. Posing the corridor guarantees one.
+ */
+export async function poseLitWallProbe(api, { run = 3 } = {}) {
+  const board = await poseMaze(api, ["F" + ".".repeat(run) + "#."]);
+  const f = board.mark("F");
+  return {
+    tx: f.tx,
+    ty: f.ty,
+    facing: "right",
+    dir: "right",
+    run,
+    wall: { tx: f.tx + run + 1, ty: f.ty },
+    behind: { tx: f.tx + run + 2, ty: f.ty },
+    flankWalls: [
+      { tx: f.tx, ty: f.ty - 1 },
+      { tx: f.tx, ty: f.ty + 1 },
+    ],
+  };
+}
+
+/**
+ * A straight corridor holding a Lanternjaw standoff, posed as the whole board, in the
+ * shape `findDimStandoff` returned: `{ pred, fix, slip, dir }`. The hunter starts on
+ * `pred`, takes its fix on the forager standing at `fix`, and the forager then slips
+ * `slipTiles` further along to `slip` — far enough that a hunter still holding the stale
+ * fix cannot reach it, which is what the item measures.
+ *
+ * All three sit on one straight run so the only thing between them is distance. That run
+ * has to be `predTiles + slipTiles` long, and `specs/maze.md` fixes no run length.
+ */
+export async function poseDimStandoff(api, { predTiles = 2, slipTiles = 6 } = {}) {
+  const art = "P" + ".".repeat(predTiles - 1) + "X" + ".".repeat(slipTiles - 1) + "S";
+  const board = await poseMaze(api, [art]);
+  return {
+    pred: board.mark("P"),
+    fix: board.mark("X"),
+    slip: board.mark("S"),
+    dir: "right",
+  };
+}
+
+/**
+ * Turn the debug overlay on, so a clip shows in text what a check is reading from
+ * `snapshot()` — for each predator its kind, state, tile and speed
+ * (`specs/instrumentation.md`).
+ *
+ * FOR SCENARIOS WHOSE SUBJECT IS IN THE DARK. Fathom draws the trench only where the
+ * forager's light falls, and several checks watch a creature that must be nowhere near
+ * the forager to behave the way they are reading — a Gloamfin has to be well outside its
+ * own ping's reach before it will simply wander and self-ping. There is no brightness that
+ * lights something that far away, so the clip is a black screen and a reviewer has no way
+ * to tell a passing build from a build with no Gloamfin at all.
+ *
+ * The overlay is the honest way out: the spec requires it, requires it to carry exactly
+ * these facts, and requires it to change nothing ("it only draws"). So the reviewer reads
+ * `gloamfin wander (21,7) spd 116` off the frame while the sim runs untouched.
+ *
+ * It is toggled with the backtick key and off by default, so this presses it once. Only
+ * for scenarios that are otherwise unwatchable — a check whose subject is visible should
+ * show the game, not a readout of it.
+ */
+export async function showOverlay(api) {
+  await api.call("press", "Backquote");
+}
+
 // ---- State-only helpers (arrange) --------------------------------------------
 //
 // These pose the world with control ops and consume no time, so they are callable
@@ -1364,9 +1201,58 @@ export async function parkForager(api, tile) {
  * Pair this with `parkForager` (see there for why a bystander forager may drift). Use
  * plain `poseLastPlankton` — never this — in a check that is ABOUT clearing the maze.
  */
+/**
+ * Make the plankton under a just-posed forager a non-event: eat it, and put `G` back to
+ * the zero a dive opens on.
+ *
+ * WHY A POSE NEEDS THIS. Plankton sit on every corridor tile (`specs/gameplay.md`), so a
+ * forager placed anywhere is standing on one and eats it on the next step of the real
+ * simulation. One pellet is `G = 0.34`, which is not nothing: it widens the light, and it
+ * widens the Lanternjaw's and Flarefish's reach by `65 px` for a second or two while it
+ * decays. A scenario that poses the forager somewhere and then measures a range, or a
+ * decay, or what a hunter can see from where it stands, is measuring that pellet as much
+ * as the build.
+ *
+ * THE TICK IS TAKEN WITH THE CREATURES' MINDS OFF. A tick of simulation is a tick for
+ * everything, and several scenarios pose a predator and then read its OPENING state —
+ * "the Gloamfin starts wandering", "the Lanternjaw is fixed while bright". Handed a free
+ * tick, a predator two tiles from the forager senses it and is already chasing before the
+ * item has looked. `setCreatureAI` suspends exactly that initiative and nothing else
+ * (`specs/instrumentation.md`): the forager still eats, which is the whole point of the
+ * tick. It is restored immediately.
+ *
+ * A scenario that wants the minds OFF for its own reasons must say so after this call.
+ */
+export async function clearUnderfoot(api) {
+  await api.call("setCreatureAI", false);
+  // `skip`, not `advance`: this is setup, so it must be instant in both passes. `arrange`
+  // rejects `advance` outright, and in `act` it would spend filming budget on a single
+  // tick nobody needs to watch.
+  await api.skip(1);
+  await api.call("setCreatureAI", true);
+  await api.call("setBrightness", 0);
+}
+
+/**
+ * Park the forager as a bystander and leave the board in a state no amount of grazing can
+ * end the round from.
+ *
+ * THIS USED TO CALL `poseLastPlankton`, AND THAT WAS THE BUG. Stripping the board to a
+ * single pellet did keep the forager from grazing — but it left the maze one mouthful from
+ * being CLEARED, with that mouthful placed on a tile next to the forager. A build whose
+ * forager keeps swimming when no key is held, or turns at a wall rather than stopping
+ * (both readings `specs/movement.md` allows; see `parkForager`), ate it. The maze cleared,
+ * the dive descended, every predator re-denned, and whatever the scenario was watching
+ * ended mid-measurement — reported, of course, against the subject.
+ *
+ * So the board is left full instead. Nothing about a full board can end the round: on a
+ * build's own maze there are hundreds of pellets, and every posed fixture carries a
+ * walled-off larder for the same reason (see `stampLayout`). What that costs is the one
+ * pellet under the forager, which `clearUnderfoot` settles.
+ */
 export async function quietBoard(api, tile) {
   const snap = await parkForager(api, tile);
-  await api.call("poseLastPlankton");
+  await clearUnderfoot(api);
   return snap;
 }
 
@@ -1636,14 +1522,67 @@ export async function sampleMoteRing(api, x, y, radius) {
 }
 
 /**
+ * How far from the reported position a mote's drawn light may sit, in px, and how finely
+ * that neighbourhood is searched for it.
+ *
+ * WHY THE PROFILE IS RE-CENTRED BEFORE IT IS READ. A mote is drawn on a body, and where
+ * on that body the light sits is the build's own art: one draws the glow on the entity's
+ * center, another puts it at the top of the sprite, as a bulb on a bell would be. The
+ * specs fix the mote's COLOR and that it is always visible (`specs/gameplay.md`,
+ * `specs/assets.md`); neither fixes it to the pixel `snapshot()` reports the creature at.
+ *
+ * Reading the rings around that reported pixel therefore measured art, not conformance. A
+ * run drew its bulb six px up — plainly, visibly amber, and amber at every radius about
+ * its own center — and was failed for "the distant amber drifter is still drawn amber",
+ * because the ring centered six px below it averaged out to a dim `64,56,37`.
+ *
+ * So the mote is FOUND first, in a small neighbourhood of where the creature is, and the
+ * profile is read about the light itself. The search stays well inside one tile: it is
+ * looking for the light on this creature, not for some other light nearby.
+ */
+export const MOTE_SEARCH_PX = 12;
+const MOTE_SEARCH_STEP = 6;
+
+/**
+ * The brightest warm point within {@link MOTE_SEARCH_PX} of `(x, y)` — the mote's drawn
+ * center, wherever the build chose to put it on the body. Falls back to `(x, y)` when the
+ * neighbourhood holds nothing warm at all, so a build that draws no mote is read exactly
+ * where it should have drawn one (and fails, as it should).
+ */
+export async function findMoteCenter(api, x, y) {
+  let best = { x, y };
+  let bestScore = -1;
+  for (let dy = -MOTE_SEARCH_PX; dy <= MOTE_SEARCH_PX; dy += MOTE_SEARCH_STEP) {
+    for (let dx = -MOTE_SEARCH_PX; dx <= MOTE_SEARCH_PX; dx += MOTE_SEARCH_STEP) {
+      const [u, v] = uvOf(x + dx, y + dy);
+      const p = await api.pixel(u, v);
+      // Not COOLER than neutral, and as bright as possible: an amber mote's core blows
+      // out to near-white by design (see MOTE_RADII), so requiring the core itself to
+      // read warm would skip the very pixel being searched for and settle for the dim
+      // halo — or, out in the fog where there is no halo, for nothing at all. The cool
+      // trench and the forager's cyan glow are still rejected: both are blue-leaning.
+      if (p.r < p.b) continue;
+      const score = luminance(p);
+      if (score > bestScore) {
+        bestScore = score;
+        best = { x: x + dx, y: y + dy };
+      }
+    }
+  }
+  return best;
+}
+
+/**
  * A mote's rendered color profile: `{ radius, color }` at each of {@link MOTE_RADII},
- * innermost first. Like every pixel read, call it from `act` after an `api.settle` (see
- * the section header above).
+ * innermost first, read about the mote's own drawn center (see {@link findMoteCenter}).
+ * Like every pixel read, call it from `act` after an `api.settle` (see the section header
+ * above).
  */
 export async function sampleMoteProfile(api, x, y) {
+  const c = await findMoteCenter(api, x, y);
   const profile = [];
   for (const radius of MOTE_RADII) {
-    profile.push({ radius, color: await sampleMoteRing(api, x, y, radius) });
+    profile.push({ radius, color: await sampleMoteRing(api, c.x, c.y, radius) });
   }
   return profile;
 }
@@ -1692,9 +1631,18 @@ export function isDark(c) {
  * Pair with `actMoveKey`.
  */
 export async function arrangeMoveKey(api, dir) {
-  const snap = await startPlaying(api);
-  const spot = findMoveKeyTile(snap, dir);
+  await startPlaying(api);
+  // A straight corridor along the key's OWN axis, with the forager in the middle of it
+  // facing the way the key points. Posed rather than found: whether a tile has corridor
+  // on the side a given key pushes, and how much, is a property of the maze a build
+  // invented, so on one board "press left" had four tiles to cross and on another it had
+  // one and a wall. Here every direction gets the same run.
+  const vertical = dir === "up" || dir === "down";
+  const art = vertical ? [".", ".", ".", "S", ".", ".", "."] : ["...S..."];
+  const board = await poseMaze(api, art);
+  const spot = { ...board.mark("S"), facing: dir };
   await api.call("setForager", { tx: spot.tx, ty: spot.ty, dir: spot.facing });
+  const snap = await api.snapshot();
   return { snap, spot };
 }
 
@@ -1748,10 +1696,13 @@ export async function actMoveKey(
  * (`run.dir` is the way the forager will swim). Pair with `actGrazeOne`.
  */
 export async function arrangeGraze(api) {
-  const snap = await startPlaying(api);
+  await startPlaying(api);
   // Four tiles: the start pellet, the one the item measures, and room to keep swimming
-  // through two more while the clip runs.
-  const run = findStraightRun(snap, 4);
+  // through two more while the clip runs. Posed, with a sealed pocket holding pellets the
+  // forager cannot reach — otherwise grazing a short corridor clears the maze and
+  // collects the descend bonus in the middle of a measurement about a single pellet.
+  const run = await poseStraightRun(api, 4, { spare: true });
+  const snap = await api.snapshot();
   await api.call("setForager", { tx: run.tx, ty: run.ty, dir: run.dir });
   // 12 ticks = 0.1 s: long enough for the real eat on the start tile, far short of the
   // 30 ticks the forager needs to reach the next one.
@@ -2176,3 +2127,48 @@ export async function audioCount(api) {
   await api.settle(AUDIO_SETTLE_MS);
   return (await api.audio()).length;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * An open tile at least `minMan` tiles (manhattan) from `from` ({tx, ty}) — and, when
+ * `minPx` is given, at least that far in a straight line as well.
+ *
+ * WHY THERE IS A PIXEL FLOOR AS WELL AS A TILE ONE. A manhattan count and a sensing
+ * RADIUS are different shapes, so a caller that means "outside the Flarefish's `192 px`
+ * flare" cannot say so in tiles: a tile 8 apart on the manhattan grid sits as close as
+ * `8 / sqrt(2)` ≈ 5.66 tiles ≈ `181 px` when the offset is diagonal, which is INSIDE the
+ * bloom. A check that poses a predator "far, so it flares harmlessly" and picks the tile
+ * by manhattan alone is therefore betting on where the maze happened to leave its open
+ * tiles — it holds on one layout and quietly stops holding on the next, which is the
+ * worst way for a precondition to fail. Every radius the spec fixes (the flare, the
+ * light detection ranges, the Kindle vision circle) is euclidean, so a caller that means
+ * one of them passes it here in px and gets a tile that is actually outside it.
+ */
+export function findFarTile(snap, from, minMan, { minPx = 0 } = {}) {
+  const a = tileCenter(snap.grid, from.tx, from.ty);
+  for (const [c, r] of openTiles(snap)) {
+    if (Math.abs(c - from.tx) + Math.abs(r - from.ty) < minMan) continue;
+    if (minPx > 0) {
+      const p = tileCenter(snap.grid, c, r);
+      if (Math.hypot(p.x - a.x, p.y - a.y) < minPx) continue;
+    }
+    return { tx: c, ty: r };
+  }
+  throw unmetPrecondition(
+    `no open tile at least ${minMan} tiles away` +
+      (minPx > 0 ? ` and ${minPx} px clear in a straight line` : ""),
+  );
+}
+
+

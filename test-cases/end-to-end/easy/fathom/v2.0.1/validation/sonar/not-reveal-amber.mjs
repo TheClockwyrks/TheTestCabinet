@@ -7,7 +7,7 @@
 // is the reviewer's evidence.
 import {
   denAllExcept,
-  findSonarSenseTiles,
+  poseSonarSense,
   pred,
   quietBoard,
   startPlaying,
@@ -20,9 +20,9 @@ export default function item() {
     id: "sonar.not-reveal-amber",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       await denAllExcept(api, ["gloamfin", "lanternjaw"]);
-      const [g, l] = findSonarSenseTiles(snap, snap.forager, 2);
+      const [g, l] = await poseSonarSense(api, 2);
       await api.call("setPredator", "gloamfin", {
         tx: g.tx,
         ty: g.ty,

@@ -31,8 +31,10 @@ import {
   TICK_HZ,
   isOpen,
   startPlaying,
+  rowTouchesDen,
   unmetPrecondition,
   wrapRow,
+  wrapRows,
 } from "../_helpers.mjs";
 
 // How far inside the mouth to start, in tiles. One tile is enough to be under way at the
@@ -116,12 +118,21 @@ export default function item() {
   // it: ordinary corridor on the way in, or one of the two mouth tiles the wrap joins.
   const approachSteps = [];
   const seamSteps = [];
+  let pierced = [];
+  let onDen = [];
 
   return {
     id: "maze-movement.wrap-tunnel",
 
     async arrange(api) {
       const snap = await startPlaying(api);
+      // The STRUCTURAL half, read off the maze this build drew before anything is posed:
+      // the tunnel has to be one this build actually cut, not merely a rule it honours
+      // when handed one. Every other geometry in this suite is posed, but not this: a
+      // conforming maze always has a tunnel (`specs/maze.md`), so looking for it here is
+      // itself the check that the build cut one.
+      pierced = wrapRows(snap);
+      onDen = pierced.filter((r) => rowTouchesDen(snap, r));
       wr = wrapRow(snap);
       grid = snap.grid;
       if (wr < 0) return;
@@ -132,10 +143,18 @@ export default function item() {
       }
       if (approach === 0) {
         // The mouth tile has no open neighbor inland, so nothing can swim into it
-        // horizontally — this build's tunnel cannot be entered the way the item
-        // describes. A property of the maze it invented, not of its debug API.
+        // horizontally — this build's tunnel cannot be entered the way the item describes.
+        //
+        // A conforming maze always offers one. Column 0 is solid border but for this row
+        // (`specs/maze.md`), so the mouth's north and south neighbors are rock, and the
+        // no-dead-ends rule requires a second open connection besides the far mouth — which
+        // leaves the tile inland as the only candidate. So a build that reaches here has a
+        // dead-end mouth, and `maze/no-dead-ends` is the item that says so. This one has no
+        // scenario left to run, and exempts rather than reporting the same defect a second
+        // time under the tunnel's name.
         throw unmetPrecondition(
-          `the left wrap mouth at row ${wr} has no open corridor tile beside it to swim in from`,
+          `the left wrap mouth at row ${wr} has no open corridor tile beside it to swim in from, ` +
+            `so it is a dead end (see the maze's no-dead-ends item) and cannot be swum into`,
         );
       }
       await api.call("setForager", { tx: approach, ty: wr, dir: "left" });
@@ -191,7 +210,20 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("the maze has a horizontal wrap tunnel", wr >= 0);
+      // "One horizontal wrap tunnel pierces the left and right border at a chosen
+      // mid-height row clear of the den" (specs/maze.md). Exactly one, and clear of the
+      // den, are the two halves of that sentence a check can hold a build to; the row
+      // being "mid-height" is left to the build, so nothing here fixes a band for it.
+      check.expectEq(
+        "the maze has exactly one horizontal wrap tunnel",
+        pierced.length,
+        1,
+      );
+      check.expectEq(
+        "the wrap tunnel row is clear of the den",
+        onDen.length,
+        0,
+      );
       if (wr < 0) return;
       check.expectOk(
         "swimming off the left edge carries the forager to the right edge",
@@ -203,13 +235,17 @@ export default function item() {
       const stall = step * STEP_STALL_FRACTION;
       const seam = pace(seamSteps, stall);
       const ordinary = pace(approachSteps, stall);
+      // Both readings are reported in TICKS of pause and px per tick, and both are held
+      // against what this same build does in ordinary corridor a moment earlier, so a
+      // verdict names what happened at the seam rather than a bare threshold. A build
+      // whose forager crosses and then parks reports its whole remaining budget here.
       check.expectLe(
-        "nothing stops at the edge that does not stop everywhere",
+        `the forager keeps swimming as it crosses: its longest pause at the seam (${seam.stallRun} ticks) is no worse than in open corridor`,
         seam.stallRun,
         Math.max(ordinary.stallRun, SEAM_STALL_GRACE),
       );
       check.expectGe(
-        "it crosses the seam at the pace it swims the corridor",
+        `it holds its pace across the seam (${seam.mean.toFixed(2)} px/tick there against ${ordinary.mean.toFixed(2)} swimming in)`,
         seam.mean,
         ordinary.mean * SEAM_PACE_FRACTION,
       );

@@ -6,7 +6,7 @@
 import {
   amberInProfile,
   denAllExcept,
-  findOccludedPair,
+  poseOccludedPair,
   pred,
   quietBoard,
   sampleMoteProfile,
@@ -21,8 +21,8 @@ export default function item() {
     id: "lanternjaw.bulb-visible",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const bp = findOccludedPair(snap); // close enough for the Kindle circle, LOS blocked so unlit
+      await startPlaying(api);
+      const bp = await poseOccludedPair(api); // close enough for the Kindle circle, LOS blocked so unlit
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setPredator", "lanternjaw", {
         tx: bp.pred.tx,

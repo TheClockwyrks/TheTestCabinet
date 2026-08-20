@@ -32,7 +32,7 @@
 import {
   DIR_KEY,
   denAllExcept,
-  findInkStandoff,
+  poseInkStandoff,
   parkForager,
   pred,
   startPlaying,
@@ -53,10 +53,18 @@ export default function item() {
     clipMs: 12000,
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
       // gap 2: the Flarefish stands inside the 80 px cloud, the least ambiguous form of
       // "blinded by ink" the spec describes.
-      line = findInkStandoff(snap, { gap: 2 });
+      // Six tiles of corridor behind the ink tile rather than the three that merely clear
+      // the cloud. Three was enough for the VERDICT — the forager is outside its own ink
+      // and the Flarefish's fix has gone stale — but not for the picture: a blinded
+      // Flarefish keeps drifting the way it was already pointed, and with the forager only
+      // three tiles off it drifts right up to it, so the clip shows a hunter apparently
+      // still closing in. Given room, the same drift carries it nowhere near, and what a
+      // reviewer sees is a hunter that has plainly lost the thread.
+      line = await poseInkStandoff(api, { gap: 2, clearTiles: 6 });
+      const snap = await api.snapshot();
       // The ground between the hunter and the tile its fix will go stale on, which is what
       // it has to cover before its linger can even start running.
       gap = tileGapPx(snap.grid, line.pred, line.ink);
@@ -83,6 +91,12 @@ export default function item() {
       await api.call("press", "ShiftLeft");
       // Break away: 100 ticks at 128 px/s is the three tiles it takes to get clear of an
       // 80 px cloud centered where the forager stood — and no further (see the header).
+      // The corridor now runs on well past that (`clearTiles: 6`), but the SWIM does not:
+      // every tile crossed is a plankton eaten, and a forager that grazes its way to a
+      // bright `G` is one a light-hunting Flarefish can legitimately re-acquire from
+      // across the trench, which is a different story than the one this item tells. The
+      // extra corridor is there to keep the blinded drift away from the forager, not to
+      // be swum.
       await api.call("keyDown", DIR_KEY[line.flee]);
       await api.advance(100);
       await api.call("keyUp", DIR_KEY[line.flee]);

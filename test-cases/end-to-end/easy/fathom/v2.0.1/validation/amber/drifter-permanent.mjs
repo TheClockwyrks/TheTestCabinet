@@ -14,7 +14,7 @@
 // mote sit there and not fade.
 import {
   denAllExcept,
-  findFarTile,
+  poseApart,
   quietBoard,
   startPlaying,
 } from "../_helpers.mjs";
@@ -27,9 +27,13 @@ export default function item() {
     id: "amber.drifter-permanent",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor, and 10 tiles off across solid
+      // rock a separate ring to patrol. Sealed off rather than merely distant, so
+      // "far away" holds for the whole watch instead of only until the patrol
+      // arrives — a real maze is one connected region and cannot offer that.
+      const far = (await poseApart(api, 10)).far; // far from the stationary forager, so it is not eaten
       await denAllExcept(api, []); // den all predators so none disturbs the scene
-      const far = findFarTile(snap, snap.forager, 10); // far from the stationary forager, so it is not eaten
       await api.call("spawnDrifter", { tx: far.tx, ty: far.ty });
       await quietBoard(api);
     },

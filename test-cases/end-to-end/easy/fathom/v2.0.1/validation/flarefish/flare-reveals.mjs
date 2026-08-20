@@ -5,7 +5,7 @@
 // the behavior under test, so it is `act` and is what the clip opens on.
 import {
   denAllExcept,
-  findFarTile,
+  poseApart,
   pred,
   quietBoard,
   startPlaying,
@@ -33,9 +33,11 @@ export default function item() {
     id: "flarefish.flare-reveals",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
+      await startPlaying(api);
+      // A posed board: the forager's corridor and, across solid rock, a sealed ring
+      // for the Flarefish to patrol — so "far away" holds for the whole watch.
+      far = (await poseApart(api, 9)).far; // in an unrevealed region far from the light
       await denAllExcept(api, ["flarefish"]);
-      far = findFarTile(snap, snap.forager, 9); // in an unrevealed region far from the light
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,

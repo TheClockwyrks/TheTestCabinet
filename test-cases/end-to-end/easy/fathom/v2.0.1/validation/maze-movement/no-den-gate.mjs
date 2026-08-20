@@ -17,7 +17,9 @@ export default function item() {
   let dir;
   let before;
   let after;
-  let screen;
+  let onGate = false;
+  let inDen = false;
+  let screen = "playing";
 
   return {
     id: "maze-movement.no-den-gate",
@@ -43,11 +45,18 @@ export default function item() {
     async act(api) {
       before = (await api.snapshot()).forager;
       await api.call("keyDown", DIR_KEY[dir]);
-      await api.advance(36); // 36 ticks = 0.3 s driving into the gate
-      const snap = await api.snapshot();
-      after = snap.forager;
-      screen = snap.screen;
-      await api.advance(36); // 36 ticks of the key still held, for the clip
+      // Sampled every tick, for the whole drive: what the item forbids is the forager
+      // ever BEING on the gate or inside the den, and a pair of readings taken at either
+      // end of the window would miss a forager that slipped through and came back.
+      for (let i = 0; i < 72; i++) {
+        await api.advance(1);
+        const s = await api.snapshot();
+        const t = s.tiles[s.forager.ty]?.[s.forager.tx];
+        if (t === "g") onGate = true;
+        if (t === "d") inDen = true;
+        if (s.screen !== "playing") screen = s.screen;
+        if (i === 35) after = s.forager; // 0.3 s in, the state the old reading was taken at
+      }
       await api.call("keyUp", DIR_KEY[dir]);
     },
 
@@ -64,14 +73,24 @@ export default function item() {
         screen === "playing",
       );
       if (screen !== "playing") return;
-      check.expectEq(
-        "the forager stays on its tile against the closed den gate",
-        `${after.tx},${after.ty}`,
-        `${before.tx},${before.ty}`,
+      // WHAT THIS ASKS, AND WHAT IT DELIBERATELY DOES NOT. The claim is that the gate is
+      // shut to the forager — "the gate is passable only by predators" (`specs/maze.md`) —
+      // so what it forbids is the forager ever standing ON the gate tile or inside the den
+      // chamber. It used to ask for something stricter and unfixed: that the forager be
+      // exactly where it started, and not moving. A build that turns its forager aside
+      // when the way ahead is rock, rather than stopping it dead, was failed for that —
+      // and turning aside is a reading `specs/movement.md` leaves open (a direction key
+      // "sets the desired direction", and nothing says what a forager does when that
+      // direction is blocked). Such a build is refused by the gate exactly as the spec
+      // asks; it just does not stand still about it. The gate is what is under test here,
+      // not what a blocked forager does next.
+      check.expectOk(
+        "the forager never stands on the den gate tile",
+        !onGate,
       );
       check.expectOk(
-        "the forager does not swim through the den gate (not moving)",
-        after.moving === false,
+        "and never gets inside the den chamber",
+        !inDen,
       );
     },
   };
