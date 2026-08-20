@@ -1,71 +1,140 @@
 # Diagnostics
 
-The overlay shows values the game names. The engine draws the panel and owns the
-toggle key.
+The debug overlay draws two things: the named values a game registers, and the
+engine's own frame-time metrics. A game registers its sources once, from
+`InitApi.diagnostics` inside `initialize`; the engine owns everything around
+them.
 
 ```ts
-engine.diagnostics.register(name: string, source: () => unknown): void;
-engine.diagnostics.setEnabled(enabled: boolean): void;
-engine.diagnostics.enabled(): boolean;
-engine.diagnostics.toggle(): void;
-engine.diagnostics.read(): Record<string, unknown>;
+api.diagnostics.register(name: string, source: () => unknown): void;
 ```
 
-## Registering a source
+## Registering sources
 
-A source is a function returning the value to show. It is called on every read,
-not sampled at registration, so it always reports live state:
+`source` is a zero-argument function returning the value to display. It is
+invoked on each read rather than sampled at registration, so it reports whatever
+the game holds at that instant.
 
 ```ts
-engine.diagnostics.register("fps", () => 1000 / engine.frame.info().lastDeltaMs);
-engine.diagnostics.register("ball", () => ({ x: ball.x, y: ball.y }));
-engine.diagnostics.register("score", () => `${p1Score} - ${p2Score}`);
-engine.diagnostics.register("state", () => phase);
+initialize(api) {
+  const state: State = { x: 320, y: 180, enemies: [], score: 0 };
+
+  api.diagnostics.register("pos", () => `${state.x.toFixed(1)}, ${state.y.toFixed(1)}`);
+  api.diagnostics.register("enemies", () => state.enemies.length);
+  api.diagnostics.register("score", () => state.score);
+
+  return state;
+}
 ```
 
-Register sources during setup. Re-registering a name replaces its source and
-keeps its line in place, so the panel does not reshuffle mid-run.
+Register the few values that explain what the simulation is doing. Re-registering
+a name replaces its source and keeps the name's original position.
 
-Values are formatted for one line each:
+A source that throws contributes its error message as a string value rather than
+failing the read, so one careless source costs nothing but its own line.
 
-| Value | Shown as |
+## The overlay
+
+The overlay is hidden when the engine is created. The backtick key
+(`Backquote`) toggles it, handled by a listener the engine owns rather than by a
+registered input action.
+
+It draws one line per source, formatted `` `${name}: ${value}` ``, then a
+metrics line, then the frame-time graph. It is drawn after the game's `render`,
+with the context transform reset to the identity, so debug text stays the same
+physical size however far the game's own coordinates are being scaled.
+
+| Value | Displayed as |
 | --- | --- |
-| `string` | Itself. |
-| Integer `number` | Itself. |
-| Non-integer `number` | Fixed to three decimals. |
-| `object` or array | `JSON.stringify`, falling back to the string form. |
-| `null` / `undefined` | `"null"` / `"undefined"`. |
+| `string` | The string itself. |
+| Integer `number` | `String(value)`. |
+| Non-integer `number` | `value.toFixed(3)`. |
+| `null`, `undefined` | `"null"`, `"undefined"`. |
+| `object`, array | `JSON.stringify(value)`, falling back to `String(value)`. |
+| Any other type | `String(value)`. |
 
-Keep each value to about a line's worth of text. A source is called every frame
-the overlay is visible, so keep it cheap and free of side effects.
+## Frame metrics
 
-A source that throws is contained: its line shows the error message and the rest
-of the panel draws normally.
+The engine times each frame it runs, measuring the wall time spent in `update`,
+`render`, and the overlay itself. One sample is recorded per frame that ran.
 
-## The overlay is engine-drawn
+```ts
+interface FrameMetrics {
+  samples: number;
+  meanMs: number;
+  p95Ms: number;
+  p99Ms: number;
+}
+```
 
-The engine draws the panel top-left, after `render`, over the finished picture.
-It is drawn in device pixels rather than logical ones, so the text stays the same
-physical size however far the game's coordinates are being scaled.
+| Field | Meaning |
+| --- | --- |
+| `samples` | How many frames the window holds. |
+| `meanMs` | The arithmetic mean of the window's samples, in milliseconds. |
+| `p95Ms` | The 95th percentile of the window's samples, in milliseconds. |
+| `p99Ms` | The 99th percentile of the window's samples, in milliseconds. |
 
-Nothing is drawn while the overlay is off, and nothing is drawn when no sources
-are registered.
+The metrics line reads `` `frame: ${meanMs} / ${p95Ms} / ${p99Ms} ms` ``.
+Percentiles are nearest-rank over the window's samples sorted ascending. An
+empty window reports `0` for all three.
 
-## The toggle
+The window is the last 10 seconds of frames, held in a ring buffer whose
+capacity is 2048 samples, so a run of any length at any frame rate holds the
+same number of bytes. Age is measured against the frame loop's simulated time,
+so the window covers 10 seconds of the time the game was stepped by rather than
+10 seconds of real time.
 
-The engine owns the backtick key (`` ` ``, `KeyboardEvent.code` `"Backquote"`)
-and toggles the overlay on every press. It is not a registered action, so it
-does not appear in `engine.input.actions()`, and the game must leave that key
-alone.
+The graph plots the window's samples oldest at the left and newest at the right,
+one column per sample. The vertical scale runs from `0` to the largest sample in
+the window, with a floor of `33.3` milliseconds so an even run reads as flat.
 
-`setEnabled(true)` shows the overlay, `setEnabled(false)` hides it, `toggle()`
-flips it, and `enabled()` reports the current state. The overlay starts hidden.
+## The host interface
 
-## Read-only
+The engine publishes a read-mostly view of itself on the game's own window,
+under `__tcabEngine`, from the moment it is constructed. It lets a post-run
+check confirm that a built page booted and is running frames, and it lets a
+person inspect a running build from a devtools console.
 
-The overlay reports; it does not control. There is no way to edit a value
-through it, and it accepts no input beyond its toggle. A source must never
-mutate game state — a diagnostic exists to explain behaviour, not to change it.
+```ts
+interface EngineHost {
+  version: number;
+  frame(): FrameInfo;
+  diagnostics(): Record<string, unknown>;
+  setOverlay(enabled: boolean): void;
+}
+```
 
-`read()` evaluates every source and returns the values as a plain object,
-regardless of whether the overlay is visible.
+| Member | Result |
+| --- | --- |
+| `version` | The interface version at the time the page was built. Currently `2`. |
+| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
+| `diagnostics` | The build's registered sources, evaluated at the moment of the call, whether or not the overlay is visible. |
+| `setOverlay` | Shows or hides the overlay without touching the toggle key. |
+
+```js
+__tcabEngine.frame();        // { count: 812, timeMs: 13533, lastDeltaMs: 16.7 }
+__tcabEngine.diagnostics();  // { pos: "320.0, 180.0", enemies: 4, score: 120 }
+__tcabEngine.setOverlay(true);
+```
+
+A handle that is present and a counter that has advanced between two reads is a
+page that booted, wired its canvas, resolved initialization, and reached the
+frame loop. A build needs no code for any of this: the engine installs the
+handle itself.
+
+Values cross into a page evaluation as plain data, so `diagnostics` reduces each
+source's value through a JSON round trip. A plain value crosses unchanged, one
+that cannot be encoded degrades to its string form, and one with no JSON
+representation reads as `null`.
+
+The handle and its types are also importable from
+`@test-cabinet/simple-2d/host`, a module that depends only on the shared
+contract types.
+
+```ts
+import { HOST_HANDLE, HOST_VERSION } from "@test-cabinet/simple-2d/host";
+import type { EngineHost } from "@test-cabinet/simple-2d/host";
+```
+
+`engine.destroy()` removes the handle, but only while the installed host is
+still the one that engine published.

@@ -8,7 +8,7 @@
  * declared to `createEngine` — and never thinks about the canvas element again. The
  * viewport is the affine map from those coordinates onto the canvas's backing store.
  *
- * Two conventions are worth stating up front, because everything else follows:
+ * Three conventions are worth stating up front, because everything else follows:
  *
  * 1. **The scale is uniform.** A single `min` of the two axis ratios keeps the
  *    aspect ratio and guarantees the *whole* logical field stays visible; the
@@ -24,36 +24,23 @@
  *    back into logical space, say) divides: CSS px per logical unit is
  *    `scale / dpr`, and a CSS-space point maps to logical as
  *    `(cssX * dpr - offsetX) / scale`.
+ * 3. **Every measurement arrives through a {@link SurfaceMetrics}.** Nothing in this
+ *    module reads `clientWidth` or `devicePixelRatio` on its own account;
+ *    {@link syncCanvas} is handed the numbers. {@link domSurface} is the one place
+ *    that touches the DOM for them, and it is only the *default* the engine passes.
+ *    That seam is what lets the engine — and a validator driving it — run over a
+ *    canvas with no document behind it, and get the same fit on every machine.
  */
 
-/**
- * The map from a game's logical design size onto a canvas's backing store.
- *
- * `width`/`height` are readonly because they are the design size the game was
- * written against — they do not change when the window does. `scale` and the
- * offsets are not, so a resize handler may update a viewport in place rather than
- * forcing every holder of the object to re-read it.
- */
-export interface Viewport {
-  /** The logical design width; a game draws in `0..width`. */
-  readonly width: number;
-  /** The logical design height; a game draws in `0..height`. */
-  readonly height: number;
-  /** Device pixels per logical unit — the fit ratio with the device pixel ratio folded in. */
-  scale: number;
-  /** The left letterbox bar, in device pixels. */
-  offsetX: number;
-  /** The top letterbox bar, in device pixels. */
-  offsetY: number;
-}
+import type { SurfaceMetrics, Viewport } from "./contract";
 
 /**
  * A device pixel ratio we are willing to multiply by.
  *
- * `window.devicePixelRatio` is well-behaved in a browser, but this function is also
- * reachable from a driver, a test, and a detached document, any of which can hand
- * us `0`, `NaN`, or nothing at all. Falling back to `1` keeps a bad ratio from
- * poisoning the transform, where it would silently blank the canvas.
+ * A ratio arrives from a supplied surface as often as from a window, and a driver,
+ * a test, or a detached document can hand us `0`, `NaN`, or nothing at all.
+ * Falling back to `1` keeps a bad ratio from poisoning the transform, where it
+ * would silently blank the canvas.
  */
 function normalizeDpr(dpr: number): number {
   return Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
@@ -66,7 +53,7 @@ function normalizeSize(size: number): number {
 
 /**
  * Compute the letterboxed, centred, device-pixel-ratio-aware fit of a
- * `logicalW` × `logicalH` field into a `cssW` × `cssH` element.
+ * `logicalWidth` × `logicalHeight` field into a `cssWidth` × `cssHeight` element.
  *
  * A degenerate input — a zero-size container (a hidden element, an element the
  * browser has not laid out yet), or a nonsense logical size — yields `scale: 0`
@@ -76,17 +63,17 @@ function normalizeSize(size: number): number {
  * own as soon as the element has a size.
  */
 export function fitViewport(
-  logicalW: number,
-  logicalH: number,
-  cssW: number,
-  cssH: number,
+  logicalWidth: number,
+  logicalHeight: number,
+  cssWidth: number,
+  cssHeight: number,
   dpr: number,
 ): Viewport {
   const ratio = normalizeDpr(dpr);
-  const width = normalizeSize(logicalW);
-  const height = normalizeSize(logicalH);
-  const availW = normalizeSize(cssW);
-  const availH = normalizeSize(cssH);
+  const width = normalizeSize(logicalWidth);
+  const height = normalizeSize(logicalHeight);
+  const availW = normalizeSize(cssWidth);
+  const availH = normalizeSize(cssHeight);
 
   const fit =
     width > 0 && height > 0 && availW > 0 && availH > 0
@@ -122,56 +109,112 @@ export function fitViewport(
  */
 export function applyViewport(
   ctx: CanvasRenderingContext2D,
-  vp: Viewport,
+  viewport: Viewport,
 ): void {
-  ctx.setTransform(vp.scale, 0, 0, vp.scale, vp.offsetX, vp.offsetY);
+  ctx.setTransform(
+    viewport.scale,
+    0,
+    0,
+    viewport.scale,
+    viewport.offsetX,
+    viewport.offsetY,
+  );
 }
 
 /**
- * Bring a canvas's backing store in line with its laid-out size and the current
- * device pixel ratio, and return the viewport that fits `logicalW` × `logicalH`
- * into it.
+ * The measurements a canvas that really is in a document reports about itself.
+ *
+ * This is the default the engine uses when a build supplies no surface of its own,
+ * and it is deliberately the *only* function in the package that reads a size out
+ * of the DOM. Everything downstream takes numbers.
+ *
+ * The ratio and the event target both come from the canvas's *own* document rather
+ * than the ambient `window`: a game rendered inside an iframe (a run's preview
+ * pane, say) is sized by the ratio of the display it is actually on, and its key
+ * events are where its own document is, not where the outer page is.
+ */
+export function domSurface(canvas: HTMLCanvasElement): SurfaceMetrics {
+  return {
+    cssWidth: (): number => canvas.clientWidth,
+    cssHeight: (): number => canvas.clientHeight,
+    dpr: (): number => canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1,
+    events: (): EventTarget => canvas.ownerDocument,
+  };
+}
+
+/**
+ * Whether the engine should write a pixel CSS size onto the element.
+ *
+ * The failure this exists to prevent is a feedback loop. An element the page has
+ * not sized takes its CSS size *from* its `width`/`height` attributes — which are
+ * exactly what the backing store writes — so sizing the backing store to
+ * `css * dpr` feeds straight back into the next measurement and the canvas grows
+ * by a factor of `dpr` every frame. Pinning the measured size breaks the loop.
+ *
+ * The test is therefore "does the reported size still look like the attributes",
+ * *not* "is the inline style empty". A canvas sized by a stylesheet has an empty
+ * inline style, and treating that as unsized would write a fixed pixel size over
+ * the page's rule and freeze the canvas at whatever size it happened to be first
+ * measured at — the exact opposite of what the pin is for.
+ *
+ * A page that sizes an element to precisely its attribute size, through a
+ * stylesheet, is indistinguishable from an unsized one at this seam and gets a pin
+ * equal to the size it asked for. That is the one ambiguity the rule accepts, and
+ * it costs a canvas that was already the right size its responsiveness, whereas
+ * reading the inline style costs *every* stylesheet-sized canvas its
+ * responsiveness.
+ */
+function pageExpressedNoSize(
+  canvas: HTMLCanvasElement,
+  cssWidth: number,
+  cssHeight: number,
+): boolean {
+  return cssWidth === canvas.width && cssHeight === canvas.height;
+}
+
+/**
+ * Bring a canvas's backing store in line with the size and ratio `surface` reports,
+ * and return the viewport that fits `logicalWidth` × `logicalHeight` into it.
  *
  * The backing store is written only when it actually differs: assigning
  * `canvas.width` clears the canvas and reallocates it even when the value is
  * unchanged, so an unconditional write once per frame would both flicker and churn
  * memory.
  *
- * A canvas whose element size is `0` — `display: none`, or not yet laid out — keeps
- * whatever backing store it already had. Resizing it to nothing would throw away
- * the last good frame for no benefit, and the next call recovers once the element
- * has a size.
+ * A surface reporting `0` on either axis — `display: none`, or an element not yet
+ * laid out — leaves the canvas the backing store it already had. Resizing it to
+ * nothing would throw away the last good frame for no benefit, and the next call
+ * recovers once the element has a size.
  */
 export function syncCanvas(
   canvas: HTMLCanvasElement,
-  logicalW: number,
-  logicalH: number,
+  logicalWidth: number,
+  logicalHeight: number,
+  surface: SurfaceMetrics,
 ): Viewport {
-  // The ratio is read from the canvas's *own* document rather than the ambient
-  // `window`, so a canvas living in an iframe (a run's preview pane, say) is sized
-  // by the ratio of the display it is actually on.
-  const dpr = normalizeDpr(canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1);
-  const cssW = canvas.clientWidth;
-  const cssH = canvas.clientHeight;
-  const vp = fitViewport(logicalW, logicalH, cssW, cssH, dpr);
+  const dpr = normalizeDpr(surface.dpr());
+  const cssW = normalizeSize(surface.cssWidth());
+  const cssH = normalizeSize(surface.cssHeight());
+  const viewport = fitViewport(logicalWidth, logicalHeight, cssW, cssH, dpr);
 
   if (cssW > 0 && cssH > 0) {
-    // Pin the CSS size only when the page has not expressed one. Without a pin, the
-    // element's size is derived from its `width`/`height` attributes, so writing the
-    // backing store would feed back into layout and the two would chase each other
-    // by a factor of `dpr` every call. When the page *has* styled the canvas (the
-    // usual `width: 100%` responsive case), its rule is left alone — overwriting it
-    // with a fixed pixel size would freeze the canvas at its first measured size.
-    if (canvas.style.width === "") {
-      canvas.style.width = `${cssW}px`;
-      canvas.style.height = `${cssH}px`;
-    }
+    // Decided *before* the backing store is written, because writing it is what
+    // makes the attributes stop matching the measurement.
+    const pin = pageExpressedNoSize(canvas, cssW, cssH);
 
     const backingW = Math.round(cssW * dpr);
     const backingH = Math.round(cssH * dpr);
     if (canvas.width !== backingW) canvas.width = backingW;
     if (canvas.height !== backingH) canvas.height = backingH;
+
+    // A canvas driven headlessly behind a supplied surface may expose no `style` at
+    // all. It has no layout to feed back into either, so there is nothing to pin:
+    // it simply keeps the size the surface reports.
+    if (pin && canvas.style !== undefined) {
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+    }
   }
 
-  return vp;
+  return viewport;
 }

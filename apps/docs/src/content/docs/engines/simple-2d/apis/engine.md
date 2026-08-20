@@ -91,7 +91,7 @@ interface RunOptions {
 | `state` | The value `initialize` resolved to, live. |
 | `initialize` | Run the game's `initialize` and resolve to the state it produced. |
 | `run` | Drive the game off the host's frame callback until the supplied signal aborts. |
-| `advance` | Run exactly `frames` frames and resolve. |
+| `advance` | Tick the clock `frames` times, running a frame for each tick the clock accepts. |
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
@@ -141,9 +141,12 @@ second loop.
 
 ### `advance`
 
-`advance` runs exactly `frames` frames and resolves. Frames run back to back
+`advance` ticks the clock `frames` times and resolves. Ticks run back to back
 with no host frame callback between them, so the elapsed real time has no effect
 on the result and there is nothing to wait for or poll.
+
+A tick the clock declines runs no frame, so a clock supplying its own deltas
+turns `frames` ticks into exactly that many frames.
 
 `frames` must be a whole, non-negative number. `advance(0)` runs nothing.
 

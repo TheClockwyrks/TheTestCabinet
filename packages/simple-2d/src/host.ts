@@ -1,90 +1,70 @@
 /**
- * The host interface: the seam a driver binds to in order to *operate* a build
- * rather than play it.
+ * The host interface: the handle a built page publishes on its own window so that
+ * the build can be *observed* from outside the process that runs it.
  *
- * This lives in the engine, not in the game, and that is the entire point. An
- * instrumentation surface the build exposes is one the build can omit, misname, or
- * implement subtly differently, so a validation script driving it has to be written
- * defensively around all three. Here the operations are engine code: calling
- * {@link createEngine} installs them, so a build that runs at all is a build that is
- * driveable, and the contract is the same for every case that selects the engine.
+ * This is deliberately not the seam a check drives a game through. A test case's
+ * validators run in process — they import the engine and the game, construct the
+ * engine with their own clock, and step it with `engine.advance` — so they already
+ * hold the state, the events and the drawing context as live values. Anything this
+ * module offered them would be a second, weaker copy of a surface they have
+ * directly, and keeping such a surface published on `window` would mean the engine
+ * carried operations whose only caller was a boundary nobody crosses any more.
  *
- * Two invariants shape everything below:
+ * What is left is the pair of jobs that genuinely need an out-of-process handle:
  *
- * - **Everything returned is plain data.** A driver reads these values out of
- *   `page.evaluate`, which structured-clones across the browser boundary: a class
- *   instance, a live internal array, a function or a cyclic object either arrives
- *   mangled or throws and takes the whole read with it. Each port already hands back
- *   copies; {@link plain} covers the one place the values originate in *game* code
- *   and can therefore be anything at all.
- * - **This is the untrusted boundary.** Arguments arrive as JSON from outside the
- *   type system, so `setClock("fast")` or a jitter schedule with `maxMs < minMs` are
- *   things that actually happen. They are rejected here, with the offending value in
- *   the message, because the alternative failure — a page whose clock is neither
- *   `"auto"` nor `"manual"` and therefore never runs another frame — looks like a
- *   hung build rather than a bad call.
+ * - **A post-run check confirming a build booted.** The handle appears at
+ *   construction, before any game code runs, while {@link EngineHost.frame} still
+ *   reports zero. A reader that finds the handle and then sees the counter advance
+ *   between two reads has established that the page loaded, wired its canvas,
+ *   resolved initialization and reached the frame loop — which no static inspection
+ *   of the built files can show.
+ * - **A person inspecting a running build.** Opening the page and typing the handle
+ *   into a devtools console reads the same diagnostics the overlay draws, and
+ *   {@link EngineHost.setOverlay} shows the panel without hunting for the toggle
+ *   key.
  *
- * The module depends on nothing but {@link ./contract} and the pure schedule
- * validator, so `@test-cabinet/simple-2d/host` can be imported for its types alone —
- * by a validation script or a driver — without dragging in the DOM-bound engine.
+ * One invariant shapes what may be returned: **everything is plain data**. These
+ * values are read through a page evaluation, which structured-clones across the
+ * browser boundary, and a function, a DOM node or a cyclic object either arrives
+ * mangled or throws and takes the whole read with it. The frame port already hands
+ * back a copy of plain numbers; {@link plain} covers the one place values originate
+ * in *game* code and can therefore be anything at all.
+ *
+ * The module depends on nothing but {@link ./contract}, so
+ * `@test-cabinet/simple-2d/host` can be imported for its types alone — by a check
+ * that only wants to know what shape the handle has — without dragging in the
+ * DOM-bound engine.
  */
 
-import type {
-  AssetEvent,
-  AudioState,
-  ClockMode,
-  CueEvent,
-  FrameInfo,
-  RegisteredAction,
-  Schedule,
-  TouchLayout,
-} from "./contract";
-import { validateSchedule } from "./schedule";
+import type { FrameInfo } from "./contract";
 
 /**
  * The `window` property the interface is installed on.
  *
  * It matches the `handle` field of `engines/simple-2d/engine.toml`; the two are one
- * contract, and a driver looks the handle up from the engine catalogue rather than
+ * contract, and a reader looks the handle up from the engine catalogue rather than
  * hard-coding it.
  */
 export const HOST_HANDLE = "__tcabEngine";
 
 /**
- * The interface's version, bumped whenever an operation's shape or meaning changes.
+ * The interface's version, bumped whenever a member's shape or meaning changes.
  *
- * A driver reads it first and can then say "this build predates the operation I
- * need" instead of calling a missing function and reporting a broken build.
+ * A reader takes it first and can then say "this build predates the member I want"
+ * instead of calling a missing function and reporting a broken build. Version 2
+ * dropped the driving operations — the clock, the schedule, the stepper, the action
+ * setters and the accumulating logs — when validators moved in process, so a
+ * version 1 handle and a version 2 handle agree on nothing but `frame`.
  */
 export const HOST_VERSION = 1;
 
-/** The operations a driver may perform on a running engine. */
+/** The read-mostly view of a running engine that a build publishes. */
 export interface EngineHost {
   /** {@link HOST_VERSION} at the time the page was built. */
   version: number;
-  /** Hand the frame clock to the driver (`"manual"`) or back to the wall clock. */
-  setClock(mode: ClockMode): void;
-  /** Install the delta pattern the manual clock steps on. */
-  setSchedule(schedule: Schedule): void;
-  /** Run exactly `steps` frames off the current schedule, synchronously. */
-  advance(steps: number): void;
   /** The frame counter, simulated time, and the most recent step. */
   frame(): FrameInfo;
-  /** Every action the build registered, with its bindings and provenance. */
-  actions(): RegisteredAction[];
-  /** Drive an action's magnitude directly, as a held key or a touch slider would. */
-  setAction(name: string, value: number): void;
-  /** Arm an action's edge — a tap, with no release to send afterwards. */
-  pressAction(name: string): void;
-  /** The selected touch layout and its vocabulary, or `null` if none was selected. */
-  layout(): TouchLayout | null;
-  /** Every cue the build has played, oldest first. */
-  audioLog(): CueEvent[];
-  /** Whether the bus is muted, and whether a gesture has unlocked it. */
-  audioState(): AudioState;
-  /** Every asset the build has requested, and whether each one arrived. */
-  assetLog(): AssetEvent[];
-  /** The build's registered diagnostic sources, evaluated now. */
+  /** The build's registered diagnostic sources, evaluated at the moment of the call. */
   diagnostics(): Record<string, unknown>;
   /** Show or hide the debug overlay without touching the toggle key. */
   setOverlay(enabled: boolean): void;
@@ -92,29 +72,7 @@ export interface EngineHost {
 
 /** The frame loop, as the host needs it. */
 export interface FramePort {
-  setClock(mode: ClockMode): void;
-  setSchedule(schedule: Schedule): void;
-  advance(steps: number): void;
   info(): FrameInfo;
-}
-
-/** The action registry, as the host needs it. */
-export interface InputPort {
-  actions(): RegisteredAction[];
-  setAction(name: string, value: number): void;
-  pressAction(name: string): void;
-  layout(): TouchLayout | null;
-}
-
-/** The audio bus, as the host needs it. */
-export interface AudioPort {
-  log(): CueEvent[];
-  state(): AudioState;
-}
-
-/** The asset loader, as the host needs it. */
-export interface AssetPort {
-  log(): AssetEvent[];
 }
 
 /** The diagnostics registry, as the host needs it. */
@@ -129,30 +87,24 @@ export interface DiagnosticsPort {
  * They are declared structurally, as the narrow slice of each subsystem the host
  * actually calls, rather than as the concrete classes. That keeps this module free
  * of the engine's implementation (so the `./host` entry point stays importable for
- * its types alone) and makes the host's real surface area readable: everything a
- * driver can reach is one of the methods listed above, and nothing else.
+ * its types alone) and makes the host's real surface area readable: everything the
+ * published handle can reach is one of the two ports below, and nothing else.
  */
 export interface HostPorts {
   /** The object the handle is written to — the game's `window` in a browser. */
   target: Record<string, unknown>;
   frame: FramePort;
-  input: InputPort;
-  audio: AudioPort;
-  assets: AssetPort;
   diagnostics: DiagnosticsPort;
 }
 
-/** The two clocks, as a runtime set — the type alone cannot police untyped JSON. */
-const CLOCK_MODES: readonly ClockMode[] = ["auto", "manual"];
-
 /**
  * Reduce a value produced by game code to something that survives the trip to a
- * driver.
+ * reader.
  *
  * A diagnostic source may return anything: a function, a DOM node, an object that
- * refers back to itself. Any of those makes the *whole* `page.evaluate` fail, so a
- * single careless source would take away every other diagnostic at once. A
- * JSON round-trip keeps the values that are already plain exactly as they are and
+ * refers back to itself. Any of those makes the *whole* page evaluation fail, so a
+ * single careless source would take away every other diagnostic at once. A JSON
+ * round-trip keeps the values that are already plain exactly as they are and
  * degrades the rest to their string form, which is still far more use to a reader
  * than a failed read.
  */
@@ -167,40 +119,14 @@ function plain(value: unknown): unknown {
   }
 }
 
-/** Reject a clock mode a driver invented, before it can silently stall the loop. */
-function requireClockMode(mode: ClockMode): ClockMode {
-  if (!CLOCK_MODES.includes(mode)) {
-    throw new Error(
-      `unknown clock mode ${JSON.stringify(mode)}; expected "auto" or "manual"`,
-    );
-  }
-  return mode;
-}
-
-/**
- * Reject a magnitude that is not a number.
- *
- * `NaN` is the dangerous one: it compares unequal to zero, so a digital action
- * would read as held forever and an analog one would poison every quantity the
- * game multiplies by it, several frames away from the call that caused it.
- */
-function requireFinite(name: string, value: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(
-      `setAction("${name}") needs a finite number, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
 /**
  * Install the host interface on `ports.target` and return the function that removes
  * it again.
  *
  * Installing over an existing handle **replaces** it rather than throwing. A page
  * that tears its engine down and builds another one — a level transition, a hot
- * reload, a test — must end up driveable by the engine that is actually running,
- * and a thrown error there would leave the page owned by a dead engine.
+ * reload, a test — must end up publishing the engine that is actually running, and
+ * a thrown error there would leave the page owned by a dead engine.
  *
  * The returned uninstaller removes the handle only while it is still *this* host's.
  * Destroying a superseded engine must not unpublish its replacement, which is the
@@ -210,23 +136,7 @@ function requireFinite(name: string, value: number): number {
 export function installHost(ports: HostPorts): () => void {
   const host: EngineHost = {
     version: HOST_VERSION,
-    setClock: (mode) => ports.frame.setClock(requireClockMode(mode)),
-    setSchedule: (schedule) => {
-      // Validated here rather than in the loop because this is where a schedule
-      // crosses from untyped JSON into the engine, and the messages
-      // `validateSchedule` produces name the field and the value that is wrong.
-      validateSchedule(schedule);
-      ports.frame.setSchedule(schedule);
-    },
-    advance: (steps) => ports.frame.advance(steps),
     frame: () => ports.frame.info(),
-    actions: () => ports.input.actions(),
-    setAction: (name, value) => ports.input.setAction(name, requireFinite(name, value)),
-    pressAction: (name) => ports.input.pressAction(name),
-    layout: () => ports.input.layout(),
-    audioLog: () => ports.audio.log(),
-    audioState: () => ports.audio.state(),
-    assetLog: () => ports.assets.log(),
     diagnostics: () => {
       const values: Record<string, unknown> = {};
       for (const [name, value] of Object.entries(ports.diagnostics.read())) {
@@ -234,6 +144,10 @@ export function installHost(ports: HostPorts): () => void {
       }
       return values;
     },
+    // Coerced rather than validated: this member is typed `boolean` but is reached
+    // from a console and from a page evaluation, where the argument arrives as
+    // whatever the caller typed. Refusing `setOverlay(1)` would fail a person's
+    // debugging session over a distinction the overlay does not have.
     setOverlay: (enabled) => ports.diagnostics.setEnabled(Boolean(enabled)),
   };
 

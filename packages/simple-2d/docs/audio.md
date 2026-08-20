@@ -1,19 +1,22 @@
 # Audio
 
-The engine synthesizes sound. A game declares a cue once and plays it by name;
-it never touches an `AudioContext`, an oscillator, or the browser's autoplay
-policy.
+A game declares its cues once, from `InitApi.audio` inside `initialize`, and
+plays them by name from `UpdateApi.audio` inside `update`. A cue is either
+synthesized from a `CueSpec` or backed by an audio file, and both play through
+the same call.
 
 ```ts
-engine.audio.define(cue: string, spec: CueSpec): void;
-engine.audio.play(cue: string): void;
-engine.audio.setMuted(muted: boolean): void;
-engine.audio.muted(): boolean;
-engine.audio.state(): AudioState;
-engine.audio.log(): CueEvent[];
+// In initialize:
+api.audio.define(cue: string, spec: CueSpec): void;
+api.audio.load(cue: string, path: string): Promise<void>;
+
+// In update:
+api.audio.play(cue: string): void;
+api.audio.setMuted(muted: boolean): void;
+api.audio.muted(): boolean;
 ```
 
-## Defining a cue
+## Declaring cues
 
 ```ts
 interface CueSpec {
@@ -25,83 +28,73 @@ interface CueSpec {
 }
 ```
 
-| Field | Unit | Meaning |
-| --- | --- | --- |
-| `wave` | — | Oscillator waveform. Defaults to `"sine"`. |
-| `freq` | hertz | Starting frequency. Required. |
-| `freqTo` | hertz | Frequency swept to across the duration. Absent holds `freq`. |
-| `gain` | `0`–`1` | Peak gain. Defaults to `0.2`. |
-| `durationMs` | milliseconds | How long the cue sounds. Required. |
-
-`durationMs` is milliseconds, unlike the frame's `dt`.
-
-One oscillator through one gain node produces the sound: the frequency ramps
-linearly from `freq` to `freqTo` while the gain decays to silence over
-`durationMs`. That is the whole synthesis model, and it covers the bleeps a 2D
-game needs.
+| Field | Unit | Default | Meaning |
+| --- | --- | --- | --- |
+| `wave` | — | `"sine"` | The oscillator waveform. |
+| `freq` | hertz | required | The starting frequency. |
+| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. |
+| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. |
+| `durationMs` | milliseconds | required | How long the cue sounds. |
 
 ```ts
-engine.audio.define("bounce", { wave: "square", freq: 440, durationMs: 60 });
-engine.audio.define("score", {
-  wave: "triangle",
-  freq: 520,
-  freqTo: 880,
-  durationMs: 220,
-});
-engine.audio.define("lose", {
-  wave: "sawtooth",
-  freq: 300,
-  freqTo: 90,
-  gain: 0.3,
-  durationMs: 400,
-});
-```
-
-Defining a name that already exists replaces its spec, so a cue can be retuned
-mid-run.
-
-Define every cue during setup, before the first frame.
-
-## Playing
-
-```ts
-if (ball.x < 0) {
-  lives -= 1;
-  engine.audio.play("lose");
+initialize(api) {
+  api.audio.define("bounce", { freq: 440, freqTo: 220, durationMs: 80 });
+  api.audio.define("score", { wave: "square", freq: 660, durationMs: 120, gain: 0.15 });
+  return { /* ... */ };
 }
 ```
 
-`play` is safe to call from `update`, several times per frame, and while muted.
-It returns immediately; nothing about audio blocks a frame.
+`durationMs` is milliseconds, and the delta time an update receives is seconds.
 
-Playing a cue that was never defined **throws**. Silence is the expected result
-of a muted or still-locked bus, so a mistyped name would otherwise vanish into
-the same silence and never be noticed.
+A cue name carries one source. Declaring a name that already exists replaces
+what it plays, whichever of the two declared it, so swapping a placeholder bleep
+for a produced clip is a change to the declaration alone.
 
-## Mute
+## File-backed cues
 
-```ts
-engine.audio.setMuted(true);
-const isMuted = engine.audio.muted();
-```
-
-A muted cue still plays in every sense except audibility: the call succeeds and
-the cue is recorded, at a gain of `0`. Wiring the menu vocabulary's `mute`
-action to the bus is one line:
+`load` fetches and decodes audio through the asset loader and binds the result
+to a cue name. It resolves once the cue is playable:
 
 ```ts
-if (engine.input.pressed("mute")) engine.audio.setMuted(!engine.audio.muted());
+async initialize(api) {
+  api.audio.define("bounce", { freq: 440, durationMs: 80 });
+  await api.audio.load("theme", "audio/theme.ogg");
+  return { /* ... */ };
+}
 ```
 
-## The unlock is the engine's job
+`load` resolves the path through the asset loader, so it follows the same asset
+root and the same path rules and emits the same `asset:loaded` and
+`asset:failed` events. The name is bound only after the decode succeeds, so a
+load that failed leaves the name exactly as it was.
 
-Browsers refuse to start audio outside a user gesture. The engine listens for
-the first pointer or key event on the document and opens the audio context
-there, once. The game does nothing: no gesture handler, no "click to enable
-sound" screen, no resume call.
+## Playback
 
-Cues played before that first gesture succeed and are recorded; they are simply
-inaudible, because no browser would have played them either.
+Playback belongs to `update`, so what a frame sounds is decided by the same
+function that advanced the simulation:
+
+```ts
+update(state, api, dt) {
+  state.y += state.vy * dt;
+  if (state.y > FLOOR) {
+    state.vy = -state.vy;
+    api.audio.play("bounce");
+  }
+}
+```
+
+`play` returns immediately. It emits `cue:played` and, when audible, sounds the
+cue.
+
+`setMuted(true)` silences the bus. A muted cue still emits its event, at
+`gain: 0`, so a build that reacted while muted stays distinguishable from one
+that never reacted.
+
+## The unlock
+
+Browsers refuse to start audio before a user gesture. The engine opens the audio
+context on the first pointer or key event it sees and emits `audio:unlocked` at
+that moment.
 
 ```ts
 interface AudioState {
@@ -110,22 +103,54 @@ interface AudioState {
 }
 ```
 
-`state()` reports both bits. `unlocked` is separate from `muted` because a
-silent game may be silent for either reason.
+`unlocked` becomes `true` on that gesture in every browser, including one that
+then offers no audio context. A game needs no code for this; a cue played before
+the gesture is announced and simply sounds nothing.
 
-A browser with no audio support at all degrades to a bus that records cues and
-plays nothing. Audio never fails a frame.
+## Events
 
-## The cue log
+Audio reports itself through the engine's event broadcaster, subscribed with
+`api.events.on(name, handler)` in `initialize` or with `engine.events.on` before
+initialization.
 
 ```ts
-interface CueEvent {
-  cue: string;   // the name played
-  t: number;     // frame-loop time, in milliseconds
-  gain: number;  // the gain it played at; 0 while muted
-}
+"cue:played": { cue: string; t: number; gain: number };
+"audio:unlocked": Record<string, never>;
 ```
 
-`log()` returns every cue played, oldest first, as a copy. `t` comes from the
-frame loop's clock, so it lines up with `engine.frame.info().timeMs` rather than
-with wall time.
+| Field | Meaning |
+| --- | --- |
+| `cue` | The name that was played. |
+| `t` | The frame loop's simulated time in milliseconds when it played. |
+| `gain` | The gain it played at. |
+
+A play on a muted bus reports `gain: 0`. A play on an unmuted bus reports the
+spec's `gain` for a synthesized cue and `1` for a file-backed cue.
+
+`t` is frame time rather than wall time, so a cue's stamp lines up with the
+frame counter. Handlers run synchronously at the moment of the play, so a
+subscriber sees the frame a cue belongs to.
+
+`on` returns the function that removes the handler. Nothing accumulates a record
+of the cues a run played: a subscriber keeps exactly what it decided was worth
+keeping.
+
+```ts
+const played: string[] = [];
+const off = engine.events.on("cue:played", (event) => played.push(event.cue));
+```
+
+## Errors
+
+| Condition | Result |
+| --- | --- |
+| `play` names a cue that was never declared | Throws, naming the cue |
+| `load` is given a path the asset loader refuses | Rejects with the `resolve` error, and the cue stays undeclared |
+| `load` cannot fetch or decode the audio | Rejects with the cause, and the cue stays undeclared |
+| No audio context is available | `play` emits `cue:played` and nothing sounds |
+| The audio graph throws during synthesis | The event is emitted and the frame continues |
+
+Playing an undeclared cue throws because silence is the expected outcome of a
+muted or still-locked bus, so a typo'd name would otherwise disappear into the
+same silence and survive the run unnoticed. Nothing else about audio can fail a
+frame.

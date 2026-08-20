@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "The Simple 2D engine: the runtime a produced 2D game is built on. It owns the frame loop and delta time, the letterboxed device-pixel-ratio-aware canvas fit, named input actions over keyboard bindings and touch layouts, a synthesized audio cue bus with its first-interaction unlock, asset resolution under a fixed root, and a diagnostics overlay — leaving the game to write only its own simulation and rendering. It also installs a host interface on `window` so a driver can replace the clock, drive actions, and read the cue, asset, and diagnostic logs.",
+  "description": "The Simple 2D engine: the runtime a produced 2D game is built on. An engine is created over a canvas and bound to one game, and it owns the frame loop and its replaceable clock, the letterboxed device-pixel-ratio-aware canvas fit, named input actions over keyboard bindings and touch layouts, an audio cue bus with its first-gesture unlock, asset resolution under a fixed root, and a diagnostics overlay \u2014 leaving the game to write only its own simulation and rendering. Everything it does is observed by subscribing to its events rather than by reading a log it accumulates, and it publishes a read-mostly host interface on `window` so a post-run check can confirm that a build booted and is running frames.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

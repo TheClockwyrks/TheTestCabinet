@@ -17,7 +17,7 @@ carries observation and the overlay switch alone.
 | Export | Type | Value |
 | --- | --- | --- |
 | `HOST_HANDLE` | `string` | `"__tcabEngine"` |
-| `HOST_VERSION` | `number` | `2` |
+| `HOST_VERSION` | `number` | `1` |
 
 `HOST_HANDLE` is the `window` property the interface is installed on. It matches
 the `handle` field of `engines/simple-2d/engine.toml`; the two are one contract,

@@ -2,23 +2,36 @@
  * The action registry: the engine's single answer to "is the player doing X?".
  *
  * A game never reads `KeyboardEvent`s. It registers *named actions* with the keys
- * that drive them and then asks the registry for a value or an edge. Three things
- * fall out of that indirection, and they are the reason it exists:
+ * that drive them — through {@link InitApi.input} while it initializes — and then
+ * asks for a value or an edge through {@link UpdateApi.input} while it updates.
+ * Three things fall out of that indirection, and they are the reason it exists:
  *
- * - The same action can be driven from anywhere — a key, a touch layout, or a
- *   driver calling {@link InputRegistry.setAction} — and the game cannot tell which,
- *   so a build is checkable without synthesizing input events at all.
+ * - The same action can be driven from anywhere — a key, a touch control, or a
+ *   validator calling {@link InputRegistry.setAction} — and the game cannot tell
+ *   which, so a build is examinable by delivering input at the seam a player uses.
  * - The bindings become *data*. {@link InputRegistry.actions} is a static read that
  *   answers "did this build register and bind everything it was asked to" with no
  *   keystrokes and no gameplay.
  * - Edge detection lives in one place, correctly, instead of in every game.
  *
  * The registry owns no timing of its own: the frame loop calls
- * {@link InputRegistry.endFrame} once per frame, which is what makes "pressed since
- * the last frame" meaningful.
+ * {@link InputRegistry.endFrame} once per frame, after the game has rendered, which
+ * is what makes "pressed since the last frame" mean anything.
+ *
+ * **Nothing here grows with the length of a run.** The action map is bounded by the
+ * registrations the game makes, and the reverse index by the codes those
+ * registrations bind; a key event for a code nothing is bound to is looked up and
+ * dropped, never recorded. A run may deliver a million keystrokes without the
+ * registry retaining one of them.
  */
 
-import type { ActionBinding, ActionKind, RegisteredAction, TouchLayout } from "./contract";
+import type {
+  ActionBinding,
+  ActionKind,
+  RegisteredAction,
+  SurfaceMetrics,
+  TouchLayout,
+} from "./contract";
 import { touchLayout } from "./layouts";
 
 /** The mutable per-action state behind a {@link RegisteredAction}. */
@@ -33,13 +46,20 @@ interface ActionState {
    * released — releasing `KeyW` while `ArrowUp` is still down is not a release.
    */
   heldCodes: Set<string>;
-  /** The value a driver pushed in through `setAction`, when no bound key is down. */
+  /** The value a caller pushed in through `setAction`, when no bound key is down. */
   driven: number;
   /** An armed edge, waiting to be consumed by `pressed` or discarded by `endFrame`. */
   edge: boolean;
 }
 
 export class InputRegistry {
+  /**
+   * The target the listeners went on, taken from the surface *once*.
+   *
+   * Re-reading `events()` at detach time would let a surface whose target moved
+   * strand a pair of live listeners on the old one, so the registry remembers the
+   * target it actually attached to rather than asking again.
+   */
   readonly #target: EventTarget;
   /** Insertion-ordered, which is what gives {@link actions} its stable order. */
   readonly #actions = new Map<string, ActionState>();
@@ -72,15 +92,22 @@ export class InputRegistry {
   };
 
   /**
-   * Attaches to `target` immediately — the registry is live before any action is
-   * registered, so a key held down during start-up is already accounted for by the
-   * time the game binds it… and, more usefully, so the game never has to remember
-   * to start listening.
+   * Attaches to the target the surface supplies, immediately.
+   *
+   * Taking the target from {@link SurfaceMetrics} rather than from a document is
+   * the whole point: it is the same seam the engine measures its element through,
+   * so an engine built over a surface with no document behind it still has a
+   * keyboard. A caller that dispatches a `KeyboardEvent`-shaped event at that
+   * target reaches the actions by the path a player's keystrokes take.
+   *
+   * The listeners go on at construction, before any action is registered, so the
+   * game never has to remember to start listening and a key held down during
+   * start-up is accounted for by the time its action is bound.
    */
-  constructor(target: EventTarget) {
-    this.#target = target;
-    target.addEventListener("keydown", this.#onKeyDown);
-    target.addEventListener("keyup", this.#onKeyUp);
+  constructor(surface: SurfaceMetrics) {
+    this.#target = surface.events();
+    this.#target.addEventListener("keydown", this.#onKeyDown);
+    this.#target.addEventListener("keyup", this.#onKeyUp);
   }
 
   /**
@@ -95,12 +122,19 @@ export class InputRegistry {
    * An unfamiliar `name` is not an error. A game may name actions the engine has
    * never heard of, and that is the normal case for anything beyond a layout's
    * vocabulary.
+   *
+   * @throws if `binding.kind` is neither `"digital"` nor `"analog"`. The kind is a
+   * promise about what the game will read, and an unrecognized one would otherwise
+   * fall through to analog and hand a game written for an on/off a fraction.
    */
   register(name: string, binding: ActionBinding): void {
+    // Resolved before anything is written, so a rejected registration leaves the
+    // action that was already there untouched rather than half-replaced.
+    const kind = resolveKind(name, binding.kind);
     this.#actions.set(name, {
       name,
       keys: [...binding.keys],
-      kind: binding.kind ?? "digital",
+      kind,
       // Only a layout selected *before* this call claims the action: tagging
       // retroactively would let a late `useLayout` rewrite the provenance of
       // actions the game had already bound for itself.
@@ -116,7 +150,13 @@ export class InputRegistry {
    * Selects the touch layout, which from here on tags any registration of one of
    * its vocabulary actions.
    *
-   * @throws if the layout is not in the catalogue — see {@link touchLayout}.
+   * The engine calls this once, from `createEngine`, before a line of game code
+   * runs — which is what makes the layout a property of the whole run and lets
+   * every registration be attributed against the same vocabulary.
+   *
+   * @throws if the layout is not in the catalogue — see {@link touchLayout}. The
+   * catalogue is closed, and a silent fallback would let a run be configured for
+   * one control scheme and executed under another.
    */
   useLayout(name: string): void {
     this.#layout = touchLayout(name);
@@ -132,8 +172,9 @@ export class InputRegistry {
   /**
    * Every registered action with its defaults resolved, in registration order.
    *
-   * Copied out rather than exposed: this crosses the `window` boundary into a
-   * driver, and handing out the live state would let a reader mutate the bindings.
+   * Copied out rather than exposed: this is the "what did the build bind" read, and
+   * handing out the live state would let a reader mutate the bindings it came to
+   * inspect.
    */
   actions(): RegisteredAction[] {
     return [...this.#actions.values()].map((state) => ({
@@ -146,13 +187,14 @@ export class InputRegistry {
 
   /**
    * The action's current magnitude: `1` while a bound key is down, otherwise
-   * whatever a driver last set. A digital action is quantized to `0` or `1` — the
-   * kind is a promise about what the game will read, so a driver pushing `0.5` at a
-   * digital action gets "held", not a half-press the game is not written for.
+   * whatever a caller last drove it to. A digital action is quantized to `0` or
+   * `1` — the kind is a promise about what the game will read, so a driver pushing
+   * `0.5` at a digital action gets "held", not a half-press the game is not written
+   * for.
    *
-   * An unregistered name reads `0` instead of throwing, because a driver probing
-   * for an action a build was supposed to register must be able to discover that it
-   * is missing without taking the page down.
+   * An unregistered name reads `0` instead of throwing, because a check probing for
+   * an action a build was supposed to register must be able to discover that it is
+   * missing without taking the page down.
    */
   value(name: string): number {
     const state = this.#actions.get(name);
@@ -161,7 +203,7 @@ export class InputRegistry {
 
   /**
    * Whether the action was pressed since the last frame — true exactly once per
-   * edge, then consumed.
+   * armed edge, then consumed.
    *
    * Consumption on read is what makes this safe to poll from more than one place:
    * a menu and the gameplay layer both asking "was confirm pressed" in the same
@@ -175,13 +217,23 @@ export class InputRegistry {
   }
 
   /**
-   * Drives the action directly, as the host interface does for a driver.
+   * Drives the action directly, with no key event involved.
    *
    * This takes the same path a key does, so crossing from rest into motion arms the
-   * edge exactly as a keypress would — a driver that sets an action and then checks
+   * edge exactly as a keypress would — a caller that sets an action and then checks
    * `pressed` sees what the player would have caused.
+   *
+   * @throws if `value` is not finite. A `NaN` would resolve to a non-zero magnitude
+   * that no later `setAction(name, 0)` could be compared against, so an analog
+   * action would read `NaN` for the rest of the run; failing here keeps the bad
+   * number at the call that produced it.
    */
   setAction(name: string, value: number): void {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `Action "${name}" cannot be driven to ${String(value)}; the value must be finite.`,
+      );
+    }
     const state = this.#actions.get(name);
     if (state === undefined) return;
     this.#mutate(state, () => {
@@ -192,7 +244,7 @@ export class InputRegistry {
   /**
    * Arms the action's edge without touching its held value — a tap.
    *
-   * Deliberately not "set to 1": a driver has no release to send afterwards, so a
+   * Deliberately not "set to 1": a caller has no release to send afterwards, so a
    * press that also raised the value would leave the action stuck on for the rest
    * of the run.
    */
@@ -215,7 +267,7 @@ export class InputRegistry {
 
   /**
    * Detaches the key listeners. Idempotent, because teardown races — a page unload
-   * and an explicit `stop()` may both reach here.
+   * and an explicit `destroy()` may both reach here.
    */
   detach(): void {
     if (this.#detached) return;
@@ -224,7 +276,12 @@ export class InputRegistry {
     this.#target.removeEventListener("keyup", this.#onKeyUp);
   }
 
-  /** The actions bound to `code`, resolved through the reverse index. */
+  /**
+   * The actions bound to `code`, resolved through the reverse index.
+   *
+   * A code nothing is bound to resolves to nothing and is dropped on the spot,
+   * which is what keeps a run's keystrokes from accumulating anywhere.
+   */
   #actionsFor(code: string): ActionState[] {
     const names = this.#byCode.get(code) ?? [];
     const states: ActionState[] = [];
@@ -250,7 +307,14 @@ export class InputRegistry {
     if (before === 0 && resolveValue(state) !== 0) state.edge = true;
   }
 
-  /** Rebuilds the key-code reverse index from the current bindings. */
+  /**
+   * Rebuilds the key-code reverse index from the current bindings.
+   *
+   * Rebuilt rather than patched: a rebind removes codes as well as adding them, and
+   * an index that only ever grew would leave a replaced binding still raising its
+   * old action — and would grow with the number of registrations rather than with
+   * the codes actually bound.
+   */
   #reindex(): void {
     this.#byCode.clear();
     for (const state of this.#actions.values()) {
@@ -270,14 +334,35 @@ function resolveValue(state: ActionState): number {
 }
 
 /**
+ * The kind an action resolves to, defaulting to `"digital"`.
+ *
+ * Validated rather than coerced. The kind decides what every later read of the
+ * action means, so a typo accepted here would surface frames away as a game
+ * receiving a fraction it never handles, with nothing left to point at the
+ * registration that caused it.
+ */
+function resolveKind(name: string, kind: ActionKind | undefined): ActionKind {
+  if (kind === undefined) return "digital";
+  if (kind !== "digital" && kind !== "analog") {
+    throw new Error(
+      `Action "${name}" was registered with kind ${JSON.stringify(kind)}; ` +
+        `the kinds are "digital" and "analog".`,
+    );
+  }
+  return kind;
+}
+
+/**
  * Narrows an `Event` to a `KeyboardEvent` structurally rather than with
  * `instanceof`.
  *
- * The registry attaches to whatever `EventTarget` it is handed — a `window`, a
- * canvas, a bare target in a test — and an event dispatched from another realm
- * (an iframe, a jsdom document that is not the global one) is a perfectly good
- * keyboard event that fails an `instanceof` against *this* realm's constructor.
- * Checking for the field we actually read is both narrower and more honest.
+ * The registry attaches to whatever `EventTarget` the surface supplies — a
+ * document, a canvas, a bare target under a validator — and an event dispatched
+ * from another realm (an iframe, a jsdom document that is not the global one) is a
+ * perfectly good keyboard event that fails an `instanceof` against *this* realm's
+ * constructor. Checking for the fields we actually read is both narrower and more
+ * honest, and it is what lets a validator drive the engine with a plain `Event`
+ * carrying a `code` and a `repeat`.
  */
 function asKeyboardEvent(event: Event): KeyboardEvent | null {
   const candidate = event as Partial<KeyboardEvent>;

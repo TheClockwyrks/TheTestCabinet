@@ -1,164 +1,183 @@
 # The frame
 
-The engine owns the frame loop. A game hands it two functions and never touches
-`requestAnimationFrame`.
+The engine owns the frame loop. A game supplies `update` and `render` on its
+`Game` object and never touches `requestAnimationFrame`.
 
 ```ts
-interface FrameCallbacks {
-  update(dt: number): void;
-  render(ctx: CanvasRenderingContext2D): void;
-}
-
-engine.frame.run(callbacks: FrameCallbacks): void;
-engine.frame.stop(): void;
-engine.frame.info(): FrameInfo;
+engine.run(options?: RunOptions): Promise<void>;
+engine.advance(frames: number): Promise<void>;
+engine.setClock(clock: Clock): void;
+engine.frame(): FrameInfo;
 ```
 
-## `run` and `stop`
+## What happens in a frame
 
-`run` starts the loop. Calling `run` again while the loop is running swaps the
-callbacks in place; it does not start a second loop.
+1. The canvas is resynced to its element and the device pixel ratio, the frame
+   is cleared to `background`, and the viewport transform is applied.
+2. `update(state, api, dt)` runs, with `dt` in seconds.
+3. `render(state, api)` runs, drawing in logical coordinates.
+4. The transform is reset, the overlay is drawn in device pixels, and the input
+   frame is closed so an edge-triggered action is consumed exactly once.
 
-`stop` halts the loop and drops any frame already scheduled. `run` starts it
-again. A pause screen is usually better written as a flag inside `update`, so
-the game keeps rendering while paused:
+Step 1 happens every frame rather than from a `resize` handler, so the fit is
+correct on first paint, after a window resize, and after a layout change no
+`resize` event fires for.
+
+## `run`
+
+`run` drives frames off the host's frame callback, and the returned promise
+resolves once the loop halts. A loop halts when the supplied signal aborts or
+when the engine is destroyed.
 
 ```ts
-let paused = false;
+const controller = new AbortController();
+await engine.run({ signal: controller.signal });
+```
 
-engine.frame.run({
-  update(dt) {
-    if (engine.input.pressed("pause")) paused = !paused;
-    if (paused) return;
-    world.step(dt);
+A game that ends itself creates an `AbortController` in its own `initialize`,
+keeps it in the state, and aborts it from `update`. Ending the game is then the
+game's own state rather than an engine operation.
+
+```ts
+interface State {
+  ending: AbortController;
+  lives: number;
+}
+
+const game: Game<State> = {
+  initialize() {
+    return { ending: new AbortController(), lives: 3 };
   },
-  render(ctx) {
-    world.draw(ctx);
-    if (paused) drawPauseOverlay(ctx);
+  update(state) {
+    if (state.lives <= 0) state.ending.abort();
   },
-});
+  render() {},
+};
+
+const engine = createEngine({ canvas, width: 640, height: 360, game });
+const state = await engine.initialize();
+await engine.run({ signal: state.ending.signal });
 ```
 
-## The update / render split
+Omitting the signal runs until the engine is destroyed. Calling `run` while the
+loop is already running resolves against the same halt rather than starting a
+second loop.
 
-`update(dt)` advances the simulation. `render(ctx)` draws it. They run in that
-order, once each, every frame.
-
-Keep them separate in the way the split implies: `update` changes state and
-draws nothing, `render` draws and changes nothing. State mutated during `render`
-is invisible to the delta-time checks a run performs, and the two functions are
-stepped independently by a driver.
-
-The `ctx` passed to `render` is already cleared and already carries the logical
-viewport transform. Draw in logical coordinates. Any context state the game
-leaves behind is discarded, because the transform is replaced at the top of the
-next frame.
-
-## `dt` is seconds
-
-`dt` is the real elapsed time for this frame, **in seconds**. A 60 Hz display
-hands the game roughly `0.0167`.
-
-| Property | Value |
-| --- | --- |
-| Unit | Seconds. |
-| Lower bound | `0`. The first frame after `run` reports `0`. |
-| Upper bound | `0.1`. A backgrounded tab returns a clamped step. |
-
-The clamp means real time and simulated time diverge whenever the browser stops
-delivering frames. That is deliberate: the game behaves as if it paused while
-the tab was hidden, instead of integrating thirty seconds in one step and
-tunnelling through its own walls.
-
-Anything that must track wall time regardless — a countdown that should keep
-running while the tab is hidden — reads `Date.now()` for itself.
-
-## No fixed timestep
-
-The engine never accumulates and never fixes the step. There is no
-`FIXED_DT`, and no guarantee that any two frames step by the same amount.
-
-Every rate the game writes down is therefore per second, and every use of it is
-multiplied by `dt`.
-
-Incorrect — assumes a step count:
+A pause screen is usually better written as a flag inside `update`, so the game
+keeps rendering while paused:
 
 ```ts
-const GRAVITY = 0.5;
-
-update() {
-  ball.vy += GRAVITY;      // per frame
-  ball.y += ball.vy;       // per frame
-  ball.vx *= 0.99;         // per frame
-  fuse -= 1;               // frames, not seconds
+update(state, api, dt) {
+  if (api.input.pressed("pause")) state.paused = !state.paused;
+  if (state.paused) return;
+  world.step(dt);
 }
 ```
 
-That game runs at half speed on a 30 Hz display and at double speed on a 120 Hz
-one. Under a jittered clock it produces a different result every run.
+## `advance`
 
-Correct — integrates against `dt`:
+`advance` ticks the clock `frames` times, back to back, with no host frame
+callback in between. The elapsed real time has no effect on the result, so there
+is nothing to wait for or poll.
 
 ```ts
-const GRAVITY = 1800;        // logical pixels per second squared
-const DAMPING_PER_SECOND = 0.55;
+await engine.advance(120);
+```
 
-update(dt) {
-  ball.vy += GRAVITY * dt;
-  ball.y += ball.vy * dt;
-  ball.vx *= Math.pow(DAMPING_PER_SECOND, dt);
-  fuse -= dt;                // seconds
+A tick the clock declines runs no frame, so a clock that supplies its own deltas
+turns `frames` ticks into exactly that many frames. `frames` must be a whole,
+non-negative number, and `advance(0)` runs nothing.
+
+Pair `advance` with a clock that supplies its own deltas. A clock that reads the
+host timestamp reports near-zero deltas here, because no real time passes
+between the frames.
+
+## Clocks
+
+A clock decides what each frame's delta time is. The engine holds exactly one,
+supplied through `EngineOptions.clock` and replaceable through
+`engine.setClock`.
+
+```ts
+interface Clock {
+  delta(nowMs: number): number | null;
 }
 ```
 
-Three rules cover almost everything:
+The result is the frame's delta in milliseconds, or `null` when this tick is not
+a frame. A `null` leaves the simulation and the frame counter untouched, which
+is how a clock paces below the rate its ticks arrive at.
 
-- A velocity is per second, so a position gains `velocity * dt`.
-- An acceleration is per second squared, so a velocity gains `accel * dt`.
-- An exponential decay is a per-second factor raised to `dt`, never a
-  per-frame factor multiplied in.
+| Clock | Constructor | Delta | Skips |
+| --- | --- | --- | --- |
+| `WallClock` | `new WallClock(maxDeltaMs?)` | Real elapsed time since the previous frame, floored at `0` and clamped to `maxDeltaMs` (default `100`). | Never. |
+| `PacedClock` | `new PacedClock(fps, options?)` | One frame interval. | Ticks arriving before the next grid slot. |
+| `ConstantClock` | `new ConstantClock(stepMs)` | `stepMs`, every frame. | Never. |
+| `SequenceClock` | `new SequenceClock(stepsMs)` | The next entry, cycling. | Never. |
+| `JitterClock` | `new JitterClock(minMs, maxMs, seed)` | A seeded draw from `[minMs, maxMs]`. | Never. |
 
-Timers, cooldowns, and animation clocks all count in seconds:
+`WallClock` and `PacedClock` read the host timestamp. The other three ignore it,
+so they produce the same sequence of deltas under `run` and under `advance`.
 
-```ts
-cooldown = Math.max(0, cooldown - dt);
-if (engine.input.pressed("fire") && cooldown === 0) {
-  fire();
-  cooldown = 0.25;         // seconds
-}
-```
+A build in the browser takes `WallClock` by omitting the option. Its clamp bounds
+what a single frame can be worth, so a tab that stops receiving frames resumes as
+though the game paused for the gap.
 
-## Building a fixed step on top
+`ConstantClock` is what makes a scripted run exact: advancing `n` frames adds
+exactly `n * stepMs` of simulated time. `SequenceClock` states an uneven but
+reproducible pattern, and `JitterClock` draws from a seeded range, so a claim
+that a build is delta-time independent replays exactly.
 
-A game that needs a fixed step for its own reasons — deterministic collision
-resolution, a lockstep replay — builds one from the delta it is given:
+Each constructor rejects its arguments where they are supplied, with a
+`RangeError` naming the offending value.
 
-```ts
-const STEP = 1 / 120;      // seconds
-let accumulator = 0;
-
-update(dt) {
-  accumulator += dt;
-  while (accumulator >= STEP) {
-    world.step(STEP);
-    accumulator -= STEP;
-  }
-}
-```
-
-The `while` is bounded, because `dt` is already clamped to `0.1` seconds: at
-most twelve inner steps can run in one frame.
-
-## `info()`
+## `FrameInfo`
 
 ```ts
 interface FrameInfo {
-  count: number;        // frames run since the loop started
-  timeMs: number;       // accumulated simulated time, in milliseconds
-  lastDeltaMs: number;  // the step the most recent frame took, in milliseconds
+  count: number;
+  timeMs: number;
+  lastDeltaMs: number;
 }
 ```
 
-`timeMs` and `lastDeltaMs` are milliseconds; `dt` is seconds. `timeMs` is the
-sum of the deltas the loop actually delivered, which is simulated time and not
-wall time — clamped frames do not add the time they discarded.
+| Field | Meaning |
+| --- | --- |
+| `count` | Frames run since the loop started. |
+| `timeMs` | Accumulated simulated time in milliseconds: the sum of the deltas delivered. |
+| `lastDeltaMs` | The delta the most recent frame was stepped by, in milliseconds. |
+
+`timeMs` is the sum of the deltas rather than elapsed wall time, so it means the
+same thing under `run` and under `advance`. It is read from `engine.frame()` and
+from `api.frame()` inside `update` and `render`.
+
+`timeMs` and `lastDeltaMs` are milliseconds; the `dt` passed to `update` is
+seconds.
+
+## Delta time
+
+Integrate against `dt` rather than assuming a frame rate. Every speed is stated
+per second and multiplied by `dt`:
+
+```ts
+state.x += state.vx * dt;
+state.vy += GRAVITY * dt;
+```
+
+A game that needs a fixed timestep builds one on top of the delta it is handed,
+accumulating `dt` in its own state and stepping while the accumulator exceeds
+the step.
+
+## Errors
+
+| Condition | Result |
+| --- | --- |
+| `run` or `advance` reached before `initialize` resolves | `Error` naming the ordering |
+| `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
+| `update` or `render` throws under `run` | The error reaches the host, and the loop schedules the next frame |
+| `update` or `render` throws under `advance` | `advance` rejects with the cause, and the remaining frames do not run |
+
+A throw under `run` leaves the loop alive so one bad frame does not freeze the
+game permanently. A throw under `advance` stops immediately, because a caller
+stepping an exact number of frames needs the failure rather than the frames
+after it.

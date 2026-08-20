@@ -46,8 +46,8 @@ variants = [
 # "Supported engines".
 [[engine]]
 slug = "simple-2d"           # engine slug the catalogue knows (required)
-min_version = "2.0.0"        # lowest supported engine version, inclusive (required)
-max_version = "3.0.0"        # optional exclusive ceiling; unbounded by default
+min_version = "1.0.0"        # lowest supported engine version, inclusive (required)
+max_version = "2.0.0"        # optional exclusive ceiling; unbounded by default
 
 # How validation builds the produced implementation into a served static site.
 # Required: a case must state both commands explicitly; there are no defaults.
@@ -363,8 +363,8 @@ written against:
 ```toml
 [[engine]]
 slug = "simple-2d"
-min_version = "2.0.0"
-max_version = "3.0.0"
+min_version = "1.0.0"
+max_version = "2.0.0"
 ```
 
 | Key | Required | Meaning |

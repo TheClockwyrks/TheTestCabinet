@@ -1,162 +1,161 @@
 # Input
 
-A game never reads a `KeyboardEvent`. It registers named actions with the keys
-that drive them, and asks the engine for a value or an edge.
+A game declares its actions once, from `InitApi.input` inside `initialize`, and
+reads them every frame from `UpdateApi.input` inside `update`. The engine owns
+the keyboard and resolves each action to a single number, so the game asks what
+an action is doing rather than which key is down.
 
 ```ts
-engine.input.register(name: string, binding: ActionBinding): void;
-engine.input.value(name: string): number;
-engine.input.pressed(name: string): boolean;
-engine.input.useLayout(name: string): void;
-engine.input.layout(): TouchLayout | null;
-engine.input.actions(): RegisteredAction[];
+// In initialize:
+api.input.register(name: string, binding: ActionBinding): void;
+api.input.layout(): TouchLayout | null;
+
+// In update:
+api.input.value(name: string): number;
+api.input.pressed(name: string): boolean;
 ```
 
-## Registering an action
+## Registering actions
 
 ```ts
+type ActionKind = "digital" | "analog";
+
 interface ActionBinding {
-  keys: string[];              // KeyboardEvent.code values
-  kind?: "digital" | "analog"; // defaults to "digital"
+  keys: string[];
+  kind?: ActionKind;
 }
 ```
 
-`keys` are `KeyboardEvent.code` values, not `key` values, so a binding is
-independent of the keyboard layout: `"KeyW"` is the same physical key on QWERTY
-and AZERTY. Common codes are `"ArrowUp"`, `"ArrowDown"`, `"ArrowLeft"`,
-`"ArrowRight"`, `"KeyW"`, `"KeyA"`, `"KeyS"`, `"KeyD"`, `"Space"`, `"Enter"`,
-`"Escape"`, `"KeyP"`, `"KeyM"`, and `"Digit1"` through `"Digit9"`.
+`keys` are `KeyboardEvent.code` values rather than `key` values, so a binding is
+layout-independent: `KeyW` is the same physical key on QWERTY and AZERTY.
 
 ```ts
-engine.input.register("p1-up", { keys: ["KeyW"] });
-engine.input.register("p1-down", { keys: ["KeyS"] });
-engine.input.register("confirm", { keys: ["Enter", "Space"] });
-engine.input.register("pause", { keys: ["KeyP", "Escape"] });
-```
-
-Several keys may drive one action, and one key may drive several actions.
-Registering the same name again replaces the binding wholesale and returns the
-action to rest, keeping its position in `actions()`.
-
-Register every action the game uses, before the first frame.
-
-## `kind`
-
-| Kind | `value` reports |
-| --- | --- |
-| `digital` | `0` or `1`. Any non-zero magnitude is quantized to `1`. |
-| `analog` | A continuous magnitude. A held key still reports `1`. |
-
-Pick `analog` for anything that is meant to be partially deflected, such as a
-steering axis driven by a touch slider. Everything else is `digital`.
-
-## Held versus edge
-
-`value(name)` is the held read: `1` while a bound key is down, `0` otherwise.
-Use it for anything continuous, and scale it by `dt`.
-
-```ts
-update(dt) {
-  const dir = engine.input.value("p1-down") - engine.input.value("p1-up");
-  paddle.y += dir * PADDLE_SPEED * dt;
+initialize(api) {
+  api.input.register("thrust", { keys: ["ArrowUp", "KeyW"] });
+  api.input.register("fire", { keys: ["Space"] });
+  api.input.register("steer", { keys: ["ArrowLeft", "ArrowRight"], kind: "analog" });
+  return { /* ... */ };
 }
 ```
 
-`pressed(name)` is the edge read: `true` exactly once per press, then consumed.
-Use it for anything that should happen once no matter how long the key is held.
+`kind` defaults to `"digital"`. Re-registering a name replaces its binding
+wholesale, returns the action to rest, and keeps its position in the
+registration order. Any name is accepted.
+
+## Reading actions
+
+| Member | Result | Semantics |
+| --- | --- | --- |
+| `value(name)` | `number` | The action's resolved magnitude. A `"digital"` action reports `0` or `1`. An `"analog"` action reports the magnitude as given, and a held key gives it full deflection. An unregistered name reports `0`. |
+| `pressed(name)` | `boolean` | `true` exactly once per armed edge, which the call consumes. An unregistered name reports `false`. |
+
+`value` is for things that happen while a key is held, and `pressed` is for
+things that happen once per press:
 
 ```ts
-update() {
-  if (engine.input.pressed("confirm")) startGame();
-  if (engine.input.pressed("mute")) engine.audio.setMuted(!engine.audio.muted());
+update(state, api, dt) {
+  // Held: applied every frame it is down.
+  const dir = api.input.value("right") - api.input.value("left");
+  state.x += dir * SPEED * dt;
+
+  // Edge: fires once per press, however long the key is held.
+  if (api.input.pressed("fire")) state.bullets.push(spawn(state));
 }
 ```
 
-Two properties of the edge read matter:
+An edge is armed whenever a change takes the resolved value from `0` to
+non-zero, whatever the source. Pressing a second key bound to an already-held
+action is not a new press, and a key event whose `repeat` flag is set arms
+nothing.
 
-- It is consumed by the first call that sees it. Read a given action's edge in
-  one place per frame; a menu and a gameplay layer both polling `confirm` would
-  otherwise both act on one press, and only one of them will.
-- An unconsumed edge is discarded at the end of the frame. A press is news for
-  one frame only.
+The engine closes the input frame after the game has rendered, discarding every
+edge left unconsumed. A press is therefore news for exactly one frame, so read
+each edge in the `update` that follows it.
 
-An OS key repeat is not a new press, and pressing a second key already bound to a
-held action is not a new press either.
+## Key events
 
-Reading an action that was never registered returns `0` from `value` and `false`
-from `pressed`, rather than throwing.
+The engine attaches its `keydown` and `keyup` listeners to the event target the
+`surface` option supplies, and to the canvas's owning document when the engine
+was built without a surface. Each listener reads `KeyboardEvent.code` and
+`KeyboardEvent.repeat` and leaves the event otherwise untouched.
+
+Dispatching a `KeyboardEvent`-shaped event at that target drives an action
+exactly as a player's key does.
 
 ## Touch layouts
 
-`useLayout(name)` selects a layout from the closed catalogue. The catalogue is
-fixed, and an unknown name throws with the valid names in the message.
-
-A layout is an action vocabulary: it names the actions the control scheme
-speaks. Selecting a layout does not register anything by itself — the game still
-registers each action with its keyboard binding — but an action registered
-*after* `useLayout` whose name is in the vocabulary is tagged with that layout.
+A touch layout is the name of a control scheme and the action vocabulary it
+brings with it. Selection is declarative: it tags the actions the game registers
+rather than drawing controls or registering anything.
 
 ```ts
-const engine = createEngine({ canvas, width: 640, height: 360, layout: "dual-vertical" });
+interface TouchLayout {
+  name: string;
+  actions: string[];
+}
 
-// equivalently, after construction:
-engine.input.useLayout("dual-vertical");
-
-engine.input.register("p1-up", { keys: ["KeyW"] });     // tagged "dual-vertical"
-engine.input.register("boost", { keys: ["ShiftLeft"] }); // tagged null
+const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>>;
 ```
 
-| Layout | Controls | Vocabulary |
-| --- | --- | --- |
-| `dual-vertical` | Two vertical sliders | `p1-up`, `p1-down`, `p2-up`, `p2-down` |
-| `single-vertical` | One vertical slider | `up`, `down` |
-| `dpad-4` | A four-way pad | `up`, `down`, `left`, `right` |
-| `dpad-4-two-buttons` | Pad plus two buttons | `up`, `down`, `left`, `right`, `a`, `b` |
-
-Every layout also carries the menu vocabulary — `confirm`, `back`, `pause`,
-`mute` — on top of the actions listed above. A game binds `pause` once and gets
-it whichever layout is live.
-
-A game may register actions beyond its layout's vocabulary. Those actions have a
-`layout` of `null`.
-
-`TOUCH_LAYOUTS` exports the catalogue as data, so a game can register a whole
-vocabulary in a loop:
+The layout is chosen at construction, through `EngineOptions.layout`, and holds
+for the engine's lifetime:
 
 ```ts
-import { TOUCH_LAYOUTS } from "@test-cabinet/simple-2d";
+const engine = createEngine({ canvas, width: 640, height: 360, game, layout: "dpad-4" });
+```
 
-const KEYS: Record<string, string[]> = {
-  "p1-up": ["KeyW"],
-  "p1-down": ["KeyS"],
-  "p2-up": ["ArrowUp"],
-  "p2-down": ["ArrowDown"],
-  confirm: ["Enter", "Space"],
-  back: ["Escape"],
-  pause: ["KeyP"],
-  mute: ["KeyM"],
-};
+| Layout | Controls | Own vocabulary |
+| --- | --- | --- |
+| `dual-vertical` | Two vertical sliders, one per side | `p1-up`, `p1-down`, `p2-up`, `p2-down` |
+| `single-vertical` | One vertical slider | `up`, `down` |
+| `dpad-4` | A four-way pad | `up`, `down`, `left`, `right` |
+| `dpad-4-two-buttons` | A four-way pad and two action buttons | `up`, `down`, `left`, `right`, `a`, `b` |
 
-for (const action of TOUCH_LAYOUTS["dual-vertical"]!.actions) {
-  engine.input.register(action, { keys: KEYS[action] ?? [] });
+The menu actions `["confirm", "back", "pause", "mute"]` are appended to every
+entry's own vocabulary in that order, so
+`TOUCH_LAYOUTS["single-vertical"].actions` is `["up", "down", "confirm", "back",
+"pause", "mute"]`.
+
+A game built with a layout registers that layout's action names, so the scheme
+and the bindings agree:
+
+```ts
+initialize(api) {
+  const layout = api.input.layout();
+  for (const name of layout?.actions ?? []) {
+    api.input.register(name, { keys: KEYS_FOR[name] ?? [] });
+  }
+  return { /* ... */ };
 }
 ```
 
-`layout()` reports the selected layout as `{ name, actions }`, or `null` when
-none was selected.
+`api.input.layout()` returns a fresh copy the caller owns, or `null` when the
+engine was built without one.
 
-## Reading the registrations back
-
-`actions()` returns every registered action in registration order, with defaults
-resolved:
+## `RegisteredAction`
 
 ```ts
 interface RegisteredAction {
   name: string;
   keys: string[];
-  kind: "digital" | "analog";
+  kind: ActionKind;
   layout: string | null;
 }
 ```
 
-It is a copy, so mutating it changes nothing.
+The resolved form of a registration: the binding with its defaults filled in and
+its layout provenance attached. `layout` is the selected layout's name when that
+layout's vocabulary contains the action name, and `null` otherwise.
+
+## Errors
+
+| Condition | Result |
+| --- | --- |
+| `EngineOptions.layout` names a layout outside `TOUCH_LAYOUTS` | `createEngine` throws, naming every valid layout |
+| `register` with a `kind` outside `ActionKind` | `Error` naming the value |
+
+## The overlay toggle key
+
+The backtick key (`Backquote`) toggles the debug overlay. It is engine chrome
+handled by a listener the engine owns rather than a registered action, so the
+action registry stays exactly the vocabulary the build bound.

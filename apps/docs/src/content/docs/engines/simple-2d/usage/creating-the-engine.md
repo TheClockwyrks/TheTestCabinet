@@ -92,18 +92,19 @@ validator runs the same engine over a canvas with no document behind it.
 
 ## Size the canvas
 
-The element's size is the page's business and the fit is the engine's. Express
-that size inline on the canvas element, in whatever CSS units the page wants,
-and leave the `width` and `height` attributes alone.
+The element's size is the page's business and the fit is the engine's. Give the
+canvas a size in whatever CSS units the page wants, inline or through a
+stylesheet, and leave the `width` and `height` attributes alone.
 
 ```html
 <canvas id="game" style="width: 100vw; height: 100vh; display: block"></canvas>
 ```
 
-The engine pins a fixed pixel size onto a canvas that carries no inline size of
-its own, so the inline rule is what keeps the element free to follow the window.
-A canvas that fills a sized wrapper takes the same form, with `width: 100%;
-height: 100%` inline on the canvas.
+The engine pins a fixed pixel size onto the canvas only while its reported size
+still matches those attributes, which is what stops the backing store from
+feeding back into the next measurement. A canvas the page has sized keeps
+following its own rule, so it stays free to track the window. A canvas that
+fills a sized wrapper takes the same form, with `width: 100%; height: 100%`.
 
 The engine reads the laid-out size at the top of every frame and resizes the
 backing store to match the device pixel ratio, so a window resize needs no

@@ -1,119 +1,141 @@
 /**
  * `@test-cabinet/simple-2d` — the **Simple 2D** engine: the runtime a produced 2D
- * game is built on.
+ * game is built on, and the wiring that assembles it.
  *
  * The engine owns the parts of a browser game that are the same in every browser
  * game and are, every single time, re-derived slightly wrong:
  *
- * - **The frame loop and its delta time** — including the clamp that stops a
- *   backgrounded tab handing the simulation a multi-second step, and the
- *   replaceable clock that lets a driver run exactly N frames with exactly the
- *   deltas it chose.
+ * - **The frame loop and its delta time** — a replaceable {@link Clock} answers how
+ *   much each frame is worth, so the sequence a validator steps through
+ *   synchronously is the sequence a reviewer watches play.
  * - **The canvas fit** — a letterboxed, centred, device-pixel-ratio-aware map from
  *   the game's fixed logical design size onto whatever size the page gave the
  *   element, resynced every frame so a resize needs no handler at all.
  * - **Input** — named actions over `KeyboardEvent.code` bindings and a closed
  *   catalogue of touch layouts, with edge detection done once and correctly.
- * - **Audio** — synthesized cues played by name, the first-interaction unlock, and a
- *   semantic log of everything that played.
- * - **Assets** — resolution under one fixed root, with every request logged.
- * - **Diagnostics** — an overlay of values the game names, and its toggle key.
+ * - **Audio** — cues played by name, synthesized or file-backed, and the
+ *   first-gesture unlock a browser insists on.
+ * - **Assets** — resolution and loading under one fixed root.
+ * - **Diagnostics** — an overlay of values the game names, its frame-time graph,
+ *   and the key that toggles it.
  * - **The host interface** — `window.__tcabEngine`, installed unconditionally, so a
- *   driver can operate any build of any case identically.
+ *   post-run check can confirm any build of any case identically.
  *
- * The game supplies exactly two functions — `update(dt)` and `render(ctx)` — plus
- * the declarations that give the engine something to work with: its action
- * bindings, its cue definitions, and whatever it wants on the overlay. It writes its
- * own simulation and its own drawing, in logical coordinates, and touches no event
- * listener, no `requestAnimationFrame`, no `AudioContext`, and no canvas sizing code.
+ * This module is the wiring and nothing else: every behaviour above belongs to a
+ * subsystem beside it, and what is decided *here* is which subsystem talks to which,
+ * and in what order a frame's steps happen. Three of those decisions are worth
+ * stating up front, because a game and a validator both depend on them:
+ *
+ * 1. **Construction runs no game code.** {@link createEngine} validates, builds, and
+ *    returns. The game's own `initialize` runs later, from
+ *    {@link Engine.initialize}, which is what lets a caller subscribe to
+ *    {@link Engine.events} first and observe the game's loading as it happens
+ *    instead of inferring it afterwards.
+ * 2. **Observation is by event.** Nothing here accumulates a log of what a run did.
+ *    A subscriber keeps exactly what it decided was worth keeping, and the engine's
+ *    footprint is the same after a million frames as after one.
+ * 3. **Every measurement goes through a {@link SurfaceMetrics}.** The element's
+ *    size, the device pixel ratio, and the target the key listeners go on all
+ *    arrive through that one seam, so the same engine runs over a canvas in a page
+ *    and over a native canvas with no document behind it.
  *
  * ```ts
- * const engine = createEngine({ canvas, width: 640, height: 360 });
- * engine.input.register("thrust", { keys: ["ArrowUp", "KeyW"] });
- * engine.audio.define("blip", { freq: 880, durationMs: 90 });
- * engine.frame.run({
- *   update: (dt) => { ship.y -= engine.input.value("thrust") * SPEED * dt; },
- *   render: (ctx) => { ctx.fillRect(ship.x, ship.y, 8, 8); },
- * });
+ * const engine = createEngine({ canvas, width: 640, height: 360, game });
+ * await engine.initialize();
+ * await engine.run({ signal: controller.signal });
  * ```
  */
 
 import { AssetLoader } from "./assets";
 import { AudioBus } from "./audio";
-import type { FrameCallbacks, FrameInfo } from "./contract";
+import { WallClock } from "./clocks";
+import type {
+  Clock,
+  Engine,
+  EngineEventMap,
+  EngineOptions,
+  FrameInfo,
+  InitApi,
+  RenderApi,
+  RunOptions,
+  SurfaceMetrics,
+  UpdateApi,
+  Viewport,
+} from "./contract";
 import { Diagnostics } from "./diagnostics";
+import { EventBus } from "./events";
+import type { FrameCallbacks } from "./frame";
 import { FrameLoop } from "./frame";
 import { installHost } from "./host";
 import { InputRegistry } from "./input";
-import { applyViewport, syncCanvas, type Viewport } from "./viewport";
+import { applyViewport, domSurface, syncCanvas } from "./viewport";
 
 /**
  * The key that toggles the debug overlay.
  *
  * Backtick, because it is the traditional debug-console key and no 2D game binds
  * it for gameplay. It is handled by a listener the engine owns rather than by a
- * registered action, deliberately: `actions()` is the static read a driver uses to
- * confirm that a build bound everything its case asked for, and it stays exactly
- * that — the game's vocabulary — only if the engine keeps its own chrome out of it.
+ * registered action, deliberately: the action registry is the read that says what
+ * vocabulary a *build* bound, and it stays exactly that — the game's own — only if
+ * the engine keeps its chrome out of it.
  */
 const OVERLAY_TOGGLE_CODE = "Backquote";
 
-/** What a game hands {@link createEngine}. */
-export interface EngineOptions {
-  /** The canvas the engine sizes, clears, and renders through. */
-  canvas: HTMLCanvasElement;
-  /** The logical design width the game draws in. */
-  width: number;
-  /** The logical design height the game draws in. */
-  height: number;
-  /**
-   * A CSS colour cleared to before every frame. Omitted, the frame is cleared to
-   * transparency instead, so a page can show through the canvas.
-   */
-  background?: string;
-  /** A touch layout from the catalogue, whose vocabulary the game then registers. */
-  layout?: string;
-}
-
 /**
- * The engine, as a game holds it.
+ * Where the host interface is published.
  *
- * Every member is a subsystem the game *uses* rather than configures; there is no
- * lifecycle to manage beyond {@link Engine.destroy}, and no per-frame plumbing at
- * all — {@link Engine.frame}'s `run` is the last call a typical game makes.
+ * The canvas's *own* window rather than the ambient one: a game rendered inside an
+ * iframe — a run's preview pane — must publish where a driver holding that frame
+ * looks, and a canvas from a native implementation has no document at all, in which
+ * case the process's global object is the only window there is.
  */
-export interface Engine {
-  /** The frame loop: start it, stop it, ask where it has got to. */
-  readonly frame: {
-    /** Start driving `cb`. Calling it again swaps the callbacks in place. */
-    run(cb: FrameCallbacks): void;
-    /** Stop the loop, dropping any frame already scheduled. */
-    stop(): void;
-    /** The frame counter, simulated time, and the most recent step. */
-    info(): FrameInfo;
-  };
-  /** Named actions: register them, then read values and edges. */
-  readonly input: InputRegistry;
-  /** Named audio cues: define them, then play them. */
-  readonly audio: AudioBus;
-  /** Asset loading under the fixed asset root. */
-  readonly assets: AssetLoader;
-  /** Named values for the debug overlay. */
-  readonly diagnostics: Diagnostics;
-  /** The current logical-to-device fit, as a snapshot the caller owns. */
-  readonly viewport: () => Viewport;
-  /**
-   * Tear the engine down: stop the loop, drop every listener, and unpublish the
-   * host interface. Idempotent, because teardown races.
-   */
-  destroy(): void;
+function hostTarget(canvas: HTMLCanvasElement): Record<string, unknown> {
+  const owner = (canvas as { ownerDocument?: Document | null }).ownerDocument;
+  return (owner?.defaultView ?? globalThis) as unknown as Record<string, unknown>;
 }
 
 /**
- * Build an engine over `options.canvas` and wire its parts together.
+ * One audio context, built at most once, shared by whoever asks first.
  *
- * The wiring is the engine's real contribution, and it is worth being explicit
- * about what happens around each frame, because it is what a game gets for free:
+ * The asset loader decodes a produced sound file through a context, and the audio
+ * bus plays the resulting buffer through one; a buffer belongs to the context that
+ * decoded it, so those two must be the *same* context or a file-backed cue is
+ * silent for a reason nothing reports. Which of them asks first is not fixed —
+ * decoding happens during the game's initialization, the unlock happens on the
+ * player's first gesture, and either can come first — so the factory memoizes
+ * rather than the caller.
+ *
+ * A host with no Web Audio yields `null` and is asked again next time, so a context
+ * that only appears later is still picked up. The retained state is one slot.
+ */
+function sharedAudioContext(): () => AudioContext | null {
+  let context: AudioContext | null = null;
+  return (): AudioContext | null => {
+    if (context !== null) return context;
+    const ctor = (globalThis as { AudioContext?: typeof AudioContext }).AudioContext;
+    context = ctor ? new ctor() : null;
+    return context;
+  };
+}
+
+/** `true` for a logical design dimension the viewport arithmetic can use. */
+function isDesignSize(size: number): boolean {
+  return Number.isFinite(size) && size > 0;
+}
+
+/**
+ * Build an engine over `options.canvas`, bound to `options.game`, and wire its
+ * parts together.
+ *
+ * Synchronous, and it runs no game code: it validates its arguments, builds the
+ * subsystems, attaches the engine's own listeners, and publishes the host
+ * interface. The game's `initialize` runs from {@link Engine.initialize} and the
+ * first frame from {@link Engine.run} or {@link Engine.advance}, so an engine
+ * exists — subscribable, with its clock replaceable — before anything the game
+ * does is observable.
+ *
+ * The per-frame order is the engine's real contribution, and it is what a game gets
+ * for free:
  *
  * 1. **Before `update`** the canvas is resynced to its element and the device pixel
  *    ratio, the frame is cleared, and the viewport transform is applied. Doing this
@@ -121,23 +143,28 @@ export interface Engine {
  *    on first paint, after a window resize, after a device-pixel-ratio change, and
  *    after a layout change no `resize` event fires for — with no handler at all, and
  *    no chance of the first frame drawing into a canvas that was never sized.
- * 2. **`render` receives the transformed context**, so the game draws in logical
- *    coordinates and letterboxing simply does not appear in its code.
- * 3. **After `render`** the overlay is drawn — with the transform reset, in device
- *    space, so debug text stays the same physical size and stays crisp regardless of
- *    how far the game's own coordinates are being scaled — and the input frame is
- *    closed so an edge-triggered action is consumed exactly once.
+ * 2. **`update` runs with `dt` in seconds**, reading input and playing cues through
+ *    an API that cannot draw.
+ * 3. **`render` receives the prepared context**, so the game draws in logical
+ *    coordinates and letterboxing simply does not appear in its code — through an
+ *    API that cannot read input or play a cue, which is what leaves a frame's
+ *    audible and observable behaviour entirely to the update.
+ * 4. **After `render`** the transform is reset and the overlay is drawn in device
+ *    space, so debug text stays the same physical size however far the game's own
+ *    coordinates are being scaled, and the input frame is closed so an
+ *    edge-triggered action is consumed exactly once.
  *
- * @throws if the design size is not positive, or the canvas cannot give a 2D
- * context. Both are unrecoverable, and both otherwise present as a game that runs
- * but draws nothing — the most expensive kind of failure to trace.
+ * @throws if the design size is not finite and positive, if the canvas yields no 2D
+ * context, or if `layout` is outside the catalogue. Each otherwise presents as a
+ * build that runs and draws nothing, which is the most expensive kind of failure to
+ * trace, so each is refused where it happens.
  */
-export function createEngine(options: EngineOptions): Engine {
-  const { canvas, width, height } = options;
+export function createEngine<S>(options: EngineOptions<S>): Engine<S> {
+  const { canvas, width, height, game } = options;
 
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+  if (!isDesignSize(width) || !isDesignSize(height)) {
     throw new Error(
-      `createEngine needs a positive logical design size, got ${width}x${height}`,
+      `createEngine needs a finite, positive logical design size, got ${width}x${height}`,
     );
   }
 
@@ -148,35 +175,116 @@ export function createEngine(options: EngineOptions): Engine {
     );
   }
 
-  // The canvas's *own* document, not the ambient one: a game rendered inside an
-  // iframe (a run's preview pane) must listen where its own key events are, and
-  // installing its host interface on the outer window would put it out of a
-  // driver's reach.
-  const doc = canvas.ownerDocument ?? document;
-  const view = doc.defaultView ?? globalThis;
+  // Read once and held: the surface is the engine's only window onto the element,
+  // and re-deriving it per frame would let a build be measured through one object
+  // and listened to through another.
+  const surface: SurfaceMetrics = options.surface ?? domSurface(canvas);
+  const target = surface.events();
 
-  const input = new InputRegistry(doc);
-  if (options.layout !== undefined) input.useLayout(options.layout);
+  // First, so `engine.events` is subscribable the instant the engine exists and no
+  // subsystem below can be built holding a reference to a bus that is not the one a
+  // caller will subscribe to.
+  const bus = new EventBus();
+  const emit = <K extends keyof EngineEventMap>(
+    event: K,
+    payload: EngineEventMap[K],
+  ): void => bus.emit(event, payload);
 
-  const audio = new AudioBus();
-  const assets = new AssetLoader();
+  const input = new InputRegistry(surface);
+  try {
+    if (options.layout !== undefined) input.useLayout(options.layout);
+  } catch (error) {
+    // The registry attached its key listeners at construction, and a refused layout
+    // means no engine is returned to detach them with. Undo before rethrowing, so a
+    // rejected build leaves the page exactly as it found it.
+    input.detach();
+    throw error;
+  }
+
+  const audioContext = sharedAudioContext();
+  // `assetRoot` is passed through rather than defaulted here: the loader owns the
+  // convention, and a second copy of `"assets/"` in this file is a second place for
+  // it to be changed in.
+  const assets = new AssetLoader({
+    root: options.assetRoot,
+    emit,
+    audioContext,
+  });
+  const audio = new AudioBus({
+    emit,
+    // Frame time rather than wall time, so a cue's `t` lines up with the
+    // `frame().timeMs` a check asserts against. Frames stepped through `advance`
+    // run back to back with no real time between them, and a wall stamp would put
+    // every cue of a several-hundred-frame advance at the same instant.
+    now: (): number => loop.info().timeMs,
+    // Through the loader, so a file-backed cue obeys the asset root, the path
+    // rules, and the `asset:loaded` / `asset:failed` events like any other asset.
+    loadAudio: (path: string): Promise<AudioBuffer> => assets.loadAudio(path),
+    audioContext,
+  });
   const diagnostics = new Diagnostics();
 
-  const loop = new FrameLoop({ context: () => ctx });
+  /**
+   * The state the game built, or `null` before it has built one.
+   *
+   * A box rather than a bare `S | null`, because `S` may perfectly well *be*
+   * `null`: a game whose state is a single mutable object is the common case, but a
+   * game is entitled to any state type it likes, and "has it been built" must not be
+   * answered by inspecting the value.
+   */
+  let built: { value: S } | null = null;
+  let starting: Promise<S> | null = null;
+  let destroyed = false;
 
-  // Cue timestamps come from the frame clock rather than the wall clock. Under a
-  // manual clock no real time passes at all, so a `performance.now()` stamp would
-  // put every cue of a 600-frame `advance` at the same instant; against the frame
-  // clock, a cue's `t` lines up with the `frame().timeMs` a driver is asserting on.
-  audio.now = (): number => loop.info().timeMs;
+  /**
+   * The state, or a refusal naming the ordering.
+   *
+   * Every public entry point that needs the game's state goes through here, so the
+   * rule is stated once and every violation of it reads the same. The message names
+   * both halves of the ordering, because the mistake is never "there is no state" on
+   * its own — it is always "this was reached before the state was built".
+   */
+  const requireState = (member: string): S => {
+    if (built === null) {
+      throw new Error(
+        `engine.${member} was reached before the game's state was built: await engine.initialize() first`,
+      );
+    }
+    return built.value;
+  };
 
-  // Sized once up front so `viewport()` and the game's own setup code see a real
-  // fit before the first frame runs.
-  let viewport = syncCanvas(canvas, width, height);
+  /**
+   * The state, as a frame reads it.
+   *
+   * Separate from {@link requireState} because it cannot fail: no frame runs before
+   * `initialize` resolves, since both entry points that produce one refuse first.
+   * It exists so the invariant is stated where the frame depends on it rather than
+   * being asserted away, and its message says "engine bug" rather than blaming a
+   * caller who did nothing wrong.
+   */
+  const frameState = (): S => {
+    if (built === null) {
+      throw new Error("simple-2d: a frame ran before the game's state was built");
+    }
+    return built.value;
+  };
 
-  /** Resize, clear and transform, in that order — the frame's blank page. */
+  // Sized once up front, so `viewport()` and the game's own initialization see a
+  // real fit rather than a zero one before the first frame runs.
+  let viewport = syncCanvas(canvas, width, height, surface);
+
+  /** The fit as a caller owns it — a copy, so holding one observes no later frame. */
+  const snapshot = (): Viewport => ({
+    width: viewport.width,
+    height: viewport.height,
+    scale: viewport.scale,
+    offsetX: viewport.offsetX,
+    offsetY: viewport.offsetY,
+  });
+
+  /** Resize, clear, and transform, in that order — the frame's blank page. */
   const prepare = (): void => {
-    viewport = syncCanvas(canvas, width, height);
+    viewport = syncCanvas(canvas, width, height, surface);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (options.background === undefined) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -187,119 +295,258 @@ export function createEngine(options: EngineOptions): Engine {
     applyViewport(ctx, viewport);
   };
 
+  // The three scoped APIs are built once and reused for the life of the engine,
+  // rather than per frame: they are stateless views onto the subsystems, a frame
+  // that allocated three objects and eight closures would do so sixty times a
+  // second for no gain, and a game that holds on to the one it was handed keeps
+  // reading the live engine rather than a stale snapshot of it.
+  //
+  // Each is a facade rather than the subsystem itself. Structural typing would
+  // happily accept the whole `InputRegistry` where `UpdateApi["input"]` is asked
+  // for, and that would hand the game `setAction`, `detach`, and the rest; naming
+  // the members explicitly is what makes "each function receives only the part of
+  // the engine it may use" true rather than merely documented.
+  const initApi: InitApi = {
+    input: {
+      register: (name, binding): void => input.register(name, binding),
+      layout: () => input.layout(),
+    },
+    audio: {
+      define: (cue, spec): void => audio.define(cue, spec),
+      load: (cue, path): Promise<void> => audio.load(cue, path),
+    },
+    assets: {
+      loadImage: (path): Promise<ImageBitmap> => assets.loadImage(path),
+      loadAudio: (path): Promise<AudioBuffer> => assets.loadAudio(path),
+      load: (path): Promise<Blob> => assets.load(path),
+      resolve: (path): string => assets.resolve(path),
+    },
+    diagnostics: {
+      register: (name, source): void => diagnostics.register(name, source),
+    },
+    events: bus,
+    viewport: snapshot,
+  };
+
+  const updateApi: UpdateApi = {
+    input: {
+      value: (name): number => input.value(name),
+      pressed: (name): boolean => input.pressed(name),
+    },
+    audio: {
+      play: (cue): void => audio.play(cue),
+      setMuted: (muted): void => audio.setMuted(muted),
+      muted: (): boolean => audio.muted(),
+    },
+    frame: (): FrameInfo => loop.info(),
+    viewport: snapshot,
+  };
+
+  const renderApi: RenderApi = {
+    ctx,
+    frame: (): FrameInfo => loop.info(),
+    viewport: snapshot,
+  };
+
+  /**
+   * The game, as the loop drives it.
+   *
+   * `prepare` runs at the top of the update rather than as a separate step because
+   * the loop knows only about two callbacks and a set of after-frame hooks: the
+   * canvas work has to happen inside the frame and before the game touches the
+   * context, and wrapping is what keeps the loop ignorant of the canvas entirely.
+   *
+   * Both read the state through `frameState`, which cannot fail here — no frame
+   * runs before `initialize` resolves — but which keeps the invariant stated at the
+   * point that depends on it instead of leaving a non-null assertion behind.
+   */
+  const callbacks: FrameCallbacks = {
+    update: (dt: number): void => {
+      prepare();
+      game.update(frameState(), updateApi, dt);
+    },
+    // The prepared context is `renderApi.ctx`, the same object the loop would hand
+    // over, so the argument is left unnamed rather than shadowing it.
+    render: (): void => {
+      game.render(frameState(), renderApi);
+    },
+  };
+
+  const loop = new FrameLoop({
+    clock: options.clock ?? new WallClock(),
+    callbacks,
+    context: (): CanvasRenderingContext2D => ctx,
+  });
+
+  // Late-wired, because the overlay and the loop each need the other: the loop's
+  // frames are what there is to time, and the overlay is what reports the timing.
+  diagnostics.timings = {
+    metrics: () => loop.metrics(),
+    series: () => loop.series(),
+  };
+
   loop.onFrame(() => {
     // Identity transform: the overlay is chrome laid over the finished picture, not
     // part of it, so it is measured and drawn in device pixels rather than being
     // scaled — and letterboxed — along with the game's own coordinates.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     diagnostics.draw(ctx, canvas.width, canvas.height);
+    // Last, so an edge armed during this frame was available to the game's update
+    // and is gone before the next one: a press is news for exactly one frame.
     input.endFrame();
   });
 
-  const onOverlayKey = (event: KeyboardEvent): void => {
+  const onOverlayKey = (event: Event): void => {
+    const key = event as KeyboardEvent;
     // An auto-repeat would strobe the panel for as long as the key is held.
-    if (event.code !== OVERLAY_TOGGLE_CODE || event.repeat) return;
+    if (key.code !== OVERLAY_TOGGLE_CODE || key.repeat) return;
     diagnostics.toggle();
   };
-  doc.addEventListener("keydown", onOverlayKey);
+  target.addEventListener("keydown", onOverlayKey);
 
   /**
    * Browsers refuse to start audio outside a user gesture, so the bus stays locked
    * until the player touches something. Listening in the capture phase means a game
    * that consumes its own canvas events cannot accidentally prevent the unlock, and
    * both listeners come off as soon as either fires — one gesture is all that is
-   * needed, and {@link AudioBus.unlock} is idempotent regardless.
+   * needed, and the bus's own unlock is idempotent regardless.
    */
   const unlockAudio = (): void => {
     audio.unlock();
     removeUnlockListeners();
   };
   const removeUnlockListeners = (): void => {
-    doc.removeEventListener("pointerdown", unlockAudio, true);
-    doc.removeEventListener("keydown", unlockAudio, true);
+    target.removeEventListener("pointerdown", unlockAudio, true);
+    target.removeEventListener("keydown", unlockAudio, true);
   };
-  doc.addEventListener("pointerdown", unlockAudio, true);
-  doc.addEventListener("keydown", unlockAudio, true);
+  target.addEventListener("pointerdown", unlockAudio, true);
+  target.addEventListener("keydown", unlockAudio, true);
 
   const uninstallHost = installHost({
-    target: view as unknown as Record<string, unknown>,
+    target: hostTarget(canvas),
     frame: loop,
-    input,
-    audio,
-    assets,
     diagnostics,
   });
 
-  let destroyed = false;
-
   return {
-    frame: {
-      run(cb: FrameCallbacks): void {
-        // The game's callbacks are wrapped rather than handed to the loop directly,
-        // because the per-frame canvas work has to happen *inside* the frame and
-        // before the game touches the context. Wrapping keeps the loop ignorant of
-        // the canvas — it owns when a frame happens, never what it draws on.
-        loop.run({
-          update: (dt: number): void => {
-            prepare();
-            cb.update(dt);
-          },
-          render: (context: CanvasRenderingContext2D): void => {
-            cb.render(context);
-          },
-        });
-      },
-      stop: (): void => loop.stop(),
-      info: (): FrameInfo => loop.info(),
+    events: bus,
+
+    get state(): S {
+      return requireState("state");
     },
-    input,
-    audio,
-    assets,
-    diagnostics,
-    viewport: (): Viewport => ({
-      width: viewport.width,
-      height: viewport.height,
-      scale: viewport.scale,
-      offsetX: viewport.offsetX,
-      offsetY: viewport.offsetY,
-    }),
+
+    /**
+     * Run the game's `initialize` once and resolve to the state it produced.
+     *
+     * Every call after the first hands back the *same* promise, which is what makes
+     * a second call resolve to the state already built — and what stops a caller
+     * that cannot easily tell whether initialization has happened from running the
+     * game's declarations twice, registering every action and cue a second time.
+     *
+     * A rejection is shared for the same reason: re-running an `initialize` that
+     * failed halfway would re-declare whatever it managed to declare before it did.
+     */
+    initialize(): Promise<S> {
+      starting ??= (async (): Promise<S> => {
+        const value = await game.initialize(initApi);
+        built = { value };
+        return value;
+      })();
+      return starting;
+    },
+
+    /**
+     * Drive frames off the host's frame callback until the signal aborts or the
+     * engine is destroyed.
+     *
+     * A destroyed engine has already halted, so this resolves rather than starting a
+     * pump nothing would ever stop: `destroy` and `run` race in exactly the teardown
+     * paths that are hardest to order, and a refusal there would turn a benign race
+     * into a failure.
+     */
+    run(runOptions: RunOptions = {}): Promise<void> {
+      requireState("run");
+      if (destroyed) return Promise.resolve();
+      return loop.run(runOptions);
+    },
+
+    /**
+     * Tick the clock `frames` times, back to back, running a frame for each tick the
+     * clock accepts.
+     *
+     * The frames run *synchronously*, before the returned promise is handed back —
+     * the promise is there so a caller can `await` a step uniformly, not because
+     * anything is deferred.
+     *
+     * Two kinds of failure are kept apart deliberately. A caller's own mistake — no
+     * state yet, a count that is not a whole non-negative number — throws at the
+     * call, where the mistake is, and reaches an `await`ing caller just the same. A
+     * throw out of the game's `update` or `render` *rejects*, because the frames
+     * were running by then and the failure belongs to them; the remaining frames are
+     * abandoned, since a caller stepping an exact count needs the failure rather
+     * than the frames after it.
+     */
+    advance(frames: number): Promise<void> {
+      requireState("advance");
+      if (!Number.isInteger(frames) || frames < 0) {
+        throw new RangeError(
+          `engine.advance() needs a whole, non-negative frame count, got ${frames}`,
+        );
+      }
+      if (destroyed) return Promise.resolve();
+      try {
+        loop.advance(frames);
+      } catch (error) {
+        // Unwrapped: the cause travels as the game threw it, so the failure a caller
+        // catches is the one its own code produced.
+        return Promise.reject(error);
+      }
+      return Promise.resolve();
+    },
+
+    setClock(clock: Clock): void {
+      loop.setClock(clock);
+    },
+
+    frame: (): FrameInfo => loop.info(),
+
+    viewport: snapshot,
+
+    /**
+     * Halt the loop, drop every listener, and unpublish the host interface.
+     *
+     * Idempotent, because teardown races: a page unload, an explicit call, and a
+     * test's `afterEach` all reach here, and only the first one has anything to do.
+     *
+     * The loop is halted first, so nothing can emit into a bus that is about to be
+     * cleared, and the subscriptions go last: a handler typically closes over the
+     * caller's own scene, and leaving the bus subscribed after teardown keeps that
+     * scope alive and lets a stale handler observe a successor engine's events.
+     */
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
-      loop.stop();
+      loop.halt();
       input.detach();
-      doc.removeEventListener("keydown", onOverlayKey);
+      target.removeEventListener("keydown", onOverlayKey);
       removeUnlockListeners();
       uninstallHost();
+      bus.clear();
     },
   };
 }
 
+export { ConstantClock, JitterClock, PacedClock, SequenceClock, WallClock } from "./clocks";
+export type { PacedClockOptions } from "./clocks";
 export { TOUCH_LAYOUTS } from "./layouts";
+export { applyViewport, fitViewport, syncCanvas } from "./viewport";
 
-export type {
-  ActionBinding,
-  ActionKind,
-  AssetEvent,
-  AudioState,
-  ClockMode,
-  CueEvent,
-  CueSpec,
-  FrameCallbacks,
-  FrameInfo,
-  RegisteredAction,
-  Schedule,
-  ScheduleFixed,
-  ScheduleJitter,
-  ScheduleSequence,
-  TouchLayout,
-} from "./contract";
-
-// The subsystem classes are exported as types only. They are reachable through
-// `Engine`, so a game needs to be able to *name* them; it never needs to construct
-// one, and an engine assembled by hand would be one with no frame loop driving it.
-export type { AssetLoader } from "./assets";
-export type { AudioBus } from "./audio";
-export type { Diagnostics } from "./diagnostics";
-export type { InputRegistry } from "./input";
-export type { Viewport } from "./viewport";
+/**
+ * The whole shared vocabulary, re-exported wholesale.
+ *
+ * `contract.ts` *is* the package's type surface — it exists precisely so that the
+ * engine, the game-facing API, and the `./host` entry point cannot drift apart —
+ * and re-exporting it as a list would add a fourth place for a type to be forgotten
+ * in. The contract module holds no runtime values, so nothing but types crosses.
+ */
+export type * from "./contract";

@@ -47,10 +47,12 @@ comfortable while the occasional long frame a player actually feels sits in the
 tail, so the two percentiles are what say whether a build is uniformly slow or
 intermittently uneven.
 
-The window is the last ten seconds of frames, held in a ring buffer of 600
-samples. The capacity is fixed, so a build delivering frames faster than sixty a
-second summarizes a shorter span of history in place of growing the buffer, and
-the engine's memory stays flat for a run of any length.
+The window is the last ten seconds of frames, held in a ring buffer of 2048
+samples. Both rules bound it and neither replaces the other: age is what keeps a
+stall from colouring the percentiles once the game has recovered, and capacity is
+what keeps the memory constant, so a build delivering frames faster than two
+hundred a second summarizes a shorter span of history in place of growing the
+buffer.
 
 The graph and the three figures occupy the top of the panel, above the registered
 lines, so a game's own values keep their order below them.
