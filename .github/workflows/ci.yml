@@ -3,7 +3,8 @@ name: CI
 # Critical validation mirrored from the Azure DevOps pipeline (the primary CI).
 # Azure runs the full suite, including linting; GitHub runs only the checks that
 # would otherwise let a genuinely broken change through — the headless Rust crates
-# (build/tests), the front-end build, the front-end unit tests, and the
+# (build/tests), the front-end build, the front-end unit tests, the desktop app
+# (whose runner image matches the one release.yml bundles on), and the
 # frozen-version gate (which protects already-recorded run results, needs no
 # toolchain, and takes seconds) — so a green GitHub run still means the components
 # actually build and pass. Linting and spec checks are left to Azure.
@@ -55,6 +56,28 @@ jobs:
           node-version: 22.23.1
           cache: npm
       - run: ./scripts/ci/web-test.sh
+
+  # The Tauri desktop app, both halves (apps/desktop + crates/desktop). Azure runs
+  # the same script on Linux and Windows; this leg is here anyway, and pinned to
+  # ubuntu-22.04, because that is the EXACT image release.yml's desktop job builds
+  # on. A release once failed on all three of its platforms in the desktop UI's
+  # `tsc -b`; running the same build on the same runner image on every change is
+  # what makes that unrepeatable.
+  desktop:
+    name: Desktop app (build & test)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      # Tauri v2's Linux backend compiles against the system WebKitGTK/GTK/tray
+      # libraries; the devcontainer curates exactly that package set.
+      - run: ./.devcontainer/languages/rust/tauri.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: npm
+      # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
+      - run: ./scripts/ci/install-nextest.sh
+      - run: ./scripts/ci/desktop-build.sh
 
   frozen:
     name: Frozen test-case versions (unchanged)

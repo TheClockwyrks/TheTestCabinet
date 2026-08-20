@@ -6,10 +6,11 @@
 #
 # Scoped with `--workspace --exclude test-cabinet-desktop`: the only crate left
 # out is the Tauri desktop shell (`crates/desktop`), so the per-change CI runners
-# do not need the desktop app's heavy GUI system libraries (see rust-lint.sh). The
-# desktop app is built and bundled for every platform in the GitHub Release
-# workflow (.github/workflows/release.yml) instead. This is the critical Rust
-# validation that both Azure DevOps and GitHub run.
+# do not need the desktop app's heavy GUI system libraries (see rust-lint.sh).
+# That crate is not skipped, only moved — `desktop-build.sh` builds, lints, and
+# tests it on a runner that does install those libraries, so the workspace is
+# covered end to end. This is the critical Rust validation that both Azure DevOps
+# and GitHub run.
 #
 # Tests run with cargo-nextest (the repo's runner; see .config/nextest.toml —
 # retries=1, fail-fast=false, and a per-test hard timeout). nextest does not
