@@ -67,6 +67,7 @@ fn setup_from(declared: GgRunLimits) -> LimitsSetup {
         spend: Arc::new(RunSpend::default()),
         cancel: CancelWatch::disabled(),
         fault: FaultLatch::default(),
+        ceiling: CeilingLatch::default(),
     }
 }
 
@@ -100,6 +101,25 @@ fn turn_outcomes(
                 loop_aborts,
                 ..
             } => Some((*outcome, *error, *consecutive_errors, *turns, *loop_aborts)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The generated output every turn on the stream threw away, as `(words, characters)`, in order.
+///
+/// Kept out of [`turn_outcomes`] rather than widened into it for the reason the error type is: the
+/// assertions there are about ceilings, and two more elements in every one of them would bury the
+/// figure under test.
+fn discarded_output(events: &[GgTelemetryEvent]) -> Vec<(u64, u64)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::TurnOutcome {
+                loop_abort_words,
+                loop_abort_chars,
+                ..
+            } => Some((*loop_abort_words, *loop_abort_chars)),
             _ => None,
         })
         .collect()
@@ -180,8 +200,10 @@ async fn a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recor
     assert_eq!(summary.limit_hit.as_ref(), Some(&breaches[0]));
     assert_eq!(summary.limits.max_consecutive_errors, Some(3));
     assert_eq!(summary.limits.max_turns, Some(20));
-    // 6. a spent ceiling is the operator's bound, not a harness failure: the process exits 0.
-    assert_eq!(outcome, SessionOutcome::Ran);
+    // 6. a spent ceiling is not a harness failure, and it is not a session that ran to a natural
+    //    end either: it exits on the ceiling's own code, so the host records the run apart and
+    //    never retries it.
+    assert_eq!(outcome, SessionOutcome::LimitExceeded);
 }
 
 /// **A run with no turn ceiling stops on the error ceiling it declares, not by burning turns.**
@@ -301,7 +323,7 @@ fn priced_turn(dollars: f64) -> ModelResponse {
             comparable: Some(dollars),
             actual: Some(dollars),
         }),
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -517,6 +539,186 @@ async fn the_turn_ceiling_and_the_deadline_now_record_a_breach_too() {
         breach.observed >= 30.0,
         "the observation is the elapsed wall clock, not the budget: {}",
         breach.observed
+    );
+}
+
+// ---------------------------------------------------------------------------
+// What a breached ceiling does to the process
+// ---------------------------------------------------------------------------
+
+/// **Every one of the five ceilings raises the run's ceiling latch.**
+///
+/// The latch is what the session epilogue turns into `SessionOutcome::LimitExceeded`, and therefore
+/// into the exit code the host classifies the run by. A ceiling that stopped an agent without
+/// raising it would leave the run exiting as one that ran to a natural end: collected, scored, and
+/// retried against the very configuration that produced the stop.
+///
+/// All five are driven here rather than one, because "the one place any of the five ends an agent"
+/// is a claim about all five. The whole-session half — that a raised latch really does become the
+/// process's exit code — is pinned by
+/// `a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recording_it` and by
+/// `agent.sandbox.test.rs`'s turn-ceiling case, which go through `run` rather than `drive`.
+#[tokio::test]
+async fn every_one_of_the_five_ceilings_raises_the_runs_ceiling_latch() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+
+    /// Drive one root to its ending under `setup`, and hand back the ceiling the run's latch ends
+    /// up naming.
+    async fn latched(
+        client: &dyn ModelClient,
+        dir: &Path,
+        registry: &ToolRegistry,
+        emitter: &Emitter,
+        setup: LimitsSetup,
+        code: CodeSetup,
+    ) -> Option<GgLimitKind> {
+        let latch = setup.ceiling.clone();
+        drive_root(client, dir, registry, emitter, setup, code).await;
+        latch.raised().map(|breach| breach.limit)
+    }
+
+    // The turn ceiling, whose status is the host's own `exhausted`.
+    assert_eq!(
+        latched(
+            &MockClient::new("mock/primary", vec![priced_turn(0.0); 4]),
+            dir.path(),
+            &registry,
+            &emitter,
+            setup_from(GgRunLimits {
+                max_turns: Some(2),
+                ..GgRunLimits::authored()
+            }),
+            no_code(),
+        )
+        .await,
+        Some(GgLimitKind::Turns),
+    );
+
+    // The wall-clock budget, whose status is the host's own `timed_out`. A deadline already behind
+    // the loop stops it before its first turn, which is the ceiling's behaviour with no clock to
+    // wait on.
+    let mut passed = setup_from(GgRunLimits {
+        max_turns: Some(5),
+        max_runtime_secs: Some(30),
+        ..GgRunLimits::authored()
+    });
+    passed.deadline = Some(Instant::now());
+    assert_eq!(
+        latched(
+            &MockClient::with_default_script("mock/primary"),
+            dir.path(),
+            &registry,
+            &emitter,
+            passed,
+            no_code(),
+        )
+        .await,
+        Some(GgLimitKind::Runtime),
+    );
+
+    // The consecutive-error ceiling.
+    assert_eq!(
+        latched(
+            &MockClient::new("mock/primary", prose_script(6)),
+            dir.path(),
+            &registry,
+            &emitter,
+            setup_from(GgRunLimits {
+                max_turns: Some(12),
+                max_consecutive_errors: Some(2),
+                ..GgRunLimits::authored()
+            }),
+            code_on(),
+        )
+        .await,
+        Some(GgLimitKind::ConsecutiveErrors),
+    );
+
+    // The error-rate ceiling.
+    assert_eq!(
+        latched(
+            &MockClient::new("mock/primary", prose_script(8)),
+            dir.path(),
+            &registry,
+            &emitter,
+            setup_from(GgRunLimits {
+                max_turns: Some(12),
+                max_error_rate: Some(0.5),
+                error_rate_window: Some(4),
+                ..GgRunLimits::authored()
+            }),
+            code_on(),
+        )
+        .await,
+        Some(GgLimitKind::ErrorRate),
+    );
+
+    // The run-wide cost ceiling.
+    assert_eq!(
+        latched(
+            &MockClient::new("mock/primary", vec![priced_turn(1.0); 6]),
+            dir.path(),
+            &registry,
+            &emitter,
+            setup_from(GgRunLimits {
+                max_turns: Some(6),
+                max_cost: Some(1.5),
+                ..GgRunLimits::authored()
+            }),
+            no_code(),
+        )
+        .await,
+        Some(GgLimitKind::Cost),
+    );
+}
+
+/// **A run that stayed inside every ceiling it armed exits 0.**
+///
+/// The control for the case above, and the one that decides whether the new exit code is a
+/// safeguard or a tax: ceilings are armed on nearly every real run, and a run that finished under
+/// them is an ordinary result. The latch stays unraised, so the process exits `0` and the host
+/// collects and scores the tree.
+#[tokio::test]
+async fn a_run_that_stayed_inside_its_ceilings_exits_zero() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-within".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_RESPONSES_AS_CODE);
+    // Every ceiling armed, all of them wide: the run is bounded and finishes anyway.
+    set.limits = GgRunLimits {
+        max_turns: Some(20),
+        max_runtime_secs: Some(3_600),
+        max_consecutive_errors: Some(5),
+        max_error_rate: Some(0.5),
+        error_rate_window: Some(10),
+        max_cost: Some(100.0),
+        ..GgRunLimits::authored()
+    };
+    let inv = invocation(dir.path(), set);
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |b| {
+        Box::new(MockClient::new(
+            &b.model_id,
+            vec![code_reply(FINISHING_PROGRAM)],
+        ))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran,
+    );
+
+    let events = sink.events();
+    assert!(matches!(
+        &events.last().expect("a terminal event").kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+    assert!(
+        limit_breaches(&events).is_empty(),
+        "nothing was breached, so nothing may be recorded as breached"
     );
 }
 
@@ -776,7 +978,7 @@ async fn a_limit_stopped_run_keeps_everything_it_built() {
             comparable: Some(1.0),
             actual: Some(1.0),
         }),
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     };
     let client = MockClient::new(
         "mock/primary",
@@ -978,9 +1180,11 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
             ))
         });
 
+    // A ceiling breached by *any* agent is a fact about the run, so the process exits on the
+    // ceiling's code even though the root finished on its own terms.
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
+        SessionOutcome::LimitExceeded
     );
 
     let events = sink.events();
@@ -1222,7 +1426,7 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
         &emitter,
         &healthy,
         failed_call,
-        0,
+        LoopAborts::none(),
     );
     assert!(
         breach.is_some(),
@@ -1243,7 +1447,7 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
         &emitter,
         &broken,
         failed_call,
-        0,
+        LoopAborts::none(),
     );
     assert!(
         breach.is_none(),
@@ -1477,12 +1681,15 @@ async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() 
     );
 }
 
-/// **A turn that survived a loop reports what was thrown away.**
+/// **A turn that survived a loop reports what was thrown away** — how many replies, and how much
+/// generation went with them.
 ///
 /// Loop detection discarding two replies and the third one working is a *successful* turn — the
 /// outcome is `progressed`, no ceiling counts it, and nothing about the run's error rate changes.
-/// The money is still gone, so the count rides on the turn that eventually produced a reply, and the
-/// operator log says so out loud.
+/// The generation is still gone and still billed, so the tally rides on the turn that eventually
+/// produced a reply, and the operator log says so out loud in the units gg measured: words and
+/// characters, never tokens and never dollars, because the provider reports usage at the end of a
+/// stream neither abandoned reply ever reached.
 #[tokio::test]
 async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
     let dir = TempDir::new().unwrap();
@@ -1497,7 +1704,11 @@ async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
         "write_file",
         json!({ "path": "notes.md", "contents": "hello" }),
     );
-    looped.loop_aborts = 2;
+    looped.loop_aborts = LoopAborts {
+        attempts: 2,
+        words: 6_130,
+        chars: 38_900,
+    };
     let end = drive_root(
         &MockClient::new("mock/primary", vec![looped, stop_response()]),
         dir.path(),
@@ -1518,11 +1729,87 @@ async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
         ],
         "a discarded attempt is not an error, and is not a turn of its own"
     );
+    assert_eq!(
+        discarded_output(&events),
+        vec![(6_130, 38_900), (0, 0)],
+        "the size of what was thrown away rides on the same turn the count does"
+    );
 
     let warned = warn_messages(&events).join("\n");
     assert!(
         warned.contains("loop detection discarded 2 looping model responses"),
         "the discarded replies are named on the operator's stream:\n{warned}"
+    );
+    assert!(
+        warned.contains("6130 words") && warned.contains("38900 characters"),
+        "and so is how much generation they threw away:\n{warned}"
+    );
+}
+
+/// **A discarded looping reply changes nothing about what the run cost.**
+///
+/// The ruling this whole measure exists under: a looping reply is a model defect, so its generation
+/// must not be charged to the configuration under test. Two runs, identical in every respect except
+/// that one of them threw two replies away, must therefore record the same tokens, the same cost,
+/// and the same run-wide spend — the figure the cost ceiling is measured against.
+///
+/// That holds for a reason worth stating rather than merely observing: gg's cost and tokens come
+/// from the provider's usage payload, which arrives at the *end* of a stream an abandoned reply
+/// never reached. There is no figure to fold in even if gg wanted to, and inventing one would put an
+/// estimate where every neighbouring number is a measurement.
+#[tokio::test]
+async fn a_discarded_looping_reply_costs_the_run_nothing_it_can_record() {
+    async fn run(discarded: LoopAborts) -> (LoopEnd, Option<f64>) {
+        let dir = TempDir::new().unwrap();
+        let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+        let registry =
+            ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+        let mut priced = priced_turn(0.25);
+        priced.usage = TokenCounts {
+            uncached_input: Some(1_200),
+            cached_input: None,
+            output: Some(80),
+            reasoning: None,
+        };
+        priced.loop_aborts = discarded;
+        let setup = setup_from(GgRunLimits::authored());
+        let spend = Arc::clone(&setup.spend);
+        let end = drive_root(
+            &MockClient::new("mock/primary", vec![priced, stop_response()]),
+            dir.path(),
+            &registry,
+            &emitter,
+            setup,
+            no_code(),
+        )
+        .await;
+        (end, spend.charged())
+    }
+
+    let (clean, clean_spend) = run(LoopAborts::none()).await;
+    let (looped, looped_spend) = run(LoopAborts {
+        attempts: 2,
+        words: 6_130,
+        chars: 38_900,
+    })
+    .await;
+
+    assert_eq!(
+        looped.cost, clean.cost,
+        "the discarded replies are absent from the turn's recorded cost"
+    );
+    assert_eq!(
+        looped.tokens, clean.tokens,
+        "and from its token counts, which are the provider's figures for the reply it served"
+    );
+    assert_eq!(
+        looped_spend, clean_spend,
+        "and from the run-wide spend the cost ceiling is measured against"
+    );
+    assert_eq!(
+        clean_spend,
+        Some(0.25),
+        "a run that recorded nothing at all would satisfy the three assertions above vacuously"
     );
 }
 

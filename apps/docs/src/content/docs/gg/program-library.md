@@ -9,10 +9,10 @@ agent ran. A later program fetches one back, patches it with ordinary string
 work, and hands it over to be run in its own place.
 
 ```ts
-import * as gg from "gg";
+import { programs } from "gg";
 
-const source = gg.programs.get();
-gg.programs.rerun(source.replace("cosnt total", "const total"));
+const source = programs.get();
+programs.rerun(source.replace("cosnt total", "const total"));
 ```
 
 The `program-library` capability is per agent and applies only to an agent that

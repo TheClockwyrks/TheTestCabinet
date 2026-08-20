@@ -48,7 +48,7 @@ use crate::board::BOARD_MUTATIONS;
 use crate::context::{
     DocviewOpen, EvictionResult, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind, ViewsClosed,
 };
-use crate::docs::{DocQuery, DocSearch};
+use crate::docs::{DocKind, DocQuery, DocSearch};
 use crate::ending::Ending;
 use crate::knowledge::{KnowledgeError, KnowledgeModules, KnowledgeOrigin, PendingOnUse};
 use crate::memories::MEMORY_MUTATIONS;
@@ -312,6 +312,7 @@ pub(super) async fn run_code_turn(
     }
     report_to_operator(&outcome, emitter);
     report_chain_to_operator(code.language, &chain, &outcome, emitter);
+    report_discovery_to_operator(code.language, &outcome, turn.discovery, emitter);
 
     // The composed calls the turn actually **dispatched** — the roster plus whatever the roster cap
     // (or a panicked sandbox) stopped describing, never the roster's length. It is a count of calls
@@ -324,6 +325,11 @@ pub(super) async fn run_code_turn(
         // Every call the model wrote, which legitimately exceeds `tool_calls`: the fourteen-odd
         // functions no gg tool backs are calls too, and so is one the membrane refused.
         api_calls: outcome.api_calls,
+        // The calls among those the model wrote **without ever having read what they do**. Not an
+        // error and not a failure of this turn: the program ran and did its work, so this changes
+        // nothing about the turn's outcome — it is evidence about the model. See
+        // [`crate::discovery`].
+        undocumented_calls: outcome.undocumented.clone(),
         duration_ms: Some(saturating_u64(outcome.elapsed.as_millis())),
         error: match &outcome.result {
             Ok(result) => result.error.as_ref().map(|error| error.message.clone()),
@@ -1015,6 +1021,58 @@ fn handover_notice(
     }
 }
 
+/// The **one line a run gets** when its model starts calling functions it never opened the
+/// documentation of — see [`crate::discovery`].
+///
+/// Written off `outcome.undocumented`, which is the same figure the turn's own
+/// [`CodeExecution`](GgTelemetryKind::CodeExecution) event carries, so the log and the telemetry
+/// cannot describe different runs. That is also what keeps it a statement about the **model**: the
+/// figure excludes gg's own programs, so an [on-use script](run_on_use_scripts) running on this same
+/// api can never raise it.
+///
+/// Claimed off the run's shared [latch](DiscoveryWarning), so it is written once however many agents
+/// record however many calls. The finding is a property of the model, and the fortieth such call
+/// tells a reader nothing the first did not; the per-call detail is on the telemetry, where it can
+/// be counted and grouped.
+///
+/// The calls are spelled the way **this arm's programs write them**, because that is what an
+/// operator is reading in the program above the line, and gg's own ids are named beside them,
+/// because that is what the finding is counted under everywhere else.
+fn report_discovery_to_operator(
+    language: GgProgramLanguage,
+    outcome: &SandboxOutcome,
+    warning: &DiscoveryWarning,
+    emitter: &Emitter,
+) {
+    if outcome.undocumented.is_empty() || !warning.claim() {
+        return;
+    }
+    let arm = crate::sandbox::language(language);
+    let named = outcome
+        .undocumented
+        .operations
+        .keys()
+        .map(
+            |operation| match crate::sandbox::operation_by_id(operation) {
+                Some(row) => format!("`{}` ({operation})", spell(arm, row.id)),
+                None => format!("`{operation}`"),
+            },
+        )
+        .collect::<Vec<_>>()
+        .join(", ");
+    emitter.emit(log(
+        "warn",
+        format!(
+            "the model called {named} without ever having opened the documentation of any of \
+             them. A function's signature is only knowable here from a documentation view opened \
+             on an earlier turn, so this model is writing calls from memory rather than \
+             discovering the surface, which is a strong signal against giving it responses as \
+             code at all. Every such call is counted on its turn's `code_execution` event and \
+             rolled up on the session summary; this line is written once per run."
+        ),
+    ));
+}
+
 /// What a chain of more than one program did, on the operator's stream.
 ///
 /// Quiet for the ordinary turn, and deliberately loud for a chained one: a turn that ran three
@@ -1136,6 +1194,13 @@ pub(super) struct CodeTurn<'a> {
     /// Attribution is the reading side, where the whole risk is being handed the wrong latch — so
     /// the two are shaped differently on purpose.
     pub(super) fault: &'a FaultLatch,
+    /// The run's [discovery warning latch](crate::discovery::DiscoveryWarning) — the one line an
+    /// operator gets when this run's model starts calling functions it never looked up.
+    ///
+    /// Run-wide and shared, so the line is written once however many agents record however many
+    /// such calls. The finding itself is counted per turn on the turn's own event and needs nothing
+    /// from here; this is only what decides whether the operator has already been told.
+    pub(super) discovery: &'a DiscoveryWarning,
     /// The session recorder, when the capability is on.
     pub(super) replay: Option<&'a Arc<GgRecorder>>,
     /// The [compaction] the loop is waiting for this agent to perform, when one is in flight. While
@@ -1288,6 +1353,11 @@ async fn run_code_program(
     // The ending group, which the same membrane enforces. It is the agent's role rather than a
     // capability, which is why it travels beside the grant instead of inside it.
     let role = turn.ending_role;
+    // The documentation this agent is holding **as the turn opens** — the snapshot the
+    // [discovery](crate::discovery) check clears a call against. Read here, before the window moves
+    // into the api and before a single line of the program runs, because a view the program itself
+    // opens has been read by nobody.
+    let documented = documented_operations(&context, &docs);
     // The production `OperationApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
@@ -1320,6 +1390,9 @@ async fn run_code_program(
         amc: turn.amc.clone(),
         emitter: turn.emitter.clone(),
         fault: turn.fault.clone(),
+        // Taken **before** the program runs and never refreshed: see the field's own docs, and
+        // `crate::discovery` for why the turn's own opens must not count.
+        documented,
         replay: turn.replay.cloned(),
         handle: Handle::current(),
         pending_compaction: turn.pending_compaction,
@@ -1426,6 +1499,7 @@ async fn run_code_program(
                 // counter died with it, on the same terms.
                 tool_calls_suppressed: 0,
                 api_calls: 0,
+                undocumented: GgUndocumentedCalls::default(),
                 refusals: Vec::new(),
                 refusals_suppressed: 0,
                 logs: Vec::new(),
@@ -1534,6 +1608,7 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         tool_calls: mut calls,
         tool_calls_suppressed: calls_suppressed,
         api_calls: earlier_api_calls,
+        undocumented: mut earlier_undocumented,
         mut refusals,
         refusals_suppressed,
         mut logs,
@@ -1579,6 +1654,13 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         // Summed for the reason every other per-turn count is: a chained turn's model wrote both
         // programs' calls, and reporting only the later link's would hide the hand-over.
         api_calls: earlier_api_calls.saturating_add(later.api_calls),
+        // Accumulated with the calls it is a subset of, and for the same reason: a chained turn's
+        // model wrote both programs, and a hand-over must not be a way to have the second program's
+        // guesses go uncounted.
+        undocumented: {
+            earlier_undocumented.merge(&later.undocumented);
+            earlier_undocumented
+        },
         refusals,
         refusals_suppressed: refusals_suppressed.saturating_add(later.refusals_suppressed),
         logs,
@@ -1727,6 +1809,13 @@ fn run_prepared_charged(
 ///
 /// `result` is deliberately **not** folded: the turn succeeded or failed on the model's own program,
 /// whatever a skill's script then did.
+///
+/// Neither is the script's [discovery](crate::discovery) record, and for a sharper version of the
+/// same reason: **a model did not write this program**, gg did, from the family the skill declares.
+/// Its calls cannot be calls a model made without looking them up, so folding them in would report a
+/// violation on every turn that used a skill and make the one figure that is about the model a
+/// figure about gg's own generated code. [`api_calls`](SandboxOutcome::api_calls) is left out on
+/// exactly the same footing, and has been all along.
 fn absorb_on_use_script(outcome: &mut SandboxOutcome, script: SandboxOutcome) -> Option<String> {
     outcome.tool_calls.extend(script.tool_calls);
     outcome.refusals.extend(script.refusals);
@@ -1965,6 +2054,18 @@ pub(super) struct LoopOperationApi {
     emitter: Emitter,
     /// The run's [fault latch](crate::fault) — see [`CodeTurn::fault`].
     fault: FaultLatch,
+    /// **What this agent's documentation surface said when the turn began**: `true` for an operation
+    /// whose page stood open in the window, `false` for one whose pages were all closed, and absent
+    /// for an operation this agent binds no page for. See
+    /// [`documented_operations`](DocsRuntime::documented_operations).
+    ///
+    /// The snapshot *is* the mechanism. A view this turn's own program opened has been read by
+    /// nobody — the model wrote the program before any of it ran — so answering against the live
+    /// window would clear exactly the mistake the prompt's *"write the call on a later turn"* names.
+    /// It is taken as the api is built, which is after the window has been opened, compacted or
+    /// restored for this turn and before the first line of the program runs, so what it holds is
+    /// precisely what the model could have read.
+    documented: BTreeMap<String, bool>,
     replay: Option<Arc<GgRecorder>>,
     handle: Handle,
     pending_compaction: Option<PendingCompaction>,
@@ -2584,6 +2685,14 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 /// A hit's brief is shown whole and nothing else is: choosing is what this list is for, and reading
 /// is what a documentation view is for.
 ///
+/// # Why the hits are grouped by kind
+///
+/// A module, a function and a type are three different things to do next, and a reader scanning for
+/// a call does not want the types interleaved with it. Grouping under one heading apiece also states
+/// each hit's kind once per group rather than once per line, which over a hundred-hit module
+/// directory is the difference between a heading and a hundred repetitions of the same word. Rank
+/// order is kept **within** each group, so the best match in a group is still its first line.
+///
 /// The [bootstrap](crate::bootstrap)'s opening program renders its module listings through this same
 /// function, so the first listing a model reads and the ones its own searches produce are one
 /// format rather than two.
@@ -2615,11 +2724,27 @@ pub(crate) fn render_search_results(query: &DocSearchQuery, page: &DocSearch) ->
     if !query.query.trim().is_empty() {
         asked.push(format!("`{}`", query.query.trim()));
     }
-    for (what, value) in [
-        ("module", &query.module),
-        ("type", &query.declared_type),
-        ("kind", &query.kind),
-    ] {
+    let named: Vec<&str> = query
+        .modules
+        .iter()
+        .map(|module| module.trim())
+        .filter(|module| !module.is_empty())
+        .collect();
+    if !named.is_empty() {
+        asked.push(format!(
+            "{} {}",
+            match named.len() {
+                1 => "module",
+                _ => "modules",
+            },
+            named
+                .iter()
+                .map(|module| format!("`{module}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    for (what, value) in [("type", &query.declared_type), ("kind", &query.kind)] {
         if let Some(value) = value.as_deref().map(str::trim).filter(|it| !it.is_empty()) {
             asked.push(format!("{what} `{value}`"));
         }
@@ -2634,17 +2759,26 @@ pub(crate) fn render_search_results(query: &DocSearchQuery, page: &DocSearch) ->
     let first = page.offset as usize + 1;
     let last = page.offset as usize + page.hits.len();
     let mut body = format!(
-        "{} match(es) for {asked}, showing {first}-{last}. Open one by the name shown to read it \
-         in full.\n",
-        page.total
+        "{} {} for {asked}, showing {first}-{last}.\n",
+        page.total,
+        match page.total {
+            1 => "match",
+            _ => "matches",
+        }
     );
-    for hit in &page.hits {
-        body.push_str(&format!(
-            "\n{} ({}) — {}",
-            hit.key,
-            hit.kind.id(),
-            hit.summary
-        ));
+    for (kind, heading) in [
+        (DocKind::Module, "Modules"),
+        (DocKind::Function, "Functions"),
+        (DocKind::Type, "Types"),
+    ] {
+        let mut of_kind = page.hits.iter().filter(|hit| hit.kind == kind).peekable();
+        if of_kind.peek().is_none() {
+            continue;
+        }
+        body.push_str(&format!("\n{heading}:\n"));
+        for hit in of_kind {
+            body.push_str(&format!("{} — {}\n", hit.key, hit.summary));
+        }
     }
     body
 }
@@ -2704,6 +2838,31 @@ impl OperationApi for LoopOperationApi {
             ok: failure.is_none(),
             failure,
         });
+    }
+
+    /// Whether this agent held a documentation view of `call` **before this turn began** — the
+    /// [discovery](crate::discovery) check, answered off the snapshot the api was built with.
+    ///
+    /// A page under any name the arm binds the operation under counts, because a model that read
+    /// either has read the call
+    /// ([`documented_operations`](DocsRuntime::documented_operations)). An operation this agent's
+    /// surface documents under no name at all is
+    /// [`NotApplicable`](CallDiscovery::NotApplicable): there was never a page to open, so there is
+    /// nothing the model can be said to have skipped.
+    ///
+    /// The live window is deliberately **not** consulted. A view this turn's program opened one line
+    /// above the call has been read by nobody — see [`documented`](Self::documented) and
+    /// [the module docs](crate::discovery#the-same-turn-does-not-count-and-that-is-the-interesting-half).
+    ///
+    /// It is a pure lookup with no side effect of any kind. The operator's line is written by
+    /// [`report_discovery_to_operator`], off the figure the turn actually recorded, so a program of
+    /// gg's own running on this same api cannot raise a warning about a model that wrote none of it.
+    fn call_discovery(&mut self, call: ApiIdentity<'_>) -> CallDiscovery {
+        match self.documented.get(call.operation) {
+            None => CallDiscovery::NotApplicable,
+            Some(true) => CallDiscovery::Documented,
+            Some(false) => CallDiscovery::Undocumented,
+        }
     }
 
     fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome {
@@ -3288,7 +3447,7 @@ impl OperationApi for LoopOperationApi {
     fn search_docs(&mut self, query: DocSearchQuery) -> Result<DocSearchResult, ViewRefusal> {
         let page = self.docs.search(DocQuery {
             query: &query.query,
-            module: query.module.as_deref(),
+            modules: &query.modules,
             declared_type: query.declared_type.as_deref(),
             kind: query.kind.as_deref(),
             offset: query.offset,
@@ -3548,6 +3707,22 @@ impl OperationApi for LoopOperationApi {
     fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal> {
         self.programs.source(turn).map(str::to_string)
     }
+}
+
+/// What `docs` says about every operation it binds, against the documentation `context` was holding
+/// — the snapshot one turn's [discovery](crate::discovery) check answers its calls from.
+///
+/// Resolved once, as the turn's api is built, because neither half can move while the turn runs: a
+/// page's key is a projection of the catalogue through this agent's grants, and the window the model
+/// read is the one it read. Bodies are dropped on the way past, since the only question asked of a
+/// view here is whether its key was open.
+fn documented_operations(context: &ContextModel, docs: &DocsRuntime) -> BTreeMap<String, bool> {
+    let open: BTreeSet<String> = context
+        .open_docviews()
+        .into_iter()
+        .map(|view| view.key)
+        .collect();
+    docs.documented_operations(&open)
 }
 
 /// **Open a documentation view of every callable declaration the module loaded at `key` offers**,

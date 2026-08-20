@@ -20,8 +20,8 @@ export interface ShellOutput {
    * Merged stdout then stderr, cut at the tail if it was too long.
    *
    * The ceiling is 16 KiB, or the run's configured line and character limits where shell output is
-   * offloaded. Under the default adaptive mode a command that succeeded returns only the note naming
-   * the files that hold the whole of it.
+   * offloaded. An offloaded output that was cut ends with a note naming the two files that hold the
+   * whole of it.
    */
   output: string;
 
@@ -36,9 +36,9 @@ export interface ShellOutput {
  * succeeded, and only a process that could not be launched, or one the timeout killed, throws.
  *
  * This run may **offload** shell output. Under `offload`, `output` holds only the tail that fits and
- * ends with a note naming the two files the command's full stdout and stderr were written to. Under
- * `adaptive`, the default, a command that succeeded returns no output at all and only that note,
- * while one that failed returns the tail. Grepping the named files beats running the command again.
+ * ends with a note naming the two files the command's full stdout and stderr were written to. Those
+ * files are readable by absolute path, so a `gg.files.readTextFile` of one, or a grep, beats running
+ * the command again.
  *
  * @ggop shell.shell
  * @param command The command line, run by `sh -c` with the workspace as its working directory.

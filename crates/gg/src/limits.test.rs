@@ -1344,3 +1344,56 @@ fn an_unconfigured_cost_ceiling_never_breaches() {
 
     assert!(bare_limits().check_cost(&spend, AGENT, 1).is_none());
 }
+
+// ---------------------------------------------------------------------------------------------
+// The run's ceiling latch
+// ---------------------------------------------------------------------------------------------
+
+/// One breach of `limit`, as a stopping agent would raise it.
+fn breach_of(limit: GgLimitKind, threshold: f64) -> GgLimitBreach {
+    GgLimitBreach {
+        limit,
+        threshold,
+        observed: threshold,
+        turns: 1,
+        agent_id: AGENT.to_string(),
+        window: None,
+    }
+}
+
+#[test]
+fn a_run_inside_every_ceiling_raises_nothing() {
+    // The shape of most runs, and the reason the latch needs no `Option` at any call site: a
+    // default latch is a run that stayed inside every ceiling it armed, and the session epilogue
+    // reads it as "exit 0" without asking whether a latch exists.
+    assert!(CeilingLatch::default().raised().is_none());
+}
+
+#[test]
+fn the_first_ceiling_breached_is_the_one_the_run_answers_with() {
+    // A run-wide breach stops several agents at their own boundaries, and every later breach is
+    // downstream of the first — an agent given less room by a run that was already ending. The
+    // breach worth keeping names where the run first ran out.
+    let latch = CeilingLatch::default();
+    latch.raise(&breach_of(GgLimitKind::Cost, 25.0));
+    latch.raise(&breach_of(GgLimitKind::Turns, 60.0));
+
+    let raised = latch.raised().expect("the run breached a ceiling");
+    assert_eq!(raised.limit, GgLimitKind::Cost);
+    assert_eq!(raised.threshold, 25.0);
+}
+
+#[test]
+fn a_clone_of_the_latch_is_the_same_latch() {
+    // Every agent's ceilings carry a clone of the run's latch, and the session epilogue reads the
+    // orchestrator's. A clone that answered separately would let a subagent breach a ceiling that
+    // the run then exited as though it had never met.
+    let latch = CeilingLatch::default();
+    let agents_copy = latch.clone();
+    agents_copy.raise(&breach_of(GgLimitKind::ErrorRate, 0.5));
+
+    assert_eq!(
+        latch.raised().expect("the run breached a ceiling").limit,
+        GgLimitKind::ErrorRate
+    );
+}

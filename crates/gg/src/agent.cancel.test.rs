@@ -26,6 +26,7 @@ fn cancelable(max_turns: usize, sentinel: PathBuf) -> LimitsSetup {
         spend: Arc::new(RunSpend::default()),
         cancel: CancelWatch::new(sentinel),
         fault: FaultLatch::default(),
+        ceiling: CeilingLatch::default(),
     }
 }
 

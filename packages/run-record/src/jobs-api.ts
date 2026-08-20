@@ -71,7 +71,10 @@ export type LaunchBody = {
    * [`Catastrophic`](crate::run_record::RunState::Catastrophic) build. A
    * [`TimedOut`](crate::run_record::RunState::TimedOut) or
    * [`Completed`](crate::run_record::RunState::Completed) outcome is the model's,
-   * not a fault to retry, and a user cancel is never retried.
+   * not a fault to retry, and a user cancel is never retried. Neither is a
+   * [`LimitExceeded`](crate::run_record::RunState::LimitExceeded) run: the harness
+   * stopped it on a ceiling its own configuration armed, so a fresh attempt reaches
+   * the same bound.
    *
    * The default is `1` (one retry) when omitted, so the total attempts allowed is
    * `1 + retry_count`: the initial attempt plus up to `retry_count` retries.

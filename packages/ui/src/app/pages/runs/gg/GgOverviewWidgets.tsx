@@ -509,6 +509,28 @@ export function errorRatePhrase(errors: GgErrorTally): string {
 }
 
 /**
+ * What a scope's discarded looping replies generated before they were thrown away, as one
+ * phrase — or `null` when nothing was discarded, which is every scope that left loop
+ * detection disarmed.
+ *
+ * Words and characters, and never tokens or a dollar figure. The provider reports usage at
+ * the end of a stream an abandoned reply never reached, so these two are the only measures
+ * of a discarded reply that were measured rather than guessed; putting a price beside a
+ * count would read as though gg had one. This output IS billed and is deliberately absent
+ * from the scope's cost, because a looping reply is a model defect and must not make the
+ * configuration under test look expensive — which is exactly why the size is stated here.
+ *
+ * Shared by every scope that shows the count, so the two panels of one page cannot describe
+ * the same discarded replies differently.
+ */
+export function discardedOutputPhrase(errors: GgErrorTally): string | null {
+  if (errors.loopAborts === 0) return null;
+  return `${numberFmt.format(errors.loopAbortWords)} words (${numberFmt.format(
+    errors.loopAbortChars,
+  )} characters) generated and thrown away`;
+}
+
+/**
  * A scope's errored turns ranked by specific type, most common first — or, where there is
  * no ranking to draw, which of the two nothings it is.
  *
@@ -685,7 +707,8 @@ export function ErrorsWidget({
           <Stat
             label="looping replies"
             value={loopAborts}
-            sub="discarded, then retried"
+            sub={discardedOutputPhrase(errors) ?? "discarded, then retried"}
+            title="Replies loop detection abandoned mid-stream before this scope got one it could use, and how much generation they cost. Not errors — each was retried and the turn is judged on what the retry produced. The output was billed by the provider and is deliberately absent from the recorded cost, in words and characters because an abandoned stream reports no tokens."
           />
         )}
       </div>

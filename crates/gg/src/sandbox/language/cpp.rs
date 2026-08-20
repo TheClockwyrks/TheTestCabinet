@@ -361,12 +361,21 @@ impl ProgramLanguage for Cpp {
         )
     }
 
-    /// [One `int main` holding two arrays and two range `for`s](self::bootstrap_program), under the
-    /// `#include` lines that declare the two calls — every one of them resolved from this language's
-    /// own catalogue — and the ones that declare `std::array` and `std::string_view`.
+    /// [One `int main` holding one search and one range `for`](self::bootstrap_program), under the
+    /// `#include` lines that declare the calls it makes — every one of them resolved from this
+    /// language's own catalogue — and the ones that declare `std::array` and `std::string_view`.
+    ///
+    /// The lines are resolved for the calls the program really writes rather than for the two this
+    /// seam knows about: an agent holding neither `files` nor `shell` is handed no modules and gets
+    /// [no search at all](self::bootstrap_program), and an `#include` for a header nothing in the
+    /// program names is a habit a model reads out of its own transcript.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        let calls: &[crate::sandbox::OperationId] = match modules.is_empty() {
+            true => &[VIEWS_OPEN_DOCS_VIEW],
+            false => &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW],
+        };
         bootstrap_program(
-            &includes(self, &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW]),
+            &includes(self, calls),
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
             modules,
@@ -599,17 +608,26 @@ pub(super) fn open_docs_views_statement(
     )
 }
 
-/// The opening turn: one `int main` holding an array of module paths listed in full and an array of
-/// names opened as documentation views, each with a range `for` over it.
+/// The opening turn: one `int main` holding one search over every module gg listed and an array of
+/// names opened as documentation views, with a range `for` over it.
 ///
 /// A whole translation unit defining `main`, because this arm has nowhere else to put a statement
 /// and [refuses](self::source::defines_main) a reply that defines none.
 ///
-/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
-/// modules and a dozen calls written out is a shape a model would copy for its own work. The
-/// `std::array`s, the `const auto &` loops, the empty case's explicit element type and the
+/// **One search rather than one per module**, because the filter is a union: the modules are a
+/// braced list inside the filters, so the whole listing is read by a single call. A loop of a dozen
+/// calls where one would do is a shape a model would copy for its own work — and so is a query of
+/// `""` beside a filter that already says everything, which is why the search carries the modules
+/// and the page and nothing else.
+///
+/// The array of keys, the `const auto &` loop, the empty case's explicit element type and the
 /// [standard-library include lines](standard_includes) that declare them are what
 /// [`open_docs_views_statement`] argues for, unchanged.
+///
+/// An agent that holds neither `files` nor `shell` is handed **no modules at all**, and a search
+/// that names no module and asks no question is the one call this family refuses. That program is
+/// written without the search — and without the `#include` that declared it — rather than opening
+/// the session on gg's own `invalid-argument`.
 ///
 /// It is the one program in this file that is compiled and run **before the model's first
 /// request**, so a missing include here is a run that ends on gg's own defect rather than a turn a
@@ -627,29 +645,34 @@ pub(super) fn bootstrap_program(
     modules: &[&str],
     docs: &[&str],
 ) -> String {
-    let listed = |binding: &str, names: &[&str]| -> String {
-        let entries: Vec<String> = names
-            .iter()
-            .map(|name| format!("      {}", serde_json::Value::String((*name).to_string())))
-            .collect();
-        match entries.is_empty() {
-            true => format!(
-                "  const std::array<std::string_view, 0> {binding}{{}};\n  (void){binding};\n"
-            ),
-            false => format!(
-                "  const std::array {binding}{{\n{},\n  }};\n",
-                entries.join(",\n")
-            ),
-        }
+    let paths: Vec<String> = modules
+        .iter()
+        .map(|path| serde_json::Value::String((*path).to_string()).to_string())
+        .collect();
+    let lookup = match paths.is_empty() {
+        true => String::new(),
+        false => format!(
+            "  {search}({{.modules = {{{}}}, .limit = {MAX_SEARCH_LIMIT}}});\n\n",
+            paths.join(", ")
+        ),
     };
-    let paths = listed("modules", modules);
-    let functions = listed("functions", docs);
+    let entries: Vec<String> = docs
+        .iter()
+        .map(|name| format!("      {}", serde_json::Value::String((*name).to_string())))
+        .collect();
+    let functions = match entries.is_empty() {
+        true => {
+            "  const std::array<std::string_view, 0> functions{};\n  (void)functions;\n".to_string()
+        }
+        false => format!(
+            "  const std::array functions{{\n{},\n  }};\n",
+            entries.join(",\n")
+        ),
+    };
     format!(
-        "{}{includes}int main() {{\n{paths}  for (const auto &path : modules) {{\n    \
-         {search}(\"\", {{.module = path, .limit = {MAX_SEARCH_LIMIT}}});\n  }}\n\
-         \n{functions}  for (const auto &name : functions) {{\n    \
-         {open_docs_view}(name);\n  }}\n  return 0;\n}}\n",
-        standard_includes(modules.is_empty() || docs.is_empty())
+        "{}{includes}int main() {{\n{lookup}{functions}  for (const auto &name : functions) \
+         {{\n    {open_docs_view}(name);\n  }}\n  return 0;\n}}\n",
+        standard_includes(docs.is_empty())
     )
 }
 

@@ -462,7 +462,7 @@ using Gg;
 using System;
 
 var all = Docs.Search("view");
-var narrowed = Docs.Search("", module: "Gg.Views", kind: Docs.DocKind.Function, limit: 5);
+var narrowed = Docs.Search(modules: ["Gg.Views"], kind: Docs.DocKind.Function, limit: 5);
 Console.WriteLine($"{all.Total} {all.Offset} {all.Hits.Count}");
 Console.WriteLine(narrowed.Hits.Count == 0);
 try

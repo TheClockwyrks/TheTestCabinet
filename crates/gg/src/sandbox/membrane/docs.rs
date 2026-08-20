@@ -48,8 +48,8 @@ impl<A: OperationApi> DocsHost for MembraneState<A> {
     )]
     fn search(
         &mut self,
-        query: String,
-        module: Option<String>,
+        query: Option<String>,
+        modules: Vec<String>,
         r#type: Option<String>,
         kind: Option<String>,
         offset: Option<u32>,
@@ -57,8 +57,8 @@ impl<A: OperationApi> DocsHost for MembraneState<A> {
     ) -> Result<DocSearch, ApiError> {
         self.recorded(DOCS_SEARCH, |state, rec| {
             let request = DocSearchQuery {
-                query,
-                module,
+                query: query.unwrap_or_default(),
+                modules,
                 declared_type: r#type,
                 kind,
                 offset,

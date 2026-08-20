@@ -228,36 +228,42 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         outcome.logs
     );
 
-    // 4. THE DOCUMENTED SPELLING. `import * as gg from "gg";` is the line every documentation view
-    // states, and `gg.files.readTextFile` is the name every search hit carries and the prompt
-    // quotes. One call per bound module, plus the `ApiError` the aggregate re-exports bare.
+    // 4. THE DOCUMENTED SPELLING. `import { files } from "gg";` is the line every documentation view
+    // of `gg.files` states, and `gg.files.readTextFile` is the name every search hit carries and the
+    // prompt quotes — the call site is that name with its leading `gg.` dropped, which is the one
+    // difference the prompt's language rules spell out. One named binding per bound module, plus the
+    // `ApiError` the aggregate exports beside them.
     let (outcome, log) = run(concat!(
-        "import * as gg from \"gg\";\n",
+        "import { board, context, delegation, docs, files, memories } from \"gg\";\n",
+        "import { session, shell, skills, tasks, views } from \"gg\";\n",
         "import { ApiError } from \"gg\";\n",
         "\n",
-        "gg.views.openText(\"scratch\", gg.files.readTextFile(\"notes.md\"));\n",
-        "gg.shell.shell(\"ls\");\n",
-        "gg.board.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });\n",
-        "gg.tasks.addTask({ id: \"t1\", title: \"T\" });\n",
-        "gg.memories.readMemory(\"layout\");\n",
-        "gg.context.compact(\"done\");\n",
-        "gg.delegation.sendMessage(\"agent-1\", \"more\");\n",
-        "gg.skills.readSkill(\"testing\");\n",
+        "views.openText(\"scratch\", files.readTextFile(\"notes.md\"));\n",
+        "shell.shell(\"ls\");\n",
+        "board.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });\n",
+        "tasks.addTask({ id: \"t1\", title: \"T\" });\n",
+        "memories.readMemory(\"layout\");\n",
+        "context.compact(\"done\");\n",
+        "delegation.sendMessage(\"agent-1\", \"more\");\n",
+        "skills.readSkill(\"testing\");\n",
         "try {\n",
-        "  gg.files.readTextFile(\"a.ts\", { offset: -1 });\n",
+        "  files.readTextFile(\"a.ts\", { offset: -1 });\n",
         "} catch (error) {\n",
         "  console.log(`${error instanceof ApiError} ${error.code}`);\n",
         "}\n",
         // The call the whole discovery loop begins at, written the way the prompt describes it: a
-        // query, a module filter and a page, and a value the program reads fields off. The double
-        // holds no catalogue, so what is being observed here is the envelope crossing the membrane
-        // and the SDK's own lowering of an options object into six positional arguments — the
-        // ranking is `DocsRuntime`'s and is tested against the arm's real catalogue.
-        "const found = gg.docs.search(\"view\", { module: \"gg.views\", kind: \"function\", limit: 5 });\n",
+        // query, a union of modules and a page, all of them optional and all of them in one options
+        // object, and a value the program reads fields off. The double holds no catalogue, so what
+        // is being observed here is the envelope crossing the membrane and the SDK's own lowering of
+        // that object into six positional arguments — the ranking is `DocsRuntime`'s and is tested
+        // against the arm's real catalogue.
+        "const found = docs.search({\n",
+        "  query: \"view\", modules: [\"gg.views\"], kind: \"function\", limit: 5,\n",
+        "});\n",
         "console.log(JSON.stringify({\n",
         "  total: found.total, offset: found.offset, hits: found.hits.length,\n",
         "}));\n",
-        "gg.session.finish(\"drove the documented spelling\");\n",
+        "session.finish(\"drove the documented spelling\");\n",
     ));
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
@@ -276,9 +282,9 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
             "send_message",
             "read_skill",
         ],
-        "every module reached gg's dispatch from its `gg.`-qualified spelling"
+        "every module reached gg's dispatch from the binding its own import line states"
     );
-    // A view is not a tool call, so `gg.views.openText` shows up here rather than in the log above —
+    // A view is not a tool call, so `views.openText` shows up here rather than in the log above —
     // and neither is a search, which places its results in the window under gg's own constant
     // selector rather than under anything the program chose.
     assert_eq!(
@@ -404,14 +410,14 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
 /// enables, so reaching for one this agent was not granted is a refusal from the host.
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
-    let (outcome, log) = run("const found = gg.docs.search(\"view\");\n");
+    let (outcome, log) = run("const found = docs.search({ query: \"view\" });\n");
     let error = outcome
         .result
         .as_ref()
         .expect_err("an unbound identifier kills the guest");
     let message = error.to_string();
     assert!(
-        message.contains("ReferenceError") && message.contains("gg is not defined"),
+        message.contains("ReferenceError") && message.contains("docs is not defined"),
         "the engine's own sentence is what the model reads: {message}"
     );
     assert!(
@@ -420,7 +426,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     );
     assert!(log.calls().is_empty(), "and nothing ran");
 
-    let (outcome, log) = run("import * as gg from \"gg\";\n\ngg.docs.search(\"view\");\n");
+    let (outcome, log) = run("import { docs } from \"gg\";\n\ndocs.search({ query: \"view\" });\n");
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the same call, reached through the line the documentation states: {:?}",
@@ -557,12 +563,11 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
     // view is bought — so this program's first call answers and its second is refused.
     let (outcome, log) = run_with(
         concat!(
-            "import * as gg from \"gg\";\n",
-            "import { ApiError } from \"gg\";\n",
+            "import { docs, ApiError } from \"gg\";\n",
             "\n",
-            "console.log(String(gg.docs.search(\"view\").total));\n",
+            "console.log(String(docs.search({ query: \"view\" }).total));\n",
             "try {\n",
-            "  gg.docs.closeAll();\n",
+            "  docs.closeAll();\n",
             "} catch (error) {\n",
             "  console.log(`${error instanceof ApiError} ${error.code} ${error.operation}`);\n",
             "  console.log(error.message);\n",

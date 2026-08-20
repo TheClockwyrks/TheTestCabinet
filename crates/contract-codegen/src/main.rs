@@ -377,7 +377,7 @@ fn main() -> Result<()> {
                 gg::GgCallFailure,
                 gg::GgHealingStrategy, gg::GgProgramLanguage,
                 gg::GgResponseHealing, gg::GgHealingSummary,
-                gg::GgErrorSummary,
+                gg::GgErrorSummary, gg::GgUndocumentedCalls,
                 gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
                 bapi::GgConfig, bapi::GgConfigInput, bapi::GgAgentSource,

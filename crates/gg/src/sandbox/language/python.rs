@@ -297,8 +297,8 @@ impl ProgramLanguage for Python {
         Some(LIB_IMPORT.to_string())
     }
 
-    /// [Two lists and two `for` loops](self::bootstrap_program), with both calls resolved from this
-    /// language's own catalogue and the module filter written as a keyword argument.
+    /// [One search and one `for` over a list](self::bootstrap_program), with both calls resolved
+    /// from this language's own catalogue and the module filter written as a keyword argument.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
@@ -396,13 +396,23 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
     )
 }
 
-/// The opening turn: one list of module paths listed in full, then one list of names opened as
-/// documentation views, each with a `for` over it.
+/// The opening turn: one search naming every module in `modules` at once, then one list of names
+/// opened as documentation views, with a `for` over it.
 ///
-/// Two lists and two loops rather than one call per entry, because a granted surface is a dozen
-/// modules and a dozen calls written out is a shape a model would copy for its own work. The filter
-/// and the limit are **keyword arguments**, which is this language's idiom for optional ones and
-/// what the module's own signatures are declared with.
+/// **One** call rather than one per module, because the filter names a union — an entry in any of
+/// them is a hit — so a whole granted surface is listed by a single lookup, and a loop asking module
+/// by module would teach a model to spend a call on each of the things one call already answers. The
+/// filter and the limit are **keyword arguments**, which is this language's idiom for optional ones
+/// and what the module's own signatures are declared with; nothing is passed for the query, because
+/// a search carrying a filter and no words is that filter's whole directory rather than a ranking.
+///
+/// The documentation views keep their list and their loop: that group is as long as the family gg
+/// opens, and a dozen calls written out is a shape a model would copy for its own work.
+///
+/// An agent holding neither of the two modules the opening listing covers is handed an **empty**
+/// `modules`, and the search is left out of the program altogether rather than written with nothing
+/// to ask for: no query and no filter at all is `invalid-argument`, so the one program gg promises
+/// ran would be the one program that failed.
 ///
 /// A failed call raises and is left to, which is this arm's failure model: a bootstrap that caught
 /// its own failure would be a worked example of swallowing one.
@@ -412,21 +422,26 @@ pub(super) fn bootstrap_program(
     modules: &[&str],
     docs: &[&str],
 ) -> String {
-    let listed = |names: &[&str]| -> String {
-        names
-            .iter()
-            .map(|name| format!("    {},\n", serde_json::Value::String((*name).to_string())))
-            .collect()
+    let quoted = |name: &str| serde_json::Value::String(name.to_string()).to_string();
+    let listing = if modules.is_empty() {
+        String::new()
+    } else {
+        let paths: Vec<String> = modules.iter().copied().map(quoted).collect();
+        format!(
+            "{search}(modules=[{}], limit={MAX_SEARCH_LIMIT})\n\n",
+            paths.join(", ")
+        )
     };
-    let paths = listed(modules);
-    let functions = listed(docs);
+    let functions: String = docs
+        .iter()
+        .copied()
+        .map(|name| format!("    {},\n", quoted(name)))
+        .collect();
     format!(
         "{SURFACE_IMPORT}\n\
          \n\
-         modules = [\n{paths}]\nfor path in modules:\n    \
-         {search}(\"\", module=path, limit={MAX_SEARCH_LIMIT})\n\
-         \n\
-         functions = [\n{functions}]\nfor name in functions:\n    {open_docs_view}(name)\n"
+         {listing}functions = [\n{functions}]\nfor name in functions:\n    \
+         {open_docs_view}(name)\n"
     )
 }
 

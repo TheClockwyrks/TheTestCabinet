@@ -36,6 +36,7 @@ mod completion;
 mod config;
 mod context;
 mod dag;
+mod discovery;
 mod docs;
 mod ending;
 mod fault;
@@ -170,8 +171,8 @@ struct RunArgs {
 /// The turn loop is async (the model client is), so this runs on a single-threaded Tokio runtime. A
 /// config-load failure is a **pre-telemetry** fatal reported on stderr (exit `1`); everything after —
 /// including a model error mid-session — is reported on the NDJSON telemetry channel, and the exit
-/// code only reflects whether a session launched. The thin `src/main.rs` binary simply forwards to
-/// this.
+/// code reflects only whether a session launched and whether it ran into one of its own execution
+/// ceilings. The thin `src/main.rs` binary simply forwards to this.
 #[tokio::main(flavor = "current_thread")]
 pub async fn run_from_args() -> ExitCode {
     let cli = Cli::parse();
@@ -208,11 +209,24 @@ async fn run_session(config: &std::path::Path) -> ExitCode {
 
     let emitter = Emitter::new(Some(invocation.session_id.clone()));
 
-    // A session that ran (however it ended) exits `0` — its outcome is in the telemetry; only a
-    // failure that was gg's own or the operator's (no model to run, a rejected credential, a gg
-    // defect) exits non-zero, because none of those leaves a run to score.
+    // A session that ran to a natural end exits `0` — its outcome is in the telemetry — and the
+    // two ways that is not the whole story get a code each.
+    //
+    // `1` is a failure that was gg's own or the operator's (no model to run, a rejected credential,
+    // a gg defect), because none of those leaves a run to score at all.
+    //
+    // `3` is a run stopped by one of its own [ceilings](limits): every ceiling is a safeguard the
+    // configuration armed and none is expected to be reached, so a run that reached one is neither
+    // a session that finished nor a harness that malfunctioned. `core` reads the code and records
+    // the run under a state of its own, publishable as a per-model statistic and never retried,
+    // since a retry runs the same configuration into the same bound. It is `3` rather than `2`
+    // because a shell reads `2` as a usage error, and the number is spelled once, in the contract
+    // both sides share.
     match agent::run(&invocation, &emitter).await {
         agent::SessionOutcome::Ran => ExitCode::SUCCESS,
+        agent::SessionOutcome::LimitExceeded => {
+            ExitCode::from(test_cabinet_core::gg::EXIT_LIMIT_EXCEEDED)
+        }
         agent::SessionOutcome::HarnessError => ExitCode::FAILURE,
     }
 }

@@ -30,7 +30,7 @@ implementation untouched.
 | A prompt segment | The arm's gated segment of `system-code.hbs` and of `code-nothing-shown.hbs`, keyed by the arm's id. |
 | A file-view statement | The one statement that opens a view of a path, whole or windowed, terminated the way this language terminates a statement. |
 | A documentation-view program | A whole program that opens one documentation view per name, which is the on-use script of every built-in family skill. |
-| A bootstrap program | A whole program that searches each named module and opens the documentation of each named key, which gg runs to seed a fresh window. |
+| A bootstrap program | A whole program that lists the named modules in one search and opens the documentation of each named key, which gg runs to seed a fresh window. |
 | Healing fixtures | Replies the arm's own dialect must survive, so the delete-only invariant is re-earned per language. |
 
 ### Program preparation

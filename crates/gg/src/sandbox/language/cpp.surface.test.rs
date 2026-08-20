@@ -444,7 +444,7 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
                                 : std::get<gg::files::image_file>(read).label;
   gg::log(shown.substr(0, shown.find('\n')));
   const auto found = gg::docs::search(
-      "open", {.module = "views", .kind = gg::docs::doc_kind::function, .limit = 5});
+      {.query = "open", .modules = {"views"}, .kind = gg::docs::doc_kind::function, .limit = 5});
   gg::log(std::format("{} {} {}", found.total, found.offset, found.hits.size()));
   try {
     gg::log(std::format("closed {}", gg::docs::close("gg::views::open_text")));

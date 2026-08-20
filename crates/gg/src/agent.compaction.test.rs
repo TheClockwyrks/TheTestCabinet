@@ -55,6 +55,7 @@ async fn drive_compaction(
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -110,7 +111,7 @@ fn prose_reply(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -168,7 +169,7 @@ async fn self_summarization_falls_back_when_the_reply_is_empty() {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     });
     script.push(stop_response());
 

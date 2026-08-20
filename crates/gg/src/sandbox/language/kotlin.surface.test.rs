@@ -559,18 +559,19 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
 
     // THE DOCUMENTATION MODULE, which is the family a session begins in: the prompt names no
     // function, so this is the only call a model can make before it has been told a name. It is
-    // driven from Kotlin's own spellings — the query alone, and the query with named filter
-    // arguments, which is how this arm expresses every optional argument.
+    // driven from Kotlin's own spellings — the query alone, and the filters alone with no query at
+    // all, both of which are named default arguments, which is how this arm expresses every optional
+    // argument.
     //
     // The double models no catalogue, so an empty page is the honest answer and the ranking is
     // `DocsRuntime`'s to be right about. What is observed here is this arm's own half: that the
-    // named arguments reach the guest as one options object rather than as five positional ones, and
-    // that the envelope comes back as a `DocSearch` a program reads fields off.
+    // named arguments reach the guest in the order the WIT declares them rather than as the ones the
+    // call happened to write, that a `listOf` of module paths crosses as a list, and that the
+    // envelope comes back as a `DocSearch` a program reads fields off.
     let (outcome, _log) = run_with(
         "val all = gg.docs.search(\"view\")\n\
          val narrowed = gg.docs.search(\n\
-         \x20   \"\",\n\
-         \x20   module = \"gg.views\",\n\
+         \x20   modules = listOf(\"gg.views\"),\n\
          \x20   kind = gg.docs.DocKind.FUNCTION,\n\
          \x20   limit = 5,\n\
          )\n\

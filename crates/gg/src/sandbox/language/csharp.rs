@@ -362,8 +362,9 @@ impl ProgramLanguage for CSharp {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [Two `string[]`s and two `foreach` loops](self::bootstrap_program), with both calls resolved
-    /// from this language's own catalogue and the filters passed by name.
+    /// [One search naming every module, then a `string[]` and a
+    /// `foreach`](self::bootstrap_program) — both calls resolved from this language's own
+    /// catalogue, and the search's filters passed by name.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
@@ -539,20 +540,30 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
     format!("{listed}foreach (var name in functions)\n{{\n    {open_docs_view}(name);\n}}\n")
 }
 
-/// The opening turn: one `string[]` of module paths listed in full, then one of the names opened as
-/// documentation views, each with a `foreach` over it.
+/// The opening turn: **one** search naming every module gg listed, then the `string[]` of
+/// documentation keys and the `foreach` that opens a view of each.
 ///
 /// Top-level statements, which on this arm are already a whole compilation unit, so nothing is
 /// wrapped around them and no `class` or `Main` is written — and every call written by its whole
 /// path, so the first program a model reads of its own is one that needed no line above it.
 ///
-/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
-/// modules and a dozen calls written out is a shape a model would copy for its own work; collection
-/// expressions for the same reason
-/// [`open_docs_views_statement`] uses one.
+/// One call rather than a search per module, because the filter is a **union**: a dozen modules are
+/// one page, ranked once, and a model's first example of searching should not also be its first
+/// example of calling the same function in a loop. The modules go in as a **collection expression
+/// at the call site** — with no loop left to feed, a binding would name a list nothing else reads —
+/// and the filters are **passed by name**, which is this language's idiom for optional arguments
+/// and what its SDK declares them with. No query is passed at all, because none is wanted: what the
+/// filter asks for is those modules' whole directories, and an empty-string query standing in for
+/// one is a habit a model reading its own first program would copy.
 ///
-/// The filters have **default values and are passed by name**, which is this language's idiom for
-/// optional arguments and what its SDK declares them with.
+/// The limit is [`MAX_SEARCH_LIMIT`], which is the whole difference between an agent shown every
+/// function it holds and one shown the first page of them.
+///
+/// **An agent holding neither `files` nor `shell` writes no search at all.** No query and no filter
+/// is `invalid-argument`, so the call gg would emit for an empty list is one gg would then refuse —
+/// and an opening turn that failed is the worst first example there is. What is left is the
+/// documentation program on its own, which is the half every other opening program already ends
+/// with.
 ///
 /// A failed call throws and nothing here catches it, which is this arm's failure model: a bootstrap
 /// that caught its own failure would be a worked example of swallowing one.
@@ -562,26 +573,20 @@ pub(super) fn bootstrap_program(
     modules: &[&str],
     docs: &[&str],
 ) -> String {
-    let listed = |binding: &str, names: &[&str]| -> String {
-        match names.is_empty() {
-            true => format!("string[] {binding} = [];\n"),
-            false => {
-                let entries: Vec<String> = names
-                    .iter()
-                    .map(|name| format!("    {},", serde_json::Value::String((*name).to_string())))
-                    .collect();
-                format!("string[] {binding} =\n[\n{}\n];\n", entries.join("\n"))
-            }
+    let opened = open_docs_views_statement(open_docs_view, docs);
+    match modules.is_empty() {
+        true => opened,
+        false => {
+            let paths: Vec<String> = modules
+                .iter()
+                .map(|path| serde_json::Value::String((*path).to_string()).to_string())
+                .collect();
+            format!(
+                "{search}(modules: [{}], limit: {MAX_SEARCH_LIMIT});\n\n{opened}",
+                paths.join(", ")
+            )
         }
-    };
-    let paths = listed("modules", modules);
-    let functions = listed("functions", docs);
-    format!(
-        "{paths}foreach (var path in modules)\n{{\n    \
-         {search}(\"\", module: path, limit: {MAX_SEARCH_LIMIT});\n}}\n\
-         \n\
-         {functions}foreach (var name in functions)\n{{\n    {open_docs_view}(name);\n}}\n"
-    )
+    }
 }
 
 #[cfg(test)]

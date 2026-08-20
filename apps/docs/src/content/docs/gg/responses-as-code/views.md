@@ -139,13 +139,20 @@ turn, so a hand-over chain and an on-use script share one budget.
 
 ## Documentation search
 
-`gg.docs.search(query, options?)` is the route into the documentation, and it is
-global: one query reaches every module at once. It returns `{ total, offset,
-hits }`, each hit carrying `key`, `kind`, `module`, `name` and `summary`, and it
-opens the search-results view of the same page. The filters `module`, `type`,
-`kind`, `offset` and `limit` compose with the query and with each other, and an
-empty query with a `module` filter is that module's whole directory. A page is
-20 hits by default and 100 at most.
+`gg.docs.search` is the route into the documentation, and it is global: one
+query reaches every module at once. Every argument is optional and every one of
+them lives in the call's optional section, so a search is written as a query, as
+a set of filters, or as both. It returns `{ total, offset, hits }`, each hit
+carrying `key`, `kind`, `module`, `name` and `summary`, and it opens the
+search-results view of the same page. A page is 20 hits by default and 100 at
+most.
+
+The filters `modules`, `type`, `kind`, `offset` and `limit` compose with the
+query and with each other. `modules` takes a list and is a lookup rather than a
+ranking: each entry names one module either by gg's own id or by the arm's
+spelling of the path, matching is exact and case-insensitive, and naming several
+returns the entries of any of them. A `modules` filter carrying no query is
+those modules' whole directory.
 
 A hit's `summary` is the entry's brief and stops there. The detail, the
 signatures, the types and the import line are what opening a documentation view
@@ -156,14 +163,25 @@ whatever the arm's language makes importable, which is a namespace in C++ and a
 module in PureScript. Every one of the three can be opened as a documentation
 view, so a name a model can find is a name it can read in full.
 
+A hit reports the one module the entry belongs to: for a function the module
+that publishes it, and for a type the module that declares it. That is a value
+the `modules` filter accepts, so the module a hit names and the module a filter
+would have found it under are the same answer.
+
+A type is an entry when a function's own signature writes its name. A type
+reached only through another type's members sits a level below any signature the
+model reads, and the failure class a call declares it throws is documentation
+about that call rather than an entry to look up, so neither is a hit. A call's
+failure class arrives beside the call's own documentation view.
+
 A query matches an entry's name, its signature, its brief and the detail beneath
 it. Every argument's name counts as signature text and every argument's own
 description counts as detail, on every language, so a search for an argument
 finds the call that takes it whatever the language's declaration syntax writes
 down. Hits are ranked by which of those matched, name first and detail last.
 
-A blank query carrying no filter, an unrecognised `kind` and a `limit` of zero
-are each `invalid-argument`. A refusal opens no view.
+A search carrying neither a query nor a filter, an unrecognised `kind` and a
+`limit` of zero are each `invalid-argument`. A refusal opens no view.
 
 The host filters every hit through the same predicate that decides what the
 agent may call, so a search returns only calls its caller can make. Searching is
@@ -171,6 +189,12 @@ serviced whatever the capability set says.
 
 A hit's `key` is the fully-qualified name, `gg.<module>.<name>`. That is the key
 documentation is filed under and the key `openDocsView` takes.
+
+The view the page opens as states what was asked for and how much of the answer
+it holds, then the hits themselves under a `Modules:`, `Functions:` and `Types:`
+heading apiece, in that order and in rank order within each. A heading is
+written only when hits of that kind are on the page, so the kind is stated once
+per group rather than once per hit.
 
 The surface a query reaches includes the code modules that agent loaded. A
 loaded module's key is a module entry and every declaration it exports is an
@@ -254,6 +278,62 @@ starts with nothing loaded holds none of them, and using the skill again opens
 them. Once open they are ordinary documentation views, opened by key with
 `gg.views.openDocsView` and closed with `gg.docs.close`.
 
+## Undocumented calls
+
+A documentation view a program opens arrives in the window on the turn after the
+program that opened it, so the system prompt states the discipline that follows:
+open a documentation view of each function you intend to call, and write the call
+on a later turn. A model that calls a function it never opened a view of is
+writing that signature from memory, which is the one thing this surface cannot
+tolerate.
+
+gg detects it at the same bracket that decides whether an agent was granted a
+call. For every call it lets through, it asks whether a documentation view of
+that call stood in the agent's window before the turn began, and records the call
+when none did. The call is then serviced exactly as it would be otherwise, since
+this is a measurement rather than a gate. It is not a turn error, so the
+[error ceilings](/gg/execution-limits/) never observe one.
+
+A view this turn's own program opened leaves the call it documents a violation.
+The model wrote the whole program before any of it ran, so it had read nothing.
+Only a view the agent was already holding as the turn opened clears a call, which
+covers a view carried through a [compaction](/gg/compaction/), a view restored for
+a [persistent](/gg/agent-persistence/) instance, and a view the program went on to
+close. A view of any name the arm binds the operation under clears it, since one
+operation is reachable through more than one declaration on some arms.
+
+The [ending calls](/gg/ending-a-session/) are the one exemption. The system prompt
+spells them at the model in the arm's own words, so calling one follows an
+instruction gg gave. Every other call is measured, `gg.docs.search` and
+`gg.views.openDocsView` included: [the opening turn](#the-opening-turn) opens a
+documentation view of both before the model's first turn, so they are documented
+from turn one.
+
+gg's own programs contribute nothing. The opening turn's program and the on-use
+script of a skill or memory are written by gg rather than by a model, so their
+calls are measured nowhere.
+
+The count is a lower bound. A guessed signature that fails to compile never
+reaches a call site, so what is counted is the guess that was structurally right
+while still being a guess.
+
+### Where the finding lands
+
+Each turn's [`code_execution`](/gg/telemetry/code-execution/) event carries
+`undocumentedCalls`: how many such calls the turn made, and a count per gg
+operation id. Naming the operations is what makes the finding actionable, since
+forty calls of one function and one call each of forty functions are different
+findings.
+
+The session summary carries the run's total in the same shape, reachable in the
+[query language](/gg/analysis/query-language/) as
+`summary.undocumentedCalls.calls` and
+`summary.undocumentedCalls.operations.<operation>`.
+
+The first turn of a run that records one writes a `warn` line naming the calls it
+recorded and what they say about the model. Later turns write none, since the
+finding is a property of the model rather than of any one call.
+
 ## The opening turn
 
 The system prompt names the capability modules and names no function, so a fresh
@@ -267,17 +347,23 @@ the example a model opens on has the shape of a reply it has to send. It carries
 its own import line and its own entry point, on the terms in
 [invariants](/gg/responses-as-code/invariants/).
 
-The program makes two kinds of call. It searches each capability module the
-agent was granted, as an exact whole-module lookup, which leaves one search view
-per module listing every function that module offers with its one-line brief.
-It also opens the documentation of `gg.docs.search` and
-`gg.views.openDocsView`, the two calls discovery itself is made of. Between them
-the agent opens knowing every function it may call and how to read any of them
-in full.
+The program makes two kinds of call. It runs one search naming the agent's
+filesystem and shell modules together, which leaves a single view listing every
+function those two modules offer with its one-line brief. It also opens the
+documentation of `gg.docs.search` and `gg.views.openDocsView`, the two calls
+discovery itself is made of. Between them the agent opens holding what it
+reaches for first and the means to find everything else.
 
-Each module's listing is its own view, keyed under that module's own path, so
-one listing supersedes only a re-listing of the same module. The agent's own
-searches keep the single results selector and keep superseding each other.
+The window opens on those two modules alone. The system prompt names every
+module the agent holds, one line each, and a module path is an exact lookup, so
+a module the agent turns out to need costs it one search and a module it never
+touches costs it nothing. Listing every granted module up front spends a
+directory apiece on the ones a run never reaches for, on every request of that
+run.
+
+The listing is one view keyed under the modules it lists, so only a re-listing
+of exactly those supersedes it. The agent's own searches keep the single results
+selector and keep superseding each other.
 
 The program runs against the agent's real capability grants and sandbox limits,
 with no deadline and no code modules, and it is prepared through a cache keyed

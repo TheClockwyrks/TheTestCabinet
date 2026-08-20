@@ -75,7 +75,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg::GgCallFailure;
+use test_cabinet_core::gg::{GgCallFailure, GgUndocumentedCalls};
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
@@ -177,6 +177,14 @@ pub(crate) struct MembraneState<A: OperationApi> {
     /// How many model-facing API calls this program has made — every host function, dispatching or
     /// not, refused or serviced. See [`recording`].
     api_calls: u64,
+    /// How many of those calls the model made **without having read the call's documentation**, and
+    /// which operations they were — the [discovery](crate::discovery) finding, accumulated at the
+    /// same bracket that counts [`api_calls`](Self::api_calls) above it.
+    ///
+    /// A count and nothing more: it refuses nothing, ends nothing and is not consulted by anything
+    /// the program can observe. Empty for the overwhelming majority of programs, and for every
+    /// program of gg's own.
+    undocumented: GgUndocumentedCalls,
     /// **What this agent was granted**, and therefore the whole capability gate.
     ///
     /// Every arm's SDK is static: every function is compiled, linked and callable whatever the run
@@ -681,6 +689,9 @@ pub(crate) struct MembraneParts {
     /// the carve-outs (a view, an ending, a program-library call, a documentation search) and by the
     /// calls the membrane refused. See [`recording`].
     pub api_calls: u64,
+    /// How many of those the model wrote without having read what they do, by operation — see
+    /// [`crate::discovery`].
+    pub undocumented: GgUndocumentedCalls,
     /// Every refused call the roster kept.
     pub refusals: Vec<SandboxRefusal>,
     /// How many refusals the cap discarded.
@@ -737,6 +748,7 @@ impl<A: OperationApi> MembraneState<A> {
             api: GuardedApi::new(api),
             language,
             api_calls: 0,
+            undocumented: GgUndocumentedCalls::default(),
             grants: scope.grants(),
             limiter: MemoryLimiter::new(limits.max_memory_bytes),
             deadline,
@@ -880,6 +892,7 @@ impl<A: OperationApi> MembraneState<A> {
             calls: self.calls,
             calls_suppressed: self.calls_suppressed,
             api_calls: self.api_calls,
+            undocumented: self.undocumented,
             refusals: self.refusals,
             refusals_suppressed: self.refusals_suppressed,
             logs: self.logs.into(),

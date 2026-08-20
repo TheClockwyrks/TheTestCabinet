@@ -125,14 +125,14 @@ pub(super) fn search<A: OperationApi>(
     op: &str,
     arguments: &[Value],
 ) -> Answer {
-    let query = argument(arguments, op, 0)?.text("the query")?;
-    let module = argument(arguments, op, 1)?.optional_text("the module filter")?;
+    let query = argument(arguments, op, 0)?.optional_text("the query")?;
+    let modules = argument(arguments, op, 1)?.texts("the module filter")?;
     let declared = argument(arguments, op, 2)?.optional_text("the type filter")?;
     let kind = argument(arguments, op, 3)?.optional_text("the kind filter")?;
     let offset = argument(arguments, op, 4)?.optional_integer("the offset")?;
     let limit = argument(arguments, op, 5)?.optional_integer("the limit")?;
     Ok(doc_search(DocsHost::search(
-        state, query, module, declared, kind, offset, limit,
+        state, query, modules, declared, kind, offset, limit,
     )?))
 }
 

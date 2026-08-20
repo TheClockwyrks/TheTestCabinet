@@ -15,8 +15,8 @@ use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_SHELL, COMPACTION_STRATEGY_SELF_COMPACTION, FSM_PARAM_STATES,
-    GgAgentConfig, GgCapabilityConfig, GgRosterEntry, GgSubagentRef, SHELL_OUTPUT_ADAPTIVE,
-    SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD,
+    GgAgentConfig, GgCapabilityConfig, GgRosterEntry, GgSubagentRef, SHELL_OUTPUT_INLINE,
+    SHELL_OUTPUT_OFFLOAD,
 };
 use test_cabinet_core::gg_reference::{GgRunDataStandIn, GgToolReference, GgToolVariant};
 
@@ -248,22 +248,13 @@ pub(super) fn variants(tool: &str) -> Vec<GgToolVariant> {
                 ..MAXIMAL_CONFIGURATION
             },
         )],
-        "shell" => &[
-            (
-                "shell output: inline",
-                Configuration {
-                    shell: SHELL_OUTPUT_INLINE,
-                    ..MAXIMAL_CONFIGURATION
-                },
-            ),
-            (
-                "shell output: offload",
-                Configuration {
-                    shell: SHELL_OUTPUT_OFFLOAD,
-                    ..MAXIMAL_CONFIGURATION
-                },
-            ),
-        ],
+        "shell" => &[(
+            "shell output: inline",
+            Configuration {
+                shell: SHELL_OUTPUT_INLINE,
+                ..MAXIMAL_CONFIGURATION
+            },
+        )],
         "create_issue" => &[(
             "reviewers: required",
             Configuration {
@@ -372,7 +363,7 @@ impl Configuration {
 /// what is *offered*, as-authored in how what is offered is *worded*.
 pub(crate) const MAXIMAL_CONFIGURATION: Configuration = Configuration {
     read: READ_MODE_UNLIMITED,
-    shell: SHELL_OUTPUT_ADAPTIVE,
+    shell: SHELL_OUTPUT_OFFLOAD,
     reviewers: false,
     tasks: TaskMode::Simple,
     memories: MemoryStrategy::Scratchpad,

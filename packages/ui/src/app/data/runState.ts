@@ -15,10 +15,10 @@ export interface RunStatePresentation {
   isFailure: boolean;
   /**
    * Whether this is a publishable failure tier (catastrophic, timed-out,
-   * harness-error, or hung): real model signal that publishes without a
-   * review. The two never-publishable tiers are excluded — an infrastructure
-   * failure is the Test Cabinet's own fault, and a canceled run was stopped by an
-   * operator before it reached any outcome.
+   * harness-error, limit-exceeded, or hung): real model signal that publishes
+   * without a review. The two never-publishable tiers are excluded — an
+   * infrastructure failure is the Test Cabinet's own fault, and a canceled run was
+   * stopped by an operator before it reached any outcome.
    */
   isPublishableFailure: boolean;
 }
@@ -58,6 +58,15 @@ export function describeRunState(state: RunState): RunStatePresentation {
         chip: "harness",
         description:
           "The model drove the agent harness to exit early (a non-zero exit). It produced no evaluable output, so it releases no code or build — it is recorded only as a per-model harness-error statistic. (A subscription auth-token refresh can also surface here; those are not published.)",
+        isFailure: true,
+        isPublishableFailure: true,
+      };
+    case "limit_exceeded":
+      return {
+        label: "Execution ceiling reached",
+        chip: "ceiling",
+        description:
+          "The harness stopped the run on one of the execution ceilings its configuration armed — a turn count, a wall-clock budget, a spend, or a tolerance for failing turns. The model spent its whole allowance without finishing, so the run releases no code or build and is recorded as a per-model statistic. It is never retried, because a second attempt on the same configuration reaches the same ceiling.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -110,6 +119,11 @@ export function runStateColor(state: RunState): string {
       return "var(--tcab-accent-2)";
     case "timed_out":
       return "var(--tcab-accent)";
+    case "limit_exceeded":
+      // Adjacent to the timeout tone, because a spent ceiling and a spent clock
+      // are the same kind of outcome, and distinguishable from it so a
+      // distribution chart carrying both can still be read.
+      return "color-mix(in srgb, var(--tcab-accent) 60%, var(--tcab-accent-2))";
     case "hung":
       return "var(--tcab-muted)";
     case "infrastructure":
@@ -130,8 +144,8 @@ export function runStateColor(state: RunState): string {
  * however badly it validated, since a validation script that could not be driven
  * fails the checklist point it backs rather than diverting the run. The remaining
  * tiers genuinely stopped before a usable build existed: `catastrophic` never
- * loaded, `timed_out` never finished, and `harness_error` / `hung` /
- * `infrastructure` / `canceled` release nothing at all.
+ * loaded, `timed_out` never finished, and `harness_error` / `limit_exceeded` /
+ * `hung` / `infrastructure` / `canceled` release nothing at all.
  */
 export function hasPlayableOutcome(state: RunState): boolean {
   return state === "completed";

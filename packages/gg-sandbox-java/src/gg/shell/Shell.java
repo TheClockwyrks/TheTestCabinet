@@ -27,9 +27,9 @@ public final class Shell {
      *
      * <p>This run may offload shell output, and the {@code shell} tool's own description says which
      * mode is in force. Under {@code offload}, {@code output} holds the tail that fits and ends with
-     * a note naming the two files the whole of stdout and stderr went to. Under {@code adaptive},
-     * the default, a command that succeeded returns only that note and one that failed returns the
-     * tail. Grepping the named files beats running the command again.
+     * a note naming the two files the whole of stdout and stderr went to. Those files are readable
+     * by absolute path, so a {@code gg.files.Files.readTextFile} of one, or a grep, beats running
+     * the command again.
      *
      * @param command The command line, run by {@code sh -c} with the workspace as its working
      *     directory.

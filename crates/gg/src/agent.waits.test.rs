@@ -292,7 +292,7 @@ async fn a_fault_releases_a_wait_begun_after_it_was_raised() {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     };
 
     let factory = ScriptedFactory::new()

@@ -57,7 +57,7 @@ use super::{
 };
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::locate::Locations;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{DOCS_SEARCH, OperationId, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "typescript.compile.rs"]
 mod compile;
@@ -170,9 +170,9 @@ impl ProgramLanguage for TypeScript {
         binding_name(name)
     }
 
-    /// **The line a program writes to reach a code module**: a namespace import of the specifier
-    /// the guest's loader resolves it under, on the same terms [`SURFACE_IMPORT`] is a namespace
-    /// import.
+    /// **The line a program writes to reach a code module**: [a namespace import](self::lib_import)
+    /// of the specifier the guest's loader resolves it under, where gg's own modules are reached by
+    /// a named one.
     fn lib_import(&self, key: &str) -> Option<String> {
         lib_import(key)
     }
@@ -256,7 +256,8 @@ impl ProgramLanguage for TypeScript {
         open_docs_views_statement(self, names)
     }
 
-    /// [One `import`, two `const` arrays and two `for…of` loops](self::bootstrap_program).
+    /// [One named `import`, one search over every granted module at once, and a `for…of` opening a
+    /// documentation view apiece](self::bootstrap_program).
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(self, modules, docs)
     }
@@ -269,23 +270,52 @@ impl ProgramLanguage for TypeScript {
 // Free functions taking the **arm**, so each call inside them is spelled from that arm's own
 // catalogue and the syntax around it is written once. [JavaScript](super::javascript) is this
 // language with the type check taken out and its programs are these programs: a second copy of them
-// would be the drift the pair exists to rule out. Every one of them opens with [`SURFACE_IMPORT`],
-// because a program here reaches gg through a line it wrote and these programs are run.
+// would be the drift the pair exists to rule out. Every one of them opens with a
+// [named import](surface_import) of exactly the modules it goes on to call into, because a program
+// here reaches gg through a line it wrote and these programs are run.
 
-/// **The line a program writes to reach gg's SDK**, and the one every synthesized program opens
-/// with.
+/// **The specifier the guest's loader resolves gg's whole surface under**, and the stem of every
+/// name gg prints.
+const SURFACE: &str = "gg";
+
+/// **The line a program writes to reach the modules it calls into**: one named import off
+/// [`SURFACE`], binding each module under its own short name.
 ///
-/// The namespace form rather than a named one, and that is the arm's whole naming decision in one
-/// constant. `gg.files.readFile` is the name a documentation view is filed under, the name a search
-/// hit carries, the name the prompt quotes and the name [`spell`] resolves — and this
-/// is the line that makes it an expression a program can write. A named import
-/// (`import { files } from "gg";`) reaches the same module and is equally valid; it is not what gg
-/// teaches, because it would leave every name gg prints one edit away from compiling.
+/// The named form rather than a namespace one, and that is the arm's whole naming decision in one
+/// function. `gg.files.readFile` is the name a documentation view is filed under, the name a search
+/// hit carries, the name the prompt quotes and the name [`spell`] resolves; `import { files } from
+/// "gg";` brings *that* module and no other into scope, and the call site is that same name with its
+/// leading `gg.` dropped — [`call_site`] is the one place the drop happens. A namespace import
+/// (`import * as gg from "gg";`) reaches the same modules and is equally valid; it is not what gg
+/// teaches, because it brings in twelve modules to call into one.
 ///
-/// It is stated here **and** in `packages/gg-sandbox/tools/signatures.mjs`, which writes it into
-/// every module's `import` field, and `an_arms_import_line_is_the_one_its_own_opening_program_writes`
-/// holds the two to each other.
-const SURFACE_IMPORT: &str = "import * as gg from \"gg\";\n";
+/// The per-module form of it is stated **again** in `packages/gg-sandbox/tools/signatures.mjs`,
+/// which writes it into every module's `import` field, and
+/// `an_arms_import_line_is_the_one_its_own_opening_program_writes` holds the two to each other.
+fn surface_import(bindings: &[&str]) -> String {
+    format!("import {{ {} }} from \"{SURFACE}\";\n", bindings.join(", "))
+}
+
+/// **How a program writes one of gg's calls, and the module binding it has to import to write it**:
+/// `(views, views.openDocsView)` for [`VIEWS_OPEN_DOCS_VIEW`].
+///
+/// Both halves come from the [key](spell) this arm's own catalogue resolves, so a renamed function
+/// or a regrouped module is renamed here too; the only thing done to it is dropping the leading
+/// `gg.`, which is exactly what a named import buys and exactly what the system prompt tells the
+/// model to expect. A key that carried no such stem — [`spell`]'s fallback to gg's own vocabulary,
+/// which the operation gate proves unreachable — is written as it stands rather than trimmed at a
+/// separator that is not there.
+fn call_site(language: &dyn ProgramLanguage, id: OperationId) -> (String, String) {
+    let key = spell(language, id);
+    let written = key
+        .strip_prefix(&format!("{SURFACE}."))
+        .unwrap_or(key.as_str())
+        .to_string();
+    let binding = written
+        .split_once('.')
+        .map_or_else(|| written.clone(), |(module, _)| module.to_string());
+    (binding, written)
+}
 
 /// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
 ///
@@ -320,7 +350,12 @@ pub(super) fn binding_name(name: &str) -> String {
 }
 
 /// **The line a program writes to reach a code module**: a namespace import of the specifier the
-/// guest's loader resolves it under, on the same terms [`SURFACE_IMPORT`] is a namespace import.
+/// guest's loader resolves it under.
+///
+/// A namespace where gg's own surface is reached by a [named import](surface_import), and the
+/// difference is whose names they are. gg knows every module it publishes and can name one; a loaded
+/// module's exports are its author's, so the only line gg can write is the one that takes whatever
+/// is there.
 pub(super) fn lib_import(key: &str) -> Option<String> {
     Some(format!(
         "import * as {key} from \"{}{key}\";",
@@ -333,8 +368,8 @@ pub(super) fn lib_access(key: &str) -> String {
     format!("{key}.<name>")
 }
 
-/// The import, then `gg.views.openFile("src/main.ts");` — or
-/// `gg.views.openFile("src/main.ts", { offset: 400, limit: 200 });` for a window.
+/// The import, then `views.openFile("src/main.ts");` — or
+/// `views.openFile("src/main.ts", { offset: 400, limit: 200 });` for a window.
 ///
 /// A whole program, because that is what gg synthesizes it as: it is written into the agent's own
 /// transcript and read by the model as an example of its own output, so it has to be a reply that
@@ -348,26 +383,29 @@ pub(super) fn open_file_statement(
     path: &str,
     window: Option<FileWindow>,
 ) -> String {
-    let open_file = spell(language, VIEWS_OPEN_FILE);
+    let (views, open_file) = call_site(language, VIEWS_OPEN_FILE);
+    let import = surface_import(&[views.as_str()]);
     let path = serde_json::Value::String(path.to_string());
     match window {
         Some(window) => format!(
-            "{SURFACE_IMPORT}\n{open_file}({path}, {{ offset: {}, limit: {} }});\n",
+            "{import}\n{open_file}({path}, {{ offset: {}, limit: {} }});\n",
             window.offset, window.limit
         ),
-        None => format!("{SURFACE_IMPORT}\n{open_file}({path});\n"),
+        None => format!("{import}\n{open_file}({path});\n"),
     }
 }
 
 /// One import, then one call per view.
 ///
-/// Every synthesized program on these arms opens with [`SURFACE_IMPORT`] exactly once, because that
-/// is what a module may carry: `import * as gg` twice is a redeclaration.
+/// Every synthesized program on these arms writes its [import](surface_import) exactly once, because
+/// that is what a module may carry: two lines binding `views` are a redeclaration, whatever they
+/// were imported from.
 pub(super) fn open_file_program(
     language: &dyn ProgramLanguage,
     views: &[(&str, Option<FileWindow>)],
 ) -> String {
-    let open_file = spell(language, VIEWS_OPEN_FILE);
+    let (binding, open_file) = call_site(language, VIEWS_OPEN_FILE);
+    let import = surface_import(&[binding.as_str()]);
     let calls: String = views
         .iter()
         .map(|(path, window)| {
@@ -381,32 +419,53 @@ pub(super) fn open_file_program(
             }
         })
         .collect();
-    format!("{SURFACE_IMPORT}\n{calls}")
+    format!("{import}\n{calls}")
 }
 
 /// The import, a `const` array of names and a `for…of` over it, each iteration opening one
 /// documentation view.
 ///
 /// A loop rather than one statement per name because the list is as long as the family — eleven
-/// calls written out would be a program a model reads as a style to copy. The names are rendered
-/// through [`serde_json`] for the reason a path is: a name carrying a quote would otherwise produce
-/// a program that does not parse.
+/// calls written out would be a program a model reads as a style to copy, and the array is bound to
+/// a `const` rather than written into the `for…of` head because eleven fully-qualified keys do not
+/// fit on a line. The names are rendered through [`serde_json`] for the reason a path is: a name
+/// carrying a quote would otherwise produce a program that does not parse.
 pub(super) fn open_docs_views_statement(language: &dyn ProgramLanguage, names: &[&str]) -> String {
-    let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
+    let (views, open_docs_view) = call_site(language, VIEWS_OPEN_DOCS_VIEW);
+    let import = surface_import(&[views.as_str()]);
     let entries = listed(names);
     format!(
-        "{SURFACE_IMPORT}\nconst functions = [\n{entries}];\nfor (const name of functions) {{\n  \
+        "{import}\nconst functions = [\n{entries}];\nfor (const name of functions) {{\n  \
          {open_docs_view}(name);\n}}\n"
     )
 }
 
-/// The opening turn: the import, one array of module paths listed in full, then one array of names
-/// opened as documentation views, each with a `for…of` over it.
+/// The opening turn: the import, **one** search naming every granted module at once, then a `for…of`
+/// over the documentation keys, each iteration opening one view.
 ///
-/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
-/// modules and a dozen calls written out is a shape a model would copy for its own work. The module
-/// filter is passed as a **trailing options object**, which is this syntax's idiom for optional
-/// arguments and the one the system prompt teaches.
+/// ```text
+/// import { docs, views } from "gg";
+///
+/// docs.search({ modules: ["gg.files", "gg.shell"], limit: 100 });
+///
+/// for (const name of ["gg.docs.search", "gg.views.openDocsView"]) {
+///   views.openDocsView(name);
+/// }
+/// ```
+///
+/// It is the first and most-copied example of a well-formed turn, so every line of it is a habit
+/// being taught. The import binds the two modules the program calls into and no others. The search
+/// carries a `modules` **union** — several modules in one call, which is what makes a loop of
+/// one-search-per-module the wrong shape — with the limit raised to [`MAX_SEARCH_LIMIT`] so the
+/// answer is the whole directory rather than its first page, and it carries no query at all, because
+/// every argument of that call is optional and a filter is already saying what to look at. Both
+/// lists are written into the call that reads them rather than bound to a `const` first: two names
+/// apiece is not a list that needs naming. The filters and the page arrive as a **trailing options
+/// object**, this syntax's idiom for optional arguments and the one the system prompt teaches.
+///
+/// An agent holding neither `files` nor `shell` gets no search line at all. Its `modules` list is
+/// empty, and an empty filter beside no query is the one way `docs.search` refuses — so the
+/// alternative to omitting the call is opening the session with a program that throws.
 ///
 /// A failed call throws and is left to, which is this arm's failure model: a bootstrap that caught
 /// its own failure would be a worked example of swallowing one.
@@ -415,23 +474,40 @@ pub(super) fn bootstrap_program(
     modules: &[&str],
     docs: &[&str],
 ) -> String {
-    let search = spell(language, DOCS_SEARCH);
-    let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
-    let paths = listed(modules);
-    let functions = listed(docs);
+    let (docs_binding, search) = call_site(language, DOCS_SEARCH);
+    let (views, open_docs_view) = call_site(language, VIEWS_OPEN_DOCS_VIEW);
+    let bindings: Vec<&str> = match modules.is_empty() {
+        true => vec![views.as_str()],
+        false => vec![docs_binding.as_str(), views.as_str()],
+    };
+    let import = surface_import(&bindings);
+    let searched = match modules.is_empty() {
+        true => String::new(),
+        false => format!(
+            "{search}({{ modules: {}, limit: {MAX_SEARCH_LIMIT} }});\n\n",
+            inline(modules)
+        ),
+    };
     format!(
-        "{SURFACE_IMPORT}\nconst modules = [\n{paths}];\nfor (const path of modules) {{\n  \
-         {search}(\"\", {{ module: path, limit: {MAX_SEARCH_LIMIT} }});\n}}\n\
-         \n\
-         const functions = [\n{functions}];\nfor (const name of functions) {{\n  \
-         {open_docs_view}(name);\n}}\n"
+        "{import}\n{searched}for (const name of {}) {{\n  {open_docs_view}(name);\n}}\n",
+        inline(docs)
     )
 }
 
-/// One array literal's entries, each rendered through [`serde_json`].
+/// One array literal's entries, each rendered through [`serde_json`], one per line and indented.
 fn listed(names: &[&str]) -> String {
     names
         .iter()
         .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
         .collect()
+}
+
+/// The same entries as a single-line array literal, for a list short enough to be written where it
+/// is read.
+fn inline(names: &[&str]) -> String {
+    let entries: Vec<String> = names
+        .iter()
+        .map(|name| serde_json::Value::String((*name).to_string()).to_string())
+        .collect();
+    format!("[{}]", entries.join(", "))
 }

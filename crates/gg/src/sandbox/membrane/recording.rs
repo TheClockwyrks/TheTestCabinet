@@ -30,6 +30,14 @@
 //! and it encloses everything the call set off, so the nesting on the stream reads the way it
 //! happened.
 //!
+//! # The bracket asks two questions of the agent, not one
+//!
+//! Whether this agent was **granted** the call, which decides whether it runs, and whether the model
+//! had **read the call's documentation** before writing it, which decides nothing at all and is
+//! recorded. The second is [discovery](crate::discovery), and it is here for the same reason the
+//! gate is: this is the one place every model-facing call passes through, so a question asked here
+//! is asked of every call rather than of the ones forty-eight host functions remembered.
+//!
 //! # Why a token
 //!
 //! [`GuardedApi`] owns the [api](OperationApi) behind a field this module alone can see, and hands it out
@@ -43,6 +51,7 @@
 
 use super::test_cabinet::gg::types::ApiError;
 use super::{MembraneState, OperationApi, wire_failure};
+use crate::discovery::{CallDiscovery, spelled_by_gg};
 use crate::sandbox::OperationId;
 use crate::sandbox::invoker::ApiIdentity;
 
@@ -118,7 +127,10 @@ impl<A: OperationApi> MembraneState<A> {
         };
         self.api.api.begin_api_call(identity);
         self.api_calls = self.api_calls.saturating_add(1);
-        let result = self.granted(id).and_then(|()| body(self, Recording(())));
+        let result = self.granted(id).and_then(|()| {
+            self.record_discovery(id, identity);
+            body(self, Recording(()))
+        });
         // The class the program is about to be thrown with, taken from the error itself. It is the
         // API layer's own reason, not the tool's: a membrane refusal has no tool record at all, and
         // a typed conversion that failed over a tool that answered `ok` is a failure here and a
@@ -155,9 +167,34 @@ impl<A: OperationApi> MembraneState<A> {
         };
         self.api.api.begin_api_call(identity);
         self.api_calls = self.api_calls.saturating_add(1);
+        self.record_discovery(id, identity);
         let value = body(self, Recording(()));
         self.api.api.end_api_call(identity, None);
         value
+    }
+
+    /// Ask the api whether the model had **read this call's documentation** before writing it, and
+    /// record the call when it had not — the [discovery](crate::discovery) half of the bracket.
+    ///
+    /// Called from inside the bracket and only for a call the gate let through, which is what makes
+    /// the two questions read in the right order: a call this agent was not granted is a
+    /// [refusal](crate::sandbox::invoker::SandboxRefusal), a different fact with its own roster, and it is
+    /// undocumentable anyway — a withheld operation has no page in this agent's surface.
+    ///
+    /// The [ending calls](spelled_by_gg) are skipped before the api is asked at all, because gg's own
+    /// prompt spells them at the model: an exemption asked here rather than answered there keeps the
+    /// api's implementations from each having to know which calls gg names in its prompt.
+    ///
+    /// It **cannot fail and cannot refuse**. The answer is written to the turn's record and nowhere
+    /// else; the call proceeds identically either way. See
+    /// [the module docs](crate::discovery#where-the-detection-happens-and-why-there).
+    fn record_discovery(&mut self, id: OperationId, identity: ApiIdentity<'_>) {
+        if spelled_by_gg(id) {
+            return;
+        }
+        if self.api.api.call_discovery(identity) == CallDiscovery::Undocumented {
+            self.undocumented.record(identity.operation);
+        }
     }
 
     /// The api, for a caller holding a [`Recording`] — the shorthand every carve-out uses instead of

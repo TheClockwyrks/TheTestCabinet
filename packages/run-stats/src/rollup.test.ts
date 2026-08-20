@@ -96,13 +96,15 @@ describe("rollupRuns", () => {
       run({ id: "c", state: "harness_error" }),
       run({ id: "d", state: "catastrophic" }),
       run({ id: "e", state: "infrastructure" }),
+      run({ id: "f", state: "limit_exceeded" }),
     ]);
     expect(rollup.outcomes.completed).toBe(2);
     expect(rollup.outcomes.harness_error).toBe(1);
     expect(rollup.outcomes.catastrophic).toBe(1);
     expect(rollup.outcomes.infrastructure).toBe(1);
-    expect(rollup.runs).toBe(5);
-    expect(rollup.completionRate).toBeCloseTo(0.4);
+    expect(rollup.outcomes.limit_exceeded).toBe(1);
+    expect(rollup.runs).toBe(6);
+    expect(rollup.completionRate).toBeCloseTo(1 / 3);
   });
 
   it("tallies ratings and counts an unrated run separately", () => {

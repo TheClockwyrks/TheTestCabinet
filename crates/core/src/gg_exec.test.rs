@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use super::*;
 use crate::event::EventKind;
 use crate::execution::OutputStream;
-use crate::gg::{GgCallFailure, GgCapabilitySet, ROOT_PROFILE_ID};
+use crate::gg::{GgCallFailure, GgCapabilitySet, GgUndocumentedCalls, ROOT_PROFILE_ID};
 use crate::run_record::HarnessSlug;
 
 /// A real mock-session telemetry stream captured from the `gg` binary (mock provider,
@@ -254,6 +254,7 @@ fn a_finished_code_execution_reaches_the_human_facing_feed() {
     let finished = GgTelemetryEvent::new(
         "t",
         GgTelemetryKind::CodeExecution {
+            undocumented_calls: GgUndocumentedCalls::default(),
             ok: true,
             tool_calls: 2,
             api_calls: 2,
@@ -286,6 +287,7 @@ fn a_code_execution_without_a_completion_maps_to_nothing() {
         let event = GgTelemetryEvent::new(
             "t",
             GgTelemetryKind::CodeExecution {
+                undocumented_calls: GgUndocumentedCalls::default(),
                 ok: true,
                 tool_calls: 1,
                 api_calls: 1,
@@ -607,3 +609,48 @@ fn build_invocation_carries_the_resolved_model_modalities() {
 /// and path resolution) while these need a runtime to drive the branch's race at all.
 #[path = "gg_exec.cancel.test.rs"]
 mod cancel_tests;
+
+// --- The non-zero-exit classification --------------------------------------
+
+#[test]
+fn a_breached_ceiling_is_classified_apart_from_every_other_non_zero_exit() {
+    // The two non-zero codes say opposite things about the configuration, and the split is what
+    // keeps a run that spent its own safeguard out of the retry loop.
+    let ceiling = classify_exit(
+        i32::from(crate::gg::EXIT_LIMIT_EXCEEDED),
+        Some("limit_exceeded"),
+    );
+    assert!(
+        matches!(&ceiling, Error::HarnessLimitExceeded { slug, detail }
+            if slug == GG_SLUG && detail.contains("limit_exceeded")),
+        "{ceiling:?}",
+    );
+    assert_eq!(
+        crate::run_record::RunState::classify_failure(&ceiling),
+        crate::run_record::RunState::LimitExceeded,
+    );
+
+    // A launch fatal, a refused credential and a gg defect all leave `1`, and all of them mean
+    // there was no run to score.
+    let broken = classify_exit(1, Some("internal_error"));
+    assert!(
+        matches!(&broken, Error::HarnessInvocation { slug, detail }
+            if slug == GG_SLUG && detail.contains("internal_error")),
+        "{broken:?}",
+    );
+    assert_eq!(
+        crate::run_record::RunState::classify_failure(&broken),
+        crate::run_record::RunState::HarnessError,
+    );
+}
+
+#[test]
+fn an_exit_with_no_terminal_status_still_names_its_code() {
+    // A session killed before it emitted a `session_ended` reports nothing to quote, and the
+    // detail has to stay useful anyway.
+    let detail = match classify_exit(1, None) {
+        Error::HarnessInvocation { detail, .. } => detail,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(detail, "gg exited with code 1");
+}

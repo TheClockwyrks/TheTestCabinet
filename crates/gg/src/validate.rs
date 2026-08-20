@@ -16,11 +16,18 @@
 //!    arm wherever the capability offers arms to choose between (see [`CAPABILITIES_WITH_ARMS`]),
 //!    and it writes every param the [table](CAPABILITY_PARAMS) marks
 //!    [required](Requirement::Required). A required value that is absent or `null` is refused at its
-//!    own locus, on exactly the terms an unreadable one is. The table's other classification,
+//!    own locus, on exactly the terms an unreadable one is. The table's second classification,
 //!    [off when absent](Requirement::OffWhenAbsent), is where the absence *is* the setting — no
 //!    summarizer model, no reviewer requirement — and gg records it as such rather than standing a
 //!    figure in for it. Leaving a capability out of the profile's list is the one way to leave it
 //!    unconfigured, and it means off.
+//!
+//!    The table's third classification,
+//!    [default when absent](Requirement::DefaultWhenAbsent), is the single exception to the rule,
+//!    and it is bounded by the [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog)
+//!    writing the figure into every new document: the value a run was conducted under is in that
+//!    run's record whether or not the operator had an opinion about the key. The
+//!    [context-usage signal's threshold](PARAM_SIGNAL_THRESHOLD_PERCENT) is read that way.
 //! 2. **A disabled capability requires nothing of itself.** It configures nothing, so there is
 //!    nothing for it to be short of; what it carries is the configuration the arm *would* have used,
 //!    which is what keeps the on and off arms of one comparison the same document with one switch
@@ -112,9 +119,9 @@ use test_cabinet_core::gg::{
     PARAM_MAX_CHARS, PARAM_MAX_COUNT, PARAM_MAX_DEPTH, PARAM_MAX_EPICS, PARAM_MAX_ISSUES,
     PARAM_MAX_LEN_DESCRIPTION, PARAM_MAX_LEN_INDEX, PARAM_MAX_LEN_PER_MEMORY, PARAM_MAX_LINES,
     PARAM_MAX_MEMORY_BYTES, PARAM_MAX_RESULTS, PARAM_MAX_RETRIES, PARAM_MAX_TASKS,
-    PARAM_MAX_TOTAL_LEN, PARAM_MODE, PARAM_REVIEWERS, PARAM_SKILLS_DIR, PARAM_SUMMARY_HEADROOM,
-    PARAM_TIMEOUT_SECS, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, READ_MODES, SHELL_OUTPUT_MODES,
+    PARAM_MAX_TOTAL_LEN, PARAM_MODE, PARAM_REVIEWERS, PARAM_SIGNAL_THRESHOLD_PERCENT,
+    PARAM_SKILLS_DIR, PARAM_SUMMARY_HEADROOM, PARAM_TIMEOUT_SECS, PARAM_TOP_FILE_VIEWS,
+    PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, READ_MODES, SHELL_OUTPUT_MODES,
 };
 
 use crate::config::GgInvocation;
@@ -589,6 +596,38 @@ pub fn required_positive_count_param(
     at_least_one(count, capability, key, consequence, report)
 }
 
+/// **One optional `params` key read as a whole percentage** — [`count_param`] bounded at a hundred,
+/// for a key that names a share of something rather than a size of it.
+///
+/// `None` is the key absent, `null`, or a value gg cannot read as a percentage — the launch is
+/// already refused in the last case — and the caller answers it the way it answers every absence:
+/// with the setting the document's silence names, never with a figure it invented for a value it
+/// could not read.
+///
+/// A hundred and one is not a share of anything, so it is refused rather than clamped: an operator
+/// who wrote `750` meaning three quarters is told so, instead of running under a threshold no
+/// window ever reaches and reading nothing in the record that says why.
+pub fn percent_param(
+    params: &Value,
+    capability: &str,
+    key: &str,
+    report: &mut LaunchReport,
+) -> Option<u64> {
+    let percent = count_param(params, capability, key, report)?;
+    if percent <= 100 {
+        return Some(percent);
+    }
+    report.report(LaunchDefect::run_level(
+        param_locus(capability, key),
+        percent.to_string(),
+        format!(
+            "the `{capability}` capability's `{key}` is a percentage, so it must be between 0 and \
+             100; gg substitutes no share for one it cannot honour."
+        ),
+    ));
+    None
+}
+
 // ---------------------------------------------------------------------------
 // The params vocabulary
 // ---------------------------------------------------------------------------
@@ -611,6 +650,19 @@ pub enum Requirement {
     /// what the document says and substitutes nothing, and a value written here is read and refused
     /// on the ordinary terms.
     OffWhenAbsent,
+    /// **The absence names a figure gg holds.** The one classification that stands something in
+    /// for a value nobody wrote, and it covers one shape of key: a knob that holds a piece of gg
+    /// back until it is worth its cost, where "off" is the setting nobody wants and requiring it
+    /// would put a number in front of every operator with no opinion about it.
+    ///
+    /// What keeps it honest is that the figure is **written into every new document** by the
+    /// [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog), so the value a run was
+    /// conducted under is in that run's record whether or not the operator touched the key. The
+    /// figure itself lives beside the param constant it belongs to, so the resolver that reads the
+    /// key and the catalog that writes it name one number.
+    ///
+    /// A value that *is* written is read and refused on the ordinary terms.
+    DefaultWhenAbsent,
 }
 
 /// **Every `params` key each capability accepts, and what its absence means**, in one table — the
@@ -765,6 +817,10 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
             (
                 PARAM_TOP_FILE_VIEWS,
                 Requirement::Required("how many files the context-usage breakdown names"),
+            ),
+            (
+                PARAM_SIGNAL_THRESHOLD_PERCENT,
+                Requirement::DefaultWhenAbsent,
             ),
             (
                 MODULE_PARAM_OWNERSHIP,
@@ -1457,7 +1513,7 @@ fn check_params(
         return;
     }
     for (key, requirement) in known {
-        if *requirement == Requirement::OffWhenAbsent {
+        if !matches!(requirement, Requirement::Required(_)) {
             continue;
         }
         if capability

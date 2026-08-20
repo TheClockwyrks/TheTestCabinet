@@ -4413,7 +4413,7 @@ fn rating_rank_expr() -> SimpleExpr {
 }
 
 /// The wire strings of the **publishable failure** tiers — catastrophic,
-/// timed-out, and harness-error — the slice every failures-only
+/// timed-out, harness-error, limit-exceeded and hung — the slice every failures-only
 /// query and publish gate filters on.
 ///
 /// Derived from [`RunState::is_publishable_failure`](test_cabinet_core::run_record::RunState::is_publishable_failure) rather than written out, so a
@@ -4435,6 +4435,7 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
         RunState::Catastrophic => "catastrophic",
         RunState::TimedOut => "timed_out",
         RunState::HarnessError => "harness_error",
+        RunState::LimitExceeded => "limit_exceeded",
         RunState::Hung => "hung",
         RunState::Infrastructure => "infrastructure",
         RunState::Canceled => "canceled",

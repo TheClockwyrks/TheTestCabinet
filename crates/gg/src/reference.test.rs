@@ -7,7 +7,7 @@ use super::*;
 use crate::memories::MemoryStrategy;
 use crate::tasks::TaskMode;
 use crate::tools::{ALL_TOOL_NAMES, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED};
-use test_cabinet_core::gg::{SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
+use test_cabinet_core::gg::{SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
 
 /// Every tool gg can offer appears **exactly once**, with the prose and schema a model would
 /// really be sent.
@@ -177,10 +177,7 @@ fn the_policy_driven_tools_carry_distinct_variants() {
 
     for (name, labels) in [
         ("read_file", vec!["read mode: default-cap"]),
-        (
-            "shell",
-            vec!["shell output: inline", "shell output: offload"],
-        ),
+        ("shell", vec!["shell output: inline"]),
         ("create_issue", vec!["reviewers: required"]),
         ("add_task", vec!["task mode: issues"]),
         ("update_task", vec!["task mode: issues"]),
@@ -289,18 +286,14 @@ fn every_reachable_rendering_is_on_the_page() {
 /// *withhold* left maximal.
 ///
 /// A cross product rather than one-axis-at-a-time because the interesting failure is a *pair* — a
-/// policy whose rendering only differs under some other setting — and 144 registries of a few dozen
+/// policy whose rendering only differs under some other setting — and 96 registries of a few dozen
 /// tools apiece is a fraction of a second. What a run withholds is the
 /// [conditions](super::conditions)' subject and is covered exhaustively there, over a space this
 /// one deliberately does not enter: a withheld tool has no rendering to compare.
 pub(super) fn every_policy() -> Vec<Configuration> {
     let mut configurations = Vec::new();
     for read in [READ_MODE_UNLIMITED, READ_MODE_DEFAULT_CAP] {
-        for shell in [
-            SHELL_OUTPUT_ADAPTIVE,
-            SHELL_OUTPUT_INLINE,
-            SHELL_OUTPUT_OFFLOAD,
-        ] {
+        for shell in [SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD] {
             for reviewers in [false, true] {
                 for memories in [
                     MemoryStrategy::Scratchpad,

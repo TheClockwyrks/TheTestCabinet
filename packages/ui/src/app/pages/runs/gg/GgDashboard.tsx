@@ -32,6 +32,7 @@ import {
   CostWidget,
   ErrorTypeRanking,
   TokensWidget,
+  discardedOutputPhrase,
   formatPercent,
 } from "./GgOverviewWidgets";
 import { useGgExplorerNav } from "./GgExplorerNav";
@@ -576,12 +577,20 @@ function ErrorsRow({ errors }: { errors: GgErrorTally }) {
         </span>
         {/* Not an error — the retry succeeded — but money and wall-clock spent on nothing,
             which is the figure that says whether arming loop detection paid for itself.
-            Absent on every run that left it disarmed, which is the default. */}
+            Absent on every run that left it disarmed, which is the default. The size sits on
+            its own line beside the count because the count alone answers only how often: the
+            output was generated and billed, and it is deliberately absent from the run's
+            recorded cost, so this is the only place its magnitude is stated. */}
         {loopAborts > 0 && (
-          <span className={styles.metricUnit}>
-            {numberFmt.format(loopAborts)} looping{" "}
-            {loopAborts === 1 ? "reply" : "replies"} discarded
-          </span>
+          <>
+            <span className={styles.metricUnit}>
+              {numberFmt.format(loopAborts)} looping{" "}
+              {loopAborts === 1 ? "reply" : "replies"} discarded
+            </span>
+            <span className={styles.metricUnit}>
+              {discardedOutputPhrase(errors)}
+            </span>
+          </>
         )}
       </div>
 

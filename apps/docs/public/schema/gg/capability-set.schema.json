@@ -426,7 +426,7 @@
             {
               "enabled": true,
               "id": "shell",
-              "implementation": "adaptive",
+              "implementation": "offload",
               "params": {
                 "maxChars": 4096,
                 "maxLines": 250

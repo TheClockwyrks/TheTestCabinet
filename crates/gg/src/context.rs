@@ -620,6 +620,26 @@ pub struct UsageSignalOptions {
     /// agent, because how many reads a window holds at once differs enormously between an agent that
     /// reads two specs and one crawling a codebase.
     pub top_file_views: usize,
+    /// How full the window has to be before the block is rendered at all, as a whole percentage of
+    /// the [window the agent may fill](field@ContextModel::window_limit).
+    ///
+    /// The block is not free: it occupies the window it reports on, and every turn it is present it
+    /// asks the agent to spend a call reclaiming space. Below the threshold there is nothing worth
+    /// asking for, so there is no block — not a quieter one. `0` renders it on every turn, which is
+    /// the setting an operator studying the signal itself wants.
+    pub threshold_percent: u64,
+}
+
+impl UsageSignalOptions {
+    /// Whether a window holding `accounted` tokens out of `usable` has reached the
+    /// [threshold](Self::threshold_percent) the block appears at.
+    ///
+    /// Measured against the same numerator and denominator the block reports as its own `Overall:`
+    /// figure, so the threshold that puts the block in front of the agent and the percentage the
+    /// agent then reads cannot disagree.
+    fn reached(&self, accounted: u64, usable: u64) -> bool {
+        accounted as f64 * 100.0 >= self.threshold_percent as f64 * usable as f64
+    }
 }
 
 /// An **inclusive** range of [session turns](ContextModel::begin_turn), the unit
@@ -692,8 +712,20 @@ pub struct ContextModel {
     items: Vec<ContextItem>,
     /// The estimator every pushed item is measured with.
     estimator: Arc<dyn TokenEstimator>,
-    /// The active model's context-window limit, when known — the denominator of
-    /// [`fullness`](Self::fullness).
+    /// **The window this holder may actually fill**, when known — the denominator of
+    /// [`fullness`](Self::fullness) and of every share the
+    /// [context-usage signal](Self::refresh_context_usage_signal) reports.
+    ///
+    /// It is the *usable* window rather than the model's raw one, resolved once per agent by
+    /// [`resolve_window_limit`](crate::agent::resolve_window_limit): the model's catalogue window,
+    /// narrowed by any [context-window override](test_cabinet_core::gg::CAPABILITY_CONTEXT_WINDOW_OVERRIDE),
+    /// less the [headroom](crate::compaction::CompactionPolicy::working_window) an armed compaction
+    /// holds back for its summarization call. A run with no compaction reserves nothing and this is
+    /// the whole window.
+    ///
+    /// One resolution, one denominator: the [compaction trigger](crate::compaction) and the signal's
+    /// own threshold both measure against this figure, so neither can be measuring a run against a
+    /// window the other is not.
     window_limit: Option<u64>,
     /// Whether this run is in [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
     /// mode, where every user message gg synthesizes is prefixed with a [heading](code_heading) so a
@@ -1309,8 +1341,9 @@ impl ContextModel {
             .sum()
     }
 
-    /// Window fullness — `total_tokens / window_limit` — when a limit is known. May
-    /// exceed `1.0` once the window is overflowing (the state compaction resolves).
+    /// Window fullness — `total_tokens` over the [usable window](field@Self::window_limit) — when a
+    /// limit is known. May exceed `1.0` once the window is overflowing (the state compaction
+    /// resolves).
     pub fn fullness(&self) -> Option<f64> {
         self.window_limit
             .and_then(|limit| (limit > 0).then(|| self.total_tokens() as f64 / limit as f64))
@@ -1409,7 +1442,11 @@ impl ContextModel {
     /// model acts each turn on figures that are true this turn (the model-facing half of
     /// [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)).
     ///
-    /// A no-op when no window limit is known: there is no fullness to report against.
+    /// **Empties the slot** where there is nothing to say: a window with no known limit has no
+    /// fullness to report against, and one below the block's
+    /// [threshold](UsageSignalOptions::threshold_percent) is not full enough to be worth a block.
+    /// Either way the agent's prompt carries no signal at all rather than a stale one — the window
+    /// a reclaim just emptied is exactly the case where the last reading is the wrong one.
     ///
     /// # It lives in a slot, not in the thread
     ///
@@ -1424,24 +1461,25 @@ impl ContextModel {
     ///   changes the last message, and its figures can be reported exactly rather than rounded to
     ///   hold a position.
     pub fn refresh_context_usage_signal(&mut self, options: UsageSignalOptions) {
-        let Some(text) = self.context_usage_text(options) else {
-            return;
-        };
-        let message = Message::system(text);
-        let tokens = self.estimator.estimate_message(&message);
-        self.usage_signal = Some(ContextItem {
-            source: GgContextSource::System,
-            retention: Retention::Pinned,
-            message,
-            tokens,
-            label: None,
-            region: None,
-            turn: self.turn,
+        let signal = self.context_usage_text(options).map(|text| {
+            let message = Message::system(text);
+            let tokens = self.estimator.estimate_message(&message);
+            ContextItem {
+                source: GgContextSource::System,
+                retention: Retention::Pinned,
+                message,
+                tokens,
+                label: None,
+                region: None,
+                turn: self.turn,
+            }
         });
+        self.usage_signal = signal;
     }
 
     /// The text of the [context-usage signal](Self::refresh_context_usage_signal) for the current
-    /// window, or `None` when no window limit is known.
+    /// window, or `None` where the window earns no block: one with no known limit, and one that has
+    /// not reached the [threshold](UsageSignalOptions::threshold_percent) the block appears at.
     ///
     /// It reports the share of the window each [source](GgContextSource) holds, as a percentage —
     /// and, when the agent can act on it, breaks the file-view band down into the
@@ -1458,7 +1496,15 @@ impl ContextModel {
     ///
     /// The figures are computed over the [accounted items](Self::accounted_items) — the system
     /// prompt and the conversation — with the signal's own cost excluded, so the block never
-    /// accounts for itself and computing it is idempotent.
+    /// accounts for itself and computing it is idempotent. The threshold is judged on that same
+    /// total for the same reason: a block whose own tokens could carry the window over the line
+    /// would appear on a window that is under it, and go on justifying itself every turn after.
+    ///
+    /// Every share, the overall figure included, is a share of the
+    /// [window the agent may fill](field@Self::window_limit) rather than of the model's raw one. That is
+    /// the window the agent is actually working in, it is what the compaction trigger measures, and
+    /// a block that reported a share of a larger window would be telling an agent it has room that
+    /// was reserved for something else.
     fn context_usage_text(&self, options: UsageSignalOptions) -> Option<String> {
         let limit = self.window_limit?;
         if limit == 0 {
@@ -1466,6 +1512,9 @@ impl ContextModel {
         }
         let percent = |tokens: u64| format!("{:.1}%", (tokens as f64 / limit as f64) * 100.0);
         let total: u64 = self.accounted_items().map(|item| item.tokens as u64).sum();
+        if !options.reached(total, limit) {
+            return None;
+        }
 
         // One entry per source that is actually holding something, in `GgContextSource::ALL` order
         // so the block reads the same way from turn to turn. A category at zero is left out rather
@@ -2510,7 +2559,8 @@ impl ContextModel {
         self.items.iter().filter(|item| !item.retention.is_pinned())
     }
 
-    /// The active model's context-window limit, when known.
+    /// The window this holder may actually fill, when known — see the
+    /// [field](field@Self::window_limit) for what it is a measure of.
     pub fn window_limit(&self) -> Option<u64> {
         self.window_limit
     }

@@ -17,7 +17,9 @@ use test_cabinet_core::metrics::TokenCounts;
 
 use super::*;
 use crate::context::{ContextModel, FileRegion, HeuristicTokenEstimator, UsageSignalOptions};
-use crate::model::{FinishReason, ImageContent, Message, ModelResponse, Role, ToolCall};
+use crate::model::{
+    FinishReason, ImageContent, LoopAborts, Message, ModelResponse, Role, ToolCall,
+};
 
 /// A trivial [`ModelClient`] that returns a fixed response and records how many times it was
 /// called — enough to prove the [`RecordingClient`] decorator delegates and records without
@@ -61,7 +63,7 @@ fn stop_response(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -673,6 +675,7 @@ fn framed_window() -> ContextModel {
         program_language: None,
         can_archive: true,
         top_file_views: 5,
+        threshold_percent: 0,
     });
     ctx
 }
@@ -1268,7 +1271,11 @@ fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
         ),
         (
             ModelError::ResponseLoop {
-                attempts: 4,
+                discarded: LoopAborts {
+                    attempts: 4,
+                    words: 12_260,
+                    chars: 77_800,
+                },
                 detail: "2 words repeated across 3000 consecutive words".to_string(),
             },
             GgSessionModelErrorKind::ResponseLoop,
@@ -1299,7 +1306,11 @@ fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
     );
     assert_eq!(
         session_model_error(&ModelError::ResponseLoop {
-            attempts: 3,
+            discarded: LoopAborts {
+                attempts: 3,
+                words: 9_195,
+                chars: 750_003,
+            },
             detail: "the reply passed 250001 characters without finishing".to_string(),
         })
         .attempts,

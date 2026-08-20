@@ -181,29 +181,25 @@ fn the_generated_documentation_program_is_a_whole_java_program() {
 /// key gg handed it.
 ///
 /// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
-/// its window is a program that ran. What is asserted here is that gg wrote Java — `List.of`,
-/// enhanced `for`s, terminators — and that the filters go in through the SDK's own **builder**,
-/// which is what this arm has in place of keyword arguments. The builder's own name is taken off the
-/// front of the search rather than written down beside it, because it is nested in the class the
-/// search is a method of.
+/// its window is a program that ran. What is asserted here is that gg wrote Java — `List.of`, an
+/// enhanced `for`, terminators — and that the search's arguments go in through the SDK's own
+/// **builder**, which is what this arm has in place of keyword arguments, in **one** call naming
+/// both modules at once and carrying no query at all. The builder's own name is taken off the front
+/// of the search rather than written down beside it, because it is nested in the class the search is
+/// a method of.
 #[test]
 fn the_opening_program_is_a_whole_java_program() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        java().bootstrap_program(&["files", "views"], &["readFile"]),
+        java().bootstrap_program(&["gg.files.Files", "gg.shell.Shell"], &["readFile"]),
         format!(
             "import java.util.List;\n\
              \n\
              public final class Program {{\n\
              \x20   public static void main(String[] args) {{\n\
-             \x20       List<String> modules = List.of(\n\
-             \x20               \"files\",\n\
-             \x20               \"views\"\n\
-             \x20       );\n\
-             \x20       for (String path : modules) {{\n\
-             \x20           gg.docs.Docs.search(\"\", \
-             new gg.docs.Docs.SearchFilters().module(path).limit({limit}));\n\
-             \x20       }}\n\
+             \x20       gg.docs.Docs.search(new gg.docs.Docs.SearchFilters()\n\
+             \x20               .modules(\"gg.files.Files\", \"gg.shell.Shell\")\n\
+             \x20               .limit({limit}));\n\
              \n\
              \x20       List<String> functions = List.of(\n\
              \x20               \"readFile\"\n\
@@ -214,6 +210,19 @@ fn the_opening_program_is_a_whole_java_program() {
              \x20   }}\n\
              }}\n"
         )
+    );
+
+    // An agent holding neither of the two modules: no module and no query is the one question the
+    // search refuses, so the program that would have asked it does not make the call at all rather
+    // than making one that fails in the window the model reads first.
+    let bare = java().bootstrap_program(&[], &["readFile"]);
+    assert!(
+        !bare.contains("gg.docs.Docs.search"),
+        "the opening program searched for nothing:\n{bare}"
+    );
+    assert!(
+        bare.contains("gg.views.Views.openDocsView(name);"),
+        "the documentation loop went with the search:\n{bare}"
     );
 }
 

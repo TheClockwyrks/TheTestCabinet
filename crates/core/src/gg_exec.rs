@@ -554,6 +554,14 @@ pub(crate) async fn run_gg(
     //      winds the entire run down under `internal_error`, because the tree a broken run
     //      leaves behind is not the tree that configuration produces and nothing here could
     //      tell the difference (see gg's `STATUS_INTERNAL_ERROR`).
+    //    - Exit 3 means the session ran and gg stopped it on one of the five
+    //      execution ceilings its own capability set armed: a turn count, the
+    //      wall-clock budget, the run's spend, or either error ceiling. That is not
+    //      a malfunction and not ours — it is the model's outcome against a
+    //      safeguard the configuration chose — so it is classified apart from the
+    //      three above as `RunState::LimitExceeded`, which is publishable as a
+    //      per-model statistic and is the one harness stop that is never retried:
+    //      a second attempt on the same configuration reaches the same ceiling.
     //    - Exit 0 means a session ran, *including* a mid-session `model_error` (carried
     //      in the stream, exit 0). Such a run is **not** a clean success — the failure is
     //      surfaced as an Error event and the produced (likely empty) tree fails
@@ -567,13 +575,7 @@ pub(crate) async fn run_gg(
         });
     }
     if output.exit_code != 0 {
-        let status = terminal_status
-            .map(|s| format!(" (session ended `{s}`)"))
-            .unwrap_or_default();
-        return Err(Error::HarnessInvocation {
-            slug: GG_SLUG.to_string(),
-            detail: format!("gg exited with code {}{status}", output.exit_code),
-        });
+        return Err(classify_exit(output.exit_code, terminal_status.as_deref()));
     }
 
     Ok(HarnessOutcome {
@@ -593,6 +595,40 @@ pub(crate) async fn run_gg(
         // This session ended on its own terms; the cancellation path returns above.
         canceled: false,
     })
+}
+
+/// Classify a **non-zero** gg exit into the [`Error`] the run is recorded under, given the
+/// terminal status the session reported on its stream (absent when it never got that far).
+///
+/// gg leaves one of two non-zero codes, and they say opposite things about the configuration.
+/// [`EXIT_LIMIT_EXCEEDED`](crate::gg::EXIT_LIMIT_EXCEEDED) says the session ran and some agent of
+/// it breached one of the five execution ceilings the capability set armed, which is the model's
+/// outcome against a safeguard somebody chose. Everything else says there was no run to score at
+/// all: a launch fatal, a credential the provider refused, or a defect in gg.
+///
+/// The split is what keeps the first out of the retry loop. Both would otherwise be an
+/// [`HarnessInvocation`](Error::HarnessInvocation) and therefore a
+/// [`RunState::HarnessError`](crate::run_record::RunState::HarnessError), which the backend
+/// retries — and a retry of a run that spent its own ceiling runs the same capability set into the
+/// same bound.
+///
+/// A pure function so the classification is pinned without a container behind it; the caller owns
+/// everything else about the exit.
+fn classify_exit(exit_code: i32, terminal_status: Option<&str>) -> Error {
+    let status = terminal_status
+        .map(|status| format!(" (session ended `{status}`)"))
+        .unwrap_or_default();
+    let detail = format!("gg exited with code {exit_code}{status}");
+    if exit_code == i32::from(crate::gg::EXIT_LIMIT_EXCEEDED) {
+        return Error::HarnessLimitExceeded {
+            slug: GG_SLUG.to_string(),
+            detail,
+        };
+    }
+    Error::HarnessInvocation {
+        slug: GG_SLUG.to_string(),
+        detail,
+    }
 }
 
 /// How a gg session's output stream ended.

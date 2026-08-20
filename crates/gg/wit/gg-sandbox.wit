@@ -704,8 +704,8 @@ interface docs {
         key: string,
         /// `"module"`, `"function"` or `"type"`.
         kind: string,
-        /// The module it lives in. A type shows every module in which a function YOU CAN CALL
-        /// mentions it — never one you hold nothing in.
+        /// The module it lives in: the one that publishes a function, or the one that declares a
+        /// type.
         module: string,
         /// The name a program calls it by, the type's own name, or the module's own path.
         name: string,
@@ -733,11 +733,11 @@ interface docs {
     /// a paragraph — and only entries THIS run bound are ever returned, so nothing you find is
     /// something you cannot call.
     ///
-    /// The filters compose with the query and with each other. `module` is exact and is a lookup
-    /// rather than a search: an empty query plus a module is that module's whole directory.
-    /// `type` narrows to one type and what takes or returns it. `kind` is `"module"`, `"function"`
-    /// or `"type"`.
-    /// An empty query with no filter at all is `invalid-argument` — "nothing matched" and "you asked
+    /// The filters compose with the query and with each other. `modules` is exact and is a lookup
+    /// rather than a search: naming several returns the entries of ANY of them, and a `modules`
+    /// filter with no query is those modules' whole directory. `type` narrows to one type and what
+    /// takes or returns it. `kind` is `"module"`, `"function"` or `"type"`.
+    /// No query and no filter at all is `invalid-argument` — "nothing matched" and "you asked
     /// for nothing" are different answers.
     ///
     /// Results come back as a value AND are opened as a view, so you can read them next turn without
@@ -745,7 +745,7 @@ interface docs {
     /// working from, not a permanent record, which is the opposite of how a documentation view
     /// behaves. It appears in `current-views` as a `text` view under the selector `search results`,
     /// and `close-view` on that selector closes it.
-    search: func(query: string, module: option<string>, %type: option<string>,
+    search: func(query: option<string>, modules: list<string>, %type: option<string>,
                  kind: option<string>, offset: option<u32>, limit: option<u32>)
         -> result<doc-search, api-error>;
 

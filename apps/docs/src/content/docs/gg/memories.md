@@ -139,14 +139,14 @@ native tool schemas carry no code fields, so a tool-calling run sees a memory's
 description and body alone.
 
 ```ts
-import * as gg from "gg";
+import { memories } from "gg";
 
-gg.memories.writeMemory({
+memories.writeMemory({
   name: "csv-tools",
   description: "Parsing the vendor CSV exports, which quote inconsistently.",
   body: "The third column is sometimes quoted and sometimes not; parseCsv handles both.",
   code: "export function parseCsv(text: string) { /* … */ }",
-  onUse: 'gg.views.openText("csv-notes", "Row 1 is a header on exports after March.");',
+  onUse: 'views.openText("csv-notes", "Row 1 is a header on exports after March.");',
 });
 ```
 

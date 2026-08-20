@@ -1033,12 +1033,6 @@ impl ToolRegistry {
         self.tools.iter().any(|tool| tool.name() == name)
     }
 
-    /// Whether any tool is offered. An empty registry (every capability off) means the
-    /// model is offered no tools at all.
-    pub fn is_empty(&self) -> bool {
-        self.tools.is_empty()
-    }
-
     /// The number of offered tools.
     pub fn len(&self) -> usize {
         self.tools.len()

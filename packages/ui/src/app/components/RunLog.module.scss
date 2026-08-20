@@ -312,10 +312,12 @@ a.row:hover .selectCell .spinner,
     color: t.$color-negative;
   }
 
-  // A harness error is a distinct kind of failure (the harness exited early), and
-  // a hang is its silent twin, so tint both with the caution color to set them
-  // apart from the model-output tiers.
+  // A harness error is a distinct kind of failure (the harness exited early), a
+  // hang is its silent twin, and a spent execution ceiling is the harness stopping
+  // itself on a bound the configuration armed, so tint all three with the caution
+  // color to set them apart from the model-output tiers.
   &[data-state="harness_error"],
+  &[data-state="limit_exceeded"],
   &[data-state="hung"] {
     color: t.$color-warning;
   }

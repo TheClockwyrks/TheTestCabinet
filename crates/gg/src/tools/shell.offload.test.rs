@@ -42,15 +42,6 @@ fn offloading(dir: &TempDir, max_lines: usize, max_chars: usize) -> OffloadPolic
     })
 }
 
-/// An adaptive policy with the given ceilings, writing into `dir`.
-fn adaptive(dir: &TempDir, max_lines: usize, max_chars: usize) -> OffloadPolicy {
-    OffloadPolicy::Adaptive(OffloadLimits {
-        max_lines,
-        max_chars,
-        dir: dir.path().join("offload"),
-    })
-}
-
 /// Run `args` under `policy` in a fresh workspace, returning the outcome and the workspace (kept
 /// alive so the offload directory under it survives the assertions).
 async fn run(dir: &TempDir, policy: OffloadPolicy, args: serde_json::Value) -> ToolOutcome {
@@ -94,10 +85,9 @@ fn shell_data(outcome: &ToolOutcome) -> &ShellData {
 #[test]
 fn a_written_capability_resolves_to_what_it_says() {
     let policy = resolved(
-        Some(SHELL_OUTPUT_ADAPTIVE),
+        Some(SHELL_OUTPUT_OFFLOAD),
         &json!({ "maxLines": 250, "maxChars": 4096 }),
     );
-    assert!(policy.withholds_on_success());
     let limits = policy.limits().expect("armed");
     assert_eq!(limits.max_lines, 250);
     assert_eq!(limits.max_chars, 4096);
@@ -148,17 +138,17 @@ fn the_inline_mode_is_the_opt_out() {
         OffloadPolicy::Inline,
     );
     assert!(OffloadPolicy::Inline.limits().is_none());
-    assert!(!OffloadPolicy::Inline.withholds_on_success());
 }
 
 /// Both ceilings are written on every arm, and both come back as written.
 #[test]
 fn both_ceilings_arm_a_truncating_mode() {
-    for mode in [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_ADAPTIVE] {
-        let both = resolved(Some(mode), &json!({ "maxLines": 40, "maxChars": 900 }));
-        let limits = both.limits().expect("armed");
-        assert_eq!((limits.max_lines, limits.max_chars), (40, 900));
-    }
+    let both = resolved(
+        Some(SHELL_OUTPUT_OFFLOAD),
+        &json!({ "maxLines": 40, "maxChars": 900 }),
+    );
+    let limits = both.limits().expect("armed");
+    assert_eq!((limits.max_lines, limits.max_chars), (40, 900));
 }
 
 /// **A ceiling nobody wrote refuses the launch**, at its own locus and whichever mode is named —
@@ -170,11 +160,7 @@ fn both_ceilings_arm_a_truncating_mode() {
 /// one refusal.
 #[test]
 fn an_absent_ceiling_is_refused() {
-    for mode in [
-        SHELL_OUTPUT_OFFLOAD,
-        SHELL_OUTPUT_ADAPTIVE,
-        SHELL_OUTPUT_INLINE,
-    ] {
+    for mode in [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_INLINE] {
         for (params, missing) in [
             (json!({ "maxChars": 900 }), vec!["maxLines"]),
             (json!({ "maxLines": 40 }), vec!["maxChars"]),
@@ -317,11 +303,11 @@ fn a_disabled_capability_is_owed_nothing_and_still_read() {
 }
 
 /// A hook's own `output` override travels the same vocabulary, and a mode gg does not recognize
-/// there refuses the launch too — the one hook field that used to be read with no launch diagnostic
-/// anywhere behind it, so a hook written to keep its build output inline silently withheld it.
+/// there refuses the launch too — the one hook field no other launch diagnostic reads, so a hook
+/// written to keep its build output inline would otherwise run under a mode nobody named.
 #[test]
 fn an_unknown_hook_output_mode_is_refused() {
-    let agent = OffloadPolicy::Adaptive(OffloadLimits {
+    let agent = OffloadPolicy::Offload(OffloadLimits {
         max_lines: 250,
         max_chars: 4096,
         dir: PathBuf::from(OFFLOAD_DIR),
@@ -338,9 +324,9 @@ fn an_unknown_hook_output_mode_is_refused() {
     assert_eq!(defects[0].locus, "hooks[build].output");
     assert_eq!(defects[0].known, SHELL_OUTPUT_MODES);
 
-    // Each of the three real modes is honoured, and reports nothing. The two truncating ones keep
-    // the agent's own ceilings: the override says "keep this one inline", not "and size it
-    // differently from everything else".
+    // Both real modes are honoured, and report nothing. The truncating one keeps the agent's own
+    // ceilings: the override says "keep this one inline", not "and size it differently from
+    // everything else".
     for mode in SHELL_OUTPUT_MODES {
         let mut report = LaunchReport::collecting();
         let policy = OffloadPolicy::for_mode(mode, &agent, "hooks[build].output", &mut report);
@@ -357,20 +343,19 @@ fn an_unknown_hook_output_mode_is_refused() {
 /// wrote.
 #[test]
 fn a_truncating_hook_override_over_an_inline_agent_is_refused() {
-    for mode in [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_ADAPTIVE] {
-        let mut report = LaunchReport::collecting();
-        let policy = OffloadPolicy::for_mode(
-            mode,
-            &OffloadPolicy::Inline,
-            "hooks[build].output",
-            &mut report,
-        );
-        assert_eq!(policy, OffloadPolicy::LaunchRefused, "`{mode}`");
-        let defects = report.into_defects();
-        assert_eq!(defects.len(), 1, "`{mode}` -> {defects:?}");
-        assert_eq!(defects[0].locus, "hooks[build].output");
-        assert_eq!(defects[0].found, mode);
-    }
+    let mode = SHELL_OUTPUT_OFFLOAD;
+    let mut report = LaunchReport::collecting();
+    let policy = OffloadPolicy::for_mode(
+        mode,
+        &OffloadPolicy::Inline,
+        "hooks[build].output",
+        &mut report,
+    );
+    assert_eq!(policy, OffloadPolicy::LaunchRefused, "`{mode}`");
+    let defects = report.into_defects();
+    assert_eq!(defects.len(), 1, "`{mode}` -> {defects:?}");
+    assert_eq!(defects[0].locus, "hooks[build].output");
+    assert_eq!(defects[0].found, mode);
 
     // …and asking for inline over an inline agent is no override at all, so it reports nothing.
     let mut report = LaunchReport::collecting();
@@ -649,182 +634,28 @@ fn the_definition_names_the_tail_when_offloading() {
         "{}",
         offloaded.description
     );
-
-    // The adaptive description has the extra thing to say, and the model that will be surprised by
-    // an empty result is the one that most needs to read it in the tool it is calling.
-    let adaptive = ShellTool::new(OffloadPolicy::Adaptive(limits)).definition();
-    assert!(
-        adaptive
-            .description
-            .contains("succeeds returns only its exit code"),
-        "{}",
-        adaptive.description
-    );
-    assert!(
-        adaptive
-            .description
-            .contains("the tail of merged stdout+stderr")
-            && !adaptive.description.contains("120")
-            && adaptive.description.contains("files named in the result"),
-        "{}",
-        adaptive.description
-    );
 }
 
-// ---------------------------------------------------------------------------
-// The adaptive mode
-// ---------------------------------------------------------------------------
-
-/// A command that worked comes back as its exit code and the paths — not as its output, however
-/// short that output was — and as nothing else: three lines of facts, with no sentence around them
-/// restating what the tool description already told the model.
+/// **A command that succeeded hands its output over.** Offloading bounds how much of a chatty
+/// command comes back; it does not decide, from the exit code, that a command the agent ran is one
+/// whose output the agent did not want. A short success comes back whole, and the file pair is
+/// written beside it as it is for every command.
 #[tokio::test]
-async fn a_successful_command_returns_only_its_exit_code() {
+async fn a_successful_command_hands_its_output_over() {
     let dir = TempDir::new().unwrap();
     let outcome = run(
         &dir,
-        adaptive(&dir, 50, UNBOUNDED),
+        offloading(&dir, 50, UNBOUNDED),
         json!({ "command": "echo one; echo two" }),
     )
     .await;
 
     assert!(outcome.ok);
-    assert!(!outcome.output.contains("one\n"), "{}", outcome.output);
     let data = shell_data(&outcome);
-    assert!(data.truncated);
-    // The output is withheld, not discarded: the pair holds the whole of it, and the body names it.
-    let lines: Vec<&str> = data.body.lines().collect();
-    assert_eq!(lines.len(), 3, "{}", data.body);
-    assert_eq!(lines[0], "Exit code: 0", "{}", data.body);
-    assert!(
-        lines[1].starts_with("stdout: ") && lines[1].ends_with(".stdout"),
-        "{}",
-        data.body
-    );
-    assert!(
-        lines[2].starts_with("stderr: ") && lines[2].ends_with(".stderr"),
-        "{}",
-        data.body
-    );
-    // The exit code is stated once, by the body itself — the tool-calling header would repeat it,
-    // and a code program that prints the body would otherwise never see it at all.
-    assert_eq!(outcome.output, data.body, "{}", outcome.output);
+    assert_eq!(data.body, "one\ntwo\n");
+    assert!(!data.truncated);
+    assert_eq!(outcome.output, "exit code: 0\none\ntwo\n");
     assert_eq!(written_pair(&dir).0, "one\ntwo\n");
-}
-
-/// A command that printed nothing and worked is reported as exactly that, with no note pointing at
-/// two empty files.
-#[tokio::test]
-async fn a_silent_successful_command_says_no_output() {
-    let dir = TempDir::new().unwrap();
-    let outcome = run(
-        &dir,
-        adaptive(&dir, 50, UNBOUNDED),
-        json!({ "command": "true" }),
-    )
-    .await;
-
-    assert!(outcome.ok);
-    assert_eq!(outcome.output, "exit code: 0\n(no output)");
-    let data = shell_data(&outcome);
-    assert!(data.body.is_empty(), "{}", data.body);
-    assert!(!data.truncated);
-}
-
-/// A command that **failed** comes back exactly as it would under offloading — the tail, the note,
-/// and the pair. This is the half of the mode that is worth the other half.
-#[tokio::test]
-async fn a_failed_command_is_offloaded_normally() {
-    let dir = TempDir::new().unwrap();
-    let outcome = run(
-        &dir,
-        adaptive(&dir, 3, UNBOUNDED),
-        json!({ "command": "for i in $(seq 1 40); do echo line-$i; done; exit 3" }),
-    )
-    .await;
-
-    assert!(!outcome.ok);
-    assert!(
-        outcome.output.starts_with("exit code: 3\n"),
-        "{}",
-        outcome.output
-    );
-    let data = shell_data(&outcome);
-    assert_eq!(data.exit_code, Some(3));
-    assert!(data.truncated);
-    assert!(
-        data.body.starts_with("line-38\nline-39\nline-40\n"),
-        "{}",
-        data.body
-    );
-    assert!(data.body.contains("Output truncated"), "{}", data.body);
-    assert_eq!(written_pair(&dir).0.lines().count(), 40);
-}
-
-/// A short failure comes back whole, with no note — the ceiling only bites what exceeds it.
-#[tokio::test]
-async fn a_short_failure_comes_back_untouched() {
-    let dir = TempDir::new().unwrap();
-    let outcome = run(
-        &dir,
-        adaptive(&dir, 50, UNBOUNDED),
-        json!({ "command": "echo broke 1>&2; exit 1" }),
-    )
-    .await;
-
-    assert!(!outcome.ok);
-    let data = shell_data(&outcome);
-    assert_eq!(data.body, "broke\n");
-    assert!(!data.truncated);
-}
-
-/// A killed command did not succeed, so its partial output is offloaded rather than withheld: the
-/// agent is about to be told something went wrong, and the output is the part that says what.
-#[tokio::test]
-async fn a_timed_out_command_is_not_withheld() {
-    let dir = TempDir::new().unwrap();
-    let outcome = run(
-        &dir,
-        adaptive(&dir, 2, UNBOUNDED),
-        json!({
-            // `exec` so the sleep REPLACES the shell rather than being forked by it, as above.
-            "command": "for i in $(seq 1 20); do echo noisy-$i; done; exec sleep 30",
-            "timeout_secs": 0.5,
-        }),
-    )
-    .await;
-
-    assert!(!outcome.ok);
-    assert!(outcome.output.contains("timed out"), "{}", outcome.output);
-    assert!(outcome.output.contains("noisy-20"), "{}", outcome.output);
-}
-
-/// When gg cannot write the pair there is nowhere to withhold the output *to*, so a successful
-/// command falls back to handing it over — withholding what nobody can retrieve is discarding.
-#[tokio::test]
-async fn a_failed_write_hands_a_successful_commands_output_over() {
-    let dir = TempDir::new().unwrap();
-    let blocked = dir.path().join("blocked");
-    std::fs::write(&blocked, "not a directory").unwrap();
-    let outcome = run(
-        &dir,
-        OffloadPolicy::Adaptive(OffloadLimits {
-            max_lines: 2,
-            max_chars: UNBOUNDED,
-            dir: blocked.join("shell"),
-        }),
-        json!({ "command": "for i in $(seq 1 20); do echo kept-$i; done" }),
-    )
-    .await;
-
-    assert!(outcome.ok);
-    let data = shell_data(&outcome);
-    assert!(
-        data.body.contains("kept-1\n") && data.body.contains("kept-20\n"),
-        "{}",
-        data.body
-    );
-    assert!(data.body.contains("could not write"), "{}", data.body);
 }
 
 // ---------------------------------------------------------------------------

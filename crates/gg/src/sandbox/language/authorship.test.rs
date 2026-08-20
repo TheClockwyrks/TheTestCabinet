@@ -41,7 +41,7 @@ fn every_registered_arm_compiles_the_bytes_it_was_handed_or_records_what_it_does
 /// table meaningless.
 #[test]
 fn a_preparation_that_hands_its_source_back_kept_it() {
-    let source = "docs.search(\"\", module=\"gg.files\", limit=200)\n";
+    let source = "docs.search(modules=[\"gg.files\"], limit=200)\n";
     for produced in [
         vec![source.to_string()],
         vec![source.trim_end().to_string()],
@@ -62,7 +62,7 @@ fn a_preparation_that_hands_its_source_back_kept_it() {
 /// something is.
 #[test]
 fn a_preparation_that_completes_the_source_wrapped_it() {
-    let source = "docs.search(\"\", module=\"gg.files\", limit=200)\n";
+    let source = "docs.search(modules=[\"gg.files\"], limit=200)\n";
     for produced in [
         format!("fn main() {{\n{source}}}\n"),
         format!("import gg\n{source}"),
@@ -126,7 +126,7 @@ fn one_faithful_copy_does_not_excuse_a_rewrite_beside_it() {
 /// would call each of them a version of the model's program.
 #[test]
 fn a_text_that_shares_no_line_of_the_source_is_not_a_version_of_it() {
-    let source = "docs.search(\"\", module=\"gg.files\", limit=200)\n";
+    let source = "docs.search(modules=[\"gg.files\"], limit=200)\n";
     assert!(
         classify(
             source,

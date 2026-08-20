@@ -1000,7 +1000,7 @@ async fn mock_client_advances_through_script_then_terminates() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         },
         ModelResponse {
             text: Some("turn 2".to_string()),
@@ -1008,7 +1008,7 @@ async fn mock_client_advances_through_script_then_terminates() {
             finish_reason: FinishReason::Stop,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         },
     ];
     let client = MockClient::new("mock/test", script);

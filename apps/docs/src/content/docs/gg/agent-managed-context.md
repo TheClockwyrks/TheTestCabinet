@@ -91,6 +91,23 @@ since one call reclaims all of them at once. A locked
 [autoloaded specification](/gg/autoload-specifications/) is excluded, because
 eviction is the removal locking exists to prevent.
 
+### When the block appears
+
+The block costs the window it reports on, so it is held back until the window is
+worth reporting. `signalThresholdPercent` is how full the window has to be
+before the agent is shown it at all, and it defaults to 75. Below that there is
+no block, and a window a reclaim brought back under the threshold loses the one
+it had.
+
+The share is of the window the agent may actually fill: the model's window, less
+what an enabled [compaction](/gg/compaction/) holds back for its summarization
+call. That is the same denominator every figure in the block is a share of and
+the same one the compaction trigger reads, so the threshold that puts the block
+in front of the agent and the `Overall:` figure it then reads are one
+measurement.
+
+Set it to `0` for the block on every turn.
+
 ### The signal's slot
 
 The signal occupies a single slot rendered after the conversation, and each
@@ -259,13 +276,20 @@ Two sliders sit in the capability's Features box, and each is per agent.
 | Param | Meaning |
 | --- | --- |
 | `topFileViews` | Files named under Top File Views, largest first. |
+| `signalThresholdPercent` | How full the window must be, `0` to `100`, before the block is rendered. |
 | `ownership` | `owned` or `unowned`, on the terms above. |
 
-Both are set per agent, and an enabled capability writes both. How many reads a
-window holds at once differs enormously between an agent that opens two specs
-and one crawling a codebase, so `topFileViews` is a figure the profile states. An
-absent param, and one carrying a value gg cannot honour exactly as written,
-refuse the launch alongside every other such value in the capability set.
+All three are set per agent. An enabled capability writes `topFileViews` and
+`ownership`; how many reads a window holds at once differs enormously between an
+agent that opens two specs and one crawling a codebase, so `topFileViews` is a
+figure the profile states. An absent one, and any of the three carrying a value
+gg cannot honour exactly as written, refuse the launch alongside every other such
+value in the capability set.
+
+`signalThresholdPercent` is the one param in gg an absence names a figure for: a
+document that leaves it out runs at 75. It is written into every new
+configuration, so a run's record says the share it was conducted under whether or
+not the operator had an opinion about it.
 
 ## Telemetry and the console
 

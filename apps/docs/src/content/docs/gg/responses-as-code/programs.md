@@ -22,23 +22,22 @@ terms in [invariants](/gg/responses-as-code/invariants/).
 A program, written in TypeScript:
 
 ```ts
-import * as gg from "gg";
+import { files, session, views } from "gg";
 
-const specs = gg.files.listDir("specs").filter((e) => e.kind === "file");
+const specs = files.listDir("specs").filter((e) => e.kind === "file");
 const missing = specs.filter(
-  (e) => !gg.files.readTextFile(`specs/${e.name}`).includes("## Rules"),
+  (e) => !files.readTextFile(`specs/${e.name}`).includes("## Rules"),
 );
-gg.views.openText("missing-rules", missing.map((e) => e.name).join("\n"));
+views.openText("missing-rules", missing.map((e) => e.name).join("\n"));
 if (missing.length === 0) {
-  gg.session.finish(`Checked ${specs.length} spec files; each has rules.`);
+  session.finish(`Checked ${specs.length} spec files; each has rules.`);
 }
 ```
 
-The import is the namespace form because `gg.files.readFile` is the name every
-documentation view is filed under and every quoted call is written with, and that
-line is what makes the printed name an expression the program can write. A named
-import (`import { files } from "gg";`) reaches the same module and is equally
-valid.
+The import names the modules the program calls into, one binding each. Every name
+gg prints stays fully qualified, so `gg.files.readFile` is the key a documentation
+view is filed under and the key a search hit carries, and the call site is that
+name with its leading `gg.` dropped.
 
 Four rules govern what such a program can do with what it computed.
 

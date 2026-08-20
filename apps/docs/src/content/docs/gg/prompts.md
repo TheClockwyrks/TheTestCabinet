@@ -187,8 +187,9 @@ segment and no other arm's.
 
 ## The code arm
 
-The opening section states the reply contract: the model's whole reply is legal
-code in this run's language and nothing else, run as a program every turn.
+The opening section states the reply contract: the model's whole reply is one
+legal program in this run's language and nothing else, run as that program every
+turn.
 
 Three rules follow it, stated for every arm, because none of them is visible in
 a signature and each costs a turn to discover by trying it:
@@ -235,12 +236,19 @@ module's functions; a module path is an exact lookup into the surface, and
 everything finer is found by searching the documentation and opening a
 documentation view of a name the search returned.
 
+The list closes on the discovery order the surface requires: open a documentation
+view of each function the model intends to call, and write the call on a later
+turn. A view arrives on the turn after the program that opened it, so the order
+is what makes a signature readable before it is relied on.
+
 Because the calls that do the discovering are themselves functions, every code
 agent's session opens with a program gg wrote in that agent's own language and
-ran. It searches each module the agent holds and opens the documentation of the
-two discovery calls, so the window opens on every function the agent may call,
-one line each, beside the source of a program that provably ran. See [the
-opening turn](/gg/responses-as-code/views/#the-opening-turn).
+ran. It lists the agent's filesystem and shell modules and opens the
+documentation of the two discovery calls, so the window opens on the functions
+an agent reaches for first, one line each, beside the source of a program that
+provably ran. Every other module is reached through the prompt's own list, at
+the cost of one search. See [the opening
+turn](/gg/responses-as-code/views/#the-opening-turn).
 
 ### Function names
 

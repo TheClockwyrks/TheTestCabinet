@@ -65,12 +65,14 @@ export const MODULE_ORDER: readonly ModuleId[] = [
 ];
 
 /**
- * The object a program reaches every module through, and therefore the stem of every fully-qualified
+ * The specifier every module is published under, and therefore the stem of every fully-qualified
  * name.
  *
- * `gg.files.readFile` is both the key a documentation view is opened by and a path a program can
- * write, which is the whole reason the modules are real TypeScript modules bound under one namespace
- * rather than a set of objects assembled at run time.
+ * `gg.files.readFile` is the key a documentation view is opened by, and `import { files } from "gg"`
+ * — the line the catalogue states for that module — is what makes the tail of it, `files.readFile`,
+ * an expression a program can write. That the modules are real TypeScript modules re-exported under
+ * one specifier, rather than a set of objects assembled at run time, is what lets a program bring in
+ * the one it calls into and leave the other twelve out.
  */
 export const SURFACE = "gg";
 

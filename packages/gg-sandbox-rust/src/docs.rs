@@ -23,6 +23,13 @@ use crate::wire;
 /// the word in a paragraph, however often it mentions it. Only what this run bound is ever returned,
 /// so nothing a search finds is something the program cannot call.
 ///
+/// Nothing about the call is required and every part of it composes.
+/// [`modules`](SearchOptions::modules) is a **union** — naming several returns the entries of any of
+/// them — and naming them with no [`query`](SearchOptions::query) at all is those modules' whole
+/// directory rather than a search through them. The combination that is refused is the empty one:
+/// no query and no filter at all is `InvalidArgument`, because *nothing to look for* and *nothing
+/// matched* are answers a program must not have to tell apart.
+///
 /// The result is a value **and** a view. The value is readable in the turn that asked for it; the
 /// view puts the same page in the next prompt under the selector `search results`, replaced by the
 /// next search rather than accumulating, and closed by [`views::close`](crate::views::close). A hit
@@ -36,10 +43,9 @@ use crate::wire;
 ///
 /// # Arguments
 ///
-/// * `query` — The words to look for, matched as case-insensitive substrings. Several specific words
-///   rank an entry above one vague word. It may be empty when `options` narrows the search.
-/// * `options` — The filters and the page. `docs::SearchOptions::default()` searches the whole bound
-///   surface and takes the first page.
+/// * `options` — The words to look for, the filters that narrow them, and the page. Every field of it
+///   is optional, so what a call says is only what it wants narrowed — and
+///   `docs::SearchOptions::default()`, which narrows nothing at all, is the one form refused.
 ///
 /// # Returns
 ///
@@ -48,14 +54,14 @@ use crate::wire;
 ///
 /// # Errors
 ///
-/// `InvalidArgument` when `query` is empty and no filter is set — *nothing to look for* and *nothing
-/// matched* are different answers — and when [`limit`](SearchOptions::limit) is `Some(0)`, which is a
-/// page that could never answer anything.
+/// `InvalidArgument` when [`options`](SearchOptions) carries neither a query nor a filter — *nothing
+/// to look for* and *nothing matched* are different answers — and when
+/// [`limit`](SearchOptions::limit) is `Some(0)`, which is a page that could never answer anything.
 #[doc(alias = "ggop:docs.search")]
-pub fn search(query: &str, options: SearchOptions<'_>) -> Result<DocSearch, ApiError> {
+pub fn search(options: SearchOptions<'_>) -> Result<DocSearch, ApiError> {
     wire::lift(docs::search(
-        query,
-        options.module,
+        options.query,
+        &wire::strings(options.modules),
         options.declared_type,
         options.kind.map(DocKind::as_str),
         options.offset,
@@ -104,18 +110,30 @@ pub fn close_all() -> Result<u32, ApiError> {
     wire::lift(docs::close_doc_views())
 }
 
-/// The filters and the page a [`search`] runs under. [`Default`] narrows nothing.
+/// The query, the filters and the page a [`search`] runs under. [`Default`] asks for nothing, which
+/// is what [`search`] refuses.
 ///
-/// Every field composes with the query and with the others. Rust has no default arguments, and the
-/// idiom it reaches for instead is a struct with a [`Default`] filled in by functional-update
-/// syntax: `docs::SearchOptions { module: Some("files"), ..Default::default() }`.
+/// Every field composes with every other. Rust has no default arguments, and the idiom it reaches
+/// for instead is a struct with a [`Default`] filled in by functional-update syntax:
+/// `docs::SearchOptions { modules: &["files"], ..Default::default() }`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SearchOptions<'a> {
-    /// One module to look in, by gg's id (`files`) or by this arm's path (`gg::files`).
+    /// The words to look for, matched as case-insensitive substrings.
     ///
-    /// Exact and case-insensitive, because a module filter is a lookup rather than a search: an
-    /// empty query and a module is that module's whole directory.
-    pub module: Option<&'a str>,
+    /// `None` looks for no word at all and leaves the filters below to say what the page is.
+    /// Several specific words rank an entry above one vague word, because each of them is another
+    /// piece of evidence the entry is the one meant.
+    pub query: Option<&'a str>,
+    /// The modules to look in, each by gg's id (`files`) or by this arm's path (`gg::files`).
+    ///
+    /// An empty slice looks in all of them.
+    ///
+    /// Exact and case-insensitive, because a module filter is a lookup rather than a search, and a
+    /// **union** rather than a narrowing: several modules answer with the entries of any of them,
+    /// and naming them with no query is those modules' whole directory. Every hit reports the one
+    /// [module](DocHit::module) it belongs to, and that is a value this filter takes back
+    /// unchanged.
+    pub modules: &'a [&'a str],
     /// One type's own name (`FileRead`), narrowing to that type and to the functions that name it.
     ///
     /// What a value of this shape can be used for, in other words: every bound function whose
@@ -174,11 +192,11 @@ pub struct DocHit {
     pub key: String,
     /// Whether this is a module, a function or a type.
     pub kind: DocKind,
-    /// The module it lives in.
+    /// The module it lives in: the one that publishes a function, or the one that declares a type.
     ///
-    /// One for a module or a function, and for a type every module whose bound functions mention it,
-    /// comma-separated. That plurality is why this is a description rather than something to feed
-    /// back to a [`SearchOptions::module`] filter, which takes one module and compares it whole.
+    /// Always exactly one, whichever of the three kinds the hit is, which is what makes it a value
+    /// rather than a description — hand it straight back as a [`SearchOptions::modules`] filter and
+    /// the answer is the rest of what that module holds.
     pub module: String,
     /// The name a program calls it by, or the module's or the type's own name.
     pub name: String,

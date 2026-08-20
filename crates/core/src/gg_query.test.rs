@@ -19,7 +19,8 @@ use crate::code_analysis::{
 use crate::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_SHELL,
     CAPABILITY_SKILLS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgErrorSummary,
-    GgHealingSummary, GgRunLimits, GgSessionSummary, GgSlotCost, ROOT_PROFILE_ID,
+    GgHealingSummary, GgRunLimits, GgSessionSummary, GgSlotCost, GgUndocumentedCalls,
+    ROOT_PROFILE_ID,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::run_record::{
@@ -369,6 +370,7 @@ fn capability_set() -> GgCapabilitySet {
 fn session_summary() -> GgSessionSummary {
     GgSessionSummary {
         terminal_status: "completed".to_string(),
+        undocumented_calls: GgUndocumentedCalls::default(),
         agents_spawned: 3,
         subagent_count: 2,
         max_subagent_depth: 1,
@@ -394,6 +396,8 @@ fn session_summary() -> GgSessionSummary {
             sandbox_limit: 0,
             missing_completion: 0,
             loop_aborts: 4,
+            loop_abort_words: 31_000,
+            loop_abort_chars: 190_000,
             by_type: BTreeMap::from([
                 ("model_retry_exhausted".to_string(), 1),
                 ("program_api_error".to_string(), 2),
@@ -786,6 +790,11 @@ fn the_error_rollup_is_queryable_the_moment_it_exists_on_the_summary() {
         doc.get("summary.errors.loopAborts"),
         Some(&GgValue::Number(4.0)),
         "a discarded looping attempt is money spent on nothing and must be sliceable"
+    );
+    assert_eq!(
+        doc.get("summary.errors.loopAbortChars"),
+        Some(&GgValue::Number(190_000.0)),
+        "and so must the size of what it threw away, which is the half that says how much"
     );
     // And one level down again: the open per-type breakdown becomes a field per type
     // without a line of query-layer work, which is the property that lets a type added to

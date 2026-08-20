@@ -1746,6 +1746,12 @@ export function capabilityParams(
     if (p.kind === "fraction" && (n < 0 || n > 1)) {
       return { ok: false, error: `${p.label} must be between 0 and 1.` };
     }
+    // A share of a window is between none of it and all of it. Caught here rather than
+    // left to the launch for the same reason the fraction above is: it is one field to
+    // correct on the screen, not a run that never started.
+    if (p.kind === "percent" && (n < 0 || n > 100)) {
+      return { ok: false, error: `${p.label} must be between 0 and 100.` };
+    }
     out[p.key] = n;
   }
   return { ok: true, value: out };

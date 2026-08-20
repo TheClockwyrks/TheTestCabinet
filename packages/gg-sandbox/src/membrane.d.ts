@@ -488,7 +488,7 @@ declare module "test-cabinet:gg/docs" {
     key: string;
     /** `"module"`, `"function"` or `"type"`, as a bare string — the WIT declares no enum for it. */
     kind: string;
-    /** The module the entry lives in, which for a module is itself. */
+    /** The one module the entry lives in — publishes it, declares it, or, for a module, is it. */
     module: string;
     /** The name a program calls it by, the type's own name, or the module's path. */
     name: string;
@@ -508,11 +508,12 @@ declare module "test-cabinet:gg/docs" {
 
   /**
    * Search the modules this agent holds, everything it can call, and everything its signatures
-   * mention. Each `option<T>` is a required positional that may be `undefined`.
+   * mention. Each `option<T>` is a required positional that may be `undefined`, and the `list<T>` is
+   * a required positional that may be empty — a union of modules, or no module filter at all.
    */
   export function search(
-    query: string,
-    module: string | undefined,
+    query: string | undefined,
+    modules: string[],
     type: string | undefined,
     kind: string | undefined,
     offset: number | undefined,

@@ -311,13 +311,15 @@ fn session_model_error(error: &ModelError) -> GgSessionModelError {
         // class rather than `RetryExhausted`'s, because a reader that folded the two
         // together would claim the provider refused a request it in fact answered — repeatedly.
         // `attempts` carries how many replies were discarded, which is the only place that number
-        // survives: the replies themselves never entered the record (see
-        // [`record_model_io`](CaptureHandle::record_model_io)).
-        ModelError::ResponseLoop { attempts, .. } => GgSessionModelError {
+        // survives *in the record*: the replies themselves never entered it (see
+        // [`record_model_io`](CaptureHandle::record_model_io)). How much they generated is
+        // published on the turn's own outcome event instead, where every other discarded reply's
+        // size is published.
+        ModelError::ResponseLoop { discarded, .. } => GgSessionModelError {
             kind: GgSessionModelErrorKind::ResponseLoop,
             message,
             status: None,
-            attempts: Some(*attempts),
+            attempts: Some(discarded.attempts),
             model_id: None,
         },
     }
@@ -624,8 +626,9 @@ impl GgRecorder {
     /// `response` is the reply the client **returned**, which is the only reply the conversation
     /// ever held. A reply abandoned mid-stream by [loop detection](crate::loopguard) is therefore
     /// never journalled: it was never returned and never entered the conversation, so a record
-    /// carrying it would describe a window the agent never had. All
-    /// that survives of the discarded attempts is their *count*, on
+    /// carrying it would describe a window the agent never had. All that survives of the discarded
+    /// attempts is their [tally](crate::model::LoopAborts) — how many there were and how much they
+    /// generated — on
     /// [`ModelResponse::loop_aborts`](crate::model::ModelResponse::loop_aborts) — or, when every
     /// attempt looped and nothing was returned at all, on the recorded
     /// [error](GgSessionModelErrorKind::ResponseLoop)'s `attempts`.

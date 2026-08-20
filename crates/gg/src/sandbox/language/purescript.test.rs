@@ -175,8 +175,9 @@ fn the_generated_documentation_program_is_a_purescript_module() {
 ///
 /// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
 /// its window is a program that ran. What is asserted here is that gg wrote PureScript — a module
-/// header, two top-level arrays with their own signatures, a `do` block and two `for_`s — and that
-/// the search is the whole-module lookup rather than the default page of one.
+/// header, two top-level arrays with their own signatures, a `do` block, one search and a `for_` —
+/// and that the search names both modules at once, at the whole-module limit rather than the default
+/// page of one.
 ///
 /// The **imports** are the half no other arm has to write, and there are two of them here where the
 /// documentation program has one: a program naming `Gg.Docs.search` and importing only the view
@@ -209,10 +210,39 @@ fn the_opening_program_is_a_purescript_module() {
              \n\
              main :: Effect Unit\n\
              main = do\n\
-             \x20 for_ modules \\path -> Gg.Docs.search \"\" \
-             {{ module: path, limit: {limit} }}\n\
+             \x20 void (Gg.Docs.search {{ modules, limit: {limit} }})\n\
              \x20 for_ functions Gg.Views.openDocsView\n"
         )
+    );
+}
+
+/// **An agent with no module to look up gets a program that does not search**, because the call it
+/// would have made is the one `search` refuses.
+///
+/// A search with an empty module filter and no query asks for nothing, which is `invalid-argument`
+/// rather than an empty page — so the opening turn of an agent holding neither a file module nor a
+/// shell would fail on its first line. What goes with the call is everything that was only there for
+/// it: the `modules` array, and the import line bringing the documentation module into scope, which
+/// is what this arm means by a program importing what it calls.
+#[test]
+fn an_opening_program_with_no_module_to_search_makes_no_search() {
+    assert_eq!(
+        purescript().bootstrap_program(&[], &["readFile"]),
+        "module Main where\n\
+         \n\
+         import Prelude\n\
+         \n\
+         import Data.Foldable (for_)\n\
+         import Effect (Effect)\n\
+         import Gg.Views as Gg.Views\n\
+         \n\
+         functions :: Array String\n\
+         functions =\n\
+         \x20 [ \"readFile\"\n\
+         \x20 ]\n\
+         \n\
+         main :: Effect Unit\n\
+         main = for_ functions Gg.Views.openDocsView\n"
     );
 }
 

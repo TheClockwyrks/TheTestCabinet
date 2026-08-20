@@ -218,14 +218,15 @@ fn the_generated_documentation_program_declares_its_own_main() {
 }
 
 /// **The opening program declares its own `main`**, and it covers every module and every
-/// documentation key gg handed it.
+/// documentation key gg handed it in **one** search.
 ///
 /// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
 /// its window is a program that ran — which means it has to be a program a model could have sent.
-/// What is asserted here is that gg wrote Rust — a `fn main`, arrays, `for`s, an **options struct
+/// What is asserted here is that gg wrote Rust — a `fn main`, an array, a `for`, an **options struct
 /// filled in with functional-update syntax** — that every call is composed with `?` rather than
 /// unwrapped, that every call is spelled in full so no `use` line is needed above it, and that the
-/// search is the whole-module lookup rather than the default page of one.
+/// search lists every granted module at once and asks for the whole of them rather than the default
+/// page of one.
 #[test]
 fn the_opening_program_composes_every_call_with_a_question_mark() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
@@ -233,19 +234,36 @@ fn the_opening_program_composes_every_call_with_a_question_mark() {
         rust().bootstrap_program(&["files", "views"], &["read_file"]),
         format!(
             "fn main() -> Result<(), gg::Failure> {{\n    \
-                 let modules = [\n        \"files\",\n        \"views\",\n    ];\n    \
-                 for path in modules {{\n        \
-                     gg::docs::search(\n            \"\",\n            \
-                     gg::docs::SearchOptions {{\n                module: Some(path),\n            \
-                     \x20   limit: Some({limit}),\n                ..Default::default()\n         \
-                     \x20  }},\n        )?;\n    \
-                 }}\n\
+                 gg::docs::search(gg::docs::SearchOptions {{\n        \
+                     modules: &[\"files\", \"views\"],\n        \
+                     limit: Some({limit}),\n        \
+                     ..Default::default()\n    \
+                 }})?;\n\
                  \n    \
                  let functions = [\n        \"read_file\",\n    ];\n    \
                  for name in functions {{\n        gg::views::open_docs_view(name)?;\n    }}\n    \
                  Ok(())\n}}\n"
         )
     );
+}
+
+/// **An agent granted neither module opens on the documentation views alone** — the search is left
+/// out rather than written with an empty list.
+///
+/// A search naming no module and carrying no query is `invalid-argument`, so the program that made
+/// that call would open the session with a failed call and a worked example of the shape that failed
+/// it. What is left is a whole program still: `fn main`, the array, the `for` and the `?`.
+#[test]
+fn the_opening_program_of_an_agent_with_no_modules_makes_no_search() {
+    let program = rust().bootstrap_program(&[], &["read_file"]);
+    assert_eq!(
+        program,
+        "fn main() -> Result<(), gg::Failure> {\n    \
+             let functions = [\n        \"read_file\",\n    ];\n    \
+             for name in functions {\n        gg::views::open_docs_view(name)?;\n    }\n    \
+             Ok(())\n}\n"
+    );
+    assert!(!program.contains("SearchOptions"), "{program}");
 }
 
 /// **A code module is reached the way gg's own SDK is**, and gg states no line for either.

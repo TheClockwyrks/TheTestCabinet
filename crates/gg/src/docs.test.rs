@@ -141,22 +141,22 @@ fn a_type_lookup_declares_the_type_and_explains_its_members() {
 /// write.
 ///
 /// Three arms are asserted, because the line is the arm's own and the shapes differ: TypeScript and
-/// JavaScript reach the whole surface with one namespace import, and PureScript imports each module
-/// under its own full name.
+/// JavaScript reach one module with a named import off the specifier the whole surface is published
+/// under, and PureScript imports each module under its own full name.
 #[test]
 fn a_view_names_the_module_and_says_how_to_reach_it() {
     let docs = runtime(ENABLED);
     let read_file = docs.read("readFile").expect("readFile is bound");
     assert!(
         read_file.contains(
-            "\nDefined in `gg.files`, brought into scope with `import * as gg from \"gg\";`.\n"
+            "\nDefined in `gg.files`, brought into scope with `import { files } from \"gg\";`.\n"
         ),
         "{read_file}"
     );
     let file_read = docs.read_type("FileRead").expect("FileRead is reachable");
     assert!(
         file_read.contains(
-            "\nDefined in `gg.files`, brought into scope with `import * as gg from \"gg\";`.\n"
+            "\nDefined in `gg.files`, brought into scope with `import { files } from \"gg\";`.\n"
         ),
         "{file_read}"
     );
@@ -167,7 +167,7 @@ fn a_view_names_the_module_and_says_how_to_reach_it() {
     let read_file = unchecked.read("readFile").expect("readFile is bound");
     assert!(
         read_file.contains(
-            "\nDefined in `gg.files`, brought into scope with `import * as gg from \"gg\";`.\n"
+            "\nDefined in `gg.files`, brought into scope with `import { files } from \"gg\";`.\n"
         ),
         "{read_file}"
     );
@@ -1169,5 +1169,65 @@ fn a_lookup_never_resolves_a_type_in_another_loaded_module() {
         docs.types_to_open("csvTools.parse", DocViewTypes::only(DocViewType::Return))
             .is_empty(),
         "the only `Row` in reach belongs to a module this declaration never mentions"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// What the surface says about having been read
+// ---------------------------------------------------------------------------
+
+/// **The three answers [`documented_operations`](DocsRuntime::documented_operations) gives**, which
+/// are the three the [discovery](crate::discovery) check turns into its verdict.
+///
+/// The one that has to be its own state is the third: an operation this agent binds no page for is
+/// absent rather than `false`, so a call of it is not reported as one the model failed to look up.
+#[test]
+fn the_surface_reports_read_unread_and_undocumentable_apart() {
+    let docs = runtime(ENABLED);
+    let key = docs
+        .docview_key("readFile")
+        .expect("a granted call is filed under a key");
+    let documented = docs.documented_operations(&BTreeSet::from([key]));
+
+    assert_eq!(
+        documented.get("files.read_file"),
+        Some(&true),
+        "the page is open, so the model has read what this call does"
+    );
+    assert_eq!(
+        documented.get("files.write_file"),
+        Some(&false),
+        "a call this agent binds whose page is closed is unread rather than undocumentable"
+    );
+    assert_eq!(
+        documented.get("delegation.spawn_subagent"),
+        None,
+        "a call this agent was not granted has no page in its surface at all"
+    );
+}
+
+/// An agent holding nothing open reports every call it binds as unread, and an agent that never
+/// bound a call reports nothing whatever — the two ends of the same answer.
+#[test]
+fn an_empty_window_leaves_every_bound_call_unread() {
+    let documented = runtime(ENABLED).documented_operations(&BTreeSet::new());
+    assert!(
+        documented.values().all(|read| !read),
+        "nothing is open, so nothing has been read"
+    );
+    assert!(
+        documented.contains_key("files.read_file"),
+        "every call this agent binds is still accounted for"
+    );
+
+    let withheld = granting(&[], &[]).documented_operations(&BTreeSet::new());
+    assert!(
+        withheld
+            .keys()
+            .all(|operation| operation.starts_with("views.")
+                || operation.starts_with("docs.")
+                || operation.starts_with("session.")),
+        "an agent granted no capability still binds the calls nothing gates: {:?}",
+        withheld.keys().collect::<Vec<_>>()
     );
 }

@@ -166,6 +166,7 @@ fn no_limits(max_turns: usize) -> LimitsSetup {
         deadline: None,
         cancel: CancelWatch::disabled(),
         fault: FaultLatch::default(),
+        ceiling: CeilingLatch::default(),
         spend: Arc::new(RunSpend::default()),
     }
 }
@@ -290,7 +291,7 @@ fn code_reply(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -331,6 +332,7 @@ async fn drive_root(
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code,
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -598,6 +600,7 @@ fn no_amc() -> AmcSetup {
         program_language: None,
         can_archive: false,
         top_file_views: 0,
+        signal_threshold_percent: 0,
     }
 }
 
@@ -628,6 +631,9 @@ fn amc_with(archive: Arc<Mutex<ArchiveStore>>) -> AmcSetup {
         // These `drive` e2es are tool-calling agents, so there is no `view` object to point at.
         program_language: None,
         can_archive: true,
+        // The block on every turn: an e2e that archives and then reads the band fall would
+        // otherwise have to fill three quarters of a window first.
+        signal_threshold_percent: 0,
         top_file_views: 5,
     }
 }
@@ -645,7 +651,7 @@ fn looping_response() -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -692,7 +698,11 @@ impl ModelClient for FailingClient {
                 message: r#"{"error":{"message":"User not found.","code":401}}"#.to_string(),
             }),
             FailureMode::Looping => Err(ModelError::ResponseLoop {
-                attempts: 3,
+                discarded: LoopAborts {
+                    attempts: 3,
+                    words: 9_195,
+                    chars: 58_400,
+                },
                 detail: "2 words repeated across 3000 consecutive words, 3065 words into the reply"
                     .to_string(),
             }),
@@ -744,7 +754,7 @@ impl ModelClient for WriteThenFailClient {
                 finish_reason: FinishReason::ToolCalls,
                 usage: TokenCounts::default(),
                 cost: None,
-                loop_aborts: 0,
+                loop_aborts: LoopAborts::none(),
             })
         } else {
             Err(ModelError::Fatal {
@@ -1109,6 +1119,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -1168,6 +1179,7 @@ async fn drive_times_out_at_a_passed_deadline() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -1228,6 +1240,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -1272,7 +1285,7 @@ fn ending_call(id: &str, name: &str, arguments: serde_json::Value) -> ModelRespo
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -1316,6 +1329,7 @@ async fn drive_hooked(
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks,
                 ending_role,
                 opening: Opening::Fresh,
@@ -1579,6 +1593,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -1636,6 +1651,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -1910,7 +1926,7 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
     assert_eq!(
         assistant,
         vec![
-            "import * as gg from \"gg\";\n\ngg.views.openFile(\"SPEC.md\");\ngg.views.openFile(\"reference/title.png\");\n"
+            "import { views } from \"gg\";\n\nviews.openFile(\"SPEC.md\");\nviews.openFile(\"reference/title.png\");\n"
                 .to_string()
         ],
         "one program opens every spec, in order"
@@ -2806,6 +2822,64 @@ fn resolve_window_limit_reserves_compaction_headroom() {
     );
 }
 
+/// **The context-usage signal's threshold is a share of the window the agent may actually fill.**
+///
+/// There is one usable window per agent and both readers of it come off this resolver, so the same
+/// thread earns a block under an armed compaction and none without one: a compaction hands back a
+/// smaller window, and three quarters of a smaller window arrives sooner. A threshold measured
+/// against the model's raw window instead would hold the block back past the point the compaction
+/// trigger fires, which is exactly the point the agent still had a chance to act.
+#[test]
+fn the_signal_threshold_is_a_share_of_the_window_compaction_leaves() {
+    let model_id = "anthropic/claude-opus-4.8";
+    let catalog = windows(model_id, 2_000);
+    let bare = GgCapabilitySet::minimal(model_id);
+    let mut compacting = GgCapabilitySet::minimal(model_id);
+    crate::tools::grant(&mut compacting.agents[0], CAPABILITY_COMPACTION);
+    assert_eq!(
+        (
+            resolve_window_limit(bare.root(), &catalog, model_id),
+            resolve_window_limit(compacting.root(), &catalog, model_id),
+        ),
+        (Some(2_000), Some(1_600)),
+        "a fifth of the window is held back for the summarization call"
+    );
+
+    // One read of roughly 1,250 tokens: under three quarters of the model's whole window, over
+    // three quarters of what the armed compaction leaves.
+    let filled = |limit: Option<u64>| {
+        let mut ctx = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), limit, false);
+        ctx.set_system("system");
+        ctx.push_file_view(
+            Some("src/main.rs".to_string()),
+            None,
+            "c1",
+            "main ".repeat(1_000),
+            Vec::new(),
+        );
+        ctx.refresh_context_usage_signal(UsageSignalOptions {
+            can_evict: true,
+            program_language: None,
+            can_archive: true,
+            top_file_views: 5,
+            threshold_percent: DEFAULT_SIGNAL_THRESHOLD_PERCENT,
+        });
+        ctx.messages().into_iter().any(|message| {
+            message
+                .content
+                .is_some_and(|content| content.starts_with("Context Usage:"))
+        })
+    };
+    assert!(
+        !filled(resolve_window_limit(bare.root(), &catalog, model_id)),
+        "measured against the model's whole window this thread is not yet three quarters of it"
+    );
+    assert!(
+        filled(resolve_window_limit(compacting.root(), &catalog, model_id)),
+        "measured against the window the compaction leaves, the same thread has reached it"
+    );
+}
+
 /// Each agent is measured against **its own** model's window: a multi-model run carries one
 /// catalog entry per bound model, and a subagent on a smaller model must not be measured
 /// against the primary's window.
@@ -2853,7 +2927,7 @@ fn read_skill_call(id: &str, name: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -2872,7 +2946,7 @@ fn text_only_response() -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -2969,6 +3043,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -3050,7 +3125,7 @@ fn write_memory_call(id: &str, name: &str, body: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -3167,6 +3242,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -3267,7 +3343,7 @@ fn create_memory_call(id: &str, name: &str, contents: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -3335,6 +3411,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -3424,6 +3501,7 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -3583,7 +3661,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     };
     let client = MockClient::new(
         "mock/echo",
@@ -3626,6 +3704,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -3731,7 +3810,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 finish_reason: FinishReason::ToolCalls,
                 usage: TokenCounts::default(),
                 cost: None,
-                loop_aborts: 0,
+                loop_aborts: LoopAborts::none(),
             },
             stop_response(),
         ],
@@ -3758,6 +3837,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -3987,7 +4067,7 @@ fn balloon_turn(id: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -4007,7 +4087,7 @@ fn compaction_script() -> Vec<ModelResponse> {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         },
         balloon_turn("c_ls"),
         stop_response(),
@@ -4074,6 +4154,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -4243,6 +4324,7 @@ async fn drive_never_compacts_when_capability_off() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -4336,6 +4418,7 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -4449,6 +4532,12 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
         .and_then(|entry| entry.params.get(PARAM_TOP_FILE_VIEWS))
         .and_then(serde_json::Value::as_u64)
         .expect("the authoring catalog writes a top-file-views figure") as usize;
+    let authored_threshold =
+        test_cabinet_core::gg::authored_capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
+            .and_then(|entry| entry.params.get(PARAM_SIGNAL_THRESHOLD_PERCENT))
+            .and_then(serde_json::Value::as_u64)
+            .expect("the authoring catalog writes a signal threshold");
+    assert_eq!(authored_threshold, DEFAULT_SIGNAL_THRESHOLD_PERCENT);
     let mut on = GgAgentConfig::root();
     crate::tools::grant(&mut on, CAPABILITY_AGENT_MANAGED_CONTEXT);
     let written = resolve(&on);
@@ -4462,6 +4551,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
             program_language: None,
             can_archive: true,
             top_file_views: authored,
+            threshold_percent: authored_threshold,
         }
     );
 
@@ -4475,6 +4565,31 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
         ),
     );
     assert_eq!(resolve(&configured).top_file_views, 12);
+
+    // The threshold is read the same way, and a document that says nothing about it is the one
+    // absence gg answers with a figure of its own.
+    let mut quiet = GgAgentConfig::root();
+    crate::tools::grant_configured(
+        &mut quiet,
+        crate::tools::configured(
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            json!({ PARAM_TOP_FILE_VIEWS: 5 }),
+        ),
+    );
+    assert_eq!(
+        resolve(&quiet).signal_threshold_percent,
+        DEFAULT_SIGNAL_THRESHOLD_PERCENT
+    );
+
+    let mut eager = GgAgentConfig::root();
+    crate::tools::grant_configured(
+        &mut eager,
+        crate::tools::configured(
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            json!({ PARAM_TOP_FILE_VIEWS: 5, PARAM_SIGNAL_THRESHOLD_PERCENT: 0 }),
+        ),
+    );
+    assert_eq!(resolve(&eager).signal_threshold_percent, 0);
 
     // An ungranted tool is read off the registry rather than assumed from the capability, so the
     // block never points at a call this agent does not have.
@@ -4556,6 +4671,7 @@ async fn drive_manages_context_end_to_end() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -4752,6 +4868,7 @@ async fn drive_without_amc_offers_no_context_management() {
                 read_policy: Some(ReadPolicy::Unlimited),
                 shell_offload: OffloadPolicy::ample(),
                 code: no_code(),
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -6017,7 +6134,7 @@ async fn spawn_is_refused_at_the_max_depth() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(
             "mock/subagent",
@@ -6081,7 +6198,7 @@ async fn subagents_recurse_within_the_depth_cap() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
             text: Some("Waiting for the worker.".to_string()),
@@ -6093,7 +6210,7 @@ async fn subagents_recurse_within_the_depth_cap() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(
             "mock/subagent",
@@ -6176,7 +6293,7 @@ impl ModelClient for InboxProbeClient {
             finish_reason: FinishReason::Stop,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         })
     }
 
@@ -6207,7 +6324,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         let message = ModelResponse {
             text: Some("Guiding the child.".to_string()),
@@ -6219,7 +6336,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
             text: Some("Waiting for the child.".to_string()),
@@ -6231,7 +6348,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(
             "mock/primary",
@@ -6243,9 +6360,13 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
         .slot(ROOT_PROFILE_ID, move |_| parent_messages_child())
         .slot("subagent", |_| Box::new(InboxProbeClient));
 
+    // The child never ends its own session — it answers the probe and nothing else — so it is
+    // stopped by the run's consecutive-error ceiling, which is what makes the run's outcome
+    // `LimitExceeded`. The scenario is about the message reaching a child that is still running,
+    // which is exactly the child a ceiling has to stop; the ceiling is the fixture, not the finding.
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
+        SessionOutcome::LimitExceeded
     );
 
     let events = sink.events();
@@ -6299,7 +6420,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
             text: Some("wait".to_string()),
@@ -6311,7 +6432,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         let msg_finished = ModelResponse {
             text: Some("message the finished child".to_string()),
@@ -6323,7 +6444,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         let msg_unknown = ModelResponse {
             text: Some("message a stranger".to_string()),
@@ -6335,7 +6456,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(
             "mock/primary",
@@ -6428,7 +6549,7 @@ fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelRes
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -8997,7 +9118,7 @@ impl ModelClient for VisionRefusingClient {
             tool_calls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         })
     }
 
@@ -9148,7 +9269,7 @@ impl ModelClient for ImageReadingClient {
             tool_calls,
             usage: TokenCounts::default(),
             cost: None,
-            loop_aborts: 0,
+            loop_aborts: LoopAborts::none(),
         })
     }
 
@@ -9337,6 +9458,15 @@ mod surface_tests;
 /// `agent.profiles.test.rs` holds for the profile family of gg defects, on the sandbox family.
 #[path = "agent.faults.test.rs"]
 mod fault_tests;
+
+/// **[Discovery](crate::discovery) across a turn boundary**: that only a documentation view the
+/// model could actually have read clears a call it wrote.
+///
+/// Separate because it is the one property of the mechanism that no unit test can hold — what
+/// distinguishes a view opened on an earlier turn from one opened by the running program is *when
+/// the model saw it*, which needs a real window and two real turns.
+#[path = "agent.discovery.test.rs"]
+mod discovery_tests;
 
 /// **A `wait_for_issue` whose answer is never coming**: the run breaking under a suspended agent,
 /// and a board that has stalled behind a failed issue.

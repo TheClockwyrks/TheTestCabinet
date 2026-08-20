@@ -103,13 +103,15 @@ impl LoadedEntry {
             .any(|named| named.eq_ignore_ascii_case(filter))
     }
 
-    /// Whether `filter` names the module this entry belongs to, by the only name it has.
+    /// Whether any of `filters` names the module this entry belongs to, by the only name it has.
     ///
     /// A loaded module has one spelling rather than the SDK's two: gg's cross-arm id for a module
     /// and the path an arm writes it under are one string here, because the key *is* what the model
     /// was given and gg has no second vocabulary for a module it did not write.
-    pub fn in_module(&self, filter: &str) -> bool {
-        self.module.eq_ignore_ascii_case(filter)
+    pub fn in_modules(&self, filters: &[&str]) -> bool {
+        filters
+            .iter()
+            .any(|filter| self.module.eq_ignore_ascii_case(filter))
     }
 }
 

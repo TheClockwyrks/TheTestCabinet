@@ -42,6 +42,7 @@ import {
   AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
   AUTHORED_MEMORY_MAX_LEN_PER,
   AUTHORED_REPLAY_MAX_MIB,
+  AUTHORED_SIGNAL_THRESHOLD_PERCENT,
   AUTHORED_SHELL_MAX_CHARS,
   AUTHORED_SHELL_MAX_LINES,
   BUILT_IN_SKILL_OPTIONS,
@@ -823,7 +824,9 @@ describe("gg response-healing toggles", () => {
     // The checkboxes open at the authored arms, since there is nothing here they could
     // stand for — and the passthrough is what the save writes, so what the operator did
     // not see is not replaced by what they did.
-    expect(draftCaps(draft)[CODE]?.params?.healing).toBe("drop-doubled-response");
+    expect(draftCaps(draft)[CODE]?.params?.healing).toBe(
+      "drop-doubled-response",
+    );
     expect(draftCaps(draft)[CODE]?.extraParams).toEqual({
       healing: { stripProse: false },
     });
@@ -1657,10 +1660,9 @@ describe("params gated on the selected implementation", () => {
     return param;
   };
 
-  it("offers the shell ceilings under the truncating modes only", () => {
+  it("offers the shell ceilings under the truncating mode only", () => {
     for (const key of ["maxLines", "maxChars"]) {
       const param = paramOf("shell", key);
-      expect(paramApplies(param, "adaptive")).toBe(true);
       expect(paramApplies(param, "offload")).toBe(true);
       expect(paramApplies(param, "inline")).toBe(false);
     }
@@ -1673,6 +1675,44 @@ describe("params gated on the selected implementation", () => {
     expect(paramOf("shell", "maxChars").defaultValue).toBe(
       String(AUTHORED_SHELL_MAX_CHARS),
     );
+  });
+
+  // The one param gg reads a figure out of a document that does not write it. The form
+  // still seeds it, so a new configuration says what the run will do, and it is not
+  // required, so an operator who clears the field saves a document that runs at the same
+  // share rather than one the form refuses.
+  it("seeds the context-usage threshold and requires nothing of it", () => {
+    const param = paramOf("agent-managed-context", "signalThresholdPercent");
+    expect(param.kind).toBe("percent");
+    expect(param.required).toBeUndefined();
+    expect(param.defaultValue).toBe(String(AUTHORED_SIGNAL_THRESHOLD_PERCENT));
+
+    const cap = capabilitySpec("agent-managed-context")!;
+    const params = (draft: Record<string, string>) =>
+      capabilityParams(cap, { enabled: true, params: draft }, true);
+    expect(params({ topFileViews: "5", ownership: "owned" })).toEqual({
+      ok: true,
+      value: { topFileViews: 5, ownership: "owned" },
+    });
+    expect(
+      params({
+        topFileViews: "5",
+        ownership: "owned",
+        signalThresholdPercent: "0",
+      }),
+    ).toEqual({
+      ok: true,
+      value: { topFileViews: 5, ownership: "owned", signalThresholdPercent: 0 },
+    });
+    // A share of a window is between none of it and all of it, caught on the screen
+    // rather than at the launch it would otherwise refuse.
+    expect(
+      params({
+        topFileViews: "5",
+        ownership: "owned",
+        signalThresholdPercent: "120",
+      }),
+    ).toEqual({ ok: false, error: "Signal at must be between 0 and 100." });
   });
 
   // The three types' own default arms are `return` and `errors` on and `parameters` off,

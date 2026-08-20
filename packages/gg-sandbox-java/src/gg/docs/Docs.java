@@ -26,50 +26,36 @@ public final class Docs {
     }
 
     /**
-     * Find what this agent can call, by keyword or by module, and read the briefs that come back.
+     * Find what this agent can call, by words or by module, and read the briefs that come back.
      *
      * <p>Matching is case-insensitive substring matching over names, signatures, briefs and detailed
      * descriptions, so {@code "docs"} finds {@code openDocsView}. A hit whose own name matched
      * ranks above one that merely mentions the word in a paragraph, and the query is split on
      * whitespace, so several specific words work better than a sentence.
      *
+     * <p>Every part of the question is optional and every one of them is named on
+     * {@link SearchFilters}, because none of them is the part a search has to carry. The words
+     * rank; the filters are exact lookups that compose with the words and with each other; and
+     * {@link SearchFilters#modules(String...)} with no query beside it is those modules' whole
+     * directory, which is the first hop worth making. Being a lookup, a module or type name gg does
+     * not hold matches nothing rather than failing — an empty page there means the filter found
+     * nothing, not that it was rejected.
+     *
      * <p>The page comes back as a value <em>and</em> opens as a view, so the results can be read on
      * the next turn without being shown deliberately. The next search replaces that view: it names
      * what is being worked from rather than keeping a record.
      *
-     * @param query The words to look for, as one string. Several specific words beat a sentence.
+     * @param filters What to look for, what to narrow to, and which page to read. It has to carry
+     *     one of the two ways of asking — words, or a filter — and may carry both.
      * @return one page of matches, best first, and the total behind it
-     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a blank query, which is a
-     *     question with no filter and no words in it. {@link #search(String, SearchFilters)} is the
-     *     overload that takes one instead.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for filters that named nothing at all,
+     *     no words and no filter — a search that asked for nothing and a search that found nothing
+     *     are different answers — and for a {@link SearchFilters#limit(int)} of zero, which is a
+     *     page that could answer nothing.
      * @ggop docs.search
      */
-    public static DocSearch search(String query) {
-        return search(query, new SearchFilters());
-    }
-
-    /**
-     * The same search, narrowed by module, by type or by kind, and paged.
-     *
-     * <p>The filters compose with the query and with each other, and each is an exact lookup rather
-     * than another thing to rank: an empty query carrying only
-     * {@link SearchFilters#module(String)} is that module's whole directory, which is the first hop
-     * worth making. Being a lookup, a module or type name gg does not hold matches nothing rather
-     * than failing — an empty page there means the filter found nothing, not that it was rejected.
-     *
-     * @param query The words to look for. It may be empty here, where a filter says what to look at
-     *     instead.
-     * @param filters What to narrow to, and which page to read. It may carry nothing, which is the
-     *     same request the one-argument overload makes.
-     * @return one page of matches, best first, and the total behind it
-     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a blank query with no filter
-     *     beside it — a search that asked for nothing and a search that found nothing are different
-     *     answers — and for a {@link SearchFilters#limit(int)} of zero, which is a page that could
-     *     answer nothing.
-     * @ggop docs.search
-     */
-    public static DocSearch search(String query, SearchFilters filters) {
-        return Read.docSearch(Coding.call("docs.search", Value.of(query), filters.module,
+    public static DocSearch search(SearchFilters filters) {
+        return Read.docSearch(Coding.call("docs.search", filters.query, filters.modules,
                 filters.type, filters.kind, filters.offset, filters.limit));
     }
 
@@ -116,19 +102,23 @@ public final class Docs {
     // -------------------------------------------------------------------------------------------
 
     /**
-     * What a search is narrowed to, and which page of it to read, built a call at a time.
+     * What a search asks, what it is narrowed to, and which page to read, built a call at a time.
      *
-     * <p>Java has no keyword arguments and five optional filters would be an overload per subset, so
+     * <p>Java has no keyword arguments and six optional parts would be an overload per subset, so
      * they are named the way this SDK names every other optional group — one method each, chained.
-     * A filter never named narrows nothing.
+     * A part never named asks for nothing and narrows nothing, and filters that named none of the
+     * six are the one question {@link Docs#search} refuses.
      *
      * <pre>{@code
-     * Docs.DocSearch found = Docs.search("", new Docs.SearchFilters().module("memories"));
+     * Docs.DocSearch found = Docs.search(new Docs.SearchFilters().modules("memories"));
      * }</pre>
      */
     public static final class SearchFilters {
-        /** The module to narrow to, absent until one is named. */
-        Value module = Value.none();
+        /** The words to look for, absent until some are named. */
+        Value query = Value.none();
+
+        /** The modules to narrow to; empty until some are named. */
+        Value modules = Value.list();
 
         /** The type to narrow to, absent until one is named. */
         Value type = Value.none();
@@ -142,22 +132,38 @@ public final class Docs {
         /** How many hits to return, absent until one is named. */
         Value limit = Value.none();
 
-        /** A search narrowed to nothing yet. */
+        /** A search asking for nothing and narrowed to nothing yet. */
         public SearchFilters() {
         }
 
         /**
-         * Narrow to one module, which with an empty query is that module's whole directory.
+         * Look for words, which rank the hits rather than narrowing them.
          *
-         * <p>The module is named either the way a program writes it ({@code gg.files.Files}) or by
-         * gg's own id ({@code files}), exactly and case-insensitively. It is a lookup rather than a
-         * search, so a name no module has matches nothing rather than failing.
-         *
-         * @param module The module to narrow to.
+         * @param query The words to look for, as one string. Several specific words beat a sentence.
          * @return these filters, so calls chain
          */
-        public SearchFilters module(String module) {
-            this.module = Value.of(module);
+        public SearchFilters query(String query) {
+            this.query = Value.of(query);
+            return this;
+        }
+
+        /**
+         * Narrow to some modules, which with no query beside them is their whole directory.
+         *
+         * <p>Several modules are a union rather than a narrowing of each other: an entry any one of
+         * them publishes is a hit, so the surface an agent holds is one call rather than one per
+         * module. A module is named either the way a program writes it ({@code gg.files.Files}) or
+         * by gg's own id ({@code files}), exactly and case-insensitively — which is how
+         * {@link DocHit#module()} reports it, so a hit says what to narrow the next search to. It
+         * is a lookup rather than a search, so a name no module has matches nothing rather than
+         * failing.
+         *
+         * @param modules The modules to narrow to. Naming none is no module filter at all, which is
+         *     what a search that never called this asks for.
+         * @return these filters, so calls chain
+         */
+        public SearchFilters modules(String... modules) {
+            this.modules = Value.texts(modules);
             return this;
         }
 
@@ -244,8 +250,8 @@ public final class Docs {
      * @param key The fully-qualified name it is documented under, and what
      *     {@code gg.views.Views.openDocsView} takes to read the whole of it.
      * @param kind Whether this entry is a module, a function or a type.
-     * @param module The module it lives in; for a type, every module mentioning it,
-     *     comma-separated — so not one to hand back as a filter.
+     * @param module The one module it belongs to: the module a function is published by, or the
+     *     module a type is declared in.
      * @param name The name a program calls it by, or the type's own name.
      * @param summary Its brief, and only its brief. Everything else written about it is what a
      *     documentation view holds.

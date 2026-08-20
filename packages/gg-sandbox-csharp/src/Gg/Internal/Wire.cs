@@ -46,7 +46,7 @@ internal static class Wire
         new(board[0], board[1], board[2], board[3]);
 
     // A list argument the caller left out. The bridge lowers an empty array as an empty list, which
-    // is what every one of these means: "no blockers", "no reviewers".
+    // is what every one of these means: "no blockers", "no reviewers", "no module filter".
     internal static string[] Or(string[]? values) => values ?? [];
 
     // A `Docs.DocKind` on its way out, as the wire's own word for it. The documentation index types

@@ -37,6 +37,10 @@
 //! [resolver](resolve_run_limits), one [breach record](test_cabinet_core::gg::GgLimitBreach) and
 //! one aggregation facet, rather than two vocabularies that drift.
 //!
+//! All five also share one run-wide answer, the [`CeilingLatch`]: a breach by any agent gives the
+//! process an exit code of its own, so the host records a run that spent a safeguard apart from a
+//! session that ran to a natural end, and never retries it.
+//!
 //! **gg arms no ceiling nobody wrote.** Every one of the five is armed by writing a figure and left
 //! unarmed by leaving its key out — the two error ceilings included, so an agent stopped by one was
 //! stopped by a threshold its operator chose rather than by one gg picked. A set that names none is
@@ -95,7 +99,7 @@
 
 use std::collections::VecDeque;
 use std::fmt;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use test_cabinet_core::gg::{
@@ -240,7 +244,7 @@ pub enum TurnErrorKind {
     /// gets to observe two of them: a `ModelError` reaching the loop means the provider failed
     /// every attempt within one turn, the fatal kinds recur identically, and a rejected credential
     /// ends the agent that hit it — it is one of the two non-launch statuses (the other being a gg
-    /// defect) that exit the process non-zero off the root's ending. Making model-API errors
+    /// defect) that leave no run to score, read off the root's ending. Making model-API errors
     /// survivable is a change to gg's model-error policy and would be designed as one.
     ModelApi,
     /// The program could not be prepared for its guest — a syntax error, a module feature the
@@ -280,8 +284,10 @@ impl TurnErrorKind {
     /// [`ModelApi`](Self::ModelApi) failure at this level. It is *not* lost, though — it is
     /// published one level down, as
     /// [`ModelResponseLoop`](test_cabinet_core::gg::GgTurnErrorType::ModelResponseLoop). The
-    /// attempts it discarded on the way are published in their own right besides, on the
-    /// [`loop_aborts`](test_cabinet_core::gg::GgTelemetryKind::TurnOutcome) field of the same event.
+    /// attempts it discarded on the way are published in their own right besides, with the size of
+    /// the output they threw away, on the
+    /// [`loop_aborts`](test_cabinet_core::gg::GgTelemetryKind::TurnOutcome) field of the same event
+    /// and the two beside it.
     pub fn wire(self) -> GgTurnErrorKind {
         match self {
             Self::ModelApi => GgTurnErrorKind::ModelApi,
@@ -1214,6 +1220,84 @@ fn add_optional(a: Option<f64>, b: Option<f64>) -> Option<f64> {
     match (a, b) {
         (None, None) => None,
         (a, b) => Some(a.unwrap_or(0.0) + b.unwrap_or(0.0)),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The run's ceiling latch
+// ---------------------------------------------------------------------------------------------
+
+/// The run-wide record of the **first** ceiling any agent of the run breached.
+///
+/// # Why a run that spent a ceiling must not exit as a run that finished
+///
+/// A ceiling is a safeguard an operator armed by writing a figure, and a run is not expected to
+/// reach one: reaching it means the configuration spent its whole allowance — of turns, of clock,
+/// of money, of tolerance for failing turns — without the model finishing. The process exit code is
+/// the only part of that fact the host reads before it collects anything, so a breached ceiling
+/// that exits `0` is indistinguishable downstream from a session that ran to a natural end. The run
+/// is then collected, scored, and — when it fails — retried, which spends a second run reaching the
+/// same bound on the same configuration.
+///
+/// So a breach anywhere in the tree gives the process its own exit code, and `core` records the run
+/// under a state of its own that is never retried.
+///
+/// # Why a latch, and not a status carried up the spawn paths
+///
+/// For the reason [gg's fault latch](crate::fault) is one: a ceiling breached by any agent is a
+/// fact about the **run**, and the session's terminal status is the root's. A subagent that spent
+/// its turn budget reports `Done` to its spawner through the ordinary agent-return channel, which
+/// carries a value rather than a status; a detached child or an issue implementer that breached
+/// after the root had already finished has no spawner left to report to at all. Threading a breach
+/// back through every one of those paths would put the run's answer in the hands of whichever paths
+/// remembered to carry it, where one shared cell that every breach site writes and the session
+/// epilogue reads cannot be forgotten by a path that does not exist yet.
+///
+/// # What it is not: the fault latch
+///
+/// The two are the same shape and mean opposite things, and the difference worth stating is what
+/// each one *does*.
+///
+/// A [fault](crate::fault) **stops** the run: every agent reads it at its turn boundary and winds
+/// down, and the tree that comes back is disqualified because gg had a hand in producing it. This
+/// latch stops nothing. The agent that breached a ceiling has already been ended by
+/// `Agent::stop_on_limit`, on the terms that ceiling has always ended it on, and the agents around
+/// it are untouched: a subagent that spends its own error budget ends itself while its siblings
+/// carry on working, exactly as before. Nothing about *when* anything stops changes here — only
+/// what the process exits with.
+///
+/// A fault therefore also outranks a breach. A run that broke and a run that ran into a bound are
+/// both non-zero, and only the first is not a measurement at all, so the session states the fault.
+///
+/// # First breach wins
+///
+/// The [`OnceLock`] is the rule. The two run-wide ceilings stop several agents at their own
+/// boundaries and each of them raises a breach of its own, and a per-agent ceiling can be breached
+/// by one agent after another. Every one of those records the same run running out, and the one
+/// worth keeping is the one that names where it first did.
+///
+/// A [`Default`] latch is a run that stayed inside every ceiling it armed, which is most runs, so
+/// no call site needs an `Option`. Cloning shares the latch (it is [`Arc`]-backed), so every agent
+/// and the session epilogue read one decision.
+#[derive(Debug, Clone, Default)]
+pub struct CeilingLatch {
+    /// The first breach raised, or unset.
+    breach: Arc<OnceLock<GgLimitBreach>>,
+}
+
+impl CeilingLatch {
+    /// Record that an agent's loop ended on `breach`.
+    ///
+    /// Called from the one place any of the five ceilings ends an agent, so every ceiling reaches
+    /// the run's answer on identical terms and none of the five can be the one that was forgotten.
+    pub fn raise(&self, breach: &GgLimitBreach) {
+        let _ = self.breach.set(breach.clone());
+    }
+
+    /// The first ceiling this run breached, or `None` while it is inside all of them — read by the
+    /// session epilogue to decide the process exit code.
+    pub fn raised(&self) -> Option<&GgLimitBreach> {
+        self.breach.get()
     }
 }
 

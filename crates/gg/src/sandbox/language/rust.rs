@@ -298,7 +298,7 @@ impl ProgramLanguage for Rust {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [One `fn main` holding two arrays and two `for` loops, each call composed with
+    /// [One `fn main` holding one search, one array and one `for` loop, each call composed with
     /// `?`](self::bootstrap_program), with both paths resolved from this language's own catalogue.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
@@ -458,6 +458,14 @@ pub(super) fn open_file_statement(
 /// The empty case carries a type annotation, because an empty array literal has no element type to
 /// infer and `[]` alone is `E0282`.
 pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+    main_program(&open_docs_views_body(open_docs_view, names))
+}
+
+/// The array and the `for` that [`open_docs_views_statement`] wraps a `fn main` around, as a body a
+/// statement can be written above — which is what the [opening turn](bootstrap_program) does with
+/// it, so the loop a model reads there is character for character the one every other program gg
+/// writes on this arm shows it.
+fn open_docs_views_body(open_docs_view: &str, names: &[&str]) -> String {
     let entries: Vec<String> = names
         .iter()
         .map(|name| format!("        {}", serde_json::Value::String((*name).to_string())))
@@ -466,12 +474,12 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         true => "    let functions: [&str; 0] = [];\n".to_string(),
         false => format!("    let functions = [\n{},\n    ];\n", entries.join(",\n")),
     };
-    main_program(&format!(
+    format!(
         "{listed}\
          \x20   for name in functions {{\n\
          \x20       {open_docs_view}(name)?;\n\
          \x20   }}\n"
-    ))
+    )
 }
 
 /// A whole program that opens one file view per entry of `views`: a `fn main` and one call in the
@@ -502,13 +510,24 @@ fn main_program(body: &str) -> String {
     format!("fn main() -> Result<(), {SDK_CRATE}::Failure> {{\n{body}    Ok(())\n}}\n")
 }
 
-/// The opening turn: one array of module paths listed in full, then one of the names opened as
-/// documentation views, each with a `for` over it and each call composed with `?`.
+/// The opening turn: **one** search listing every module the agent holds, then the array of
+/// documentation keys and a `for` over it, each call composed with `?`.
 ///
-/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
-/// modules and a dozen calls written out is a shape a model would copy for its own work. Arrays
-/// rather than `Vec`s, and a type annotation on an empty one, for the reasons
-/// [`open_docs_views_statement`] gives.
+/// One call rather than one per module, because a `modules` filter is a **union**: the modules a
+/// run granted come back as a single directory, so the shape a model reads first — and the shape it
+/// will copy — is one call carrying a list rather than a loop asking the same question a module at
+/// a time. It carries no query at all, because a module filter alone *is* the directory and a word
+/// beside it would narrow the very listing this is here to open, and it asks for
+/// [`MAX_SEARCH_LIMIT`], because the whole of a module is the point rather than its first page.
+///
+/// The list is written **inline in the call**, unlike the keys below it: it is the agent's `files`
+/// and `shell` and nothing else, so a binding above the call would name two strings once each. The
+/// keys keep their array and their `for` — and their type annotation when they are none — for the
+/// reasons [`open_docs_views_statement`] gives.
+///
+/// An agent that holds neither module gets the search **left out entirely** rather than written
+/// with an empty list: nothing to look for and nothing to look in is `invalid-argument`, so that
+/// call would open the session with a failure and with a worked example of the shape that failed.
 ///
 /// A call with two or more optional arguments takes an **options struct with a `Default`, filled in
 /// with functional-update syntax**, which is this language's idiom and the one its SDK declares.
@@ -522,37 +541,24 @@ pub(super) fn bootstrap_program(
     modules: &[&str],
     docs: &[&str],
 ) -> String {
-    let listed = |binding: &str, names: &[&str]| -> String {
-        let entries: Vec<String> = names
-            .iter()
-            .map(|name| format!("        {}", serde_json::Value::String((*name).to_string())))
-            .collect();
-        match entries.is_empty() {
-            true => format!("    let {binding}: [&str; 0] = [];\n"),
-            false => format!("    let {binding} = [\n{},\n    ];\n", entries.join(",\n")),
-        }
-    };
-    let paths = listed("modules", modules);
-    let functions = listed("functions", docs);
+    let views = open_docs_views_body(open_docs_view, docs);
+    if modules.is_empty() {
+        return main_program(&views);
+    }
+    let listed: Vec<String> = modules
+        .iter()
+        .map(|path| serde_json::Value::String((*path).to_string()).to_string())
+        .collect();
     let options = format!("{}::SearchOptions", module_of(search));
-    let search_loop = format!(
-        "    for path in modules {{\n\
-         \x20       {search}(\n\
-         \x20           \"\",\n\
-         \x20           {options} {{\n\
-         \x20               module: Some(path),\n\
-         \x20               limit: Some({MAX_SEARCH_LIMIT}),\n\
-         \x20               ..Default::default()\n\
-         \x20           }},\n\
-         \x20       )?;\n\
-         \x20   }}\n"
+    let listing = format!(
+        "    {search}({options} {{\n\
+         \x20       modules: &[{}],\n\
+         \x20       limit: Some({MAX_SEARCH_LIMIT}),\n\
+         \x20       ..Default::default()\n\
+         \x20   }})?;\n",
+        listed.join(", ")
     );
-    let docs_loop = format!(
-        "    for name in functions {{\n\
-         \x20       {open_docs_view}(name)?;\n\
-         \x20   }}\n"
-    );
-    main_program(&format!("{paths}{search_loop}\n{functions}{docs_loop}"))
+    main_program(&format!("{listing}\n{views}"))
 }
 
 /// The module a fully-qualified call is filed under, taken off the front of the call itself.

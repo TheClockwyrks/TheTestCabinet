@@ -60,8 +60,8 @@ The line is written in that language's own idiom, and shortening a name is what
 it buys:
 
 ```text
-TypeScript  import * as gg from "gg";        →  gg.files.readFile(…)
-JavaScript  import * as gg from "gg";        →  gg.files.readFile(…)
+TypeScript  import { files } from "gg";      →  files.readFile(…)      unshortened  gg.files.readFile(…)
+JavaScript  import { files } from "gg";      →  files.readFile(…)      unshortened  gg.files.readFile(…)
 PureScript  import Gg.Files as Gg.Files      →  Gg.Files.readFile(…)
 Python      import gg                        →  gg.files.read_file(…)
 Ruby        require "gg"                     →  GG::Files.read_file(…)

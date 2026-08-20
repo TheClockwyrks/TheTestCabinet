@@ -128,13 +128,22 @@ const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers", "gg");
 const LANGUAGES = ["typescript", "javascript"];
 
 /**
- * The line a program on either ECMAScript arm writes to reach gg's SDK.
+ * The line a program on either ECMAScript arm writes to reach **one** module of gg's SDK.
  *
- * One line for the whole surface, and the namespace form: it is what makes `gg.files.readFile` — the
- * name every documentation view is filed under and every quoted call is written with — an expression
- * the program can write.
+ * A named import off the aggregate module, one line per module a program actually calls into, rather
+ * than a single namespace import of the whole surface. The binding it introduces is the module's own
+ * id, so `gg.files` arrives as `files` and the program writes `files.readFile(…)`: every name gg
+ * prints — the key a documentation view is filed under, the `key` a search hit carries, the call the
+ * prompt quotes — stays fully qualified, and the call site is that name with its leading `gg.`
+ * dropped. That one-segment difference is the price of importing only what is used, and the system
+ * prompt says it in as many words.
+ *
+ * One line for both arms: they are one language on one guest, and the loader that resolves this
+ * specifier is the same loader.
+ *
+ * @param {string} id The module's own id, which is both its export off `"gg"` and the binding.
  */
-const SURFACE_IMPORT = 'import * as gg from "gg";';
+const surfaceImport = (id) => `import { ${id} } from "gg";`;
 
 /** The doc model this catalogue is written in. See the header. */
 const SCHEMA = 1;
@@ -866,16 +875,11 @@ async function build(language) {
       path,
       brief: prose.brief,
       detail: prose.detail,
-      // The one line a program writes to reach every module below. It is the NAMESPACE import
-      // rather than a named one, because `path` above is the name every documentation view, every
-      // search hit and every call gg quotes is written with — and `import * as gg from "gg";` is
-      // what makes that name an expression the program can write. A named import
-      // (`import { files } from "gg";`) reaches the same module and is equally valid; it is not what
-      // gg teaches, because it would leave every quoted `gg.files.…` one edit away from compiling.
-      //
-      // One line for both arms: they are one language on one guest, and the loader that resolves
-      // this specifier is the same loader.
-      import: SURFACE_IMPORT,
+      // The one line a program writes to reach THIS module. See `surfaceImport`: a named import
+      // binds the module under its own id, so a program brings in what it calls into and nothing
+      // else, and `path` above — the name every documentation view, every search hit and every call
+      // gg quotes is written with — is that call site plus a leading `gg.`.
+      import: surfaceImport(id),
     });
     const byName = new Map();
     for (const statement of sourceFile.statements) {
@@ -984,10 +988,12 @@ async function build(language) {
       receiver: null,
       name: entry.name,
       fqn: entry.fqn,
-      // The fully-qualified name IS what a program writes: `import * as gg from "gg"` puts one
-      // namespace per module under `gg`, and `gg:<module>` reaches the same module alone, so there
-      // is no third spelling for a call site to need.
-      call: null,
+      // What a call site writes, which is the fully-qualified name with its leading `gg.` dropped:
+      // the module's `import` line is a NAMED import (see `surfaceImport`), so the binding in scope
+      // is `docs` and not `gg`. The two spellings are one segment apart and neither is derivable
+      // from the other by a reader who does not know the surface's stem, which is why the field is
+      // stated rather than left null.
+      call: `${entry.id}.${entry.name}`,
       brief: prose.brief,
       detail: prose.detail,
       signatures,

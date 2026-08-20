@@ -29,8 +29,8 @@ type ShellOptions = (timeoutSecs :: Int)
 -- | - `output` — Merged stdout and stderr, tail-truncated at 16 KiB.
 -- |
 -- |   Under a run that offloads shell output the ceiling is the configured line or character limit
--- |   instead, and what is kept ends with a note naming the files that hold the whole of it. Under
--- |   the default `adaptive` mode a command that succeeded returns just that note.
+-- |   instead, and an output that was cut ends with a note naming the two files that hold the whole
+-- |   of it.
 -- | - `truncated` — Whether the cap cut `output`, dropping the head and keeping the tail.
 type ShellOutput =
   { exitCode :: Maybe Int
@@ -45,9 +45,8 @@ type ShellOutput =
 -- |
 -- | This run may **offload** shell output, and the `shell` tool's own description says which mode is
 -- | in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the
--- | two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a
--- | command that succeeded returns no output at all beyond that note, and one that failed returns the
--- | tail. Grepping the named files beats re-running the command.
+-- | two files the command's full stdout and stderr were written to. Those files are readable by
+-- | absolute path, so a `Gg.Files.readTextFile` of one, or a grep, beats re-running the command.
 -- |
 -- | # Operation
 -- |

@@ -86,11 +86,15 @@ function ggTurnOutcomeDetail(
     parts.push("turn progressed");
   }
   // Money spent on nothing: replies loop detection abandoned mid-stream before this turn
-  // got one it could use. Omitted from the wire, and from this line, when there were none.
+  // got one it could use, and how much generation went with them. Omitted from the wire, and
+  // from this line, when there were none. The size is in words because that is what gg
+  // measured — an abandoned stream reports no tokens, so there is no token count and no
+  // price to state, and the output is deliberately absent from the turn's recorded cost.
   const aborts = event.loopAborts ?? 0;
   if (aborts > 0) {
     parts.push(
-      `${aborts} looping ${aborts === 1 ? "reply" : "replies"} discarded`,
+      `${aborts} looping ${aborts === 1 ? "reply" : "replies"} discarded` +
+        ` (${(event.loopAbortWords ?? 0).toLocaleString("en-US")} words thrown away)`,
     );
   }
   return parts.join(" · ");
@@ -121,6 +125,22 @@ function ggCodeExecutionDetail(
   }
   if (healing?.strategies?.length) {
     parts.push(`healed: ${healing.strategies.join(", ")}`);
+  }
+  // Calls the model wrote without ever having opened the documentation of. Under
+  // responses-as-code a signature is only knowable from a documentation view opened
+  // on an EARLIER turn, so this is the instruction-following signal that says whether
+  // the model discovers its surface or writes calls from memory — which is the one
+  // thing that decides whether it should be given this mode at all. The operations
+  // are named rather than counted alone: forty calls of one function and one call of
+  // forty are different findings.
+  const undocumented = event.undocumentedCalls;
+  if (undocumented && undocumented.calls > 0) {
+    const named = Object.keys(undocumented.operations ?? {}).join(", ");
+    parts.push(
+      `${undocumented.calls} undocumented call${
+        undocumented.calls === 1 ? "" : "s"
+      }${named ? `: ${named}` : ""}`,
+    );
   }
   // The run rollup does not count a reply that defeated the pipeline, so this line
   // is the only place it surfaces.

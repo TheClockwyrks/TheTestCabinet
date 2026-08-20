@@ -744,9 +744,23 @@ describe("the gg Dashboard's error row", () => {
     // Not errors — the retry succeeded — but money spent on nothing, which is the whole
     // figure that says whether arming the detector paid for itself. It hangs on the total,
     // which is the tile about what the run spent its turns on.
-    renderErrors(outcome("root", 1, { loopAborts: 3 }), outcome("root", 2));
+    renderErrors(
+      outcome("root", 1, {
+        loopAborts: 3,
+        loopAbortWords: 9195,
+        loopAbortChars: 58400,
+      }),
+      outcome("root", 2),
+    );
     expect(
       within(errorTile("Total errors")).getByText("looping", { exact: false }),
+    ).toBeInTheDocument();
+    // And how much they generated, which is the half the count cannot say. It is stated
+    // here because the output is billed and deliberately absent from the run's cost.
+    expect(
+      within(errorTile("Total errors")).getByText(
+        "9,195 words (58,400 characters) generated and thrown away",
+      ),
     ).toBeInTheDocument();
 
     // A run that left the detector disarmed — which is every run by default — says nothing.

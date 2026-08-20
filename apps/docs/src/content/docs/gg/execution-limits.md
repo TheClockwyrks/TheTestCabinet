@@ -17,6 +17,11 @@ Five ceilings stop work:
 | `maxErrorRate` + `errorRateWindow` | per agent | ends that agent | `limit_exceeded` |
 | `maxCost` | run-wide | ends every agent at its next boundary | `limit_exceeded` |
 
+A ceiling is a safeguard, and a run is not expected to reach one. A run that
+breaches any of them, in any agent of its tree, stops early and gg exits `3`. The
+host records such a run as
+[`limit_exceeded`](/components/core/run-records/#status) and never retries it.
+
 Two further bounds are declared, resolved and recorded with those five.
 [`maxParallel`](#parallelism) queues agents rather than stopping them, and
 `replayMaxBytes` bounds the [session capture journal](/gg/session-record/)
@@ -90,10 +95,11 @@ reported error rate and the threshold that would have stopped it are the same
 measurement.
 
 The rollup carries `turns`, `errors`, `maxConsecutive`, the per-kind split, and
-the replies loop detection discarded on the way, for every run rather than only
-for the runs a ceiling stopped. A discarded reply counts towards neither the
-errors nor the turns, because the request was retried and the turn was judged on
-whatever the retry produced.
+the replies loop detection discarded on the way with the size of the output they
+threw away, for every run rather than only for the runs a ceiling stopped. A
+discarded reply counts towards neither the errors nor the turns, because the
+request was retried and the turn was judged on whatever the retry produced, and
+its output is absent from the cost the `maxCost` ceiling reads.
 
 ## What is required and what is armed
 
@@ -304,8 +310,8 @@ produced. A run gg broke in did not produce its tree. Some part of it is work an
 agent was stopped in the middle of, or work the rest of the run built around
 that hole, and a reader of the record sees a result rather than a defect. So the
 run is disqualified instead: the terminal status is `internal_error`, the
-process exits non-zero, and the host records a harness error rather than
-collecting the tree.
+process exits `1`, and the host records a harness error rather than collecting
+the tree.
 
 The wind-down is the [cancellation](#cancellation) wind-down. The agent that met
 the defect records it on a run-wide latch and ends; every other agent reads the
@@ -443,12 +449,8 @@ agent that had already finished.
 5. The session tail runs unchanged: the per-profile rollups, the closing log,
    the [session record](/gg/session-record/), the session summary, the
    session-ended event.
-6. The process exits 0. Of the sessions that ran, only two exit non-zero: one
-   whose root's credential was refused (`auth_error`) and one
-   [a gg defect stopped](#ggs-own-defects) (`internal_error`, wherever in the
-   tree it was raised). Both are reported as harness errors rather than scored,
-   so a limit-stopped run is collected, validated and scored on whatever
-   artifact it produced.
+6. The process exits `3`, and the host records the run as `limit_exceeded`. See
+   [what the process exits with](#what-the-process-exits-with).
 7. The workspace is exactly as the last completed turn left it, and gg rolls
    nothing back. A limit-stopped subagent's isolated worktree is discarded
    unmerged: the run's artifact is the main tree, and a subagent cut off mid-task
@@ -458,6 +460,46 @@ Nothing about a ceiling is said to the model, in the system prompt or in any
 turn feedback. A model told there is a cost budget behaves differently because
 it was told, which makes its behaviour a function of the guardrail and confounds
 every measurement the capability set exists to make.
+
+### What the process exits with
+
+A gg session leaves one of three exit codes, and the host classifies the run by
+it before it collects anything.
+
+| Exit | Meaning | Recorded as |
+| --- | --- | --- |
+| `0` | The session ran to a natural end | its own outcome, collected and scored |
+| `1` | A launch failure, a refused root credential, or a gg defect | `harness_error`, retryable |
+| `3` | Any agent breached one of the five ceilings | `limit_exceeded`, never retried |
+
+Exit `3` is read off the whole tree rather than off the root's ending, the way a
+gg defect is. A subagent that spent its turn budget, or an issue implementer that
+breached after the root had already finished, leaves the root's own status saying
+`completed`, and a run that exited `0` on it would be collected as one that
+finished.
+
+The host holds `limit_exceeded` apart from `harness_error` because a breached
+ceiling is a property of the configuration. A retry runs the same capability set
+into the same bound and reports the same state, so the run settles immediately
+instead of spending its retry allowance. It is publishable as a per-model
+statistic like a harness error, and releases no source and no playable build.
+
+A gg defect outranks a breached ceiling. A run that did both exits `1` under
+`internal_error`, because a spent ceiling stopped a measurement while a defect
+means there was none.
+
+The exit code is the only thing that changes about a stopped run. The agent that
+breached a ceiling was already ended by that ceiling, and every other agent of
+the run goes on working.
+
+The exit code and the session summary's `limitHit` answer two different
+questions, so a run can exit `3` and still record `limitHit: null`. `limitHit` is
+how the **run** ended, which is the root's own ending, while the exit code says a
+ceiling was breached **somewhere in the tree**. A run whose subagent spent its
+error ceiling and reported back, leaving the root to finish its work, is exactly
+that case. Every breach is on the stream as its own `LimitExceeded` event naming
+the agent, the ceiling and the figure, which is where the breach the exit code
+was raised on is read.
 
 ## Configuring them
 
@@ -508,8 +550,8 @@ A failed model call ends the session on its first occurrence. The client has
 already retried with exponential backoff over `429`, `5xx` and transport
 failures, so one reaching the loop means the provider failed every attempt
 within a single turn, and counting it against a ceiling would be a second retry
-layer with a worse backoff and no jitter. A refused credential is the one
-non-zero process exit, so it is never scored against a model that never ran.
+layer with a worse backoff and no jitter. A refused credential exits `1`, so it
+is never scored against a model that never ran.
 
 A reply that [looped](/gg/loop-detection/) on every one of the client's attempts
 arrives here too and ends the session on the same terms. It is named separately

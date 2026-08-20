@@ -132,10 +132,14 @@ fn the_documentation_program_is_an_array_and_a_loop() {
 /// documentation key gg handed it.
 ///
 /// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
-/// its window is a program that ran. What is asserted here is that gg wrote Swift — `let` arrays,
-/// `for`s, **argument labels** — that the page the search hands back is discarded explicitly rather
-/// than left as a warning, and that the search is the whole-module lookup rather than the default
-/// page of one.
+/// its window is a program that ran. What is asserted here is that gg wrote Swift — a `let` array, a
+/// `for`, **argument labels** — that the page the search hands back is discarded explicitly rather
+/// than left as a warning, and that every module gg listed is **one** lookup at the whole-module
+/// limit rather than a call apiece.
+///
+/// The second half is the agent that holds neither of the modules gg lists: it is handed none, and a
+/// search with no query and no filter is the one call `docs.search` refuses. So the program must not
+/// write that call at all, and what is left is the import and the documentation views.
 #[test]
 fn the_opening_program_writes_every_call_with_try() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
@@ -144,14 +148,18 @@ fn the_opening_program_writes_every_call_with_try() {
         format!(
             "import gg\n\
              \n\
-             let modules = [\n    \"files\",\n    \"views\",\n]\n\
-             for path in modules {{\n    \
-                 _ = try gg.docs.search(\"\", module: path, limit: {limit})\n\
-             }}\n\
+             _ = try gg.docs.search(modules: [\"files\", \"views\"], limit: {limit})\n\
              \n\
              let functions = [\n    \"openText\",\n]\n\
              for name in functions {{\n    try gg.views.openDocsView(name)\n}}\n"
         )
+    );
+    assert_eq!(
+        swift().bootstrap_program(&[], &["openText"]),
+        "import gg\n\
+         \n\
+         let functions = [\n    \"openText\",\n]\n\
+         for name in functions {\n    try gg.views.openDocsView(name)\n}\n",
     );
 }
 

@@ -10,6 +10,7 @@
 //! hold a reference to it and read it back afterwards, which is exactly the ownership property that
 //! removed the old host's lifetime-erased pointer.
 
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -28,6 +29,7 @@ use super::operations::{OperationId, capability_operations, gating_capabilities}
 use super::{OperationApi, ProgramScope, SandboxLimits};
 use crate::board::IssueStatus;
 use crate::context::{FileRegion, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind};
+use crate::discovery::CallDiscovery;
 use crate::docs::DocSearch;
 use crate::ending::EndingRole;
 use crate::memories::MemoryCode;
@@ -155,6 +157,17 @@ pub(crate) struct FakeOperationApi {
     /// not tell `views.open_file` from `files.read_file`, which is the whole distinction they exist
     /// to keep.
     api: ApiLog,
+    /// Which operations this double reports the model as having **read the documentation of** on an
+    /// earlier turn — the state the production api answers
+    /// [`call_discovery`](OperationApi::call_discovery) from its window and its documentation
+    /// runtime.
+    ///
+    /// `None`, the default, models **no documentation surface at all**: the double is not a
+    /// [`DocsRuntime`](crate::docs::DocsRuntime) and has no pages to have opened, so it answers
+    /// [`NotApplicable`](CallDiscovery::NotApplicable) to everything and leaves every test that is
+    /// not about discovery reporting nothing. [`documenting`](FakeOperationApi::documenting) arms
+    /// it: an operation in the set reads as `Documented`, one outside it as `Undocumented`.
+    documented: Option<BTreeSet<String>>,
 }
 
 /// The API calls a [`FakeOperationApi`] was bracketed with, shared through an `Arc` for the reason
@@ -243,6 +256,7 @@ impl FakeOperationApi {
             views: Vec::new(),
             programs: ProgramLibrary::enabled(None),
             api: ApiLog::default(),
+            documented: None,
         }
     }
 
@@ -250,6 +264,23 @@ impl FakeOperationApi {
     /// rather than what ran.
     pub(crate) fn api_log(&self) -> ApiLog {
         self.api.clone()
+    }
+
+    /// Arm the [discovery](crate::discovery) check: this double now models an agent that opened a
+    /// documentation view of exactly `operations` on an earlier turn, and of nothing else.
+    ///
+    /// Takes gg's own rendered [operation ids](crate::sandbox::OperationId) rather than docview
+    /// keys, because the double has no catalogue to resolve one into the other. The production api
+    /// resolves the two into each other once, as the turn opens, and answers the same question off
+    /// the result.
+    pub(crate) fn documenting(mut self, operations: &[OperationId]) -> Self {
+        self.documented = Some(
+            operations
+                .iter()
+                .map(|operation| operation.to_string())
+                .collect(),
+        );
+        self
     }
 
     /// Seed the library with a program said to have run on `turn`, so a test can drive
@@ -310,6 +341,14 @@ impl OperationApi for FakeOperationApi {
 
     fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgCallFailure>) {
         self.api.end(call.operation, failure);
+    }
+
+    fn call_discovery(&mut self, call: ApiIdentity<'_>) -> CallDiscovery {
+        match &self.documented {
+            None => CallDiscovery::NotApplicable,
+            Some(documented) if documented.contains(call.operation) => CallDiscovery::Documented,
+            Some(_) => CallDiscovery::Undocumented,
+        }
     }
 
     fn shell(&mut self, command: String, timeout: std::time::Duration) -> ToolOutcome {

@@ -2140,7 +2140,8 @@ gg.programs.rerun(source.replace("ran", "walked"))
     // offered at all — and `close`/`close_all` are bought by a capability, so this store grants it
     // and the one after it does not. The double answers an empty page, which is the whole of what a
     // double can honestly say about a real index; what is proven is the crossing, the lowering of
-    // the record and the enum argument, and the view the host opens on the way back.
+    // the record, the list filter and the enum argument, and the view the host opens on the way
+    // back.
     let log = CallLog::default();
     let api = FakeOperationApi::new(&log);
     // Searching is bound to every program; closing is bought, so this store grants the capability
@@ -2164,7 +2165,13 @@ gg.programs.rerun(source.replace("ran", "walked"))
             r#"
 import gg
 
-page = gg.docs.search("read", module="files", type="FileRead", kind=gg.docs.DocKind.FUNCTION, limit=5)
+page = gg.docs.search(
+    query="read",
+    modules=["files"],
+    type="FileRead",
+    kind=gg.docs.DocKind.FUNCTION,
+    limit=5,
+)
 print(type(page).__name__, page.total, page.offset, page.hits)
 print(gg.docs.close("gg.files.read_file"), gg.docs.close_all())
 "#,

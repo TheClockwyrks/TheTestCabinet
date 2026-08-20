@@ -41,16 +41,18 @@ and run several turns later.
 
 ## The import a program writes
 
-`import * as gg from "gg";` reaches the whole surface, and every call is then
-written out in full: `gg.files.readFile(path)`. That is the name a documentation
-view is filed under, the name a search hit carries, and the name the system
-prompt quotes, so nothing a model reads has to be translated before it compiles.
-Every module's catalogue entry states that line.
+A module is reached by a named import off the specifier the whole surface is
+published under: `import { files } from "gg";` binds that module alone, and every
+module's catalogue entry states its own such line. The call is then written
+`files.readFile(path)`, which is the name a documentation view is filed under,
+the name a search hit carries and the name the system prompt quotes, with its
+leading `gg.` dropped. The language segment of the system prompt states that one
+difference, so a name a model reads is one edit from compiling.
 
-Two other specifiers resolve, and a program may write either. `import { files }
-from "gg";` reaches one family; `import * as csvTools from "lib:csvTools";`
-reaches a [code module](/gg/modules/) the agent loaded. The full set is on
-[the ECMAScript guest](/gg/languages/ecmascript-guest/).
+Two other specifiers resolve, and a program may write either. `import * as gg
+from "gg";` binds every module under one namespace; `import * as csvTools from
+"lib:csvTools";` reaches a [code module](/gg/modules/) the agent loaded. The full
+set is on [the ECMAScript guest](/gg/languages/ecmascript-guest/).
 
 ## The guest
 
@@ -217,20 +219,22 @@ account of the call it is about to write.
 `typescript`, and `code-nothing-shown.hbs` through a clause naming `console.log`.
 Neither names a catalogued function. The segment states that the reply is
 compiled verbatim as a whole TypeScript module, whose top-level statements run in
-the order they were written. Each entry of the module list beside it carries
-`import * as gg from "gg";` as the line that brings that module into scope.
+the order they were written, and that a name gg prints is written at a call site
+with its leading `gg.` dropped. Each entry of the module list beside it carries
+its own named import as the line that brings that module into scope.
 
 The arm names `tsc` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled in strict mode before it runs and one that
 fails to compile is not executed.
 
-Source gg synthesizes for this arm is written in the same idiom and opens with
-that same import line, since a model reads it as an example of its own output. A
-file view is one call with an optional trailing options object carrying `offset`
-and `limit`; a set of documentation views is a `const` array of names with a
-`for…of` over it; the bootstrap program is one import and two loops. Paths and
-names are rendered through JSON so a quote or a backslash cannot produce a
-program that will not parse.
+Source gg synthesizes for this arm is written in the same idiom and imports only
+the modules it calls into, since a model reads it as an example of its own
+output. A file view is one call with an optional trailing options object carrying
+`offset` and `limit`; a set of documentation views is a `const` array of names
+with a `for…of` over it; the bootstrap program is one import, one search naming
+every granted module at once, and a `for…of` opening a documentation view
+apiece. Paths and names are rendered through JSON so a quote or a backslash
+cannot produce a program that will not parse.
 
 ## Healing dialect
 

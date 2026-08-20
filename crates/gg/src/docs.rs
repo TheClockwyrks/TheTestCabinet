@@ -99,6 +99,8 @@
 //! names it is nearly. See [`suggest`] for what "nearly" means and why the candidates are the bound
 //! ones alone.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde_json::{Map, Value};
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgramLanguage};
 
@@ -804,6 +806,39 @@ impl DocsRuntime {
             .or_else(|| self.read_type(key))
             .or_else(|| self.read_module(key))
             .or_else(|| self.loaded.body(key))
+    }
+
+    /// **What this agent's documentation surface says about every operation it binds**, against the
+    /// documentation-view keys in `open`: `true` for an operation one of whose pages is open,
+    /// `false` for one whose pages are all closed, and **absent** for an operation this agent binds
+    /// no page for at all.
+    ///
+    /// The one question the [discovery](crate::discovery) check asks, answered for the whole surface
+    /// at once because the answer cannot change while a turn runs: what a page is filed under is a
+    /// projection of the catalogue through this agent's grants, and neither moves. Asked per call
+    /// instead, a program composing tens of thousands of calls would walk the catalogue tens of
+    /// thousands of times for an answer that was settled before its first line ran.
+    ///
+    /// The three states are distinct on purpose. Absent is not a violation — there was never a page
+    /// to open — and folding it into `false` would report an operation this agent's surface does not
+    /// document as a call the model failed to look up.
+    ///
+    /// Keyed on the [operation](crate::sandbox::OperationId) each entry binds, never on a spelling,
+    /// because that is the identity a call is recorded under. An arm that binds one operation under
+    /// more than one name contributes each of them to the same key, so a view of either says the
+    /// model has read the call.
+    pub fn documented_operations(&self, open: &BTreeSet<String>) -> BTreeMap<String, bool> {
+        let mut documented: BTreeMap<String, bool> = BTreeMap::new();
+        for function in catalogue_functions(self.language) {
+            if !self.bound(&function) {
+                continue;
+            }
+            let entry = documented
+                .entry(function.operation.to_string())
+                .or_insert(false);
+            *entry |= open.contains(function.fqn);
+        }
+        documented
     }
 
     /// **The single key** whatever `name` addresses is filed under, or `None` when this agent binds

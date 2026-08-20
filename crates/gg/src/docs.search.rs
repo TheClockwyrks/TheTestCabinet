@@ -73,7 +73,9 @@ use crate::tools::ToolFailure;
 
 use super::ProgramLanguage;
 use super::suggest::fold;
-use crate::sandbox::{Parameter, SignatureEntry, TypeReference, ViewRefusal, catalogue_functions};
+use crate::sandbox::{
+    CatalogueFunction, Parameter, SignatureEntry, TypeReference, ViewRefusal, catalogue_functions,
+};
 
 /// Which kind of thing an [entry](DocEntry) documents.
 ///
@@ -119,11 +121,11 @@ impl DocKind {
 /// becomes the idiomatic module path when each arm's catalogue carries one.
 ///
 /// A module filter accepts either, so a prompt naming gg's id and a model typing a path it has seen
-/// both work. It takes **one** module, though, and a [hit](DocHit::module) is not always one: a
-/// type's is the joined list of every module whose functions mention it, so handing that string back
-/// as a filter matches nothing. Each arm's documentation says so on the field, because the joining
-/// is what a model sees rather than something the filter could quietly undo — accepting a list here
-/// would turn an exact lookup into a disjunction nothing else on this surface has.
+/// both work. Every entry belongs to exactly one module, so the string a [hit](DocHit::module)
+/// reports is a value the filter takes: reading a hit's module and searching on it answers with
+/// that module's directory. The filter takes a **list** of them, and a list is a union — an
+/// intersection would be empty for every pair, since no entry is in two modules, so the only
+/// reading several modules have is *these modules' directories, together*.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocModule {
     /// gg's language-independent id for the module (`files`).
@@ -150,12 +152,14 @@ struct DocEntry {
     key: &'static str,
     /// Which kind of thing this is.
     kind: DocKind,
-    /// The modules it belongs to, over the **whole** catalogue. Exactly one for a function; for a
-    /// type, the modules of the functions that reference it, which is the only attribution today's
-    /// catalogue can support and so may be several — or, for a type nothing references, none.
+    /// The module it belongs to, over the **whole** catalogue: for a function the module that
+    /// publishes it, for a module itself, and for a type the module that **declares** it.
     ///
-    /// Nothing reads this directly: both the `module` filter and what a hit reports go through
-    /// [`modules_for`](Self::modules_for), which narrows it to the asking agent.
+    /// A type is filed where it is declared rather than where it is mentioned. The two differ
+    /// often — every module's calls mention the error type, and `gg.views.openFile` hands back a
+    /// type `gg.files` declares — and filing a type by mention makes a module's directory answer
+    /// with other modules' declarations. Where a type is *reachable from* is a separate question,
+    /// answered by [`referenced_by`](Self::referenced_by).
     modules: Vec<DocModule>,
     /// The name a program calls it by, or the type's own name.
     name: &'static str,
@@ -163,8 +167,14 @@ struct DocEntry {
     /// is what [`DocsRuntime::bound`](super::DocsRuntime::bound) is asked about. `None` for a type,
     /// whose visibility is decided by [`referenced_by`](Self::referenced_by) instead.
     identity: Option<(&'static str, &'static str)>,
-    /// For a **type**, the positions of the function entries whose signatures reference it — the
-    /// whole of how a type's visibility and its modules are derived. Empty for a function.
+    /// For a **type**, the positions of the function entries that reach it — the whole of how a
+    /// type's visibility is derived. Empty for a function.
+    ///
+    /// A reference counts when one of the function's own signatures writes the type's name. A type
+    /// reached only through some other type's members is a level deeper than any signature the
+    /// model reads, and a type a function only **declares it throws** is reached by no signature at
+    /// all: a failure class is delivered beside the call it belongs to, under `docViewTypes`, and is
+    /// not an entry a search hands back.
     referenced_by: Vec<usize>,
     /// The name reduced to what a comparison should ignore, by the same
     /// [fold](super::suggest) a failed lookup's hint uses — so a query for `write_file` finds
@@ -242,8 +252,8 @@ impl DocIndex {
     /// Build the index for one language from its catalogue.
     ///
     /// Functions first, then types, and the order matters: a type records the **positions** of the
-    /// functions referencing it, which is how both its visibility and its modules are derived, and
-    /// those positions have to exist before they can be recorded.
+    /// functions referencing it, which is how its visibility is derived, and those positions have to
+    /// exist before they can be recorded.
     ///
     /// A function gg has no [operation](crate::sandbox::operation_of) for is skipped rather than
     /// indexed under a fallback module. It could never be returned anyway —
@@ -253,8 +263,10 @@ impl DocIndex {
     fn build(language: &'static dyn ProgramLanguage) -> Self {
         let mut entries: Vec<DocEntry> = Vec::new();
         // The catalogue's own `types` list per function, kept beside the entry so the type pass can
-        // ask which functions named it without walking the catalogue a second time.
+        // ask which functions named it without walking the catalogue a second time, and the
+        // function itself, which is what says whether a named type is one of its own signatures'.
         let mut references: Vec<&'static [TypeReference]> = Vec::new();
+        let mut catalogued: Vec<CatalogueFunction> = Vec::new();
         for function in catalogue_functions(language) {
             let Some(operation) = crate::sandbox::operation_of(&function) else {
                 continue;
@@ -292,6 +304,7 @@ impl DocIndex {
                 .to_lowercase(),
             });
             references.push(function.types);
+            catalogued.push(function);
         }
 
         let functions = entries.len();
@@ -333,16 +346,21 @@ impl DocIndex {
             // matches on stays the name the signature writes.
             let key = declaration.key();
             let referenced_by: Vec<usize> = (0..functions)
-                .filter(|position| references[*position].iter().any(|kind| kind.fqn() == key))
+                .filter(|position| {
+                    reaches(&catalogued[*position], references[*position], key, name)
+                })
                 .collect();
-            let mut modules: Vec<DocModule> = Vec::new();
-            for position in &referenced_by {
-                for module in &entries[*position].modules {
-                    if !modules.contains(module) {
-                        modules.push(*module);
-                    }
-                }
-            }
+            // The module that declares it, which is the module a search filtered to it should
+            // answer with. A type nothing reachable references is invisible whatever it says here.
+            let modules: Vec<DocModule> =
+                crate::sandbox::module_of(language.catalogue(), &declaration.module)
+                    .map(|module| {
+                        vec![DocModule {
+                            id: module.id,
+                            path: module.path,
+                        }]
+                    })
+                    .unwrap_or_default();
             let prose = declaration.prose();
             let brief = prose.brief;
             entries.push(DocEntry {
@@ -398,9 +416,13 @@ pub struct DocQuery<'a> {
     /// de-duplicated: a substring search over identifiers is a line a model types, not a list it
     /// assembles.
     pub query: &'a str,
-    /// Restrict to one module, named by either gg's [id](DocModule::id) or this language's
+    /// Restrict to these modules, each named by either gg's [id](DocModule::id) or this language's
     /// [path](DocModule::path). Case-insensitive, and **exact** — a module filter is a lookup.
-    pub module: Option<&'a str>,
+    ///
+    /// Several name a **union**: an entry in any one of them is a hit. An intersection would be
+    /// empty for every pair, since an entry belongs to one module, so the only reading a list has is
+    /// the one that answers *these modules' directories, together*. An empty list is no filter.
+    pub modules: &'a [String],
     /// Restrict to one type and the functions whose signatures mention it — *what can I do with a
     /// value of this shape*. Case-insensitive and exact on the type's own name.
     pub declared_type: Option<&'a str>,
@@ -492,17 +514,23 @@ impl super::DocsRuntime {
                 });
             }
         };
-        let module = query.module.map(str::trim).filter(|it| !it.is_empty());
+        let modules: Vec<&str> = query
+            .modules
+            .iter()
+            .map(|module| module.trim())
+            .filter(|module| !module.is_empty())
+            .collect();
         let declared_type = query
             .declared_type
             .map(str::trim)
             .filter(|it| !it.is_empty());
-        if terms.is_empty() && module.is_none() && declared_type.is_none() && kind.is_none() {
+        if terms.is_empty() && modules.is_empty() && declared_type.is_none() && kind.is_none() {
             return Err(ViewRefusal {
                 failure: ToolFailure::InvalidArgument,
-                message: "a search needs something to look for: a query, or a `module`, `type` or \
+                message:
+                    "a search needs something to look for: a query, or a `modules`, `type` or \
                           `kind` filter"
-                    .to_string(),
+                        .to_string(),
             });
         }
         let limit = match query.limit {
@@ -534,11 +562,9 @@ impl super::DocsRuntime {
             if kind.is_some_and(|kind| kind != entry.kind) {
                 continue;
             }
-            // Narrowed to this agent before it is either filtered on or reported, so the module a
-            // hit says it lives in and the module a filter would have found it under are the same
-            // answer. See `modules_for`.
-            let modules = entry.modules_for(index, &visible);
-            if module.is_some_and(|module| !in_module(&modules, module)) {
+            // One list, filtered on and reported from, so the module a hit says it lives in and the
+            // module a filter would have found it under are the same answer.
+            if !modules.is_empty() && !in_modules(&entry.modules, &modules) {
                 continue;
             }
             if declared_type.is_some_and(|name| !index.concerns_type(position, name)) {
@@ -553,7 +579,7 @@ impl super::DocsRuntime {
                     None => continue,
                 },
             };
-            ranked.push((scored, entry.hit(&modules)));
+            ranked.push((scored, entry.hit(&entry.modules)));
         }
         // The second source, scored by the same rules and ranked in the same list. Nothing gates it:
         // these entries describe code *this instance* brought into use, so the question `visible`
@@ -564,7 +590,7 @@ impl super::DocsRuntime {
                 if kind.is_some_and(|kind| kind != entry.kind) {
                     continue;
                 }
-                if module.is_some_and(|module| !entry.in_module(module)) {
+                if !modules.is_empty() && !entry.in_modules(&modules) {
                     continue;
                 }
                 if declared_type.is_some_and(|name| !entry.concerns_type(name)) {
@@ -668,6 +694,33 @@ impl super::DocsRuntime {
     }
 }
 
+/// Whether `function` reaches the type keyed `key` and named `name` **through one of its own
+/// signatures** — the one reference that makes a type an entry a search hands back.
+///
+/// The catalogue's per-function `types` list is transitively closed, so read raw it answers with
+/// every declaration a program holding this call's values could end up looking at. Two of those
+/// are not entries a search should return, and both are excluded here.
+///
+/// - A type reached only through some **other** type's members. `ApiErrorCode` is a field of
+///   `ApiError`; no signature writes it, and a model choosing between hits has no call to make with
+///   it. This is the same depth-one narrowing
+///   [`types_to_open`](crate::docs::DocsRuntime::types_to_open) applies before it opens a view.
+/// - A type the function only **declares it throws**. A failure class is documentation about a call
+///   rather than a thing to look up: it is delivered beside that call's own page, under the agent's
+///   `docViewTypes`, and every module's every function declares the same one — so filing it as a
+///   hit puts one answer in every directory of every module that never declared it.
+fn reaches(
+    function: &CatalogueFunction,
+    references: &'static [TypeReference],
+    key: &str,
+    name: &str,
+) -> bool {
+    if function.throws.iter().any(|thrown| thrown.fqn() == key) {
+        return false;
+    }
+    references.iter().any(|kind| kind.fqn() == key) && super::names_a_signature(function, name)
+}
+
 /// Every argument name the shapes of one function declare, structured fields included, one per line
 /// and with a leading newline so it appends to a rendered signature.
 ///
@@ -752,11 +805,13 @@ fn saturating(total: usize) -> u32 {
     u32::try_from(total).unwrap_or(u32::MAX)
 }
 
-/// Whether `modules` contains the one `filter` names, by gg's id or by this language's path.
+/// Whether `modules` contains any module `filters` names, by gg's id or by this language's path.
 /// Case-insensitive and exact: a module filter is a lookup, not a ranking.
-fn in_module(modules: &[DocModule], filter: &str) -> bool {
-    modules.iter().any(|module| {
-        module.id.eq_ignore_ascii_case(filter) || module.path.eq_ignore_ascii_case(filter)
+fn in_modules(modules: &[DocModule], filters: &[&str]) -> bool {
+    filters.iter().any(|filter| {
+        modules.iter().any(|module| {
+            module.id.eq_ignore_ascii_case(filter) || module.path.eq_ignore_ascii_case(filter)
+        })
     })
 }
 
@@ -855,38 +910,6 @@ fn directory_hit() -> Scored {
 }
 
 impl DocEntry {
-    /// The modules this entry belongs to **as the asking agent can see them** — the answer both the
-    /// `module` filter and a [hit](Self::hit) are built from.
-    ///
-    /// A function's module is its own and is returned unchanged. A **type**'s is the union of the
-    /// modules of every function referencing it, and that union is a property of the whole catalogue
-    /// rather than of the agent asking: `ApiError` is referenced from `programs`, `skills` and
-    /// `memory` as readily as from `fs`. Reported raw, an agent holding nothing but `read_file`
-    /// would be told its one visible type lives in three modules it has not a single call in — and
-    /// since a module name is the discovery vocabulary the prompt hands the model, it would then
-    /// spend a turn on `search(module: "skills")` and read an empty page it cannot tell from
-    /// *nothing matched*. So the union is narrowed by the same `visible` pass that decided the entry
-    /// appears at all, which is also what keeps the filter and the report from disagreeing.
-    fn modules_for(&self, index: &DocIndex, visible: &[bool]) -> Vec<DocModule> {
-        match self.kind {
-            // A module's own module is itself, which is what makes the `module` filter and the hit
-            // agree: a model reading the hit's module and filtering on it gets that module's
-            // directory, with the module at the head of it.
-            DocKind::Function | DocKind::Module => self.modules.clone(),
-            DocKind::Type => {
-                let mut modules: Vec<DocModule> = Vec::new();
-                for position in self.referenced_by.iter().filter(|at| visible[**at]) {
-                    for module in &index.entries[*position].modules {
-                        if !modules.contains(module) {
-                            modules.push(*module);
-                        }
-                    }
-                }
-                modules
-            }
-        }
-    }
-
     /// Score this entry against already-[normalized](normalize) `terms`, or `None` when no term
     /// matched any of its four fields — [the one ranking](score), over this entry's own texts.
     fn score(&self, terms: &[String]) -> Option<Scored> {
@@ -901,17 +924,21 @@ impl DocEntry {
         )
     }
 
-    /// This entry as a model reads it in a result list, in the modules
-    /// [it can see](Self::modules_for).
+    /// This entry as a model reads it in a result list, under the module
+    /// [it belongs to](Self::modules).
+    ///
+    /// The module is written as this arm's path for it, which is the spelling the `modules` filter
+    /// takes and the one the prompt's module list shows — so the module a hit reports is a value a
+    /// model can hand straight back. An entry gg has no module for reports none rather than
+    /// inventing one.
     fn hit(&self, modules: &[DocModule]) -> DocHit {
         DocHit {
             key: self.key.to_string(),
             kind: self.kind,
             module: modules
-                .iter()
-                .map(|module| module.path)
-                .collect::<Vec<_>>()
-                .join(", "),
+                .first()
+                .map(|module| module.path.to_string())
+                .unwrap_or_default(),
             name: self.name.to_string(),
             summary: self.brief.to_string(),
         }

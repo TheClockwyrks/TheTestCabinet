@@ -103,7 +103,7 @@
 //!   **run** rather than to the agent that met it — see below;
 //! - `"error"` — a launch failure (no bound slot, or the client could not resolve).
 //!
-//! A launch failure (`"error"`) exits the process non-zero, and so do two of the endings above, so
+//! A launch failure (`"error"`) exits the process `1`, and so do two of the endings above, so
 //! that `core` records a harness error rather than a tree to score. They are read off different
 //! things:
 //!
@@ -117,6 +117,15 @@
 //! - an auth failure (`"auth_error"`) is read off the **root**, and only the root: the session's
 //!   status is the root's [`LoopEnd`]. A subagent whose credential was refused is a
 //!   [failed](GgAgentStatus::Failed) node in a session that can still complete and be scored.
+//!
+//! A **breached [ceiling](crate::limits)** exits on a third code
+//! ([`EXIT_LIMIT_EXCEEDED`](test_cabinet_core::gg::EXIT_LIMIT_EXCEEDED)), and is read off the whole
+//! tree as a defect is, through the run's [ceiling latch](crate::limits::CeilingLatch). A ceiling
+//! is a safeguard the run's own configuration armed and is not expected to be reached, so a run
+//! that reached one is recorded by the host apart from a session that ran to a natural end, and is
+//! never retried. It changes nothing about the run's conduct: the breaching agent was already ended
+//! by [`Agent::stop_on_limit`] and every other agent goes on working. A gg defect outranks it,
+//! because a ceiling stopped a measurement and a defect means there was none.
 //!
 //! Every other ending, of any agent, is a run outcome recorded in the telemetry rather than a
 //! process failure, and exits `0`.
@@ -139,11 +148,12 @@ use test_cabinet_core::gg::{
     ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, AUTOLOAD_PARAM_IMAGES, CAPABILITY_AGENT_MANAGED_CONTEXT,
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, GG_WORKSPACE_SKILLS_DIR, GgAgentApi, GgAgentApiFunction, GgAgentConfig,
-    GgAgentStatus, GgAgentTransitionKind, GgCallFailure, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase,
-    GgLimitBreach, GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRosterEntry,
-    GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, PARAM_SKILLS_DIR,
+    CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GG_WORKSPACE_SKILLS_DIR, GgAgentApi,
+    GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCallFailure,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgHookAgentKind,
+    GgHookEvent, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage,
+    GgResponseHealing, GgReviewer, GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope,
+    GgTelemetryKind, GgUndocumentedCalls, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR,
     PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
@@ -168,6 +178,7 @@ use crate::context::{
     BpeTokenEstimator, ContextModel, FileRegion, PromptItem, Retention, TokenEstimator, TurnRange,
     UsageSignalOptions, code_heading, tool_output_source,
 };
+use crate::discovery::{CallDiscovery, DiscoveryWarning};
 use crate::docs::{DocViewTypes, DocsRuntime};
 use crate::ending::{Ending, EndingRole};
 use crate::fault::{FaultLatch, panic_message};
@@ -176,12 +187,15 @@ use crate::git;
 use crate::healing::{self, AssistantMessageMode, Healed, HealingConfig, HealingStrategy, plural};
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
-    AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome, resolve_run_limits,
+    AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
+    resolve_run_limits,
 };
 use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::message_log::finish_reason_token;
-use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
+use crate::model::{
+    LoopAborts, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
+};
 use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
     ModuleResolveCtx, ModuleSet, Ownership, Refresh, TransferPlan, TransferReport,
@@ -282,9 +296,9 @@ const STATUS_MODEL_ERROR: &str = "model_error";
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session whose
 /// **credential** was refused. Distinct from [`STATUS_MODEL_ERROR`] because it is an
 /// operator fault: with [`STATUS_INTERNAL_ERROR`] it is one of the two non-launch statuses that
-/// exit the process non-zero (see [`SessionOutcome`]).
+/// leave no run to score, and the process says so (see [`SessionOutcome`]).
 ///
-/// It exits non-zero on the *root's* ending alone, where a gg defect exits non-zero from anywhere
+/// It disqualifies the run on the *root's* ending alone, where a gg defect does so from anywhere
 /// in the tree. The asymmetry is deliberate and is the difference between a fault of the
 /// operator's and a fault of ours: a subagent whose credential was refused took no turns, so it
 /// contributed nothing to the tree the run leaves behind, and the run around it is still a run the
@@ -388,30 +402,56 @@ pub(crate) fn is_failure_status(status: &str) -> bool {
         || status == STATUS_INTERNAL_ERROR
 }
 
-/// Whether one gg session produced a result worth scoring.
+/// How one gg session ended, at the granularity the **process exit code** carries.
 ///
-/// This is the only thing the process exit code reflects: a session that *ran* is a success at the
-/// process level, whatever it ended as, with the real outcome carried in the telemetry stream. That
-/// is **every** terminal status — [`STATUS_COMPLETED`], the three ceiling endings
-/// ([`STATUS_EXHAUSTED`], [`STATUS_TIMED_OUT`], [`STATUS_LIMIT_EXCEEDED`]), an operator's
-/// [`STATUS_CANCELED`], a [`STATUS_MODEL_ERROR`], a broken script's [`STATUS_HOOK_ERROR`], a
-/// backstop that stopped working ([`STATUS_COMPACTION_FAILED`]) — bar two:
-/// [`STATUS_AUTH_ERROR`] when it is the **root's** ending, and [`STATUS_INTERNAL_ERROR`]
-/// wherever in the tree the defect behind it was raised. Written out rather than illustrated with a
-/// few, because a partial list here reads as the whole rule, and a reader who found their status
-/// missing from it would have to guess which side of the exit code it falls on. Only a
-/// [`HarnessError`](Self::HarnessError) — nothing for the model to be judged on — exits
-/// non-zero.
+/// A session that ran to a natural end exits `0`, with the real outcome carried in the telemetry
+/// stream, and the three outcomes below are the whole of what the code says. Every terminal status
+/// maps onto exactly one of them:
+///
+/// - [`Ran`](Self::Ran) — [`STATUS_COMPLETED`], the turn ceiling's [`STATUS_EXHAUSTED`], the
+///   wall clock's [`STATUS_TIMED_OUT`], the other three ceilings' [`STATUS_LIMIT_EXCEEDED`], an
+///   operator's [`STATUS_CANCELED`], a [`STATUS_MODEL_ERROR`], a broken script's
+///   [`STATUS_HOOK_ERROR`], and a backstop that stopped working
+///   ([`STATUS_COMPACTION_FAILED`]) — **unless** a ceiling was breached or gg broke;
+/// - [`LimitExceeded`](Self::LimitExceeded) — any agent of the run breached one of the five
+///   [ceilings](RunLimits), whatever status that agent's own loop ended under;
+/// - [`HarnessError`](Self::HarnessError) — a launch failure, [`STATUS_AUTH_ERROR`] as the
+///   **root's** ending, or [`STATUS_INTERNAL_ERROR`] wherever in the tree the defect behind it was
+///   raised.
+///
+/// Written out rather than illustrated with a few, because a partial list here reads as the whole
+/// rule, and a reader who found their status missing from it would have to guess which side of the
+/// exit code it falls on.
+///
+/// **A gg defect outranks a breached ceiling.** A run that both spent a safeguard and walked into
+/// one of our own defects is a [`HarnessError`](Self::HarnessError), because the two facts are not
+/// comparable: a ceiling stopped a measurement, and a defect means there was no measurement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionOutcome {
-    /// A session was driven to a [`SessionEnded`](GgTelemetryKind::SessionEnded). The
-    /// process exits `0`; the session's status is in the telemetry.
+    /// A session was driven to a [`SessionEnded`](GgTelemetryKind::SessionEnded) inside every
+    /// ceiling it armed. The process exits `0`; the session's status is in the telemetry.
     Ran,
+    /// **Any agent of the run** ended on a breached [ceiling](RunLimits) — its turn budget, the
+    /// run's wall-clock budget, the run's spend, or either error ceiling. The process exits
+    /// [`EXIT_LIMIT_EXCEEDED`](test_cabinet_core::gg::EXIT_LIMIT_EXCEEDED), and `core` records a
+    /// run state of its own that is published as a per-model statistic and never retried.
+    ///
+    /// It is read off the run's [ceiling latch](crate::limits::CeilingLatch) rather than off the
+    /// root's ending, on the same reasoning a gg defect is read off the fault latch: the session's
+    /// status is the root's, so a subagent that spent its budget, or an issue implementer that
+    /// breached after the root had already finished, would otherwise leave the run exiting as one
+    /// that ran to a natural end. A ceiling is a safeguard nobody expects to reach, so which agent
+    /// reached it does not change what the run is.
+    ///
+    /// Unlike the other two, nothing about the run's conduct differs because of this: the breaching
+    /// agent was already ended by its own ceiling and every other agent went on working. Only the
+    /// exit code is new.
+    LimitExceeded,
     /// Whatever happened, it was **ours**, so there is no run to score: the invocation could not
     /// launch a session at all (no root profile, no model bound to it, or a client that could not
     /// be resolved), the **root's** model calls were refused because the run's credential was
     /// rejected ([`STATUS_AUTH_ERROR`]), or **any agent of the run** walked into a gg defect
-    /// mid-session ([`STATUS_INTERNAL_ERROR`]). The process exits non-zero, so `core` records a
+    /// mid-session ([`STATUS_INTERNAL_ERROR`]). The process exits `1`, so `core` records a
     /// harness error rather than a scoreable run — none of the three is the model's doing, and
     /// scoring any of them would blame a model for our mistake.
     ///
@@ -1304,15 +1344,28 @@ pub(crate) async fn run_with_seams(
     // against the model.
     //
     // The two are read off different things, and deliberately so. `auth_error` is the **root's**
-    // ending: a subagent whose credential was refused is a failed agent in a session that still
-    // exits `0`. `internal_error` is the whole tree's, because `status` is (see the latch read
-    // above): gg breaking anywhere disqualifies the run, and there is no version of the ruling
-    // where a defect that happened to strike a subagent produces a scoreable run and the same
-    // defect in the root does not.
+    // ending: a subagent whose credential was refused is a failed agent in a session that is still
+    // collected and scored. `internal_error` is the whole tree's, because `status` is (see the
+    // latch read above): gg breaking anywhere disqualifies the run, and there is no version of the
+    // ruling where a defect that happened to strike a subagent produces a scoreable run and the
+    // same defect in the root does not.
     if end.status == STATUS_AUTH_ERROR || status == STATUS_INTERNAL_ERROR {
         // (The `auth_error` half can only be read on a healthy run: on a broken one the root's own
         // ending has already been attributed to gg, and the second condition is what fires.)
         return SessionOutcome::HarnessError;
+    }
+    // A run that spent one of its own [ceilings](crate::limits) exits on a code of its own, so the
+    // host records it apart from a session that ran to a natural end and never retries it: a
+    // second attempt on the same configuration reaches the same bound.
+    //
+    // Read off the run's ceiling latch rather than the root's `limit` for the reason the fault is
+    // read off its latch: the session's status is the root's, and a subagent that spent its turn
+    // budget or an issue implementer that breached after the root had finished would otherwise
+    // leave the run exiting as one that finished. It is read *after* the two conditions above
+    // because a defect of ours outranks a ceiling — a ceiling stopped a measurement, and a defect
+    // means there was none.
+    if orch.ceiling.raised().is_some() {
+        return SessionOutcome::LimitExceeded;
     }
     SessionOutcome::Ran
 }
@@ -1776,6 +1829,22 @@ struct Orchestrator {
     /// ends the *run* rather than the agent that met it: the tree a broken run leaves cannot be
     /// scored against the model, wherever in the tree the break happened.
     fault: FaultLatch,
+    /// The run's [ceiling latch](crate::limits::CeilingLatch): the first
+    /// [execution ceiling](RunLimits) any agent of the run breached.
+    ///
+    /// Shared for the reason the fault latch above it is, and unlike that one it winds nothing
+    /// down: the breaching agent has already ended itself and its siblings go on working. What it
+    /// decides is the process exit code, so a run that spent a safeguard is not collected as a
+    /// session that ran to a natural end.
+    ceiling: CeilingLatch,
+    /// The run's [discovery warning latch](crate::discovery::DiscoveryWarning): whether an operator
+    /// has already been told that this run's model calls functions it never looked up.
+    ///
+    /// Shared for the reason the two latches above it are, and for one of its own: the finding is a
+    /// property of the **model**, and every agent of a run bound to one profile is the same model
+    /// making the same mistake. A line per agent would say the same thing several times about one
+    /// model; a line per call would drown the log of exactly the run worth reading.
+    discovery: DiscoveryWarning,
     /// Every spawned agent task, drained and awaited before the session ends. Guarded so
     /// concurrently-spawning agents can register their children.
     tasks: Mutex<Vec<AgentTask>>,
@@ -2032,6 +2101,8 @@ impl Orchestrator {
                 None => CancelWatch::disabled(),
             },
             fault: FaultLatch::default(),
+            ceiling: CeilingLatch::default(),
+            discovery: DiscoveryWarning::default(),
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
             session_hooks,
@@ -3777,6 +3848,17 @@ async fn drive_agent(
                 &registry,
                 modules.caps(),
                 code.enabled.then_some(code.language),
+                code.enabled.then(|| {
+                    api_surface(
+                        &granted_capabilities,
+                        &granted_operations,
+                        ending_role,
+                        code.language,
+                    )
+                    .iter()
+                    .map(|module| module.functions.len())
+                    .sum()
+                }),
                 &hook_sites(&orch),
             );
             // Record the run's effective toolset on the session summary — the exact set of tool
@@ -4065,6 +4147,7 @@ async fn drive_agent(
                         spend: Arc::clone(&orch.spend),
                         cancel: orch.cancel.clone(),
                         fault: orch.fault.clone(),
+                        ceiling: orch.ceiling.clone(),
                     },
                     compaction,
                     amc,
@@ -4078,6 +4161,7 @@ async fn drive_agent(
                         &mut crate::validate::LaunchReport::Discarding,
                     ),
                     code,
+                    discovery: orch.discovery.clone(),
                     hooks: HooksSetup {
                         // A profile with no runtime is one the set does not declare, which the
                         // dispatcher has already refused — so the unreachable case here is the
@@ -4440,23 +4524,34 @@ fn announce_configuration(
     registry: &ToolRegistry,
     modules: &CapabilityModules,
     program_language: Option<GgProgramLanguage>,
+    // How many functions a responses-as-code agent's programs may call — the surface that stands in
+    // for a tool count under an execution mode that offers no tools. `None` for a tool-calling run.
+    apis: Option<usize>,
     // Each declaration site as `(how to say where it is, its hooks)` — the run's session hooks and
     // every profile's own, so the announcement covers gates on profiles this run has not dispatched
     // yet.
     hooks: &[(String, Arc<HookRuntime>)],
 ) {
-    if registry.is_empty() {
+    // A responses-as-code agent is offered **no tools at all**, by construction — it calls a typed
+    // surface from inside a program instead — so an empty registry says nothing about its grant and
+    // the count that does is its api surface. Reading the tool registry on that arm reported every
+    // fully configured code run as a run that "can only talk".
+    let offered = apis.unwrap_or_else(|| registry.len());
+    if offered == 0 {
         emitter.emit(log(
             "warn",
-            "no capabilities are enabled; the model is offered no tools and can only \
-             talk. Enable the shell/filesystem capabilities to let it build.",
+            "no capabilities are enabled; the model can only talk. Enable the shell/filesystem \
+             capabilities to let it build.",
         ));
     } else {
         emitter.emit(log(
             "info",
             format!(
-                "offering {} tool(s) from the enabled capabilities.",
-                registry.len()
+                "offering {offered} {} from the enabled capabilities.",
+                match apis {
+                    Some(_) => "function(s)",
+                    None => "tool(s)",
+                }
             ),
         ));
     }
@@ -6314,6 +6409,7 @@ impl Agent {
             read_policy,
             shell_offload,
             code,
+            discovery,
             hooks,
             ending_role,
             opening,
@@ -7181,9 +7277,11 @@ impl Agent {
                         emitter,
                         &limits,
                         TurnOutcome::Error(error_type),
+                        // A turn that never got a reply at all still says what it threw away
+                        // trying: every attempt looped, so the error carries the whole tally.
                         match &err {
-                            ModelError::ResponseLoop { attempts, .. } => *attempts,
-                            _ => 0,
+                            ModelError::ResponseLoop { discarded, .. } => *discarded,
+                            _ => LoopAborts::none(),
                         },
                     );
                     return LoopEnd {
@@ -7211,22 +7309,29 @@ impl Agent {
             // events never disagree about how long the model took.
             turn_timer.model_call_finished(model_call_ms);
 
-            // How many replies [loop detection](crate::loopguard) threw away before this one
-            // arrived. Held for the whole turn because it belongs on the turn's *outcome* event,
-            // which is recorded at whichever of this loop's exits the turn eventually takes — and
-            // always `0` on a run that left the capability disarmed, which is the default.
+            // What [loop detection](crate::loopguard) threw away before this reply arrived. Held
+            // for the whole turn because it belongs on the turn's *outcome* event, which is
+            // recorded at whichever of this loop's exits the turn eventually takes — and is empty
+            // on a run that left the capability disarmed, which is the default.
             let loop_aborts = response.loop_aborts;
-            if loop_aborts > 0 {
-                // Said out loud, and said as a `warn`: gg paid for every one of those replies in
-                // tokens and in wall-clock, and none of them ever reached the model's context. A
-                // run whose stream is full of these is a run whose model is looping, which is the
-                // fact this capability exists to make visible rather than merely to bound.
+            if loop_aborts.any() {
+                // Said out loud, and said as a `warn`: every one of those replies was generated,
+                // and generation is billed whether or not anybody reads it, yet none of them ever
+                // reached the model's context. The size is named in words and characters because
+                // those are the units gg measured; there is no token count and no price, because
+                // the provider reports usage at the end of a stream this one deliberately never
+                // read to its end. A run whose stream is full of these is a run whose model is
+                // looping, which is the fact this capability exists to make visible rather than
+                // merely to bound.
                 emitter.emit(log(
                     "warn",
                     format!(
-                        "loop detection discarded {} on turn {turn} before one completed; gg paid \
-                         for every one of them and none of them entered the context.",
-                        plural(loop_aborts as usize, "looping model response"),
+                        "loop detection discarded {} on turn {turn} before one completed, throwing \
+                         away {} of generated output ({} characters); it was all paid for and none \
+                         of it entered the context.",
+                        plural(loop_aborts.attempts as usize, "looping model response"),
+                        plural(loop_aborts.words as usize, "word"),
+                        loop_aborts.chars,
                     ),
                 ));
             }
@@ -7442,6 +7547,7 @@ impl Agent {
                     amc: &amc,
                     emitter,
                     fault: &limits.fault,
+                    discovery: &discovery,
                     replay: replay.as_ref(),
                     pending_compaction,
                     ending_role,
@@ -8401,18 +8507,19 @@ impl Agent {
     /// (turns from concurrently running agents interleave arbitrarily), and because the maximum of
     /// the first is exactly [`GgErrorSummary::max_consecutive`](test_cabinet_core::gg::GgErrorSummary).
     ///
-    /// `loop_aborts` is how many replies [loop detection](crate::loopguard) discarded before this
-    /// turn produced one — `0` for every turn of every run that left the capability disarmed, which
-    /// is the default. It rides here rather than on an event of its own because a discarded attempt
-    /// is not a turn: it produced nothing and the request was simply retried, so the turn that
-    /// eventually succeeded is the only event there is to hang the count on.
+    /// `loop_aborts` is what [loop detection](crate::loopguard) discarded before this turn produced
+    /// a reply — how many attempts, and how much generated output went with them. Empty for every
+    /// turn of every run that left the capability disarmed, which is the default. It rides here
+    /// rather than on an event of its own because a discarded attempt is not a turn: it produced
+    /// nothing and the request was simply retried, so the turn that eventually succeeded is the
+    /// only event there is to hang it on.
     fn record_turn(
         &self,
         agent_limits: &mut AgentLimits,
         emitter: &Emitter,
         run: &impl FaultedRun,
         outcome: TurnOutcome,
-        loop_aborts: u32,
+        loop_aborts: LoopAborts,
     ) -> Option<GgLimitBreach> {
         let outcome = Self::attributed(outcome, run);
         let breach = agent_limits.record(outcome, &self.id);
@@ -8436,7 +8543,13 @@ impl Agent {
                 0
             },
             turns: agent_limits.turns_recorded(),
-            loop_aborts: u64::from(loop_aborts),
+            loop_aborts: u64::from(loop_aborts.attempts),
+            // The three figures are published together and are never apart: the count says how
+            // often the model looped, and the two sizes say how much generation it cost to find
+            // that out. Deliberately not folded into the turn's token usage or its cost, which are
+            // the provider's own numbers for the one reply that was actually read.
+            loop_abort_words: loop_aborts.words,
+            loop_abort_chars: loop_aborts.chars,
         });
         breach
     }
@@ -8501,6 +8614,13 @@ impl Agent {
     /// loop reads the latch at its boundary *before* it measures a ceiling anyway. It goes through
     /// the same seam regardless, because [an ending whose status is decided somewhere
     /// else](attribution) is what this exists to make impossible.
+    ///
+    /// Being the one place, it is also where the breach becomes the **run's**, on the
+    /// [ceiling latch](CeilingLatch): all five ceilings pass through here, so none of them can be
+    /// the one that reaches the session outcome by a different route or not at all. Raising it
+    /// stops nothing further — this agent is ending, and every other agent of the run is left alone
+    /// — and what it changes is the process exit code, so a run that spent a safeguard is not
+    /// collected as a session that ran to a natural end.
     #[allow(clippy::too_many_arguments)]
     fn stop_on_limit(
         &self,
@@ -8515,6 +8635,7 @@ impl Agent {
         last_text: Option<String>,
     ) -> LoopEnd {
         let status = TerminalStatus::attributed(status_for_breach(breach.limit), limits);
+        limits.ceiling.raise(&breach);
         emitter.emit(log("warn", breach_message(&breach)));
         emitter.emit(GgTelemetryKind::LimitExceeded {
             breach: breach.clone(),
@@ -8862,6 +8983,16 @@ const NO_FILE_VIEWS_NAMED: usize = 0;
 /// no file.
 const TOP_FILE_VIEWS_OF_A_REFUSED_LAUNCH: usize = 0;
 
+/// The [threshold](PARAM_SIGNAL_THRESHOLD_PERCENT) carried by a profile that is shown no
+/// context-usage signal at all — one without [agent-managed context](CAPABILITY_AGENT_MANAGED_CONTEXT),
+/// and one that switches it off.
+///
+/// A window that is 0% full has reached it, so it is the widest reading there is, which is the only
+/// honest one to hold a block nothing will ever render. It is named rather than written as a bare
+/// `0` so the next reader of the line does not take it for an operator asking for a signal every
+/// turn.
+const THRESHOLD_OF_AN_UNSIGNALLED_AGENT: u64 = 0;
+
 /// The agent-managed-context configuration threaded into the [turn loop](Agent::drive): whether the
 /// capability is on, what this agent can actually do about its window, and the shared thread
 /// [archive](ArchiveStore) that `archive_thread` fills and `search_archive` reads.
@@ -8897,6 +9028,9 @@ struct AmcSetup {
     /// How many individual files the context-usage signal's file-view breakdown names, from this
     /// agent's [`PARAM_TOP_FILE_VIEWS`] param.
     top_file_views: usize,
+    /// How full this agent's window has to be before it is shown the context-usage signal at all,
+    /// from its [`PARAM_SIGNAL_THRESHOLD_PERCENT`] param.
+    signal_threshold_percent: u64,
 }
 
 impl AmcSetup {
@@ -8926,6 +9060,13 @@ impl AmcSetup {
                 profile,
                 &mut crate::validate::LaunchReport::Discarding,
             ),
+            // Discarding, on the same terms: `resolve_signal_threshold` read this same param at
+            // launch with a collecting sink, and refused the run if it named no share gg can hold
+            // the block back to.
+            signal_threshold_percent: resolve_signal_threshold(
+                profile,
+                &mut crate::validate::LaunchReport::Discarding,
+            ),
         }
     }
 
@@ -8936,6 +9077,7 @@ impl AmcSetup {
             program_language: self.program_language,
             can_archive: self.can_archive,
             top_file_views: self.top_file_views,
+            threshold_percent: self.signal_threshold_percent,
         }
     }
 }
@@ -8986,6 +9128,51 @@ fn resolve_top_file_views(
     declared.map_or(TOP_FILE_VIEWS_OF_A_REFUSED_LAUNCH, |top| {
         usize::try_from(top).unwrap_or(usize::MAX)
     })
+}
+
+/// How full an agent's window must be before it is shown the
+/// [context-usage signal](ContextModel::refresh_context_usage_signal), from `profile`'s
+/// [`PARAM_SIGNAL_THRESHOLD_PERCENT`] param.
+///
+/// **An absent param is [the default](DEFAULT_SIGNAL_THRESHOLD_PERCENT), not a refusal**, which is
+/// the one place gg reads a silent document as a figure. The reason is that there is no useful
+/// reading of "off" here: a threshold nobody wrote would have to mean either a block on every turn,
+/// which is what the figure exists to stop, or no block at all, which switches off the capability's
+/// own signal from a key that says nothing about it. The default is written into every new document
+/// by the authoring catalog, so a run's record still names the share it was conducted under; what an
+/// operator gains by leaving the key out is a document that does not have to have an opinion.
+///
+/// A value that *is* written is read on the ordinary terms, and one gg cannot read as a percentage
+/// of the window refuses the launch. `0` is honoured: it is the block on every turn, which is what a
+/// study of the signal itself is measuring.
+///
+/// A profile that does not configure the capability, or switches it off, is shown no signal at all,
+/// so what it names is [never read](THRESHOLD_OF_AN_UNSIGNALLED_AGENT). What such a profile *does*
+/// write is still read, so a `120` on the off arm of a comparison is heard about now rather than on
+/// the launch that flips the switch.
+fn resolve_signal_threshold(
+    profile: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) -> u64 {
+    let Some(capability) = profile.capability(CAPABILITY_AGENT_MANAGED_CONTEXT) else {
+        return THRESHOLD_OF_AN_UNSIGNALLED_AGENT;
+    };
+    let declared = crate::validate::percent_param(
+        &capability.params,
+        CAPABILITY_AGENT_MANAGED_CONTEXT,
+        PARAM_SIGNAL_THRESHOLD_PERCENT,
+        report,
+    );
+    if !capability.enabled {
+        return THRESHOLD_OF_AN_UNSIGNALLED_AGENT;
+    }
+    match declared {
+        Some(percent) => percent,
+        // Either the key is absent, which is the default, or it named a share gg cannot hold the
+        // block back to — and that has already refused the launch, so the figure this hands back
+        // sizes a signal no turn ever reads.
+        None => DEFAULT_SIGNAL_THRESHOLD_PERCENT,
+    }
 }
 
 /// What [`AUTOLOAD_PARAM_IMAGES`] reads as for a profile that seeds nothing — one with no
@@ -9605,6 +9792,14 @@ struct DriveSetup {
     /// Whether this agent answers with programs rather than tool calls, and the sandbox ceilings
     /// and [healing] behind that.
     code: CodeSetup,
+    /// The run's [discovery warning latch](crate::discovery), shared by every agent.
+    ///
+    /// Resolved configuration is what this struct holds, and this is the one field that is not: it
+    /// is a run-wide latch, cloned in here for the same reason the [fault latch](FaultLatch) is
+    /// carried on [`LimitsSetup`] — the loop is where the condition is met, and the seam that meets
+    /// it has no other handle on the run. It carries no configuration and decides nothing about how
+    /// the agent runs; all it decides is whether the operator has already been told.
+    discovery: DiscoveryWarning,
     /// The run's [hooks](crate::hooks), and who this agent is to them.
     ///
     /// Carried on the setup rather than reached through the orchestrator because the loop fires
@@ -9658,6 +9853,13 @@ struct LimitsSetup {
     /// for the same reason: it is a run-wide condition every agent stops itself on, and the only
     /// thing that varies between the two is who decided the run should stop.
     fault: FaultLatch,
+    /// The run's [ceiling latch](CeilingLatch), a clone of the orchestrator's, **written** by the
+    /// one site that ends an agent on a breach rather than read at a boundary.
+    ///
+    /// It travels with the ceilings because it is the run-wide half of them: the four fields above
+    /// say what each agent measures, and this is where the answer any of them reached becomes the
+    /// run's. Nothing in the loop reads it; the session epilogue does.
+    ceiling: CeilingLatch,
 }
 
 /// One read of the run's wall-clock deadline, as a
@@ -10095,6 +10297,7 @@ fn check_window_limits(
 /// whole invocation is in hand.
 pub(crate) fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
     resolve_top_file_views(profile, report);
+    resolve_signal_threshold(profile, report);
     AutoloadSetup::resolve(profile, report);
     check_allowlists(profile, report);
 }

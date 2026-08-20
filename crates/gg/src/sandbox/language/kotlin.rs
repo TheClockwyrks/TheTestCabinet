@@ -298,9 +298,9 @@ impl ProgramLanguage for Kotlin {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [Two `listOf(…)`s and two `for` loops](self::bootstrap_program) in a `fun main()`, with both
-    /// calls resolved from this language's own catalogue and the filters passed as named default
-    /// arguments.
+    /// [One search over every listed module at once, then a `listOf(…)` and a `for`
+    /// loop](self::bootstrap_program) in a `fun main()`, with both calls resolved from this
+    /// language's own catalogue and the filters passed as named default arguments.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
@@ -524,14 +524,20 @@ fn listed(binding: &str, names: &[&str]) -> String {
     }
 }
 
-/// The opening turn: one `listOf(…)` of module paths listed in full, then one of the names opened as
-/// documentation views, each with a `for` over it — inside a `fun main()`, because this program is
-/// **executed** as the session's first turn.
+/// The opening turn: **one** search naming every module gg listed at once, then a `listOf(…)` of the
+/// names to open documentation views of and a `for` over it — inside a `fun main()`, because this
+/// program is **executed** as the session's first turn.
 ///
-/// Two lists and two loops rather than one call per entry, because a granted surface is a dozen
-/// modules and a dozen calls written out is a shape a model would copy for its own work. The empty
-/// case is spelled `listOf<String>()` for the reason [`open_docs_views_statement`]'s is: there is no
-/// declared type beside it to infer an element type from.
+/// One call rather than one per module, because the filter takes a list and several modules are a
+/// union: what the model reads at the top of its window is one page of everything it was listed, and
+/// a loop of near-identical calls is a shape it would copy for its own work. The names stay a list
+/// and a loop, because that list is as long as the family; its empty case is spelled
+/// `listOf<String>()` for the reason [`open_docs_views_statement`]'s is, and the module list is
+/// written into the call rather than declared, because a `val` naming two paths reads as ceremony.
+///
+/// An agent listed **no** module gets no search at all rather than one over an empty list: a search
+/// with neither a query nor a filter is the one way this call is refused, and the program that opens
+/// the session is the last place to hand a model a worked example of an `INVALID_ARGUMENT`.
 ///
 /// The filters are **default arguments passed by name**, which is this language's idiom for optional
 /// ones, and every gg name is written in full, which is one of the two lines this arm offers instead
@@ -545,17 +551,18 @@ pub(super) fn bootstrap_program(
     modules: &[&str],
     docs: &[&str],
 ) -> String {
-    let body = format!(
-        "{}\
-         \x20   for (path in modules) {{\n        \
-             {search}(\"\", module = path, limit = {MAX_SEARCH_LIMIT})\n\
-         \x20   }}\n\
-         \n\
-         {}",
-        listed("modules", modules),
-        views_loop(open_docs_view, docs),
-    );
-    main_program(&body)
+    let paths: Vec<String> = modules
+        .iter()
+        .map(|path| serde_json::Value::String((*path).to_string()).to_string())
+        .collect();
+    let listing = match paths.is_empty() {
+        true => String::new(),
+        false => format!(
+            "    {search}(modules = listOf({}), limit = {MAX_SEARCH_LIMIT})\n\n",
+            paths.join(", ")
+        ),
+    };
+    main_program(&format!("{listing}{}", views_loop(open_docs_view, docs)))
 }
 
 #[cfg(test)]

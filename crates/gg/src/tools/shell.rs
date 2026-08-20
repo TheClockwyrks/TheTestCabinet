@@ -17,10 +17,6 @@
 //! **pair of files** in a gg-managed directory, and only the tail permitted by the configured
 //! [line/character ceilings](OffloadLimits) comes back — followed by a note naming the two files, so
 //! an agent that needs more can `grep` them instead of being handed a build log it did not ask for.
-//! Under [adaptive](OffloadPolicy::Adaptive) offloading applies only to the commands
-//! whose output an agent actually reads: a command that **succeeded** comes back as its exit code
-//! and the paths its output went to, and one that **failed** comes back exactly as it would under
-//! offloading.
 //!
 //! Both execution modes go through [`run_command`], so the policy governs a JSON tool call and a
 //! [responses-as-code](crate::sandbox) program's `system.shell(…)` identically.
@@ -38,11 +34,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-// The shell vocabulary — the three mode ids and the two ceilings — is `crates/core`'s, because the
+// The shell vocabulary — the two mode ids and the two ceilings — is `crates/core`'s, because the
 // console writes a shell capability with the same names this reads it back by.
 use test_cabinet_core::gg::{
-    CAPABILITY_SHELL, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE,
-    SHELL_OUTPUT_MODES, SHELL_OUTPUT_OFFLOAD,
+    CAPABILITY_SHELL, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_MODES,
+    SHELL_OUTPUT_OFFLOAD,
 };
 use test_cabinet_core::gg_session_record::GgShellOrigin;
 
@@ -109,24 +105,14 @@ pub enum OffloadPolicy {
     /// Write every command's stdout and stderr to a file pair, and return only the tail the
     /// [limits](OffloadLimits) permit, followed by a note naming the two files.
     Offload(OffloadLimits),
-    /// Offloading, decided per command by whether it worked: a command that **failed** comes back
-    /// exactly as it would under [`Offload`](Self::Offload), and a command that **succeeded** comes
-    /// back as its exit code alone, with a note naming the file pair its output went to.
-    ///
-    /// The arm the [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog) writes into a
-    /// new document. A successful command's output is the bulk of what a run's shell calls produce
-    /// and the part an agent least often reads — `cargo build` printing forty lines of `Compiling`
-    /// says nothing that the exit code did not. A failed one is the opposite: it is read closely, and
-    /// the tail is where the error is.
-    Adaptive(OffloadLimits),
     /// **Not an output mode: the launch is already refused.** What [`resolve`](Self::resolve) and
     /// [`for_mode`](Self::for_mode) hand back once they have nothing left to select — the capability
     /// named no arm, or named one gg has no mode for, or wrote no ceilings for a truncating arm to
     /// truncate past. Both are total, so they answer with something; this is the something, and its
     /// name is what tells the next reader of that line that no run is going to reach it.
     ///
-    /// It is deliberately not one of the three modes. Resolving a hole to
-    /// [`Adaptive`](Self::Adaptive) — or to ceilings gg picked — is exactly the substitution the
+    /// It is deliberately not one of the two modes. Resolving a hole to
+    /// [`Offload`](Self::Offload) — or to ceilings gg picked — is exactly the substitution the
     /// [refusal](crate::validate) exists to prevent: it runs one arm of the offloading experiment
     /// under another's name.
     LaunchRefused,
@@ -142,7 +128,7 @@ impl OffloadPolicy {
     /// the shape the loop under test is written against.
     #[cfg(test)]
     pub(crate) fn ample() -> Self {
-        Self::Adaptive(OffloadLimits {
+        Self::Offload(OffloadLimits {
             max_lines: 250,
             max_chars: 4_096,
             dir: PathBuf::from(OFFLOAD_DIR),
@@ -160,8 +146,9 @@ impl OffloadPolicy {
     /// inline", not "and size it differently from everything else".
     ///
     /// Two ways this refuses the launch. A mode gg does not recognize is the obvious one: it is the
-    /// one hook field no launch diagnostic used to read, so a hook written to keep its build output
-    /// inline silently withheld it instead. The other is a truncating `mode` asked for over a
+    /// one hook field no launch diagnostic reads otherwise, so a hook written to keep its build
+    /// output inline would be conducted under a mode nobody named. The other is a truncating
+    /// `mode` asked for over a
     /// `fallback` that carries **no** ceilings — an agent whose own shell runs
     /// [inline](Self::Inline), or offers no shell at all. There is nothing there to truncate past
     /// and gg picks no figure, so the override is refused rather than conducted at ceilings nobody
@@ -178,7 +165,6 @@ impl OffloadPolicy {
         let selected = match mode.trim() {
             SHELL_OUTPUT_INLINE => return Self::Inline,
             SHELL_OUTPUT_OFFLOAD => truncating(Self::Offload),
-            SHELL_OUTPUT_ADAPTIVE => truncating(Self::Adaptive),
             unknown => {
                 report.report(
                     crate::validate::LaunchDefect::run_level(
@@ -186,9 +172,8 @@ impl OffloadPolicy {
                         unknown,
                         format!(
                             "the `output` field names where a hook command's output goes; gg has \
-                             no such mode, and running the hook under \
-                             `{SHELL_OUTPUT_ADAPTIVE}` would withhold the output of every hook \
-                             command that passed."
+                             no such mode, and reading it as `{SHELL_OUTPUT_OFFLOAD}` would cut a \
+                             hook's output to a tail nobody asked for."
                         ),
                     )
                     .known(SHELL_OUTPUT_MODES),
@@ -227,14 +212,14 @@ impl OffloadPolicy {
     /// - **No arm.** The mode is the offloading experiment's own variable and gg selects none on an
     ///   operator's behalf. Reporting the absence belongs to the launch pass, which is the one
     ///   reader that can see the switch, so nothing is said here.
-    /// - **An arm gg has no mode for.** Reported here: reading it as any of the three would measure
-    ///   one arm of the offloading experiment under another's name.
+    /// - **An arm gg has no mode for.** Reported here: reading it as either of the two would
+    ///   measure one arm of the offloading experiment under another's name.
     /// - **A ceiling missing, or naming no count of one or more.** Reported at its own locus by
     ///   [`required_positive_count_param`](crate::validate::required_positive_count_param).
     ///
     /// Both [limits](OffloadLimits) are required whichever arm is selected — including
     /// [`Inline`](Self::Inline), which does not carry them — so one shared params block swept across
-    /// the three modes is judged the same way on every launch in it.
+    /// the two modes is judged the same way on every launch in it.
     pub fn resolve(
         implementation: Option<&str>,
         params: &Value,
@@ -259,7 +244,6 @@ impl OffloadPolicy {
         match implementation.map(str::trim) {
             Some(SHELL_OUTPUT_INLINE) => Self::Inline,
             Some(SHELL_OUTPUT_OFFLOAD) => limits.map_or(Self::LaunchRefused, Self::Offload),
-            Some(SHELL_OUTPUT_ADAPTIVE) => limits.map_or(Self::LaunchRefused, Self::Adaptive),
             Some("") | None => Self::LaunchRefused,
             Some(unknown) => {
                 report.report(
@@ -269,7 +253,7 @@ impl OffloadPolicy {
                         format!(
                             "the `{CAPABILITY_SHELL}` capability's implementation names how much \
                              of a command's output comes back inline; gg has no such mode, and \
-                             reading it as `{SHELL_OUTPUT_ADAPTIVE}` would run one arm of the \
+                             reading it as `{SHELL_OUTPUT_OFFLOAD}` would run one arm of the \
                              offloading experiment under another's name."
                         ),
                     )
@@ -282,19 +266,13 @@ impl OffloadPolicy {
 
     /// The limits in force, or `None` under [`Inline`](Self::Inline), which carries none, and under
     /// [`LaunchRefused`](Self::LaunchRefused), which has no run to carry any for. Read by the tool
-    /// itself and by the [system prompt](crate::prompts), which states them up front so the model is
-    /// not left to discover the ceiling one truncated command at a time.
+    /// itself, which is where a truncated command's note states them; the ceiling is a fact about
+    /// one call's result rather than about the run, so nothing states it up front.
     pub fn limits(&self) -> Option<&OffloadLimits> {
         match self {
             Self::Inline | Self::LaunchRefused => None,
-            Self::Offload(limits) | Self::Adaptive(limits) => Some(limits),
+            Self::Offload(limits) => Some(limits),
         }
-    }
-
-    /// Whether a **successful** command's output is withheld entirely — true only under
-    /// [`Adaptive`](Self::Adaptive).
-    pub fn withholds_on_success(&self) -> bool {
-        matches!(self, Self::Adaptive(_))
     }
 }
 
@@ -471,13 +449,6 @@ impl Tool for ShellTool {
             None => "Run a command with `sh -c` in the workspace directory. Returns the exit code \
                      and merged stdout+stderr."
                 .to_string(),
-            Some(_) if self.offload.withholds_on_success() => {
-                "Run a command with `sh -c` in the workspace directory. A command that succeeds \
-                 returns only its exit code; one that fails also returns the tail of merged \
-                 stdout+stderr. Full stdout and stderr are written to files named in the result — \
-                 `grep` them for more."
-                    .to_string()
-            }
             Some(_) => "Run a command with `sh -c` in the workspace directory. Returns the exit \
                         code and the tail of merged stdout+stderr. Full stdout and stderr are \
                         written to files named in the result — `grep` them for more."
@@ -593,15 +564,6 @@ pub(crate) async fn run_command(
         return ToolOutcome::failed(failure, message);
     }
 
-    // What the command exited with, or `None` when it never got that far — a timeout kill and a
-    // failed `wait()` both count as "did not succeed": in either case the agent is about to be told
-    // something went wrong, and the output is the part that says what. Read here, ahead of the
-    // terminal branches below, because the output policy needs it: a withheld body reports the exit
-    // code, since the exit code is the only thing it reports.
-    let exit_code = match &status {
-        ShellStatus::Exited { code } => *code,
-        _ => None,
-    };
     // What comes back inline, under whichever output policy is in force. Computed before the
     // terminal branches so a killed command's partial output is offloaded on the same terms a
     // completed one's is — a command that hung after printing a hundred megabytes is exactly the
@@ -610,8 +572,7 @@ pub(crate) async fn run_command(
         body,
         truncated,
         explained,
-        withheld,
-    } = capture_output(&stdout, &stderr, offload, exit_code).await;
+    } = capture_output(&stdout, &stderr, offload).await;
 
     let code = match status {
         ShellStatus::Exited { code } => code,
@@ -637,14 +598,7 @@ pub(crate) async fn run_command(
     };
 
     let ok = code == Some(0);
-    // A withheld body opens with the exit code itself — it has to, because it is handed to a
-    // [responses-as-code](crate::sandbox) program without this header around it — so adding the
-    // header here would print the same fact twice.
-    let mut output = if withheld {
-        String::new()
-    } else {
-        format!("exit code: {}\n", describe_exit_code(code))
-    };
+    let mut output = format!("exit code: {}\n", describe_exit_code(code));
     if body.is_empty() {
         output.push_str("(no output)");
     } else {
@@ -722,10 +676,6 @@ struct Captured {
     /// body (the note is part of it, so a code program that prints the body sees the file paths);
     /// false under the inline policy, where the prose adds gg's byte-cap note around it.
     explained: bool,
-    /// Whether [`body`](Self::body) is the withheld-output note rather than any of the command's
-    /// own output — which also means it states the exit code itself, so the caller does not head it
-    /// with one.
-    withheld: bool,
 }
 
 /// The file pair one offloaded command's streams were written to.
@@ -737,21 +687,14 @@ struct OffloadPaths {
 }
 
 /// Apply `offload` to a finished command's streams: merge them, keep whatever the policy permits
-/// inline, and — under a [truncating](OffloadPolicy::Offload) policy — write the whole of both
-/// streams to a file pair first. `exit_code` is what the command exited with — `None` when it never
-/// got a status — which decides both whether the [adaptive](OffloadPolicy::Adaptive) policy withholds
-/// the output and what the withheld body reports in its place.
+/// inline, and — under the [offload](OffloadPolicy::Offload) policy — write the whole of both
+/// streams to a file pair first.
 ///
 /// The pair is written for **every** command, not only a chatty one, because "the full output is on
 /// disk" is only useful if it is true unconditionally: an agent that has to guess whether this
 /// command's log exists is back to re-running the command to find out. The note that names the pair
 /// is added only when something was actually dropped, so a two-line command costs no context.
-async fn capture_output(
-    stdout: &str,
-    stderr: &str,
-    offload: &OffloadPolicy,
-    exit_code: Option<i32>,
-) -> Captured {
+async fn capture_output(stdout: &str, stderr: &str, offload: &OffloadPolicy) -> Captured {
     let merged = merge_output(stdout, stderr);
     let Some(limits) = offload.limits() else {
         let (body, truncated) = truncate(&merged, MAX_OUTPUT_BYTES);
@@ -759,21 +702,8 @@ async fn capture_output(
             body,
             truncated,
             explained: false,
-            withheld: false,
         };
     };
-    // Under the adaptive policy a command that worked is reported by its exit code alone. A command
-    // that printed nothing is left as the empty body the caller renders as "(no output)": there is
-    // nothing on disk worth pointing at, and the note would be the only thing the agent read.
-    let withhold = exit_code == Some(0) && offload.withholds_on_success();
-    if withhold && merged.is_empty() {
-        return Captured {
-            body: String::new(),
-            truncated: false,
-            explained: false,
-            withheld: false,
-        };
-    }
 
     let paths = match write_offload_pair(stdout, stderr, limits).await {
         Ok(paths) => paths,
@@ -797,31 +727,9 @@ async fn capture_output(
                 body,
                 truncated,
                 explained: true,
-                withheld: false,
             };
         }
     };
-
-    if withhold {
-        // "Only the exit code" as far as the command's own output goes — but the paths come with it.
-        // Withholding output the agent has no way to ask for again would not be offloading, it would
-        // be discarding, and the agent would be left re-running the command to see what it printed.
-        //
-        // Three lines of facts, and no sentence explaining them: the model is told what the file
-        // pair is in the tool's own description and in the system prompt, and repeating it in the
-        // result of every successful command spends context on a thing it has already read.
-        return Captured {
-            body: format!(
-                "Exit code: {}\nstdout: {}\nstderr: {}",
-                describe_exit_code(exit_code),
-                paths.stdout.display(),
-                paths.stderr.display(),
-            ),
-            truncated: true,
-            explained: true,
-            withheld: true,
-        };
-    }
 
     let (tail, cut) = limits.tail(&merged);
     // gg's byte cap still applies behind the configured ceiling: a `maxLines` generous enough to
@@ -846,7 +754,6 @@ async fn capture_output(
         body,
         truncated,
         explained: true,
-        withheld: false,
     }
 }
 

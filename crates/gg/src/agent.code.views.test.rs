@@ -338,11 +338,15 @@ fn a_search_close_reports_its_own_band() {
 /// The hit carries a `key` that differs from its `name` on purpose. A hit whose two identifiers were
 /// the same string could not tell the two apart, so it would pass just as readily against a
 /// rendering that printed the wrong one.
+///
+/// The line itself carries no `(function)` suffix. A hit's kind is stated once, by the heading of
+/// the group it sits in, and repeating it per line would spend a word per hit restating what the
+/// heading above already said — over a module directory, a hundred times.
 #[test]
 fn the_results_view_says_how_much_of_the_answer_it_is() {
     let query = DocSearchQuery {
         query: "file".to_string(),
-        module: Some("fs".to_string()),
+        modules: vec!["fs".to_string()],
         ..DocSearchQuery::default()
     };
     let page = DocSearch {
@@ -358,15 +362,195 @@ fn the_results_view_says_how_much_of_the_answer_it_is() {
     };
 
     let body = render_search_results(&query, &page);
-    assert!(body.contains('9'), "the total is stated: {body}");
+    assert!(body.contains("9 matches"), "the total is stated: {body}");
     assert!(body.contains("4-4"), "and which slice this is: {body}");
     assert!(
         body.contains("`file`") && body.contains("module `fs`"),
         "{body}"
     );
     assert!(
-        body.contains("gg.files.readFile (function) — Read a file."),
-        "one line per hit, keyed by the name an open takes, brief and all: {body}"
+        body.contains("Functions:\ngg.files.readFile — Read a file."),
+        "one line per hit under its kind's heading, keyed by the name an open takes, brief and \
+         all: {body}"
+    );
+}
+
+/// **Several modules are echoed back as the several they were**, under the plural noun.
+///
+/// The clause at the top of the page is what a model reads to check that the search it got is the
+/// search it asked for, and a filter naming two modules that rendered as one — or as the word
+/// `module` followed by a list — would be a page describing a narrower question than the one that
+/// was answered. The union is the whole point of naming more than one, so the echo has to show all
+/// of them.
+#[test]
+fn a_filter_naming_several_modules_echoes_all_of_them() {
+    let query = DocSearchQuery {
+        query: String::new(),
+        modules: vec!["gg.files".to_string(), "gg.shell".to_string()],
+        ..DocSearchQuery::default()
+    };
+    let page = DocSearch {
+        total: 1,
+        offset: 0,
+        hits: vec![crate::docs::DocHit {
+            key: "gg.shell.shell".to_string(),
+            kind: crate::docs::DocKind::Function,
+            module: "gg.shell".to_string(),
+            name: "shell".to_string(),
+            summary: "Run a shell command.".to_string(),
+        }],
+    };
+
+    let body = render_search_results(&query, &page);
+    assert!(
+        body.contains("modules `gg.files`, `gg.shell`"),
+        "both are named, under the plural: {body}"
+    );
+    assert!(
+        !body.contains("module `gg.files`"),
+        "and the singular is not left standing in front of a list: {body}"
+    );
+}
+
+/// **The count agrees with itself**: one hit is `1 match`, and anything else is `N matches`.
+///
+/// Trivial to get wrong and read by a model on every search it makes. `1 match(es)` was the previous
+/// spelling, and a parenthesised plural is the kind of thing a reader learns to skip — which is the
+/// last thing the count line can afford, since it is the only sentence on the page that says the
+/// page is not the whole answer.
+///
+/// Asserted on the **total** rather than on the number of hits shown, because those differ: a page
+/// of one hit out of nine is nine matches, and a rendering that agreed with the page in front of it
+/// would say `1 match` about a result the model has seen only a ninth of.
+#[test]
+fn the_count_agrees_with_the_total_it_reports() {
+    let hit = |key: &str| crate::docs::DocHit {
+        key: key.to_string(),
+        kind: crate::docs::DocKind::Function,
+        module: "gg.files".to_string(),
+        name: key.to_string(),
+        summary: "A call.".to_string(),
+    };
+    let query = DocSearchQuery {
+        query: "file".to_string(),
+        ..DocSearchQuery::default()
+    };
+
+    let one = render_search_results(
+        &query,
+        &DocSearch {
+            total: 1,
+            offset: 0,
+            hits: vec![hit("gg.files.readFile")],
+        },
+    );
+    assert!(one.starts_with("1 match for "), "{one}");
+
+    let many = render_search_results(
+        &query,
+        &DocSearch {
+            total: 2,
+            offset: 0,
+            hits: vec![hit("gg.files.readFile"), hit("gg.files.writeFile")],
+        },
+    );
+    assert!(many.starts_with("2 matches for "), "{many}");
+
+    // The page is one hit and the answer is nine, which is exactly when the count line is doing its
+    // job — and exactly where a rendering that counted the hits in hand would be wrong.
+    let paged = render_search_results(
+        &query,
+        &DocSearch {
+            total: 9,
+            offset: 0,
+            hits: vec![hit("gg.files.readFile")],
+        },
+    );
+    assert!(paged.starts_with("9 matches for "), "{paged}");
+}
+
+/// **The three kinds are three sections, in one order, and a section with no hits is not there.**
+///
+/// A module, a function and a type are three different things to do next: importing, calling, and
+/// reading the shape of a value. A reader scanning a directory for a call should not have to step
+/// over the types to find it, and the module — which nothing else on the page is reachable without —
+/// belongs above both.
+///
+/// The omission is the other half. An empty heading is a line that says *there were none of these*,
+/// which is true and is not worth a line: a search filtered to `kind: "function"` would otherwise
+/// carry two headings over nothing on every page a model reads.
+///
+/// Rank order is kept **within** a group rather than reimposed, so the best match in a section is
+/// still its first line — which is what the two functions here, given deliberately in a
+/// non-alphabetical order, hold.
+#[test]
+fn the_hits_are_grouped_by_kind_in_one_order() {
+    let query = DocSearchQuery {
+        query: "file".to_string(),
+        ..DocSearchQuery::default()
+    };
+    let page = DocSearch {
+        total: 4,
+        offset: 0,
+        hits: vec![
+            crate::docs::DocHit {
+                key: "gg.files.writeFile".to_string(),
+                kind: crate::docs::DocKind::Function,
+                module: "gg.files".to_string(),
+                name: "writeFile".to_string(),
+                summary: "Write a file.".to_string(),
+            },
+            crate::docs::DocHit {
+                key: "gg.files.FileRead".to_string(),
+                kind: crate::docs::DocKind::Type,
+                module: "gg.files".to_string(),
+                name: "FileRead".to_string(),
+                summary: "What a read handed back.".to_string(),
+            },
+            crate::docs::DocHit {
+                key: "gg.files".to_string(),
+                kind: crate::docs::DocKind::Module,
+                module: "gg.files".to_string(),
+                name: "gg.files".to_string(),
+                summary: "Reading and writing files.".to_string(),
+            },
+            crate::docs::DocHit {
+                key: "gg.files.readFile".to_string(),
+                kind: crate::docs::DocKind::Function,
+                module: "gg.files".to_string(),
+                name: "readFile".to_string(),
+                summary: "Read a file.".to_string(),
+            },
+        ],
+    };
+
+    let body = render_search_results(&query, &page);
+    let at = |needle: &str| {
+        body.find(needle)
+            .unwrap_or_else(|| panic!("`{needle}` is on the page:\n{body}"))
+    };
+    assert!(
+        at("Modules:") < at("Functions:") && at("Functions:") < at("Types:"),
+        "the sections are in one order whatever order the hits arrived in:\n{body}"
+    );
+    assert!(
+        at("gg.files.writeFile") < at("gg.files.readFile"),
+        "and rank order is kept within a section rather than re-sorted:\n{body}"
+    );
+
+    // A page holding one kind carries one heading, and no line at all about the two it has none of.
+    let only_functions = render_search_results(
+        &query,
+        &DocSearch {
+            total: 1,
+            offset: 0,
+            hits: vec![page.hits[0].clone()],
+        },
+    );
+    assert!(only_functions.contains("Functions:"), "{only_functions}");
+    assert!(
+        !only_functions.contains("Modules:") && !only_functions.contains("Types:"),
+        "a section with nothing under it is not rendered at all: {only_functions}"
     );
 }
 
@@ -406,11 +590,11 @@ fn two_hits_sharing_a_name_are_told_apart() {
 
     let body = render_search_results(&query, &page);
     assert!(
-        body.contains("gg.docs.close (function) — Close a documentation view."),
+        body.contains("gg.docs.close — Close a documentation view."),
         "{body}"
     );
     assert!(
-        body.contains("gg.views.close (function) — Close every view carrying a selector."),
+        body.contains("gg.views.close — Close every view carrying a selector."),
         "{body}"
     );
 }

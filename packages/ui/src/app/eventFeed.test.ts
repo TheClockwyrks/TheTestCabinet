@@ -99,11 +99,12 @@ describe("a gg turn outcome on the feed", () => {
 
   it("reports the replies loop detection threw away on the turn that survived them", () => {
     // Not a failure — the retry produced a usable reply — but money spent on nothing, and
-    // this is the only event that carries the count.
-    expect(turnOutcome({ loopAborts: 3 })).toBe(
-      "turn progressed · 3 looping replies discarded",
+    // this is the only event that carries it. The size rides beside the count because the
+    // count alone says how often the model looped and never how much that cost.
+    expect(turnOutcome({ loopAborts: 3, loopAbortWords: 9195 })).toBe(
+      "turn progressed · 3 looping replies discarded (9,195 words thrown away)",
     );
-    expect(turnOutcome({ loopAborts: 1 })).toContain(
+    expect(turnOutcome({ loopAborts: 1, loopAbortWords: 3065 })).toContain(
       "1 looping reply discarded",
     );
   });
@@ -119,5 +120,45 @@ describe("a gg turn outcome on the feed", () => {
     // it must not read as one of its errors.
     expect(turnOutcome({ outcome: "fatal" })).toBe("turn ended fatally");
     expect(turnOutcome({ outcome: "finished" })).toBe("turn finished the run");
+  });
+});
+
+// The one signal on the code-execution line that is about the MODEL rather than about
+// the program: whether it called functions whose documentation it had never opened.
+// Under responses-as-code a signature is only knowable from a documentation view opened
+// on an earlier turn, so a non-zero count here is evidence the model writes calls from
+// memory.
+describe("the gg code-execution line", () => {
+  function codeExecution(
+    extra: Partial<Extract<GgTelemetryKind, { type: "code_execution" }>> = {},
+  ): string {
+    return eventDetail(
+      ggEvent({
+        type: "code_execution",
+        ok: true,
+        toolCalls: 0,
+        ...extra,
+      }),
+    );
+  }
+
+  it("names the calls the model wrote without reading their documentation", () => {
+    expect(
+      codeExecution({
+        undocumentedCalls: {
+          calls: 3,
+          operations: { "files.write_file": 2, "shell.shell": 1 },
+        },
+      }),
+    ).toBe("program ran · 3 undocumented calls: files.write_file, shell.shell");
+  });
+
+  it("says nothing on a turn that looked everything up first", () => {
+    // The field is omitted from the wire when the turn recorded none, which is every turn
+    // of a model that follows the discipline and every turn of a tool-calling run.
+    expect(codeExecution()).toBe("program ran");
+    expect(
+      codeExecution({ undocumentedCalls: { calls: 0, operations: {} } }),
+    ).toBe("program ran");
   });
 });

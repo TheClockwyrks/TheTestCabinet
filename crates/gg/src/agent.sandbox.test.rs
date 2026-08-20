@@ -1252,7 +1252,7 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
             // documentation surface reads is the one the load writes to, so a module brought into
             // use mid-turn is searchable on that turn rather than on the next one.
             "import * as gg from \"gg\";\ngg.skills.readSkill(\"csv-tools\");\n\
-             gg.views.openText(\"found\", JSON.stringify(gg.docs.search(\"parse\")\n\
+             gg.views.openText(\"found\", JSON.stringify(gg.docs.search({ query: \"parse\" })\n\
              .hits.map((hit) => hit.key)));",
             // The next turn: the module is bound, and the on-use script's view has arrived.
             "import * as gg from \"gg\";\nimport * as csvTools from \"lib:csvTools\";\n\
@@ -1581,7 +1581,7 @@ async fn only_a_program_that_calls_finish_ends_the_session() {
                 finish_reason: FinishReason::Stop,
                 usage: TokenCounts::default(),
                 cost: None,
-                loop_aborts: 0,
+                loop_aborts: LoopAborts::none(),
             },
             // ...and only now does the run end, because the model wrote a program that says so.
             code_reply(FINISHING_PROGRAM),
@@ -1666,7 +1666,11 @@ async fn a_session_that_never_finishes_is_exhausted_not_completed() {
     )
     .await;
 
-    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_eq!(
+        outcome,
+        SessionOutcome::LimitExceeded,
+        "the turn ceiling is one of the five, so it exits on the ceiling's own code"
+    );
     assert_eq!(ended_with(&events), "exhausted");
     assert_eq!(client.turns_taken(), 2, "the turn ceiling stopped the loop");
     assert!(
@@ -1726,9 +1730,11 @@ async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
             ))
         });
 
+    // The subagent spent the turn ceiling, which is a fact about the run wherever in the tree it
+    // happened, so the process exits on the ceiling's own code.
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
+        SessionOutcome::LimitExceeded
     );
 
     let events = sink.events();
@@ -1788,7 +1794,11 @@ async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does
     )
     .await;
 
-    assert_eq!(outcome, SessionOutcome::Ran, "a stopped run still exits 0");
+    assert_eq!(
+        outcome,
+        SessionOutcome::LimitExceeded,
+        "a run stopped by a ceiling exits on the ceiling's own code"
+    );
     assert_eq!(ended_with(&events), "limit_exceeded");
     assert_eq!(
         client.turns_taken(),

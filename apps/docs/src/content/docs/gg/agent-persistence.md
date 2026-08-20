@@ -89,9 +89,9 @@ A code-mode profile gets one program per restored file view, spelled as the call
 that would have opened it:
 
 ```ts
-import * as gg from "gg";
+import { views } from "gg";
 
-gg.views.openFile("src/main.rs", { offset: 40, limit: 120 });
+views.openFile("src/main.rs", { offset: 40, limit: 120 });
 ```
 
 Either way the model can act on them directly, they land in the file band of the
@@ -164,7 +164,7 @@ The capability is per agent and takes no params:
     {
       "id": "shell",
       "enabled": true,
-      "implementation": "adaptive",
+      "implementation": "offload",
       "params": { "maxLines": 250, "maxChars": 4096 }
     }
   ]

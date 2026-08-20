@@ -14,6 +14,8 @@
 
 use std::time::Duration;
 
+use test_cabinet_core::gg::GgUndocumentedCalls;
+
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened};
 use super::language::{PrepareError, PrepareFailure};
 use crate::ending::Ending;
@@ -44,6 +46,14 @@ pub struct SandboxOutcome {
     /// and the calls the membrane refused. The model made those, so the API layer counts them; the
     /// tool layer does not, because nothing ran.
     pub api_calls: u64,
+    /// How many of those calls the model wrote **without having read the call's documentation**, by
+    /// operation — the [discovery](crate::discovery) finding, counted at the same bracket
+    /// [`api_calls`](Self::api_calls) is.
+    ///
+    /// A subset of that count and never an error: the program compiled, ran and did its work. Empty
+    /// for a turn whose model looked everything up first, which is what a well-behaved run's every
+    /// turn looks like.
+    pub undocumented: GgUndocumentedCalls,
     /// Calls the membrane refused before they reached the loop: a turn-level transition, or a tool
     /// this run does not offer. They produce no telemetry and no session-record entry, so they are counted
     /// apart from [`tool_calls`](Self::tool_calls) and only mentioned in the model's feedback.
@@ -193,6 +203,7 @@ impl SandboxOutcome {
             tool_calls: Vec::new(),
             tool_calls_suppressed: 0,
             api_calls: 0,
+            undocumented: GgUndocumentedCalls::default(),
             refusals: Vec::new(),
             refusals_suppressed: 0,
             logs: Vec::new(),

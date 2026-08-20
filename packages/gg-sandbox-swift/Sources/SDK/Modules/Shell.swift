@@ -18,9 +18,9 @@ public enum shell {
     ///
     /// This run may offload shell output — the `shell` tool's own description says which mode is in
     /// force. Under `offload`, `output` holds only the tail that fits and ends with a note naming
-    /// the two files the command's full stdout and stderr were written to. Under `adaptive`, the
-    /// default, a command that succeeded returns no output at all, only that note, and one that
-    /// failed returns the tail. Grepping the named files is cheaper than re-running the command.
+    /// the two files the command's full stdout and stderr were written to. Those files are readable
+    /// by absolute path, so a `files.readTextFile` of one, or a grep, is cheaper than re-running the
+    /// command.
     ///
     /// - Parameters:
     ///   - command: The command line, run by `sh -c` with the workspace as its working directory.
@@ -53,8 +53,8 @@ public enum shell {
         /// Merged stdout then stderr, tail-truncated at 16 KiB.
         ///
         /// Under a run that offloads shell output the ceiling is the configured line or character
-        /// one, and a note naming the files holding the whole of it follows. Under the default
-        /// `adaptive` mode a command that succeeded returns just that note.
+        /// one instead, and an output that was cut ends with a note naming the two files that hold
+        /// the whole of it.
         public let output: String
         /// Whether the cap cut `output`, dropping the head and keeping the tail.
         public let truncated: Bool

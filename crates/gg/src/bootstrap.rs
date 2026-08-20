@@ -27,19 +27,19 @@
 //! follow, and both are the point: the first program in the window provably compiles and runs in
 //! that arm's language, and gg cannot tell a model it opened something it did not.
 //!
-//! # What it carries: every module, and the two calls discovery is made of
+//! # What it carries: the two modules a build starts in, and the two calls discovery is made of
 //!
-//! One whole-module listing per module this agent was granted — the same set
-//! [`module_paths`](crate::agent::module_paths) publishes into the prompt, searched by the path the
-//! prompt shows — and a documentation view of each [bootstrap call](BOOTSTRAP_CALLS).
+//! One whole-module listing covering the [opening modules](BOOTSTRAP_MODULES) this agent was
+//! granted — searched together, by the paths [`module_paths`](crate::agent::module_paths) publishes
+//! into the prompt — and a documentation view of each [bootstrap call](BOOTSTRAP_CALLS).
 //!
-//! Seeding a call per capability was once proposed, rejected, and has now been decided the other
-//! way. An agent sees **every function it may call, with a one-line brief each**, before its first
-//! real turn. That is what makes one language-agnostic prompt possible at all — the prompt can name
-//! no call, so the opening turn has to be where the surface arrives — and a model that has already
-//! seen one valid program in its own language is likelier to write the next one. The round trip a
-//! model still makes is the one that matters: from a brief to the whole signature, by opening a
-//! documentation view of it.
+//! The window opens on what an agent that builds anything reaches for first, and on the means to
+//! find the rest. The prompt names every module the agent holds, one line each, and a module path is
+//! an exact lookup into the surface, so a module the agent turns out to need costs it one search
+//! while a module it never touches costs it nothing on every request of the run. A model that has
+//! already seen one valid program in its own language is likelier to write the next one, and the
+//! round trip it still makes is the one that matters: from a brief to the whole signature, by
+//! opening a documentation view of it.
 //!
 //! # Where it sits, and why it survives
 //!
@@ -113,6 +113,7 @@ use crate::board::IssueStatus;
 use crate::context::{
     ContextModel, DocviewOpen, OpenViewInfo, SEARCH_RESULTS_VIEW, TurnRange, ViewKind,
 };
+use crate::discovery::CallDiscovery;
 use crate::docs::{DocQuery, DocViewTypes, DocsRuntime};
 use crate::ending::EndingRole;
 use crate::memories::MemoryCode;
@@ -121,7 +122,7 @@ use crate::sandbox::{
     ApiIdentity, DOCS_SEARCH, DocSearchQuery, DocSearchResult, OperationApi, OperationId,
     PreparedProgram, ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome,
     SandboxViewOpened, VIEWS_OPEN_DOCS_VIEW, ViewOpenOutcome, ViewRefusal, catalogue_functions,
-    operation_of,
+    catalogue_modules, operation_of,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{ToolFailure, ToolOutcome};
@@ -135,10 +136,22 @@ use crate::tools::{ToolFailure, ToolOutcome};
 /// unrelated calls, and the model's own example of a well-formed turn is the one it will spend the
 /// session repeating.
 ///
-/// The **searches** the bootstrap program makes are not on this list and do not need to be: they are
-/// one per granted module, resolved from the module list the prompt publishes rather than from an
-/// operation table. This is only what the program opens a *documentation view* of.
+/// The **search** the bootstrap program makes is not on this list and does not need to be: it is
+/// resolved from [`BOOTSTRAP_MODULES`] rather than from an operation table. This is only what the
+/// program opens a *documentation view* of.
 pub(crate) const BOOTSTRAP_CALLS: &[OperationId] = &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW];
+
+/// **The modules the opening program lists**, by gg's cross-arm id for them.
+///
+/// The window opens on the two an agent that builds anything reaches for first, and on nothing
+/// else. Every module the agent holds is named in the [prompt](crate::prompts), one line each, and a
+/// module path is an exact lookup into the surface — so a module the agent turns out to need costs
+/// it one search, while a module it never touches costs it nothing. Listing all of them up front
+/// spends a directory apiece on the ones a run never reaches for, on every request of that run.
+///
+/// An agent holding neither lists nothing and opens on the two discovery calls alone, which is the
+/// same bargain read at its lower bound rather than a special case.
+pub(crate) const BOOTSTRAP_MODULES: &[&str] = &["files", "shell"];
 
 /// Everything about **this agent** the bootstrap program has to run as: what it was granted, what
 /// its programs run under, and what an `openDocsView` of a function opens beside it.
@@ -167,8 +180,9 @@ pub(crate) struct BootstrapAgent<'a> {
 /// Seed `context` with the bootstrap turn: the program gg wrote on this agent's behalf, run, and
 /// the views its own calls placed.
 ///
-/// Returns **how many views the program placed** — one search view per granted module plus one
-/// documentation view per [bootstrap call](BOOTSTRAP_CALLS) and its types — for the run's log. `0`
+/// Returns **how many views the program placed** — the one search view covering this agent's
+/// [opening modules](BOOTSTRAP_MODULES), where it holds any, plus one documentation view per
+/// [bootstrap call](BOOTSTRAP_CALLS) and its types — for the run's log. `0`
 /// is not one of the answers: a run that placed nothing is an [`Err`], because a model whose opening
 /// turn shows a program beside an empty window has been taught that opening a view sometimes
 /// silently does nothing, which is the one lesson this turn must not carry.
@@ -193,14 +207,26 @@ pub(crate) async fn seed_bootstrap(
         return Ok(0);
     }
     let language = docs.language();
-    // The modules the prompt published, in the prompt's order, named by the path the prompt shows —
-    // one shared computation rather than a second answer to "what was this agent granted".
-    let modules = crate::agent::module_paths(
+    // The modules the opening listing covers, named by the path the prompt shows.
+    //
+    // The set of granted paths is `crate::agent::module_paths` — the very list the prompt publishes,
+    // rather than a second answer to "what was this agent granted" — and `BOOTSTRAP_MODULES` names
+    // the two to keep by gg's cross-arm id. The paths carry no id, so the catalogue is what joins
+    // the two vocabularies, which is where every other cross-arm join in gg is made.
+    let opening: Vec<&'static str> = catalogue_modules(language)
+        .into_iter()
+        .filter(|module| BOOTSTRAP_MODULES.contains(&module.id))
+        .map(|module| module.path)
+        .collect();
+    let modules: Vec<String> = crate::agent::module_paths(
         agent.capabilities,
         agent.operations,
         agent.role,
         language.id(),
-    );
+    )
+    .into_iter()
+    .filter(|path| opening.contains(&path.as_str()))
+    .collect();
     let keys = bootstrap_keys(docs);
     if keys.len() != BOOTSTRAP_CALLS.len() {
         return Err(format!(
@@ -538,13 +564,22 @@ impl OperationApi for BootstrapApi {
     /// The closing half of the same no-op. See [`begin_api_call`](Self::begin_api_call).
     fn end_api_call(&mut self, _call: ApiIdentity<'_>, _failure: Option<GgCallFailure>) {}
 
+    /// Nothing here can be a [discovery](crate::discovery) violation, on the same ground the bracket
+    /// above it records nothing: **gg wrote this program**. There is no model whose reading is in
+    /// question, and the whole purpose of the two calls it makes is to put the documentation of
+    /// discovery itself into a window that opens with none — which is necessarily done with nothing
+    /// open.
+    fn call_discovery(&mut self, _call: ApiIdentity<'_>) -> CallDiscovery {
+        CallDiscovery::NotApplicable
+    }
+
     /// Search the documentation surface and leave the page in the window as a search view **keyed by
-    /// the module it listed**.
+    /// the modules it listed**.
     ///
-    /// The selector is what makes the bootstrap's N listings survive each other. A model's own
-    /// search names a mutable intent and is keyed by [`SEARCH_RESULTS_VIEW`], so the next one
-    /// replaces it; the bootstrap's searches are N answers that must all stand, and each is keyed by
-    /// the module path it is a listing of — superseded only by a re-listing of that same module. See
+    /// The selector is what keeps the opening listing out of the way of the model's own searching. A
+    /// model's own search names a mutable intent and is keyed by [`SEARCH_RESULTS_VIEW`], so the
+    /// next one replaces it; the bootstrap's listing is the surface the session opens holding, and
+    /// keying it by the modules it lists means only a re-listing of exactly those supersedes it. See
     /// [`ContextModel::open_search_view`].
     ///
     /// The rendering is the loop's own, so what an agent reads in its opening window is byte for
@@ -552,19 +587,19 @@ impl OperationApi for BootstrapApi {
     fn search_docs(&mut self, query: DocSearchQuery) -> Result<DocSearchResult, ViewRefusal> {
         let page = self.docs.search(DocQuery {
             query: &query.query,
-            module: query.module.as_deref(),
+            modules: &query.modules,
             declared_type: query.declared_type.as_deref(),
             kind: query.kind.as_deref(),
             offset: query.offset,
             limit: query.limit,
         })?;
-        // The module gg's own program named. A bootstrap search always names one; the constant is
+        // The modules gg's own program named. A bootstrap search always names some; the constant is
         // what a search with no module filter means everywhere else in gg, so it is what an
         // unfiltered one would land under here too.
-        let selector = query
-            .module
-            .clone()
-            .unwrap_or_else(|| SEARCH_RESULTS_VIEW.to_string());
+        let selector = match query.modules.is_empty() {
+            true => SEARCH_RESULTS_VIEW.to_string(),
+            false => query.modules.join(", "),
+        };
         let opened = self.context.open_search_view(
             selector.clone(),
             crate::agent::code::render_search_results(&query, &page),

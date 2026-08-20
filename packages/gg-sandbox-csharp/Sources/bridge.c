@@ -1077,30 +1077,29 @@ static MonoBoolean gg_request_changes(MonoArray *items) {
 /// two more `out` parameters. That is the same subtraction [`board_array`] makes and for the same
 /// reason: twelve arguments is as wide a frame as the interpreter builds for an internal call, and
 /// this one already spends six on the query and its filters.
-static MonoBoolean gg_search_docs(MonoString *query, MonoString *module, MonoString *type,
+static MonoBoolean gg_search_docs(MonoString *query, MonoArray *modules, MonoString *type,
                                   MonoString *kind, int32_t offset, int32_t limit, MonoArray **page,
-                                  MonoArray **keys, MonoArray **kinds, MonoArray **modules,
+                                  MonoArray **keys, MonoArray **kinds, MonoArray **hit_modules,
                                   MonoArray **names, MonoArray **summaries) {
   char *query_utf8 = lift(query);
-  char *module_utf8 = lift(module);
   char *type_utf8 = lift(type);
   char *kind_utf8 = lift(kind);
   sandbox_string_t owned_query = borrow(query_utf8);
-  sandbox_string_t owned_module = borrow(module_utf8);
   sandbox_string_t owned_type = borrow(type_utf8);
   sandbox_string_t owned_kind = borrow(kind_utf8);
+  borrowed_list_t borrowed = borrow_list(modules);
   uint32_t offset_storage = 0;
   uint32_t limit_storage = 0;
   test_cabinet_gg_docs_doc_search_t result;
   test_cabinet_gg_docs_api_error_t failure;
   const bool ok = test_cabinet_gg_docs_search(
-      &owned_query, module_utf8 == NULL ? NULL : &owned_module,
+      query_utf8 == NULL ? NULL : &owned_query, &borrowed.list,
       type_utf8 == NULL ? NULL : &owned_type, kind_utf8 == NULL ? NULL : &owned_kind,
       maybe_u32(offset, &offset_storage), maybe_u32(limit, &limit_storage), &result, &failure);
   if (query_utf8 != NULL) mono_free(query_utf8);
-  if (module_utf8 != NULL) mono_free(module_utf8);
   if (type_utf8 != NULL) mono_free(type_utf8);
   if (kind_utf8 != NULL) mono_free(kind_utf8);
+  release_list(&borrowed);
   if (!ok) {
     park(&failure);
     return 0;
@@ -1110,13 +1109,13 @@ static MonoBoolean gg_search_docs(MonoString *query, MonoString *module, MonoStr
   uint_array_set(*page, 1, result.offset);
   *keys = string_array(result.hits.len);
   *kinds = string_array(result.hits.len);
-  *modules = string_array(result.hits.len);
+  *hit_modules = string_array(result.hits.len);
   *names = string_array(result.hits.len);
   *summaries = string_array(result.hits.len);
   for (size_t index = 0; index < result.hits.len; index++) {
     mono_array_setref(*keys, index, lower(&result.hits.ptr[index].key));
     mono_array_setref(*kinds, index, lower(&result.hits.ptr[index].kind));
-    mono_array_setref(*modules, index, lower(&result.hits.ptr[index].module));
+    mono_array_setref(*hit_modules, index, lower(&result.hits.ptr[index].module));
     mono_array_setref(*names, index, lower(&result.hits.ptr[index].name));
     mono_array_setref(*summaries, index, lower(&result.hits.ptr[index].summary));
   }

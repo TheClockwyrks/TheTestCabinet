@@ -134,6 +134,30 @@ pub enum Error {
         detail: String,
     },
 
+    /// The harness stopped the run on one of its own configured execution
+    /// ceilings and exited on the code that says so.
+    ///
+    /// Distinct from [`HarnessInvocation`](Self::HarnessInvocation), which is any
+    /// other non-zero exit. A ceiling is a safeguard the run's own configuration
+    /// armed — a turn count, a wall-clock budget, a spend, a tolerance for failing
+    /// turns — so a run that breached one did not malfunction, it ran into a bound
+    /// somebody chose. That makes it a [`RunState::LimitExceeded`](crate::run_record::RunState::LimitExceeded)
+    /// rather than a [`RunState::HarnessError`](crate::run_record::RunState::HarnessError),
+    /// and it is the reason the two are held apart at all: a harness error is retried,
+    /// and retrying this one spends another attempt on the same configuration to reach
+    /// the same ceiling.
+    ///
+    /// Only [gg](crate::gg) reports it, because gg is the only harness whose ceilings
+    /// the Test Cabinet configures. The detail carries the terminal status the session
+    /// ended under, which is where the breached ceiling and its figures are recorded.
+    #[error("agent harness `{slug}` stopped the run on a configured execution ceiling: {detail}")]
+    HarnessLimitExceeded {
+        /// The harness slug whose ceiling stopped the run.
+        slug: String,
+        /// Detail describing the stop (the session's terminal status).
+        detail: String,
+    },
+
     /// The harness stopped producing any output for long enough to be considered
     /// hung, and was killed.
     ///

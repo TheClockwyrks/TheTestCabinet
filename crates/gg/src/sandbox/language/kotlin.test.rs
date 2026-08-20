@@ -195,19 +195,17 @@ fn the_generated_documentation_program_is_a_whole_kotlin_program() {
 /// its window is a program that ran — which is why it has to be a program by this arm's own rules
 /// rather than a statement list. What is asserted here is that gg wrote Kotlin — a `fun main()`,
 /// `listOf`, `for … in`, no terminators, every gg name written in full — that the filters are
-/// **default arguments passed by name**, and that the search is the whole-module lookup rather than
-/// the default page of one.
+/// **default arguments passed by name**, and that the listing is **one** search over every module at
+/// once, taking the whole of them rather than the default page.
 #[test]
 fn the_opening_program_is_a_whole_kotlin_program() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        kotlin().bootstrap_program(&["files", "views"], &["readFile"]),
+        kotlin().bootstrap_program(&["gg.files", "gg.shell"], &["readFile"]),
         format!(
             "fun main() {{\n    \
-                 val modules = listOf(\n        \"files\",\n        \"views\"\n    )\n    \
-                 for (path in modules) {{\n        \
-                     gg.docs.search(\"\", module = path, limit = {limit})\n    \
-                 }}\n\
+                 gg.docs.search(modules = listOf(\"gg.files\", \"gg.shell\"), limit = \
+                 {limit})\n\
                  \n    \
                  val functions = listOf(\n        \"readFile\"\n    )\n    \
                  for (name in functions) {{\n        \
@@ -215,6 +213,19 @@ fn the_opening_program_is_a_whole_kotlin_program() {
                  }}\n\
              }}\n"
         )
+    );
+
+    // An agent holding neither module is listed nothing, and a search carrying neither a query nor a
+    // filter is refused as `INVALID_ARGUMENT` — so the call goes rather than being written over an
+    // empty list. What is left is the program the documentation keys alone make.
+    assert_eq!(
+        kotlin().bootstrap_program(&[], &["readFile"]),
+        "fun main() {\n    \
+             val functions = listOf(\n        \"readFile\"\n    )\n    \
+             for (name in functions) {\n        \
+                 gg.views.openDocsView(name)\n    \
+             }\n\
+         }\n"
     );
 }
 

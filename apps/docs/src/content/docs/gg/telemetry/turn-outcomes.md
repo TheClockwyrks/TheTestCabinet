@@ -23,6 +23,7 @@ A run emits exactly one per model call it made.
 | `consecutiveErrors` | This agent's failing streak after this turn. |
 | `turns` | How many turns this agent has recorded, including this one. It is this agent's own running total rather than the run's, and the same figure its turn ceiling is measured against. |
 | `loopAborts` | How many replies [loop detection](/gg/loop-detection/) discarded before this turn produced one. Omitted when zero. |
+| `loopAbortWords`, `loopAbortChars` | How much generated output those discarded replies produced, measured by the detector as they streamed. Present on exactly the turns `loopAborts` is. There is no token count and no price, since an abandoned stream reports no usage, and this output is deliberately absent from the turn's cost. |
 
 `consecutiveErrors` is `0` on every non-error turn, including a `finished` or
 `fatal` one that followed failures. gg's internal counter is cleared only by a
@@ -111,7 +112,8 @@ denominator can never come from different mechanisms.
 "errors": { "turns": 96, "errors": 4, "maxConsecutive": 2,
             "modelApi": 1, "transpile": 2, "programFault": 1,
             "sandboxLimit": 0, "missingCompletion": 0,
-            "loopAborts": 7,
+            "loopAborts": 7, "loopAbortWords": 21455,
+            "loopAbortChars": 136150,
             "byType": { "model_response_loop": 1, "transpile_syntax": 2,
                         "program_api_error": 1 },
             "toolFailures": { "not-found": 12, "invalid-argument": 3 } }

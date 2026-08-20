@@ -1,7 +1,7 @@
 use super::*;
 
 use tempfile::TempDir;
-use test_cabinet_core::gg::{GgCapabilitySet, GgSessionSummary};
+use test_cabinet_core::gg::{GgCapabilitySet, GgSessionSummary, GgUndocumentedCalls};
 use test_cabinet_core::gg_query::{
     GgAgg, GgAggFunc, GgGroupKey, GgQuery, GgStatsStage, GgValue, evaluate,
 };
@@ -37,6 +37,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
             gg_capability_set: Some(GgCapabilitySet::minimal(model)),
             gg_summary: Some(GgSessionSummary {
                 terminal_status: "completed".to_string(),
+                undocumented_calls: GgUndocumentedCalls::default(),
                 agents_spawned: 1,
                 subagent_count: 0,
                 max_subagent_depth: 0,

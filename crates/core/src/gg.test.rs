@@ -1447,6 +1447,7 @@ fn empty_telemetry_variants_serialize_as_just_a_type() {
 #[test]
 fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
     let kind = GgTelemetryKind::CodeExecution {
+        undocumented_calls: GgUndocumentedCalls::default(),
         ok: true,
         tool_calls: 3,
         api_calls: 3,
@@ -1479,6 +1480,7 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
 #[test]
 fn a_code_execution_carries_the_completion_and_the_healing_record() {
     let finished = GgTelemetryKind::CodeExecution {
+        undocumented_calls: GgUndocumentedCalls::default(),
         ok: true,
         tool_calls: 1,
         api_calls: 1,
@@ -1518,6 +1520,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
     // A reply that did not compile: `durationMs` is `0` because it reached the transpile and no
     // further, and the error is the compiler's own.
     let uncompiled = GgTelemetryKind::CodeExecution {
+        undocumented_calls: GgUndocumentedCalls::default(),
         ok: false,
         tool_calls: 0,
         api_calls: 0,
@@ -1640,6 +1643,8 @@ fn a_turn_outcome_event_reports_a_clean_turn_without_an_error_kind() {
         consecutive_errors: 0,
         turns: 7,
         loop_aborts: 0,
+        loop_abort_words: 0,
+        loop_abort_chars: 0,
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -1668,6 +1673,8 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
         consecutive_errors: 3,
         turns: 21,
         loop_aborts: 0,
+        loop_abort_words: 0,
+        loop_abort_chars: 0,
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -1695,6 +1702,8 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
         consecutive_errors: 0,
         turns: 22,
         loop_aborts: 0,
+        loop_abort_words: 0,
+        loop_abort_chars: 0,
     };
     assert_eq!(
         serde_json::to_value(&fatal).expect("serialize")["outcome"],
@@ -1702,11 +1711,12 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
     );
 }
 
-/// The one place a discarded looping attempt is published. It is not an error turn — the retry
-/// produced the reply this event judges — so it rides on the turn that eventually succeeded, and is
-/// absent from every turn (and every run) that discarded nothing, which is the default.
+/// The one place a discarded looping attempt is published, with **how much** it threw away beside
+/// how often. It is not an error turn — the retry produced the reply this event judges — so it
+/// rides on the turn that eventually succeeded, and all three figures are absent from every turn
+/// (and every run) that discarded nothing, which is the default.
 #[test]
-fn a_turn_outcome_event_counts_the_looping_replies_it_discarded() {
+fn a_turn_outcome_event_counts_the_looping_replies_it_discarded_and_what_they_generated() {
     let kind = GgTelemetryKind::TurnOutcome {
         outcome: GgTurnOutcome::Progressed,
         error: None,
@@ -1714,6 +1724,8 @@ fn a_turn_outcome_event_counts_the_looping_replies_it_discarded() {
         consecutive_errors: 0,
         turns: 4,
         loop_aborts: 2,
+        loop_abort_words: 9_100,
+        loop_abort_chars: 58_400,
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -1724,6 +1736,8 @@ fn a_turn_outcome_event_counts_the_looping_replies_it_discarded() {
             "consecutiveErrors": 0,
             "turns": 4,
             "loopAborts": 2,
+            "loopAbortWords": 9_100,
+            "loopAbortChars": 58_400,
         })
     );
     assert_eq!(
@@ -1814,6 +1828,7 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
         "compileMs": 0,
         "healing": no_healing(),
         "errors": no_errors(),
+        "undocumentedCalls": { "calls": 0 },
         "issuesCreated": 0,
         "issuesCompleted": 0,
         "slotCosts": [],
@@ -1883,6 +1898,8 @@ fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
         sandbox_limit: 1,
         missing_completion: 0,
         loop_aborts: 6,
+        loop_abort_words: 41_200,
+        loop_abort_chars: 268_000,
         by_type: BTreeMap::from([
             ("model_auth".to_string(), 1),
             ("model_retry_exhausted".to_string(), 1),
@@ -1909,6 +1926,11 @@ fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
         "the rate is `errors / turns`, computed by the reader, never stored: {value}"
     );
     assert_eq!(value["loopAborts"], json!(6));
+    // How often the model looped and how much generation it cost to find out are published
+    // together. Both sizes are gg's own measurements; neither is a token count or a price, and
+    // neither is folded into the run's cost.
+    assert_eq!(value["loopAbortWords"], json!(41_200));
+    assert_eq!(value["loopAbortChars"], json!(268_000));
     assert_eq!(
         errors.by_type.values().sum::<u64>(),
         errors.errors,
@@ -1945,6 +1967,8 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
         sandbox_limit: 3,
         missing_completion: 2,
         loop_aborts: 0,
+        loop_abort_words: 0,
+        loop_abort_chars: 0,
         by_type,
         tool_failures: BTreeMap::new(),
     };
@@ -1999,6 +2023,8 @@ fn the_open_breakdowns_are_omitted_when_empty_and_tolerate_an_unknown_key() {
         "sandboxLimit": 0,
         "missingCompletion": 1,
         "loopAborts": 0,
+        "loopAbortWords": 0,
+        "loopAbortChars": 0,
         "byType": { "missing_completion_something_new": 1 },
         "toolFailures": { "brand-new-class": 2 },
     });
@@ -2200,6 +2226,7 @@ fn the_disabled_healing_arm_serializes_as_a_present_empty_armed_set() {
         "compileMs": 0,
         "healing": no_healing(),
         "errors": no_errors(),
+        "undocumentedCalls": { "calls": 0 },
         "issuesCreated": 0,
         "issuesCompleted": 0,
         "slotCosts": [],
@@ -2670,7 +2697,7 @@ fn authored_keys(id: &str) -> std::collections::BTreeSet<&'static str> {
 /// Every param key the [authoring catalog](gg_authoring_catalog) can write, so
 /// [`authored_keys`](authored_keys) reports a key by the constant that names it rather than by a
 /// string spelled a second time.
-const GG_AUTHORED_PARAM_KEYS: [&str; 24] = [
+const GG_AUTHORED_PARAM_KEYS: [&str; 25] = [
     PARAM_MAX_LINES,
     PARAM_MAX_CHARS,
     PARAM_LINE_CAP,
@@ -2689,6 +2716,7 @@ const GG_AUTHORED_PARAM_KEYS: [&str; 24] = [
     PARAM_MODE,
     PARAM_SUMMARY_HEADROOM,
     PARAM_TOP_FILE_VIEWS,
+    PARAM_SIGNAL_THRESHOLD_PERCENT,
     MODULE_PARAM_OWNERSHIP,
     PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
     PARAM_MAX_EPICS,
@@ -2772,8 +2800,8 @@ fn the_authoring_catalog_names_an_arm_only_where_a_capability_offers_arms() {
             .expect("in the catalog")
             .implementation
     };
-    assert_eq!(arm(CAPABILITY_SHELL), Some(SHELL_OUTPUT_ADAPTIVE));
-    assert!(SHELL_OUTPUT_MODES.contains(&SHELL_OUTPUT_ADAPTIVE));
+    assert_eq!(arm(CAPABILITY_SHELL), Some(SHELL_OUTPUT_OFFLOAD));
+    assert!(SHELL_OUTPUT_MODES.contains(&SHELL_OUTPUT_OFFLOAD));
     assert_eq!(arm(CAPABILITY_READ_FILE), Some(READ_MODE_UNLIMITED));
     assert!(READ_MODES.contains(&READ_MODE_UNLIMITED));
     assert_eq!(arm(CAPABILITY_MEMORIES), Some(MEMORY_STRATEGY_SCRATCHPAD));

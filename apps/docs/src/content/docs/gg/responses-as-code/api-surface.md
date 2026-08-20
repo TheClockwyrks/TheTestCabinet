@@ -43,8 +43,11 @@ The module ids, in the order the prompt and the agent surface present them:
 function; it holds `ApiError` and the types other signatures name.
 
 The model-facing spelling of a call is its fully-qualified name,
-`gg.<module>.<name>`. That is the key documentation is filed under, the key a
-search hit carries, and a path a program writes. TypeScript spellings:
+`gg.<module>.<name>`. That is the key documentation is filed under and the key a
+search hit carries. How an arm writes that name at a call site is the arm's own
+answer, given by the module's import line: an arm whose SDK is reached module by
+module writes the name with the module's binding at its head. The table below
+gives the fully-qualified names, which are what everything gg prints uses:
 
 | Function | Returns |
 | --- | --- |

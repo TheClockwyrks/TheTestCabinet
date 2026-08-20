@@ -173,12 +173,13 @@ retry loop.
    looping reply is never streamed as an assistant message, never enters the
    context window, and never appears in the
    [session record](/gg/analysis/session-records/), which journals the response
-   a turn was given. Only its count survives.
+   a turn was given. What survives it is a count and a size.
 4. The turn logs one `warn` naming what was thrown away:
 
 ```text
-loop detection discarded 2 looping model responses on turn 14 before one completed;
-gg paid for every one of them and none of them entered the context.
+loop detection discarded 2 looping model responses on turn 14 before one completed,
+throwing away 6130 words of generated output (38900 characters); it was all paid for
+and none of it entered the context.
 ```
 
 If every attempt loops, the turn fails under its own name rather than as a
@@ -188,14 +189,15 @@ looking at the provider for an outage that never happened:
 ```text
 model turn 14 failed — model looped every attempt: model looped: 2 words repeated
 across 3000 consecutive words, 3065 words into the reply (3065 words, 12261
-characters read before it was abandoned); discarded 4 response(s)
+characters read before it was abandoned); discarded 4 response(s) totalling 49044
+characters of generated output
 ```
 
 That ends the session with the terminal status `model_error`, on the terms
 [a failed model call always has](/gg/execution-limits/#model-api-errors). The
 turn is recorded with the base error kind `model_api` and the error type
-`model_response_loop`. What is worth acting on beyond that is the count of
-discarded replies.
+`model_response_loop`. What is worth acting on beyond that is how many replies
+were discarded and how much they generated.
 
 The [session record](/gg/analysis/session-records/) keeps the failure as a
 recorded model error of kind `response_loop` carrying how many replies were
@@ -312,13 +314,15 @@ Per turn, on the [`turn_outcome`](/gg/telemetry/turn-outcomes/) event:
 ```jsonc
 { "type": "turn_outcome", "outcome": "progressed",
   "consecutiveErrors": 0, "turns": 14,
-  "loopAborts": 2 }                    // omitted when zero
+  "loopAborts": 2,                     // omitted when zero
+  "loopAbortWords": 6130,
+  "loopAbortChars": 38900 }
 ```
 
 This is the one place discarded attempts are published. A discarded attempt is
-never a turn of its own, so it has no event of its own; carrying the count on
-the turn that eventually succeeded keeps it on the stream without inventing an
-event for a reply that does not exist.
+never a turn of its own, so it has no event of its own; carrying the three
+figures on the turn that eventually succeeded keeps them on the stream without
+inventing an event for a reply that does not exist.
 
 Per run, on the session summary's
 [error rollup](/gg/telemetry/turn-outcomes/#the-run-rollup):
@@ -327,24 +331,45 @@ Per run, on the session summary's
 "errors": { "turns": 96, "errors": 4, "maxConsecutive": 2,
             "modelApi": 1, "transpile": 2, "programFault": 1,
             "sandboxLimit": 0, "missingCompletion": 0,
-            "loopAborts": 7 }
+            "loopAborts": 7, "loopAbortWords": 21455,
+            "loopAbortChars": 136150 }
 ```
 
-`loopAborts` is a plain sum over every turn's count, and it is not an error
-count: a discarded attempt whose retry succeeded cost money and wall clock
-without failing a turn. That cost is what this guardrail exists to bound, and
-the figure is what says whether arming it was worth it. It is `0` for every run
-whose agents all left the detector disarmed.
+Each is a plain sum over every turn's figure, and none of them is an error
+count: a discarded attempt whose retry succeeded cost generation and wall clock
+without failing a turn. `loopAborts` says how often the model looped, and the
+two sizes say how much generation it cost to find out. All three are `0` for
+every run whose agents left the detector disarmed.
 
-Both are queryable through the [query language](/gg/analysis/query-language/),
+All are queryable through the [query language](/gg/analysis/query-language/),
 since the whole summary is flattened:
 
 ```text
-has.summary:true | stats sum(summary.errors.loopAborts) as aborts by model
+has.summary:true | stats sum(summary.errors.loopAbortChars) as thrown by model
 ```
 
-That answers "which models are looping, and how much am I paying for it?" across
-every recorded run.
+That answers "which models are looping, and how much generation am I paying for
+across every recorded run?"
+
+## What the discarded output costs
+
+A reply that was generated is billed whether or not anybody reads it, so the
+tokens behind those characters are on the provider's invoice. They are absent
+from the run's recorded cost and token counts, by ruling: a looping reply is a
+model defect, and a run must not be made to look expensive for one.
+
+gg publishes the size in words and characters, and publishes no token count and
+no price for it. Cost and tokens come from the provider's usage payload, which
+arrives at the end of a stream that was deliberately never read to its end, so
+there is no measurement to report and an estimate would sit where every
+neighbouring figure is measured. Words and characters are what the detector
+counted itself as the reply streamed.
+
+The run's [cost ceiling](/gg/execution-limits/) is measured against the recorded
+cost and therefore never sees this output either. A run whose every turn loops
+once and then succeeds spends roughly double at the provider while staying well
+inside a ceiling, which is why `loopAbortChars` is the figure that says it is
+happening.
 
 ## Boundaries
 
@@ -360,7 +385,8 @@ every recorded run.
 - It judges only a reply in flight. Reading a finished response would recover
   only the fourth of the four costs above.
 - It bounds a reply rather than a run. A run in which every turn loops once and
-  then succeeds on the retry costs roughly double and finishes normally, and no
-  [error ceiling](/gg/execution-limits/) sees it, because none of those turns
-  failed. Only `maxCost` and `maxRuntimeSecs` bound that shape, and
-  `summary.errors.loopAborts` is what says it is happening.
+  then succeeds on the retry costs roughly double at the provider and finishes
+  normally, and no [error ceiling](/gg/execution-limits/) sees it, because none
+  of those turns failed. Only `maxRuntimeSecs` bounds that shape, and
+  `summary.errors.loopAborts` with the two sizes beside it is what says it is
+  happening.

@@ -27,10 +27,11 @@ public static partial class Docs
     /// paragraph.
     /// </para>
     /// <para>
-    /// The filters compose with the query and with each other, and <paramref name="module"/> is a
-    /// lookup rather than a search — an empty query with a module named is that module's whole
-    /// directory. An empty query with no filter at all is refused, because a search that asked for
-    /// nothing and a search that found nothing are different answers.
+    /// The filters compose with the query and with each other, and <paramref name="modules"/> is a
+    /// lookup rather than a search — naming several returns the entries of any one of them, and a
+    /// <paramref name="modules"/> filter with no query is those modules' whole directory. A call
+    /// with no query and no filter at all is refused, because a search that asked for nothing and a
+    /// search that found nothing are different answers.
     /// </para>
     /// <para>
     /// The page comes back as a value <em>and</em> is opened as a view, so the next turn can read it
@@ -46,13 +47,15 @@ public static partial class Docs
     /// </code>
     /// </remarks>
     /// <param name="query">
-    /// The words to look for. Empty is allowed only alongside a filter, and is how a module's whole
-    /// directory is listed.
+    /// The words to look for. Left out, the filters beside it are the whole of the search, which is
+    /// how a module's whole directory is listed.
     /// </param>
-    /// <param name="module">
-    /// One module, by gg's own id (<c>"views"</c>) or by the path this arm writes it as
-    /// (<c>"Gg.Views"</c>). Exact and case-insensitive: a module filter is a lookup, so a name no
-    /// module has matches nothing rather than failing.
+    /// <param name="modules">
+    /// The modules to look in, each by gg's own id (<c>"views"</c>) or by the path this arm writes
+    /// it as (<c>"Gg.Views"</c>). Several of them are a union — an entry in any one of them is a
+    /// hit, which is the only reading a list has when an entry belongs to one module. Exact and
+    /// case-insensitive: a module filter is a lookup, so a name no module has matches nothing
+    /// rather than failing. Left out, or empty, no module filter at all.
     /// </param>
     /// <param name="type">
     /// One type's name, which narrows to that type and to the functions taking or returning it.
@@ -67,13 +70,13 @@ public static partial class Docs
     /// </param>
     /// <returns>one page of matches, best first, and the total behind it.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty query with no filter beside it, and
-    /// for a <paramref name="limit"/> of zero, which is a page that could answer nothing.
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a call with no query and no filter beside it,
+    /// and for a <paramref name="limit"/> of zero, which is a page that could answer nothing.
     /// </exception>
     /// <ggop>docs.search</ggop>
     public static DocPage Search(
-        string query,
-        string? module = null,
+        string? query = null,
+        string[]? modules = null,
         string? type = null,
         DocKind? kind = null,
         uint? offset = null,
@@ -81,7 +84,7 @@ public static partial class Docs
     {
         Internal.Wire.Check(Internal.Native.SearchDocs(
             query,
-            module,
+            Internal.Wire.Or(modules),
             type,
             Internal.Wire.Word(kind),
             Internal.Wire.Slot(offset),
@@ -89,7 +92,7 @@ public static partial class Docs
             out var page,
             out var keys,
             out var kinds,
-            out var modules,
+            out var hitModules,
             out var names,
             out var summaries));
         var hits = new DocHit[keys.Length];
@@ -98,7 +101,7 @@ public static partial class Docs
             hits[index] = new DocHit(
                 keys[index],
                 Internal.Wire.Kind(kinds[index]),
-                modules[index],
+                hitModules[index],
                 names[index],
                 summaries[index]);
         }

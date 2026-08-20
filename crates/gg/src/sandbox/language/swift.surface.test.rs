@@ -398,7 +398,7 @@ switch read {
 case .text(let file): gg.log(file.contents.split(separator: "\n").first.map(String.init) ?? "")
 case .image(let picture): gg.log(picture.label)
 }
-let found = try docs.search("open", module: "views", kind: .function, limit: 5)
+let found = try docs.search(query: "open", modules: ["views"], kind: .function, limit: 5)
 gg.log("\(found.total) \(found.offset) \(found.hits.count)")
 do {
     gg.log("closed \(try docs.close("gg.views.openText"))")

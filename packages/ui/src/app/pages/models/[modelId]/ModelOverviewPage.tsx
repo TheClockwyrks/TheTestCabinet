@@ -590,6 +590,11 @@ function outcomeSegments(
       value: outcomes.harness_error,
       tone: "harnessError",
     },
+    {
+      label: "Execution ceilings",
+      value: outcomes.limit_exceeded,
+      tone: "limitExceeded",
+    },
     { label: "Hangs", value: outcomes.hung, tone: "hung" },
   ];
 }

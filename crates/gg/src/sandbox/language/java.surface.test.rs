@@ -622,18 +622,19 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
 
     // THE DOCUMENTATION MODULE, which is the family a session begins in: the prompt names no
     // function, so this is the only call a model can make before it has been told a name. It is
-    // driven from Java's own spellings — the bare overload, and the one that carries the filters as
-    // a chained `SearchFilters`, which is how this arm expresses an options object a language with
-    // keyword arguments would write inline.
+    // driven from Java's own spelling of a call whose every argument is optional — the chained
+    // `SearchFilters` this arm has in place of keyword arguments — once carrying words alone, and
+    // once carrying a union of two modules with no words at all.
     //
     // The double models no catalogue, so an empty page is the honest answer and the ranking is
     // `DocsRuntime`'s to be right about. What is observed here is this arm's own half: that the
-    // filters reach the guest as one object rather than as five arguments, and that the envelope
-    // comes back as a `DocSearch` a program reads fields off.
+    // chained builder a program writes is unpacked into the six positional arguments the wire
+    // takes, that a `modules` filter crosses as a list, and that the envelope comes back as a
+    // `DocSearch` a program reads fields off.
     let (outcome, _log) = run_with(
-        "Docs.DocSearch all = Docs.search(\"view\");\n\
-         Docs.DocSearch narrowed = Docs.search(\"\",\n\
-         \x20       new Docs.SearchFilters().module(\"gg.views.Views\")\n\
+        "Docs.DocSearch all = Docs.search(new Docs.SearchFilters().query(\"view\"));\n\
+         Docs.DocSearch narrowed = Docs.search(\n\
+         \x20       new Docs.SearchFilters().modules(\"gg.views.Views\", \"gg.files.Files\")\n\
          \x20               .kind(Docs.DocKind.FUNCTION).limit(5));\n\
          Gg.log(all.total() + \" \" + all.offset() + \" \" + all.hits().size());\n\
          Gg.log(String.valueOf(narrowed.hits().isEmpty()));\n\
@@ -973,7 +974,7 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
         );
     }
     assert_eq!(
-        groups, 15,
+        groups, 14,
         "the entries this arm expresses as an overload group rather than as a default argument"
     );
 

@@ -325,8 +325,9 @@ impl ProgramLanguage for Swift {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [Two arrays and two `for` loops, every call written with `try`](self::bootstrap_program),
-    /// with both calls resolved from this language's own catalogue.
+    /// [One search, one array and one `for` loop, every call written with
+    /// `try`](self::bootstrap_program), with both calls resolved from this language's own
+    /// catalogue.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
@@ -484,50 +485,62 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
     )
 }
 
-/// The opening turn: one array of module paths listed in full, then one of the names opened as
-/// documentation views, each with a `for` over it and every call written with `try`.
+/// The opening turn: one search naming every module gg listed, then an array of the documentation
+/// keys with a `for` over it, and every call written with `try`.
 ///
-/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
-/// modules and a dozen calls written out is a shape a model would copy for its own work. `let`
-/// rather than `var`, and a type annotation on an empty array, for the reasons
+/// **One** search rather than one per module, because `modules` is a filter that takes a list and
+/// reads it as a union — naming all of them answers with all of their directories in one page. The
+/// array below it stays because the keys are opened a view at a time and no call takes them
+/// together; `let` rather than `var`, and a type annotation on an empty array, for the reasons
 /// [`open_docs_views_statement`] gives.
 ///
 /// The filters carry **argument labels** and take default values, which is this language's idiom for
-/// optional arguments. The search's page is bound to `_` rather than dropped, because a result this
-/// program does not read is a warning Swift is right to make and a discard the language spells out.
+/// optional arguments — so the lookup writes `modules:` and `limit:` and no query at all, rather
+/// than an empty string standing in for the argument it does not have. The page is bound to `_`
+/// rather than dropped, because a result this program does not read is a warning Swift is right to
+/// make and a discard the language spells out.
+///
+/// An agent granted neither of the modules gg lists here is handed none, and then there is no
+/// search to write: no query and no filter is the one call `docs.search` refuses, so the program
+/// opens straight into its documentation views instead of on a failure gg wrote for it.
 ///
 /// Every call is fallible, so every one is written with `try` and nothing catches: that is this
 /// arm's failure model, and a bootstrap that swallowed its own failure would be a worked example of
 /// doing so.
 ///
 /// It opens with [the one line](SURFACE_IMPORT) every Swift program that calls gg opens with, which
-/// is the first thing this example teaches and the reason it compiles.
+/// is the first thing this example teaches and the reason it compiles. There is no narrower line to
+/// write on this arm: the surface's modules are caseless `enum`s inside one Swift module, so
+/// reaching two of them and reaching all thirteen are the same import.
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
     modules: &[&str],
     docs: &[&str],
 ) -> String {
-    let listed = |binding: &str, names: &[&str]| -> String {
-        let entries: Vec<String> = names
-            .iter()
-            .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
-            .collect();
-        match entries.is_empty() {
-            true => format!("let {binding}: [String] = []\n"),
-            false => format!("let {binding} = [\n{},\n]\n", entries.join(",\n")),
-        }
+    let paths: Vec<String> = modules
+        .iter()
+        .map(|path| serde_json::Value::String((*path).to_string()).to_string())
+        .collect();
+    let lookup = match paths.is_empty() {
+        true => String::new(),
+        false => format!(
+            "_ = try {search}(modules: [{}], limit: {MAX_SEARCH_LIMIT})\n\n",
+            paths.join(", ")
+        ),
     };
-    let paths = listed("modules", modules);
-    let functions = listed("functions", docs);
+    let entries: Vec<String> = docs
+        .iter()
+        .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+        .collect();
+    let functions = match entries.is_empty() {
+        true => "let functions: [String] = []\n".to_string(),
+        false => format!("let functions = [\n{},\n]\n", entries.join(",\n")),
+    };
     format!(
         "{SURFACE_IMPORT}\n\
          \n\
-         {paths}for path in modules {{\n    \
-             _ = try {search}(\"\", module: path, limit: {MAX_SEARCH_LIMIT})\n\
-         }}\n\
-         \n\
-         {functions}for name in functions {{\n    try {open_docs_view}(name)\n}}\n"
+         {lookup}{functions}for name in functions {{\n    try {open_docs_view}(name)\n}}\n"
     )
 }
 

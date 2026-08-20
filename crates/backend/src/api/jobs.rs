@@ -1151,6 +1151,13 @@ async fn origin_is_paused(state: &AppState, job: &job::Model) -> Result<bool, Ap
 /// outcome is the model's, not a fault to retry (and a user cancel never reaches
 /// the terminal transition here). The chain is bounded by the request's
 /// `retryCount`, so a persistently failing run always terminates.
+///
+/// [`RunState::LimitExceeded`] is excluded, and it is the one exclusion that is a
+/// rule rather than a judgement about the model. The harness stopped that run on an
+/// execution ceiling the run's own configuration armed, so the outcome is a property
+/// of the configuration: a fresh attempt runs the same capability set into the same
+/// ceiling, spends the same money doing it, and reports the same state. Retrying it
+/// would buy nothing and cost a whole run.
 fn is_retryable(state: RunState) -> bool {
     matches!(
         state,

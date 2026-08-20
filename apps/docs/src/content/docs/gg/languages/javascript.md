@@ -20,15 +20,18 @@ engine anchors a syntax error at the start of the statement carrying it.
 
 ## The import a program writes
 
-`import * as gg from "gg";` reaches the whole surface, and every call is then
-written out in full: `gg.files.readFile(path)`. That is the name a documentation
-view is filed under, the name a search hit carries, and the name the system
-prompt quotes. Every module's catalogue entry states that line.
+A module is reached by a named import off the specifier the whole surface is
+published under: `import { files } from "gg";` binds that module alone, and every
+module's catalogue entry states its own such line. The call is then written
+`files.readFile(path)`, which is the name a documentation view is filed under,
+the name a search hit carries and the name the system prompt quotes, with its
+leading `gg.` dropped. The language segment of the system prompt states that one
+difference.
 
-Two other specifiers resolve, and a program may write either. `import { files }
-from "gg";` reaches one family; `import * as csvTools from "lib:csvTools";`
-reaches a [code module](/gg/modules/) the agent loaded. The full set is on
-[the ECMAScript guest](/gg/languages/ecmascript-guest/).
+Two other specifiers resolve, and a program may write either. `import * as gg
+from "gg";` binds every module under one namespace; `import * as csvTools from
+"lib:csvTools";` reaches a [code module](/gg/modules/) the agent loaded. The full
+set is on [the ECMAScript guest](/gg/languages/ecmascript-guest/).
 
 ## Code modules
 
@@ -135,8 +138,8 @@ it do not run.
   statements run in the order they were written;
 - the type names a signature carries are documentation.
 
-Each entry of the module list beside it carries `import * as gg from "gg";` as
-the line that brings that module into scope.
+Each entry of the module list beside it carries its own named import as the line
+that brings that module into scope.
 
 The arm names no [checker](/gg/languages/compilation/), so nothing in the
 prompt describes a compile step.

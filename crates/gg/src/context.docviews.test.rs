@@ -691,11 +691,12 @@ fn closing_every_docview_leaves_the_search_results() {
 
 /// **Two searches under two selectors are two views, each superseded only by its own.**
 ///
-/// This is the property the [bootstrap](crate::bootstrap) rests on. It lists every module the agent
-/// was granted, one search per module, and every one of those listings has to survive the next —
-/// they are the agent's whole surface, not successive attempts at one question. The selector is the
-/// only thing that decides it: the same call, passed the same constant twice, replaces itself (the
-/// case above), and passed two module paths keeps both.
+/// This is the property the [bootstrap](crate::bootstrap) rests on. Its opening listing is keyed by
+/// the modules it covers rather than by [`SEARCH_RESULTS_VIEW`], so it is the surface the session
+/// opens holding and the model's own searching — which names a mutable intent and replaces itself —
+/// cannot displace it. The selector is the only thing that decides which of those two a view is: the
+/// same call, passed the same constant twice, replaces itself (the case above), and passed two
+/// different selectors keeps both.
 #[test]
 fn searches_under_two_selectors_are_two_views_and_supersede_only_themselves() {
     let mut ctx = code_model();

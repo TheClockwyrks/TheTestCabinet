@@ -232,9 +232,10 @@ pub struct ModuleDoc {
     ///   `import Gg.Files as Gg.Files`. The C# arm emits `using Gg;` for all of its, because its
     ///   modules are types in one namespace and one `using` of that namespace reaches them all; the
     ///   Swift arm emits `import gg` for all of its, because its modules are caseless `enum`s in one
-    ///   Swift module; and the TypeScript arm emits `import * as gg from "gg";` for all of its,
-    ///   because that is the line that makes `gg.files.readFile` — the name this catalogue prints
-    ///   everywhere — an expression a program can write.
+    ///   Swift module; and the two ECMAScript arms emit a **named** import per module —
+    ///   `import { files } from "gg";` — because their whole surface is published under one
+    ///   specifier and a program there brings in the modules it calls into and no others, writing
+    ///   `files.readFile` where this catalogue prints `gg.files.readFile`.
     /// * **`None`** — there is *no line to write*, because gg puts the SDK in a program's scope
     ///   before the model's code is compiled: a prelude, a precompiled header, a re-exported
     ///   import, a scope injection. It is a fact about how that arm delivers its SDK

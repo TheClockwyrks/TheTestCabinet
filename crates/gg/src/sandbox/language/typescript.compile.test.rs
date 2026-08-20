@@ -60,7 +60,7 @@ try {
   if (error instanceof ApiError) console.log(error.operation, error.code, context, fs, view);
 }
 const found = await Promise.resolve(
-  docs.search("open a file", { module: "gg.views", kind: "function", limit: 5 }),
+  docs.search({ query: "open a file", modules: ["gg.views"], kind: "function", limit: 5 }),
 );
 for (const hit of found.hits) views.openDocsView(hit.key);
 session.finish(`saw ${names.length} files of ${found.total}`);
@@ -71,7 +71,8 @@ session.finish(`saw ${names.length} files of ${found.total}`);
     // key an `openDocsView` takes, so the two halves of the loop compose without a cast. The `kind`
     // filter is a closed union rather than a `string`, which is the one filter whose typo the host
     // refuses at run time — so on this arm the compiler catches it a turn earlier.
-    let mistyped = "import { docs } from \"gg\";\ndocs.search(\"x\", { kind: \"functions\" });\n";
+    let mistyped =
+        "import { docs } from \"gg\";\ndocs.search({ query: \"x\", kind: \"functions\" });\n";
     let text = diagnostics(mistyped).expect("`functions` is not one of the two kinds");
     assert!(
         text.contains("is not assignable to type 'DocKind | undefined'")

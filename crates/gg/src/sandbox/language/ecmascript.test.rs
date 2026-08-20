@@ -658,7 +658,7 @@ gg.tasks.addTask({ id: "t1", title: "a task" });
 gg.board.createEpic({ prefix: "EPIC", title: "an epic", description: "why" });
 gg.context.searchArchive("anything");
 gg.delegation.sendMessage("agent", "hello");
-gg.docs.search("readFile");
+gg.docs.search({ query: "readFile" });
 gg.views.openText("a label", "a body");
 gg.views.openFile("a.ts");
 gg.programs.history();

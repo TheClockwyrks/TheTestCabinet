@@ -61,10 +61,10 @@ of file-view calls, one per provided file in seeding order, followed by the file
 views that program opened:
 
 ```ts
-import * as gg from "gg";
+import { views } from "gg";
 
-gg.views.openFile("specs/rules.md");
-gg.views.openFile("reference/board.png");
+views.openFile("specs/rules.md");
+views.openFile("reference/board.png");
 ```
 
 The program is a whole program of the agent's own language, on the terms the

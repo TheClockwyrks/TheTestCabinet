@@ -106,7 +106,6 @@ fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
 
     // shell + read_file + write_file + edit_file + list_dir
     assert_eq!(registry.len(), 5);
-    assert!(!registry.is_empty());
     for name in ["shell", "read_file", "write_file", "edit_file", "list_dir"] {
         assert!(offers(&registry, name), "expected `{name}` to be offered");
     }
@@ -302,7 +301,6 @@ fn shell_offload_comes_from_the_shell_capability() {
 #[test]
 fn registry_is_empty_when_no_capabilities_present() {
     let registry = ToolRegistry::from_capabilities(&set_with(Vec::new()));
-    assert!(registry.is_empty());
     assert_eq!(registry.len(), 0);
     assert!(registry.definitions().is_empty());
 }
@@ -696,8 +694,9 @@ fn an_empty_allowlist_grants_nothing() {
         tools: Vec::new(),
         ..GgAgentConfig::root()
     });
-    assert!(
-        registry.is_empty(),
+    assert_eq!(
+        registry.len(),
+        0,
         "the default capabilities are on, and no tool is named"
     );
 }

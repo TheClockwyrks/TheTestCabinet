@@ -17,8 +17,10 @@ package gg.docs
 import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
+import gg.internal.ggList
 import gg.internal.ggNumber
 import gg.internal.ggText
+import gg.internal.ggTexts
 
 /**
  * Find what this agent can call, by keyword or by module, and read the briefs that come back.
@@ -29,35 +31,37 @@ import gg.internal.ggText
  * specific words work better than a sentence.
  *
  * The filters compose with the query and with each other, and each is an exact lookup rather than
- * another thing to rank: an empty query carrying only [module] is that module's whole directory,
- * which is the first hop worth making.
+ * another thing to rank: [modules] with no query beside it is those modules' whole directory, all of
+ * them at once, which is the first hop worth making.
  *
  * The page comes back as a value *and* opens as a view, so the results can be read on the next turn
  * without being shown deliberately. The next search replaces that view: it names what is being
  * worked from rather than keeping a record.
  *
  * @ggop docs.search
- * @param query The words to look for, as one string. Several specific words beat a sentence; it may
- *   be empty only when a filter says what to look at instead.
- * @param module One module, named either the way a program writes it (`gg.files`) or by gg's own id
- *   (`files`). Exact and case-insensitive: a module filter is a lookup, so a name no module has
- *   matches nothing rather than failing.
+ * @param query The words to look for, as one string. Several specific words beat a sentence; it is
+ *   left out only when a filter says what to look at instead.
+ * @param modules The modules to look in, each named either the way a program writes it (`gg.files`)
+ *   or by gg's own id (`files`). Exact and case-insensitive: a module filter is a lookup, so a name
+ *   no module has matches nothing rather than failing. Several are a **union** — an entry in any one
+ *   of them is a hit — and naming none looks in every module this agent holds.
  * @param type One type's own name — `"FileRead"`, not the key it is documented under — narrowing
- *   to that type and to the functions whose signatures mention it. Like [module] a lookup, so a name
- *   nothing declares matches nothing rather than failing.
+ *   to that type and to the functions whose signatures mention it. Like [modules] a lookup, so a
+ *   name nothing declares matches nothing rather than failing.
  * @param kind Narrow to modules, to functions or to types. Left out, all three are searched.
  * @param offset How many hits to skip, for reading past the first page. Left out, the page starts at
  *   the first hit.
  * @param limit How many hits to return: 20 by default, 100 at most, and zero is refused. Compare it
  *   against [DocSearch.total] to see how much of the answer this page is.
  * @return one page of matches, best first, and the total behind it
- * @throws ApiError `INVALID_ARGUMENT` for a blank query with no filter beside it — a search that
- *   asked for nothing and a search that found nothing are different answers — and for a [limit] of
- *   zero, which is a page that could answer nothing.
+ * @throws ApiError `INVALID_ARGUMENT` for a call carrying neither a query nor a filter — a search
+ *   that asked for nothing and a search that found nothing are different answers, and this is the
+ *   one way asking for nothing is refused — and for a [limit] of zero, which is a page that could
+ *   answer nothing.
  */
 public fun search(
-    query: String,
-    module: String? = null,
+    query: String? = null,
+    modules: List<String>? = null,
     type: String? = null,
     kind: DocKind? = null,
     offset: Int? = null,
@@ -67,7 +71,7 @@ public fun search(
         ggCall(
             "docs.search",
             ggText(query),
-            ggText(module),
+            if (modules == null) ggList() else ggTexts(modules),
             ggText(type),
             ggText(kind?.wireName),
             ggNumber(offset),
@@ -132,11 +136,8 @@ public enum class DocKind(public val wireName: String) {
  * @property key The fully-qualified name it is documented under, and what `gg.views.openDocsView`
  *   takes to read the whole of it.
  * @property kind Whether this entry is a module, a function or a type.
- * @property module The module it lives in, and never one this agent holds nothing in.
- *
- *   A module and a function have exactly one; a type has every module whose functions mention it,
- *   joined by commas, which makes it a description rather than something to hand back as [search]'s
- *   `module`.
+ * @property module The module it lives in: the one publishing a function or declaring a type.
+ *   Exactly one, and a [search] filter takes it.
  * @property name The name a program calls it by, or the type's own name.
  * @property summary Its brief, and only its brief. Everything else written about it is what a
  *   documentation view holds.

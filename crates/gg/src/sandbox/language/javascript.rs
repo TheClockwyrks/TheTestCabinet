@@ -209,8 +209,8 @@ impl ProgramLanguage for JavaScript {
         typescript::open_docs_views_statement(self, names)
     }
 
-    /// [One `import`, two `const` arrays and two `for…of`
-    /// loops](super::typescript::bootstrap_program).
+    /// [One named `import`, one search over every granted module at once, and a `for…of` opening a
+    /// documentation view apiece](super::typescript::bootstrap_program).
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         typescript::bootstrap_program(self, modules, docs)
     }

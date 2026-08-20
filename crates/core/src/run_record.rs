@@ -382,10 +382,11 @@ pub struct RunLinks {
 /// harness exit splits into [`Completed`](RunState::Completed) and
 /// [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
 /// never built or loaded);
-/// a harness that exits **non-zero** is a
-/// [`HarnessError`](RunState::HarnessError) and one that stops responding
-/// altogether is [`Hung`](RunState::Hung); a run stopped before the harness
-/// finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),
+/// a harness that stopped itself on one of its own configured ceilings is
+/// [`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any
+/// other way is a [`HarnessError`](RunState::HarnessError), and one that stops
+/// responding altogether is [`Hung`](RunState::Hung); a run stopped before the
+/// harness finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),
 /// [`Canceled`](RunState::Canceled) (an operator killed it), or
 /// [`Infrastructure`](RunState::Infrastructure) (everything else).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -427,6 +428,27 @@ pub enum RunState {
     /// decides per run (through the same publish-failures affordance the other
     /// tiers use) which harness errors to record.
     HarnessError,
+    /// The agent harness stopped the run on one of its own **execution ceilings** —
+    /// a turn count, a wall-clock budget, a spend, or a tolerance for failing turns
+    /// — and exited on the code that says so.
+    ///
+    /// The ceilings are safeguards the run's own capability set arms, and they are
+    /// not expected to be reached: a run that reaches one spent its whole allowance
+    /// without finishing. That is the model's outcome and real signal about it, so
+    /// this is publishable **without** a review as a per-model statistic, exactly as
+    /// a [`HarnessError`](RunState::HarnessError) is, and it releases no source repo
+    /// and no playable build — the harness stopped mid-task, so whatever is in the
+    /// tree is work nobody said was finished.
+    ///
+    /// It is a distinct state because it is the one harness stop that must **not**
+    /// be retried. Every other retryable failure can come out differently on a
+    /// second attempt; a breached ceiling is a property of the configuration, so a
+    /// retry spends another run reaching the same bound. See the backend's
+    /// `is_retryable`.
+    ///
+    /// Only [gg](crate::gg) reaches it, because gg is the only harness whose
+    /// ceilings the Test Cabinet configures.
+    LimitExceeded,
     /// The agent harness stopped producing output entirely and was killed as hung
     /// — it neither finished nor failed, it stalled (a provider request that never
     /// returns, a subagent that never reports back).
@@ -460,11 +482,12 @@ pub enum RunState {
 impl RunState {
     /// Every terminal state, so callers that must enumerate them (the backend's
     /// wire-string lists, exhaustiveness tests) cannot silently miss a new one.
-    pub const ALL: [RunState; 7] = [
+    pub const ALL: [RunState; 8] = [
         RunState::Completed,
         RunState::Catastrophic,
         RunState::TimedOut,
         RunState::HarnessError,
+        RunState::LimitExceeded,
         RunState::Hung,
         RunState::Infrastructure,
         RunState::Canceled,
@@ -482,13 +505,18 @@ impl RunState {
 
     /// Whether this state is one of the publishable *failure* tiers
     /// ([`Catastrophic`](RunState::Catastrophic),
-    /// [`TimedOut`](RunState::TimedOut), or
-    /// [`HarnessError`](RunState::HarnessError)): publishable without a review and
-    /// excluded from the reviewer checklist score.
+    /// [`TimedOut`](RunState::TimedOut),
+    /// [`HarnessError`](RunState::HarnessError),
+    /// [`LimitExceeded`](RunState::LimitExceeded), or [`Hung`](RunState::Hung)):
+    /// publishable without a review and excluded from the reviewer checklist score.
     pub fn is_publishable_failure(self) -> bool {
         matches!(
             self,
-            RunState::Catastrophic | RunState::TimedOut | RunState::HarnessError | RunState::Hung
+            RunState::Catastrophic
+                | RunState::TimedOut
+                | RunState::HarnessError
+                | RunState::LimitExceeded
+                | RunState::Hung
         )
     }
 
@@ -497,8 +525,9 @@ impl RunState {
     /// code-carrying states ([`Completed`](RunState::Completed),
     /// [`Catastrophic`](RunState::Catastrophic),
     /// [`TimedOut`](RunState::TimedOut)); false for a
-    /// [`HarnessError`](RunState::HarnessError), which is recorded only as
-    /// a per-model statistic and releases nothing, and for the never-published
+    /// [`HarnessError`](RunState::HarnessError) and a
+    /// [`LimitExceeded`](RunState::LimitExceeded), which are recorded only as
+    /// per-model statistics and release nothing, and for the never-published
     /// [`Infrastructure`](RunState::Infrastructure) and
     /// [`Canceled`](RunState::Canceled). Note this is about the *release*
     /// step, not whether an asset-generation run has code to release — that gate is
@@ -522,7 +551,8 @@ impl RunState {
     /// and [`TimedOut`](RunState::TimedOut) (the harness never finished), which may
     /// still release their source without a build to go with it, and for the states
     /// that release nothing at all ([`HarnessError`](RunState::HarnessError),
-    /// [`Hung`](RunState::Hung), [`Infrastructure`](RunState::Infrastructure), and
+    /// [`LimitExceeded`](RunState::LimitExceeded), [`Hung`](RunState::Hung),
+    /// [`Infrastructure`](RunState::Infrastructure), and
     /// [`Canceled`](RunState::Canceled)).
     pub fn has_playable_build(self) -> bool {
         matches!(self, RunState::Completed)
@@ -533,6 +563,9 @@ impl RunState {
     /// never converged) → [`TimedOut`](RunState::TimedOut); the harness (or its
     /// orchestrator runner) exiting non-zero is a
     /// [`HarnessError`](RunState::HarnessError) — the model drove it to exit early;
+    /// a harness that stopped itself on one of its own configured execution
+    /// ceilings is [`LimitExceeded`](RunState::LimitExceeded), which is held apart
+    /// from a harness error because it must not be retried;
     /// a harness that went silent and was killed by the idle watchdog is
     /// [`Hung`](RunState::Hung); every other error — the harness-install or
     /// case-init timeouts and container/cluster faults — is the Test Cabinet's
@@ -545,6 +578,7 @@ impl RunState {
         match err {
             crate::Error::RunTimedOut { .. } => RunState::TimedOut,
             crate::Error::HarnessInvocation { .. } => RunState::HarnessError,
+            crate::Error::HarnessLimitExceeded { .. } => RunState::LimitExceeded,
             crate::Error::HarnessHung { .. } => RunState::Hung,
             _ => RunState::Infrastructure,
         }

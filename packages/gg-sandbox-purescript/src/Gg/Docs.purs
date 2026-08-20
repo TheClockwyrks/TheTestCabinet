@@ -26,10 +26,12 @@ import Effect (Effect)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
 
--- | The filters and the page a search may narrow itself with. Every field is optional; `{}` ranks
--- | the query alone.
+-- | The words, the filters and the page a search is made of. Every field is optional, and none of
+-- | them is a default worth relying on: a record naming neither a query nor a filter asks for
+-- | nothing, and is the one record `search` refuses.
 type SearchOptions =
-  ( module :: String
+  ( query :: String
+  , modules :: Array String
   , type :: String
   , kind :: DocKind
   , offset :: Int
@@ -56,12 +58,12 @@ instance Show DocKind where
 -- |
 -- | - `key` — The fully-qualified name `Gg.Views.openDocsView` takes to read the whole entry.
 -- | - `kind` — Whether it is a module, a function or a type.
--- | - `module` — The module it lives in.
+-- | - `module` — The module it lives in, written the way a program writes it.
 -- |
--- |   A module and a function have exactly one; a module's is itself. A type shows every module in
--- |   which a function the agent can call mentions it — never one nothing is held in, and
--- |   comma-separated when there are several, which makes it a description rather than something to
--- |   pass back as `options.module`.
+-- |   Exactly one, whatever the entry is: the module that publishes a function, the module that
+-- |   declares a type, and, for a module, itself. So it is not a description but a name to hand
+-- |   straight back in `options.modules` — filtering on the module a hit reports answers with that
+-- |   module's whole directory, the entry among it.
 -- | - `name` — The name a program calls it by, the type's own name, or the module's own path.
 -- | - `summary` — Its one-line brief, and only that. The rest is what a documentation view holds.
 type DocHit =
@@ -94,7 +96,8 @@ type DocSearch =
 -- | paragraph — and a weaker kind never overtakes a stronger one however often it occurs.
 -- |
 -- | Only entries this run bound are returned, so nothing a search finds is something the run
--- | withheld. The filters compose with each other and with the query.
+-- | withheld. The filters compose with each other and with the query, and every one of them —
+-- | the query included — is optional: a search is a query, or a filter, or both.
 -- |
 -- | The page comes back as a value and is also opened as a view, under the selector `search results`,
 -- | so it can be read on the next turn without a program showing it to itself. The next search
@@ -106,14 +109,18 @@ type DocSearch =
 -- |
 -- | # Arguments
 -- |
--- | - `query` — The words to match, as a case-insensitive substring. It may be empty when at least
--- |   one filter is given.
--- | - `options` — The filters and the page; `{}` ranks the query alone.
--- | - `options.module` — One module's id — `files`, `views`, `docs` — matched exactly. An empty query
--- |   with a module is that module's whole directory rather than a search. A module filter is a
--- |   lookup, so a name no module has matches nothing rather than failing.
+-- | - `options` — The words, the filters and the page. Nothing in it is required and any of it may
+-- |   be left out, but a record that names neither a query nor a filter is refused.
+-- | - `options.query` — The words to match, as a case-insensitive substring. It may be left out
+-- |   when a filter says what to look at instead.
+-- | - `options.modules` — The modules to look inside, each named by gg's own id — `files`, `views`,
+-- |   `docs` — or by the path a program writes it as, `Gg.Files`, and matched exactly. Several name
+-- |   a **union** rather than an intersection: an entry lives in one module, so the only reading a
+-- |   list has is the one that answers these modules' directories together. With no query it is
+-- |   those directories in full rather than a search. A module filter is a lookup, so a name no
+-- |   module has matches nothing rather than failing, and an empty array is no filter at all.
 -- | - `options.type` — One type's name, narrowing to that type and to the functions that take or
--- |   return it. Like `options.module`, a name nothing declares matches nothing rather than failing.
+-- |   return it. Like `options.modules`, a name nothing declares matches nothing rather than failing.
 -- | - `options.kind` — Whether to return modules, functions or types. The default returns all three.
 -- | - `options.offset` — How many hits to skip, for reading past the first page. The default starts
 -- |   at the best hit.
@@ -128,19 +135,18 @@ type DocSearch =
 -- |
 -- | # Throws
 -- |
--- | `InvalidArgument` for an empty query with no filter at all — nothing matched and nothing was
--- | asked for are different answers — and for a `limit` of zero, which asks for a page that answers
--- | nothing. A module or type name gg does not hold is not among them: it matches nothing.
+-- | `InvalidArgument` for a record that asks for nothing — no query and no filter at all, since
+-- | nothing matched and nothing was asked for are different answers — and for a `limit` of zero,
+-- | which asks for a page that answers nothing. A module or type name gg does not hold is not among
+-- | them: it matches nothing.
 search
   :: forall given rest
    . Union given rest SearchOptions
-  => String
-  -> Record given
+  => Record given
   -> Effect DocSearch
-search query options =
+search options =
   docSearch
-    <$> Wire.call "search" "docs" "Gg.Docs.search"
-      [ Wire.wire query, Wire.lower { kind: docKindWire } options ]
+    <$> Wire.call "search" "docs" "Gg.Docs.search" [ Wire.lower { kind: docKindWire } options ]
 
 -- | Take one documentation view out of the context window, by the key it was opened under.
 -- |

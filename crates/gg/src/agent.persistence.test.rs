@@ -118,6 +118,7 @@ async fn drive_instance_in(
                 read_policy: read_policy(profile),
                 shell_offload: OffloadPolicy::ample(),
                 code,
+                discovery: DiscoveryWarning::default(),
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -153,7 +154,7 @@ fn read_with(id: &str, arguments: serde_json::Value) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 

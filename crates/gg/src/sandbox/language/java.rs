@@ -279,8 +279,9 @@ impl ProgramLanguage for Java {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [Two `List.of(…)`s and two enhanced `for` loops](self::bootstrap_program), with both calls
-    /// resolved from this language's own catalogue and the filters built with the SDK's own builder.
+    /// [One search over every module at once, then a `List.of(…)` and an enhanced `for` opening a
+    /// documentation view of each name](self::bootstrap_program), with both calls resolved from this
+    /// language's own catalogue and the search's arguments built with the SDK's own builder.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
@@ -544,16 +545,24 @@ fn listed(names: &[&str]) -> String {
     }
 }
 
-/// The opening turn: one `List.of(…)` of module paths listed in full, then one of the names opened
-/// as documentation views, each with an enhanced `for` over it — in the `main` of a class gg
+/// The opening turn: **one** search naming every module the agent holds, then a `List.of(…)` of the
+/// names to open as documentation views with an enhanced `for` over it — in the `main` of a class gg
 /// declares, because this program is **executed** as the session's first turn.
 ///
-/// Two lists and two loops rather than one call per entry, because a granted surface is a dozen
-/// modules and a dozen calls written out is a shape a model would copy for its own work.
+/// One search rather than one per module, because the filter is a **union**: naming them all returns
+/// the entries of any of them, so a loop of a call per module would be a shape a model copies for
+/// work that never needed it. And it carries no query at all — every part of a search is optional,
+/// so a listing of whole modules names the modules and the page and nothing else.
 ///
-/// The filters are a **builder** — this language has neither default parameters nor keyword
-/// arguments, so a call taking a bag of optional fields takes one of these, and the SDK declares it
-/// nested inside the module the search belongs to.
+/// The arguments are a **builder** — this language has neither default parameters nor keyword
+/// arguments, so a call taking a bag of optional parts takes one of these, and the SDK declares it
+/// nested inside the module the search belongs to. The list of names stays a `List.of(…)` and a
+/// loop, because it is as long as the family and a dozen calls written out is a shape a model would
+/// copy.
+///
+/// **An agent holding neither of the two modules is written the loop alone.** No module and no query
+/// is the one question the search refuses, so a program that would ask it does not make the call
+/// rather than making one that fails.
 ///
 /// A failed call throws an unchecked exception and nothing here catches it, which is this arm's
 /// failure model: a bootstrap that caught its own failure would be a worked example of swallowing
@@ -564,18 +573,36 @@ pub(super) fn bootstrap_program(
     modules: &[&str],
     docs: &[&str],
 ) -> String {
+    let views = views_loop(open_docs_view, docs);
     let filters = format!("{}.SearchFilters", class_of(search));
-    let body = format!(
-        "        List<String> modules = List.of({});\n\
-         \x20       for (String path : modules) {{\n\
-         \x20           {search}(\"\", new {filters}().module(path).limit({MAX_SEARCH_LIMIT}));\n\
-         \x20       }}\n\
-         \n\
-         {}",
-        listed(modules),
-        views_loop(open_docs_view, docs),
-    );
+    let body = match modules.is_empty() {
+        true => views,
+        false => format!(
+            "        {search}(new {filters}()\n\
+             \x20               .modules({})\n\
+             \x20               .limit({MAX_SEARCH_LIMIT}));\n\
+             \n\
+             {views}",
+            arguments(modules),
+        ),
+    };
     main_program(LIST_IMPORT, &body)
+}
+
+/// The arguments of a varargs call: each name as a Java string literal, comma-separated on one line.
+///
+/// A line of its own rather than a `List.of(…)` above the call, because the SDK spells a
+/// `list<string>` argument as varargs and this one is at most the two module paths an agent holds —
+/// where the list literal the documentation loop keeps is as long as a whole family.
+///
+/// The names are rendered through [`serde_json`] for the reason the members of a list are: a name
+/// carrying a quote would otherwise produce a program that does not parse.
+fn arguments(names: &[&str]) -> String {
+    names
+        .iter()
+        .map(|name| serde_json::Value::String((*name).to_string()).to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The class a fully-qualified call is a `static` method of, taken off the front of the call itself.

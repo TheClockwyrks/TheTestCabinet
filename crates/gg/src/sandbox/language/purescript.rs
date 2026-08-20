@@ -326,8 +326,9 @@ impl ProgramLanguage for PureScript {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [A module whose `main` folds a `for_` over each of two arrays](self::bootstrap_program), with
-    /// both calls resolved from this language's own catalogue and both modules imported by name.
+    /// [A module whose `main` searches every module it was handed at once and then folds a `for_`
+    /// over the names](self::bootstrap_program), with both calls resolved from this language's own
+    /// catalogue and every module the program calls into imported by name.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
@@ -476,17 +477,31 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
     )
 }
 
-/// The opening turn: a module whose `main` folds a `for_` over the module paths, listing each in
-/// full, and then a `for_` over the names it opens documentation views of.
+/// The opening turn: a module whose `main` looks the agent's modules up in **one** search, and then
+/// folds a `for_` over the names it opens documentation views of.
 ///
-/// A whole module, because that is what a PureScript program is — and the two arrays are top-level
-/// declarations carrying their own type signatures, for the reason
+/// A whole module, because that is what a PureScript program is — and the module paths and the names
+/// are top-level arrays carrying their own type signatures, for the reason
 /// [`open_docs_views_statement`]'s one is: a `let` of an empty
 /// array inside the `do` block would be an ambiguous type rather than a program.
 ///
-/// Each module the program calls into is imported under its own full name, which is the name the
-/// documentation is keyed by and the expression a program writes. The filters are the fields of a
-/// **record** argument, which is this language's idiom for optional ones.
+/// One call rather than one per module, because the filter names a **union**: a loop would pay for
+/// the crossing and the ranking once per module to assemble the page a single call already answers.
+/// It carries the whole of what is being asked — the module list and the limit, and no query, since
+/// what opens a session is those modules' directories rather than a search — and the limit is
+/// [the ceiling](MAX_SEARCH_LIMIT), so what a model reads at the top of its window is every function
+/// it holds rather than the first page of some of them. The filters are the fields of a **record**
+/// argument, which is this language's idiom for optional ones, and the call is wrapped in `void` for
+/// the reason [`open_file_statement`]'s is: a `do` block discards a statement's value only when it
+/// is `Unit`, and this one hands back a page.
+///
+/// An agent with **no** module to look up gets a program with no search in it at all — an empty
+/// filter and no query is the one thing `search` refuses — and the array and the import line that
+/// were only there for it go with the call, because this arm's program brings into scope what it
+/// calls and nothing besides.
+///
+/// Each module the program does call into is imported under its own full name, which is the name the
+/// documentation is keyed by and the expression a program writes.
 ///
 /// A failed call is thrown rather than returned, and nothing here catches it: that is this arm's
 /// failure model, and a bootstrap that handled its own failure would be a worked example of
@@ -509,17 +524,43 @@ pub(super) fn bootstrap_program(
         }
         entries
     };
-    let paths = listed(modules);
     let functions = listed(docs);
-    // Two calls, and on this arm each needs its own import line — unless the SDK ever files both
-    // under one module, in which case importing it twice would be the compile error rather than the
-    // program.
+    // Two calls where there is a module to search for, and on this arm each needs its own import
+    // line — unless the SDK ever files both under one module, in which case importing it twice would
+    // be the compile error rather than the program. Where there is none, there is one call, and the
+    // documentation module is not imported at all: `purs` calls a qualified import nothing names
+    // redundant and says so, which is not a thing gg's own program should be warned about.
     let docs_module = module_of(search);
     let views_module = module_of(open_docs_view);
-    let mut imports = format!("import {docs_module} as {docs_module}\n");
-    if views_module != docs_module {
-        imports.push_str(&format!("import {views_module} as {views_module}\n"));
-    }
+    let views_import = format!("import {views_module} as {views_module}\n");
+    let (imports, paths, main) = match modules.is_empty() {
+        true => (
+            views_import,
+            String::new(),
+            format!("main = for_ functions {open_docs_view}\n"),
+        ),
+        false => {
+            let mut imports = format!("import {docs_module} as {docs_module}\n");
+            if views_module != docs_module {
+                imports.push_str(&views_import);
+            }
+            (
+                imports,
+                format!(
+                    "modules :: Array String\n\
+                     modules =\n\
+                     {}  ]\n\
+                     \n",
+                    listed(modules)
+                ),
+                format!(
+                    "main = do\n\
+                     \x20 void ({search} {{ modules, limit: {MAX_SEARCH_LIMIT} }})\n\
+                     \x20 for_ functions {open_docs_view}\n"
+                ),
+            )
+        }
+    };
     format!(
         "module Main where\n\
          \n\
@@ -529,18 +570,13 @@ pub(super) fn bootstrap_program(
          import Effect (Effect)\n\
          {imports}\
          \n\
-         modules :: Array String\n\
-         modules =\n\
-         {paths}  ]\n\
-         \n\
+         {paths}\
          functions :: Array String\n\
          functions =\n\
          {functions}  ]\n\
          \n\
          main :: Effect Unit\n\
-         main = do\n\
-         \x20 for_ modules \\path -> {search} \"\" {{ module: path, limit: {MAX_SEARCH_LIMIT} }}\n\
-         \x20 for_ functions {open_docs_view}\n"
+         {main}"
     )
 }
 

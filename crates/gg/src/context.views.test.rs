@@ -862,6 +862,7 @@ fn the_context_usage_signal_names_the_text_view_band_and_the_call_that_closes_it
         program_language: Some(GgProgramLanguage::TypeScript),
         can_archive: false,
         top_file_views: 3,
+        threshold_percent: 0,
     });
 
     let signal = ctx
@@ -896,6 +897,7 @@ fn a_tool_calling_agent_is_never_pointed_at_view_close() {
         program_language: None,
         can_archive: false,
         top_file_views: 3,
+        threshold_percent: 0,
     });
 
     let signal = ctx

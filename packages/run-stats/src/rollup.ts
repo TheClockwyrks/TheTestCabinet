@@ -27,6 +27,7 @@ export const RUN_STATES: readonly RunState[] = [
   "catastrophic",
   "timed_out",
   "harness_error",
+  "limit_exceeded",
   "hung",
   "infrastructure",
 ];

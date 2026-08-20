@@ -2,7 +2,7 @@
  * Find a module, function or type by searching, and take a documentation view back out of the window.
  *
  * This is where a session starts. The system prompt names the modules and no function inside them,
- * so searching — by keyword, or by naming a module, which is an exact lookup of everything in it —
+ * so searching — by keyword, or by naming modules, which is an exact lookup of everything in them —
  * is how a program learns what this agent actually holds. A search answers with one-line briefs;
  * reading one of them in full means opening a documentation view of its `key`, which
  * `gg.views.openDocsView` does.
@@ -16,7 +16,7 @@
  */
 
 import * as raw from "test-cabinet:gg/docs";
-import { U32_MAX, call, opts, uint } from "../internal/errors.js";
+import { U32_MAX, arrayArg, call, opts, uint } from "../internal/errors.js";
 
 /** Which of the three things a documentation entry is. */
 export type DocKind =
@@ -38,10 +38,11 @@ export interface DocHit {
   /**
    * The module it lives in, written the way a program writes it.
    *
-   * A function has exactly one, and a **module** is its own. A **type** has as many as there are
-   * modules whose functions mention it, and they arrive comma-separated — so this is a description
-   * rather than something to hand back to the `module` filter, which takes one module and nothing
-   * else.
+   * One module, always: the module that **publishes** a function, the module that **declares** a
+   * type, and, for a module, itself. A type mentioned by half the surface still reports the one
+   * place it is defined, so this is never a list and never a description — it is a value to hand
+   * straight back to the `modules` filter, which is how one interesting hit becomes everything
+   * filed beside it.
    */
   module: string;
 
@@ -76,21 +77,25 @@ export interface DocSearch {
  * that merely mentions the word in a paragraph, and the query is split on whitespace, so several
  * specific words work better than a sentence.
  *
- * The filters compose with the query and with each other, and each is an exact lookup rather than
- * another thing to rank: an empty query with `module` is that module's whole directory, which is the
- * first hop worth making.
+ * Nothing here is required, the filters compose with the query and with each other, and each filter
+ * is an exact lookup rather than another thing to rank: `modules` on its own, with no query, is
+ * those modules' whole directory, which is the first hop worth making. What is refused is asking
+ * for nothing at all — no query and no filter — because a search that found nothing and a search
+ * that was never given anything to look for are different answers.
  *
  * The page comes back as a value **and** opens as a view labelled `search results`, so the results
  * can be read next turn without being shown deliberately. That view is replaced by the next search
  * rather than accumulating, and `gg.views.close("search results")` takes it away.
  *
  * @ggop docs.search
- * @param query The words to look for, as one string. Several specific words beat a sentence; it may
- * be empty only when a filter says what to look at instead.
- * @param options The filters and the page. Omit it for the first page of everything the query
- * ranked.
- * @param options.module One module, named either the way a program writes it (`gg.files`) or by
- * gg's own id (`files`). Exact and case-insensitive.
+ * @param options The words to look for, the filters, and the page. Every field is optional, and
+ * omitting the object entirely asks for nothing, which is the one way this call is refused.
+ * @param options.query The words to look for, as one string. Several specific words beat a sentence;
+ * it may be left out only when a filter says what to look at instead.
+ * @param options.modules The modules to look in, each named either the way a program writes it
+ * (`gg.files`) or by gg's own id (`files`). Exact and case-insensitive, and several are a **union**
+ * — an entry in any one of them is a hit — so one call reads the whole of the surface this agent
+ * was given. An empty list is no module filter at all.
  * @param options.type One type's own name, narrowing to that type and the functions whose signatures
  * mention it — what can be done with a value of this shape.
  * @param options.kind `"module"`, `"function"` or `"type"`, to see only one of them. Any other word
@@ -99,32 +104,32 @@ export interface DocSearch {
  * @param options.limit How many hits to return: 20 by default, 100 at most, and zero is refused.
  * Compare it against `total` to see how much of the answer this page is.
  * @returns one page of hits, best first, beside the `total` that says how much of the answer it is.
- * @throws `ApiError` with `invalid-argument` for a blank query carrying no filter — a search that
- * asked for nothing and a search that found nothing are different answers — for an unrecognised
- * `kind`, which would otherwise silently widen a search believed to be narrow, and for a `limit` of
- * zero, which is a page that could answer nothing.
+ * @throws `ApiError` with `invalid-argument` for a search carrying neither a query nor a filter — a
+ * search that asked for nothing and a search that found nothing are different answers — for an
+ * unrecognised `kind`, which would otherwise silently widen a search believed to be narrow, and for
+ * a `limit` of zero, which is a page that could answer nothing.
  */
-export function search(
-  query: string,
-  options?: {
-    module?: string;
-    type?: string;
-    kind?: DocKind;
-    offset?: number;
-    limit?: number;
-  },
-): DocSearch {
+export function search(options?: {
+  query?: string;
+  modules?: string[];
+  type?: string;
+  kind?: DocKind;
+  offset?: number;
+  limit?: number;
+}): DocSearch {
   const o = opts<{
-    module?: string;
+    query?: string;
+    modules?: string[];
     type?: string;
     kind?: DocKind;
     offset?: number;
     limit?: number;
   }>("search", options);
+  const modules = arrayArg("search", "modules", o?.modules);
   const offset = uint("search", "offset", o?.offset, U32_MAX);
   const limit = uint("search", "limit", o?.limit, U32_MAX);
   return call(() => {
-    const page = raw.search(query, o?.module, o?.type, o?.kind, offset, limit);
+    const page = raw.search(o?.query, modules, o?.type, o?.kind, offset, limit);
     return {
       total: page.total,
       offset: page.offset,

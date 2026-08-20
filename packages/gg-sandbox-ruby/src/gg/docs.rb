@@ -23,20 +23,25 @@ module GG
     # occurs.
     #
     # Only entries this run bound are returned, so nothing a search finds is something the run
-    # withheld. The filters compose with each other and with `query`.
+    # withheld. Every argument is optional and they compose with each other: a query alone ranks the
+    # whole surface, a filter alone is a directory of what it names, and the two together search
+    # inside the filter. What no call may do is ask for nothing at all.
     #
     # The page comes back as a value and is also opened as a view, under the selector
     # `search results`, so it can be read on the next turn without a program showing it to itself.
     # The next search replaces that view: it names what is being worked from rather than keeping a
     # record.
     #
-    # @param query [String] The words to match, as a case-insensitive substring. It may be empty
-    #   when at least one filter is given.
-    # @param in_module [String, nil] One module's id — `files`, `views`, `docs` — matched exactly.
-    #   An empty `query` with a module is that module's whole directory rather than a search. A
-    #   module filter is a lookup, so a name no module has matches nothing rather than failing.
+    # @param query [String, nil] The words to match, as a case-insensitive substring. The default is
+    #   no query at all, which is what turns a filter into a directory rather than a search.
+    # @param modules [Array<String>] The modules to look in, each named by its gg id — `files`,
+    #   `views`, `docs` — or by the path a program writes it as, `GG::Files`, and matched exactly.
+    #   Several name a union: an entry in any one of them is a hit, so one call lists a whole
+    #   granted surface. With no `query` it is those modules' whole directory. A module filter is a
+    #   lookup, so a name no module has matches nothing rather than failing. Defaults to no module
+    #   filter at all.
     # @param type [String, nil] One type's name, narrowing to that type and to the functions that
-    #   take or return it. Like `in_module`, a name nothing declares matches nothing rather than
+    #   take or return it. Like `modules`, a name nothing declares matches nothing rather than
     #   failing.
     # @param kind [GG::Docs::DocKind, nil] `:module`, `:function` or `:type` — whether to return
     #   modules, functions or types. The default returns all three.
@@ -46,15 +51,15 @@ module GG
     #   there is a ceiling above it, so comparing the hits against `total` is the only way to see a
     #   capped page. Zero is refused rather than read as "no cap".
     # @return [GG::Docs::DocSearch] the page that matched, best first, with the total behind it
-    # @raise [GG::Core::ApiError] `:invalid_argument` for an empty query with no filter at all —
-    #   nothing matched and nothing was asked for are different answers — for a `kind` that is none
-    #   of `:module`, `:function` and `:type`, and for a `limit` of zero, which asks for a page that
-    #   answers nothing. A module or type name gg does not hold is not among them: it matches
-    #   nothing.
-    def self.search(query, in_module: nil, type: nil, kind: nil, offset: nil, limit: nil)
+    # @raise [GG::Core::ApiError] `:invalid_argument` for a call with no query and no filter at all
+    #   — nothing matched and nothing was asked for are different answers — for a `kind` that is
+    #   none of `:module`, `:function` and `:type`, and for a `limit` of zero, which asks for a page
+    #   that answers nothing. A `modules` entry or a `type` naming something gg does not hold is not
+    #   among them: it matches nothing.
+    def self.search(query: nil, modules: [], type: nil, kind: nil, offset: nil, limit: nil)
       found = Wire.call("search", "docs", "search", [
-                          query,
-                          Wire.js(in_module),
+                          Wire.js(query),
+                          Check.strings("search", "modules", modules),
                           Wire.js(type),
                           Wire.js(Wire.arm(Check.choice("search", "kind", kind,
                                                         [DocKind::MODULE, DocKind::FUNCTION,
@@ -138,14 +143,14 @@ module GG
       # @return [GG::Docs::DocKind] Whether it is a `:module`, a `:function` or a `:type`.
       attr_reader :kind
 
-      # The module it lives in.
+      # The module it lives in: the one that publishes a function, or the one that declares a type.
       #
-      # A module is its own, and a function has exactly one. A type shows every module in which a
-      # function the agent can call mentions it — never one nothing is held in, and comma-separated
-      # when there are several, which makes it a description rather than something to pass back as
-      # `in_module`.
+      # One module, always, and a module's own hit reports itself. It is the module's path as a
+      # program writes it — `GG::Files` — rather than a description of where the entry is reachable
+      # from, so it goes straight back into `GG::Docs.search`'s `modules` as an entry of the filter,
+      # and the module a hit reports is the module that filter would have found it under.
       #
-      # @return [String] the module's id, or the ids of every module a type is mentioned in
+      # @return [String] the module's path, as a program writes it
       attr_reader :module
 
       # @return [String] The name a program calls it by, or the type's or the module's own name.

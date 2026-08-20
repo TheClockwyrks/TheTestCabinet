@@ -9,7 +9,7 @@
 use super::*;
 use test_cabinet_core::gg::{
     ALL_HOOK_EVENTS, CAPABILITY_SHELL, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
-    ROOT_PROFILE_ID, SHELL_OUTPUT_ADAPTIVE,
+    ROOT_PROFILE_ID, SHELL_OUTPUT_OFFLOAD,
 };
 
 /// An agent profile carrying `hooks` and nothing else that matters here — the declaration site for
@@ -325,7 +325,7 @@ fn a_truncating_output_override_launches_over_a_shell_that_declares_ceilings() {
             command: "npm test".to_string(),
             cwd: None,
             timeout_secs: Some(600.0),
-            output: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
+            output: Some(SHELL_OUTPUT_OFFLOAD.to_string()),
         },
         name: "gate".to_string(),
     }];
@@ -350,7 +350,7 @@ fn a_truncating_output_override_over_a_shell_less_agent_is_refused() {
             command: "npm test".to_string(),
             cwd: None,
             timeout_secs: Some(600.0),
-            output: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
+            output: Some(SHELL_OUTPUT_OFFLOAD.to_string()),
         },
         name: "gate".to_string(),
     }];
@@ -358,7 +358,7 @@ fn a_truncating_output_override_over_a_shell_less_agent_is_refused() {
         .expect_err("a tail with no ceiling must not start a run");
     assert_eq!(defects.len(), 1, "{defects:?}");
     assert_eq!(defects[0].locus, "hooks[gate].output");
-    assert_eq!(defects[0].found, SHELL_OUTPUT_ADAPTIVE);
+    assert_eq!(defects[0].found, SHELL_OUTPUT_OFFLOAD);
 }
 
 /// …and an agent whose `shell` is itself unhonourable is named **once**, at the capability that
@@ -380,7 +380,7 @@ fn a_shell_gg_cannot_honour_is_not_reported_again_at_the_hook() {
             command: "npm test".to_string(),
             cwd: None,
             timeout_secs: Some(600.0),
-            output: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
+            output: Some(SHELL_OUTPUT_OFFLOAD.to_string()),
         },
         name: "gate".to_string(),
     }];

@@ -25,14 +25,19 @@ public enum docs {
     /// the next search rather than accumulating, and closed by `views.close`. A hit carries a brief
     /// and no more — reading one in full is `views.openDocsView` on its `key`.
     ///
+    /// Every argument has a default, so a call may be words alone, filters alone, or both. The one
+    /// shape it refuses is the empty one: no query and no filter is a call that asked for nothing,
+    /// which is a different answer from a call that matched nothing.
+    ///
     /// - Parameters:
     ///   - query: The words to look for, matched as case-insensitive substrings. Several specific
-    ///     words rank an entry above one vague word. It may be empty when a filter narrows the
+    ///     words rank an entry above one vague word. Left out, the filters are the whole of the
     ///     search.
-    ///   - module: One module to look in, by gg's id (`files`) or by this arm's path (`gg.files`).
-    ///     Exact and case-insensitive, because a module filter is a lookup rather than a search: an
-    ///     empty query and a module is that module's whole directory. Left out, every module is
-    ///     searched.
+    ///   - modules: The modules to look in, each by gg's id (`files`) or by this arm's path
+    ///     (`gg.files`). Exact and case-insensitive, because a module filter is a lookup rather
+    ///     than a search, and several are a **union**: an entry in any one of them is a hit, and
+    ///     modules with no query at all are those modules' whole directory. Empty, which is the
+    ///     default, is no module filter and every module searched.
     ///   - type: One type's own name (`FileRead`), narrowing to it and to every function whose
     ///     signature mentions it — what a value of this shape can be used for. Left out, nothing is
     ///     narrowed.
@@ -43,24 +48,24 @@ public enum docs {
     ///   - limit: How many hits to return. Left out, the page holds 20; the ceiling is 100, and a
     ///     larger one clamps rather than failing.
     /// - Returns: the page that matched, best first, and how many matched behind it.
-    /// - Throws: `core.ApiError` with `.invalidArgument` when `query` is empty and no filter is set
-    ///   — asking for nothing and matching nothing are different answers — and when `limit` is `0`,
-    ///   which is a page that could never answer anything.
+    /// - Throws: `core.ApiError` with `.invalidArgument` when there is no query and no filter at
+    ///   all — asking for nothing and matching nothing are different answers — and when `limit` is
+    ///   `0`, which is a page that could never answer anything.
     /// - ggop: docs.search
     public static func search(
-        _ query: String, module: String? = nil, type: String? = nil, kind: DocKind? = nil,
+        query: String? = nil, modules: [String] = [], type: String? = nil, kind: DocKind? = nil,
         offset: Int? = nil, limit: Int? = nil
     ) throws -> DocSearch {
         try withScratch { scratch in
-            var query = scratch.string(query)
+            var modules = scratch.list(modules)
             var ret = test_cabinet_gg_docs_doc_search_t()
             var err = test_cabinet_gg_types_api_error_t()
-            let ok = withOptional(module.map { scratch.string($0) }) { module in
+            let ok = withOptional(query.map { scratch.string($0) }) { query in
                 withOptional(type.map { scratch.string($0) }) { type in
                     withOptional(kind.map { scratch.string($0.wire) }) { kind in
                         withWindow(offset, limit) { offset, limit in
                             test_cabinet_gg_docs_search(
-                                &query, module, type, kind, offset, limit, &ret, &err)
+                                query, &modules, type, kind, offset, limit, &ret, &err)
                         }
                     }
                 }
@@ -170,10 +175,10 @@ public enum docs {
         public let kind: DocKind
         /// The module it lives in.
         ///
-        /// One for a function, itself for a module, and for a type every module whose bound
-        /// functions mention it, comma-separated. That plurality is why it is a description rather
-        /// than something to feed back to a `module` filter, which takes one module and compares it
-        /// whole.
+        /// The module that publishes a function, itself for a module, and for a type the module
+        /// that **declares** it — one module in every case, never a list. It is exactly what the
+        /// `modules` filter compares whole, so a hit worth more of is that module's own directory,
+        /// one search away.
         public let module: String
         /// The name a program calls it by, the type's own name, or the module's own path.
         public let name: String

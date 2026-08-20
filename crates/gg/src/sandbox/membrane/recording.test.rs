@@ -37,8 +37,8 @@ use super::super::test_cabinet::gg::views::Host as ViewsHost;
 use super::*;
 use test_cabinet_core::gg::GgCallFailure;
 
-use crate::sandbox::OPERATIONS;
 use crate::sandbox::fake::{ApiLog, CallLog, FakeOperationApi, membrane_from};
+use crate::sandbox::{FILES_READ_FILE, OPERATIONS};
 
 /// A membrane over a fake api, with both of its records to hand: what ran, and what was written.
 fn recording_membrane(log: &CallLog) -> (MembraneState<FakeOperationApi>, ApiLog) {
@@ -143,7 +143,7 @@ fn call_everything(state: &mut MembraneState<FakeOperationApi>) {
     let _ = state.exec("critic".to_string(), None);
     let _ = state.fork("try the other branch".to_string());
 
-    let _ = state.search("read".to_string(), None, None, None, None, None);
+    let _ = state.search(Some("read".to_string()), Vec::new(), None, None, None, None);
     let _ = state.close_doc_view("readFile".to_string());
     let _ = state.close_doc_views();
 
@@ -228,7 +228,7 @@ fn a_documentation_call_records_the_operation_gg_files_it_under() {
     let log = CallLog::default();
     let (mut state, recorded) = recording_membrane(&log);
 
-    let _ = state.search("read".to_string(), None, None, None, None, None);
+    let _ = state.search(Some("read".to_string()), Vec::new(), None, None, None, None);
 
     assert_eq!(recorded.operations(), vec!["docs.search"]);
     assert_eq!(
@@ -464,4 +464,136 @@ fn an_unclassified_failure_is_recorded_as_the_unclassified_class() {
     let _ = state.read_file("src/main.rs".to_string(), None, None);
 
     assert_eq!(recorded.calls()[0].failure, Some(GgCallFailure::Other));
+}
+
+// ---------------------------------------------------------------------------
+// The discovery half of the bracket
+// ---------------------------------------------------------------------------
+
+/// **A call the model never opened a documentation view of is recorded — and still runs.**
+///
+/// Both halves matter equally. The record is the whole point of the mechanism; that the call is
+/// serviced anyway is what keeps it a measurement rather than a gate, and a refusal here would
+/// change what a run *is*. See [`crate::discovery`].
+#[test]
+fn a_call_the_model_never_looked_up_is_recorded_and_still_runs() {
+    let log = CallLog::default();
+    let mut state = membrane_from(FakeOperationApi::new(&log).documenting(&[]));
+
+    state
+        .read_file("src/main.rs".to_string(), None, None)
+        .expect("the call is measured, never refused");
+
+    assert_eq!(state.undocumented.calls, 1);
+    assert_eq!(
+        state.undocumented.operations.get("files.read_file"),
+        Some(&1),
+        "the finding names the operation, so an operator knows which call was guessed at"
+    );
+    assert_eq!(
+        log.names(),
+        vec!["read_file"],
+        "the read really happened: nothing about this changes what the program got back"
+    );
+}
+
+/// **A call the model opened a documentation view of on an earlier turn is not recorded.**
+#[test]
+fn a_call_documented_before_the_turn_is_not_recorded() {
+    let log = CallLog::default();
+    let mut state = membrane_from(FakeOperationApi::new(&log).documenting(&[FILES_READ_FILE]));
+
+    let _ = state.read_file("src/main.rs".to_string(), None, None);
+    let _ = state.write_file("out.txt".to_string(), "body".to_string());
+
+    assert_eq!(
+        state.undocumented.operations.keys().collect::<Vec<_>>(),
+        vec!["files.write_file"],
+        "the documented call clears and the undocumented one beside it does not"
+    );
+    assert_eq!(state.undocumented.calls, 1);
+}
+
+/// **The same call made four times is four findings**, because the question is asked per call.
+///
+/// A model that fought the same unread signature forty times and one that guessed once are very
+/// different findings, and a set of operations rather than a count per operation could not tell them
+/// apart.
+#[test]
+fn every_undocumented_call_is_counted_not_every_operation() {
+    let log = CallLog::default();
+    let mut state = membrane_from(FakeOperationApi::new(&log).documenting(&[]));
+
+    for _ in 0..4 {
+        let _ = state.read_file("src/main.rs".to_string(), None, None);
+    }
+
+    assert_eq!(state.undocumented.calls, 4);
+    assert_eq!(
+        state.undocumented.operations.get("files.read_file"),
+        Some(&4)
+    );
+}
+
+/// **An ending call is never even asked about.** The prompt spells `finish` at the model itself, so
+/// a call to it is an instruction followed rather than a signature guessed — see
+/// [`spelled_by_gg`](crate::discovery::spelled_by_gg).
+///
+/// The double here reports *everything* undocumented, so this is the exemption doing the work and
+/// nothing else.
+#[test]
+fn the_ending_calls_gg_spells_in_its_prompt_are_never_recorded() {
+    let log = CallLog::default();
+    let mut state = membrane_from(FakeOperationApi::new(&log).documenting(&[]));
+
+    let _ = state.finish("done".to_string());
+
+    assert!(
+        state.undocumented.is_empty(),
+        "gg named this call in its own prompt: {:?}",
+        state.undocumented
+    );
+}
+
+/// **An api with no documentation surface at all records nothing** — the answer
+/// [`NotApplicable`](crate::discovery::CallDiscovery::NotApplicable) exists for, and the shape
+/// [`BootstrapApi`](crate::bootstrap) answers with: gg wrote that program, so there is no model
+/// whose reading is in question.
+#[test]
+fn an_api_that_documents_nothing_records_nothing() {
+    let log = CallLog::default();
+    let mut state = membrane_from(FakeOperationApi::new(&log));
+
+    call_everything(&mut state);
+
+    assert!(
+        state.undocumented.is_empty(),
+        "nothing here could have been looked up, so nothing here was skipped: {:?}",
+        state.undocumented
+    );
+}
+
+/// **A refused call is a refusal and never an undocumented call.**
+///
+/// The two are different facts with different rosters — *the model reached for something it was not
+/// given* against *the model called something it never looked up* — and the gate is asked first, so
+/// a withheld operation never reaches the discovery question at all. It could not be answered
+/// anyway: an operation this agent was not granted has no page in its surface.
+#[test]
+fn a_call_the_gate_refused_is_never_an_undocumented_call() {
+    let log = CallLog::default();
+    let mut state = crate::sandbox::fake::membrane_from_scope(
+        FakeOperationApi::new(&log).documenting(&[]),
+        false,
+    );
+
+    state
+        .history()
+        .expect_err("an agent with no program library is refused");
+
+    assert!(
+        state.undocumented.is_empty(),
+        "the refusal roster already carries this call: {:?}",
+        state.undocumented
+    );
 }

@@ -667,7 +667,7 @@ fn spawn_the_subagent() -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     }
 }
 
@@ -742,6 +742,60 @@ async fn a_panicking_agent_task_ends_the_run_with_internal_error() {
                     }
                 )),
         "the console must show the panicked agent as failed rather than as still running"
+    );
+}
+
+/// **A gg defect outranks a breached ceiling.**
+///
+/// Both disqualify a run from being treated as one that finished, and they are not comparable: a
+/// spent ceiling stopped a measurement, while a defect of ours means there was no measurement. So
+/// the run must be reported as gg's, or a defect would be filed under the one field a study reads
+/// to find out why runs stop.
+///
+/// The two facts are ordered rather than raced. A parallelism cap of one means the spawned child
+/// cannot start until the root's loop has ended and released the only slot, so the root spends its
+/// turn ceiling first and the child panics afterwards, with the run carrying both.
+#[tokio::test]
+async fn a_gg_defect_outranks_a_breached_ceiling() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-ceiling-then-panic".to_string()),
+        Box::new(sink.clone()),
+    );
+    let mut set = subagent_set(1, 3, &["subagent"]);
+    // One turn each: the root delegates and is stopped by the turn ceiling at its next boundary.
+    set.limits.max_turns = Some(1);
+    let inv = invocation(dir.path(), set);
+
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_PROFILE_ID, |b| {
+            // A second reply is scripted and never asked for, which is what makes the ceiling
+            // observably the thing that stopped the root.
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![spawn_the_subagent(), stop_response()],
+            ))
+        })
+        .slot("subagent", |b| Box::new(PanickingClient::new(&b.model_id)));
+
+    assert_eq!(
+        timeout(&inv, &emitter, factory).await,
+        SessionOutcome::HarnessError,
+        "a run gg broke is not a measurement, whatever ceiling it also ran into"
+    );
+
+    let events = sink.events();
+    // The ceiling really was breached: this is a run carrying both facts, not a run that only
+    // faulted.
+    let breaches = limit_breaches(&events);
+    assert_eq!(breaches.len(), 1, "{breaches:?}");
+    assert_eq!(breaches[0].limit, GgLimitKind::Turns);
+    assert_eq!(breaches[0].agent_id, ROOT_AGENT_ID);
+    // And the run says whose failure it was.
+    assert_eq!(
+        terminal_status(&events).as_deref(),
+        Some(STATUS_INTERNAL_ERROR),
     );
 }
 

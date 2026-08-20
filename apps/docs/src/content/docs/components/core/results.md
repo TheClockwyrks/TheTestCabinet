@@ -178,6 +178,9 @@ the run's [terminal state](/components/core/run-records/#status):
   operator records each real harness error and leaves the auth-refresh ones
   unpublished.
 - A `hung` run publishes exactly like a `harness_error`.
+- A `limit_exceeded` run publishes exactly like a `harness_error` too. The
+  harness stopped it on an [execution ceiling](/gg/execution-limits/) its
+  configuration armed, which is the model's outcome against that ceiling.
 - An `infrastructure` failure is the Test Cabinet's own fault and is never
   publishable (`422`), whatever reviews it carries.
 - A `canceled` run is likewise never publishable (`422`). It is retained for
@@ -224,14 +227,15 @@ release lands.
 The public snapshot, and therefore the gallery, contains only published runs. A
 published catastrophic or timeout failure shows its generated source and has no
 playable build, and its outcome is reported as a per-model statistic separate
-from the score that ranks workable runs. A published `harness_error` or `hung`
-run shows no source and no build at all and is purely a per-model statistic.
+from the score that ranks workable runs. A published `harness_error`,
+`limit_exceeded` or `hung` run shows no source and no build at all and is purely
+a per-model statistic.
 
 The model page's reliability ring turns these into a breakdown of the model's
 published runs: completed against the publishable failure tiers, namely
-catastrophic failures, timeouts, harness errors, and hangs. `infrastructure` and
-`canceled` runs are absent from the ring and from every other model statistic,
-since neither is a model outcome.
+catastrophic failures, timeouts, harness errors, execution ceilings, and hangs.
+`infrastructure` and `canceled` runs are absent from the ring and from every
+other model statistic, since neither is a model outcome.
 
 The backend performs publish and the snapshot regeneration it triggers as the
 synchronized half of the lifecycle. A single entity does both, so two operators

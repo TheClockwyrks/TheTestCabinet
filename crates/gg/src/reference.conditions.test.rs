@@ -5,7 +5,7 @@ use crate::memories::MemoryStrategy;
 use crate::reference::tools::MAXIMAL_CONFIGURATION;
 use crate::tasks::TaskMode;
 use crate::tools::{READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED};
-use test_cabinet_core::gg::{SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
+use test_cabinet_core::gg::{SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
 
 /// **The derived conditions predict `from_run` exactly, in every configuration this test can
 /// build.**
@@ -102,11 +102,7 @@ fn sampled(axes: &[Axis], count: usize) -> Vec<Configuration> {
                 axis.choose(&mut configuration, seed.next(axis.arity()));
             }
             configuration.read = [READ_MODE_UNLIMITED, READ_MODE_DEFAULT_CAP][seed.next(2)];
-            configuration.shell = [
-                SHELL_OUTPUT_ADAPTIVE,
-                SHELL_OUTPUT_INLINE,
-                SHELL_OUTPUT_OFFLOAD,
-            ][seed.next(3)];
+            configuration.shell = [SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD][seed.next(2)];
             configuration.reviewers = seed.next(2) == 1;
             configuration.tasks = [TaskMode::Simple, TaskMode::Issues][seed.next(2)];
             configuration
@@ -114,16 +110,12 @@ fn sampled(axes: &[Axis], count: usize) -> Vec<Configuration> {
         .collect()
 }
 
-/// The 144 policy combinations, at the maximal point, so that a policy cannot silently withhold a
+/// The 96 policy combinations, at the maximal point, so that a policy cannot silently withhold a
 /// tool — which would make it a gate nobody wrote a condition for.
 fn every_policy() -> Vec<Configuration> {
     let mut configurations = Vec::new();
     for read in [READ_MODE_UNLIMITED, READ_MODE_DEFAULT_CAP] {
-        for shell in [
-            SHELL_OUTPUT_ADAPTIVE,
-            SHELL_OUTPUT_INLINE,
-            SHELL_OUTPUT_OFFLOAD,
-        ] {
+        for shell in [SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD] {
             for reviewers in [false, true] {
                 for memories in [
                     MemoryStrategy::Scratchpad,

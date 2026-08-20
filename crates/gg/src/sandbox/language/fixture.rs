@@ -357,24 +357,37 @@ impl ProgramLanguage for FixtureLanguage {
             .collect()
     }
 
-    /// One search per module and one view per name, with no list literal and no loop — deliberately
+    /// One search naming every module at once, and one view per name with no loop — deliberately
     /// unlike every registered arm's, because "the opening turn is written in the agent's own
     /// language" is only an assertion while two languages generate different programs.
     ///
     /// The filters are keyword arguments and nothing terminates a statement, which is this
-    /// language's own idiom in both of the places it is free to have one.
+    /// language's own idiom in both of the places it is free to have one. Nothing is brought into
+    /// scope: this language has no module loader — its [prepare step](Self::prepare_program) refuses
+    /// a `use` line outright — so a program reaches a module by writing its path and by nothing
+    /// else.
+    ///
+    /// An agent holding neither module is handed an empty `modules`, and this program then makes no
+    /// search call at all. A search carrying neither a query nor a filter is refused as
+    /// `invalid-argument` — "you asked for nothing" rather than "nothing matched" — and the one
+    /// program every model reads before writing its own is the last place to demonstrate a call gg
+    /// would refuse.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         let search = spell(self, DOCS_SEARCH);
         let open_docs_view = spell(self, VIEWS_OPEN_DOCS_VIEW);
-        let searched: String = modules
-            .iter()
-            .map(|path| {
+        let searched = match modules.is_empty() {
+            true => String::new(),
+            false => {
+                let listed: Vec<String> = modules
+                    .iter()
+                    .map(|path| Value::String((*path).to_string()).to_string())
+                    .collect();
                 format!(
-                    "{search}(\"\", module={}, limit={MAX_SEARCH_LIMIT})\n",
-                    Value::String((*path).to_string())
+                    "{search}(modules=[{}], limit={MAX_SEARCH_LIMIT})\n",
+                    listed.join(", ")
                 )
-            })
-            .collect();
+            }
+        };
         let opened: String = docs
             .iter()
             .map(|name| format!("{open_docs_view}({})\n", Value::String((*name).to_string())))
@@ -581,6 +594,14 @@ fn reshape(document: &mut Value) {
         rename(function, &name);
         let path = paths.get(&module).unwrap_or(&module);
         function["fqn"] = json!(qualified(path, function["receiver"].as_str(), &name));
+        // The source arm's call-site spelling is dropped, because it is an answer about **that**
+        // arm's import line and this is a different arm. An arm states a `call` only when the text
+        // of a call is not its fully-qualified name — which is true of an arm reached by a named
+        // import and false of this one, whose programs write a module's path in full because its
+        // prepare step refuses an import line outright. Carried over, the fixture would claim its
+        // programs write a call they do not write, and the gates that read the claim would be
+        // asserting the source arm's idiom against the fixture's source.
+        function["call"] = Value::Null;
         for reference in references(function) {
             requalify(reference, &resolved);
         }

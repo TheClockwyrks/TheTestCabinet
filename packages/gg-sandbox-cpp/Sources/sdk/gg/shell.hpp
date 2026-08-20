@@ -32,9 +32,8 @@ struct shell_output {
   std::optional<std::int32_t> exit_code;
   /// Merged stdout then stderr, tail-truncated at 16 KiB or at the run's own ceiling.
   ///
-  /// Where the run offloads shell output this holds the tail that fits and a note naming the files
-  /// that hold the whole of it. Under the default `adaptive` mode a command that succeeded returns
-  /// just that note.
+  /// Where the run offloads shell output this holds the tail that fits, and an output that was cut
+  /// ends with a note naming the two files that hold the whole of it.
   std::string output;
   /// Whether the cap cut `output`, dropping the head and keeping the tail.
   bool truncated{};
@@ -47,9 +46,9 @@ struct shell_output {
 ///
 /// A run may offload shell output, and the `shell` tool's own description says which mode is in
 /// force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the
-/// two files the command's full stdout and stderr were written to. Under `adaptive`, the default,
-/// a command that succeeded returns that note alone and one that failed returns the tail. Grepping
-/// the named files is cheaper than running the command again.
+/// two files the command's full stdout and stderr were written to. Those files are readable by
+/// absolute path, so a `gg::files::read_text_file` of one, or a grep, is cheaper than running the
+/// command again.
 ///
 /// <ggop>shell.shell</ggop>
 ///

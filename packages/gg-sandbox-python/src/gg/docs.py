@@ -18,7 +18,7 @@ from enum import Enum
 from wit_world.imports import docs as wire
 
 from ._registry import missing, operation
-from .core import ApiError, ApiErrorCode, _call, _uint
+from .core import ApiError, ApiErrorCode, _call, _strings, _uint
 
 __all__ = [
     "DocHit",
@@ -54,11 +54,11 @@ class DocHit:
     """Whether it is a module, a function or a type."""
 
     module: str
-    """The module it lives in.
+    """The module it lives in: the one that publishes a function, or the one that declares a type.
 
-    A function has exactly one. A type shows every module in which a function the agent can call
-    mentions it — never one nothing is held in, and comma-separated when there are several. That
-    makes it a description rather than something to pass back as `module`, which takes one module.
+    One module, always, and it is the module's own path rather than a description of where the entry
+    is reachable from — so it goes straight back into `modules` as an entry of the filter, and the
+    module a hit reports is the module the filter would have found it under.
     """
 
     name: str
@@ -102,9 +102,9 @@ def _kind(value: str) -> DocKind:
 
 @operation("docs.search")
 def search(
-    query: str,
     *,
-    module: str | None = None,
+    query: str | None = None,
+    modules: list[str] | None = None,
     type: str | None = None,
     kind: DocKind | None = None,
     offset: int | None = None,
@@ -118,21 +118,25 @@ def search(
     paragraph — and a weaker kind never overtakes a stronger one however often it occurs.
 
     Only entries this run bound are returned, so nothing a search finds is something the run
-    withheld. The filters compose with each other and with `query`.
+    withheld. Every argument is optional and they compose with each other: a query alone ranks the
+    whole surface, a filter alone is a directory of what it names, and the two together search
+    inside the filter.
 
     The page comes back as a value and is also opened as a view, under the selector `search results`,
     so it can be read on the next turn without a program showing it to itself. The next search
     replaces that view: it names what is being worked from rather than keeping a record.
 
     Args:
-        query: The words to match, as a case-insensitive substring. It may be empty when at least one
-            filter is given.
-        module: One module's id — `files`, `views`, `docs` — matched exactly. An empty `query` with a
-            module is that module's whole directory rather than a search. A name no module has
-            matches nothing rather than failing, so an empty page means the filter found nothing,
-            not that it was rejected.
+        query: The words to match, as a case-insensitive substring. The default is no query at all,
+            which is what turns a filter into a directory rather than a search.
+        modules: The modules to look in, each named by its gg id — `files`, `views`, `docs` — or by
+            the path a program imports it under — `gg.files` — and matched exactly. Several name a
+            union: an entry in any one of them is a hit, so one call lists a whole granted surface.
+            With no `query` it is those modules' whole directory. A name no module has matches
+            nothing rather than failing, so an empty page means the filter found nothing, not that
+            it was rejected. The default is no module filter at all.
         type: One type's name, narrowing to that type and to the functions that take or return it.
-            Like `module`, a name nothing declares matches nothing rather than failing.
+            Like `modules`, a name nothing declares matches nothing rather than failing.
         kind: Whether to return modules, functions or types. The default returns all three.
         offset: How many hits to skip, for reading past the first page. The default starts at the
             best hit.
@@ -145,15 +149,15 @@ def search(
             a page shorter than `total` is a page there is more of.
 
     Raises:
-        ApiError: `invalid-argument` for an empty query with no filter at all — nothing matched and
-            nothing was asked for are different answers — and for a `limit` of zero, which would ask
-            for a page that answers nothing. A `module` or `type` that names something gg does not
-            hold is not among them: it matches nothing.
+        ApiError: `invalid-argument` for a call with no query and no filter at all — nothing matched
+            and nothing was asked for are different answers — and for a `limit` of zero, which would
+            ask for a page that answers nothing. A `modules` entry or a `type` that names something
+            gg does not hold is not among them: it matches nothing.
     """
     found = _call(
         wire.search,
         query,
-        module,
+        _strings("search", "modules", modules),
         type,
         None if kind is None else kind.value,
         _uint("search", "offset", offset),

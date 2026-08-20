@@ -1263,8 +1263,9 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     // all — and `close`/`closeAll` are bought by a capability, so this store grants it and the run
     // after it does not. The double answers an empty page, which is the whole of what a double can
     // honestly say about a real index; what is proven is the crossing, the optional-argument record
-    // (whose `module` and `type` labels are reserved words this arm writes as labels anyway), the
-    // constructor the kind filter lowers from, and the view the host opens on the way back.
+    // carrying the whole call (whose `type` label is a reserved word this arm writes as a label
+    // anyway), the array the module filter is, the constructor the kind filter lowers from, and the
+    // view the host opens on the way back.
     let log = CallLog::default();
     let api = FakeOperationApi::new(&log);
     // Searching is bound to every program; closing is bought, so this store grants the capability
@@ -1273,8 +1274,9 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     let operations = capability_operations([CAPABILITY_DOCVIEW_CLOSE]);
     let searching = prepare(
         &program_of(&[
-            "page <- Gg.Docs.search \"read\" \
-             { module: \"files\", type: \"FileRead\", kind: Gg.Docs.FunctionEntry, limit: 5 }",
+            "page <- Gg.Docs.search \
+             { query: \"read\", modules: [ \"files\" ], type: \"FileRead\", \
+             kind: Gg.Docs.FunctionEntry, limit: 5 }",
             "closed <- Gg.Docs.close \"Gg.Files.readFile\"",
             "emptied <- Gg.Docs.closeAll",
             "Console.log (show page.total <> \" \" <> show page.offset <> \" \" \
@@ -1433,7 +1435,7 @@ fn every_optional_argument_is_a_field_of_a_record() {
         .filter(|field| field["optional"] == json!(true))
         .count();
     assert_eq!(
-        optional, 41,
+        optional, 42,
         "the optional record fields the surface declares"
     );
 }

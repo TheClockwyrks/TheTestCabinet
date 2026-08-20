@@ -30,8 +30,8 @@ public static partial class Docs
     /// </param>
     /// <param name="Kind">Whether it is a module, a function or a type.</param>
     /// <param name="Module">
-    /// The module it lives in: itself for a module, and every module mentioning a type, so not a
-    /// filter to hand back.
+    /// The module it lives in: the one publishing a function, the one declaring a type, and itself
+    /// for a module. Always one.
     /// </param>
     /// <param name="Name">The name a program calls it by, the type's own name, or the module's path.</param>
     /// <param name="Summary">Its one-line brief, and only that.</param>

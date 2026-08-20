@@ -41,43 +41,19 @@ configurable arm rather than a fixed behavior.
 
 | Mode | Returned inline | On disk |
 | --- | --- | --- |
-| `adaptive` | Exit code and paths on success, the tail on failure | Both |
 | `offload` | The tail, plus a note naming the files | Both |
 | `inline` | The whole output, capped at 16 KiB | Nothing |
 
 The tail is the last `maxLines` lines and/or `maxChars` characters, described
 under [the two ceilings](#the-two-ceilings) below.
 
-Under either truncating mode each command's two streams are written to their own
-file under `/tmp/gg-shell`, outside the workspace so a run's diff holds the
-agent's work rather than gg's bookkeeping. The pair is written for every
-command, so "the full output is on disk" holds unconditionally and an agent
-never re-runs a command to find out whether its log exists.
-
-### Adaptive
-
-`adaptive` decides per command on the exit code. A successful command's output
-is the bulk of what a run's shell calls produce and the part an agent least
-often reads, so a success comes back as three lines:
-
-```
-Exit code: 0
-stdout: /tmp/gg-shell/cmd-41-0003.stdout
-stderr: /tmp/gg-shell/cmd-41-0003.stderr
-```
-
-That note states the exit code itself, so gg adds no `exit code:` header around
-it. It has to state it, because a responses-as-code program is handed the note
-with no header around it.
-
-A failure comes back exactly as it would under `offload`. A command that
-succeeded and printed nothing reads `(no output)`, since there is nothing on
-disk worth pointing at. A command the timeout killed fails the call, and
-whatever it had printed travels in the failure message on the same terms a
-completed command's output does.
-
-Withholding depends on the file pair. When gg cannot write it, the whole output
-is returned inline instead, with a note naming the write error.
+Under `offload` each command's two streams are written to their own file under
+`/tmp/gg-shell`, outside the workspace so a run's diff holds the agent's work
+rather than gg's bookkeeping. The pair is written for every command, so "the
+full output is on disk" holds unconditionally and an agent never re-runs a
+command to find out whether its log exists. Those paths are absolute, and the
+[filesystem](/gg/filesystem/) calls read them, so an agent that wants the whole
+of a command's output opens the file rather than running the command again.
 
 ### The two ceilings
 

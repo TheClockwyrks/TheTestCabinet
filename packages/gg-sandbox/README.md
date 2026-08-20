@@ -80,11 +80,14 @@ else), so a catalogue entry names its function by derivation rather than through
 second table to keep in step.
 
 The name a documentation view is opened by is `gg.<module>.<name>`, or
-`gg.<module>` for a module's own, and it is a path a program can really write:
-`import * as gg from "gg"` puts one namespace per module under `gg`, and
-`gg:<module>` reaches the same module alone. Types are bound bare, as `ApiError`
-is, and filed under their module's name, so `gg.files.FileRead` is where the
-declaration lives and `FileRead` is what a signature writes.
+`gg.<module>` for a module's own. A program reaches one module with the named
+import that binds it — `import { files } from "gg"`, which is the line the
+catalogue states for `gg.files` — or with `gg:<module>`, which resolves the same
+module alone; so a call site writes that name with its leading `gg.` dropped, and
+`files.readFile` is `gg.files.readFile` written where it is called. Types are
+bound bare, as `ApiError` is, and filed under their module's name, so
+`gg.files.FileRead` is where the declaration lives and `FileRead` is what a
+signature writes.
 
 Four families are model-facing and are **not** gg tools, so no `ALL_TOOL_NAMES`
 entry stands for one: the ending calls of `src/gg/session.ts`, which a role buys;

@@ -271,7 +271,12 @@ fn code_mode_names_objects_and_teaches_discovery() {
         // the search nor the documentation view, because naming either would be naming a function.
         "Search the documentation",
         "by keyword",
-        "naming one of the modules",
+        "naming modules",
+        // The order discovery has to happen in: a documentation view is opened on one turn and the
+        // call it documents is written on a later one, because a view arrives on the turn after the
+        // program that asked for it. Neither call is named.
+        "Open a documentation view of each function you intend to call",
+        "write the call on a later turn",
     ] {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
     }
@@ -2299,7 +2304,7 @@ fn every_language_prompt_states_what_the_run_configured() {
 /// the one word that carries it.
 ///
 /// These are the statements a program's author has to have read *before* writing the program: that
-/// the reply is a whole program and nothing else, that a call blocks rather than returning a
+/// the reply is one whole program and nothing else, that a call blocks rather than returning a
 /// promise, that a view is the only channel out of one and printing is not, that anything a view
 /// holds is read on the turn after the one that asked for it, and that an ending is taken back if
 /// the program then throws. None of them is visible in a catalogue, none of them can be recovered by
@@ -2328,6 +2333,10 @@ const REQUIRED_RULES: &[(&str, &str)] = &[
         "that the whole reply is the program and nothing else",
         "and nothing else",
     ),
+    // One program, not several. A model that appends a second draft of its next turn writes a
+    // reply the arm rejects as a redeclaration, and the diagnostic names the redeclared binding
+    // rather than the count, so the count is a thing the prompt has to have said first.
+    ("that the reply is exactly one program", "is run as one"),
     // Every call blocks. The alternative reading — that a call returns something to be awaited — is
     // the one a model brings with it, and a program written under it does its work in a callback
     // that never runs.

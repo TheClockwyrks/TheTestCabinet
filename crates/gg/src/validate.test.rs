@@ -21,13 +21,14 @@
 //! capability catalogue exactly, every capability that offers arms has arms to offer, and a
 //! [`Discarding`](LaunchReport::Discarding) sink is the assertion it claims to be.
 
-use serde_json::json;
+use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, AUTOLOAD_LOCKED_IMPL, CAPABILITY_READ_FILE, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgHook, GgHookAction,
-    GgHookEvent, GgLoopDetection, GgMemoryScope, GgRunLimits, GgSubagentRef, GgSubagentScope,
-    MEMORY_STRATEGY_SCRATCHPAD, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, READ_MODE_DEFAULT_CAP,
-    ROOT_PROFILE_ID, SHELL_OUTPUT_ADAPTIVE,
+    CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GgAgentConfig, GgCapabilityConfig,
+    GgCapabilitySet, GgHook, GgHookAction, GgHookEvent, GgLoopDetection, GgMemoryScope,
+    GgRunLimits, GgSubagentRef, GgSubagentScope, MEMORY_STRATEGY_SCRATCHPAD,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, READ_MODE_DEFAULT_CAP, ROOT_PROFILE_ID,
+    SHELL_OUTPUT_OFFLOAD,
 };
 
 use super::*;
@@ -494,6 +495,84 @@ fn a_required_param_absent_from_a_disabled_capability_is_not_refused() {
         );
         assert_eq!(defects(&set), Vec::new(), "`{id}` was refused while off");
     }
+}
+
+/// **The context-usage signal's threshold is the one key gg answers an absence with a figure.**
+///
+/// Every other param an enabled capability leaves out refuses the launch. This one names a share of
+/// the window the block is held back to, where "off" reads as neither "every turn" nor "never", so
+/// the absence is the [default](DEFAULT_SIGNAL_THRESHOLD_PERCENT) — written into every new document
+/// by the authoring catalog, so the record still says what the run was conducted under.
+#[test]
+fn a_signal_threshold_nobody_wrote_is_the_default_rather_than_a_refusal() {
+    let mut set = minimal();
+    put(
+        &mut set,
+        GgCapabilityConfig {
+            params: json!({ PARAM_TOP_FILE_VIEWS: 5, MODULE_PARAM_OWNERSHIP: "owned" }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+        },
+    );
+    assert_eq!(defects(&set), Vec::new());
+
+    // The authoring catalog writes the figure, so a freshly authored capability carries it and a
+    // run's record names the share it was conducted under.
+    assert_eq!(
+        GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+            .params
+            .get(PARAM_SIGNAL_THRESHOLD_PERCENT)
+            .and_then(serde_json::Value::as_u64),
+        Some(DEFAULT_SIGNAL_THRESHOLD_PERCENT)
+    );
+}
+
+/// **A written threshold is read on the ordinary terms.** A share of a window is between nothing and
+/// all of it, so a percentage past a hundred names a block no window ever earns, and one gg cannot
+/// read as a number names nothing at all. `0` is honoured: it is the block on every turn.
+#[test]
+fn a_signal_threshold_gg_cannot_honour_refuses_the_launch() {
+    let threshold = |value: Value| {
+        let mut set = minimal();
+        put(
+            &mut set,
+            GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+                .with_param(PARAM_SIGNAL_THRESHOLD_PERCENT, value),
+        );
+        set
+    };
+    let locus = param_locus(
+        CAPABILITY_AGENT_MANAGED_CONTEXT,
+        PARAM_SIGNAL_THRESHOLD_PERCENT,
+    );
+
+    for refused in [json!(101), json!(750), json!("three quarters"), json!(-5)] {
+        let refusal = refusal_text(&threshold(refused.clone()));
+        assert!(
+            refusal.contains(&locus),
+            "`{refused}` names no share of a window:\n{refusal}"
+        );
+    }
+
+    for honoured in [json!(0), json!(75), json!(100), json!(80.0)] {
+        assert_eq!(
+            defects(&threshold(honoured.clone())),
+            Vec::new(),
+            "`{honoured}` is a share gg can hold the block back to"
+        );
+    }
+
+    // A **disabled** capability is shown no signal at all and so is owed nothing, while what it does
+    // write is still read — the on and off arms of one comparison are judged the same way.
+    let mut off = minimal();
+    put(
+        &mut off,
+        GgCapabilityConfig {
+            enabled: false,
+            ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+                .with_param(PARAM_SIGNAL_THRESHOLD_PERCENT, 120)
+        },
+    );
+    assert!(refusal_text(&off).contains(&locus));
 }
 
 /// **An off-when-absent key is a setting, not a hole.** Compaction's summarizer model and the
@@ -1256,7 +1335,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                             .with_param(PARAM_LINE_CAP, 120)
                     },
                     GgCapabilityConfig {
-                        implementation: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
+                        implementation: Some(SHELL_OUTPUT_OFFLOAD.to_string()),
                         ..GgCapabilityConfig::enabled(CAPABILITY_SHELL)
                             .with_param(PARAM_MAX_LINES, 40)
                     },
@@ -1269,7 +1348,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                         command: "cargo build".to_string(),
                         cwd: None,
                         timeout_secs: Some(600.0),
-                        output: Some(SHELL_OUTPUT_ADAPTIVE.to_string()),
+                        output: Some(SHELL_OUTPUT_OFFLOAD.to_string()),
                     },
                     name: "build".to_string(),
                 }],
@@ -1716,7 +1795,7 @@ fn one_refusal_names_every_value_the_document_leaves_out() {
     // assertion above by demanding everything.
     for (id, params) in CAPABILITY_PARAMS {
         for (key, requirement) in *params {
-            if *requirement == Requirement::OffWhenAbsent {
+            if !matches!(requirement, Requirement::Required(_)) {
                 let locus = param_locus(id, key);
                 assert!(
                     !refusal.contains(&locus),

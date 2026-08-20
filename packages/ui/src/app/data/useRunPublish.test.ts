@@ -67,6 +67,8 @@ describe("isPublishable", () => {
       "catastrophic",
       "timed_out",
       "harness_error",
+      "limit_exceeded",
+      "hung",
     ] as const) {
       expect(isPublishable(summary({ state, reviewCount: 0 })), state).toBe(
         true,

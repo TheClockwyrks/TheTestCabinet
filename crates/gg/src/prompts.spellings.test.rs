@@ -80,10 +80,12 @@ fn judged_against() -> Vec<&'static dyn ProgramLanguage> {
 }
 
 /// Every way `language` writes one of its catalogued functions at a call site: the fully-qualified
-/// name its catalogue advertises, and the module-qualified form a program types.
+/// name its catalogue advertises, the module-qualified form a program types, and — where the arm
+/// states one — the call-site spelling its catalogue records as differing from both.
 ///
-/// Both, because they differ on the arms whose FQN carries a receiver or a labelled selector, and a
-/// hand-typed spelling would be one or the other.
+/// All three, because they differ on the arms whose FQN carries a receiver or a labelled selector,
+/// and on the two whose modules are reached by a named import, so that what gg prints is one
+/// segment longer than what a program writes. A hand-typed spelling would be one of the three.
 ///
 /// **Bare names are deliberately not here.** Every arm's surface is module-qualified — that is the
 /// condition the whole static-SDK decision was accepted on — so a bare `close` in a template is not
@@ -95,6 +97,13 @@ fn call_spellings(language: &'static dyn ProgramLanguage) -> Vec<String> {
     for function in catalogue_functions(language) {
         out.push(format!("{}{separator}{}", function.object, function.name));
         out.push(function.fqn.to_string());
+    }
+    // The third form is on the raw catalogue rather than on the projection, which carries the two
+    // above and not this one.
+    for function in &language.catalogue().functions {
+        if let Some(call) = &function.call {
+            out.push(call.clone());
+        }
     }
     out.sort();
     out.dedup();

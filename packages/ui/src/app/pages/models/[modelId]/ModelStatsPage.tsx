@@ -57,6 +57,11 @@ function StatsContent({ model }: { model: ModelSummary }) {
         value: outcomes.harness_error,
         tone: "harnessError",
       },
+      {
+        label: "Execution ceilings",
+        value: outcomes.limit_exceeded,
+        tone: "limitExceeded",
+      },
       { label: "Hangs", value: outcomes.hung, tone: "hung" },
     ];
     return { segments, totalRuns: runs };
@@ -66,7 +71,7 @@ function StatsContent({ model }: { model: ModelSummary }) {
     <>
       {/* Reliability: how the model's published runs broke down — completed vs
           every publishable failure tier (catastrophic, timeouts, harness errors,
-          hangs). Hidden while the runs are still loading so the ring never flashes
+          execution ceilings, hangs). Hidden while the runs are still loading so the ring never flashes
           a misleading 0%. */}
       {!loading && (
         <section className={styles.section}>

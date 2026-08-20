@@ -61,7 +61,7 @@ fn model_response_round_trips_through_json() {
             comparable: Some(0.01),
             actual: Some(0.01),
         }),
-        loop_aborts: 0,
+        loop_aborts: LoopAborts::none(),
     };
 
     let encoded = serde_json::to_string(&response).expect("serialize");
@@ -84,7 +84,7 @@ fn model_response_deserializes_minimal_form() {
     assert_eq!(decoded.usage, TokenCounts::default());
     assert!(decoded.cost.is_none());
     // A response that names no discarded replies reads as one that discarded nothing.
-    assert_eq!(decoded.loop_aborts, 0);
+    assert_eq!(decoded.loop_aborts, LoopAborts::none());
 }
 
 /// Every shape a `ModelError` comes in is recorded as its own turn error **type**, and every one of
@@ -129,7 +129,11 @@ fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
         ),
         (
             ModelError::ResponseLoop {
-                attempts: 4,
+                discarded: LoopAborts {
+                    attempts: 4,
+                    words: 12_260,
+                    chars: 77_800,
+                },
                 detail: "2 words repeated across 3000 consecutive words".to_string(),
             },
             TurnErrorType::ModelResponseLoop,
@@ -160,7 +164,11 @@ fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
     // line. They are now two recorded values, which is the fix.
     assert_ne!(
         ModelError::ResponseLoop {
-            attempts: 4,
+            discarded: LoopAborts {
+                attempts: 4,
+                words: 12_260,
+                chars: 77_800,
+            },
             detail: "looped".to_string(),
         }
         .turn_error_type(),
@@ -191,7 +199,11 @@ fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
 #[test]
 fn a_response_loop_reports_what_looped_and_how_much_was_discarded() {
     let error = ModelError::ResponseLoop {
-        attempts: 3,
+        discarded: LoopAborts {
+            attempts: 3,
+            words: 9_195,
+            chars: 750_003,
+        },
         detail: "the reply passed 250001 characters without finishing".to_string(),
     };
 
@@ -201,8 +213,64 @@ fn a_response_loop_reports_what_looped_and_how_much_was_discarded() {
         "{message}"
     );
     assert!(message.contains("discarded 3 response(s)"), "{message}");
+    assert!(
+        message.contains("750003 characters of generated output"),
+        "the size of what was thrown away is named beside the count: {message}"
+    );
     assert!(!error.is_auth_failure());
     assert!(error.vision_unsupported_model().is_none());
+}
+
+/// A tally sums every attempt it is shown, and moves all three of its figures together.
+///
+/// The count answers "how often the model looped" and the sizes answer "how much generation it cost
+/// to find out". They are recorded together because a size with no attempt behind it is a size a
+/// reader cannot say what it was a size of.
+#[test]
+fn a_loop_abort_tally_sums_what_every_discarded_attempt_generated() {
+    let mut discarded = LoopAborts::none();
+    assert!(!discarded.any(), "a reply that arrived threw nothing away");
+
+    discarded.record(3_065, 19_400);
+    discarded.record(3_065, 19_500);
+
+    assert!(discarded.any());
+    assert_eq!(discarded.attempts, 2);
+    assert_eq!(discarded.words, 6_130);
+    assert_eq!(discarded.chars, 38_900);
+}
+
+/// The sizes ride on the response beside the count, and read back as they were written.
+///
+/// They are on the response for the same reason the count is: a discarded attempt never enters the
+/// conversation and is not a turn, so the reply that finally arrived is the only carrier the turn
+/// loop is handed.
+#[test]
+fn a_response_carries_what_the_replies_before_it_threw_away() {
+    let response = ModelResponse {
+        text: Some("done".to_string()),
+        tool_calls: Vec::new(),
+        finish_reason: FinishReason::Stop,
+        usage: TokenCounts::default(),
+        cost: None,
+        loop_aborts: LoopAborts {
+            attempts: 2,
+            words: 6_130,
+            chars: 38_900,
+        },
+    };
+
+    let value = serde_json::to_value(&response).expect("to_value");
+    assert_eq!(
+        value["loopAborts"],
+        json!({
+            "attempts": 2,
+            "words": 6_130,
+            "chars": 38_900,
+        })
+    );
+    let decoded: ModelResponse = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(decoded.loop_aborts, response.loop_aborts);
 }
 
 /// A refused credential — absent, `401`, or `403` — is an auth failure; every other

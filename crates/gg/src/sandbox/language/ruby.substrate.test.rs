@@ -1172,7 +1172,8 @@ GG::Session.request_changes("widen the test", "name the file")
     // all — and `close`/`close_all` are bought by a capability, so this store grants it and the run
     // after it does not. The double answers an empty page, which is the whole of what a double can
     // honestly say about a real index; what is proven is the crossing, the keyword arguments, the
-    // Symbol the kind filter lowers from, and the view the host opens on the way back.
+    // Array the module filter lowers from, the Symbol the kind filter lowers from, and the view the
+    // host opens on the way back.
     let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = FakeOperationApi::new(&log);
@@ -1191,7 +1192,7 @@ GG::Session.request_changes("widen the test", "name the file")
     let searching = prepare(
         r##"
 require "gg"
-page = GG::Docs.search("read", in_module: "files", type: "FileRead",
+page = GG::Docs.search(query: "read", modules: ["files"], type: "FileRead",
                        kind: GG::Docs::DocKind::FUNCTION, limit: 5)
 puts "#{page.class} #{page.total} #{page.offset} #{page.hits.inspect}"
 puts "#{GG::Docs.close("GG::Files.read_file")} #{GG::Docs.close_all}"

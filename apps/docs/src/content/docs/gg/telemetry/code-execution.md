@@ -21,6 +21,7 @@ denominator for every healing rate. A run with the capability off emits none.
 | `compileWaitMs` | What this program spent obtaining the sandbox's compiled component. |
 | `compileMs` | What this turn's [language](/gg/languages/overview/) spent compiling for it. |
 | `healing` | What gg had to repair before it could run the reply. Omitted entirely for a clean one. |
+| `undocumentedCalls` | How many of the turn's calls the model wrote without holding a [documentation view](/gg/responses-as-code/views/#undocumented-calls) of them from an earlier turn, and a count per gg operation id. Omitted entirely for a turn that made none. |
 
 ## Logs and the operator-facing record
 

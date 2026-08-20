@@ -24,6 +24,15 @@ fn retryable_for_infrastructure_catastrophic_and_harness_error() {
 }
 
 #[test]
+fn a_run_stopped_on_an_execution_ceiling_is_never_retried() {
+    // The harness stopped that run on a ceiling the run's own configuration armed,
+    // so the outcome is a property of the configuration: a fresh attempt runs the
+    // same capability set into the same bound, spends the same money doing it, and
+    // reports the same state.
+    assert!(!is_retryable(RunState::LimitExceeded));
+}
+
+#[test]
 fn retry_count_defaults_to_one_when_absent() {
     // A launch request that omits `retryCount` is treated as one retry.
     let json =

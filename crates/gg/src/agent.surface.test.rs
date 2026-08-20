@@ -513,13 +513,16 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
             .any(|(api, view)| api.description.len() > view.brief.len()),
         "a module with a detail is in this surface, or the prefix rule above proves nothing"
     );
-    // The TypeScript arm reaches its whole surface through one line, so every module here states
-    // that line. It is asserted rather than left unsaid because a projection that dropped it would
-    // leave a model hunting for the import its compiler requires.
+    // The TypeScript arm reaches a module by a named import off the one specifier its whole surface
+    // is published under, so every module here states its own line and no two of them state the
+    // same one. It is asserted rather than left unsaid because a projection that dropped the field
+    // would leave a model hunting for the import its compiler requires.
     assert!(
-        views
-            .iter()
-            .all(|view| view.import.as_deref() == Some("import * as gg from \"gg\";")),
+        surface.iter().zip(&views).all(|(api, view)| {
+            let id = api.path.rsplit('.').next().unwrap_or_default();
+            let line = format!("import {{ {id} }} from \"gg\";");
+            view.import.as_deref() == Some(line.as_str())
+        }),
         "an arm whose catalogue declares an import line states it on every module"
     );
     // The library is the one family a capability gates rather than a role, so it is the one whose

@@ -717,13 +717,19 @@ fn a_turn_header_reports_the_results_own_cost_with_separators() {
 // Agent-managed context: the context-usage signal
 // ---------------------------------------------------------------------------
 
-/// The default options: a tool-calling agent with both reclaim tools and a five-file breakdown.
+/// The default options: a tool-calling agent with both reclaim tools, a five-file breakdown, and
+/// the block on every turn.
+///
+/// The threshold is `0` because these cases are about what the block *says*, and a window filled to
+/// three quarters of its limit for each of them would be arithmetic in the way of the assertion.
+/// What the threshold does is pinned by the cases below that set one.
 fn signal_options() -> UsageSignalOptions {
     UsageSignalOptions {
         can_evict: true,
         program_language: None,
         can_archive: true,
         top_file_views: 5,
+        threshold_percent: 0,
     }
 }
 
@@ -959,6 +965,133 @@ fn no_usage_signal_without_a_window_limit() {
     ctx.set_system("system");
     ctx.refresh_context_usage_signal(signal_options());
     assert_eq!(count_signal_items(&ctx), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Agent-managed context: the threshold the signal appears at
+// ---------------------------------------------------------------------------
+
+/// The block's own `Overall:` reading of `ctx`, as a percentage, taken by rendering it on a copy at
+/// a threshold of `0`.
+///
+/// Every threshold case below is stated relative to this figure rather than to a token count, so
+/// each one asserts the property it is about — the block appears once the window has reached the
+/// share the agent is then shown — instead of restating the estimator's arithmetic.
+fn overall_percent(ctx: &ContextModel) -> f64 {
+    let mut probe = ctx.clone();
+    probe.refresh_context_usage_signal(UsageSignalOptions {
+        threshold_percent: 0,
+        ..signal_options()
+    });
+    let text = signal_text(&probe).expect("a threshold of zero always renders the block");
+    let line = text
+        .lines()
+        .find_map(|line| line.strip_prefix("- Overall: "))
+        .expect("the block opens with its overall figure");
+    line.trim_end_matches('%')
+        .parse()
+        .expect("the overall figure is a percentage")
+}
+
+/// A window carrying one read big enough to be a substantial, but not overwhelming, share of its
+/// limit — the shape every threshold case needs, and the one shape the assertions are about.
+fn partly_full() -> ContextModel {
+    let mut ctx = model(Some(10_000));
+    ctx.set_system("system");
+    ctx.push_file_view(
+        Some("src/main.rs".to_string()),
+        None,
+        "c1",
+        "main ".repeat(4_000),
+        Vec::new(),
+    );
+    ctx
+}
+
+/// **The block is withheld until the window has reached the threshold, and then reports the very
+/// figure the threshold was judged on.**
+///
+/// The two have to be one measurement: a block that appeared at three quarters of the window while
+/// announcing some other fraction of some other denominator would leave the agent unable to tell
+/// what it was being asked to act on.
+#[test]
+fn the_signal_is_withheld_until_the_window_reaches_the_threshold() {
+    let mut ctx = partly_full();
+    let overall = overall_percent(&ctx);
+    assert!(
+        (5.0..95.0).contains(&overall),
+        "this window has to be partly full for the case to mean anything: {overall}"
+    );
+
+    ctx.refresh_context_usage_signal(UsageSignalOptions {
+        threshold_percent: overall.ceil() as u64 + 1,
+        ..signal_options()
+    });
+    assert_eq!(
+        count_signal_items(&ctx),
+        0,
+        "below the threshold there is no block at all, not a shorter one"
+    );
+
+    ctx.refresh_context_usage_signal(UsageSignalOptions {
+        threshold_percent: overall.floor() as u64,
+        ..signal_options()
+    });
+    let text = signal_text(&ctx).expect("the window has reached the threshold");
+    assert!(
+        text.contains(&format!("- Overall: {overall:.1}%")),
+        "the block reports the figure its threshold was judged on: {text}"
+    );
+}
+
+/// A threshold of `0` is the block on every turn, however empty the window — the setting a study of
+/// the signal itself runs under, and the one the block had before the threshold existed.
+#[test]
+fn a_threshold_of_zero_renders_the_block_on_an_almost_empty_window() {
+    let mut ctx = model(Some(1_000_000));
+    ctx.set_system("system");
+    assert!(overall_percent(&ctx) < 1.0, "an almost empty window");
+
+    ctx.refresh_context_usage_signal(UsageSignalOptions {
+        threshold_percent: 0,
+        ..signal_options()
+    });
+    assert_eq!(count_signal_items(&ctx), 1);
+}
+
+/// **A window the agent emptied loses its block**, rather than carrying the reading that asked it to
+/// reclaim. The whole point of the reclaim call is to get back under the threshold, and a stale
+/// block would go on reporting the pressure the eviction just relieved.
+#[test]
+fn a_window_that_falls_back_under_the_threshold_loses_its_signal() {
+    let mut ctx = partly_full();
+    let options = UsageSignalOptions {
+        threshold_percent: overall_percent(&ctx).floor() as u64,
+        ..signal_options()
+    };
+    ctx.refresh_context_usage_signal(options);
+    assert_eq!(count_signal_items(&ctx), 1);
+
+    ctx.evict_file_views(Some("src/main.rs"));
+    ctx.refresh_context_usage_signal(options);
+    assert_eq!(count_signal_items(&ctx), 0);
+}
+
+/// **The block's own tokens never carry the window over the line.** The threshold is judged on the
+/// accounted items, which the signal is not one of, so a window under the threshold stays under it
+/// however many times the signal is refreshed — a block that could justify its own presence would
+/// appear once and then never leave.
+#[test]
+fn the_block_cannot_push_the_window_over_its_own_threshold() {
+    let mut ctx = partly_full();
+    let options = UsageSignalOptions {
+        threshold_percent: overall_percent(&ctx).ceil() as u64 + 1,
+        ..signal_options()
+    };
+    for _ in 0..3 {
+        ctx.refresh_context_usage_signal(options);
+        assert_eq!(count_signal_items(&ctx), 0);
+    }
 }
 
 /// The text of the current context-usage signal, if any — identified by its stable heading.

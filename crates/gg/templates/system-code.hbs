@@ -2,8 +2,9 @@
 
 {{/if}}## Responses as Code
 
-Each turn, your entire response is run as a {{language.displayName}} program. Reply
-with legal {{language.displayName}} code and nothing else. All calls are synchronous.
+Each turn, your entire response is run as one {{language.displayName}} program. Reply
+with one legal {{language.displayName}} program and nothing else. All calls are
+synchronous.
 
 {{#if language.checker}}
 Your program is compiled by `{{language.checker}}` before it runs. A program it refuses
@@ -35,7 +36,10 @@ you need, then `public final class Program` with a
 file, without `public` on it.
 {{/if}}
 {{#if (eq language.id "javascript")}}
-Your response is evaluated verbatim, as a whole JavaScript module.
+Your response is evaluated verbatim, as a whole JavaScript module. Each module
+below is brought into scope by a named import binding that module alone, so a
+name gg prints — here, in a search hit, in a documentation view — is written at a
+call site with its leading `gg.` dropped.
 {{/if}}
 {{#if (eq language.id "kotlin")}}
 Your response is compiled verbatim, as one Kotlin file in the root package: the
@@ -70,7 +74,10 @@ Your response is compiled verbatim, as a whole Swift file. It is the top level o
 a program, so bare statements run in the order you wrote them.
 {{/if}}
 {{#if (eq language.id "typescript")}}
-Your response is compiled verbatim, as a whole TypeScript module.
+Your response is compiled verbatim, as a whole TypeScript module. Each module
+below is brought into scope by a named import binding that module alone, so a
+name gg prints — here, in a search hit, in a documentation view — is written at a
+call site with its leading `gg.` dropped.
 {{/if}}
 
 ## Ending your session
@@ -96,8 +103,9 @@ Your program is given these modules:
 - `{{path}}`: {{brief}}{{#if import}} — brought into scope with `{{import}}`{{/if}}
 {{/each}}
 
-Search the documentation to find a function, by keyword or by naming one of the
-modules above.
+Search the documentation to find a function, by keyword or by naming modules
+above. Open a documentation view of each function you intend to call, and write
+the call on a later turn.
 
 {{#if language.checker}}
 The SDK declares every function, whatever this run enabled, so a call to one this

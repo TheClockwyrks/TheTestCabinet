@@ -57,10 +57,11 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
  * harness exit splits into [`Completed`](RunState::Completed) and
  * [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
  * never built or loaded);
- * a harness that exits **non-zero** is a
- * [`HarnessError`](RunState::HarnessError) and one that stops responding
- * altogether is [`Hung`](RunState::Hung); a run stopped before the harness
- * finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),
+ * a harness that stopped itself on one of its own configured ceilings is
+ * [`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any
+ * other way is a [`HarnessError`](RunState::HarnessError), and one that stops
+ * responding altogether is [`Hung`](RunState::Hung); a run stopped before the
+ * harness finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),
  * [`Canceled`](RunState::Canceled) (an operator killed it), or
  * [`Infrastructure`](RunState::Infrastructure) (everything else).
  */
@@ -69,6 +70,7 @@ export type RunState =
   | "catastrophic"
   | "timed_out"
   | "harness_error"
+  | "limit_exceeded"
   | "hung"
   | "infrastructure"
   | "canceled";

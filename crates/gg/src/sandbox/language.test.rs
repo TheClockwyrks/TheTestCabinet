@@ -12,7 +12,7 @@ use test_cabinet_core::gg::{
 use super::fixture::fixture_language;
 use super::*;
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW};
+use crate::sandbox::operations::{DOCS_SEARCH, OperationId, VIEWS_OPEN_DOCS_VIEW};
 use crate::validate::{LaunchDefect, LaunchReport};
 
 /// The language `profile` resolves to, asserting gg honoured its configuration exactly as written.
@@ -35,6 +35,27 @@ fn reported(profile: &GgAgentConfig) -> (GgProgramLanguage, Vec<LaunchDefect>) {
 /// than about whichever language happens to be the default.
 fn typescript() -> &'static dyn ProgramLanguage {
     language(GgProgramLanguage::TypeScript)
+}
+
+/// **How `language`'s own programs write the call `id`**, which is not always the [key](spell) gg
+/// prints it under.
+///
+/// gg names a call by its fully-qualified key everywhere it speaks about one, and on nine arms that
+/// key is also the text of the call. On the two ECMAScript arms it is not: a module is reached
+/// there by a **named** import, so `gg.docs.search` is written `docs.search` and a program that
+/// wrote the key would not compile. Which of the two an arm is is not this file's to know — the arm
+/// states it, in its catalogue's `call` field, which every other arm leaves empty precisely because
+/// it has nothing to say there. So this reads the arm's answer and falls back to the key, rather
+/// than carrying a table of the arms that differ.
+fn written(language: &'static dyn ProgramLanguage, id: OperationId) -> String {
+    let key = spell(language, id);
+    language
+        .catalogue()
+        .functions
+        .iter()
+        .find(|function| function.fqn == key)
+        .and_then(|function| function.call.clone())
+        .unwrap_or(key)
 }
 
 /// An agent profile whose responses-as-code capability carries `params`.
@@ -171,7 +192,7 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
 
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
         let program = language.open_docs_views_statement(&NAMES);
-        let call = spell(language, VIEWS_OPEN_DOCS_VIEW);
+        let call = written(language, VIEWS_OPEN_DOCS_VIEW);
         assert!(
             program.contains(&call),
             "{}: the generated program does not call `{call}`:\n{program}",
@@ -209,8 +230,10 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
 /// turn](crate::bootstrap), prepared and *run* before the first request, so a language whose program
 /// did not prepare would fail every one of its agents' runs as an internal error rather than
 /// producing a worse prompt. The same gate the generated documentation program gets, for the same
-/// reason, plus the two things only this program can get wrong — a module gg listed and the program
-/// never searched, and a search that took the default page instead of the whole module.
+/// reason, plus the three things only this program can get wrong — a module gg listed and the
+/// program never searched, a search that took the default page instead of the whole of what it
+/// named, and a search written for an agent that holds no module at all, which gg refuses as
+/// `invalid-argument` rather than answering with an empty page.
 ///
 /// The [fixture](super::fixture) is included and answers deliberately unlike every registered arm,
 /// which is what makes "the opening turn is written in the agent's own language" an assertion rather
@@ -222,8 +245,8 @@ fn every_language_writes_the_program_that_opens_the_session() {
 
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
         let program = language.bootstrap_program(&MODULES, &DOCS);
-        let search = spell(language, DOCS_SEARCH);
-        let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
+        let search = written(language, DOCS_SEARCH);
+        let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
         for call in [&search, &open_docs_view] {
             assert!(
                 program.contains(call.as_str()),
@@ -261,29 +284,63 @@ fn every_language_writes_the_program_that_opens_the_session() {
             });
     }
 
+    // The agent that holds neither of the two modules: `modules` arrives empty, and a search
+    // carrying neither a query nor a filter is `invalid-argument` rather than an empty page, so the
+    // opening program has to leave the call out altogether. The documentation key here deliberately
+    // does not spell the search call, so that the key printed in the view line cannot be read as
+    // the call this looks for the absence of. Read rather than prepared: the sweep above already
+    // drives every arm's real compiler once, and this program differs from that one by a call it
+    // does not make.
+    const UNSEARCHED: [&str; 1] = ["gg.views.openDocsView"];
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let program = language.bootstrap_program(&[], &UNSEARCHED);
+        let search = written(language, DOCS_SEARCH);
+        let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
+        assert!(
+            !program.contains(&search),
+            "{}: an agent holding no module at all is handed an opening turn that calls `{search}` \
+             with nothing to search for, which gg refuses rather than answers:\n{program}",
+            language.display_name()
+        );
+        for named in [open_docs_view.as_str(), UNSEARCHED[0]] {
+            assert!(
+                program.contains(named),
+                "{}: the opening program lost `{named}` along with the search:\n{program}",
+                language.display_name()
+            );
+        }
+    }
+
     // Two implementations, written out, because containment cannot show that the syntax *around*
     // the two calls is each language's own: a trailing options object and a `for…of` here, keyword
-    // arguments and one statement per module there.
+    // arguments and no loop at all there.
     assert_eq!(
         typescript().bootstrap_program(&MODULES, &DOCS),
         format!(
-            "import * as gg from \"gg\";\n\
+            "import {{ docs, views }} from \"gg\";\n\
              \n\
-             const modules = [\n  \"gg.files\",\n  \"gg.views\",\n];\n\
-             for (const path of modules) {{\n  \
-             gg.docs.search(\"\", {{ module: path, limit: {MAX_SEARCH_LIMIT} }});\n}}\n\
+             docs.search({{ modules: [\"gg.files\", \"gg.views\"], limit: {MAX_SEARCH_LIMIT} }});\n\
              \n\
-             const functions = [\n  \"gg.docs.search\",\n];\n\
-             for (const name of functions) {{\n  gg.views.openDocsView(name);\n}}\n"
+             for (const name of [\"gg.docs.search\"]) {{\n  views.openDocsView(name);\n}}\n"
         )
+    );
+    assert_eq!(
+        typescript().bootstrap_program(&[], &DOCS),
+        "import { views } from \"gg\";\n\nfor (const name of [\"gg.docs.search\"]) {\n  \
+         views.openDocsView(name);\n}\n",
+        "the search gg would have to refuse is left out, and `docs` goes out of the import with it"
     );
     assert_eq!(
         fixture_language().bootstrap_program(&MODULES, &DOCS),
         format!(
-            "docs.search(\"\", module=\"gg.files\", limit={MAX_SEARCH_LIMIT})\n\
-             docs.search(\"\", module=\"gg.views\", limit={MAX_SEARCH_LIMIT})\n\
+            "docs.search(modules=[\"gg.files\", \"gg.views\"], limit={MAX_SEARCH_LIMIT})\n\
              views.open_docs_view(\"gg.docs.search\")\n"
         )
+    );
+    assert_eq!(
+        fixture_language().bootstrap_program(&[], &DOCS),
+        "views.open_docs_view(\"gg.docs.search\")\n",
+        "the search gg would have to refuse is left out, and nothing else moves with it"
     );
 }
 
@@ -306,9 +363,11 @@ fn every_language_writes_the_program_that_opens_the_session() {
 /// request. So it is the arm's own demonstration of what a program has to do to call `docs.search`
 /// and `views.openDocsView`, and the catalogue has to agree with it:
 ///
-/// * a module that states a line is reached in the program by the route [`PATH_ROUTE`] records for
-///   that arm: the line character for character, or the module's own
-///   [path](crate::sandbox::ModuleDoc::path) written at the call site with no line at all;
+/// * a module that states a line is reached in the program by the route its arm is recorded under:
+///   the line character for character, or the module's own
+///   [path](crate::sandbox::ModuleDoc::path) written at the call site with no line at all
+///   ([`PATH_ROUTE`]), or its own short name among the bindings of one grouped import
+///   ([`GROUPED_IMPORT`]);
 /// * a module that states none has **no line in the program bringing it into scope**, which is what
 ///   "already there" means when a compiler is the one being told.
 ///
@@ -345,6 +404,22 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
         GgProgramLanguage::Kotlin,
         GgProgramLanguage::Rust,
     ];
+    /// **The arms whose opening program binds every module it calls into in ONE import line.**
+    ///
+    /// The two ECMAScript arms publish their whole surface under one specifier and reach a module by
+    /// a **named** import off it, so `gg.docs` states `import { docs } from "gg";` — and a program
+    /// calling into two modules writes neither of the two lines it would then be holding to, because
+    /// two lines binding out of one specifier is one line: `import { docs, views } from "gg";`. The
+    /// route for those arms is therefore the module's own short name among the bindings of the
+    /// program's **single** import of that specifier, and it fails in both directions exactly as
+    /// [`PATH_ROUTE`] does: an arm listed here that goes back to a line per module writes more than
+    /// one such import and fails, and an arm not listed is held to its stated line character for
+    /// character.
+    ///
+    /// The specifier is written out rather than read from the arm, for the reason the rest of this
+    /// gate's text is: a derivation would be the implementation restating itself.
+    const GROUPED_IMPORT: [GgProgramLanguage; 2] =
+        [GgProgramLanguage::JavaScript, GgProgramLanguage::TypeScript];
 
     let mut lines_asserted = 0usize;
     for language in all_languages() {
@@ -375,29 +450,57 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
                 });
             match module.import {
                 Some(line) => {
-                    match PATH_ROUTE.contains(&language.id()) {
-                        true => {
-                            assert!(
-                                program.contains(module.path),
-                                "{name}: `PATH_ROUTE` records that its opening program reaches a \
-                                 module by writing its path, and this one does not name `{}` at \
-                                 all:\n{program}",
-                                module.path
-                            );
-                            assert!(
-                                !program.contains(line),
-                                "{name}: `PATH_ROUTE` records that its opening program writes no \
-                                 line, and this one writes `{line}`; delete its row:\n{program}"
-                            );
-                        }
-                        false => assert!(
+                    if PATH_ROUTE.contains(&language.id()) {
+                        assert!(
+                            program.contains(module.path),
+                            "{name}: `PATH_ROUTE` records that its opening program reaches a \
+                             module by writing its path, and this one does not name `{}` at \
+                             all:\n{program}",
+                            module.path
+                        );
+                        assert!(
+                            !program.contains(line),
+                            "{name}: `PATH_ROUTE` records that its opening program writes no \
+                             line, and this one writes `{line}`; delete its row:\n{program}"
+                        );
+                    } else if GROUPED_IMPORT.contains(&language.id()) {
+                        let imports: Vec<&str> = program
+                            .lines()
+                            .map(str::trim)
+                            .filter(|line| {
+                                line.starts_with("import ") && line.ends_with("from \"gg\";")
+                            })
+                            .collect();
+                        assert_eq!(
+                            imports.len(),
+                            1,
+                            "{name}: `GROUPED_IMPORT` records that its opening program binds every \
+                             module it calls into in one named import, and this one writes {} of \
+                             them; delete its row if the arm now writes a line per \
+                             module:\n{program}",
+                            imports.len()
+                        );
+                        let bound = imports[0]
+                            .split_once('{')
+                            .and_then(|(_, rest)| rest.split_once('}'))
+                            .map_or("", |(bound, _)| bound);
+                        assert!(
+                            bound.split(',').map(str::trim).any(|it| it == module.id),
+                            "{name}: its catalogue says `{}` is reached with `{line}`, and the one \
+                             import the opening program writes binds `{bound}` — so the module the \
+                             program calls into is not the module it brought into scope, and the \
+                             model is told the catalogue's answer:\n{program}",
+                            module.path
+                        );
+                    } else {
+                        assert!(
                             program.contains(line),
                             "{name}: its catalogue says `{}` is reached with `{line}`, and the \
                              opening program gg writes for this arm calls into it without that \
                              line. One of the two is wrong, and the model is told the catalogue's \
                              answer:\n{program}",
                             module.path
-                        ),
+                        );
                     }
                     lines_asserted += 1;
                 }
@@ -1120,11 +1223,11 @@ fn the_synthesized_file_view_statement_is_the_languages_own() {
 
     assert_eq!(
         typescript().open_file_statement("src/main.ts", None),
-        "import * as gg from \"gg\";\n\ngg.views.openFile(\"src/main.ts\");\n"
+        "import { views } from \"gg\";\n\nviews.openFile(\"src/main.ts\");\n"
     );
     assert_eq!(
         typescript().open_file_statement("src/main.ts", Some(window)),
-        "import * as gg from \"gg\";\n\ngg.views.openFile(\"src/main.ts\", { offset: 400, limit: \
+        "import { views } from \"gg\";\n\nviews.openFile(\"src/main.ts\", { offset: 400, limit: \
          200 });\n"
     );
 

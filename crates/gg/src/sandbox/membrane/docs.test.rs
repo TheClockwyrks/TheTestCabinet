@@ -27,7 +27,7 @@ fn a_search_is_unconditional_and_records_the_view_it_opened() {
     let mut state = membrane(&log);
 
     let found = state
-        .search("file".to_string(), None, None, None, None, None)
+        .search(Some("file".to_string()), Vec::new(), None, None, None, None)
         .expect("a search is bound whatever a run enables");
     assert_eq!(found.total, 0, "the double models no catalogue");
 
@@ -42,6 +42,39 @@ fn a_search_is_unconditional_and_records_the_view_it_opened() {
         parts.views_opened
     );
     assert_eq!(parts.views_opened[0].selector, "search results");
+}
+
+/// **A search may carry filters and no query at all**, and the membrane bridges it like any other.
+///
+/// The guest's `query` is an `option<string>` and its `modules` a `list<string>`, which is what makes
+/// *these modules' whole directory* a call a program can write rather than one it has to spell with
+/// an empty string it never meant. The membrane's job here is only the lift: an absent query becomes
+/// the empty one the owned [`DocSearchQuery`](crate::sandbox::DocSearchQuery) carries, and whether
+/// the result of that is a directory or a refusal is `DocsRuntime`'s judgement — asked of the real
+/// catalogue in `docs.search.test.rs`, where there is something to find.
+///
+/// So what is asserted is that nothing at this boundary turns a filter-only search away before the
+/// runtime has seen it: it is one api call, with one view, exactly as a worded search is.
+#[test]
+fn a_search_may_carry_filters_and_no_query() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+
+    state
+        .search(
+            None,
+            vec!["files".to_string(), "shell".to_string()],
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("a filter is something to look for, and the membrane does not decide otherwise");
+
+    let parts = state.into_parts();
+    assert!(parts.refusals.is_empty(), "{:?}", parts.refusals);
+    assert_eq!(parts.api_calls, 1);
+    assert_eq!(parts.views_opened.len(), 1, "{:?}", parts.views_opened);
 }
 
 /// **A close reaches the api when the agent holds the capability**, and reports what went.

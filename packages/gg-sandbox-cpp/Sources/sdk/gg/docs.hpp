@@ -39,17 +39,25 @@ enum class doc_kind {
   type,
 };
 
-/// The filters and the page a search runs under; `{}` narrows nothing.
+/// Everything one search runs under: the words to look for, the filters, and the page.
 ///
 /// An aggregate filled in with designated initialisers, which is what C++ offers in place of named
-/// arguments: `gg::docs::search("read", {.module = "files", .limit = 5})`. Every field composes with
-/// the query and with the others.
+/// arguments: `gg::docs::search({.query = "read", .modules = {"files"}, .limit = 5})`. Every field
+/// may be left out and every field composes with the others — but `{}` asks for nothing at all,
+/// which the call refuses.
 struct search_filters {
-  /// One module to look in, by gg's id (`files`) or by this arm's path (`gg::files`).
+  /// The words to look for, matched as case-insensitive substrings.
   ///
-  /// Empty looks in all of them. Exact and case-insensitive, because a module filter is a lookup
-  /// rather than a search: an empty query and a module is that module's whole directory.
-  std::optional<std::string_view> module;
+  /// Several specific words rank an entry above one vague word. Empty searches on the filters
+  /// alone, which is what makes a `modules` filter a directory rather than a question.
+  std::optional<std::string_view> query;
+  /// The modules to look in, each by gg's id (`files`) or by this arm's path (`gg::files`).
+  ///
+  /// A union rather than a narrowing: naming several returns the entries of any of them, and an
+  /// empty vector looks in all of them. Exact and case-insensitive, because a module filter is a
+  /// lookup rather than a search — so these modules with no query at all are their whole directory,
+  /// and a hit's own `module` goes straight back in here.
+  std::vector<std::string> modules;
   /// One type's own name (`file_read`), narrowing to it and to the functions that mention it.
   ///
   /// What a value of this shape can be used for, in other words: every function whose signature
@@ -69,11 +77,10 @@ struct doc_hit {
   std::string key;
   /// Whether this is a module, a function or a type.
   docs::doc_kind kind{};
-  /// The module it lives in.
+  /// The module it lives in: the one that publishes a function, or the one that declares a type.
   ///
-  /// One for a function, itself for a module, and for a type every module whose bound functions
-  /// mention it, comma-separated. That plurality is why it is a description rather than something to
-  /// feed back to a `module` filter, which takes one module and compares it whole.
+  /// One module, always, and itself for a module — so it is a value rather than a description, and
+  /// the `modules` filter of the next search takes it exactly as it reads here.
   std::string module;
   /// The name a program calls it by, the type's own name, or the module's own path.
   std::string name;
@@ -99,6 +106,11 @@ struct doc_search {
 /// the word in a paragraph, however often it mentions it. Only what this run bound is ever
 /// returned, so nothing a search finds is something the program cannot reach.
 ///
+/// Every part of a search may be left out and the parts given compose. `modules` is a union —
+/// naming several returns the entries of any of them — and `modules` with no query at all is those
+/// modules' whole directory, which is how a program reads a module rather than looking through one.
+/// Asking for nothing whatever is the one call this refuses.
+///
 /// The result is a value and a view. The value is readable in the turn that asked for it; the view
 /// puts the same page in the next prompt under the selector `search results`, replaced by the next
 /// search rather than accumulating, and closed by `gg::views::close`. A hit carries a brief and no more
@@ -106,15 +118,13 @@ struct doc_search {
 ///
 /// <ggop>docs.search</ggop>
 ///
-/// \param query The words to look for, matched as case-insensitive substrings. Several specific
-///   words rank an entry above one vague word. It may be empty when `filters` narrows the search.
-/// \param filters The filters and the page; `{}` searches the whole bound surface and takes the
-///   first page.
+/// \param filters The words to look for, the filters they compose with, and the page to take. Any
+///   field may be left out; all of them at once may not, which is why this argument has no default.
 /// \returns the page that matched, best first, and how many matched behind it.
-/// \throws gg::core::api_error `invalid_argument` when `query` is empty and no filter is set — asking
-///   for nothing and matching nothing are different answers — and when `limit` is `0`, which is a
-///   page that could never answer anything.
-docs::doc_search search(std::string_view query, docs::search_filters filters = {});
+/// \throws gg::core::api_error `invalid_argument` when `filters` names neither a query nor anything
+///   to narrow by — asking for nothing and matching nothing are different answers — and when
+///   `limit` is `0`, which is a page that could never answer anything.
+docs::doc_search search(docs::search_filters filters);
 
 /// Take one documentation view out of the context window, by the key it was opened under.
 ///

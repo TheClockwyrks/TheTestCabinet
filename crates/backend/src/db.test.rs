@@ -95,7 +95,9 @@ fn record(id: &str) -> RunRecord {
 /// A gg run record: the base record reconfigured as a gg run carrying a capability set and the
 /// aggregatable session summary the gg binary computed, so a test can assert both round-trip.
 fn gg_record(id: &str) -> RunRecord {
-    use test_cabinet_core::gg::{GgCapabilitySet, GgSessionSummary, GgSlotCost};
+    use test_cabinet_core::gg::{
+        GgCapabilitySet, GgSessionSummary, GgSlotCost, GgUndocumentedCalls,
+    };
     use test_cabinet_core::metrics::{Cost, TokenCounts};
 
     let mut record = record(id);
@@ -104,6 +106,7 @@ fn gg_record(id: &str) -> RunRecord {
     record.subject.gg_capability_set = Some(GgCapabilitySet::minimal("mock/echo"));
     record.subject.gg_summary = Some(GgSessionSummary {
         terminal_status: "completed".to_string(),
+        undocumented_calls: GgUndocumentedCalls::default(),
         agents_spawned: 3,
         subagent_count: 2,
         max_subagent_depth: 1,

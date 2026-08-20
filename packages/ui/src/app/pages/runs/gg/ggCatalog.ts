@@ -241,6 +241,7 @@ export interface ParamSpec {
   // the list, so the draft stays a flat string map.
   kind:
     | "fraction"
+    | "percent"
     | "number"
     | "bytes"
     | "select"
@@ -604,12 +605,11 @@ export const HOOK_DECISION_CONTRACT = `{"action":"continue"}
 {"action":"message","message":"text put in front of the model"}`;
 
 export const SHELL_OUTPUT_OPTIONS = [
-  { value: "adaptive", label: "Adaptive" },
   { value: "offload", label: "Offload to files" },
   { value: "inline", label: "Inline" },
 ] as const;
 
-// The same three modes, plus the one thing a *hook*'s output field can say that a
+// The same two modes, plus the one thing a *hook*'s output field can say that a
 // capability's cannot: follow the agent's own shell configuration. That is inheritance
 // rather than a mode of its own — a hook with no output mode runs under whatever its
 // agent's shell is configured with — which is why it is offered here and nowhere else.
@@ -620,12 +620,12 @@ export const HOOK_OUTPUT_OPTIONS = [
 
 // The shell output modes that truncate a command's output to the two ceilings below —
 // everything except `inline`, which returns the whole of it and reads neither param.
-export const TRUNCATING_SHELL_OUTPUT_MODES = ["adaptive", "offload"] as const;
+export const TRUNCATING_SHELL_OUTPUT_MODES = ["offload"] as const;
 
 // What each output mode does — the detail lifted off the picker's option labels into
 // the field's help tooltip.
 export const SHELL_OUTPUT_HINT =
-  "Adaptive returns only the exit code for a command that succeeded, and the tail for one that failed. Offload returns the tail for every command. Both write the full stdout and stderr to a file pair under /tmp/gg-shell and tell the agent where to grep for the rest. Inline returns the whole output (capped at 16 KiB) and writes nothing to disk.";
+  "Offload returns the tail of every command's output and writes the full stdout and stderr to a file pair under /tmp/gg-shell, naming the pair when it cut something. Inline returns the whole output (capped at 16 KiB) and writes nothing to disk.";
 
 // The two ceilings a freshly enabled shell capability is written with. A truncating mode
 // reads both and gg supplies neither, so these are what the form puts in front of an
@@ -1324,6 +1324,10 @@ export const AUTHORED_WINDOW_LIMIT = 100_000;
 export const AUTHORED_SUMMARY_HEADROOM = 0.2;
 // The shortlist of largest file views an agent-managed-context agent's prompt names.
 export const AUTHORED_TOP_FILE_VIEWS = 5;
+// How full the window an agent may fill has to be before it is shown the context-usage
+// block. The one figure gg reads out of a document that does not write it, so a capability
+// switched on without touching the field runs at this share.
+export const AUTHORED_SIGNAL_THRESHOLD_PERCENT = 75;
 // Deep enough for a root that delegates to a lead that delegates to a worker, and shallow
 // enough that a runaway roster cannot open a fleet.
 export const AUTHORED_MAX_DEPTH = 3;
@@ -1633,6 +1637,16 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         defaultValue: String(AUTHORED_TOP_FILE_VIEWS),
         hint: "How many of the agent's largest file views its prompt names when it is asked to reclaim window space — the shortlist it evicts from, rather than a ceiling on how many views it may hold.",
+      },
+      {
+        // The one param gg reads a figure out of a document that does not write it, so
+        // this field is seeded but carries no [required] flag: clearing it runs the same
+        // share, and a new document is written with it either way.
+        key: "signalThresholdPercent",
+        label: "Signal at",
+        kind: "percent",
+        defaultValue: String(AUTHORED_SIGNAL_THRESHOLD_PERCENT),
+        hint: "How full the window has to be, as a percentage, before the agent is shown the context-usage block at all. The share is of the window the agent may actually fill — the model's window less whatever an enabled Compaction holds back — which is the same figure the block then reports. Below it there is no block, since a block reporting a window that is 6% full costs tokens to ask for a reclaim worth nothing. Set 0 to show it every turn.",
       },
       ownershipParam("what it has archived"),
     ],

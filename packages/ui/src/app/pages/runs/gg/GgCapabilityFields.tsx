@@ -455,7 +455,13 @@ export function CapabilityBody({
                     className={runExec.input}
                     type="number"
                     min={0}
-                    max={p.kind === "fraction" ? 1 : undefined}
+                    max={
+                      p.kind === "fraction"
+                        ? 1
+                        : p.kind === "percent"
+                          ? 100
+                          : undefined
+                    }
                     step={p.kind === "fraction" ? 0.05 : 1}
                     value={draft.params?.[p.key] ?? ""}
                     disabled={readOnly}

@@ -13,6 +13,7 @@ const ALL_STATES: RunState[] = [
   "catastrophic",
   "timed_out",
   "harness_error",
+  "limit_exceeded",
   "hung",
   "infrastructure",
   "canceled",
@@ -32,6 +33,7 @@ describe("hasPlayableOutcome", () => {
     expect(hasPlayableOutcome("catastrophic")).toBe(false);
     expect(hasPlayableOutcome("timed_out")).toBe(false);
     expect(hasPlayableOutcome("harness_error")).toBe(false);
+    expect(hasPlayableOutcome("limit_exceeded")).toBe(false);
     expect(hasPlayableOutcome("hung")).toBe(false);
     expect(hasPlayableOutcome("infrastructure")).toBe(false);
     expect(hasPlayableOutcome("canceled")).toBe(false);
@@ -67,6 +69,16 @@ describe("describeRunState", () => {
     // operator stopped before it reached any outcome.
     expect(describeRunState("infrastructure").isPublishableFailure).toBe(false);
     expect(describeRunState("canceled").isPublishableFailure).toBe(false);
+  });
+
+  it("reads a spent execution ceiling as reportable model signal", () => {
+    // The harness stopped the run on a bound its own configuration armed, so the
+    // model spent its whole allowance without finishing. That is the model's
+    // outcome, published as a per-model statistic and never retried.
+    const presentation = describeRunState("limit_exceeded");
+    expect(presentation.isFailure).toBe(true);
+    expect(presentation.isPublishableFailure).toBe(true);
+    expect(presentation.description).toMatch(/never retried/i);
   });
 
   it("reads a canceled run as an operator's stop, not a model result", () => {

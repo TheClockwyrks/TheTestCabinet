@@ -24,6 +24,7 @@ use test_cabinet_core::gg::GgCallFailure;
 
 use crate::board::IssueStatus;
 use crate::context::{OpenViewInfo, TurnRange, ViewKind};
+use crate::discovery::CallDiscovery;
 use crate::docs::DocSearch;
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramRefusal, ProgramSummary};
@@ -138,8 +139,9 @@ pub struct ViewRefusal {
 pub struct DocSearchQuery {
     /// The words to look for, as the model typed them.
     pub query: String,
-    /// Restrict to one module, by gg's id for it or by this language's spelling.
-    pub module: Option<String>,
+    /// Restrict to these modules, each by gg's id for it or by this language's spelling. Several
+    /// name a union, and an empty list is no module filter at all.
+    pub modules: Vec<String>,
     /// Restrict to one type and what takes or returns it.
     pub declared_type: Option<String>,
     /// Restrict to `function` or `type`.
@@ -249,6 +251,30 @@ pub trait OperationApi: Send + 'static {
     /// call that succeeded. For the calls that never reach a tool — a carve-out no tool backs, and a
     /// call the membrane refused before dispatch — this is the **only** record of why they failed.
     fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgCallFailure>);
+
+    /// Had this agent **read the documentation of `call`** before it wrote it — the
+    /// [discovery](crate::discovery) question, asked at the same bracket and answered off the same
+    /// state.
+    ///
+    /// Here rather than in the membrane because what an agent has open is the loop's own state, and
+    /// this is the seam every other question about that state goes through. The bracket has already
+    /// decided that the question *arises*: it asks only of calls it let through, and never of the
+    /// [ending calls](crate::discovery::spelled_by_gg) gg's own prompt spells at the model.
+    ///
+    /// It is a **query**, and its answer changes nothing: nothing is refused, no ceiling observes
+    /// it, and the call proceeds identically whichever answer comes back. The whole of what the
+    /// answer does is decide whether the turn's record gains a line.
+    ///
+    /// The implementation is bound by one rule, and it is the one the mechanism rests on: only a
+    /// view the model **could have read** clears a call, which means one that stood in the window
+    /// before this turn began. A view this turn's own program opened has been read by nobody. See
+    /// the [module docs](crate::discovery).
+    ///
+    /// There is no default body, deliberately. An api that quietly answered
+    /// [`Documented`](CallDiscovery::Documented) would report every model as having discovered its
+    /// whole surface — the same failure a defaulted [`end_api_call`](Self::end_api_call) would be,
+    /// and just as invisible.
+    fn call_discovery(&mut self, call: ApiIdentity<'_>) -> CallDiscovery;
 
     fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome;
     fn read_file(

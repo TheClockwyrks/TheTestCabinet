@@ -158,23 +158,51 @@ fn the_generated_documentation_program_is_ruby() {
 /// handed it.
 ///
 /// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
-/// its window is a program that ran. What is asserted here is that gg wrote Ruby — arrays, `each`
-/// with a block, keyword arguments — rather than another arm's syntax; that the search is the
-/// whole-module lookup rather than the default page of one; and that the module filter is written
-/// `in_module:`, which is the name this SDK gives it because `module` is a keyword.
+/// its window is a program that ran. What is asserted here is that gg wrote Ruby — an array, `each`
+/// with a block, keyword arguments and no terminators — rather than another arm's syntax, and that
+/// the listing is **one** call naming every module at the whole-module limit, rather than a call
+/// each or the default page of one.
 #[test]
 fn the_opening_program_is_ruby() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        ruby().bootstrap_program(&["files", "views"], &["read_file"]),
+        ruby().bootstrap_program(
+            &["GG::Files", "GG::Shell"],
+            &["GG::Docs.search", "GG::Views.open_docs_view"],
+        ),
         format!(
-            "{}\n\nmodules = [\n  \"files\",\n  \"views\",\n]\n\
-             modules.each {{ |path| GG::Docs.search(\"\", in_module: path, limit: {limit}) }}\n\
+            "{}\n\n\
+             GG::Docs.search(modules: [\"GG::Files\", \"GG::Shell\"], limit: {limit})\n\
              \n\
-             functions = [\n  \"read_file\",\n]\n\
+             functions = [\n  \"GG::Docs.search\",\n  \"GG::Views.open_docs_view\",\n]\n\
              functions.each {{ |name| GG::Views.open_docs_view(name) }}\n",
             super::SURFACE_IMPORT
         )
+    );
+}
+
+/// **An agent granted neither module opens on a program with no search in it at all.**
+///
+/// The opening listing covers two modules and an agent may hold neither of them, which leaves gg
+/// with an empty `modules` and a call that would carry no query and no filter — the one shape
+/// `GG::Docs.search` refuses outright. Written anyway, the turn gg promises ran would be the turn
+/// that failed, in the one program a model reads as the example of its own output. So the search is
+/// left out and the documentation views stand alone.
+#[test]
+fn the_opening_program_omits_a_search_that_would_ask_for_nothing() {
+    let program = ruby().bootstrap_program(&[], &["GG::Docs.search"]);
+    assert_eq!(
+        program,
+        format!(
+            "{}\n\n\
+             functions = [\n  \"GG::Docs.search\",\n]\n\
+             functions.each {{ |name| GG::Views.open_docs_view(name) }}\n",
+            super::SURFACE_IMPORT
+        )
+    );
+    assert!(
+        !program.contains("search(modules:"),
+        "the opening program searches with nothing to search for:\n{program}"
     );
 }
 

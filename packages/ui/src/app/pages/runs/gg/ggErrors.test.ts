@@ -213,10 +213,16 @@ describe("the error fold", () => {
         consecutiveErrors: 0,
         turns: 1,
         loopAborts: 3,
+        loopAbortWords: 9195,
+        loopAbortChars: 58400,
       } as GgTelemetryKind),
       progressed("root", 2),
     ]);
     expect(state.errors.loopAborts).toBe(3);
+    // How much those three replies generated before they were thrown away — billed by the
+    // provider, absent from the run's cost, and stated here in the units gg measured.
+    expect(state.errors.loopAbortWords).toBe(9195);
+    expect(state.errors.loopAbortChars).toBe(58400);
     expect(state.errors.errors).toBe(0);
     expect(state.errors.turns).toBe(2);
   });
@@ -228,6 +234,8 @@ describe("the error fold", () => {
       progressed("root", 2),
     ]);
     expect(state.errors.loopAborts).toBe(0);
+    expect(state.errors.loopAbortWords).toBe(0);
+    expect(state.errors.loopAbortChars).toBe(0);
   });
 
   it("charges a loop that survived every attempt as a model-call error", () => {
@@ -242,10 +250,13 @@ describe("the error fold", () => {
         consecutiveErrors: 1,
         turns: 1,
         loopAborts: 4,
+        loopAbortWords: 12260,
+        loopAbortChars: 77800,
       } as GgTelemetryKind),
     ]);
     expect(state.errors.byKind.model_api).toBe(1);
     expect(state.errors.loopAborts).toBe(4);
+    expect(state.errors.loopAbortChars).toBe(77800);
   });
 });
 

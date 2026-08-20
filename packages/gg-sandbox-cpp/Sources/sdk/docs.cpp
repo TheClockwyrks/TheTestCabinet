@@ -16,11 +16,13 @@ namespace gg {
 
 namespace docs {
 
-docs::doc_search search(std::string_view query, docs::search_filters filters) {
+docs::doc_search search(docs::search_filters filters) {
   detail::scratch scratch;
-  sandbox_string_t lowered_query = scratch.str(query);
-  sandbox_string_t lowered_module{};
-  if (filters.module.has_value()) lowered_module = scratch.str(*filters.module);
+  sandbox_string_t lowered_query{};
+  if (filters.query.has_value()) lowered_query = scratch.str(*filters.query);
+  // The one filter that is not an optional on the wire: an empty list is the absence of a module
+  // filter, so this argument is always passed where its neighbours pass null.
+  sandbox_list_string_t lowered_modules = scratch.list(filters.modules);
   sandbox_string_t lowered_type{};
   if (filters.type.has_value()) lowered_type = scratch.str(*filters.type);
   sandbox_string_t lowered_kind{};
@@ -28,8 +30,8 @@ docs::doc_search search(std::string_view query, docs::search_filters filters) {
   detail::window page(filters.offset, filters.limit);
   test_cabinet_gg_docs_doc_search_t ret{};
   test_cabinet_gg_types_api_error_t err{};
-  if (!test_cabinet_gg_docs_search(&lowered_query,
-                                   filters.module.has_value() ? &lowered_module : nullptr,
+  if (!test_cabinet_gg_docs_search(filters.query.has_value() ? &lowered_query : nullptr,
+                                   &lowered_modules,
                                    filters.type.has_value() ? &lowered_type : nullptr,
                                    filters.kind.has_value() ? &lowered_kind : nullptr,
                                    page.offset(), page.limit(), &ret, &err)) {

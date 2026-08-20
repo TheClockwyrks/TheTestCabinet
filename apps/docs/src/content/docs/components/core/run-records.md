@@ -140,6 +140,16 @@ The run's terminal state, with enough detail to understand a failure. One of:
   build. It is recorded only as a per-model harness-error statistic. Publishing
   is deliberate rather than automatic, because a subscription auth-token refresh
   also surfaces as a non-zero exit and must be left unpublished.
+- `limit_exceeded`: the agent harness stopped the run on one of the
+  [execution ceilings](/gg/execution-limits/) its configuration armed, covering a
+  turn count, a wall-clock budget, a spend, and a tolerance for failing turns.
+  The model spent its whole allowance without finishing, which is a reportable
+  model outcome, so it is published exactly like a `harness_error` and releases
+  no source repository and no playable build. It is the one harness stop that is
+  never retried: a breached ceiling is a property of the configuration, so a
+  second attempt reaches the same bound. Only [gg](/gg/overview/) reaches this
+  state, because gg is the only harness whose ceilings the Test Cabinet
+  configures.
 - `hung`: the agent harness stopped producing output altogether and was killed
   by the idle watchdog. It stalled on a provider request that never returned or
   a subagent that never reported back. Published exactly like `harness_error`.

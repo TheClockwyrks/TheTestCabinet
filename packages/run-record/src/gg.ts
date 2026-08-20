@@ -1971,8 +1971,8 @@ export type GgTurnOutcome = "progressed" | "finished" | "error" | "fatal";
  * the whole reason the taxonomy has two levels — the distinction was being computed and thrown
  * away. The discarded attempts are *additionally* counted in their own right, on the
  * [`loop_aborts`](GgTelemetryKind::TurnOutcome::loop_aborts) field of the same event and in
- * [`GgErrorSummary::loop_aborts`], because they are money spent on nothing rather than a turn that
- * failed.
+ * [`GgErrorSummary::loop_aborts`], with the size of the output they threw away beside them,
+ * because they are money spent on nothing rather than a turn that failed.
  */
 export type GgTurnErrorKind =
   | "model_api"
@@ -2332,6 +2332,28 @@ export type GgErrorSummary = {
    */
   loopAborts: number;
   /**
+   * Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and
+   * the characters of the same output beside it — the **size** of what was thrown away, where
+   * the count beside them is only how often.
+   *
+   * The units are the ones gg measured itself, as the replies streamed. There is deliberately no
+   * token count and no price: gg's [cost](crate::metrics::Cost) and
+   * [tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives
+   * at the end of a stream an abandoned reply never reached, so any figure in those units would
+   * be an estimate published where every neighbouring figure is a measurement.
+   *
+   * This output is charged to the provider bill and is absent from the run's recorded cost, by
+   * design: a looping reply is a model defect, and a run must not be made to look expensive for
+   * one. The figures here are what makes that omission visible rather than silent.
+   */
+  loopAbortWords: number;
+  /**
+   * Characters of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts
+   * — the companion of [`loop_abort_words`](Self::loop_abort_words), and the finer of the two
+   * measures, since a reply's final partial word is never counted as a word.
+   */
+  loopAbortChars: number;
+  /**
    * The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind
    * — the breakdown a *"top error types"* ranking is built from, keyed by
    * [`GgTurnErrorType::wire_id`].
@@ -2372,6 +2394,59 @@ export type GgErrorSummary = {
    * surface plus some of another" is a number nobody can check.
    */
   toolFailures?: { [key in string]: number };
+};
+
+/**
+ * **Calls a model wrote without having read what they do** — the measurement of whether a model
+ * follows the one discipline [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) discovery is built
+ * on.
+ *
+ * gg's prompt names the modules an agent holds and no function inside any of them, so a model
+ * cannot know a call's signature until it has searched the documentation and opened a
+ * [documentation view](GgContextSource::DocsView) of the name. A view a program opens arrives in
+ * the window on the turn *after* the program that opened it, which is why the prompt states the
+ * discipline as *open a documentation view of each function you intend to call, and write the call
+ * on a later turn*. This counts the calls that broke it: the operation was called while no
+ * documentation view of it stood in the window from an earlier turn.
+ *
+ * # It is a measurement and never a gate
+ *
+ * Nothing is refused, nothing is retried and no [turn outcome](GgTurnOutcome) changes: the program
+ * compiled, ran and did its work, so no [error ceiling](GgRunLimits) observes any of this and none
+ * of it reaches the [error rollup](GgErrorSummary). What it is evidence about is the **model**. A
+ * model that repeatedly calls functions it never looked up is writing signatures from memory, and
+ * a run where that number is large is a run whose model should not be given this surface — which
+ * is a conclusion nobody could reach from a record that only showed the calls that happened to
+ * compile.
+ *
+ * It is a **lower bound**, and deliberately so. A guessed signature that did not compile never
+ * reaches a call site, so it is counted nowhere here; what is counted is the guess that happened to
+ * be right about the shape while still being a guess.
+ *
+ * # Why the operations are carried and not only the count
+ *
+ * A bare count says a model guessed and not at what. Forty calls of `files.read_file` is a model
+ * that never opened the one page it needed; forty different operations once each is a model
+ * ignoring the mechanism outright. Those are different findings with different remedies, and only
+ * the breakdown tells them apart.
+ */
+export type GgUndocumentedCalls = {
+  /**
+   * How many such calls were made. Exactly the sum of [`operations`](Self::operations)'s values.
+   */
+  calls: number;
+  /**
+   * The same calls broken down by **which** operation was called, keyed by gg's own rendered
+   * [operation id](GgTelemetryKind::ApiCall) (`files.read_file`) rather than by any arm's
+   * spelling — so eleven language arms' findings are counted under one key.
+   *
+   * Open (a string key) for the reason [`GgErrorSummary::by_type`] is: an operation added to gg's
+   * vocabulary joins the breakdown without a schema change, and a reader that has never heard of
+   * one degrades to an unlabelled row rather than failing to read the record at all.
+   *
+   * Empty — and omitted from the wire — exactly when [`calls`](Self::calls) is `0`.
+   */
+  operations?: { [key in string]: number };
 };
 
 /**
@@ -2581,6 +2656,23 @@ export type GgSessionSummary = {
    * tool-calling turn fails too, just in fewer ways.
    */
   errors: GgErrorSummary;
+  /**
+   * How many calls the run's models wrote **without ever having read the call's documentation**
+   * — the run's [discovery rollup](GgUndocumentedCalls), folded from the same
+   * [`CodeExecution`](GgTelemetryKind::CodeExecution) events
+   * [`code_executions`](Self::code_executions) counts.
+   *
+   * All zeroes for a tool-calling run, which has no documentation surface to open a view of and
+   * no discipline to break, and all zeroes for the well-behaved code run — which is the point:
+   * this is the field that separates a model that discovers its surface from one that writes
+   * signatures from memory, and a study comparing two models on
+   * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) reads it before it reads anything else.
+   *
+   * Read against [`code_executions`](Self::code_executions) for a per-turn rate and against the
+   * run's API calls for a per-call one; neither ratio is stored, for the reason
+   * [`GgErrorSummary`] stores no percentage.
+   */
+  undocumentedCalls: GgUndocumentedCalls;
   /**
    * How many distinct [issues](GgBoardIssue) the run ever created on its
    * [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
@@ -3500,6 +3592,22 @@ export type GgTelemetryKind =
        */
       apiCalls?: number;
       /**
+       * How many of those calls the model wrote **without ever having read the call's
+       * documentation** — see [`GgUndocumentedCalls`], which is where the whole of what this
+       * measures and what it deliberately does not is written down.
+       *
+       * A subset of [`api_calls`](Self::CodeExecution::api_calls) beside it, counted at the same
+       * bracket, and never an error: the turn's [outcome](Self::TurnOutcome) is unchanged by it
+       * and no ceiling observes it. Only the model's own programs contribute — gg's
+       * [bootstrap](https://docs.testcabinet.ai/gg/responses-as-code/discovery/) and the on-use
+       * script of a skill the turn read are gg's own code, and charging their calls to the model
+       * would make every turn that used a skill report a violation the model did not commit.
+       *
+       * Defaulted and omitted from the wire when nothing was recorded, so the presence of this
+       * object *is* "this turn called something it had not looked up".
+       */
+      undocumentedCalls?: GgUndocumentedCalls;
+      /**
        * How long the program's **own execution** took, in milliseconds — the wall-clock time it
        * spent running, excluding time parked in a bridged tool call, which is the per-program
        * efficiency signal.
@@ -3656,6 +3764,24 @@ export type GgTelemetryKind =
        * and lets [`GgErrorSummary::loop_aborts`] be a plain sum over these.
        */
       loopAborts?: number;
+      /**
+       * Words of generated output those discarded replies had produced by the moment each was
+       * abandoned, summed. Present on exactly the turns
+       * [`loop_aborts`](Self::TurnOutcome::loop_aborts) is present on.
+       *
+       * The count says how often the model looped; this says how much generation it cost to find
+       * out. It is measured by gg as the replies streamed rather than reported by the provider,
+       * which is why it is words and characters and never tokens or dollars: an abandoned stream
+       * carries no usage payload. It is for the same reason excluded from the turn's
+       * [usage](Self::Usage) and cost, which report the one reply that was read.
+       */
+      loopAbortWords?: number;
+      /**
+       * Characters of that same discarded output, counted as characters rather than bytes — the
+       * companion of [`loop_abort_words`](Self::TurnOutcome::loop_abort_words), and the finer of
+       * the two, since a reply's final partial word is never counted as a word.
+       */
+      loopAbortChars?: number;
     }
   | {
       type: "limit_exceeded";
@@ -4605,6 +4731,22 @@ export type GgTelemetryEvent = {
        */
       apiCalls?: number;
       /**
+       * How many of those calls the model wrote **without ever having read the call's
+       * documentation** — see [`GgUndocumentedCalls`], which is where the whole of what this
+       * measures and what it deliberately does not is written down.
+       *
+       * A subset of [`api_calls`](Self::CodeExecution::api_calls) beside it, counted at the same
+       * bracket, and never an error: the turn's [outcome](Self::TurnOutcome) is unchanged by it
+       * and no ceiling observes it. Only the model's own programs contribute — gg's
+       * [bootstrap](https://docs.testcabinet.ai/gg/responses-as-code/discovery/) and the on-use
+       * script of a skill the turn read are gg's own code, and charging their calls to the model
+       * would make every turn that used a skill report a violation the model did not commit.
+       *
+       * Defaulted and omitted from the wire when nothing was recorded, so the presence of this
+       * object *is* "this turn called something it had not looked up".
+       */
+      undocumentedCalls?: GgUndocumentedCalls;
+      /**
        * How long the program's **own execution** took, in milliseconds — the wall-clock time it
        * spent running, excluding time parked in a bridged tool call, which is the per-program
        * efficiency signal.
@@ -4761,6 +4903,24 @@ export type GgTelemetryEvent = {
        * and lets [`GgErrorSummary::loop_aborts`] be a plain sum over these.
        */
       loopAborts?: number;
+      /**
+       * Words of generated output those discarded replies had produced by the moment each was
+       * abandoned, summed. Present on exactly the turns
+       * [`loop_aborts`](Self::TurnOutcome::loop_aborts) is present on.
+       *
+       * The count says how often the model looped; this says how much generation it cost to find
+       * out. It is measured by gg as the replies streamed rather than reported by the provider,
+       * which is why it is words and characters and never tokens or dollars: an abandoned stream
+       * carries no usage payload. It is for the same reason excluded from the turn's
+       * [usage](Self::Usage) and cost, which report the one reply that was read.
+       */
+      loopAbortWords?: number;
+      /**
+       * Characters of that same discarded output, counted as characters rather than bytes — the
+       * companion of [`loop_abort_words`](Self::TurnOutcome::loop_abort_words), and the finer of
+       * the two, since a reply's final partial word is never counted as a word.
+       */
+      loopAbortChars?: number;
     }
   | {
       type: "limit_exceeded";

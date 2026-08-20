@@ -245,7 +245,8 @@ fn print_checks(validation: &test_cabinet_core::ValidationSummary) {
 /// A short label for a run's terminal state.
 fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
     use test_cabinet_core::RunState::{
-        Canceled, Catastrophic, Completed, HarnessError, Hung, Infrastructure, TimedOut,
+        Canceled, Catastrophic, Completed, HarnessError, Hung, Infrastructure, LimitExceeded,
+        TimedOut,
     };
     match state {
         Completed => "completed",
@@ -253,6 +254,7 @@ fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
         TimedOut => "timed out",
         Infrastructure => "infrastructure failure",
         HarnessError => "harness error",
+        LimitExceeded => "stopped on an execution ceiling",
         Hung => "harness hung",
         Canceled => "canceled by operator",
     }

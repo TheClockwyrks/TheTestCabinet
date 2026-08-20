@@ -41,9 +41,11 @@ use crate::sink::{BackendEventSink, BackendPreviewSink, Outbound};
 pub struct RunFailure {
     /// The classified terminal state. Every pre-implementation failure the driver
     /// reaches is [`RunState::Infrastructure`] except a model that ran past the
-    /// runtime cap, which is [`RunState::TimedOut`] (see
-    /// [`RunState::classify_failure`]). Carried through so the persisted record's
-    /// state — and therefore its publishability — is correct.
+    /// runtime cap, which is [`RunState::TimedOut`], and a harness that stopped the
+    /// run on one of its own configured execution ceilings, which is
+    /// [`RunState::LimitExceeded`] (see [`RunState::classify_failure`]). Carried
+    /// through so the persisted record's state — and therefore its publishability
+    /// and its retryability — is correct.
     pub state: RunState,
     /// A specific, human-readable reason for the failure — the diagnostic detail
     /// the backend records, distinguishing "couldn't pull the image" from
@@ -252,9 +254,10 @@ pub async fn drive(
             .await
         }
     }
-    // The engine returned a typed error: classify it (a runtime-cap timeout is a
-    // model outcome, everything else is infrastructure) before it is flattened to
-    // a diagnostic string for the record.
+    // The engine returned a typed error: classify it (a runtime-cap timeout and a
+    // harness that stopped itself on one of its own configured ceilings are model
+    // outcomes, everything else is infrastructure) before it is flattened to a
+    // diagnostic string for the record.
     .map_err(|err| RunFailure {
         state: RunState::classify_failure(&err),
         detail: format!("run failed: {err}"),

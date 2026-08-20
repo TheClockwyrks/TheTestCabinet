@@ -62,6 +62,7 @@ fn code_turn_compiling(healing: GgResponseHealing, compile_ms: Option<u64>) -> G
         ok: true,
         tool_calls: 0,
         api_calls: 0,
+        undocumented_calls: GgUndocumentedCalls::default(),
         duration_ms: Some(0),
         error: None,
         finished: None,
@@ -104,6 +105,11 @@ fn turn(
         consecutive_errors,
         turns: 999,
         loop_aborts,
+        // Two figures for one fact: gg publishes a size with every discarded attempt, so a fixture
+        // that named a count with no size would be a shape gg cannot emit. Scaled off the count so
+        // a rollup that summed the wrong field is caught by the figure it lands on.
+        loop_abort_words: loop_aborts * 3_000,
+        loop_abort_chars: loop_aborts * 19_000,
     }
 }
 
@@ -675,6 +681,8 @@ fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
             sandbox_limit: 1,
             missing_completion: 0,
             loop_aborts: 0,
+            loop_abort_words: 0,
+            loop_abort_chars: 0,
             by_type: BTreeMap::from([
                 ("transpile_syntax".to_string(), 1),
                 ("program_api_error".to_string(), 1),
@@ -811,6 +819,14 @@ fn discarded_looping_replies_are_counted_without_being_charged_as_errors() {
     let summary = tracker.finalize("completed");
     assert_eq!(summary.errors.loop_aborts, 3, "a plain sum over the turns");
     assert_eq!(
+        (
+            summary.errors.loop_abort_words,
+            summary.errors.loop_abort_chars
+        ),
+        (9_000, 57_000),
+        "and so is the size of what those attempts generated, which is the half that says how much"
+    );
+    assert_eq!(
         summary.errors.turns, 2,
         "a discarded attempt is not a turn of its own"
     );
@@ -830,6 +846,8 @@ fn a_run_that_never_armed_loop_detection_reports_no_aborts() {
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.errors.loop_aborts, 0);
+    assert_eq!(summary.errors.loop_abort_words, 0);
+    assert_eq!(summary.errors.loop_abort_chars, 0);
     assert_eq!(summary.errors.missing_completion, 1);
 
     let json = serde_json::to_value(&summary).expect("summary serializes");

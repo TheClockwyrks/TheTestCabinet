@@ -24,7 +24,10 @@ two, so an A/B of the response shape is a comparison inside a single run.
 - A responses-as-code agent is offered no native tool definitions. The system
   prompt names the capability modules and their one-line briefs, and names no
   function. An agent finds a function by searching the documentation and opening
-  a documentation view of the hit.
+  a documentation view of the hit, then writes the call on a later turn, since
+  the view arrives in the window on the turn after the program that opened it.
+  gg records every call written without such a view as an
+  [undocumented call](/gg/responses-as-code/views/#undocumented-calls).
 - Views are the only route by which anything a program computed reaches the
   model. A program that ran and did what it meant to gets nothing back; the
   views it opened are the result. What the program logged goes to the run's

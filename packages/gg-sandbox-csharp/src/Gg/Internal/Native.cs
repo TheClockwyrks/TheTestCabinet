@@ -351,8 +351,8 @@ internal static class Native
     // nothing checks.
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool SearchDocs(
-        string query,
-        string? module,
+        string? query,
+        string[] modules,
         string? type,
         string? kind,
         int offset,
@@ -360,7 +360,7 @@ internal static class Native
         out uint[] page,
         out string[] keys,
         out string[] kinds,
-        out string[] modules,
+        out string[] hitModules,
         out string[] names,
         out string[] summaries);
 

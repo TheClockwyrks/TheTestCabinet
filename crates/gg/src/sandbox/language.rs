@@ -776,12 +776,23 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// documentation beside it was placed by that program's own calls rather than by gg reaching
     /// around it.
     ///
-    /// Two groups, in the order the model reads them: every search first, then every documentation
-    /// view. Each search is a **whole-module lookup** rather than a query — an empty query string,
-    /// one module as the filter, and an explicit limit of
+    /// Two groups, in the order the model reads them: one search first, then every documentation
+    /// view. That search is a **whole-directory lookup** rather than a query — no query at all,
+    /// every module in `modules` named at once as the filter, and an explicit limit of
     /// [`MAX_SEARCH_LIMIT`](crate::docs::MAX_SEARCH_LIMIT), because the default page would silently
     /// truncate the listing of a large module and a truncated listing is a function the agent never
-    /// learns it has.
+    /// learns it has. One call rather than one per module: the filter names a union, so a search
+    /// per module would be the same listing fetched a page at a time.
+    ///
+    /// `modules` may be **empty** — an agent holding neither of the two modules gg lists here — and
+    /// the program then makes no search call at all. A search carrying neither a query nor a filter
+    /// is `invalid-argument`, because "you asked for nothing" and "nothing matched" are different
+    /// answers, and the one program every model reads before writing its own is the last place to
+    /// demonstrate a call gg refuses.
+    ///
+    /// An implementation brings only what it calls into scope — the two modules these two calls are
+    /// published by — wherever this arm's module system has a way to import less than the whole
+    /// surface.
     ///
     /// Both names are resolved with [`spell`]`(self, …)` rather than written out, exactly as
     /// [`open_docs_views_statement`](Self::open_docs_views_statement) resolves its one. What an

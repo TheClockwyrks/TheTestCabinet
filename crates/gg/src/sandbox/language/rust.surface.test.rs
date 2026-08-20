@@ -442,15 +442,13 @@ fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too()
         files::FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
         files::FileRead::Image(picture) => picture.label,
     });
-    let found = docs::search(
-        "open",
-        docs::SearchOptions {
-            module: Some("views"),
-            kind: Some(docs::DocKind::Function),
-            limit: Some(5),
-            ..Default::default()
-        },
-    )?;
+    let found = docs::search(docs::SearchOptions {
+        query: Some("open"),
+        modules: &["views"],
+        kind: Some(docs::DocKind::Function),
+        limit: Some(5),
+        ..Default::default()
+    })?;
     gg::log(format!("{} {} {}", found.total, found.offset, found.hits.len()));
     match docs::close("gg::views::open_text") {
         Ok(count) => gg::log(format!("closed {count}")),

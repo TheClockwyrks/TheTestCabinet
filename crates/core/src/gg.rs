@@ -42,13 +42,31 @@ pub const PRIMARY_SLOT: &str = "primary";
 /// `/tmp/gg-cancel`, and the shell capability's `/tmp/gg-shell`), never children.
 pub const BINARY_PATH: &str = "/tmp/gg";
 
+/// The exit code the `gg` binary leaves when a run was stopped by one of its own
+/// [execution ceilings](GgRunLimits).
+///
+/// It lives in the shared contract because it is a contract: gg writes it and
+/// [`gg_exec`](crate::gg_exec) reads it, and the two crates never link each other. A
+/// number each of them believed in separately would be a rule nothing in the workspace
+/// could check, and the failure would surface as a breached ceiling silently recorded as
+/// an ordinary harness error.
+///
+/// It is distinct from `1`, which gg leaves for a launch fatal and for the two endings that
+/// are nobody's measurement (a refused credential, a gg defect), because the two say
+/// opposite things about the configuration. A `1` says the run never happened; this says the
+/// run happened and ran into a bound the operator armed, which is why it becomes its own
+/// [`RunState::LimitExceeded`](crate::run_record::RunState::LimitExceeded) rather than a
+/// [`HarnessError`](crate::run_record::RunState::HarnessError) the host would retry. `2` is
+/// left alone: a shell reads it as a usage error.
+pub const EXIT_LIMIT_EXCEEDED: u8 = 3;
+
 /// The stable id of the Phase 0 shell capability: the agent's ability to run shell
 /// commands in the run container (the `shell` tool).
 ///
 /// Its [implementation](GgCapabilityConfig::implementation) selects where a command's
-/// output goes — [`adaptive`](SHELL_OUTPUT_ADAPTIVE), [`inline`](SHELL_OUTPUT_INLINE), or
-/// [`offload`](SHELL_OUTPUT_OFFLOAD) — and its `maxLines`/`maxChars` params set the ceiling
-/// the two truncating modes leave the agent. A chatty build is one of the few things that
+/// output goes — [`inline`](SHELL_OUTPUT_INLINE) or [`offload`](SHELL_OUTPUT_OFFLOAD) — and
+/// its `maxLines`/`maxChars` params set the ceiling offloading leaves the agent. A chatty
+/// build is one of the few things that
 /// can spend a large slice of a context window in a single call, so how much of one an agent
 /// is shown is configured rather than hardcoded. The modes are documented at
 /// <https://docs.testcabinet.ai/gg/shell/>.
@@ -62,23 +80,13 @@ pub const SHELL_OUTPUT_INLINE: &str = "inline";
 /// file pair the agent can grep, and returning only the configured tail inline.
 pub const SHELL_OUTPUT_OFFLOAD: &str = "offload";
 
-/// The [shell](CAPABILITY_SHELL) output mode that offloads selectively: a command that failed
-/// comes back as it would under [`offload`](SHELL_OUTPUT_OFFLOAD), and a command that succeeded
-/// comes back as its exit code and the paths its output went to.
-pub const SHELL_OUTPUT_ADAPTIVE: &str = "adaptive";
-
 /// Every [shell](CAPABILITY_SHELL) output mode, for the launch-time check that a set names one
-/// gg recognizes. [`adaptive`](SHELL_OUTPUT_ADAPTIVE) is first, and is the arm the
+/// gg recognizes. [`offload`](SHELL_OUTPUT_OFFLOAD) is first, and is the arm the
 /// [authoring catalog](gg_authoring_catalog) writes into a new document.
-pub const SHELL_OUTPUT_MODES: [&str; 3] = [
-    SHELL_OUTPUT_ADAPTIVE,
-    SHELL_OUTPUT_INLINE,
-    SHELL_OUTPUT_OFFLOAD,
-];
+pub const SHELL_OUTPUT_MODES: [&str; 2] = [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_INLINE];
 
 /// The [shell](CAPABILITY_SHELL) capability's `maxLines` param: how many trailing **lines** of a
-/// command's output come back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a failed
-/// command, under [adaptive](SHELL_OUTPUT_ADAPTIVE).
+/// command's output come back inline under [offloading](SHELL_OUTPUT_OFFLOAD).
 ///
 /// An enabled shell capability writes it whichever mode it selects, so a sweep that varies the
 /// mode over one shared params block reads the same ceiling on every arm. Absent, the launch is
@@ -87,8 +95,7 @@ pub const SHELL_OUTPUT_MODES: [&str; 3] = [
 pub const PARAM_MAX_LINES: &str = "maxLines";
 
 /// The [shell](CAPABILITY_SHELL) capability's `maxChars` param: how many trailing **characters**
-/// of a command's output come back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a
-/// failed command, under [adaptive](SHELL_OUTPUT_ADAPTIVE).
+/// of a command's output come back inline under [offloading](SHELL_OUTPUT_OFFLOAD).
 ///
 /// Written and required on exactly the terms [`maxLines`](PARAM_MAX_LINES) is. The tighter of the
 /// two decides, because the result has to satisfy both.
@@ -1008,6 +1015,30 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// profile's to state rather than gg's to guess.
 pub const PARAM_TOP_FILE_VIEWS: &str = "topFileViews";
 
+/// The [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) capability's
+/// `signalThresholdPercent` param: how full the agent's window has to be before the
+/// context-usage signal is rendered into it at all, as a whole percentage of `0..=100`.
+///
+/// The denominator is the window the agent can actually fill: the model's window less the
+/// [headroom](PARAM_SUMMARY_HEADROOM) an armed [compaction](CAPABILITY_COMPACTION) holds back, and
+/// the model's whole window where none is armed. It is the same denominator the block's own
+/// `Overall:` figure is a share of, so the threshold that puts the block in front of the agent and
+/// the percentage the agent then reads are one measurement. A `0` renders the block on every turn.
+///
+/// **An absent one is the [default](DEFAULT_SIGNAL_THRESHOLD_PERCENT) rather than a refusal**,
+/// which is the opposite of the rule the params beside it are read under. The block costs the
+/// window it reports on, and an agent shown a 3% reading every turn is paying for a line that asks
+/// it to reclaim nothing; gg holds it back until there is something to act on, and an operator
+/// varying that point writes the figure.
+pub const PARAM_SIGNAL_THRESHOLD_PERCENT: &str = "signalThresholdPercent";
+
+/// What [`PARAM_SIGNAL_THRESHOLD_PERCENT`] names when the key is absent: three quarters of the
+/// window the agent can fill.
+///
+/// It is written into every new document by the [authoring catalog](gg_authoring_catalog), so the
+/// figure a run was conducted under is in its record whether or not the operator touched the key.
+pub const DEFAULT_SIGNAL_THRESHOLD_PERCENT: u64 = 75;
+
 /// The stable id of the [project management] capability: the heavyweight counterpart to
 /// [tasks](CAPABILITY_TASKS) that expands the lightweight to-do list into a **single,
 /// run-global work board** substantial enough to organize a large build, shared by every
@@ -1616,7 +1647,7 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
     vec![
         entry(
             CAPABILITY_SHELL,
-            Some(SHELL_OUTPUT_ADAPTIVE),
+            Some(SHELL_OUTPUT_OFFLOAD),
             params([
                 (PARAM_MAX_LINES, json!(250)),
                 (PARAM_MAX_CHARS, json!(4096)),
@@ -1687,6 +1718,10 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
             None,
             params([
                 (PARAM_TOP_FILE_VIEWS, json!(5)),
+                (
+                    PARAM_SIGNAL_THRESHOLD_PERCENT,
+                    json!(DEFAULT_SIGNAL_THRESHOLD_PERCENT),
+                ),
                 (MODULE_PARAM_OWNERSHIP, json!(GgModuleOwnership::Owned)),
             ]),
         ),
@@ -4028,8 +4063,8 @@ pub enum GgTurnOutcome {
 /// the whole reason the taxonomy has two levels — the distinction was being computed and thrown
 /// away. The discarded attempts are *additionally* counted in their own right, on the
 /// [`loop_aborts`](GgTelemetryKind::TurnOutcome::loop_aborts) field of the same event and in
-/// [`GgErrorSummary::loop_aborts`], because they are money spent on nothing rather than a turn that
-/// failed.
+/// [`GgErrorSummary::loop_aborts`], with the size of the output they threw away beside them,
+/// because they are money spent on nothing rather than a turn that failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -5899,6 +5934,24 @@ pub struct GgErrorSummary {
     ///
     /// Always `0` for a run whose agents all left loop detection disarmed, which is the default.
     pub loop_aborts: u64,
+    /// Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and
+    /// the characters of the same output beside it — the **size** of what was thrown away, where
+    /// the count beside them is only how often.
+    ///
+    /// The units are the ones gg measured itself, as the replies streamed. There is deliberately no
+    /// token count and no price: gg's [cost](crate::metrics::Cost) and
+    /// [tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives
+    /// at the end of a stream an abandoned reply never reached, so any figure in those units would
+    /// be an estimate published where every neighbouring figure is a measurement.
+    ///
+    /// This output is charged to the provider bill and is absent from the run's recorded cost, by
+    /// design: a looping reply is a model defect, and a run must not be made to look expensive for
+    /// one. The figures here are what makes that omission visible rather than silent.
+    pub loop_abort_words: u64,
+    /// Characters of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts
+    /// — the companion of [`loop_abort_words`](Self::loop_abort_words), and the finer of the two
+    /// measures, since a reply's final partial word is never counted as a word.
+    pub loop_abort_chars: u64,
     /// The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind
     /// — the breakdown a *"top error types"* ranking is built from, keyed by
     /// [`GgTurnErrorType::wire_id`].
@@ -5940,6 +5993,87 @@ pub struct GgErrorSummary {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub tool_failures: BTreeMap<String, u64>,
+}
+
+/// **Calls a model wrote without having read what they do** — the measurement of whether a model
+/// follows the one discipline [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) discovery is built
+/// on.
+///
+/// gg's prompt names the modules an agent holds and no function inside any of them, so a model
+/// cannot know a call's signature until it has searched the documentation and opened a
+/// [documentation view](GgContextSource::DocsView) of the name. A view a program opens arrives in
+/// the window on the turn *after* the program that opened it, which is why the prompt states the
+/// discipline as *open a documentation view of each function you intend to call, and write the call
+/// on a later turn*. This counts the calls that broke it: the operation was called while no
+/// documentation view of it stood in the window from an earlier turn.
+///
+/// # It is a measurement and never a gate
+///
+/// Nothing is refused, nothing is retried and no [turn outcome](GgTurnOutcome) changes: the program
+/// compiled, ran and did its work, so no [error ceiling](GgRunLimits) observes any of this and none
+/// of it reaches the [error rollup](GgErrorSummary). What it is evidence about is the **model**. A
+/// model that repeatedly calls functions it never looked up is writing signatures from memory, and
+/// a run where that number is large is a run whose model should not be given this surface — which
+/// is a conclusion nobody could reach from a record that only showed the calls that happened to
+/// compile.
+///
+/// It is a **lower bound**, and deliberately so. A guessed signature that did not compile never
+/// reaches a call site, so it is counted nowhere here; what is counted is the guess that happened to
+/// be right about the shape while still being a guess.
+///
+/// # Why the operations are carried and not only the count
+///
+/// A bare count says a model guessed and not at what. Forty calls of `files.read_file` is a model
+/// that never opened the one page it needed; forty different operations once each is a model
+/// ignoring the mechanism outright. Those are different findings with different remedies, and only
+/// the breakdown tells them apart.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgUndocumentedCalls {
+    /// How many such calls were made. Exactly the sum of [`operations`](Self::operations)'s values.
+    pub calls: u64,
+    /// The same calls broken down by **which** operation was called, keyed by gg's own rendered
+    /// [operation id](GgTelemetryKind::ApiCall) (`files.read_file`) rather than by any arm's
+    /// spelling — so eleven language arms' findings are counted under one key.
+    ///
+    /// Open (a string key) for the reason [`GgErrorSummary::by_type`] is: an operation added to gg's
+    /// vocabulary joins the breakdown without a schema change, and a reader that has never heard of
+    /// one degrades to an unlabelled row rather than failing to read the record at all.
+    ///
+    /// Empty — and omitted from the wire — exactly when [`calls`](Self::calls) is `0`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub operations: BTreeMap<String, u64>,
+}
+
+impl GgUndocumentedCalls {
+    /// Whether nothing was recorded — the condition the per-turn record is omitted from the wire
+    /// on, and the state of every tool-calling run and of every well-behaved code run.
+    pub fn is_empty(&self) -> bool {
+        self.calls == 0
+    }
+
+    /// Record one call of `operation`, given by gg's rendered [operation id](GgTelemetryKind::ApiCall).
+    ///
+    /// The one way either field is written, so the count and the breakdown cannot disagree: the
+    /// invariant this type promises — `calls == operations.values().sum()` — is a property of there
+    /// being no other door rather than of every caller remembering to use both.
+    pub fn record(&mut self, operation: &str) {
+        self.calls = self.calls.saturating_add(1);
+        let count = self.operations.entry(operation.to_string()).or_default();
+        *count = count.saturating_add(1);
+    }
+
+    /// Fold `other` into this rollup — how a run-level total is accumulated from the per-turn
+    /// records, and how a turn that ran several programs totals them.
+    pub fn merge(&mut self, other: &Self) {
+        self.calls = self.calls.saturating_add(other.calls);
+        for (operation, added) in &other.operations {
+            let count = self.operations.entry(operation.clone()).or_default();
+            *count = count.saturating_add(*added);
+        }
+    }
 }
 
 /// One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable
@@ -6115,6 +6249,21 @@ pub struct GgSessionSummary {
     /// Unlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a
     /// tool-calling turn fails too, just in fewer ways.
     pub errors: GgErrorSummary,
+    /// How many calls the run's models wrote **without ever having read the call's documentation**
+    /// — the run's [discovery rollup](GgUndocumentedCalls), folded from the same
+    /// [`CodeExecution`](GgTelemetryKind::CodeExecution) events
+    /// [`code_executions`](Self::code_executions) counts.
+    ///
+    /// All zeroes for a tool-calling run, which has no documentation surface to open a view of and
+    /// no discipline to break, and all zeroes for the well-behaved code run — which is the point:
+    /// this is the field that separates a model that discovers its surface from one that writes
+    /// signatures from memory, and a study comparing two models on
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) reads it before it reads anything else.
+    ///
+    /// Read against [`code_executions`](Self::code_executions) for a per-turn rate and against the
+    /// run's API calls for a per-call one; neither ratio is stored, for the reason
+    /// [`GgErrorSummary`] stores no percentage.
+    pub undocumented_calls: GgUndocumentedCalls,
     /// How many distinct [issues](GgBoardIssue) the run ever created on its
     /// [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
     /// run. `0` when the project-management capability was off.
@@ -7220,6 +7369,25 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "is_zero_u64")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         api_calls: u64,
+        /// How many of those calls the model wrote **without ever having read the call's
+        /// documentation** — see [`GgUndocumentedCalls`], which is where the whole of what this
+        /// measures and what it deliberately does not is written down.
+        ///
+        /// A subset of [`api_calls`](Self::CodeExecution::api_calls) beside it, counted at the same
+        /// bracket, and never an error: the turn's [outcome](Self::TurnOutcome) is unchanged by it
+        /// and no ceiling observes it. Only the model's own programs contribute — gg's
+        /// [bootstrap](https://docs.testcabinet.ai/gg/responses-as-code/discovery/) and the on-use
+        /// script of a skill the turn read are gg's own code, and charging their calls to the model
+        /// would make every turn that used a skill report a violation the model did not commit.
+        ///
+        /// Defaulted and omitted from the wire when nothing was recorded, so the presence of this
+        /// object *is* "this turn called something it had not looked up".
+        // Omitted when empty and not an `Option`, so — like `healing` below — it declares its own
+        // optionality: the enum's `optional_fields` only reaches `Option<T>`, and a consumer
+        // promised an object the wire does not always carry would read `undefined.calls`.
+        #[serde(default, skip_serializing_if = "GgUndocumentedCalls::is_empty")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        undocumented_calls: GgUndocumentedCalls,
         /// How long the program's **own execution** took, in milliseconds — the wall-clock time it
         /// spent running, excluding time parked in a bridged tool call, which is the per-program
         /// efficiency signal.
@@ -7384,6 +7552,24 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "is_zero_u64")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         loop_aborts: u64,
+        /// Words of generated output those discarded replies had produced by the moment each was
+        /// abandoned, summed. Present on exactly the turns
+        /// [`loop_aborts`](Self::TurnOutcome::loop_aborts) is present on.
+        ///
+        /// The count says how often the model looped; this says how much generation it cost to find
+        /// out. It is measured by gg as the replies streamed rather than reported by the provider,
+        /// which is why it is words and characters and never tokens or dollars: an abandoned stream
+        /// carries no usage payload. It is for the same reason excluded from the turn's
+        /// [usage](Self::Usage) and cost, which report the one reply that was read.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        loop_abort_words: u64,
+        /// Characters of that same discarded output, counted as characters rather than bytes — the
+        /// companion of [`loop_abort_words`](Self::TurnOutcome::loop_abort_words), and the finer of
+        /// the two, since a reply's final partial word is never counted as a word.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        loop_abort_chars: u64,
     },
     /// An [execution ceiling](GgRunLimits) was breached and the agent's loop is ending on it.
     ///

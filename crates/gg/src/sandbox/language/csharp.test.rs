@@ -166,22 +166,36 @@ fn a_documentation_program_with_no_names_is_still_a_program() {
 /// documentation key gg handed it.
 ///
 /// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
-/// its window is a program that ran. What is asserted here is that gg wrote C# — collection
-/// expressions, `foreach`, **optional arguments passed by name** — and that the search is the
-/// whole-module lookup rather than the default page of one.
+/// its window is a program that ran. What is asserted here is that gg wrote C# — a collection
+/// expression, `foreach`, **optional arguments passed by name** — and that every module gg listed
+/// is named in **one** search, asking for the whole of each rather than for a default page of one.
 #[test]
 fn the_opening_program_is_top_level_statements() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
         csharp().bootstrap_program(&["files", "views"], &["ReadFile"]),
         format!(
-            "string[] modules =\n[\n    \"files\",\n    \"views\",\n];\n\
-             foreach (var path in modules)\n{{\n    \
-                 Gg.Docs.Search(\"\", module: path, limit: {limit});\n}}\n\
+            "Gg.Docs.Search(modules: [\"files\", \"views\"], limit: {limit});\n\
              \n\
              string[] functions =\n[\n    \"ReadFile\",\n];\n\
              foreach (var name in functions)\n{{\n    Gg.Views.OpenDocsView(name);\n}}\n"
         )
+    );
+}
+
+/// **An agent that holds neither `files` nor `shell` is opened with no search at all.**
+///
+/// No query and no filter is `invalid-argument`, so a search over an empty module list is a call gg
+/// would write and gg would then refuse — as the agent's very first program, and as the first
+/// example of its own language it is ever shown. What is left is the documentation program, which
+/// is what the second half of every opening program already is.
+#[test]
+fn an_opening_program_with_no_modules_writes_no_search() {
+    let program = csharp().bootstrap_program(&[], &["ReadFile"]);
+    assert_eq!(program, csharp().open_docs_views_statement(&["ReadFile"]));
+    assert!(
+        !program.contains("Gg.Docs.Search"),
+        "the opening program searches with nothing to search for:\n{program}"
     );
 }
 

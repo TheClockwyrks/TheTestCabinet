@@ -857,6 +857,13 @@ impl CompactionPolicy {
     /// reduced window, and what is left over is the space the condensation runs in. It is the same
     /// reserve for an in-loop strategy, where the call is one of the agent's own turns.
     ///
+    /// It is applied once per agent, by
+    /// [`resolve_window_limit`](crate::agent::resolve_window_limit), and what it produces is the
+    /// [window every reader measures against](field@crate::context::ContextModel::window_limit) — this
+    /// capability's trigger and the
+    /// [context-usage signal's threshold](crate::context::UsageSignalOptions::threshold_percent)
+    /// alike. One agent has one usable window, so no two readers can judge a run against two.
+    ///
     /// Never returns zero (a degenerate window would make every fullness ratio infinite),
     /// and never exceeds `window`.
     pub fn working_window(&self, window: u64) -> u64 {
@@ -1152,6 +1159,11 @@ pub struct RetainedCounts {
 /// An unknown window limit has no denominator and so is never over anything: a model gg has no
 /// window figure for is measured against nothing, and inventing a fullness for it would invent the
 /// trigger too.
+///
+/// The [fullness](ContextModel::fullness) it reads is a share of the
+/// [usable window](CompactionPolicy::working_window), which is the same denominator the
+/// [context-usage signal](crate::context::ContextModel::refresh_context_usage_signal) reports its
+/// shares against and holds itself back by.
 fn over_trigger(context: &ContextModel, setup: &CompactionSetup) -> bool {
     context
         .fullness()

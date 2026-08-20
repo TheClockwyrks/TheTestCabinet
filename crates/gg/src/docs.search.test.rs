@@ -52,6 +52,16 @@ fn ask(query: &str) -> DocQuery<'_> {
     }
 }
 
+/// The module filter as a query carries it — a list, each entry either gg's own id for a module or
+/// this language's path for it.
+///
+/// It exists because [`DocQuery::modules`] borrows and every test below names its modules as
+/// literals: the owned `Vec` has to be bound to something that outlives the query, and a helper
+/// makes that one line rather than three at each call site.
+fn modules(named: &[&str]) -> Vec<String> {
+    named.iter().map(|module| module.to_string()).collect()
+}
+
 /// The keys of a search's hits, in the order they came back.
 fn keys(found: &DocSearch) -> Vec<&str> {
     found.hits.iter().map(|hit| hit.key.as_str()).collect()
@@ -272,79 +282,146 @@ fn a_type_is_visible_through_the_functions_that_use_it() {
     );
 }
 
-/// **A type reports only the modules this agent has a bound function in**, and answers the module
-/// filter on the same narrowed set.
+/// **A type is filed under the module that declares it**, not under every module whose calls mention
+/// it — so a module's directory answers with its own declarations and with nothing else's.
 ///
-/// A type's module attribution is the union over every function that mentions it, which for a shared
-/// error type is most of the surface. Reported raw it would hand an agent holding `read_file` alone
-/// the names `programs`, `skills` and `memory` — and a module name is the discovery vocabulary the
-/// prompt gives the model, so the next call would be `search(module: "skills")` and an empty page it
-/// cannot tell from *nothing matched*. The filter is narrowed with the report so the two cannot
-/// disagree about where an entry lives.
-/// Asserted on the **Rust** arm rather than TypeScript's, because TypeScript's catalogue has exactly
-/// one type referenced from two modules and both are gated on the same capability, so the narrowing
-/// has nothing to bite on there. Rust's `gg::core::ApiError` is referenced from every module that
-/// binds anything.
+/// The two attributions differ constantly, and `FileRead` is the plainest case on any arm:
+/// `gg.files` declares it and `gg.files.readFile` hands it back, and so does `gg.views.openFile`,
+/// which is a call about the window rather than about the filesystem. Filed by mention, the `views`
+/// directory answers a model asking *what is in this module* with a record `views` did not declare
+/// and cannot document — and the same rule, applied to the shared failure class every call on the
+/// surface declares, put one type in every directory of every module (see
+/// [`a_failure_type_is_never_a_search_hit`]).
+///
+/// Both directions are asserted, because the "not under `views`" half alone is satisfied by a type
+/// that had gone invisible altogether: the call that mentions it is still `views`'s own, still bound
+/// and still in that module's directory.
 #[test]
-fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
-    let rust = |capabilities: &[&str]| {
-        let operations = capability_operations(capabilities.iter().copied());
-        DocsRuntime::new(
-            capabilities.iter().map(|id| id.to_string()).collect(),
-            EndingRole::Standard,
-            &operations,
-            GgProgramLanguage::Rust,
+fn a_type_is_filed_under_the_module_that_declares_it() {
+    let docs = full();
+    let file_read = key_of("FileRead");
+    assert!(
+        crate::sandbox::type_declaration(
+            crate::sandbox::language(GgProgramLanguage::TypeScript),
+            "FileRead",
         )
-    };
-    // Searched by the type's own name and found by its KEY, which are two different strings: a
-    // query is words, and a key is the fully-qualified name a view is opened by.
-    let modules_of = |docs: &DocsRuntime, key: &str| -> String {
-        docs.search(ask("ApiError"))
-            .expect("a usable query")
-            .hits
-            .into_iter()
-            .find(|hit| hit.key == key)
-            .unwrap_or_else(|| panic!("`{key}` is visible to this agent"))
-            .module
+        .is_some(),
+        "this arm declares `FileRead`, or there is nothing here to attribute"
+    );
+
+    let directory = |module: &str| {
+        let filter = modules(&[module]);
+        keys(
+            &docs
+                .search(DocQuery {
+                    query: "",
+                    modules: &filter,
+                    limit: Some(MAX_SEARCH_LIMIT),
+                    ..DocQuery::default()
+                })
+                .expect("a filter is something to look for"),
+        )
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<String>>()
     };
 
-    // The key is the type's fully-qualified name, because this arm is written in the normalized doc
-    // model and a name is what a documentation view is keyed by.
-    const API_ERROR: &str = "gg::core::ApiError";
-    let reader = rust(&[CAPABILITY_READ_FILE]);
-    let narrowed = modules_of(&reader, API_ERROR);
+    let files = directory("files");
+    let views = directory("views");
     assert!(
-        narrowed.contains("gg::files"),
-        "the module it does hold a call in: {narrowed}"
+        files.contains(&file_read),
+        "the module that declares it answers with it: {files:?}"
     );
-    // Every family it holds nothing in is absent, whatever the catalogue's own union says.
-    for absent in ["memories", "skills", "programs", "tasks", "board"] {
+    assert!(
+        !views.contains(&file_read),
+        "and the module that only names it in a signature does not: {views:?}"
+    );
+    // The mention is real, so the exclusion above is about attribution rather than about a type or a
+    // call having quietly disappeared.
+    assert!(
+        views.contains(&key_of("openFile")),
+        "`openFile` is `views`'s own call and is in its directory: {views:?}"
+    );
+    assert!(
+        keys(
+            &docs
+                .search(DocQuery {
+                    query: "",
+                    declared_type: Some("FileRead"),
+                    limit: Some(MAX_SEARCH_LIMIT),
+                    ..DocQuery::default()
+                })
+                .expect("a filter is something to look for")
+        )
+        .contains(&key_of("openFile").as_str()),
+        "and *what can I do with a value of this shape* still reaches it, which is the question \
+         reachability answers and module attribution does not"
+    );
+}
+
+/// **A failure class is not an entry a search hands back** — the reported bug, pinned by name.
+///
+/// `ApiError` is declared once and **thrown by every call on the surface**, on every arm. Indexed by
+/// the catalogue's raw per-function `types` list, that made it a member of every module: a model
+/// asking for the `files` directory was answered with it, and so was a model asking for `tasks`,
+/// `board` or `skills`. It is the one entry that could appear in a hundred percent of directories
+/// while being the answer to none of them.
+///
+/// It is excluded at the source of a type's visibility rather than filtered out of a rendering:
+/// nothing a function only *declares it throws* is reached by a signature the model reads, so no
+/// bound function reaches `ApiError` and the type is visible to nobody. What replaces the hit is not
+/// silence — a failure class is delivered **beside the call it belongs to**, under the agent's
+/// `docViewTypes`, which is where a model meets it at the moment it matters. So the view still
+/// opens, and that half is asserted here too: a type search must not return is not the same thing as
+/// a type search has taken away.
+#[test]
+fn a_failure_type_is_never_a_search_hit() {
+    for (language, name) in [
+        (GgProgramLanguage::TypeScript, "ApiError"),
+        (GgProgramLanguage::Rust, "ApiError"),
+    ] {
+        let arm = crate::sandbox::language(language);
+        let declaration = crate::sandbox::type_declaration(arm, name)
+            .unwrap_or_else(|| panic!("{name} is declared on {language:?}"));
+        let key = declaration.key().to_string();
+        let docs = on(language);
+
+        // By its own name, which is the strongest form the query can take: an exact identifier is
+        // the top tier there is, so if it were visible at all it would be the first hit.
+        let found = docs.search(ask(name)).expect("a usable query");
         assert!(
-            !narrowed.contains(&format!("gg::{absent}")),
-            "this agent has no bound call in `{absent}`: {narrowed}"
-        );
-        // And the filter agrees with the report, so the model cannot be pointed at a module whose
-        // page would come back silently empty.
-        let found = reader
-            .search(DocQuery {
-                query: "ApiError",
-                module: Some(absent),
-                ..DocQuery::default()
-            })
-            .expect("a usable query");
-        assert!(
-            !keys(&found).contains(&API_ERROR),
-            "`{absent}` answered a type it cannot reach: {:?}",
+            !keys(&found).contains(&key.as_str()),
+            "{language:?}: `{key}` is thrown by every call and named by no signature, so it is not \
+             something a search chooses between: {:?}",
             keys(&found)
         );
-    }
 
-    // An agent that holds the surface is told the whole union, because for it the union is true.
-    let whole = modules_of(&rust(&gating_capabilities()), API_ERROR);
-    for present in ["files", "memories", "skills", "tasks"] {
+        // And in no module's directory, which is the shape the bug actually had: not one wrong hit,
+        // but the same wrong hit in every listing an agent opens.
+        for module in ["files", "shell", "tasks", "board", "skills", "memories"] {
+            let filter = modules(&[module]);
+            let directory = docs
+                .search(DocQuery {
+                    query: "",
+                    modules: &filter,
+                    limit: Some(MAX_SEARCH_LIMIT),
+                    ..DocQuery::default()
+                })
+                .expect("a filter is something to look for");
+            assert!(
+                !keys(&directory).contains(&key.as_str()),
+                "{language:?}: the `{module}` directory answered with `{key}`, which `{module}` \
+                 does not declare: {:?}",
+                keys(&directory)
+            );
+        }
+
+        // The other half: it is still readable. The exclusion is about what a search *chooses
+        // between*, and a model handed the error class beside a call it just opened must be able to
+        // read it.
         assert!(
-            whole.contains(&format!("gg::{present}")),
-            "every family that raises it: {whole}"
+            docs.read_any(&key).is_some(),
+            "{language:?}: `{key}` is delivered beside the calls that raise it and has to open"
         );
     }
 }
@@ -384,17 +461,19 @@ fn the_kind_filter_narrows_to_functions_or_types() {
 #[test]
 fn the_module_filter_accepts_ggs_id_and_this_languages_spelling() {
     let docs = full();
+    let path = modules(&["gg.files"]);
     let by_path = docs
         .search(DocQuery {
             query: "",
-            module: Some("gg.files"),
+            modules: &path,
             ..DocQuery::default()
         })
         .expect("an empty query with a filter is a directory");
+    let id = modules(&["FILES"]);
     let by_id = docs
         .search(DocQuery {
             query: "",
-            module: Some("FILES"),
+            modules: &id,
             ..DocQuery::default()
         })
         .expect("an empty query with a filter is a directory");
@@ -416,24 +495,22 @@ fn the_module_filter_accepts_ggs_id_and_this_languages_spelling() {
 #[test]
 fn an_empty_query_with_a_filter_is_a_directory() {
     let docs = full();
+    let tasks = modules(&["gg.tasks"]);
     let directory = docs
         .search(DocQuery {
             query: "   ",
-            module: Some("gg.tasks"),
+            modules: &tasks,
             limit: Some(MAX_SEARCH_LIMIT),
             ..DocQuery::default()
         })
         .expect("a filter is something to look for");
     assert!(directory.total >= 5, "{:?}", keys(&directory));
-    // Every entry it holds really lives in the module that was asked for. A *function* lives in
-    // exactly one, so for those this is equality; a **type** is attributed to every module whose
-    // calls hand it back, and the two shared error types are raised by all of them — so the claim is
-    // membership in the reported list, which is the same claim for both kinds.
+    // Every entry it holds lives in the module that was asked for, and the claim is **equality**
+    // rather than membership in a list. Every kind of entry belongs to exactly one module — a
+    // function to the one that publishes it, a type to the one that declares it — so a directory
+    // that answered with anything else would be answering with another module's declaration.
     assert!(
-        directory
-            .hits
-            .iter()
-            .all(|hit| hit.module.split(", ").any(|module| module == "gg.tasks")),
+        directory.hits.iter().all(|hit| hit.module == "gg.tasks"),
         "{:?}",
         directory
             .hits
@@ -447,7 +524,7 @@ fn an_empty_query_with_a_filter_is_a_directory() {
                 .hits
                 .iter()
                 .any(|hit| hit.kind == DocKind::Function),
-        "a module's directory carries both its calls and the shapes they use: {:?}",
+        "a module's directory carries both its calls and the shapes they declare: {:?}",
         keys(&directory)
     );
     // **Ordered by key alone**, and the two kinds interleaved. Nothing here distinguishes one entry
@@ -550,12 +627,121 @@ fn a_page_with_no_limit_is_the_default_size() {
 
 /// **A query with nothing in it and no filter is refused**, not answered with an empty page: *you
 /// asked for nothing* and *nothing matched* are different answers.
+///
+/// A module filter that is an **empty list** is one of the ways to arrive here, and the interesting
+/// one now that the filter takes several: an empty list is *no module filter*, so a search carrying
+/// only that is a search carrying nothing at all. A list of blanks is the same thing spelled longer —
+/// the entries are trimmed away before the question is asked — and neither may be read as a filter
+/// that matched nothing, which would answer *nothing here matches* to a model that never named a
+/// module.
 #[test]
 fn a_query_with_nothing_to_look_for_is_refused() {
     let docs = full();
     let refusal = docs.search(ask("   ")).expect_err("nothing to look for");
     assert_eq!(refusal.failure, crate::tools::ToolFailure::InvalidArgument);
-    assert!(refusal.message.contains("module"), "{}", refusal.message);
+    assert!(refusal.message.contains("`modules`"), "{}", refusal.message);
+
+    let none = modules(&[]);
+    let blank = modules(&["", "   "]);
+    for empty in [&none, &blank] {
+        let refusal = docs
+            .search(DocQuery {
+                query: "  ",
+                modules: empty,
+                ..DocQuery::default()
+            })
+            .expect_err("an empty module list is no filter, so this asked for nothing");
+        assert_eq!(refusal.failure, crate::tools::ToolFailure::InvalidArgument);
+    }
+}
+
+/// **Several modules name a union**: an entry in any one of them is a hit.
+///
+/// It is the only reading a list can have. Every entry belongs to exactly one module, so an
+/// intersection would be empty for every pair a model could name — a filter whose every use returns
+/// nothing is not a filter, it is a trap. What naming several asks for is *these modules'
+/// directories, together*, which is what an agent reading its opening window wants and what the
+/// bootstrap's one opening search is.
+///
+/// Asserted as set equality against the two directories taken separately, rather than as containment
+/// in either direction: containment alone is satisfied by a union that quietly dropped one module,
+/// and equality is also what says the union invented nothing.
+#[test]
+fn several_modules_name_a_union_rather_than_an_intersection() {
+    let docs = full();
+    let directory = |named: &[&str]| {
+        let filter = modules(named);
+        let mut found: Vec<String> = keys(
+            &docs
+                .search(DocQuery {
+                    query: "",
+                    modules: &filter,
+                    limit: Some(MAX_SEARCH_LIMIT),
+                    ..DocQuery::default()
+                })
+                .expect("a filter is something to look for"),
+        )
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        found.sort();
+        found
+    };
+
+    let files = directory(&["files"]);
+    let shell = directory(&["shell"]);
+    assert!(!files.is_empty() && !shell.is_empty(), "both are real");
+    assert!(
+        files.iter().all(|key| !shell.contains(key)),
+        "the two share no entry, which is what makes an intersection reading empty: \
+         {files:?} {shell:?}"
+    );
+
+    let both = directory(&["files", "shell"]);
+    let mut union: Vec<String> = files.iter().chain(shell.iter()).cloned().collect();
+    union.sort();
+    assert_eq!(
+        both, union,
+        "naming two modules answers with the whole of both and with nothing else"
+    );
+
+    // And gg's id and this arm's path may be mixed inside one list, because each entry is resolved
+    // on its own: a prompt naming one vocabulary and a model half-remembering the other must not
+    // turn a two-module search into a one-module one.
+    assert_eq!(
+        directory(&["gg.files", "shell"]),
+        both,
+        "each entry of the list is the same exact lookup a lone filter is"
+    );
+}
+
+/// **An empty module list is no filter, not a filter matching nothing** — asserted where the
+/// distinction is visible, against a query that has something else to look for.
+///
+/// [`a_query_with_nothing_to_look_for_is_refused`] holds the other half, where an empty list is all
+/// there was and the call is refused. Here there are words as well, so the two readings answer
+/// differently: *no filter* leaves the query's own answer untouched, while *a filter that matched
+/// nothing* would take an ordinary search and empty it.
+#[test]
+fn an_empty_module_list_is_no_filter_at_all() {
+    let docs = full();
+    let unfiltered = docs.search(ask("file")).expect("a usable query");
+    assert!(!unfiltered.hits.is_empty(), "{:?}", keys(&unfiltered));
+
+    let none = modules(&[]);
+    let with_an_empty_list = docs
+        .search(DocQuery {
+            query: "file",
+            modules: &none,
+            ..DocQuery::default()
+        })
+        .expect("a usable query");
+    assert_eq!(
+        keys(&with_an_empty_list),
+        keys(&unfiltered),
+        "an empty list changes nothing about the answer, in either the hits or their order"
+    );
+    assert_eq!(with_an_empty_list.total, unfiltered.total);
 }
 
 /// An **unrecognised kind** is refused rather than ignored, because ignoring it would answer a wider
@@ -662,10 +848,11 @@ fn every_language_answers_only_with_what_its_agent_binds() {
             &operations,
             language.id(),
         );
+        let files = modules(&["files"]);
         let found = docs
             .search(DocQuery {
                 query: "",
-                module: Some("files"),
+                modules: &files,
                 limit: Some(MAX_SEARCH_LIMIT),
                 ..DocQuery::default()
             })
@@ -781,10 +968,11 @@ fn an_argument_name_finds_its_call_on_every_arm() {
 #[test]
 fn a_module_is_searchable_and_its_hit_opens() {
     let docs = full();
+    let files = modules(&["files"]);
     let found = docs
         .search(DocQuery {
             query: "",
-            module: Some("files"),
+            modules: &files,
             kind: Some("module"),
             limit: Some(MAX_SEARCH_LIMIT),
             ..DocQuery::default()
@@ -1004,10 +1192,11 @@ fn a_loaded_declaration_matches_on_its_declaration_and_its_prose_too() {
 /// the module filter, which is a lookup rather than a ranking.
 #[test]
 fn a_loaded_module_answers_a_module_filter_with_its_own_directory() {
+    let csv_tools = modules(&["csvTools"]);
     let found = with_csv_tools()
         .search(DocQuery {
             query: "",
-            module: Some("csvTools"),
+            modules: &csv_tools,
             ..DocQuery::default()
         })
         .expect("an empty query with a filter is a directory");
@@ -1023,10 +1212,11 @@ fn a_loaded_module_answers_a_module_filter_with_its_own_directory() {
 /// to what it can write a call against.
 #[test]
 fn a_kind_filter_narrows_a_loaded_module_to_what_can_be_called() {
+    let csv_tools = modules(&["csvTools"]);
     let found = with_csv_tools()
         .search(DocQuery {
             query: "",
-            module: Some("csvTools"),
+            modules: &csv_tools,
             kind: Some("function"),
             ..DocQuery::default()
         })
@@ -1070,10 +1260,11 @@ fn a_type_filter_reaches_a_loaded_modules_own_type() {
 #[test]
 fn a_page_over_both_sources_reports_one_total() {
     let docs = with_csv_tools();
+    let csv_tools = modules(&["csvTools"]);
     let all = docs
         .search(DocQuery {
             query: "",
-            module: Some("csvTools"),
+            modules: &csv_tools,
             ..DocQuery::default()
         })
         .expect("a directory");
@@ -1081,7 +1272,7 @@ fn a_page_over_both_sources_reports_one_total() {
     let page = docs
         .search(DocQuery {
             query: "",
-            module: Some("csvTools"),
+            modules: &csv_tools,
             offset: Some(1),
             limit: Some(1),
             ..DocQuery::default()

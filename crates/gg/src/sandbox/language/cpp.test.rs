@@ -174,10 +174,11 @@ fn the_generated_documentation_program_is_a_translation_unit() {
 ///
 /// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
 /// its window is a program that ran — and on this arm that program has to define `main`, because
-/// there is nowhere else for a statement to live. What is asserted here is that gg wrote C++ —
-/// `std::array`s, range `for`s, a **designated initialiser** for the filters — that it wrote the
+/// there is nowhere else for a statement to live. What is asserted here is that gg wrote C++ — a
+/// `std::array`, a range `for`, a **designated initialiser** for the filters — that it wrote the
 /// include line for every one of those names, gg's two modules and `<array>` alike, and that the
-/// search is the whole-module lookup rather than the default page of one.
+/// modules are one search's union rather than a call apiece, at the whole-module limit rather than
+/// the default page.
 #[test]
 fn the_opening_program_is_a_translation_unit() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
@@ -186,9 +187,7 @@ fn the_opening_program_is_a_translation_unit() {
         program,
         format!(
             "#include <array>\n\n#include <gg/docs.hpp>\n#include <gg/views.hpp>\n\nint main() {{\n  \
-                 const std::array modules{{\n      \"files\",\n      \"views\",\n  }};\n  \
-                 for (const auto &path : modules) {{\n    \
-                     gg::docs::search(\"\", {{.module = path, .limit = {limit}}});\n  }}\n\
+                 gg::docs::search({{.modules = {{\"files\", \"views\"}}, .limit = {limit}}});\n\
              \n  \
                  const std::array functions{{\n      \"read_file\",\n  }};\n  \
                  for (const auto &name : functions) {{\n    \
@@ -197,6 +196,21 @@ fn the_opening_program_is_a_translation_unit() {
         )
     );
     assert!(source::defines_main(&program), "{program}");
+
+    // An agent holding neither `files` nor `shell` is handed no modules, and a search that names no
+    // module and asks no question is refused — so that program makes none, and carries no include
+    // for the header that declared the call it no longer writes.
+    let unfiltered = cpp().bootstrap_program(&[], &["read_file"]);
+    assert!(
+        !unfiltered.contains("gg::docs::search") && !unfiltered.contains("#include <gg/docs.hpp>"),
+        "an opening program with nothing to search must not search, nor include what it would have \
+         searched with:\n{unfiltered}"
+    );
+    assert!(
+        unfiltered.contains("gg::views::open_docs_view(name);"),
+        "{unfiltered}"
+    );
+    assert!(source::defines_main(&unfiltered), "{unfiltered}");
 }
 
 /// **A code module is a namespace opened around the author's own file, and `#line` is why nothing
