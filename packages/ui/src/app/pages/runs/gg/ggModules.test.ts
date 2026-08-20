@@ -174,14 +174,16 @@ function transition(
 }
 
 /**
- * A capability set declaring `agents`: each an id, the capability ids it enables, and the
- * display name it reads as — which defaults to the id, since nothing resolves by name.
+ * A capability set declaring `agents`: each a slug, the capability ids it enables, and the
+ * display name it reads as — which defaults to the slug, since nothing resolves by name.
  */
 function set(agents: Array<[string, string[], string?]>): GgCapabilitySet {
   return {
-    agents: agents.map(([id, capabilities, name]) => ({
-      id,
-      name: name ?? id,
+    agents: agents.map(([slug, capabilities, name]) => ({
+      // A recorded set names its profiles by slug and carries no internal ids: launching
+      // resolved them away, and the slug is what every telemetry row is stamped with.
+      slug,
+      name: name ?? slug,
       modelId: "acme/one",
       capabilities: capabilities.map((id) => ({
         id,
@@ -189,10 +191,9 @@ function set(agents: Array<[string, string[], string?]>): GgCapabilitySet {
         params: {},
       })),
       subagents: [],
-      promptCacheTtl: "default",
+      promptCacheTtl: "standard",
     })),
-    slots: [],
-  } as unknown as GgCapabilitySet;
+  };
 }
 
 /** Fold a stream the way the console does, then index its modules. */
@@ -253,7 +254,7 @@ describe("deriveGgModules", () => {
     expect(store.holders.map((h) => h.agentId)).toEqual(["agent-0", "agent-1"]);
     expect(isShared(store)).toBe(true);
     expect(store.scopeKind).toBe("agent");
-    // The agent the store belongs to, by id — the display name is what the label reads as.
+    // The agent the store belongs to, by slug — the display name is what the label reads as.
     expect(store.profileId).toBe("reviewer");
     expect(store.profile).toBe("Reviewer");
     expect(moduleScopeLabel(store)).toBe("shared by 2 holders of Reviewer");
@@ -745,7 +746,7 @@ describe("deriveGgModules", () => {
     // An operator called both reviewer profiles "Reviewer", which is allowed — a name is
     // prose. Folding on it would merge two arms into one row and, worse, would read the
     // store they both hold as *the* Reviewer's agent-scoped state, which is the one claim
-    // this surface exists to make honestly. The fold is on the id, so the store's holders
+    // this surface exists to make honestly. The fold is on the slug, so the store's holders
     // span two profiles and it is the run's.
     const events = [
       spawn("root", "root"),
@@ -788,7 +789,7 @@ describe("deriveGgModules", () => {
     expect(store.scopeKind).toBe("run");
     expect(store.profileId).toBeNull();
     expect(moduleScopeLabel(store)).toBe("shared by 2 holders across the run");
-    // Each holder says which profile it ran under, and the two ids differ where the two
+    // Each holder says which profile it ran under, and the two slugs differ where the two
     // names do not.
     expect(store.holders.map((h) => [h.profileId, h.profile])).toEqual([
       ["reviewer", "Reviewer"],
@@ -824,7 +825,7 @@ describe("deriveGgModules", () => {
             },
           ],
           subagents: [],
-          promptCacheTtl: "default",
+          promptCacheTtl: "standard",
         },
       ],
       slots: [],
@@ -871,7 +872,7 @@ describe("deriveGgModules", () => {
             { id: "tasks", enabled: true, params: {} },
           ],
           subagents: [],
-          promptCacheTtl: "default",
+          promptCacheTtl: "standard",
         },
       ],
       slots: [],

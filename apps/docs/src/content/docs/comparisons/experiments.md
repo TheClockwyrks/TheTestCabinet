@@ -23,7 +23,7 @@ Each arm is one configuration:
 
 - a harness configuration, a harness slug plus the model it runs; or
 - a gg [configuration](/gg/configurations/), the key of a built-in or saved
-  capability set plus the model bound to every model slot it leaves deferred.
+  capability set plus the model bound to every launch input it exposes.
 
 The two shapes sit side by side in the one comparison. A gg configuration is
 compared head-to-head against a third-party harness, two gg configurations are

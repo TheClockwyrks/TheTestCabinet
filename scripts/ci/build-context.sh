@@ -419,12 +419,78 @@ for package in "${guest_packages[@]}"; do
 	problems=$((problems + 1))
 done
 
+# --- what an allowlist lets in by accident -----------------------------------
+
+# Everything above asks "does the context still contain what a build READS". This asks
+# the other question, which nothing here used to ask: does it contain anything a build
+# does NOT read. An allowlist makes that failure silent — `!/crates` re-includes a
+# directory, not a file list, so every future untracked or generated file under it joins
+# the context of all seven whole-context builds without a line changing anywhere.
+#
+# THE COST IS NOT DISK, IT IS THE CACHE. `COPY . .`'s cache key covers the whole context,
+# so a file no build reads still invalidates it when it changes — and the first thing the
+# services and tooling stages do on a miss is touch the tree and hand cargo a workspace it
+# must compile from scratch. A `.DS_Store` rewritten because a Finder window was resized
+# is therefore a ~19-crate rebuild, attributed to the Dockerfile by everyone who sees it.
+#
+# THAT IS NOT A HYPOTHETICAL AND THE SIZES WERE NOT SMALL. When this check was written the
+# context weighed 113 MB, and 78 MB of it was `crates/desktop/binaries/` — the `k3d` and
+# `kubectl` sidecars the Tauri app bundles, fetched by a script, ignored by a `.gitignore`
+# git therefore never reports, `aarch64-apple-darwin` builds no Linux image could run, and
+# admitted by `!/crates` along with the workspace. Six `.DS_Store` files, Tauri's generated
+# `gen/` tree and a `tsconfig.tsbuildinfo` rode in the same way. No gate could see any of
+# it, because every gate here was reading COPY sources.
+#
+# THE RULE THIS ASSERTS: a path git ignores is not a build input. Ignored means generated,
+# fetched, machine-local or scratch — every one of which is either reproduced inside the
+# image or has no business in it — so the context should be exactly the tracked tree. It
+# was, on the tree this check landed with, and that is a much easier invariant to keep
+# than a list of the shapes that have leaked so far.
+#
+# UNTRACKED-BUT-NOT-IGNORED FILES ARE DELIBERATELY ALLOWED: a source file added and not yet
+# committed is a real build input, and a gate that ran before `git add` and rejected it
+# would be wrong.
+#
+# Checked against EVERY allowlist that can apply, for the reason pass two above exists:
+# `.devcontainer/ubuntu.dockerfile.dockerignore` re-includes `!/.devcontainer` whole, which
+# is exactly the shape that lets ignored scratch in.
+#
+# `--directory` collapses a wholly-ignored directory to one entry, so this neither walks
+# `target/` nor reports ten thousand paths inside it; it is a few hundred entries on a
+# working tree and a handful on a fresh clone. A fresh clone is also why the count is
+# printed rather than asserted non-zero: on a runner that has built nothing there is
+# genuinely nothing to check, and a vacuous pass should be visible rather than fatal.
+mapfile -t ignored_paths < <(git -C "$REPO_ROOT" ls-files -o -i --exclude-standard --directory)
+
+# Every allowlist in the repository: the root one, plus each sibling that exists.
+ignore_files=(".dockerignore")
+for dockerfile in "${dockerfiles[@]}"; do
+	[[ -f "$REPO_ROOT/$dockerfile.dockerignore" ]] && ignore_files+=("$dockerfile.dockerignore")
+done
+
+ignored_checked=0
+for ignore_file in "${ignore_files[@]}"; do
+	load_dockerignore "$REPO_ROOT/$ignore_file"
+	for path in "${ignored_paths[@]}"; do
+		path="${path%/}"
+		[[ -n "$path" ]] || continue
+		ignored_checked=$((ignored_checked + 1))
+		context_includes "$path" || continue
+		echo "error: $ignore_file lets '$path' into the build context, and git ignores it." >&2
+		echo "       Ignored means generated, fetched or machine-local, so no image reads it — but it" >&2
+		echo "       still joins the COPY cache key, and rebuilds the Rust workspace whenever it changes." >&2
+		echo "       Fix: re-exclude it at the FOOT of $ignore_file (last match wins), with a comment." >&2
+		problems=$((problems + 1))
+	done
+done
+
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles and ${#guest_packages[@]} gg guest packages." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages and ${#ignored_paths[@]} git-ignored paths." >&2
 	exit 1
 }
 
 # A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
 # allowlist has its sources checked against both, which is the point.
 echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles — all survive."
+echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."

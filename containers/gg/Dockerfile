@@ -41,10 +41,27 @@ FROM ${BASE_IMAGE}
 # knowing which it is in. `COPY` writes as root regardless of the inherited `USER node`;
 # the unprivileged run user only executes what is here.
 #
-# The copied layer's content is identical on every variant, so the registry stores it once
-# however many variants are published and a node that has pulled one has the bytes for all
-# of them.
-COPY --from=ggtools /opt/gg /opt/gg
+# `--link` IS LOAD-BEARING, and this is the one line in the file where a change costs
+# gigabytes. Without it BuildKit computes this layer as a diff against THIS VARIANT'S
+# PARENT SNAPSHOT, so the twenty-six variants each get a DIFFERENT digest for byte-identical
+# content — 846 MB compressed (2.18 GB unpacked) stored twenty-six times over in the
+# registry, in every node that pulls more than one variant, and in every `docker save`
+# a local `make run-images-gg` feeds to `k3d image import`. That is not a theory: the
+# k3d node's content store held exactly twenty-six distinct blobs of exactly 846.3 MB
+# before this flag was added, and the comment that used to sit here claimed the opposite.
+#
+# `--link` builds the layer rooted at `scratch` and merges it in, so it does not depend on
+# what it is layered onto: every variant gets the SAME digest and the bytes are stored once,
+# which is what makes the claim above true rather than aspirational. Nothing about the
+# resulting filesystem changes — the tree is identical either way (7826 files, 2 162 625 760
+# bytes) — because nothing in any parent image occupies `/opt/gg`, which is the condition
+# `--link` asks for.
+#
+# It needs Dockerfile frontend 1.4+, which every BuildKit this repo builds with has BUILT IN
+# (docker buildx locally, docker/setup-buildx-action in build-containers.yml). Deliberately
+# no `# syntax=` directive: that would make an image build fetch a frontend image, and the
+# `containers/` images are the offline-buildable path (see `containers/build.sh`).
+COPY --link --from=ggtools /opt/gg /opt/gg
 
 # Put the toolchains on `PATH` ahead of nothing: a language's compiler is found here, and
 # anything the base image already provides keeps working unchanged.

@@ -269,7 +269,7 @@ fn code_mode(set: &mut GgCapabilitySet, profile_id: &str) {
     let agent = set
         .agents
         .iter_mut()
-        .find(|agent| agent.id == profile_id)
+        .find(|agent| agent.slug == profile_id)
         .expect("the set declares the profile put into code mode");
     crate::tools::grant(agent, CAPABILITY_RESPONSES_AS_CODE);
 }
@@ -1098,7 +1098,7 @@ async fn a_task_that_panicked_outside_its_loop_is_caught_by_the_join() {
     );
 }
 
-/// The [id](test_cabinet_core::gg::GgAgentConfig::id) of the profile the slot case below runs as:
+/// The [slug](test_cabinet_core::gg::GgAgentConfig::slug) of the profile the slot case below runs as:
 /// [persistent](CAPABILITY_AGENT_PERSISTENCE), so its instances hold their running slot under an
 /// [exclusivity key](crate::subagents::ExclusiveKey) keyed on that id, and a release of one
 /// instance's slot is visible as a release of the *profile*.
@@ -1110,7 +1110,7 @@ fn persistent_subagent_set() -> GgCapabilitySet {
     let profile = set
         .agents
         .iter_mut()
-        .find(|agent| agent.id == PERSISTENT)
+        .find(|agent| agent.slug == PERSISTENT)
         .expect("the set declares the profile it was built with");
     crate::tools::grant_configured(
         profile,

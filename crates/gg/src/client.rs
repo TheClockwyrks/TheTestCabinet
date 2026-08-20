@@ -2664,7 +2664,7 @@ impl MockClient {
     /// becomes a different agent.
     ///
     /// 1. `add_task` — state that only survives if the successor's own profile keeps a task list;
-    /// 2. `exec` into `After`, with an opening message for it.
+    /// 2. `exec` into `after`, with an opening message for it.
     ///
     /// It never calls `finish`: the session ends in the agent it became, which is the whole point.
     /// Selected in production by a mock `model_id` naming `exec-before` (see [`mock_client_for`]),
@@ -2693,7 +2693,7 @@ impl MockClient {
             tool_calls: vec![ToolCall {
                 id: "call_exec".to_string(),
                 name: "exec".to_string(),
-                arguments: json!({ "agent": "After", "prompt": MOCK_EXEC_PROMPT }),
+                arguments: json!({ "agent": "after", "prompt": MOCK_EXEC_PROMPT }),
             }],
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
@@ -2743,7 +2743,7 @@ impl MockClient {
                 ToolCall {
                     id: "call_exec".to_string(),
                     name: "exec".to_string(),
-                    arguments: json!({ "agent": "After", "prompt": MOCK_EXEC_PROMPT }),
+                    arguments: json!({ "agent": "after", "prompt": MOCK_EXEC_PROMPT }),
                 },
             ],
             finish_reason: FinishReason::ToolCalls,

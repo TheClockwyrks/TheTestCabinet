@@ -1157,16 +1157,17 @@ fn check_set(set: &GgCapabilitySet, report: &mut LaunchReport) {
     // declared and there is nothing else in a hook this pass reads.
     crate::hooks::check_launch(set, report);
     check_profile_ids(set, report);
+    check_slot_declarations(set, report);
     for agent in &set.agents {
         // Attributed on the way out, exactly as the resolvers below are: the shape checks name the
         // profile themselves, and the absent-required-param sweep shares its defect with the
         // resolver that reads the same key, which has no profile in hand.
-        report.for_agent(&agent.id, |report| check_capabilities(agent, report));
+        report.for_agent(&agent.slug, |report| check_capabilities(agent, report));
         // Every resolver that reads one of this profile's capability values, run against a
         // collecting sink — the same functions, reading the same `PARAM_*` constants, that the run
         // itself will use. Their defects arrive unattributed (a resolver is handed a params object,
         // not a profile), so the walk stamps this profile's id on them.
-        report.for_agent(&agent.id, |report| {
+        report.for_agent(&agent.slug, |report| {
             crate::modules::check_ownership(agent, report);
             crate::memories::check_launch(agent, report);
             crate::compaction::check_launch(agent, report);
@@ -1250,32 +1251,92 @@ fn check_memory_compaction(set: &GgCapabilitySet, report: &mut LaunchReport) {
             format!("has no `{CAPABILITY_MEMORIES}` capability at all")
         };
         report.report(LaunchDefect::on_agent(
-            &agent.id,
+            &agent.slug,
             implementation_locus(CAPABILITY_COMPACTION),
             COMPACTION_STRATEGY_MEMORY,
             format!(
                 "the `{COMPACTION_STRATEGY_MEMORY}` strategy condenses a thread by writing the \
                  agent's working state into its memories, and `{}` {why}. Give it writable \
                  memories, or name a strategy that condenses in prose.",
-                agent.id,
+                agent.slug,
             ),
         ));
     }
 }
 
-/// Every profile must have a non-empty, unique [id](GgAgentConfig::id) and — unless it is an
+/// A set gg is handed declares **no model slots**, at either level, and carries no profile's
+/// internal [id](GgAgentConfig::id).
+///
+/// A slot is a launch input, and launching fills every one of them in: what reaches gg is a set of
+/// pinned bindings. A declaration still on the document therefore means the launch skipped it, and
+/// gg has no slot table to fill it from — the same fault the deferred
+/// [binding](GgAgentConfig::model_slot) reports, caught on the declaration side so a launch that
+/// bound the bindings but left the declarations behind is named for what it is.
+fn check_slot_declarations(set: &GgCapabilitySet, report: &mut LaunchReport) {
+    // The other half of the same resolution: an authored configuration points every reference at a
+    // profile's internal id, and launching rewrites each one to that profile's slug and drops the
+    // ids. One still here means gg is about to resolve references naming ids nothing will match.
+    for agent in &set.agents {
+        if let Some(id) = agent.id.as_deref() {
+            report.report(LaunchDefect::on_agent(
+                &agent.slug,
+                "id",
+                id,
+                format!(
+                    "the `{}` agent still carries an internal id; launching rewrites every \
+                     reference to a profile's slug and drops the ids, so one still on the document \
+                     means the launch was incomplete.",
+                    agent.slug
+                ),
+            ));
+        }
+    }
+
+    for (index, slot) in set.model_slots.iter().enumerate() {
+        report.report(LaunchDefect::run_level(
+            format!("modelSlots[{index}].name"),
+            &slot.name,
+            format!(
+                "the set still declares the `{}` model slot; a bound launch resolves every slot \
+                 and carries none, so one still on the document means the launch was incomplete.",
+                slot.name
+            ),
+        ));
+    }
+    for agent in &set.agents {
+        for (index, slot) in agent.model_slots.iter().enumerate() {
+            report.report(LaunchDefect::on_agent(
+                &agent.slug,
+                format!("modelSlots[{index}].name"),
+                &slot.name,
+                format!(
+                    "the `{}` agent still declares the `{}` model slot; a bound launch resolves \
+                     every slot and carries none.",
+                    agent.slug, slot.name
+                ),
+            ));
+        }
+    }
+}
+
+/// Every profile must have a well-formed, unique [slug](GgAgentConfig::id) and — unless it is an
 /// [FSM shell](crate::fsm::is_shell), which runs no model — a resolved model.
 ///
-/// The id is the whole of how a profile is addressed: a roster entry, an FSM state, an issue's
+/// The slug is the whole of how a profile is addressed: a roster entry, an FSM state, an issue's
 /// assignee and its reviewers, the merge agent, and every telemetry row all carry one, and
-/// [`GgCapabilitySet::agent`] answers with the *first* profile that has it. So a repeated id is not
-/// a cosmetic clash — it makes every reference to it ambiguous, and silently binds each one to the
-/// earlier profile. A profile's [name](GgAgentConfig::name) is display text that nothing resolves,
-/// so a launch does not read one at all.
+/// [`GgCapabilitySet::agent`] answers with the *first* profile that has it. So a repeated slug is
+/// not a cosmetic clash — it makes every reference to it ambiguous, and silently binds each one to
+/// the earlier profile. A profile's [name](GgAgentConfig::name) is display text that nothing
+/// resolves, so a launch does not read one at all.
+///
+/// The [shape](test_cabinet_core::gg::is_valid_agent_slug) is checked for the same reason the slug
+/// is what the model is shown: a name the model has to decide how to spell is a name it will
+/// sometimes spell wrong, and the call that carries the misspelling is refused rather than
+/// delivered.
 fn check_profile_ids(set: &GgCapabilitySet, report: &mut LaunchReport) {
     let mut seen: Vec<&str> = Vec::with_capacity(set.agents.len());
     for (index, agent) in set.agents.iter().enumerate() {
-        let id = agent.id.trim();
+        let id = agent.slug.trim();
         if id.is_empty() {
             report.report(LaunchDefect::run_level(
                 format!("agents[{index}].id"),
@@ -1286,6 +1347,17 @@ fn check_profile_ids(set: &GgCapabilitySet, report: &mut LaunchReport) {
             // Nothing below can be attributed to a profile with no id, and the roster and machine
             // checks resolve ids too — so report the cause and leave the consequences alone.
             continue;
+        }
+        if !test_cabinet_core::gg::is_valid_agent_slug(id) {
+            report.report(LaunchDefect::run_level(
+                format!("agents[{index}].id"),
+                id,
+                format!(
+                    "`{id}` is not a well-formed profile slug; the model is shown this name and \
+                     passes it back, so a slug is lowercase letters and digits in groups separated \
+                     by single hyphens."
+                ),
+            ));
         }
         // An FSM shell is exempt from both model checks below, and from nothing else: a machine
         // takes no turns, so a model on it would be a value nothing reads rather than the thing that
@@ -1348,7 +1420,7 @@ fn check_capabilities(agent: &GgAgentConfig, report: &mut LaunchReport) {
         let Some(known) = params_for(&capability.id) else {
             report.report(
                 LaunchDefect::on_agent(
-                    &agent.id,
+                    &agent.slug,
                     format!("capabilities[{index}].id"),
                     &capability.id,
                     format!(
@@ -1369,7 +1441,7 @@ fn check_capabilities(agent: &GgAgentConfig, report: &mut LaunchReport) {
         // reached by the resolver that would have refused them.
         if seen.contains(&capability.id.as_str()) {
             report.report(LaunchDefect::on_agent(
-                &agent.id,
+                &agent.slug,
                 format!("capabilities[{index}].id"),
                 &capability.id,
                 format!(
@@ -1412,7 +1484,7 @@ fn check_implementation(
     let locus = || format!("capabilities[{index}].implementation");
     match (named, arm_rule(&capability.id)) {
         (Some(named), None) => report.report(LaunchDefect::on_agent(
-            &agent.id,
+            &agent.slug,
             locus(),
             named,
             format!(
@@ -1428,7 +1500,7 @@ fn check_implementation(
         (None, Some(ArmRule::Required)) if capability.enabled => {
             report.report(
                 LaunchDefect::on_agent(
-                    &agent.id,
+                    &agent.slug,
                     locus(),
                     "",
                     format!(
@@ -1480,7 +1552,7 @@ fn check_params(
                 }
                 report.report(
                     LaunchDefect::on_agent(
-                        &agent.id,
+                        &agent.slug,
                         format!("capabilities[{index}].params.{key}"),
                         key,
                         format!(
@@ -1495,7 +1567,7 @@ fn check_params(
         }
         other => {
             report.report(LaunchDefect::on_agent(
-                &agent.id,
+                &agent.slug,
                 format!("capabilities[{index}].params"),
                 other.to_string(),
                 format!(
@@ -1617,7 +1689,7 @@ fn check_run_level_params(set: &GgCapabilitySet, report: &mut LaunchReport) {
         // a divergence from a default — it is a declaration nothing reads.
         let in_force = declared(reader, capability, key);
         for agent in &set.agents {
-            if agent.id == reader.id {
+            if agent.slug == reader.slug {
                 continue;
             }
             let Some(value) = declared(agent, capability, key) else {
@@ -1630,20 +1702,20 @@ fn check_run_level_params(set: &GgCapabilitySet, report: &mut LaunchReport) {
                 continue;
             }
             report.report(LaunchDefect::on_agent(
-                &agent.id,
+                &agent.slug,
                 param_locus(capability, key),
                 as_written(&value),
                 match &in_force {
                     Some(in_force) => format!(
                         "{why}, so gg reads `{key}` off the `{}` agent, and this run's is `{}`. \
                          This declaration would configure nothing.",
-                        reader.id,
+                        reader.slug,
                         as_written(in_force),
                     ),
                     None => format!(
                         "{why}, so gg reads `{key}` off the `{}` agent, which declares none — and \
                          this declaration would configure nothing. Declare it there.",
-                        reader.id,
+                        reader.slug,
                     ),
                 },
             ));
@@ -1660,16 +1732,16 @@ fn check_rosters(set: &GgCapabilitySet, report: &mut LaunchReport) {
             if set.agent(&reference.agent_id).is_none() {
                 report.report(
                     LaunchDefect::on_agent(
-                        &agent.id,
+                        &agent.slug,
                         format!("subagents[{index}].agentId"),
                         &reference.agent_id,
                         format!(
                             "the `{}` agent's roster points at `{}`, which is not a profile this \
                              configuration declares.",
-                            agent.id, reference.agent_id
+                            agent.slug, reference.agent_id
                         ),
                     )
-                    .known(set.agents.iter().map(|agent| agent.id.as_str())),
+                    .known(set.agents.iter().map(|agent| agent.slug.as_str())),
                 );
             }
             // The scopes are what a roster entry *is*: the three roles are governed independently,
@@ -1679,14 +1751,14 @@ fn check_rosters(set: &GgCapabilitySet, report: &mut LaunchReport) {
             if reference.scopes.is_empty() {
                 report.report(
                     LaunchDefect::on_agent(
-                        &agent.id,
+                        &agent.slug,
                         format!("subagents[{index}].scopes"),
                         "",
                         format!(
                             "the `{}` agent's roster entry for `{}` names no scope, so it permits \
                              nothing; what a target may be used for is the whole of what a roster \
                              entry says, and gg grants none of the three on an operator's behalf.",
-                            agent.id, reference.agent_id
+                            agent.slug, reference.agent_id
                         ),
                     )
                     .known(ALL_SUBAGENT_SCOPES.map(GgSubagentScope::id)),
@@ -1712,14 +1784,14 @@ fn check_rosters(set: &GgCapabilitySet, report: &mut LaunchReport) {
             .is_empty()
         {
             report.report(LaunchDefect::on_agent(
-                &agent.id,
+                &agent.slug,
                 "subagents",
                 "",
                 format!(
                     "the `{}` agent may create issues but its roster lists no `implementer` to \
                      assign them to; give one of its agents the implementer scope, or switch its \
                      issue-creation feature off for read-only board access.",
-                    agent.id
+                    agent.slug
                 ),
             ));
         }
@@ -1727,14 +1799,14 @@ fn check_rosters(set: &GgCapabilitySet, report: &mut LaunchReport) {
             && agent.agents_in_scope(GgSubagentScope::Reviewer).is_empty()
         {
             report.report(LaunchDefect::on_agent(
-                &agent.id,
+                &agent.slug,
                 "subagents",
                 "",
                 format!(
                     "the `{}` agent must name reviewers on every issue but its roster lists no \
                      `reviewer`; give one of its agents the reviewer scope, or switch the \
                      `reviewers` requirement off.",
-                    agent.id
+                    agent.slug
                 ),
             ));
         }
@@ -1778,7 +1850,7 @@ fn check_merge_agent(set: &GgCapabilitySet, report: &mut LaunchReport) {
                      declared agent profile."
                 ),
             )
-            .known(set.agents.iter().map(|agent| agent.id.as_str())),
+            .known(set.agents.iter().map(|agent| agent.slug.as_str())),
         );
         return;
     };
@@ -1816,9 +1888,9 @@ fn check_merge_agent_declarations(set: &GgCapabilitySet, locus: &str, report: &m
             continue;
         };
         match raw.as_str().map(str::trim).filter(|id| !id.is_empty()) {
-            Some(id) => named.push((agent.id.as_str(), id)),
+            Some(id) => named.push((agent.slug.as_str(), id)),
             None => report.report(LaunchDefect::on_agent(
-                &agent.id,
+                &agent.slug,
                 locus,
                 as_written(raw),
                 format!(

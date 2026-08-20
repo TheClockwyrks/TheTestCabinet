@@ -241,7 +241,7 @@ pub fn check_scoping(set: &GgCapabilitySet, report: &mut LaunchReport) {
             let child_strategy = strategy_of(child);
             if child_strategy != strategy {
                 report.report(LaunchDefect::on_agent(
-                    &child.id,
+                    &child.slug,
                     crate::validate::implementation_locus(CAPABILITY_MEMORIES),
                     child_strategy.id(),
                     format!(
@@ -251,11 +251,11 @@ pub fn check_scoping(set: &GgCapabilitySet, report: &mut LaunchReport) {
                          run this configuration describes. Organize both the same way, or scope \
                          `{child_id}` `{}`.",
                         child.name,
-                        agent.id,
+                        agent.slug,
                         agent.name,
                         strategy.id(),
                         MemoryScope::Isolated,
-                        child_id = child.id,
+                        child_id = child.slug,
                     ),
                 ));
             }
@@ -296,7 +296,7 @@ pub fn inherited_strategy_conflict(
         "agent `{}` ({}) is scoped `{scope}` and organizes its memories as `{}`, but the agent \
          that spawned it organizes them as `{}`; a store is read by the calls its own strategy \
          offers, so there is no handle onto it this agent could be given",
-        profile.id,
+        profile.slug,
         profile.name,
         strategy.id(),
         spawner.id(),

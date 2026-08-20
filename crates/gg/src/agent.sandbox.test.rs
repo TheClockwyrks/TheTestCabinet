@@ -823,7 +823,7 @@ async fn a_program_subagent_still_honours_the_scheduler() {
     for agent in &mut set.agents {
         // The documentation-view type flags are per agent, so the two profiles take opposite
         // arms of them: every type against none at all.
-        let types = if agent.id == ROOT_PROFILE_ID {
+        let types = if agent.slug == ROOT_PROFILE_ID {
             json!({ "return": true, "parameters": true, "errors": true })
         } else {
             json!(false)

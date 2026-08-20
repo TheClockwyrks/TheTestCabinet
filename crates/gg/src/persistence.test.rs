@@ -53,7 +53,7 @@ fn emitter() -> (Emitter, CollectingSink) {
     )
 }
 
-/// A capability set whose profiles with the given [ids](GgAgentConfig::id) are persistent, plus one
+/// A capability set whose profiles with the given [slugs](GgAgentConfig::slug) are persistent, plus one
 /// per id in `plain` that is not.
 ///
 /// Each display name is deliberately unlike its id, because persistence keys on the id: a record
@@ -62,7 +62,7 @@ fn set_with(persistent: &[&str], plain: &[&str]) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/x");
     for id in persistent {
         set.agents.push(GgAgentConfig {
-            id: (*id).to_string(),
+            slug: (*id).to_string(),
             name: format!("The {id} agent"),
             capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_AGENT_PERSISTENCE)],
             ..GgAgentConfig::root()
@@ -70,7 +70,7 @@ fn set_with(persistent: &[&str], plain: &[&str]) -> GgCapabilitySet {
     }
     for id in plain {
         set.agents.push(GgAgentConfig {
-            id: (*id).to_string(),
+            slug: (*id).to_string(),
             name: format!("The {id} agent"),
             capabilities: Vec::new(),
             ..GgAgentConfig::root()
@@ -128,7 +128,7 @@ fn only_a_persistent_profile_takes_an_exclusivity_key() {
 fn a_disabled_persistence_capability_takes_no_key() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     set.agents.push(GgAgentConfig {
-        id: "owner".to_string(),
+        slug: "owner".to_string(),
         name: "The owner agent".to_string(),
         capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_AGENT_PERSISTENCE)],
         subagents: vec![GgSubagentRef::any("owner")],

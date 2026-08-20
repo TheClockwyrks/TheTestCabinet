@@ -248,11 +248,11 @@ fn a_disabled_capabilitys_retention_is_judged_at_launch() {
 #[test]
 fn the_launch_summary_names_every_agent_that_keeps_programs() {
     let mut keeper = profile(json!({ "keep": 5 }));
-    keeper.id = "Implementer".to_string();
+    keeper.slug = "Implementer".to_string();
     let mut unlimited = profile(json!({ "keep": 0 }));
-    unlimited.id = "Reviewer".to_string();
+    unlimited.slug = "Reviewer".to_string();
     let mut plain = GgAgentConfig::root();
-    plain.id = "Planner".to_string();
+    plain.slug = "Planner".to_string();
 
     let summary = launch_summary(&[keeper, unlimited, plain]).unwrap();
 

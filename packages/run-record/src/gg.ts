@@ -31,21 +31,39 @@ import type { CostMetrics, TokenMetrics } from "./index";
  */
 export type GgAgentConfig = {
   /**
-   * The profile's **stable identifier**, unique within a set and never rewritten once the
-   * profile exists. Everything that names this profile names this: a
-   * [roster entry](GgSubagentRef::agent_id), a machine's [state](GgFsmState::agent_id), the
-   * [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT), an
-   * [issue](GgBoardIssue::agent_id)'s implementer and reviewers, every telemetry event and
-   * accounting row the run produces — and the `agent` argument the **model** passes to
-   * `spawn_subagent`, `exec` and `create_issue`.
+   * The profile's **internal identifier**: opaque text, minted when the profile is created,
+   * never rewritten, and shown to nobody. Its only job is to be the same text tomorrow.
    *
-   * The model names profiles by id for the same reason everything else does: a display name
-   * may repeat, so it cannot say which profile is meant. Ids are therefore minted **readable**
-   * — a slug taken from the profile's first name, `reviewer` or `reviewer-2`, and left alone
-   * after that — so a roster in a prompt reads as prose while still naming exactly one thing.
-   * [`ROOT_PROFILE_ID`] is the first profile of a default set.
+   * Everything *inside an authored configuration* that points at a profile points at this —
+   * a [roster entry](GgSubagentRef::agent_id), a machine's [state](GgFsmState::agent_id), the
+   * [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT), a
+   * [configuration slot](GgConfigSlot)'s [target](GgSlotTarget::agent), and a configuration's
+   * link to the saved agent a profile follows. That is what makes renaming free and importing
+   * safe: no reference breaks because a name changed, and two profiles showing one name are
+   * still two profiles.
+   *
+   * **Absent once a launch has resolved the set**, which is what the field says. Launching
+   * rewrites every reference to the profile's [slug](Self::slug) and drops the ids, so the set
+   * gg reads and a run records names profiles by the one name the operator wrote and the model
+   * was shown. gg refuses a set that still carries one.
    */
-  id: string;
+  id?: string;
+  /**
+   * The profile's **slug**: the name the model reads, written by the operator, unique within
+   * the set, and shaped by [`is_valid_agent_slug`].
+   *
+   * A roster in a prompt names slugs, and the slug is what the model passes back as the `agent`
+   * argument of `spawn_subagent`, `exec` and `create_issue`. It is also what a run names a
+   * profile by everywhere afterwards — every telemetry event, every accounting row, an
+   * [issue](GgBoardIssue::agent_id)'s implementer and reviewers, and the analysis query
+   * language — so what an operator writes is what they later slice by.
+   *
+   * The model needs a name of its own for the same reason everything else does: a display
+   * [name](Self::name) may repeat, so it cannot say which profile is meant. It is shaped rather
+   * than free because the model has to copy it back without deciding how to spell it.
+   * [`ROOT_PROFILE_ID`] is the slug of the first profile of a default set.
+   */
+  slug: string;
   /**
    * The profile's **display name**: what the console, the run log and a roster's prose call
    * this agent. `"Root"` ([`ROOT_AGENT`]) for the first profile of a default set.
@@ -85,6 +103,18 @@ export type GgAgentConfig = {
    * [FSM shell](Self::is_fsm_shell), which has no model to defer.
    */
   modelSlot?: string;
+  /**
+   * The [launch-time model parameters](GgModelSlot) this agent declares, for its own
+   * bindings that defer to one instead of pinning a model.
+   *
+   * The slots belong to the agent, so they travel with it: a
+   * [saved agent](GgAgentConfig) imported into a configuration brings the slots its
+   * bindings name, and the configuration decides how each reaches the launch form.
+   * Empty for a fully pinned agent, for an [FSM shell](Self::is_fsm_shell), which runs
+   * no model, and on the set a run records, because launching resolves every deferred
+   * binding first.
+   */
+  modelSlots?: Array<GgModelSlot>;
   /**
    * The gg **tool names** this agent may call — the allowlist that decides which of the tools
    * its enabled capabilities offer it actually gets. Meaningful for an agent that answers with
@@ -194,8 +224,12 @@ export type GgAgentConfig = {
  */
 export type GgSubagentRef = {
   /**
-   * The [id](GgAgentConfig::id) of the target profile this agent may put to work (may be
-   * the spawner itself). An id the set does not declare refuses the launch.
+   * The target profile this agent may put to work (may be the spawner itself). A reference the
+   * set does not declare refuses the launch.
+   *
+   * Names the profile's internal [id](GgAgentConfig::id) while the configuration is authored and
+   * its [slug](GgAgentConfig::slug) once launching has resolved them; whether the set still
+   * carries ids says which.
    */
   agentId: string;
   /**
@@ -358,35 +392,98 @@ export type GgLoopDetection = {
 };
 
 /**
- * A **launch-time model parameter** a [`GgCapabilitySet`] declares.
+ * A **launch-time model parameter** an [agent profile](GgAgentConfig) declares.
  *
- * A saved configuration is meant to be reusable across models, so the models it runs
- * on are not all baked into it. It declares named model slots — `primary`, `critic`,
- * … — and each [role binding](GgSlotBinding) either pins a model outright (an
- * *internal* binding, identical on every run of the configuration and never asked
- * about again) or [defers](GgSlotBinding::model_slot) to one of these, which the
- * operator fills in on the launch form. A slot may carry a
- * [default](Self::default_model_id) the form pre-fills.
+ * An agent is meant to be reusable across models, so the model it runs on need not be
+ * baked into it. Each of its model bindings — its own [model](GgAgentConfig::model_slot)
+ * and every capability param that names one, today
+ * [compaction's handoff](COMPACTION_PARAM_MODEL_SLOT) — either pins a model outright or
+ * defers to one of the slots the agent declares here.
  *
- * Model slots are named separately from the role slots they feed precisely so that two
- * roles can share one: "run the reviewer *and* the judge on whatever I pick for
- * `critic`" is one launch input, not two.
+ * A slot belongs to the agent that declares it, which is what lets a
+ * [saved agent](GgAgentConfig) carry its slots into every configuration that imports it,
+ * and lets two agents each declare a `critic` without meaning one launch input.
  *
- * Declaring one is a configuration-authoring concern only. Launching resolves every
- * deferred binding to a concrete model, so this list is empty on the capability set a
- * run records — what ran is a set of pinned bindings.
+ * An agent slot reaches the launch form one of two ways, and exactly one: a
+ * [configuration slot](GgConfigSlot) [names](GgSlotTarget) it, or it is
+ * [passthrough](Self::passthrough) and is exposed on its own. A slot that is neither
+ * leaves its bindings with no model to take; one that is both asks twice for the same
+ * binding. Both refuse the launch.
+ *
+ * Declaring one is an authoring concern only. Launching resolves every deferred binding
+ * to a concrete model, so this list is empty on the capability set a run records — what
+ * ran is a set of pinned bindings.
  */
 export type GgModelSlot = {
   /**
-   * The slot's name, as the launch form labels it and as a
-   * [binding](GgSlotBinding::model_slot) refers to it. Unique within a set.
+   * The slot's name, as this agent's bindings refer to it. Unique within the agent.
    */
   name: string;
   /**
-   * The model the launch form pre-fills this slot with. `None` leaves it empty, so
-   * the operator must choose one before the run can be launched.
+   * The model the launch form pre-fills this slot with. `None` leaves it to the
+   * [configuration slot](GgConfigSlot::default_model_id) that fills this one, or —
+   * when nothing supplies a default — to the operator on the launch form.
    */
   defaultModelId?: string;
+  /**
+   * Whether this slot is exposed at launch on its own, without a
+   * [configuration slot](GgConfigSlot) naming it. The launch form labels a passthrough
+   * slot `<agent id>.<slot name>`, which is what keeps it distinct from every other
+   * launch input.
+   *
+   * It exists so a configuration is spared declaring a slot whose only job is to
+   * forward one, which is the common case: most agents want their own model chosen at
+   * launch and share it with nobody.
+   */
+  passthrough?: boolean;
+};
+
+/**
+ * A **launch input** a [`GgCapabilitySet`] declares, and the
+ * [agent slots](GgModelSlot) it fills.
+ *
+ * A run asks for exactly one set of models and the configuration decides what that set
+ * is. One configuration slot filling several agent slots is what makes "run the reviewer
+ * *and* the merge agent on whatever I pick for `critic`" one launch input rather than
+ * two.
+ *
+ * Declaring one is a configuration-authoring concern only. Launching resolves every
+ * deferred binding to a concrete model, so this list is empty on the capability set a
+ * run records.
+ */
+export type GgConfigSlot = {
+  /**
+   * The slot's name, as the launch form labels it and keys its answer by. Unique
+   * within a set, and distinct from every `<agent id>.<slot name>` a
+   * [passthrough](GgModelSlot::passthrough) slot is exposed under.
+   */
+  name: string;
+  /**
+   * The model the launch form pre-fills this slot with. `None` takes the default of
+   * the first [target](Self::targets) that carries one, so importing an agent that
+   * defaults its own slot keeps that default working.
+   */
+  defaultModelId?: string;
+  /**
+   * The [agent slots](GgModelSlot) this input fills. Each names a profile the set
+   * declares and a slot that profile declares, and no agent slot is named by two
+   * configuration slots.
+   */
+  targets: Array<GgSlotTarget>;
+};
+
+/**
+ * One [agent slot](GgModelSlot) a [configuration slot](GgConfigSlot) fills.
+ */
+export type GgSlotTarget = {
+  /**
+   * The [id](GgAgentConfig::id) of the profile whose slot this fills.
+   */
+  agent: string;
+  /**
+   * The [name](GgModelSlot::name) of that profile's slot.
+   */
+  slot: string;
 };
 
 /**
@@ -495,12 +592,16 @@ export type GgCapabilitySet = {
    */
   agents: Array<GgAgentConfig>;
   /**
-   * The [launch-time model parameters](GgModelSlot) this set declares, for the
-   * [agent bindings](GgAgentConfig::model_slot) that defer to one instead of pinning
-   * a model. Empty for a fully pinned set — and empty on the set a run *records*,
-   * because launching resolves every deferred binding first.
+   * The [launch inputs](GgConfigSlot) this set declares, each naming the
+   * [agent slots](GgModelSlot) it fills.
+   *
+   * This is not the whole of what a launch asks for: a
+   * [passthrough](GgModelSlot::passthrough) agent slot is exposed on its own without a
+   * declaration here. [`launch_slots`](Self::launch_slots) is the one set of inputs a
+   * run is launched with. Empty for a fully pinned set, and empty on the set a run
+   * records, because launching resolves every deferred binding first.
    */
-  modelSlots?: Array<GgModelSlot>;
+  modelSlots?: Array<GgConfigSlot>;
   /**
    * The **run-level guardrails** this run is bounded by — the turn, runtime, error and
    * cost ceilings that stop a session and record which one stopped it, plus the
@@ -833,9 +934,13 @@ export type GgFsmState = {
    */
   name: string;
   /**
-   * The [id](GgAgentConfig::id) of the [agent profile](GgAgentConfig) this state runs: its
-   * model, its capabilities, its system prompt. Must be a profile the set declares, and must
-   * not be an FSM shell (a shell cannot be a state — it would recurse).
+   * The [agent profile](GgAgentConfig) this state runs: its model, its capabilities, its system
+   * prompt. Must be a profile the set declares, and must not be an FSM shell (a shell cannot be
+   * a state — it would recurse).
+   *
+   * Names the profile's internal [id](GgAgentConfig::id) while the configuration is authored and
+   * its [slug](GgAgentConfig::slug) once launching has resolved them; whether the set still
+   * carries ids says which.
    *
    * Defaulted rather than required so a state that omits it is refused by the machine's own
    * validation — which names the state and says what is missing — instead of by a serde error
@@ -1368,7 +1473,7 @@ export type GgBoardIssue = {
    */
   epicId?: string;
   /**
-   * The [id](GgAgentConfig::id) of the profile the issue was **assigned to** when it was
+   * The [slug](GgAgentConfig::slug) of the profile the issue was **assigned to** when it was
    * created — the profile gg dispatches it under, and re-dispatches for every retry and review
    * round. The creating agent names it by [label](GgAgentConfig::name) on `create_issue` (it is
    * not configured on the capability) out of its roster entries carrying the
@@ -1526,7 +1631,7 @@ export type GgReviewer = {
    */
   agentId: string;
   /**
-   * The [id](GgAgentConfig::id) of the profile the reviewer ran under — one of the issue's
+   * The [slug](GgAgentConfig::slug) of the profile the reviewer ran under — one of the issue's
    * [reviewers](GgBoardIssue::reviewer_ids).
    */
   profileId: string;
@@ -2464,7 +2569,7 @@ export type GgUndocumentedCalls = {
  */
 export type GgSlotCost = {
   /**
-   * The [id](GgAgentConfig::id) of the agent profile this rollup accounts for. Resolve it
+   * The [slug](GgAgentConfig::slug) of the agent profile this rollup accounts for. Resolve it
    * against the run's set for the [display name](GgCapabilitySet::agent_name) to show.
    */
   profileId: string;
@@ -2848,7 +2953,7 @@ export type GgTelemetryKind =
   | {
       type: "usage";
       /**
-       * The [id](GgAgentConfig::id) of the agent profile that spent this — the same id
+       * The [slug](GgAgentConfig::slug) of the agent profile that spent this — the same id
        * [`AgentSpawned::profile_id`](Self::AgentSpawned::profile_id) and
        * [`SlotUsage::profile_id`](Self::SlotUsage::profile_id) key on.
        */
@@ -3257,7 +3362,7 @@ export type GgTelemetryKind =
   | {
       type: "agent_spawned";
       /**
-       * The [id](GgAgentConfig::id) of the agent profile this agent runs under. gg usage is
+       * The [slug](GgAgentConfig::slug) of the agent profile this agent runs under. gg usage is
        * accounted per profile (see [`SlotUsage`](Self::SlotUsage)), and every consumer that
        * shows a name resolves it against the run's set
        * ([`agent_name`](GgCapabilitySet::agent_name)) rather than reading one off the
@@ -3390,7 +3495,7 @@ export type GgTelemetryKind =
   | {
       type: "slot_usage";
       /**
-       * The [id](GgAgentConfig::id) of the agent profile this rollup accounts for.
+       * The [slug](GgAgentConfig::slug) of the agent profile this rollup accounts for.
        */
       profileId: string;
       /**
@@ -3455,7 +3560,7 @@ export type GgTelemetryKind =
   | {
       type: "fsm_state";
       /**
-       * The machine: the [id](GgAgentConfig::id) of the **FSM shell** profile whose `states`
+       * The machine: the [slug](GgAgentConfig::slug) of the **FSM shell** profile whose `states`
        * table is being driven. An agent may only ever be inside one, so this identifies the
        * document the state came from.
        */
@@ -3486,7 +3591,7 @@ export type GgTelemetryKind =
        */
       toAgentId: string;
       /**
-       * The [id](GgAgentConfig::id) of the agent profile the successor runs under.
+       * The [slug](GgAgentConfig::slug) of the agent profile the successor runs under.
        */
       profileId: string;
       /**
@@ -3987,7 +4092,7 @@ export type GgTelemetryEvent = {
   | {
       type: "usage";
       /**
-       * The [id](GgAgentConfig::id) of the agent profile that spent this — the same id
+       * The [slug](GgAgentConfig::slug) of the agent profile that spent this — the same id
        * [`AgentSpawned::profile_id`](Self::AgentSpawned::profile_id) and
        * [`SlotUsage::profile_id`](Self::SlotUsage::profile_id) key on.
        */
@@ -4396,7 +4501,7 @@ export type GgTelemetryEvent = {
   | {
       type: "agent_spawned";
       /**
-       * The [id](GgAgentConfig::id) of the agent profile this agent runs under. gg usage is
+       * The [slug](GgAgentConfig::slug) of the agent profile this agent runs under. gg usage is
        * accounted per profile (see [`SlotUsage`](Self::SlotUsage)), and every consumer that
        * shows a name resolves it against the run's set
        * ([`agent_name`](GgCapabilitySet::agent_name)) rather than reading one off the
@@ -4529,7 +4634,7 @@ export type GgTelemetryEvent = {
   | {
       type: "slot_usage";
       /**
-       * The [id](GgAgentConfig::id) of the agent profile this rollup accounts for.
+       * The [slug](GgAgentConfig::slug) of the agent profile this rollup accounts for.
        */
       profileId: string;
       /**
@@ -4594,7 +4699,7 @@ export type GgTelemetryEvent = {
   | {
       type: "fsm_state";
       /**
-       * The machine: the [id](GgAgentConfig::id) of the **FSM shell** profile whose `states`
+       * The machine: the [slug](GgAgentConfig::slug) of the **FSM shell** profile whose `states`
        * table is being driven. An agent may only ever be inside one, so this identifies the
        * document the state came from.
        */
@@ -4625,7 +4730,7 @@ export type GgTelemetryEvent = {
        */
       toAgentId: string;
       /**
-       * The [id](GgAgentConfig::id) of the agent profile the successor runs under.
+       * The [slug](GgAgentConfig::slug) of the agent profile the successor runs under.
        */
       profileId: string;
       /**
@@ -5089,15 +5194,10 @@ export type GgSavedAgent = {
    */
   description: string;
   /**
-   * The profile itself, in exactly the form a configuration's agent list holds.
+   * The profile itself, in exactly the form a configuration's agent list holds,
+   * including the [model slots](GgAgentConfig::model_slots) its bindings defer to.
    */
   agent: GgAgentConfig;
-  /**
-   * The model slots this agent's bindings defer to. Carried with the agent because a
-   * binding names a slot the *configuration* declares: importing this agent into one
-   * that does not declare a named slot declares it, with the default given here.
-   */
-  modelSlots: Array<GgModelSlot>;
   /**
    * RFC 3339 of when the agent was last saved.
    */
@@ -5117,10 +5217,6 @@ export type GgSavedAgentInput = {
    * The profile to save. Its `name` becomes the library entry's name.
    */
   agent: GgAgentConfig;
-  /**
-   * The model slots this agent's bindings defer to.
-   */
-  modelSlots: Array<GgModelSlot>;
 };
 
 /**

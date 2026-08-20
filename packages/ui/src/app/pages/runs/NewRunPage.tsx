@@ -11,7 +11,6 @@ import {
   isGgOrchestrator,
 } from "../../data/orchestrators";
 import { bindModelSlots, launchModelSlots } from "./gg/ggConfigDraft";
-import { PRIMARY_SLOT } from "./gg/ggCatalog";
 import { useGgConfigs } from "./gg/useGgConfigs";
 import {
   OPENROUTER_PROVIDER,
@@ -142,8 +141,8 @@ export function NewRunPage() {
   // submitter's local orchestrator directory.
   const [orchestrator, setOrchestrator] = useState(DEFAULT_ORCHESTRATOR_SLUG);
   // The gg configurations this operator can launch: the shared read-only built-ins
-  // plus the ones registered on their account (the account section's gg tab). Only
-  // consulted when gg is the chosen run mode.
+  // plus the ones registered on their account (the account section's gg Configs
+  // tab). Only consulted when gg is the chosen run mode.
   const { options: ggOptions } = useGgConfigs();
   const isGg = isGgOrchestrator(orchestrator);
   const [maxRuntime, setMaxRuntime] = useState("");
@@ -180,9 +179,9 @@ export function NewRunPage() {
       });
   }, [backend]);
 
-  // The gg configuration a row launches, and the launch inputs it still needs — the
-  // model slots it declares that no role pins itself. Memoized per configuration key
-  // so the per-row rendering does not re-derive them every keystroke.
+  // The gg configuration a row launches, and the launch inputs it asks for — its own
+  // configuration slots, then the passthrough slots of its agents. Memoized per
+  // configuration key so the per-row rendering does not re-derive them every keystroke.
   const ggOptionFor = (key: string) => ggOptions.find((o) => o.key === key);
   const ggSlotsByKey = useMemo(
     () =>
@@ -206,9 +205,9 @@ export function NewRunPage() {
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     );
   }
-  // Switching a row's configuration re-seeds its models: the slots a configuration
-  // declares are its own, so carrying the previous one's picks over would bind models
-  // to slots that no longer exist (and silently drop the ones that do).
+  // Switching a row's configuration re-seeds its models: the launch inputs a
+  // configuration asks for are its own, so carrying the previous one's picks over would
+  // bind models to inputs that no longer exist (and silently drop the ones that do).
   function setGgConfig(id: string, key: string) {
     updateCombination(id, {
       ggConfig: key,
@@ -260,17 +259,13 @@ export function NewRunPage() {
     isGg
       ? (ggOptionFor(combo.ggConfig)?.name ?? "gg")
       : harnessName(combo.harness);
-  // How a gg row's models read in the launch summary: the primary model, plus a count
-  // of the other slots it bound (a multi-model row is not one model id).
+  // How a gg row's models read in the launch summary: the first input's model, plus a
+  // count of the other inputs it bound (a multi-model row is not one model id).
   const ggModelLabel = (combo: Combination) => {
     const slots = ggSlotsFor(combo.ggConfig);
-    const primary = combo.slotModels[PRIMARY_SLOT] ?? "";
-    const rest = slots.filter((s) => s.name !== PRIMARY_SLOT).length;
     const head =
-      primary ||
-      slots.map((s) => combo.slotModels[s.name]).find(Boolean) ||
-      "—";
-    return rest > 0 ? `${head} +${rest}` : head;
+      slots.map((s) => combo.slotModels[s.name]).find(Boolean) || "—";
+    return slots.length > 1 ? `${head} +${slots.length - 1}` : head;
   };
 
   // Seed each row's gg configuration once gg is chosen (and the configurations have
@@ -716,9 +711,9 @@ export function NewRunPage() {
                   </label>
                   {remove}
                 </div>
-                {/* One picker per model slot the chosen configuration declares, in
-                    declaration order, pre-filled with that slot's default. gg reaches
-                    every slot's model through OpenRouter, so each picker is scoped to
+                {/* One picker per launch input the chosen configuration asks for, in
+                    declaration order, pre-filled with that input's default. gg reaches
+                    every model through OpenRouter, so each picker is scoped to
                     that family and commits the OpenRouter slug. */}
                 {ggSlotsFor(combo.ggConfig).map((slot) => (
                   <label

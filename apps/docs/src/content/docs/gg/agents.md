@@ -15,13 +15,11 @@ a run is launched from.
 
 ## Registering one
 
-Account → gg → Agents lists the saved agents on the signed-in account. Creating
-or editing one opens the same per-agent view a configuration opens, alongside:
-
-- a one-line note saying what the agent is for, shown wherever the library is
-  listed;
-- the model slots its bindings defer to, since the configuration that runs the
-  agent is what names a slot.
+Account → gg Agents lists the saved agents on the signed-in account. Creating
+or editing one opens the same per-agent view a configuration opens, with its
+[model slots](/gg/configurations/#agent-slots) on their own Slots tab and a
+one-line note saying what the agent is for, shown wherever the library is
+listed.
 
 The agent's own name is the library's name for it. The library assigns each
 saved agent an id of its own, which is what an importing configuration points
@@ -32,16 +30,21 @@ saved agent from an existing one.
 
 A configuration's Agents tab declares a profile in either of two ways. Add agent
 declares a fresh one inline, which belongs to that configuration alone. Import
-agent picks a saved one, and the resulting profile:
+agent picks a saved one, and the resulting profile arrives under the saved
+agent's own [slug](/gg/configurations/#identity), with its name, its model slots
+and its references to itself. It is minted an
+[id](/gg/configurations/#identity) of its own, so importing one saved agent
+twice yields two profiles the configuration tells apart and a run accounts for
+separately.
 
-- mints a [profile id](/gg/configurations/#identity) of its own, derived from
-  the saved agent's;
-- takes the saved agent's name as its display text, suffixed only when another
-  profile in the configuration already shows it, so the operator's list stays
-  legible;
-- declares any model slot its bindings name that the configuration does not
-  already have, taking the default recorded with the saved agent;
-- carries the saved agent's references to itself onto the id it arrives under.
+A slug is unique within a configuration, so importing an agent whose slug
+another profile already carries leaves the configuration unsaveable and
+unlaunchable until the operator resolves it, by renaming the profile that
+already held the slug or by [overriding](#overriding-one) the imported one's.
+Both profiles stay addressable while it is unresolved, because the editor and
+the link both work off the id. The check runs again whenever the configuration
+is read, because a saved agent's slug can change after a configuration imported
+it.
 
 An imported profile is marked as such on the configuration's agent list, beside
 the name of the saved agent it follows. Save to library does the reverse for a
@@ -58,7 +61,11 @@ saved agent reshapes each configuration that imported it.
 Overrides are recorded per field, with each capability its own field. Editing
 the compaction capability on one configuration's copy leaves that
 configuration's compaction settings fixed while the agent's prompt, roster and
-every other capability keep following the saved agent.
+every other capability keep following the saved agent. The slug and the model
+slots are each a field, so a configuration that renames an imported profile to
+clear a collision keeps that name while following the saved agent in everything
+else. The profile's id is not a field of the overlay: it belongs to the
+configuration's own profile, never to the agent it follows.
 
 The [call allowlist](/gg/configurations/#granting-calls) is one field. A
 configuration that pins it decides which calls its copy grants for good,

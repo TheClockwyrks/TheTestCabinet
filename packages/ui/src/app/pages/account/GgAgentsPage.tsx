@@ -7,13 +7,12 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
-import { GgSectionTabs } from "./GgSectionTabs";
 import { useGgAgents } from "../runs/gg/useGgAgents";
 import { agentModeLabel } from "../runs/gg/ggAgentLibrary";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
-// The gg tab's Agents list (`/account/gg/agents`): the operator's saved agent profiles.
+// The gg Agents tab (`/account/gg/agents`): the operator's saved agent profiles.
 //
 // A profile saved here is authored once and imported by any number of
 // configurations, which then follow it in every field they do not override. It is an
@@ -106,8 +105,7 @@ export function GgAgentsPage() {
           </Link>
         )}
       </div>
-      <AccountTabs active="gg" />
-      <GgSectionTabs active="agents" />
+      <AccountTabs active="ggAgents" />
 
       {(error || actionError) && (
         <p className={`${exec.notice} ${exec.error}`}>{error ?? actionError}</p>

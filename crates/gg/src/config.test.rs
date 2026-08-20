@@ -15,7 +15,7 @@ fn deserializes_a_full_invocation_file() {
             "preset": "minimal",
             "agents": [
                 {
-                    "id": "root",
+                    "slug": "root",
                     "name": "Root",
                     "modelId": "anthropic/claude-opus-4-8",
                     "capabilities": [

@@ -371,7 +371,7 @@ impl HookRuntime {
         agent: &GgAgentConfig,
         workspace_dir: &Path,
     ) -> Result<Self, Vec<String>> {
-        Self::resolve(&agent.hooks, HookOwner::Agent(&agent.id), workspace_dir)
+        Self::resolve(&agent.hooks, HookOwner::Agent(&agent.slug), workspace_dir)
     }
 
     /// Resolve one declaration site's hooks, or report the configuration errors that stop the run.
@@ -864,8 +864,8 @@ pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchR
     }
     check_actions(&set.hooks, &hook_offload(set.root()), report);
     for profile in &set.agents {
-        report.for_agent(&profile.id, |report| {
-            for (label, message) in problems(&profile.hooks, HookOwner::Agent(&profile.id)) {
+        report.for_agent(&profile.slug, |report| {
+            for (label, message) in problems(&profile.hooks, HookOwner::Agent(&profile.slug)) {
                 report.report(crate::validate::LaunchDefect::run_level(
                     hook_locus(&label),
                     "",

@@ -2704,7 +2704,7 @@ fn resolve_window_limit_reads_the_agents_own_override() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.agents[0].capabilities.push(window_override(42_000));
     set.agents.push(GgAgentConfig {
-        id: "reviewer".to_string(),
+        slug: "reviewer".to_string(),
         name: "Reviewer".to_string(),
         ..GgAgentConfig::root()
     });
@@ -5101,7 +5101,7 @@ async fn run_drives_a_root_profile_under_its_own_id() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-renamed".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0].id = "conductor".to_string();
+    set.agents[0].slug = "conductor".to_string();
     set.agents[0].name = "The Conductor".to_string();
     let inv = invocation(dir.path(), set);
 
@@ -5183,7 +5183,7 @@ fn profile_binding_carries_the_profiles_prompt_cache_lifetime() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "worker".to_string(),
+                slug: "worker".to_string(),
                 name: "Worker".to_string(),
                 model_id: "mock/b".to_string(),
                 ..GgAgentConfig::root()
@@ -5214,7 +5214,7 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
     // other id is a perfectly good set, and refusing it would make the id a reserved word.
     let own_id_root = GgCapabilitySet {
         agents: vec![GgAgentConfig {
-            id: "conductor".to_string(),
+            slug: "conductor".to_string(),
             model_id: "mock/b".to_string(),
             ..GgAgentConfig::root()
         }],
@@ -5227,13 +5227,13 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
     let own_id_root_with_roster = GgCapabilitySet {
         agents: vec![
             GgAgentConfig {
-                id: "conductor".to_string(),
+                slug: "conductor".to_string(),
                 model_id: "mock/a".to_string(),
                 subagents: vec![GgSubagentRef::any("reviewer")],
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "reviewer".to_string(),
+                slug: "reviewer".to_string(),
                 model_id: "mock/b".to_string(),
                 ..GgAgentConfig::root()
             },
@@ -5289,7 +5289,7 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
     // An empty profile id is refused for the same reason: there would be nothing to reference.
     let unnamed = GgCapabilitySet {
         agents: vec![GgAgentConfig {
-            id: String::new(),
+            slug: String::new(),
             model_id: "mock/a".to_string(),
             ..GgAgentConfig::root()
         }],
@@ -5324,7 +5324,7 @@ fn the_launch_refusal_enforces_the_profile_invariants() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "worker".to_string(),
+                slug: "worker".to_string(),
                 name: "Worker".to_string(),
                 model_id: "mock/a".to_string(),
                 ..GgAgentConfig::root()
@@ -5370,14 +5370,14 @@ fn two_profiles_may_share_a_display_name_and_are_addressed_apart_by_id() {
     let set = GgCapabilitySet {
         agents: vec![
             GgAgentConfig {
-                id: "reviewer".to_string(),
+                slug: "reviewer".to_string(),
                 name: "Reviewer".to_string(),
                 model_id: "mock/a".to_string(),
                 subagents: vec![GgSubagentRef::any("reviewer-2")],
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "reviewer-2".to_string(),
+                slug: "reviewer-2".to_string(),
                 name: "Reviewer".to_string(),
                 model_id: "mock/b".to_string(),
                 ..GgAgentConfig::root()
@@ -5579,7 +5579,7 @@ impl ClientFactory for ScriptedFactory {
 }
 
 /// A capability set with the run's `maxParallel` and a subagents `maxDepth` on the root, plus one
-/// [agent profile](GgAgentConfig) per named `extra_agent` — whose [id](GgAgentConfig::id) is that
+/// [agent profile](GgAgentConfig) per named `extra_agent` — whose [slug](GgAgentConfig::slug) is that
 /// name, since that is what every roster entry, spawn call and telemetry row here addresses it by
 /// (model `mock/<id>`, on the root's primary `mock/primary`). Every profile may spawn every
 /// declared agent (a permissive test allowlist), and every profile carries the same depth cap so a
@@ -5603,7 +5603,7 @@ fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgC
         .collect();
     let profile = |id: &str, name: &str, model: &str| {
         let mut agent = GgAgentConfig {
-            id: id.to_string(),
+            slug: id.to_string(),
             name: name.to_string(),
             model_id: model.to_string(),
             subagents: allowlist.clone(),
@@ -6863,7 +6863,7 @@ async fn an_uncompleted_issue_is_retried_then_failed() {
 // A board split across profiles: one agent files the work, another implements it
 // ---------------------------------------------------------------------------
 
-/// The [id](GgAgentConfig::id) of the implementer profile in the
+/// The [slug](GgAgentConfig::slug) of the implementer profile in the
 /// [split](split_project_set) board configuration — what its roster entry, the issue it is
 /// assigned, and its telemetry all name it by.
 const CODER_PROFILE_ID: &str = "coder";
@@ -6892,7 +6892,7 @@ fn split_project_set() -> GgCapabilitySet {
         &[GgSubagentScope::Implementer],
     ));
     set.agents.push(GgAgentConfig {
-        id: CODER_PROFILE_ID.to_string(),
+        slug: CODER_PROFILE_ID.to_string(),
         name: CODER_AGENT.to_string(),
         model_id: "mock/coder".to_string(),
         ..GgAgentConfig::root()
@@ -7008,7 +7008,7 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
         .subagents
         .push(GgSubagentRef::new("planner", &[GgSubagentScope::Subagent]));
     let mut planner = GgAgentConfig {
-        id: "planner".to_string(),
+        slug: "planner".to_string(),
         name: "Planner".to_string(),
         model_id: "mock/planner".to_string(),
         subagents: roster,
@@ -7919,7 +7919,7 @@ fn project_management_requires_a_shell_capable_merge_agent() {
         ),
     );
     let mut merger = GgAgentConfig {
-        id: "merger".to_string(),
+        slug: "merger".to_string(),
         name: "Merger".to_string(),
         model_id: "mock/merger".to_string(),
         ..GgAgentConfig::root()
@@ -7956,7 +7956,7 @@ fn issue_assignment_is_governed_by_roster_scopes() {
     // pointing at a profile nothing declares is dropped before a policy ever sees it.
     for (id, name) in [("builder", "Builder"), ("critic", "Critic")] {
         set.agents.push(GgAgentConfig {
-            id: id.to_string(),
+            slug: id.to_string(),
             name: name.to_string(),
             model_id: "mock/primary".to_string(),
             ..GgAgentConfig::root()
@@ -8003,7 +8003,7 @@ fn issue_review_e2e_set() -> GgCapabilitySet {
         GgSubagentRef::new("reviewer", &[GgSubagentScope::Reviewer]),
     ];
     let reviewer = GgAgentConfig {
-        id: "reviewer".to_string(),
+        slug: "reviewer".to_string(),
         name: "Reviewer".to_string(),
         model_id: "mock/demo-review-reviewer".to_string(),
         ..GgAgentConfig::root()

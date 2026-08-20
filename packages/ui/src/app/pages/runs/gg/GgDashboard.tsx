@@ -876,7 +876,7 @@ function ConfigurationCard({ set }: { set: GgCapabilitySet }) {
           .filter((c) => c.enabled)
           .map((c) => c.id);
         return (
-          <div key={agent.id} className={styles.agentConfig}>
+          <div key={agent.slug} className={styles.agentConfig}>
             <div className={styles.slots}>
               <span className={styles.slot}>
                 <span className={styles.slotName}>{agent.name}</span>

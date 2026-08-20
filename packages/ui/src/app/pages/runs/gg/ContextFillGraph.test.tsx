@@ -71,7 +71,9 @@ function caps(ids: readonly string[]): GgCapabilitySet {
     params: {},
   }));
   return {
-    agents: [{ id: "root", name: "Root", capabilities, modelId: "mock/x" }],
+    // A set read off a run: its profiles are named by slug, the internal ids having been
+    // resolved away at launch.
+    agents: [{ slug: "root", name: "Root", capabilities, modelId: "mock/x" }],
   };
 }
 
@@ -142,31 +144,32 @@ describe("visibleSources", () => {
     // that agent's window and nobody else's — reading the Root's configuration would
     // hide the band on exactly the agent that has it.
     //
-    // Which agent that is comes in as a profile ID. The two Coders are here because a
-    // name is display text a configuration may hold two of: only the id separates the
-    // arm that was given a task list from the one that was not.
-    const set = {
+    // Which agent that is comes in as a profile id — a slug, because this is a set read
+    // off a run and launching resolved its internal ids away. The two Coders are here
+    // because a name is display text a configuration may hold two of: only the slug
+    // separates the arm that was given a task list from the one that was not.
+    const set: GgCapabilitySet = {
       agents: [
         {
-          id: "root",
+          slug: "root",
           name: "Root",
           capabilities: [{ id: "shell", enabled: true, params: {} }],
           modelId: "mock/x",
         },
         {
-          id: "coder",
+          slug: "coder",
           name: "Coder",
           capabilities: [{ id: "tasks", enabled: true, params: {} }],
           modelId: "mock/x",
         },
         {
-          id: "coder-2",
+          slug: "coder-2",
           name: "Coder",
           capabilities: [{ id: "shell", enabled: true, params: {} }],
           modelId: "mock/x",
         },
       ],
-    } as GgCapabilitySet;
+    };
     expect(visibleSources(set, series, "coder")).toContain("task_list");
     expect(visibleSources(set, series, "coder-2")).not.toContain("task_list");
     expect(visibleSources(set, series, "root")).not.toContain("task_list");

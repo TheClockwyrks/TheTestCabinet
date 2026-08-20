@@ -4651,21 +4651,21 @@ async fn gg_agents_round_trip_and_scope_to_account() {
         agent: GgAgentConfig {
             name: "reviewer".to_string(),
             model_slot: Some("critic".to_string()),
+            model_slots: vec![GgModelSlot {
+                name: "critic".to_string(),
+                default_model_id: Some("mock/echo".to_string()),
+                passthrough: true,
+            }],
             ..GgAgentConfig::root()
         },
-        model_slots: vec![GgModelSlot {
-            name: "critic".to_string(),
-            default_model_id: Some("mock/echo".to_string()),
-        }],
         updated_at: "2026-08-18T00:00:00Z".to_string(),
     };
     db.insert_gg_agent("u1", &agent).await.unwrap();
 
-    // Both JSON columns are read and written whole, so the profile a configuration
-    // imports is byte-for-byte the profile that was saved.
+    // The profile column is read and written whole, so the profile a configuration
+    // imports is byte-for-byte the profile that was saved, model slots and all.
     let got = db.get_gg_agent("u1", "a1").await.unwrap().unwrap();
     assert_eq!(got.agent, agent.agent);
-    assert_eq!(got.model_slots, agent.model_slots);
     assert_eq!(got.name, "reviewer");
 
     // The library belongs to the account that wrote it.

@@ -32,17 +32,22 @@ import {
 import { GgEditorTabs, type GgEditorTab } from "./GgEditorTabs";
 import { GgHookList } from "./GgHookRows";
 import {
+  MODEL_PARAMS,
   agentParamErrors,
+  blankModelSlot,
   capabilityDraftFor,
   armLoopDetection,
+  isValidAgentSlug,
   loopDetectionError,
   loopDetectionWarning,
+  referencedModelSlots,
   setFeatureBundle,
   withCapabilityGrants,
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgConfigDraft,
   type GgHookDraft,
+  type GgModelSlotDraft,
 } from "./ggConfigDraft";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
@@ -60,29 +65,44 @@ const AGENT_MODE_OPTIONS = AGENT_MODES.map((mode) => ({
 }));
 
 /** The per-agent editor's sections. */
-type AgentTab = "agent" | "tools" | "apis" | "roster" | "hooks" | "states";
+type AgentTab =
+  | "agent"
+  | "tools"
+  | "apis"
+  | "slots"
+  | "roster"
+  | "hooks"
+  | "states";
 
 /**
  * Which sections an agent of this type has, in display order.
  *
  * The tab set is a function of the agent's **type** and nothing else, because the type is
  * what decides which of these things gg will read. A machine takes no turns, so it has no
- * tools, no APIs, nobody to spawn and no lifecycle of its own to hook — it has states,
- * which no other type has. Tools and RaC are the same capabilities offered two ways, so
- * each gets the tab named for the shape it actually meets them in.
+ * tools, no APIs, nobody to spawn, no lifecycle of its own to hook and — running no model
+ * — nothing a model slot could fill; it has states, which no other type has. Tools and
+ * RaC are the same capabilities offered two ways, so each gets the tab named for the
+ * shape it actually meets them in.
  *
  * Absent rather than disabled: an empty section for a value gg would never read invites
  * configuring a run that does not exist.
  */
 function tabsForMode(mode: GgAgentMode): ReadonlyArray<AgentTab> {
   if (mode === "fsm") return ["agent", "states"];
-  return ["agent", mode === "rac" ? "apis" : "tools", "roster", "hooks"];
+  return [
+    "agent",
+    mode === "rac" ? "apis" : "tools",
+    "slots",
+    "roster",
+    "hooks",
+  ];
 }
 
 const AGENT_TAB_LABELS: Record<AgentTab, string> = {
   agent: "Agent",
   tools: "Tools",
   apis: "APIs",
+  slots: "Slots",
   roster: "Roster",
   hooks: "Hooks",
   states: "States",
@@ -95,6 +115,15 @@ interface GgAgentEditorProps {
   agent: GgAgentDraft;
   /** Apply a patch to this profile. */
   onPatch: (patch: Partial<GgAgentDraft>) => void;
+  /**
+   * Rename this profile's [slug](GgAgentDraft.slug).
+   *
+   * Its own prop rather than a field of [onPatch] because a slug is the one field of a
+   * profile the configuration around it has an opinion about — it has to be unique among
+   * the profiles beside it — so it is set through the draft ([renameAgentSlug]) and this
+   * view only reports what the operator typed.
+   */
+  onRenameSlug: (slug: string) => void;
   /** The model catalog backing the pickers (free text is still allowed). */
   models: Model[];
   readOnly: boolean;
@@ -112,6 +141,7 @@ export function GgAgentEditor({
   config,
   agent,
   onPatch,
+  onRenameSlug,
   models,
   readOnly,
 }: GgAgentEditorProps) {
@@ -133,7 +163,14 @@ export function GgAgentEditor({
   // The whole configuration is passed, not this profile alone: a machine's states name
   // *other* profiles, so whether they name anything real is a question about the set.
   const paramsErrors = agentParamErrors(agent, config.agents);
-  const boundSlot = config.modelSlots.find((s) => s.id === agent.modelSlotId);
+  // The slots this agent's own bindings choose from: a model slot belongs to the profile
+  // that defers to it, and the configuration's slots ([GgConfigDraft.modelSlots]) are
+  // launch inputs that *fill* these rather than another list to bind against.
+  const boundSlot = agent.modelSlots.find((s) => s.id === agent.modelSlotId);
+  // Which of this agent's declarations something actually binds. A slot nothing binds is
+  // dropped on save, so the Slots tab says so beside the declaration rather than letting
+  // an operator name a launch input that would feed nothing.
+  const referencedSlots = referencedModelSlots(agent);
   const modeSpec = AGENT_MODES.find((m) => m.value === agent.mode);
   // The capabilities this agent's type reads — empty for a machine, which is why it has
   // no Tools or APIs tab at all.
@@ -208,6 +245,46 @@ export function GgAgentEditor({
   // *committed* (`resetAgentForMode`), not while it is being edited.
   const setMode = (mode: GgAgentMode) => onPatch({ mode });
 
+  // This agent's own slot declarations. Editing one in place keeps its id, which is what
+  // every binding holds — so renaming a slot carries its bindings along instead of
+  // orphaning them.
+  const updateModelSlot = (id: string, patch: Partial<GgModelSlotDraft>) =>
+    onPatch({
+      modelSlots: agent.modelSlots.map((slot) =>
+        slot.id === id ? { ...slot, ...patch } : slot,
+      ),
+    });
+  const addModelSlot = () =>
+    onPatch({ modelSlots: [...agent.modelSlots, blankModelSlot()] });
+  /**
+   * Remove a slot declaration, and unbind whatever named it: this agent's own model
+   * binding, and every [`model` param](MODEL_PARAMS) that deferred to it. A binding left
+   * holding the id of a declaration that no longer exists is a run gg could never give a
+   * model, reported by nothing.
+   *
+   * Each is emptied rather than switched back to naming a model outright, because
+   * "deferred to a slot" is what the operator chose and a removal is not them changing
+   * their mind about it. Emptied, the control still reads as deferring and says, in the
+   * negative cue, that it now defers to nothing — the same state (and the same complaint)
+   * a stored configuration naming an undeclared slot loads into.
+   */
+  const removeModelSlot = (id: string) => {
+    const capabilities = { ...agent.capabilities };
+    for (const { capId, slotKey } of MODEL_PARAMS) {
+      const cap = capabilities[capId] ?? capabilityDraftFor(capId);
+      if (cap.params?.[slotKey] !== id) continue;
+      capabilities[capId] = {
+        ...cap,
+        params: { ...cap.params, [slotKey]: "" },
+      };
+    }
+    onPatch({
+      modelSlots: agent.modelSlots.filter((slot) => slot.id !== id),
+      capabilities,
+      ...(agent.modelSlotId === id ? { modelSlotId: "" } : {}),
+    });
+  };
+
   function toggleGroup(group: CapGroup) {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -223,7 +300,9 @@ export function GgAgentEditor({
     cap,
     agent,
     agents: config.agents,
-    modelSlots: config.modelSlots,
+    // A capability's `model` param defers to one of *this agent's* slots, the same as the
+    // agent's own binding — the configuration's slots fill those, and are not bound to.
+    modelSlots: agent.modelSlots,
     models,
     isRoot,
     readOnly,
@@ -298,12 +377,42 @@ export function GgAgentEditor({
   const capabilityProblems = modeCaps.filter(
     (cap) => paramsErrors[cap.id],
   ).length;
+  // Why this profile's slug is unusable, or null. Both faults are the operator's to fix
+  // by typing: the shape gg holds a slug to, and the one thing about a slug that cannot be
+  // decided by looking at this profile alone — whether another profile already answers to
+  // it, which would leave the model shown one name for two profiles and unable to say
+  // which of them it meant.
+  const slugError = !isValidAgentSlug(agent.slug)
+    ? "A slug is lowercase letters and digits in groups separated by single hyphens."
+    : config.agents.filter((a) => a.slug === agent.slug).length > 1
+      ? "Another agent in this configuration carries this slug, so the model would be shown one name for two profiles."
+      : null;
+  // A declaration is faulty when it could not be named at launch (nameless, or one of two
+  // sharing a name) or when something binds it and nothing would ever fill it: an agent
+  // slot reaches the launch form either by being passthrough or by a configuration slot
+  // naming it, and one that reaches it neither way leaves its bindings with no model. An
+  // *unbound* declaration is not counted — it is dropped on save, which the tab says
+  // beside the slot rather than in the strip.
+  const slotProblems = agent.modelSlots.filter((slot) => {
+    const name = slot.name.trim();
+    if (!name) return true;
+    if (agent.modelSlots.filter((s) => s.name.trim() === name).length > 1)
+      return true;
+    if (slot.passthrough || !referencedSlots.has(slot.id)) return false;
+    return !config.modelSlots.some((input) =>
+      input.targets.some(
+        (target) => target.agentId === agent.id && target.slotId === slot.id,
+      ),
+    );
+  }).length;
   const problems: Partial<Record<AgentTab, number>> = {
     agent:
       (agent.name.trim() ? 0 : 1) +
+      (slugError ? 1 : 0) +
       (!isMachine && agent.modelSource === "model-slot" && !boundSlot ? 1 : 0) +
       (!isMachine && loopError ? 1 : 0),
     [agent.mode === "rac" ? "apis" : "tools"]: capabilityProblems,
+    slots: slotProblems,
     states: paramsErrors[FSM_CAP.id] ? 1 : 0,
   };
 
@@ -327,11 +436,13 @@ export function GgAgentEditor({
           {/* Every agent's name is editable, the root's included: the root is a flag on
               the configuration, not a name, and a name is prose — nothing resolves a
               reference by reading one, so renaming is free and two profiles may share one.
-              The id beside it is the thing references, telemetry and the model itself
-              address this profile by, which is why it is shown rather than hidden: an
-              operator authoring a roster, or reading a run log, has to be able to tell
-              which row a call named. It is minted from the name the profile was created
-              under and never rewritten — so it is shown, and not offered for editing. */}
+              The slug beside it is the name the *model* is shown and passes back, and the
+              one a run's telemetry keys on, and it is the operator's to write: it is prose
+              the model reads, so "reviewer" or "merge-bot" is worth more than whatever was
+              minted from the name the profile was created under. Nothing inside the draft
+              points at it — every reference names the profile's internal id — so renaming
+              it costs nothing but has to stay unique across the configuration, which is
+              why it goes through [renameAgentSlug] rather than a patch. */}
           <div className={gg.agentHeading}>
             <label className={`${runExec.field} ${gg.slotNameField}`}>
               <span className={runExec.fieldLabel}>
@@ -347,14 +458,23 @@ export function GgAgentEditor({
                 placeholder="e.g. reviewer"
               />
             </label>
-            <div className={`${runExec.field} ${gg.agentIdField}`}>
+            <label className={`${runExec.field} ${gg.agentIdField}`}>
               <span className={runExec.fieldLabel}>
-                Profile id
-                <HelpTip text="This profile's stable identifier: what every reference in the configuration holds, what the run's telemetry keys on, and the name the model is shown and passes back when it spawns, dispatches or transitions to this profile. Minted from the name the profile was created under, unique within the configuration, and never rewritten — renaming the profile leaves it, and every reference to it, exactly where they are." />
+                Slug
+                <HelpTip text="The name the model is shown and passes back when it spawns, dispatches or transitions to this profile — and the name the run's telemetry, its record and the query language key on afterwards. The model reads it, so it is lowercase letters and digits in groups separated by single hyphens, unique within the configuration, and worth making it say what the profile is for. Nothing in the configuration points at it, so renaming it here changes this one name and nothing else." />
               </span>
-              <code className={gg.agentIdValue}>{agent.id}</code>
-            </div>
+              <input
+                className={runExec.input}
+                type="text"
+                value={agent.slug}
+                disabled={readOnly}
+                onChange={(e) => onRenameSlug(e.target.value)}
+                placeholder="e.g. reviewer"
+                spellCheck={false}
+              />
+            </label>
           </div>
+          {slugError && <p className={gg.fieldError}>{slugError}</p>}
 
           {/* Agent type — how this agent is implemented, and so what the rest of this
               editor even offers. Above everything conditional, because it is the choice
@@ -407,14 +527,14 @@ export function GgAgentEditor({
                       disabled={readOnly}
                       onChange={(e) => onPatch({ modelSlotId: e.target.value })}
                     >
-                      {/* The offered slots are the ones this configuration declares, by
-                          id — a slot the operator renamed keeps its binding, and one they
+                      {/* The offered slots are the ones this agent declares, by id — a
+                          slot the operator renamed keeps its binding, and one they
                           deleted leaves the agent on "(none)" rather than on a name
                           nothing answers to. */}
                       {!boundSlot && (
                         <option value={agent.modelSlotId}>(none)</option>
                       )}
-                      {config.modelSlots.map((slot) => (
+                      {agent.modelSlots.map((slot) => (
                         <option key={slot.id} value={slot.id}>
                           {slot.name.trim() || "(unnamed slot)"}
                         </option>
@@ -463,8 +583,8 @@ export function GgAgentEditor({
               {agent.modelSource === "model-slot" && !boundSlot && (
                 <p className={gg.fieldError}>
                   This agent defers to no model slot, so a run could never give
-                  it a model. Pick one of the configuration&rsquo;s slots, or
-                  pin it a model.
+                  it a model. Pick one of the slots it declares, or pin it a
+                  model.
                 </p>
               )}
               {agent.promptCacheTtl === "extended" && (
@@ -697,6 +817,127 @@ export function GgAgentEditor({
         </>
       )}
 
+      {/* Slots — the launch-time model parameters this agent's own bindings defer to.
+          They belong to the agent rather than to the configuration around it, so a profile
+          imported from the library brings the slots its bindings name with it, and the
+          configuration decides how each one reaches the launch form. The tab strip already
+          names the section, so the list is the whole of it bar the one line that says what
+          a slot here is for. */}
+      {activeTab === "slots" && (
+        <div className={gg.slotList}>
+          <p className={`${runExec.muted} ${gg.backdropNote}`}>
+            The models this agent is handed at launch. Its own binding, and
+            every capability that picks a model of its own, defers to one of
+            these — which is what lets one saved agent be run against a
+            different model each time instead of baking one in.
+          </p>
+          {agent.modelSlots.map((slot) => {
+            // What will put a model in this slot when the run starts. A passthrough slot
+            // is asked for on its own; otherwise one of the configuration's own launch
+            // inputs has to name it, and a slot neither of those reach is a binding with
+            // nowhere to get a model from.
+            const mapped = config.modelSlots.some((input) =>
+              input.targets.some(
+                (target) =>
+                  target.agentId === agent.id && target.slotId === slot.id,
+              ),
+            );
+            const bound = referencedSlots.has(slot.id);
+            return (
+              <div key={slot.id} className={gg.slotBlock}>
+                <div className={gg.slotFields}>
+                  <label className={`${runExec.field} ${gg.slotNameField}`}>
+                    <span className={runExec.fieldLabel}>Slot name</span>
+                    <input
+                      className={runExec.input}
+                      type="text"
+                      value={slot.name}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateModelSlot(slot.id, { name: e.target.value })
+                      }
+                      placeholder="e.g. primary"
+                    />
+                  </label>
+                  <label className={`${runExec.field} ${gg.slotModelField}`}>
+                    <span className={runExec.fieldLabel}>
+                      Default model (optional)
+                    </span>
+                    <ModelCombobox
+                      value={slot.defaultModelId}
+                      onChange={(v) =>
+                        updateModelSlot(slot.id, { defaultModelId: v })
+                      }
+                      models={models}
+                      harnessFamily={GG_MODEL_FAMILY}
+                      inputClassName={runExec.input}
+                      disabled={readOnly}
+                      placeholder="left to the launcher"
+                    />
+                  </label>
+                  <label className={gg.featureLabel}>
+                    <input
+                      type="checkbox"
+                      checked={slot.passthrough}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateModelSlot(slot.id, {
+                          passthrough: e.target.checked,
+                        })
+                      }
+                    />
+                    <span className={gg.featureName}>Passthrough</span>
+                    <HelpTip
+                      text={`A passthrough slot is asked for at launch on its own, under \`${agent.slug || "<slug>"}.${slot.name.trim() || "<slot name>"}\` — so this agent's model is chosen separately from every other agent's. A slot that is not passthrough is filled by one of the configuration's own slots naming it, which is how several agents are run off one launch input. A slot reaches the launch form one way or the other, and never both.`}
+                    />
+                  </label>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className={gg.slotRemove}
+                      onClick={() => removeModelSlot(slot.id)}
+                      aria-label={`Remove the ${slot.name || "unnamed"} model slot`}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {!bound ? (
+                  <p className={gg.fieldError}>
+                    This agent binds nothing to this slot, so it is dropped when
+                    the agent is saved.
+                  </p>
+                ) : (
+                  !slot.passthrough &&
+                  !mapped && (
+                    <p className={gg.limitWarning}>
+                      Nothing fills this slot: mark it passthrough to have the
+                      launch form ask for it on its own, or map one of the
+                      configuration&rsquo;s slots onto it.
+                    </p>
+                  )
+                )}
+              </div>
+            );
+          })}
+          {agent.modelSlots.length === 0 && (
+            <p className={`${runExec.muted} ${gg.backdropNote}`}>
+              No model slots. This agent must then pin its own model, fixed here
+              for every run of it, rather than being handed one at launch.
+            </p>
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              className={runExec.secondary}
+              onClick={addModelSlot}
+            >
+              + Add model slot
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Roster — which other agents this one may put to work, and for what. An agent
           may list itself, for recursion. */}
       {activeTab === "roster" && (
@@ -719,13 +960,14 @@ export function GgAgentEditor({
               const on = Boolean(entry);
               return (
                 <div key={target.id} className={gg.subagentRow}>
-                  {/* Named and identified: the name is what this row reads as, the id is
-                      what the entry stores and what this agent's roster offers the model
-                      — and two profiles may carry one name, which would otherwise be two
-                      rows nothing could tell apart. */}
+                  {/* Named and identified: the name is what this row reads as, the slug is
+                      what this agent's roster offers the model — and two profiles may carry
+                      one name, which would otherwise be two rows nothing could tell apart.
+                      The entry itself stores neither; it points at the target's internal
+                      id, which is shown to nobody. */}
                   <span className={gg.featureName}>
                     {target.name || "unnamed"}
-                    <span className={gg.capId}> {target.id}</span>
+                    <span className={gg.capId}> {target.slug}</span>
                     {target.id === agent.id && (
                       <span className={gg.capId}> (self)</span>
                     )}

@@ -94,6 +94,10 @@ export function GgConfigEditPage() {
   // Which agent's view is open, and the whole draft as it was when it opened: cancelling
   // an agent restores that, which is what makes Cancel mean something on a form that
   // edits a single draft in place.
+  //
+  // The open agent is named by its internal [id](GgAgentDraft.id) — minted once and never
+  // rewritten — so it stays the same profile through a rename, through two profiles sharing
+  // a slug, and through a row being removed above it.
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [agentSnapshot, setAgentSnapshot] = useState<GgConfigDraft | null>(
     null,
@@ -185,6 +189,9 @@ export function GgConfigEditPage() {
     : null;
   const structuralError = draftSaveError(draft) ?? libraryError;
   const savable = name.trim().length > 0 && structuralError === null && !busy;
+  // The profile the agent view is open on, which is what the header, the back control and
+  // the unsaved-changes dialog all name.
+  const openAgent = draft.agents.find((a) => a.id === editingAgentId);
   // Only what is wrong with the open agent — a configuration-level complaint about some
   // other agent is not this view's business, and cannot be fixed from it.
   const agentError = editingAgentId
@@ -226,8 +233,14 @@ export function GgConfigEditPage() {
     agentId: string | null,
     snapshot?: GgConfigDraft,
   ) {
-    // The editor supplies the snapshot when opening an agent it produced in the same
-    // act, because this render's `draft` predates it.
+    // Opening banks the draft, closing drops it, and there is no third case: an edit to the
+    // open profile — its slug included — is an edit to the draft and leaves the profile's
+    // internal id exactly as it was, so this is never called while an agent is already
+    // open. The banked draft is therefore simply what the form held at the moment the agent
+    // was opened, which is what Cancel restores.
+    //
+    // The editor supplies the snapshot when opening an agent it produced in the same act,
+    // because this render's `draft` predates it.
     setAgentSnapshot(agentId ? (snapshot ?? draft) : null);
     setEditingAgentId(agentId);
   }
@@ -283,13 +296,15 @@ export function GgConfigEditPage() {
   // already is, so the import it becomes pins nothing.
   async function saveAgentToLibrary(agentId: string) {
     if (!token || !backend?.createGgAgent) return;
-    const body = savedAgentFromProfile(draft, agentId);
-    if (!body) return;
+    // The profile carries the model slots its bindings defer to, so the whole of what the
+    // library stores is the agent itself — there is no second half to send.
+    const agent = savedAgentFromProfile(draft, agentId);
+    if (!agent) return;
     setSavingAgent(true);
     setError(null);
     try {
       const created = await backend.createGgAgent(
-        { description: "", agent: body.agent, modelSlots: body.modelSlots },
+        { description: "", agent },
         token,
       );
       const linked = (current: GgConfigDraft): GgConfigDraft => ({
@@ -302,7 +317,6 @@ export function GgConfigEditPage() {
                   agentId: created.id,
                   name: created.name,
                   base: created.agent,
-                  modelSlots: created.modelSlots,
                 },
               }
             : a,
@@ -346,8 +360,6 @@ export function GgConfigEditPage() {
       setBusy(false);
     }
   }
-
-  const openAgent = draft.agents.find((a) => a.id === editingAgentId);
 
   // The open view's commit controls, sat opposite the title. They belong in the header
   // rather than under the form because the form is tabbed: an action parked below the

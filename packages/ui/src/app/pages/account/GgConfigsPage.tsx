@@ -7,13 +7,12 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
-import { GgSectionTabs } from "./GgSectionTabs";
 import { savedKey, useGgConfigs } from "../runs/gg/useGgConfigs";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
-// The gg tab (`/account/gg`): the operator's registered gg configurations — named
-// capability sets.
+// The gg Configs tab (`/account/gg`): the operator's registered gg configurations —
+// named capability sets.
 //
 // gg is its own run mode: a run is configured by a capability set rather than a
 // harness/model/orchestrator tuple, so the *configuration* is the reusable thing
@@ -123,8 +122,7 @@ export function GgConfigsPage() {
           </Link>
         )}
       </div>
-      <AccountTabs active="gg" />
-      <GgSectionTabs active="configs" />
+      <AccountTabs active="ggConfigs" />
 
       {(error || actionError) && (
         <p className={`${exec.notice} ${exec.error}`}>{error ?? actionError}</p>

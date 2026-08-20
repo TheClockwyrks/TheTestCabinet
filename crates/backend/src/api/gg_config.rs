@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::gg::GgCapabilitySet;
+use test_cabinet_core::gg::{GgCapabilitySet, is_valid_agent_slug};
 
 use crate::auth::AuthUser;
 use crate::error::ApiError;
@@ -194,10 +194,15 @@ pub(crate) fn now() -> Result<String, ApiError> {
         .map_err(|e| ApiError::internal(format!("formatting updatedAt: {e}")))
 }
 
-/// Build a stored configuration from a create/update body, validating the name and
-/// description. Unlike a launch, an *unbound* primary slot is fine here: a saved
-/// configuration is a reusable capability set, and the new-run form binds the
-/// primary slot from the row's model picker at launch.
+/// Build a stored configuration from a create/update body, validating the name, the
+/// description, each profile's [slug](test_cabinet_core::gg::GgAgentConfig::id) and the
+/// [slot mapping](test_cabinet_core::gg::GgCapabilitySet::slot_defects). Unlike a launch,
+/// an *unbound* slot is fine here: a saved configuration is a reusable capability set, and
+/// the new-run form supplies a model for each of its launch inputs.
+///
+/// A slug collision is refused here and checked again at launch, because a configuration
+/// that imports a [saved agent](super::GgSavedAgent) follows that agent's slug, and the
+/// saved agent can be renamed after this configuration was stored.
 pub(crate) fn config_from_input(
     id: String,
     input: GgConfigInput,
@@ -218,6 +223,9 @@ pub(crate) fn config_from_input(
             "a gg configuration description may be at most {MAX_DESCRIPTION_LEN} characters"
         )));
     }
+    if let Some(defect) = authored_capability_set_defect(&input.capability_set) {
+        return Err(ApiError::bad_request(defect));
+    }
     Ok(GgConfig {
         id,
         name,
@@ -225,5 +233,89 @@ pub(crate) fn config_from_input(
         capability_set: input.capability_set,
         agent_sources: input.agent_sources,
         updated_at: updated_at.to_string(),
+    })
+}
+
+/// The first reason `set` cannot be stored as an **authored** configuration, or `None` when its
+/// profiles and slots are sound.
+///
+/// Authored, because it reads the two halves of a profile's identity that only an authored
+/// document carries: the internal [id](test_cabinet_core::gg::GgAgentConfig::id) every reference
+/// in it points at, and the [slug](test_cabinet_core::gg::GgAgentConfig::slug) the operator wrote.
+/// A launch reads [`launched_capability_set_defect`] instead.
+pub(crate) fn authored_capability_set_defect(set: &GgCapabilitySet) -> Option<String> {
+    if let Some(defect) = slug_defect(set) {
+        return Some(defect);
+    }
+    for agent in &set.agents {
+        if agent
+            .id
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        {
+            return Some(format!(
+                "the `{}` agent carries no internal id; every reference in a stored configuration \
+                 points at one, which is what lets a profile be renamed without breaking them",
+                agent.slug
+            ));
+        }
+    }
+    if let Some(duplicate) = set.duplicate_agent_keys().first() {
+        return Some(format!(
+            "two agent profiles carry the internal id `{duplicate}`, so a reference to either \
+             would name both"
+        ));
+    }
+    set.slot_defects().into_iter().next()
+}
+
+/// The first reason `set` cannot be **launched**, or `None` when it is runnable.
+///
+/// A launched set has had its slots bound and its internal ids resolved away, so what is left to
+/// check is that the resolution actually happened and that the slugs everything now names a profile
+/// by are sound. The slug checks run again here rather than being trusted from the save, because a
+/// configuration that imports a [saved agent](super::GgSavedAgent) follows that agent's slug and the
+/// saved agent can be renamed after the configuration was stored.
+pub(crate) fn launched_capability_set_defect(set: &GgCapabilitySet) -> Option<String> {
+    if let Some(defect) = slug_defect(set) {
+        return Some(defect);
+    }
+    if let Some(unresolved) = set.unresolved_agent_keys().first() {
+        return Some(format!(
+            "the `{unresolved}` agent still carries an internal id; launching rewrites every \
+             reference to a profile's slug and drops the ids, so one still here means the launch \
+             was incomplete"
+        ));
+    }
+    if let Some(slot) = set.model_slots.first() {
+        return Some(format!(
+            "the set still declares the `{}` model slot; a bound launch resolves every slot and \
+             carries none",
+            slot.name
+        ));
+    }
+    None
+}
+
+/// The slug rules both shapes are held to: every profile's slug is well-formed, and no two carry
+/// one. Shared so a configuration cannot be stored under rules a launch does not apply.
+fn slug_defect(set: &GgCapabilitySet) -> Option<String> {
+    for agent in &set.agents {
+        if !is_valid_agent_slug(agent.slug.trim()) {
+            return Some(format!(
+                "the `{}` agent's slug is not lowercase letters and digits in groups separated by \
+                 single hyphens; the model is shown this name and passes it back",
+                agent.name
+            ));
+        }
+    }
+    set.duplicate_agent_slugs().first().map(|duplicate| {
+        format!(
+            "two agent profiles carry the slug `{duplicate}`; the model is shown this name and \
+             every reference a run records resolves by it, so rename one of them or override the \
+             imported profile's slug"
+        )
     })
 }

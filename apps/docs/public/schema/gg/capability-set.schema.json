@@ -24,8 +24,8 @@
           "type": "array"
         },
         "id": {
-          "description": "The profile's **stable identifier**, unique within a set and never rewritten once the\nprofile exists. Everything that names this profile names this: a\n[roster entry](GgSubagentRef::agent_id), a machine's [state](GgFsmState::agent_id), the\n[merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT), an\n[issue](GgBoardIssue::agent_id)'s implementer and reviewers, every telemetry event and\naccounting row the run produces — and the `agent` argument the **model** passes to\n`spawn_subagent`, `exec` and `create_issue`.\n\nThe model names profiles by id for the same reason everything else does: a display name\nmay repeat, so it cannot say which profile is meant. Ids are therefore minted **readable**\n— a slug taken from the profile's first name, `reviewer` or `reviewer-2`, and left alone\nafter that — so a roster in a prompt reads as prose while still naming exactly one thing.\n[`ROOT_PROFILE_ID`] is the first profile of a default set.",
-          "type": "string"
+          "description": "The profile's **internal identifier**: opaque text, minted when the profile is created,\nnever rewritten, and shown to nobody. Its only job is to be the same text tomorrow.\n\nEverything *inside an authored configuration* that points at a profile points at this —\na [roster entry](GgSubagentRef::agent_id), a machine's [state](GgFsmState::agent_id), the\n[merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT), a\n[configuration slot](GgConfigSlot)'s [target](GgSlotTarget::agent), and a configuration's\nlink to the saved agent a profile follows. That is what makes renaming free and importing\nsafe: no reference breaks because a name changed, and two profiles showing one name are\nstill two profiles.\n\n**Absent once a launch has resolved the set**, which is what the field says. Launching\nrewrites every reference to the profile's [slug](Self::slug) and drops the ids, so the set\ngg reads and a run records names profiles by the one name the operator wrote and the model\nwas shown. gg refuses a set that still carries one.",
+          "type": ["string", "null"]
         },
         "loopDetection": {
           "$ref": "#/$defs/GgLoopDetection",
@@ -39,6 +39,13 @@
         "modelSlot": {
           "description": "The [model slot](GgModelSlot) this agent takes its model from at launch, when it\ndoes not pin one itself. `None` on a pinned binding — which is every binding on\nthe set a run records, because launching resolves the deferred ones — and on an\n[FSM shell](Self::is_fsm_shell), which has no model to defer.",
           "type": ["string", "null"]
+        },
+        "modelSlots": {
+          "description": "The [launch-time model parameters](GgModelSlot) this agent declares, for its own\nbindings that defer to one instead of pinning a model.\n\nThe slots belong to the agent, so they travel with it: a\n[saved agent](GgAgentConfig) imported into a configuration brings the slots its\nbindings name, and the configuration decides how each reaches the launch form.\nEmpty for a fully pinned agent, for an [FSM shell](Self::is_fsm_shell), which runs\nno model, and on the set a run records, because launching resolves every deferred\nbinding first.",
+          "items": {
+            "$ref": "#/$defs/GgModelSlot"
+          },
+          "type": "array"
         },
         "name": {
           "description": "The profile's **display name**: what the console, the run log and a roster's prose call\nthis agent. `\"Root\"` ([`ROOT_AGENT`]) for the first profile of a default set.\n\nFree-form and mutable, and **not** unique: two profiles may carry one name. Nothing\nresolves a reference by reading it, which is what makes renaming a profile free.",
@@ -54,6 +61,10 @@
         "promptCacheTtl": {
           "$ref": "#/$defs/GgPromptCacheTtl",
           "description": "How long this agent asks the provider to keep the **stable** entries of its\n[prompt cache](GgPromptCacheTtl) — the knob that decides whether its opening context is\nstill cached when a slow turn comes back. Standard (the provider's five minutes) unless an\noperator opts this profile into the extended lifetime, because the extended one is charged\na higher write premium and is only worth it for an agent whose turns are long enough, or\nspread far enough apart, to outlive five minutes."
+        },
+        "slug": {
+          "description": "The profile's **slug**: the name the model reads, written by the operator, unique within\nthe set, and shaped by [`is_valid_agent_slug`].\n\nA roster in a prompt names slugs, and the slug is what the model passes back as the `agent`\nargument of `spawn_subagent`, `exec` and `create_issue`. It is also what a run names a\nprofile by everywhere afterwards — every telemetry event, every accounting row, an\n[issue](GgBoardIssue::agent_id)'s implementer and reviewers, and the analysis query\nlanguage — so what an operator writes is what they later slice by.\n\nThe model needs a name of its own for the same reason everything else does: a display\n[name](Self::name) may repeat, so it cannot say which profile is meant. It is shaped rather\nthan free because the model has to copy it back without deciding how to spell it.\n[`ROOT_PROFILE_ID`] is the slug of the first profile of a default set.",
+          "type": "string"
         },
         "subagents": {
           "description": "The other agents this agent may put to work — its delegation **roster**. Each entry names\na target agent (which may be this agent itself), the [scopes](GgSubagentRef::scopes) it may\nbe used in (spawnable subagent, issue implementer, issue reviewer), and a caller-scoped\n[description](GgSubagentRef::description) telling this agent when to use that target. Empty\nmeans this agent can name nobody — it neither spawns nor assigns.\n\nIndependent of the [subagents](CAPABILITY_SUBAGENTS) capability: the roster says *which*\nprofiles are namable, the capability says whether this agent may spawn at all.",
@@ -74,7 +85,7 @@
           "type": "array"
         }
       },
-      "required": ["id", "name"],
+      "required": ["slug", "name"],
       "type": "object"
     },
     "GgCapabilityConfig": {
@@ -99,6 +110,30 @@
         }
       },
       "required": ["id", "enabled"],
+      "type": "object"
+    },
+    "GgConfigSlot": {
+      "additionalProperties": false,
+      "description": "A **launch input** a [`GgCapabilitySet`] declares, and the\n[agent slots](GgModelSlot) it fills.\n\nA run asks for exactly one set of models and the configuration decides what that set\nis. One configuration slot filling several agent slots is what makes \"run the reviewer\n*and* the merge agent on whatever I pick for `critic`\" one launch input rather than\ntwo.\n\nDeclaring one is a configuration-authoring concern only. Launching resolves every\ndeferred binding to a concrete model, so this list is empty on the capability set a\nrun records.",
+      "properties": {
+        "defaultModelId": {
+          "description": "The model the launch form pre-fills this slot with. `None` takes the default of\nthe first [target](Self::targets) that carries one, so importing an agent that\ndefaults its own slot keeps that default working.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "The slot's name, as the launch form labels it and keys its answer by. Unique\nwithin a set, and distinct from every `<agent id>.<slot name>` a\n[passthrough](GgModelSlot::passthrough) slot is exposed under.",
+          "type": "string"
+        },
+        "targets": {
+          "default": [],
+          "description": "The [agent slots](GgModelSlot) this input fills. Each names a profile the set\ndeclares and a slot that profile declares, and no agent slot is named by two\nconfiguration slots.",
+          "items": {
+            "$ref": "#/$defs/GgSlotTarget"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["name"],
       "type": "object"
     },
     "GgHook": {
@@ -286,15 +321,19 @@
     },
     "GgModelSlot": {
       "additionalProperties": false,
-      "description": "A **launch-time model parameter** a [`GgCapabilitySet`] declares.\n\nA saved configuration is meant to be reusable across models, so the models it runs\non are not all baked into it. It declares named model slots — `primary`, `critic`,\n… — and each [role binding](GgSlotBinding) either pins a model outright (an\n*internal* binding, identical on every run of the configuration and never asked\nabout again) or [defers](GgSlotBinding::model_slot) to one of these, which the\noperator fills in on the launch form. A slot may carry a\n[default](Self::default_model_id) the form pre-fills.\n\nModel slots are named separately from the role slots they feed precisely so that two\nroles can share one: \"run the reviewer *and* the judge on whatever I pick for\n`critic`\" is one launch input, not two.\n\nDeclaring one is a configuration-authoring concern only. Launching resolves every\ndeferred binding to a concrete model, so this list is empty on the capability set a\nrun records — what ran is a set of pinned bindings.",
+      "description": "A **launch-time model parameter** an [agent profile](GgAgentConfig) declares.\n\nAn agent is meant to be reusable across models, so the model it runs on need not be\nbaked into it. Each of its model bindings — its own [model](GgAgentConfig::model_slot)\nand every capability param that names one, today\n[compaction's handoff](COMPACTION_PARAM_MODEL_SLOT) — either pins a model outright or\ndefers to one of the slots the agent declares here.\n\nA slot belongs to the agent that declares it, which is what lets a\n[saved agent](GgAgentConfig) carry its slots into every configuration that imports it,\nand lets two agents each declare a `critic` without meaning one launch input.\n\nAn agent slot reaches the launch form one of two ways, and exactly one: a\n[configuration slot](GgConfigSlot) [names](GgSlotTarget) it, or it is\n[passthrough](Self::passthrough) and is exposed on its own. A slot that is neither\nleaves its bindings with no model to take; one that is both asks twice for the same\nbinding. Both refuse the launch.\n\nDeclaring one is an authoring concern only. Launching resolves every deferred binding\nto a concrete model, so this list is empty on the capability set a run records — what\nran is a set of pinned bindings.",
       "properties": {
         "defaultModelId": {
-          "description": "The model the launch form pre-fills this slot with. `None` leaves it empty, so\nthe operator must choose one before the run can be launched.",
+          "description": "The model the launch form pre-fills this slot with. `None` leaves it to the\n[configuration slot](GgConfigSlot::default_model_id) that fills this one, or —\nwhen nothing supplies a default — to the operator on the launch form.",
           "type": ["string", "null"]
         },
         "name": {
-          "description": "The slot's name, as the launch form labels it and as a\n[binding](GgSlotBinding::model_slot) refers to it. Unique within a set.",
+          "description": "The slot's name, as this agent's bindings refer to it. Unique within the agent.",
           "type": "string"
+        },
+        "passthrough": {
+          "description": "Whether this slot is exposed at launch on its own, without a\n[configuration slot](GgConfigSlot) naming it. The launch form labels a passthrough\nslot `<agent id>.<slot name>`, which is what keeps it distinct from every other\nlaunch input.\n\nIt exists so a configuration is spared declaring a slot whose only job is to\nforward one, which is the common case: most agents want their own model chosen at\nlaunch and share it with nobody.",
+          "type": "boolean"
         }
       },
       "required": ["name"],
@@ -368,12 +407,28 @@
       },
       "type": "object"
     },
+    "GgSlotTarget": {
+      "additionalProperties": false,
+      "description": "One [agent slot](GgModelSlot) a [configuration slot](GgConfigSlot) fills.",
+      "properties": {
+        "agent": {
+          "description": "The [id](GgAgentConfig::id) of the profile whose slot this fills.",
+          "type": "string"
+        },
+        "slot": {
+          "description": "The [name](GgModelSlot::name) of that profile's slot.",
+          "type": "string"
+        }
+      },
+      "required": ["agent", "slot"],
+      "type": "object"
+    },
     "GgSubagentRef": {
       "additionalProperties": false,
       "description": "One entry in an [agent's](GgAgentConfig) delegation roster: a target agent this\nagent may put to work, the [scopes](Self::scopes) it may be used in, plus the caller-scoped\n[description](Self::description) that tells the spawning agent when to use it.\n\nThe description is scoped to the `(spawner, target)` pair, so the same target can\ncarry different guidance depending on which agent is allowed to spawn it.",
       "properties": {
         "agentId": {
-          "description": "The [id](GgAgentConfig::id) of the target profile this agent may put to work (may be\nthe spawner itself). An id the set does not declare refuses the launch.",
+          "description": "The target profile this agent may put to work (may be the spawner itself). A reference the\nset does not declare refuses the launch.\n\nNames the profile's internal [id](GgAgentConfig::id) while the configuration is authored and\nits [slug](GgAgentConfig::slug) once launching has resolved them; whether the set still\ncarries ids says which.",
           "type": "string"
         },
         "description": {
@@ -486,7 +541,6 @@
               }
             }
           ],
-          "id": "root",
           "modelId": "",
           "name": "Root",
           "operations": [
@@ -511,6 +565,7 @@
             "tasks.remove_task",
             "views.open_file"
           ],
+          "slug": "root",
           "tools": [
             "shell",
             "read_file",
@@ -551,9 +606,9 @@
       "description": "The **run-level guardrails** this run is bounded by — the turn, runtime, error and\ncost ceilings that stop a session and record which one stopped it, plus the\n[parallelism cap](GgRunLimits::max_parallel) that bounds how many of its agents run\nat once.\n\nThey ride on the capability set rather than on the [launch envelope](GgInvocation)\nbecause the set is what a run *records*: a ceiling that stopped a run is only\ninterpretable beside the value it was set to. They are deliberately not a\ncapability — a capability is a feature a configuration switches on or off, a ceiling is an\noperator's guardrail over every capability at once — so they never appear in the\n[`cap.*`](crate::gg_query) document namespace.\n\nTwo of them are **required**: [`maxParallel`](GgRunLimits::max_parallel) and\n[`replayMaxBytes`](GgRunLimits::replay_max_bytes), because gg conducts every run under both\nand neither has an off it could take instead. The five ceilings are each armed by writing a\nfigure and left unarmed by leaving it out. A set that declares nothing at all omits the key\nentirely and still deserializes — and is refused at launch, naming the two it owes."
     },
     "modelSlots": {
-      "description": "The [launch-time model parameters](GgModelSlot) this set declares, for the\n[agent bindings](GgAgentConfig::model_slot) that defer to one instead of pinning\na model. Empty for a fully pinned set — and empty on the set a run *records*,\nbecause launching resolves every deferred binding first.",
+      "description": "The [launch inputs](GgConfigSlot) this set declares, each naming the\n[agent slots](GgModelSlot) it fills.\n\nThis is not the whole of what a launch asks for: a\n[passthrough](GgModelSlot::passthrough) agent slot is exposed on its own without a\ndeclaration here. [`launch_slots`](Self::launch_slots) is the one set of inputs a\nrun is launched with. Empty for a fully pinned set, and empty on the set a run\nrecords, because launching resolves every deferred binding first.",
       "items": {
-        "$ref": "#/$defs/GgModelSlot"
+        "$ref": "#/$defs/GgConfigSlot"
       },
       "type": "array"
     },

@@ -101,7 +101,7 @@ fn wait_results(events: &[GgTelemetryEvent]) -> Vec<(bool, String)> {
         .collect()
 }
 
-/// The [id](test_cabinet_core::gg::GgAgentConfig::id) of the second profile these boards dispatch
+/// The [slug](test_cabinet_core::gg::GgAgentConfig::slug) of the second profile these boards dispatch
 /// their issues to — what its roster entry, every issue's `agent`, and its telemetry name it by.
 const IMPLEMENTER: &str = "coder";
 
@@ -130,7 +130,7 @@ fn one_slot_board() -> GgCapabilitySet {
         &[GgSubagentScope::Implementer],
     ));
     set.agents.push(GgAgentConfig {
-        id: IMPLEMENTER.to_string(),
+        slug: IMPLEMENTER.to_string(),
         name: "Coder".to_string(),
         model_id: "mock/coder".to_string(),
         ..GgAgentConfig::root()

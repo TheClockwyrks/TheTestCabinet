@@ -124,11 +124,13 @@ const NAMES: Record<string, string> = {
 };
 const nameOf: ModelNameLookup = (id) => NAMES[id] ?? null;
 
-// The run's configuration: what turns the profile id a rollup is stamped with into the
-// name a reader knows the arm by. Two of its profiles are called the same thing, which is
-// legal and which is why the spend is accounted per id.
-function profile(id: string, name: string, modelId: string): GgAgentConfig {
-  return { id, name, modelId, capabilities: [] } as GgAgentConfig;
+// The run's configuration as a run records it: launching resolved the profiles' internal
+// ids away, so every profile here is named by the slug its telemetry is stamped with. This
+// is what turns the profile id a rollup carries into the name a reader knows the arm by.
+// Two of its profiles are called the same thing, which is legal and which is why the spend
+// is accounted per slug.
+function profile(slug: string, name: string, modelId: string): GgAgentConfig {
+  return { slug, name, modelId, capabilities: [] };
 }
 
 const SET: GgCapabilitySet = {
@@ -239,7 +241,7 @@ describe("gg per-model cost", () => {
 
   it("splits where the money went per profile, naming each profile's model", () => {
     // Three profiles on two models, and two of them — an operator's pair of reviewers —
-    // carry the same display name. That is why the split is kept per id: folding on the
+    // carry the same display name. That is why the split is kept per slug: folding on the
     // name would report one reviewer row that spent both reviewers' money, and folding on
     // it *only* here would leave the per-model row unable to say what the cheap model cost.
     const events = [
@@ -257,8 +259,8 @@ describe("gg per-model cost", () => {
       nameOf,
     );
 
-    // Per profile: costliest first, each carrying the id it is accounted under, the name
-    // that id reads as, and the model it was bound to under the catalog's display name.
+    // Per profile: costliest first, each carrying the slug it is accounted under, the name
+    // that slug reads as, and the model it was bound to under the catalog's display name.
     // No row was priced from the catalog — the run reported its own costs.
     expect(
       spend.perProfile.map((row) => [
@@ -332,7 +334,7 @@ describe("gg per-model cost", () => {
       ["helper", null, false],
     ]);
     // The model name falls back to the id where the catalog does not know the model, and
-    // a profile reads as its own id where there is no configuration to name it by.
+    // a profile reads as its own slug where there is no configuration to name it by.
     expect(spend.perProfile[1]?.modelName).toBe("vendor/unknown");
     expect(spend.perProfile.map((row) => row.profile)).toEqual([
       "root",

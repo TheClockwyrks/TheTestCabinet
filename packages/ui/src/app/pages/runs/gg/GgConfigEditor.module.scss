@@ -654,6 +654,77 @@
   }
 }
 
+// The agent slots one configuration slot fills, under the name/model row that declares
+// it. A group with a label of its own rather than another field on that row: the list is
+// as tall as the configuration has bindings, and it is the half of the block an operator
+// is actually deciding.
+.slotTargets {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// A candidate this slot cannot take, because another configuration slot already fills it.
+// Muted rather than hidden — "filled by `writer`" is the answer to why it is not
+// available, and dropping the row leaves the question — and not a fault, because the
+// mapping it names is a perfectly good one.
+.slotTargetTaken {
+  color: t.$color-text-muted;
+  cursor: default;
+}
+
+// Why a pair is unavailable, beside the pair it belongs to.
+.slotTargetNote {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// What is wrong with a pair this slot already fills — it is passthrough as well, nothing
+// defers to it any more, or it is gone. The negative cue, because every one of them is
+// something the save gate refuses.
+.slotTargetFault {
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+}
+
+// The read-only summary at the foot of the Slots tab: the one set of models a launch
+// collects. It wears the run-limits panel's surface (the tab's other blocks are cards, and
+// a bare list under them would read as a fourth slot) and stretches to their width, which
+// `.slotList` would otherwise leave it short of.
+.launchSummary {
+  align-self: stretch;
+  margin-bottom: 0;
+}
+
+.launchList {
+  list-style: none;
+  margin: 0 0 t.$space-md;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One launch input: the name the new-run form asks under, then what the model collected
+// under it is handed to.
+.launchRow {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+  font-size: t.$font-sm;
+}
+
+.launchName {
+  font-family: var(--ttc-font-mono, monospace);
+  color: t.$color-text;
+}
+
+.launchFills {
+  color: t.$color-text-muted;
+}
+
 // The binding's model row: the "Model from" selector beside the model (or
 // model-slot) control it governs, both aligned to their inputs' bottom edge and
 // wrapping under each other only when the row is truly cramped.
@@ -805,9 +876,9 @@
   }
 }
 
-// The read-only profile id. Intrinsic width, so the name input beside it keeps the row's
-// spare space — an id is short and never grows, and a rename is the edit an operator
-// actually came here for.
+// The slug field beside the name. Intrinsic width, so the name input keeps the row's
+// spare space — a slug is short, and the two are edited together often enough that they
+// belong on one line rather than stacked.
 .agentIdField {
   flex: 0 1 auto;
   min-width: 0;

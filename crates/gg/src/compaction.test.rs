@@ -403,7 +403,7 @@ fn working_window_is_read_off_the_agents_own_profile() {
     // A root that reserves nothing at all and a worker that reserves a quarter.
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut worker = GgAgentConfig {
-        id: "worker".to_string(),
+        slug: "worker".to_string(),
         name: "worker".to_string(),
         model_id: "mock/x".to_string(),
         ..GgAgentConfig::root()
@@ -425,7 +425,7 @@ fn working_window_is_read_off_the_agents_own_profile() {
     let mut mirrored = GgCapabilitySet::minimal("mock/x");
     crate::tools::grant_configured(&mut mirrored.agents[0], compacting(0.4));
     mirrored.agents.push(GgAgentConfig {
-        id: "worker".to_string(),
+        slug: "worker".to_string(),
         name: "worker".to_string(),
         model_id: "mock/x".to_string(),
         ..GgAgentConfig::root()

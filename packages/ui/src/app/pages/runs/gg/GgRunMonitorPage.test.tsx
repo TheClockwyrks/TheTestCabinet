@@ -162,7 +162,7 @@ const ALL_CAPABILITIES = [
 function sessionStarted(
   capabilities: ReadonlyArray<string> = ALL_CAPABILITIES,
 ): HarnessEvent {
-  return sessionStartedWith([{ id: "root", name: "Root", capabilities }]);
+  return sessionStartedWith([{ slug: "root", name: "Root", capabilities }]);
 }
 
 // The same announcement for a **multi-profile** run: gg's capabilities are per-agent,
@@ -171,10 +171,12 @@ function sessionStarted(
 // surface has to read the profile the agent it is showing runs under, so these streams
 // are the ones that catch a surface reading the Root's configuration for everybody.
 //
-// A profile is spelled `id` + `name`: the id is what every telemetry event, roster entry
-// and issue in these streams names it by, and the name is only what a surface prints. They
-// are given separately because they are separate — a set may carry two profiles under one
-// name, and the streams below rely on the ids to keep them apart.
+// A profile is spelled `slug` + `name`. These are sets a run *records*, so they carry no
+// internal ids at all — launching resolved every reference onto the slug and dropped them —
+// and the slug is what every telemetry event, roster entry and issue in these streams names
+// the profile by, while the name is only what a surface prints. They are given separately
+// because they are separate — a set may carry two profiles under one name, and the streams
+// below rely on the slugs to keep them apart.
 //
 // A capability is named either bare (`"tasks"`, taking the capability's defaults) or as
 // `[id, params]` — the params are how a configuration says what it *asked* for
@@ -183,7 +185,7 @@ function sessionStarted(
 type CapabilitySpec = string | [string, Record<string, unknown>];
 function sessionStartedWith(
   profiles: ReadonlyArray<{
-    id: string;
+    slug: string;
     name: string;
     capabilities: ReadonlyArray<CapabilitySpec>;
   }>,
@@ -191,8 +193,8 @@ function sessionStartedWith(
   return gg({
     type: "session_started",
     capabilitySet: {
-      agents: profiles.map(({ id: agentId, name, capabilities }) => ({
-        id: agentId,
+      agents: profiles.map(({ slug, name, capabilities }) => ({
+        slug,
         name,
         capabilities: capabilities.map((capability) => {
           const [id, params] = Array.isArray(capability)
@@ -263,7 +265,7 @@ function surface(
 // offer: the allowlist is the grant, so a call left out of it is a call the agent never
 // had — the "never offered" arm of the very distinction the surface file exists to draw.
 function sessionStartedGranting(
-  profileId: string,
+  profileSlug: string,
   profile: string,
   capabilities: ReadonlyArray<string>,
   tools: string[],
@@ -273,7 +275,7 @@ function sessionStartedGranting(
     capabilitySet: {
       agents: [
         {
-          id: profileId,
+          slug: profileSlug,
           name: profile,
           capabilities: capabilities.map((id) => ({
             id,
@@ -1060,8 +1062,8 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Blocked")).toBeInTheDocument();
     expect(screen.getByText("Retries")).toBeInTheDocument();
     expect(screen.getByText("Show a win banner.")).toBeInTheDocument();
-    // And who it was filed against: the board records the id of the profile the creating
-    // agent named, so the row reads that id and resolves nothing.
+    // And who it was filed against: the board records the slug of the profile the creating
+    // agent named, so the row reads that slug and resolves nothing.
     expect(screen.getByText("Assigned to")).toBeInTheDocument();
     expect(screen.getByText("implementer")).toBeInTheDocument();
     // And only that badge: the separate status/readiness chips the header used to carry
@@ -1639,11 +1641,11 @@ describe("GgRunMonitorPage", () => {
     renderMonitor([
       sessionStartedWith([
         {
-          id: "root",
+          slug: "root",
           name: "Root",
           capabilities: ["shell", "project-management"],
         },
-        { id: "coder", name: "Coder", capabilities: ["shell", "tasks"] },
+        { slug: "coder", name: "Coder", capabilities: ["shell", "tasks"] },
       ]),
       roster("root", [held("history", "history-0"), held("board", "board-0")]),
       ggFrom("agent-0", undefined, {
@@ -1700,12 +1702,12 @@ describe("GgRunMonitorPage", () => {
     renderMonitor([
       sessionStartedWith([
         {
-          id: "root",
+          slug: "root",
           name: "Root",
           capabilities: ["shell", "subagents", "memories"],
         },
         {
-          id: "reviewer",
+          slug: "reviewer",
           name: "Reviewer",
           capabilities: [["memories", { scope: "shared" }]],
         },
@@ -1823,7 +1825,7 @@ describe("GgRunMonitorPage", () => {
     renderMonitor([
       sessionStartedWith([
         {
-          id: "root",
+          slug: "root",
           name: "Root",
           capabilities: ["shell", ["tasks", { ownership: "unowned" }]],
         },
@@ -1870,12 +1872,12 @@ describe("GgRunMonitorPage", () => {
     return [
       sessionStartedWith([
         {
-          id: "root",
+          slug: "root",
           name: "Root",
           capabilities: ["shell", "subagents", "memories", "tasks"],
         },
         {
-          id: "reviewer",
+          slug: "reviewer",
           name: "Reviewer",
           capabilities: [["memories", { scope: "shared" }]],
         },
@@ -2169,11 +2171,11 @@ describe("GgRunMonitorPage", () => {
     renderMonitor([
       sessionStartedWith([
         {
-          id: "root",
+          slug: "root",
           name: "Root",
           capabilities: ["shell", "project-management"],
         },
-        { id: "coder", name: "Coder", capabilities: ["shell", "tasks"] },
+        { slug: "coder", name: "Coder", capabilities: ["shell", "tasks"] },
       ]),
       ggFrom("WIDGET-1.0i", undefined, {
         type: "agent_spawned",
@@ -2214,9 +2216,9 @@ describe("GgRunMonitorPage", () => {
     // management on a dedicated board-owning profile still has a board to read.
     renderMonitor([
       sessionStartedWith([
-        { id: "root", name: "Root", capabilities: ["shell", "subagents"] },
+        { slug: "root", name: "Root", capabilities: ["shell", "subagents"] },
         {
-          id: "planner",
+          slug: "planner",
           name: "Planner",
           capabilities: ["shell", "project-management"],
         },
@@ -2397,7 +2399,7 @@ describe("GgRunMonitorPage", () => {
     // Cost widget: a bar per profile naming the model bound to it, and its cost both as
     // the widget's total and in its own row — so more than one node carries the figure.
     // (`reviewer` reads twice now — the per-profile row and the agent overview's profile
-    // chip. The set declares no such profile, so both read as the id itself.)
+    // chip. The set declares no such profile, so both read as the slug itself.)
     expect(screen.getByText("Per agent")).toBeInTheDocument();
     expect(screen.getAllByText("reviewer").length).toBeGreaterThan(0);
     expect(screen.getAllByText("claude-haiku-4-8").length).toBeGreaterThan(0);
@@ -2441,14 +2443,14 @@ describe("GgRunMonitorPage", () => {
     // model is bound to two of the profiles, which is what the per-model split is for.
     //
     // Those two also carry ONE display name between them, which is legal: a name is
-    // display text and the accounting is keyed on the profile id. Two arms with one name
+    // display text and the accounting is keyed on the profile slug. Two arms with one name
     // are what a run splitting a role across a cheap and an expensive binding looks like,
     // and folding them into a single row would report a cost neither of them spent.
     const events: HarnessEvent[] = [
       sessionStartedWith([
-        { id: "root", name: "Root", capabilities: ALL_CAPABILITIES },
-        { id: "reviewer", name: "Auditor", capabilities: ALL_CAPABILITIES },
-        { id: "summarizer", name: "Auditor", capabilities: ALL_CAPABILITIES },
+        { slug: "root", name: "Root", capabilities: ALL_CAPABILITIES },
+        { slug: "reviewer", name: "Auditor", capabilities: ALL_CAPABILITIES },
+        { slug: "summarizer", name: "Auditor", capabilities: ALL_CAPABILITIES },
       ]),
       ggFrom("root", undefined, {
         type: "usage",
@@ -2494,7 +2496,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Per model")).toBeInTheDocument();
     // A row per profile, each naming the model it was bound to (the catalog is absent in
     // this bare render, so a model reads by its id). The two profiles named `Auditor`
-    // keep a row apiece, and each states the id it is really accounted under — without
+    // keep a row apiece, and each states the slug it is really accounted under — without
     // which the list would show one arm's figures twice with no way to tell which.
     expect(
       within(perProfile).getByText("Auditor (reviewer)"),
@@ -2502,7 +2504,7 @@ describe("GgRunMonitorPage", () => {
     expect(
       within(perProfile).getByText("Auditor (summarizer)"),
     ).toBeInTheDocument();
-    // The unambiguous row needs no id: a name that names one profile already does.
+    // The unambiguous row needs no slug: a name that names one profile already does.
     expect(within(perProfile).getByText("Root")).toBeInTheDocument();
     // The small model is bound to two profiles, so it reads on both of their rows and
     // again as its own per-model row; the big model on one profile and its own row.
@@ -2625,8 +2627,8 @@ describe("GgRunMonitorPage", () => {
 
     const events: HarnessEvent[] = [
       sessionStartedWith([
-        { id: "root", name: "Root", capabilities: ["subagents"] },
-        { id: "reviewer", name: "reviewer", capabilities: ["filesystem"] },
+        { slug: "root", name: "Root", capabilities: ["subagents"] },
+        { slug: "reviewer", name: "reviewer", capabilities: ["filesystem"] },
       ]),
       gg({
         type: "agent_spawned",
@@ -2773,8 +2775,8 @@ describe("GgRunMonitorPage", () => {
     // reader to the surface where N stores are compared.
     renderMonitor([
       sessionStartedWith([
-        { id: "root", name: "Root", capabilities: ["shell", "subagents"] },
-        { id: "reviewer", name: "Reviewer", capabilities: ["memories"] },
+        { slug: "root", name: "Root", capabilities: ["shell", "subagents"] },
+        { slug: "reviewer", name: "Reviewer", capabilities: ["memories"] },
       ]),
       roster("root", [held("history", "history-0")]),
       ...["agent-0", "agent-1"].map((id, index) =>
@@ -3004,8 +3006,8 @@ describe("GgRunMonitorPage", () => {
     ];
     renderMonitor([
       sessionStartedWith([
-        { id: "root", name: "Root", capabilities: ["subagents"] },
-        { id: "reviewer", name: "reviewer", capabilities: ["filesystem"] },
+        { slug: "root", name: "Root", capabilities: ["subagents"] },
+        { slug: "reviewer", name: "reviewer", capabilities: ["filesystem"] },
       ]),
       gg({
         type: "agent_spawned",
@@ -3132,7 +3134,7 @@ describe("GgRunMonitorPage", () => {
     openFile("i1 review 1");
     expect(screen.getByText("Changes requested by")).toBeInTheDocument();
     // The reviewer is named by the agent gg dispatched, with the profile it ran under
-    // beside it: the id is the identity, the name is only there so the round reads.
+    // beside it: the slug is the identity, the name is only there so the round reads.
     expect(screen.getByText("i1.0i.0r")).toBeInTheDocument();
     expect(screen.getByText("(Critic)")).toBeInTheDocument();
     expect(screen.getByText("Handle the empty-input case")).toBeInTheDocument();
@@ -3207,10 +3209,14 @@ describe("GgRunMonitorPage", () => {
   it("reads a machine, an exec and a fork as lineage rather than as delegation", () => {
     const events: HarnessEvent[] = [
       sessionStartedWith([
-        { id: "feature", name: "Feature", capabilities: ["fsm"] },
-        { id: "explorer", name: "Explorer", capabilities: ["memories"] },
-        { id: "builder", name: "Builder", capabilities: ["tasks", "memories"] },
-        { id: "verifier", name: "Verifier", capabilities: ["tasks"] },
+        { slug: "feature", name: "Feature", capabilities: ["fsm"] },
+        { slug: "explorer", name: "Explorer", capabilities: ["memories"] },
+        {
+          slug: "builder",
+          name: "Builder",
+          capabilities: ["tasks", "memories"],
+        },
+        { slug: "verifier", name: "Verifier", capabilities: ["tasks"] },
       ]),
       // The machine enters its first state on the root instance.
       gg({
@@ -3552,8 +3558,12 @@ describe("GgRunMonitorPage", () => {
   it("heads each agent's Overview with the surface it actually called on", () => {
     renderMonitor([
       sessionStartedWith([
-        { id: "root", name: "Root", capabilities: ["filesystem", "subagents"] },
-        { id: "worker", name: "worker", capabilities: ["filesystem"] },
+        {
+          slug: "root",
+          name: "Root",
+          capabilities: ["filesystem", "subagents"],
+        },
+        { slug: "worker", name: "worker", capabilities: ["filesystem"] },
       ]),
       gg({
         type: "agent_spawned",

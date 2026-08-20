@@ -3,6 +3,7 @@ import type {
   GgAgentConfig,
   GgCapabilityConfig,
   GgCapabilitySet,
+  GgModelSlot,
   GgModuleKind,
 } from "@test-cabinet/run-record/gg";
 import {
@@ -15,7 +16,10 @@ import {
   armLoopDetection,
   bindModelSlots,
   blankAgentDraft,
+  blankConfigSlot,
   blankHookDraft,
+  blankModelSlot,
+  blankPrimaryModelSlot,
   capabilityDraftFor,
   capabilityParams,
   capabilityActive,
@@ -23,17 +27,22 @@ import {
   capabilitySetFromDraft,
   draftFromCapabilitySet,
   draftSaveError,
+  dropAgentReferences,
   emptyDraft,
   fsmStatesWarnings,
   grantsOf,
+  isValidAgentSlug,
   launchModelSlots,
   loopDetectionWarning,
+  renameAgentSlug,
   renameStateDraft,
   resetAgentForMode,
   runLimitsWarning,
   setFeatureBundle,
+  slotMappingError,
   type GgAgentDraft,
   type GgConfigDraft,
+  type GgConfigSlotDraft,
 } from "./ggConfigDraft";
 import {
   AUTHORED_HOOK_TIMEOUT_SECS,
@@ -68,9 +77,11 @@ import {
 // launchable (an agent with neither a pinned model nor a model slot is a save error);
 // tests that exercise deferral pass an explicit `modelSlot`, which wins.
 //
-// The profile's id is slugged from its name, as the editor mints one, so a fixture called
-// `reviewer` is the profile every reference below spells `reviewer` — and a fixture may
-// pass an `id` of its own where two profiles are meant to share a name.
+// Both halves of the profile's identity are slugged from its name, because a fixture called
+// `reviewer` means one profile under either reading: `reviewer` is the id every reference
+// below points at *and* the slug the model would be shown. The two are only worth telling
+// apart where a test is about the difference — a rename, a collision, a launch label — and
+// those fixtures pass an `id` or a `slug` of their own.
 function agent(partial: Partial<GgAgentConfig> = {}): GgAgentConfig {
   const name = partial.name ?? ROOT_AGENT;
   return {
@@ -79,6 +90,7 @@ function agent(partial: Partial<GgAgentConfig> = {}): GgAgentConfig {
     capabilities: [],
     modelId: "mock/x",
     ...partial,
+    slug: partial.slug ?? name.toLowerCase(),
   };
 }
 
@@ -127,61 +139,269 @@ function setCaps(s: GgCapabilitySet) {
   return s.agents[0]!.capabilities;
 }
 
+// A run asks for exactly **one** set of models, and the configuration decides what that
+// set is: the launch inputs it declares itself, then every agent slot marked passthrough.
+// The two levels are what let a saved agent carry the slots its own bindings name into
+// every configuration that imports it, while the configuration decides whether each of
+// them is asked for on its own or shares one input with somebody else's.
 describe("gg model slots", () => {
-  it("asks only for the slots an agent actually defers to", () => {
+  it("asks for the configuration's own inputs first, then every passthrough agent slot", () => {
     const configured = set({
       modelSlots: [
-        { name: "primary" },
-        { name: "critic", defaultModelId: "anthropic/claude-haiku-4.5" },
-        // Declared but consumed by nothing — asking for it would change nothing.
-        { name: "orphan" },
+        {
+          name: "critic",
+          defaultModelId: "anthropic/claude-haiku-4.5",
+          targets: [
+            { agent: "reviewer", slot: "primary" },
+            { agent: "judge", slot: "primary" },
+          ],
+        },
       ],
       agents: [
-        agent({ modelSlot: "primary" }),
-        agent({ name: "reviewer", modelSlot: "critic" }),
-        agent({ name: "judge", modelId: "openai/o-fixed" }),
+        agent({
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary", passthrough: true }],
+        }),
+        agent({
+          name: "reviewer",
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary" }],
+        }),
+        agent({
+          name: "judge",
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary" }],
+        }),
       ],
     });
+    // One input for the two agent slots the configuration slot fills, and one for the
+    // root's own — labelled `<slug>.<slot>`, which is what keeps a passthrough slot
+    // distinct from every other input and from the identically named slot next door.
     expect(launchModelSlots(configured)).toEqual([
-      { name: "primary" },
-      { name: "critic", defaultModelId: "anthropic/claude-haiku-4.5" },
+      {
+        name: "critic",
+        defaultModelId: "anthropic/claude-haiku-4.5",
+        targets: [
+          { agent: "reviewer", slot: "primary" },
+          { agent: "judge", slot: "primary" },
+        ],
+      },
+      {
+        name: "root.primary",
+        targets: [{ agent: "root", slot: "primary" }],
+      },
     ]);
   });
 
-  it("resolves every deferred agent and drops the declarations", () => {
+  // A passthrough input is the one place a profile's two names meet: the operator reads the
+  // label and answers it with a model, so the label is the **slug** they wrote; the binding
+  // underneath has to survive a rename of that slug, so the target is the **internal id**.
+  // Spelling either one with the other would work right up until a profile was renamed or
+  // two of them briefly shared a slug — which is exactly when a launch must not go wrong.
+  it("labels a passthrough input by the slug and fills it by the internal id", () => {
+    const configured = set({
+      agents: [
+        agent({
+          id: "a-9f2c",
+          slug: "conductor",
+          name: "Root",
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary", passthrough: true }],
+        }),
+      ],
+    });
+
+    expect(launchModelSlots(configured)).toEqual([
+      {
+        name: "conductor.primary",
+        defaultModelId: undefined,
+        targets: [{ agent: "a-9f2c", slot: "primary" }],
+      },
+    ]);
+    // …and the model the operator supplied under that label reaches the profile the target
+    // names, which is the whole of what the two spellings have to agree about.
+    const launched = bindModelSlots(configured, {
+      "conductor.primary": "openai/gpt-5.6-sol",
+    });
+    expect(launched.agents[0]!.modelId).toBe("openai/gpt-5.6-sol");
+    expect(launched.agents[0]!.modelSlot).toBeUndefined();
+  });
+
+  // A configuration slot's target names the internal id too, and for the harder reason: an
+  // authored configuration may hold two profiles under one slug for as long as it takes an
+  // operator to tell them apart, and a mapping that named the slug would supply a model to
+  // both of them at once.
+  it("fills exactly the profile a configuration slot's target names, slug clash and all", () => {
+    const configured = set({
+      modelSlots: [
+        {
+          name: "critic",
+          targets: [{ agent: "a-first", slot: "primary" }],
+        },
+      ],
+      agents: [
+        agent({
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary", passthrough: true }],
+        }),
+        agent({
+          id: "a-first",
+          slug: "reviewer",
+          name: "Reviewer",
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary" }],
+        }),
+        // The twin the operator has not told apart yet, pinning its own model.
+        agent({
+          id: "a-second",
+          slug: "reviewer",
+          name: "Reviewer",
+          modelId: "openai/o-fixed",
+        }),
+      ],
+    });
+
+    const launched = bindModelSlots(configured, {
+      critic: "anthropic/claude-haiku-4.5",
+      "root.primary": "openai/gpt-5.6-sol",
+    });
+    expect(launched.agents.map((a) => [a.id, a.modelId])).toEqual([
+      ["root", "openai/gpt-5.6-sol"],
+      ["a-first", "anthropic/claude-haiku-4.5"],
+      // The twin the mapping does not name took nothing from it.
+      ["a-second", "openai/o-fixed"],
+    ]);
+  });
+
+  // A configuration slot with no default of its own is not an input with no default: the
+  // agent slot underneath it already carried one, and an agent imported from the library
+  // has to keep the default it was saved with working after a configuration maps it.
+  it("takes an unset configuration slot's default from the first agent slot it fills", () => {
+    const configured = set({
+      modelSlots: [
+        {
+          name: "critic",
+          targets: [
+            { agent: "reviewer", slot: "primary" },
+            { agent: "judge", slot: "primary" },
+          ],
+        },
+        {
+          name: "author",
+          defaultModelId: "openai/gpt-5.6-sol",
+          targets: [{ agent: "root", slot: "primary" }],
+        },
+      ],
+      agents: [
+        agent({
+          modelSlot: "primary",
+          modelSlots: [
+            { name: "primary", defaultModelId: "vendor/overridden" },
+          ],
+        }),
+        agent({
+          name: "reviewer",
+          modelSlot: "primary",
+          modelSlots: [
+            { name: "primary", defaultModelId: "anthropic/claude-haiku-4.5" },
+          ],
+        }),
+        agent({
+          name: "judge",
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary", defaultModelId: "vendor/second" }],
+        }),
+      ],
+    });
+    expect(
+      launchModelSlots(configured).map((s) => [s.name, s.defaultModelId]),
+    ).toEqual([
+      // The first target's default, not the second's.
+      ["critic", "anthropic/claude-haiku-4.5"],
+      // …and a configuration slot that names its own default keeps it, whatever the agent
+      // slot underneath it says.
+      ["author", "openai/gpt-5.6-sol"],
+    ]);
+  });
+
+  it("resolves every deferred binding through the input that fills its slot", () => {
     const configured = set({
       preset: "critic-sweep",
-      modelSlots: [{ name: "critic" }],
+      modelSlots: [
+        {
+          name: "critic",
+          targets: [
+            { agent: "reviewer", slot: "primary" },
+            // The reviewer's compaction handoff shares the one input its own turns run
+            // on, which is a mapping only the configuration can express.
+            { agent: "reviewer", slot: "summarizer" },
+          ],
+        },
+      ],
       agents: [
-        agent({ modelSlot: "critic" }),
-        agent({ name: "reviewer", modelSlot: "critic" }),
+        agent({
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary", passthrough: true }],
+        }),
+        agent({
+          name: "reviewer",
+          modelSlot: "primary",
+          capabilities: [
+            {
+              id: "compaction",
+              enabled: true,
+              implementation: "handoff-summarization",
+              params: { modelSlot: "summarizer" },
+            },
+          ],
+          modelSlots: [{ name: "primary" }, { name: "summarizer" }],
+        }),
         agent({ name: "judge", modelId: "openai/o-fixed" }),
       ],
     });
     const launched = bindModelSlots(configured, {
+      "root.primary": "openai/gpt-5.6-sol",
       critic: "anthropic/claude-haiku-4.5",
     });
-    // What runs is fully pinned; two agents share the `critic` slot, and the
-    // internally pinned `judge` is untouched.
+
     expect(
-      launched.agents.map((a) => ({ name: a.name, modelId: a.modelId })),
+      launched.agents.map((a) => ({ id: a.id, modelId: a.modelId })),
     ).toEqual([
-      { name: "Root", modelId: "anthropic/claude-haiku-4.5" },
-      { name: "reviewer", modelId: "anthropic/claude-haiku-4.5" },
-      { name: "judge", modelId: "openai/o-fixed" },
+      { id: "root", modelId: "openai/gpt-5.6-sol" },
+      { id: "reviewer", modelId: "anthropic/claude-haiku-4.5" },
+      // A binding the configuration pinned itself was decided when the configuration was
+      // written and is never asked about again.
+      { id: "judge", modelId: "openai/o-fixed" },
     ]);
-    expect(launched.agents.every((a) => a.modelSlot === undefined)).toBe(true);
+    // The capability param the run actually reads, resolved through the same input.
+    expect(
+      launched.agents[1]!.capabilities?.find((c) => c.id === "compaction")
+        ?.params,
+    ).toEqual({ model: "anthropic/claude-haiku-4.5" });
+    // What runs is a fully pinned set: neither level declares a slot any more, so nothing
+    // downstream of the launch has a deferral left to resolve.
     expect(launched.modelSlots).toBeUndefined();
+    expect(launched.agents.every((a) => a.modelSlot === undefined)).toBe(true);
+    expect(launched.agents.every((a) => a.modelSlots === undefined)).toBe(true);
     expect(launched.preset).toBe("critic-sweep");
   });
 
-  it("still asks for a model when an agent names an undeclared slot", () => {
-    const configured = set({ agents: [agent({ modelSlot: "primary" })] });
-    expect(launchModelSlots(configured)).toEqual([{ name: "primary" }]);
-    expect(
-      bindModelSlots(configured, { primary: "openai/gpt-5.6-sol" }).agents[0]
-        ?.modelId,
-    ).toBe("openai/gpt-5.6-sol");
+  // A stored binding naming a slot its profile never declared is the one shape the load
+  // path has to invent something for: it declares the slot, so the binding points at
+  // something real and the operator is shown the choice they still owe rather than an
+  // unexplained blank.
+  it("declares a slot a stored binding names but its profile never did", () => {
+    const draft = draftFromCapabilitySet(
+      set({ agents: [agent({ modelSlot: "primary" })] }),
+    );
+    const declared = draft.agents[0]!.modelSlots;
+    expect(declared.map((s) => [s.name, s.passthrough])).toEqual([
+      ["primary", false],
+    ]);
+    expect(draft.agents[0]!.modelSlotId).toBe(declared[0]!.id);
+    // Neither passthrough nor filled by a configuration slot, so no launch input would
+    // supply it — which is exactly what the save gate is for.
+    expect(draftSaveError(draft)).toMatch(/reaches no launch input/);
   });
 
   it("synthesizes a Root when a set carries no agents", () => {
@@ -189,63 +409,216 @@ describe("gg model slots", () => {
       agents: [],
     } as unknown as GgCapabilitySet);
     expect(draft.agents).toHaveLength(1);
-    expect(draft.agents[0]!.id).toBe(ROOT_PROFILE_ID);
+    // The synthesized profile is minted an internal id of its own, so the draft's
+    // references have something to point at; what it is *called* is the default set's own
+    // slug, which is the half an operator and the model would read.
+    expect(draft.agents[0]!.slug).toBe(ROOT_PROFILE_ID);
     expect(draft.agents[0]!.name).toBe(ROOT_AGENT);
   });
 
-  it("round-trips a declared slot through the editor draft", () => {
+  it("round-trips both levels of declaration through the editor draft", () => {
     const configured = set({
-      modelSlots: [{ name: "critic", defaultModelId: "anthropic/haiku" }],
+      modelSlots: [
+        {
+          name: "critic",
+          defaultModelId: "anthropic/claude-haiku-4.5",
+          targets: [{ agent: "reviewer", slot: "primary" }],
+        },
+      ],
       agents: [
-        agent({ modelSlot: "critic" }),
-        agent({ name: "reviewer", modelId: "openai/o-fixed" }),
+        agent({
+          modelSlot: "primary",
+          modelSlots: [
+            {
+              name: "primary",
+              defaultModelId: "openai/gpt-5.6-sol",
+              passthrough: true,
+            },
+          ],
+        }),
+        agent({
+          name: "reviewer",
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary" }],
+        }),
       ],
     });
-    const back = capabilitySetFromDraft(
-      draftFromCapabilitySet(configured),
-      null,
-    );
-    expect(back.modelSlots).toEqual([
-      { name: "critic", defaultModelId: "anthropic/haiku" },
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftSaveError(draft)).toBeNull();
+    // The draft points a configuration slot's target at the target slot's editor-only id,
+    // which is what carries a mapping through a rename of either end.
+    expect(draft.modelSlots[0]!.targets).toEqual([
+      { agentId: "reviewer", slotId: draft.agents[1]!.modelSlots[0]!.id },
     ]);
-    expect(
-      back.agents.map((a) => ({
-        name: a.name,
-        modelId: a.modelId,
-        modelSlot: a.modelSlot,
-      })),
-    ).toEqual([
-      { name: "Root", modelId: "", modelSlot: "critic" },
-      { name: "reviewer", modelId: "openai/o-fixed", modelSlot: undefined },
+
+    const back = capabilitySetFromDraft(draft, null);
+    expect(back.modelSlots).toEqual(configured.modelSlots);
+    expect(back.agents.map((a) => a.modelSlots)).toEqual([
+      [
+        {
+          name: "primary",
+          defaultModelId: "openai/gpt-5.6-sol",
+          passthrough: true,
+        },
+      ],
+      [{ name: "primary" }],
     ]);
+    expect(back.agents.map((a) => a.modelSlot)).toEqual(["primary", "primary"]);
   });
 
-  it("refuses to save an agent bound to a slot that was never declared", () => {
+  it("writes no agent slot the profile's bindings never defer to", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.modelSlots = [
+      ...draft.agents[0]!.modelSlots,
+      blankModelSlot("orphan", true),
+    ];
+    // Declared and bound by nothing, so a launch input for it would supply a model to
+    // nothing. The editor flags it beside the declaration; the save gate says nothing.
+    expect(draftSaveError(draft)).toBeNull();
+    const back = capabilitySetFromDraft(draft, null);
+    expect(back.agents[0]!.modelSlots).toEqual([
+      { name: "primary", passthrough: true },
+    ]);
+    expect(launchModelSlots(back).map((s) => s.name)).toEqual(["root.primary"]);
+  });
+
+  it("refuses to save an agent bound to a slot it doesn't declare", () => {
     const draft = emptyDraft();
     expect(draftSaveError(draft)).toBeNull();
     draft.agents[0]!.modelSlotId = "slot-that-was-deleted";
     expect(draftSaveError(draft)).toContain("model slot");
   });
 
-  // The whole point of binding a slot by internal id: the name is a label the launch
-  // form shows, so changing it must move every agent bound to it rather than orphan them.
-  it("keeps an agent bound to a model slot that is renamed", () => {
+  // The whole point of binding a slot by internal id: the name is a label the launch form
+  // shows, so changing it must move every binding and every mapping onto it rather than
+  // orphaning the ones that spelled the old name.
+  it("keeps a binding and a mapping through a rename of the slot they name", () => {
     const draft = emptyDraft();
-    draft.modelSlots[0]!.name = "critic";
+    const root = draft.agents[0]!;
+    root.modelSlots[0]!.passthrough = false;
+    draft.modelSlots = [
+      {
+        ...blankConfigSlot("author"),
+        targets: [{ agentId: root.id, slotId: root.modelSlots[0]!.id }],
+      },
+    ];
     expect(draftSaveError(draft)).toBeNull();
+
+    root.modelSlots[0]!.name = "critic";
+    draft.modelSlots[0]!.name = "novelist";
+    expect(draftSaveError(draft)).toBeNull();
+
     const back = capabilitySetFromDraft(draft, null);
-    expect(back.modelSlots).toEqual([{ name: "critic" }]);
+    expect(back.agents[0]!.modelSlots).toEqual([{ name: "critic" }]);
     expect(back.agents[0]!.modelSlot).toBe("critic");
+    expect(back.modelSlots).toEqual([
+      { name: "novelist", targets: [{ agent: root.id, slot: "critic" }] },
+    ]);
+    expect(launchModelSlots(back).map((s) => s.name)).toEqual(["novelist"]);
+  });
+});
+
+// An agent slot reaches the launch form either because a configuration slot names it or
+// because it is passthrough, and never both. One that reaches it neither way leaves its
+// bindings with no model to take; one that reaches it twice asks the operator for the same
+// binding under two labels. gg refuses both, so the editor refuses both while they can
+// still be fixed — which is the whole of what [slotMappingError] says.
+describe("the mapping between launch inputs and agent slots", () => {
+  // The root, whose `primary` is passthrough, and a `reviewer` declaring a plain `critic`
+  // its binding defers to — the shape every question below is asked of.
+  function mappingDraft(): GgConfigDraft {
+    const draft = emptyDraft();
+    const reviewer = agentDraft(draft, "reviewer");
+    reviewer.modelSlots = [blankModelSlot("critic")];
+    reviewer.modelSlotId = reviewer.modelSlots[0]!.id;
+    draft.agents.push(reviewer);
+    return draft;
+  }
+
+  /** A configuration slot named `name` filling `reviewer`'s one slot. */
+  function fills(draft: GgConfigDraft, name: string): GgConfigSlotDraft {
+    const reviewer = draft.agents[1]!;
+    return {
+      ...blankConfigSlot(name),
+      targets: [{ agentId: reviewer.id, slotId: reviewer.modelSlots[0]!.id }],
+    };
+  }
+
+  it("accepts a mapping in which every bound slot reaches the launch form once", () => {
+    const draft = mappingDraft();
+    draft.modelSlots = [fills(draft, "critic")];
+    expect(slotMappingError(draft)).toBeNull();
+    expect(draftSaveError(draft)).toBeNull();
+    expect(
+      launchModelSlots(capabilitySetFromDraft(draft, null)).map((s) => s.name),
+    ).toEqual(["critic", "root.primary"]);
+  });
+
+  it("refuses a bound slot that is neither mapped nor passthrough", () => {
+    expect(slotMappingError(mappingDraft())).toMatch(
+      /`critic` slot on `reviewer` reaches no launch input/,
+    );
+  });
+
+  it("refuses a slot that is passthrough and mapped, which would ask for it twice", () => {
+    const draft = mappingDraft();
+    draft.agents[1]!.modelSlots[0]!.passthrough = true;
+    draft.modelSlots = [fills(draft, "critic")];
+    expect(slotMappingError(draft)).toMatch(/would ask for it twice/);
+  });
+
+  it("refuses a slot two configuration slots fill", () => {
+    const draft = mappingDraft();
+    draft.modelSlots = [fills(draft, "critic"), fills(draft, "second-opinion")];
+    expect(slotMappingError(draft)).toMatch(
+      /is filled by 2 configuration slots/,
+    );
+  });
+
+  it("refuses a target naming a slot that is no longer declared", () => {
+    const draft = mappingDraft();
+    draft.modelSlots = [
+      {
+        ...fills(draft, "critic"),
+        targets: [{ agentId: "reviewer", slotId: "slot-that-was-deleted" }],
+      },
+    ];
+    expect(slotMappingError(draft)).toMatch(
+      /fills a slot that no longer exists/,
+    );
+  });
+
+  it("refuses two configuration slots under one name, and one with no name", () => {
+    const draft = mappingDraft();
+    draft.modelSlots = [fills(draft, "critic"), fills(draft, "critic")];
+    expect(slotMappingError(draft)).toBe(
+      "Configuration slot names must be unique.",
+    );
+
+    draft.modelSlots = [fills(draft, "  ")];
+    expect(slotMappingError(draft)).toBe(
+      "Every configuration slot needs a name.",
+    );
+  });
+
+  // A passthrough slot takes its name from the agent that declares it, so the collision is
+  // one an operator can only fix at the other end — and the message says so.
+  it("refuses a configuration slot named as a passthrough slot already is", () => {
+    const draft = mappingDraft();
+    draft.modelSlots = [fills(draft, "root.primary")];
+    expect(slotMappingError(draft)).toMatch(
+      /Two launch inputs would be named `root\.primary`/,
+    );
   });
 });
 
 describe("gg agents", () => {
   it("round-trips a multi-agent configuration with a subagent allowlist", () => {
     const configured = set({
-      modelSlots: [{ name: "primary" }],
       agents: [
         agent({
           modelSlot: "primary",
+          modelSlots: [{ name: "primary", passthrough: true }],
           subagents: [
             {
               agentId: "reviewer",
@@ -276,12 +649,12 @@ describe("gg agents", () => {
       agents: [
         agent({
           modelSlot: "primary",
+          modelSlots: [{ name: "primary", passthrough: true }],
           customInstructions: "Prefer TDD.",
           systemPromptTemplate:
             "You are a custom agent. {{customInstructions}}",
         }),
       ],
-      modelSlots: [{ name: "primary" }],
     });
     const draft = draftFromCapabilitySet(configured);
     expect(draft.agents[0]!.customInstructions).toBe("Prefer TDD.");
@@ -330,9 +703,12 @@ describe("gg agents", () => {
 
   it("round-trips the prompt-cache lifetime per agent, writing no key at the default", () => {
     const configured = set({
-      modelSlots: [{ name: "primary" }],
       agents: [
-        agent({ modelSlot: "primary", promptCacheTtl: "extended" }),
+        agent({
+          modelSlot: "primary",
+          modelSlots: [{ name: "primary", passthrough: true }],
+          promptCacheTtl: "extended",
+        }),
         agent({ name: "scout", modelId: "openai/o-fixed" }),
       ],
     });
@@ -481,12 +857,13 @@ describe("gg agents", () => {
     draft.agents[1]!.name = ROOT_AGENT;
     expect(draftSaveError(draft)).toBeNull();
 
-    // Two profiles under one id is not: every reference to either would name both.
-    // Unreachable from the editor, which mints an id per profile, so only a hand-written
-    // set arrives this way.
-    draft.agents[1]!.id = draft.agents[0]!.id;
-    expect(draftSaveError(draft)).toContain("share an id");
-    draft.agents[1]!.id = "reviewer";
+    // Two profiles under one slug is not: the slug is the one name the model is shown, so
+    // it would be shown one name for two profiles. The editor can reach it now — an import
+    // arrives under the slug its saved agent carries, and never renames itself to dodge a
+    // collision — so this is what says so.
+    draft.agents[1]!.slug = draft.agents[0]!.slug;
+    expect(draftSaveError(draft)).toContain("carry the same slug");
+    draft.agents[1]!.slug = "reviewer";
 
     // An empty name.
     draft.agents[1]!.name = "  ";
@@ -590,12 +967,360 @@ describe("gg agents", () => {
   });
 });
 
-// A minimal agent draft for tests that push a second agent onto an existing draft, bound
-// to the same model slot its root is. The draft it is joining is what its id is minted
-// unique against, exactly as the editor mints one.
+// --- A profile's two names ---------------------------------------------------------
+//
+// A profile carries two identities, and which of them a given thing holds is the whole
+// design. Its **internal id** is opaque, minted once, never rewritten and shown to nobody:
+// every reference inside the draft points at it — a roster entry, an `agent` param, a
+// machine's state, the root flag, a configuration slot's target, the link to a saved agent.
+// Its **slug** is the name the *model* is shown and passes back, written by the operator,
+// unique within the set, and the name a run's telemetry, records and query language call the
+// profile by afterwards.
+//
+// Keeping them apart buys three things at once, and these pin all three: renaming a profile
+// is an edit to one string rather than a migration; two profiles may carry one slug for as
+// long as it takes an operator to tell them apart, without either becoming unaddressable;
+// and an import can arrive under the saved agent's own slug instead of a silently
+// uniquified one.
+
+describe("an agent's slug", () => {
+  it("is groups of lowercase letters and digits joined by single hyphens", () => {
+    for (const slug of [
+      "root",
+      "reviewer",
+      "second-opinion",
+      "agent-2",
+      "a1",
+    ]) {
+      expect(isValidAgentSlug(slug)).toBe(true);
+    }
+    for (const slug of [
+      "",
+      "Reviewer",
+      "second opinion",
+      "-reviewer",
+      "reviewer-",
+      "second--opinion",
+      "review_er",
+      "révisseur",
+    ]) {
+      expect(isValidAgentSlug(slug)).toBe(false);
+    }
+  });
+
+  it("is refused by the save gate when it is malformed, and when two profiles carry it", () => {
+    const draft = emptyDraft();
+    draft.agents.push(agentDraft(draft, "reviewer"));
+    expect(draftSaveError(draft)).toBeNull();
+
+    // The model has to copy the slug back without deciding how to spell it, so a shape gg
+    // would refuse at launch is refused here, where it can still be typed differently.
+    draft.agents[1]!.slug = "Second Opinion";
+    expect(draftSaveError(draft)).toMatch(
+      /slug must be lowercase letters and digits/,
+    );
+
+    draft.agents[1]!.slug = draft.agents[0]!.slug;
+    expect(draftSaveError(draft)).toMatch(/carry the same slug/);
+  });
+
+  // The per-agent form asks only what is wrong with *this* profile, so it has to report
+  // the slug and the slot names the operator is editing right there — a fault the
+  // configuration's gate would otherwise only mention once the whole thing is saved.
+  it("is reported on the agent's own form, along with its slot names", () => {
+    const draft = emptyDraft();
+    const reviewer = agentDraft(draft, "reviewer");
+    draft.agents.push(reviewer);
+    expect(agentSaveError(draft, reviewer.id)).toBeNull();
+
+    reviewer.modelSlots = [blankModelSlot("critic"), blankModelSlot("critic")];
+    expect(agentSaveError(draft, reviewer.id)).toBe(
+      "Model slot names must be unique within an agent.",
+    );
+
+    reviewer.modelSlots = [blankModelSlot("  ")];
+    expect(agentSaveError(draft, reviewer.id)).toBe(
+      "Every model slot needs a name.",
+    );
+
+    reviewer.modelSlots = [blankPrimaryModelSlot()];
+    reviewer.modelSlotId = reviewer.modelSlots[0]!.id;
+    reviewer.slug = "Reviewer";
+    expect(agentSaveError(draft, reviewer.id)).toMatch(
+      /lowercase letters and digits/,
+    );
+
+    reviewer.slug = draft.agents[0]!.slug;
+    expect(agentSaveError(draft, reviewer.id)).toMatch(
+      /Another agent in this configuration carries this slug/,
+    );
+  });
+
+  // The whole reason the two names are two fields. Nothing in a draft resolves a profile by
+  // reading its slug, so renaming one is an edit to a single string — and every reference
+  // that named the profile before still names it, because none of them ever held the name.
+  it("is the only thing a rename touches, and every reference still resolves", () => {
+    const draft = emptyDraft();
+    const root = draft.agents[0]!;
+    const reviewer = agentDraft(draft, "reviewer");
+    draft.agents.push(reviewer);
+
+    // The root's own slot is filled by a configuration slot rather than exposed on its
+    // own, so the rename has a mapping target in front of it as well.
+    root.modelSlots[0]!.passthrough = false;
+    draft.modelSlots = [
+      {
+        ...blankConfigSlot("author"),
+        targets: [{ agentId: root.id, slotId: root.modelSlots[0]!.id }],
+      },
+    ];
+    reviewer.subagents = [
+      { agentId: root.id, description: "to merge", scopes: ["implementer"] },
+    ];
+    reviewer.capabilities["project-management"] = {
+      ...reviewer.capabilities["project-management"]!,
+      enabled: true,
+      params: {
+        ...reviewer.capabilities["project-management"]!.params,
+        mergeAgentId: root.id,
+      },
+    };
+    // A machine's states name the profile each one runs inside the states param rather
+    // than as an `agent` param of their own, so they are the fourth kind of reference and
+    // are checked on their own terms.
+    const feature = agentDraft(draft, "feature");
+    feature.mode = "fsm";
+    feature.capabilities[FSM_CAP_ID] = {
+      ...feature.capabilities[FSM_CAP_ID]!,
+      enabled: true,
+      params: {
+        states: JSON.stringify([
+          { name: "build", agentId: root.id, transitions: [] },
+        ]),
+      },
+    };
+    draft.agents.push(feature);
+    expect(draftSaveError(draft)).toBeNull();
+
+    const renamed = renameAgentSlug(draft, root.id, "conductor");
+
+    // One string moved. The ids are what they were, so the profile the references name is
+    // the profile that was renamed.
+    expect(renamed.agents.map((a) => a.slug)).toEqual([
+      "conductor",
+      "reviewer",
+      "feature",
+    ]);
+    expect(renamed.agents.map((a) => a.id)).toEqual([
+      root.id,
+      reviewer.id,
+      feature.id,
+    ]);
+    expect(renamed.rootAgentId).toBe(root.id);
+    expect(renamed.agents[1]!.subagents.map((s) => s.agentId)).toEqual([
+      root.id,
+    ]);
+    expect(
+      renamed.agents[1]!.capabilities["project-management"]?.params
+        ?.mergeAgentId,
+    ).toBe(root.id);
+    expect(agentStates(renamed.agents[2]!)[0]!.agentId).toBe(root.id);
+    expect(renamed.modelSlots[0]!.targets).toEqual([
+      { agentId: root.id, slotId: root.modelSlots[0]!.id },
+    ]);
+    expect(draftSaveError(renamed)).toBeNull();
+
+    // …and the launch form, which is the one place a slug is read back out, follows it.
+    const back = capabilitySetFromDraft(renamed, null);
+    expect(back.agents[0]!.slug).toBe("conductor");
+    expect(back.agents[0]!.subagents).toBeUndefined();
+    expect(back.agents[1]!.subagents).toEqual([
+      { agentId: root.id, description: "to merge", scopes: ["implementer"] },
+    ]);
+  });
+
+  // Two profiles under one slug is a state the editor deliberately lets an operator reach —
+  // an import arrives under the saved agent's own slug and never renames itself to dodge a
+  // clash — so the pair has to stay two profiles the whole time it lasts. Everything below
+  // addresses one of them and leaves the other exactly as it was; a draft that resolved a
+  // profile by its slug could do none of it.
+  it("may be carried by two profiles at once, each still addressable on its own", () => {
+    const draft = emptyDraft();
+    const root = draft.agents[0]!;
+    const twin = agentDraft(draft, "reviewer");
+    const other = agentDraft(draft, "reviewer");
+    // Two distinct profiles the operator has not yet told apart, exactly as a second import
+    // of one saved agent arrives.
+    twin.slug = "reviewer";
+    other.slug = "reviewer";
+    draft.agents.push(twin, other);
+    expect(twin.id).not.toBe(other.id);
+    expect(draftSaveError(draft)).toMatch(/carry the same slug/);
+
+    // Renaming names a profile, not a slug: the twin's name moves and the other's does not,
+    // which is the edit that makes the configuration savable again.
+    const renamed = renameAgentSlug(draft, twin.id, "second-opinion");
+    expect(renamed.agents.map((a) => [a.id, a.slug])).toEqual([
+      [root.id, root.slug],
+      [twin.id, "second-opinion"],
+      [other.id, "reviewer"],
+    ]);
+    expect(draftSaveError(renamed)).toBeNull();
+
+    // The per-agent form tells them apart too: each is asked about by its own id, and only
+    // the one still sharing a slug with nobody comes back clean.
+    expect(agentSaveError(draft, twin.id)).toMatch(
+      /Another agent in this configuration carries this slug/,
+    );
+    expect(agentSaveError(renamed, twin.id)).toBeNull();
+    expect(agentSaveError(renamed, other.id)).toBeNull();
+
+    // And removing one removes that one. A removal keyed by the slug would take both, which
+    // is the collision's other half: the operator's way out is to delete the import they did
+    // not mean to make.
+    const without = {
+      ...draft,
+      agents: dropAgentReferences(
+        draft.agents.filter((a) => a.id !== twin.id),
+        twin.id,
+        root.id,
+      ),
+    };
+    expect(without.agents.map((a) => a.id)).toEqual([root.id, other.id]);
+    expect(draftSaveError(without)).toBeNull();
+  });
+
+  // A slug is a *seed* for a new profile and nothing more — the operator writes the real one
+  // — but the seed still has to be one the configuration can hold, or every added agent
+  // would open on a form that already refuses to save.
+  it("is seeded from the display name, made unique against the profiles already there", () => {
+    const draft = emptyDraft();
+    expect(draft.agents[0]!.slug).toBe(ROOT_PROFILE_ID);
+
+    const first = agentDraft(draft, "Second Opinion");
+    draft.agents.push(first);
+    expect(first.slug).toBe("second-opinion");
+
+    const second = agentDraft(draft, "Second Opinion");
+    draft.agents.push(second);
+    expect(second.slug).toBe("second-opinion-2");
+    expect(draftSaveError(draft)).toBeNull();
+
+    // A name with no ASCII to slug at all still has to produce something gg would accept,
+    // because the operator is being given a field to edit rather than an error to read.
+    const exotic = agentDraft(draft, "★");
+    expect(isValidAgentSlug(exotic.slug)).toBe(true);
+  });
+});
+
+// A profile's two names both reach the wire, and every reference on the wire holds the id —
+// which is what lets a *stored* configuration be reopened, renamed and saved again without a
+// reference having to be rewritten. A launch is what later resolves the ids away; until then
+// both halves have to survive a round-trip intact.
+describe("a profile's identity on the wire", () => {
+  it("writes both names on every profile and points every reference at the id", () => {
+    const draft = emptyDraft();
+    const root = draft.agents[0]!;
+    const reviewer = agentDraft(draft, "reviewer");
+    draft.agents.push(reviewer);
+    // A profile the operator has renamed away from its seeded slug, so a set that wrote the
+    // slug where the id belongs would be caught rather than reading the same either way.
+    reviewer.slug = "second-opinion";
+    root.subagents = [
+      {
+        agentId: reviewer.id,
+        description: "for reviews",
+        scopes: ["reviewer"],
+      },
+    ];
+    root.capabilities["project-management"] = {
+      ...root.capabilities["project-management"]!,
+      enabled: true,
+      params: {
+        ...root.capabilities["project-management"]!.params,
+        mergeAgentId: reviewer.id,
+      },
+    };
+    root.modelSlots[0]!.passthrough = false;
+    draft.modelSlots = [
+      {
+        ...blankConfigSlot("author"),
+        targets: [{ agentId: root.id, slotId: root.modelSlots[0]!.id }],
+      },
+    ];
+    expect(draftSaveError(draft)).toBeNull();
+
+    const set = capabilitySetFromDraft(draft, null);
+    expect(set.agents.map((a) => [a.id, a.slug])).toEqual([
+      [root.id, "root"],
+      [reviewer.id, "second-opinion"],
+    ]);
+    expect(set.agents[0]!.subagents?.[0]!.agentId).toBe(reviewer.id);
+    expect(
+      set.agents[0]!.capabilities.find((c) => c.id === "project-management")
+        ?.params?.mergeAgentId,
+    ).toBe(reviewer.id);
+    expect(set.modelSlots?.[0]!.targets).toEqual([
+      { agent: root.id, slot: "primary" },
+    ]);
+
+    // Back through the load path: both names survive, and so does every reference, because
+    // the id the draft works in is the id the contract carries.
+    const back = draftFromCapabilitySet(set);
+    expect(back.agents.map((a) => [a.id, a.slug])).toEqual([
+      [root.id, "root"],
+      [reviewer.id, "second-opinion"],
+    ]);
+    expect(back.rootAgentId).toBe(root.id);
+    expect(back.agents[0]!.subagents.map((s) => s.agentId)).toEqual([
+      reviewer.id,
+    ]);
+    expect(back.modelSlots[0]!.targets[0]!.agentId).toBe(root.id);
+    // Saved again, the second document says the same thing about identity as the first —
+    // which is the property a stored configuration reopened and re-saved depends on.
+    const again = capabilitySetFromDraft(back, null);
+    expect(again.agents.map((a) => [a.id, a.slug])).toEqual([
+      [root.id, "root"],
+      [reviewer.id, "second-opinion"],
+    ]);
+    expect(again.agents[0]!.subagents).toEqual(set.agents[0]!.subagents);
+    expect(again.modelSlots).toEqual(set.modelSlots);
+  });
+
+  // A set with no ids is a set a launch has already resolved. Opening one for reading is a
+  // legitimate thing to do — a run's recorded configuration is exactly this shape — so the
+  // load path mints an id per profile rather than leaving the draft's references with
+  // nothing to point at.
+  it("mints an internal id for a stored profile that carries none", () => {
+    const launched: GgCapabilitySet = {
+      agents: [
+        { slug: "root", name: ROOT_AGENT, capabilities: [], modelId: "mock/x" },
+        {
+          slug: "reviewer",
+          name: "Reviewer",
+          capabilities: [],
+          modelId: "mock/y",
+        },
+      ],
+    };
+    const draft = draftFromCapabilitySet(launched);
+    const ids = draft.agents.map((a) => a.id);
+    expect(ids.every(Boolean)).toBe(true);
+    expect(new Set(ids).size).toBe(2);
+    expect(draft.agents.map((a) => a.slug)).toEqual(["root", "reviewer"]);
+    expect(draft.rootAgentId).toBe(ids[0]);
+    expect(draftSaveError(draft)).toBeNull();
+  });
+});
+
+// A minimal agent draft for tests that push a second agent onto an existing draft. It
+// arrives declaring — and deferring to — its own passthrough `primary` slot, exactly as a
+// profile added in the form does, so a second agent asks for one more model at launch and
+// owes the configuration nothing. The draft it is joining is what its slug is minted
+// unique against, again exactly as the editor mints one.
 function agentDraft(draft: GgConfigDraft, name: string): GgAgentDraft {
   return {
-    ...blankAgentDraft(name, [], {}, draft.modelSlots[0]!.id, draft.agents),
+    ...blankAgentDraft(name, [], {}, draft.agents),
     subagents: [],
   };
 }
@@ -1533,6 +2258,17 @@ function deferredCompaction(): GgCapabilityConfig {
   };
 }
 
+// One agent pinning its own model and deferring only its compaction handoff — to a
+// `summarizer` slot of its own, passthrough unless the fixture says otherwise. The slot
+// belongs to the agent, so a profile carrying one of these into another configuration
+// carries the declaration its param names along with it.
+function summarizing(slot: Partial<GgModelSlot> = {}): GgAgentConfig {
+  return agent({
+    capabilities: [deferredCompaction()],
+    modelSlots: [{ name: "summarizer", passthrough: true, ...slot }],
+  });
+}
+
 // One agent's compaction params out of a wire set.
 function compactionParams(set: GgCapabilitySet): Record<string, unknown> {
   const capability = set.agents?.[0]?.capabilities?.find(
@@ -1544,43 +2280,42 @@ function compactionParams(set: GgCapabilitySet): Record<string, unknown> {
 describe("a model slot a capability param defers to", () => {
   it("is asked for at launch even though no agent binds it", () => {
     const configured = set({
-      agents: [agent({ capabilities: [deferredCompaction()] })],
-      modelSlots: [{ name: "summarizer", defaultModelId: "vendor/cheap" }],
+      agents: [summarizing({ defaultModelId: "vendor/cheap" })],
     });
     expect(launchModelSlots(configured)).toEqual([
-      { name: "summarizer", defaultModelId: "vendor/cheap" },
+      {
+        name: "root.summarizer",
+        defaultModelId: "vendor/cheap",
+        targets: [{ agent: "root", slot: "summarizer" }],
+      },
     ]);
   });
 
   it("is bound at launch into the param the run actually reads", () => {
-    const configured = set({
-      agents: [agent({ capabilities: [deferredCompaction()] })],
-      modelSlots: [{ name: "summarizer" }],
+    const configured = set({ agents: [summarizing()] });
+    const bound = bindModelSlots(configured, {
+      "root.summarizer": "vendor/cheap",
     });
-    const bound = bindModelSlots(configured, { summarizer: "vendor/cheap" });
     expect(compactionParams(bound)).toEqual({ model: "vendor/cheap" });
     // What runs is fully pinned: nothing is left deferring to a slot that no longer
-    // exists on the set.
+    // exists on the set, at either level of declaration.
     expect(bound.modelSlots).toBeUndefined();
+    expect(bound.agents[0]!.modelSlots).toBeUndefined();
   });
 
   it("binds to nothing rather than to an empty model id", () => {
     // A slot the launcher left blank is the documented "no handoff model" arm — gg
     // condenses on the agent's own model — not a model called "".
-    const configured = set({
-      agents: [agent({ capabilities: [deferredCompaction()] })],
-      modelSlots: [{ name: "summarizer" }],
-    });
+    const configured = set({ agents: [summarizing()] });
     expect(compactionParams(bindModelSlots(configured, {}))).toEqual({});
   });
 
   it("round-trips through the draft as a slot rather than a model id", () => {
-    const configured = set({
-      agents: [agent({ capabilities: [deferredCompaction()] })],
-      modelSlots: [{ name: "summarizer" }],
-    });
+    const configured = set({ agents: [summarizing()] });
     const draft = draftFromCapabilitySet(configured);
-    const slotId = draft.modelSlots.find((s) => s.name === "summarizer")?.id;
+    const slotId = draft.agents[0]!.modelSlots.find(
+      (s) => s.name === "summarizer",
+    )?.id;
     expect(slotId).toBeTruthy();
     expect(draft.agents[0]!.capabilities.compaction?.params?.modelSlot).toBe(
       slotId,
@@ -1596,27 +2331,26 @@ describe("a model slot a capability param defers to", () => {
     // by nothing but a capability param would otherwise be dropped on the first save,
     // silently turning a deferred model into an unbindable one.
     const configured = set({
-      agents: [agent({ capabilities: [deferredCompaction()] })],
-      modelSlots: [{ name: "summarizer", defaultModelId: "vendor/cheap" }],
+      agents: [summarizing({ defaultModelId: "vendor/cheap" })],
     });
     const saved = capabilitySetFromDraft(
       draftFromCapabilitySet(configured),
       null,
     );
-    expect(saved.modelSlots).toEqual([
-      { name: "summarizer", defaultModelId: "vendor/cheap" },
+    expect(saved.agents[0]!.modelSlots).toEqual([
+      { name: "summarizer", defaultModelId: "vendor/cheap", passthrough: true },
     ]);
   });
 
   it("survives a slot rename, which is what binding by identity buys", () => {
-    const configured = set({
-      agents: [agent({ capabilities: [deferredCompaction()] })],
-      modelSlots: [{ name: "summarizer" }],
-    });
+    const configured = set({ agents: [summarizing()] });
     const draft = draftFromCapabilitySet(configured);
     const renamed: GgConfigDraft = {
       ...draft,
-      modelSlots: draft.modelSlots.map((s) => ({ ...s, name: "critic" })),
+      agents: draft.agents.map((a) => ({
+        ...a,
+        modelSlots: a.modelSlots.map((s) => ({ ...s, name: "critic" })),
+      })),
     };
     expect(compactionParams(capabilitySetFromDraft(renamed, null))).toEqual({
       ...authoredParams("compaction"),
@@ -1640,7 +2374,9 @@ describe("a model slot a capability param defers to", () => {
       ],
     });
     expect(
-      compactionParams(bindModelSlots(configured, { summarizer: "vendor/x" })),
+      compactionParams(
+        bindModelSlots(configured, { "root.summarizer": "vendor/x" }),
+      ),
     ).toEqual({ model: "vendor/pinned" });
   });
 });
@@ -2047,9 +2783,10 @@ describe("a state machine", () => {
     const set = machineSet(LINEAR);
     set.agents![0]!.modelId = "";
     set.agents![0]!.modelSlot = "director";
-    set.modelSlots = [{ name: "director" }];
+    set.agents![0]!.modelSlots = [{ name: "director", passthrough: true }];
     const saved = capabilitySetFromDraft(draftFromCapabilitySet(set), null);
-    expect(saved.modelSlots ?? []).toEqual([]);
+    // Not written, so not asked for: a machine's binding is not a binding at all.
+    expect(saved.agents[0]!.modelSlots).toBeUndefined();
     expect(launchModelSlots(saved)).toEqual([]);
   });
 

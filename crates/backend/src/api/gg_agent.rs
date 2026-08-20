@@ -34,7 +34,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use test_cabinet_core::gg::{GgAgentConfig, GgModelSlot};
+use test_cabinet_core::gg::{GgAgentConfig, is_valid_agent_slug};
 
 use crate::auth::AuthUser;
 use crate::error::ApiError;
@@ -61,12 +61,9 @@ pub struct GgSavedAgent {
     /// note — not the caller-scoped description a roster entry carries, which says when
     /// *one particular* agent should put this one to work.
     pub description: String,
-    /// The profile itself, in exactly the form a configuration's agent list holds.
+    /// The profile itself, in exactly the form a configuration's agent list holds,
+    /// including the [model slots](GgAgentConfig::model_slots) its bindings defer to.
     pub agent: GgAgentConfig,
-    /// The model slots this agent's bindings defer to. Carried with the agent because a
-    /// binding names a slot the *configuration* declares: importing this agent into one
-    /// that does not declare a named slot declares it, with the default given here.
-    pub model_slots: Vec<GgModelSlot>,
     /// RFC 3339 of when the agent was last saved.
     pub updated_at: String,
 }
@@ -82,9 +79,6 @@ pub struct GgSavedAgentInput {
     pub description: String,
     /// The profile to save. Its `name` becomes the library entry's name.
     pub agent: GgAgentConfig,
-    /// The model slots this agent's bindings defer to.
-    #[serde(default)]
-    pub model_slots: Vec<GgModelSlot>,
 }
 
 /// `GET /gg/agents` — every saved agent the token account owns, by name.
@@ -176,6 +170,14 @@ pub(crate) fn agent_from_input(
         )));
     }
     agent.name = name.clone();
+    let slug = agent.slug.trim().to_string();
+    if !is_valid_agent_slug(&slug) {
+        return Err(ApiError::bad_request(
+            "a gg agent needs a slug of lowercase letters and digits in groups separated by \
+             single hyphens; the model is shown this name and passes it back",
+        ));
+    }
+    agent.slug = slug;
     let description = input.description.trim().to_string();
     if description.chars().count() > MAX_DESCRIPTION_LEN {
         return Err(ApiError::bad_request(format!(
@@ -187,7 +189,6 @@ pub(crate) fn agent_from_input(
         name,
         description,
         agent,
-        model_slots: input.model_slots,
         updated_at: updated_at.to_string(),
     })
 }

@@ -1,8 +1,9 @@
 // **Dashboards** — the boards list, and the editor that makes one.
 //
 // The built-in overview sits at the top, read-only, exactly as the built-in gg
-// configurations sit above the saved ones on the account's gg tab: shared, not editable
-// in place, and duplicated into an account's own board when someone wants to change it.
+// configurations sit above the saved ones on the account's gg Configs tab: shared,
+// not editable in place, and duplicated into an account's own board when someone
+// wants to change it.
 // It is defined as ordinary query text (`overviewDashboard.ts`) and rendered by the same
 // view page a saved board is, so it cannot silently rot the way a hardcoded breakdown did.
 //

@@ -4,7 +4,6 @@ import type {
   GgCapabilityConfig,
   GgCapabilitySet,
   GgConfig,
-  GgModelSlot,
   GgSavedAgent,
   GgSubagentRef,
 } from "@test-cabinet/run-record/gg";
@@ -15,12 +14,9 @@ import {
   RESPONSES_AS_CODE_CAP_ID,
 } from "./ggCatalog";
 import {
-  MODEL_PARAMS,
   agentDraftFromConfig,
-  blankModelSlot,
-  capabilitySetFromDraft,
+  mintAgentKey,
   draftFromCapabilitySet,
-  mintAgentId,
   resolveAgentReferences,
   seedAgentParams,
   wireAgentFromDraft,
@@ -58,7 +54,9 @@ export interface AgentOverrideField {
 
 /** The whole-agent fields, in the order the editor lists them. */
 export const AGENT_OVERRIDE_FIELDS: ReadonlyArray<AgentOverrideField> = [
+  { path: "slug", label: "Slug" },
   { path: "model", label: "Model binding" },
+  { path: "modelSlots", label: "Model slots" },
   { path: "tools", label: "Tool allowlist" },
   { path: "operations", label: "API allowlist" },
   { path: "customInstructions", label: "Custom instructions" },
@@ -213,7 +211,8 @@ export function agentBasisAs(
   base: GgAgentConfig,
   profileId: string,
 ): GgAgentConfig {
-  return repointAgentReferences({ ...base, id: profileId }, base.id, profileId);
+  const from = base.id ?? base.slug;
+  return repointAgentReferences({ ...base, id: profileId }, from, profileId);
 }
 
 /**
@@ -223,17 +222,18 @@ export function agentBasisAs(
  * The comparison is by value, so editing a field back to what the saved agent says drops
  * the override rather than freezing the old value under a new name.
  *
- * Neither half of the profile's identity is compared. The basis is taken under this
- * profile's own id, so the id cannot differ; the display name is the configuration's own
- * text and is not a field of the overlay at all. A profile follows a saved agent's
- * configuration, never its identity.
+ * The slug is compared, because a configuration that renamed an imported profile to clear
+ * a collision has to keep that name while following the saved agent in everything else.
+ * The display name is the configuration's own text and is not a field of the overlay at
+ * all.
  */
 export function agentOverrides(
   base: GgAgentConfig,
   agent: GgAgentConfig,
 ): string[] {
-  const basis = agentBasisAs(base, agent.id);
+  const basis = agentBasisAs(base, agent.id ?? agent.slug);
   const out: string[] = [];
+  if (base.slug !== agent.slug) out.push("slug");
   if (
     stable({ modelId: basis.modelId, modelSlot: basis.modelSlot }) !==
     stable({ modelId: agent.modelId, modelSlot: agent.modelSlot })
@@ -241,7 +241,7 @@ export function agentOverrides(
     out.push("model");
   }
   for (const field of AGENT_OVERRIDE_FIELDS) {
-    if (field.path === "model") continue;
+    if (field.path === "model" || field.path === "slug") continue;
     const key = field.path as keyof GgAgentConfig;
     if (
       stable(comparable(field.path, basis[key])) !==
@@ -266,27 +266,35 @@ export function agentOverrides(
  * run actually carries.
  *
  * `stored` is the configuration's own resolved copy, which is where an overridden field
- * is read from. Both halves of its identity always win: the id because everything else in
- * the set names this profile by it, and the display name because it is the
- * configuration's own text rather than anything the saved agent lends it.
+ * is read from. The display name always wins from it, because it is the configuration's
+ * own text rather than anything the saved agent lends it.
+ *
+ * The slug is a field like any other: it follows the saved agent unless this configuration
+ * pinned it, which is what makes a slug collision something a launch can discover after the
+ * configuration was stored. Whichever slug wins, the profile's references to itself are
+ * carried onto it.
  */
 export function mergeAgentConfig(
   base: GgAgentConfig,
   stored: GgAgentConfig,
   overrides: ReadonlyArray<string>,
 ): GgAgentConfig {
+  const pinned = new Set(overrides);
   const merged: GgAgentConfig = {
-    ...agentBasisAs(base, stored.id),
+    // The profile's internal id is the configuration's own and is never the saved agent's:
+    // this is *this* configuration's profile, whichever library entry it follows.
+    ...agentBasisAs(base, stored.id ?? stored.slug),
+    slug: pinned.has("slug") ? stored.slug : base.slug,
     name: stored.name,
   };
-  const pinned = new Set(overrides);
   if (pinned.has("model")) {
     merged.modelId = stored.modelId;
     if (stored.modelSlot === undefined) delete merged.modelSlot;
     else merged.modelSlot = stored.modelSlot;
   }
   for (const field of AGENT_OVERRIDE_FIELDS) {
-    if (field.path === "model" || !pinned.has(field.path)) continue;
+    if (field.path === "model" || field.path === "slug") continue;
+    if (!pinned.has(field.path)) continue;
     const key = field.path as keyof GgAgentConfig;
     const value = stored[key];
     if (value === undefined) delete merged[key];
@@ -334,44 +342,16 @@ export function resolveCapabilitySet(
   );
   const savedById = new Map(library.map((saved) => [saved.id, saved] as const));
   if (!sources.size) return config.capabilitySet;
-  const declared = [...(config.capabilitySet.modelSlots ?? [])];
   const agents = (config.capabilitySet.agents ?? []).map((stored) => {
-    const source = sources.get(stored.id);
+    // The link is keyed by the profile's internal id, which is minted once and never
+    // rewritten — so a saved agent renamed since this configuration was stored is still
+    // followed, and a slug two profiles now share still resolves to exactly one of them.
+    const source = stored.id ? sources.get(stored.id) : undefined;
     const saved = source ? savedById.get(source.agentId) : undefined;
     if (!source || !saved) return stored;
-    const merged = mergeAgentConfig(saved.agent, stored, source.overrides);
-    // A binding the saved agent brought with it may name a slot this configuration
-    // never declared. Declare it — with the default recorded in the library — so the
-    // launch form asks for it rather than leaving the agent bound to nothing.
-    for (const name of deferredSlotNames(merged)) {
-      if (declared.some((slot) => slot.name === name)) continue;
-      const fromLibrary = saved.modelSlots.find((slot) => slot.name === name);
-      declared.push({
-        name,
-        ...(fromLibrary?.defaultModelId
-          ? { defaultModelId: fromLibrary.defaultModelId }
-          : {}),
-      });
-    }
-    return merged;
+    return mergeAgentConfig(saved.agent, stored, source.overrides);
   });
-  return {
-    ...config.capabilitySet,
-    agents,
-    ...(declared.length ? { modelSlots: declared } : {}),
-  };
-}
-
-/** The model slots one agent's bindings defer to, its own and its `model` params'. */
-function deferredSlotNames(agent: GgAgentConfig): string[] {
-  const names = new Set<string>();
-  const own = agent.modelSlot?.trim();
-  if (own) names.add(own);
-  for (const { capId, slotKey } of MODEL_PARAMS) {
-    const value = capabilityConfig(agent, capId)?.params?.[slotKey];
-    if (typeof value === "string" && value.trim()) names.add(value.trim());
-  }
-  return [...names];
+  return { ...config.capabilitySet, agents };
 }
 
 /**
@@ -402,7 +382,6 @@ export function attachAgentSources(
           agentId: saved.id,
           name: saved.name,
           base: saved.agent,
-          modelSlots: saved.modelSlots,
         },
       };
     }),
@@ -420,7 +399,7 @@ export function agentSourcesFromDraft(draft: GgConfigDraft): GgAgentSource[] {
     const base = agent.source?.base;
     if (!agent.source || !base) return [];
     const wire = wireAgentFromDraft(draft, agent.id);
-    if (!wire) return [];
+    if (!wire?.id) return [];
     return [
       {
         profileId: wire.id,
@@ -450,7 +429,7 @@ export function draftAgentOverrides(
  * Cosmetic, and only that. Names are display text: two profiles may carry one name without
  * a single reference in the configuration becoming ambiguous, so an import no longer has to
  * uniquify anything to be *correct* — what has to be unique is the profile's
- * [id](mintAgentId), which is minted separately. A list of three profiles all reading
+ * [slug](GgAgentDraft.slug), which is its own field. A list of three profiles all reading
  * "Reviewer" is simply a list an operator cannot work in, and this is what spares them it.
  */
 function unusedName(
@@ -466,40 +445,20 @@ function unusedName(
 
 /**
  * Place a profile built from `base` into the draft as the profile `profileId`, displayed
- * as `name`, declaring any model slot it defers to and the configuration does not already
- * have.
+ * as `name`, carrying the model slots it declares.
  *
  * Both halves of an import land here: adding a saved agent, and reverting one that has
- * drifted. Each is the same act — take the saved agent as it stands and make it a
- * profile of this configuration — so both go through one path and neither can declare a
- * slot the other would have missed. They differ only in the id they pass: an addition
- * mints a fresh one, a revert passes the profile's own back, because a profile's id is
- * never rewritten for as long as the profile exists — its params, its machine's states
- * and every other profile's roster entry all resolve through it.
+ * drifted. Each is the same act — take the saved agent as it stands and make it a profile
+ * of this configuration — so both go through one path.
  */
 function placeAgent(
   draft: GgConfigDraft,
   base: GgAgentConfig,
   profileId: string,
   name: string,
-  librarySlots: ReadonlyArray<GgModelSlot>,
 ): { draft: GgConfigDraft; agent: GgAgentDraft } {
   const rebased = { ...agentBasisAs(base, profileId), name };
-
-  const modelSlots = [...draft.modelSlots];
-  for (const slotName of deferredSlotNames(rebased)) {
-    if (modelSlots.some((slot) => slot.name.trim() === slotName)) continue;
-    const fromLibrary = librarySlots.find((slot) => slot.name === slotName);
-    modelSlots.push({
-      ...blankModelSlot(slotName),
-      defaultModelId: fromLibrary?.defaultModelId ?? "",
-    });
-  }
-  const slotIdByName = new Map(
-    modelSlots.map((slot) => [slot.name.trim(), slot.id] as const),
-  );
-
-  const built = agentDraftFromConfig(rebased, slotIdByName);
+  const built = agentDraftFromConfig(rebased);
   // The roster is resolved against the ids the configuration declares *with this profile
   // in it*, because a saved agent's roster names itself — and an entry naming a profile
   // the set does not declare is dropped.
@@ -511,7 +470,6 @@ function placeAgent(
   return {
     draft: {
       ...draft,
-      modelSlots,
       agents: [...draft.agents, agent],
       rootAgentId: draft.rootAgentId || agent.id,
     },
@@ -520,42 +478,40 @@ function placeAgent(
 }
 
 /**
- * The draft with a saved agent imported into it, and the id of the profile it became.
+ * The draft with a saved agent imported into it, and the slug of the profile it became.
  *
- * The import arrives whole: it is minted a profile id of its own, its self-references are
- * carried onto that id, and the configuration declares any model slot it defers to. The
- * id is new because a library entry and the profile a configuration imports it as are two
- * different profiles — importing one saved agent twice has to yield two profiles the set
- * can tell apart, and a run can account for separately. It becomes the root only when the
- * configuration had no agents at all.
+ * The import arrives whole, under the saved agent's own slug and with the model slots its
+ * bindings defer to. A slug is unique within a configuration, so importing an agent whose
+ * slug another profile already carries leaves the draft unsaveable until the operator
+ * renames one of the two, which the save gate says in as many words. Nothing is uniquified
+ * here: a silently renamed import is a profile the operator's other configurations, and the
+ * model's own roster, no longer agree on. It becomes the root only when the configuration
+ * had no agents at all.
  */
 export function importSavedAgent(
   draft: GgConfigDraft,
   saved: GgSavedAgent,
 ): { draft: GgConfigDraft; agentId: string } {
-  // Minted from the saved profile's own id, which is already the readable slug the model
-  // is shown, so an import of `reviewer` into a configuration that has one arrives as
-  // `reviewer-2` rather than as something opaque.
-  const profileId = mintAgentId(saved.agent.id, draft.agents);
+  // A profile of this configuration, not the library's: it is minted an id of its own, so
+  // importing one saved agent twice yields two profiles the configuration tells apart.
+  const profileId = mintAgentKey();
   const name = unusedName(draft.agents, saved.agent.name.trim());
-  const placed = placeAgent(
-    draft,
-    saved.agent,
-    profileId,
-    name,
-    saved.modelSlots,
-  );
+  const placed = placeAgent(draft, saved.agent, profileId, name);
   const source = {
     agentId: saved.id,
     name: saved.name,
     base: saved.agent,
-    modelSlots: saved.modelSlots,
   };
   return {
     draft: {
       ...placed.draft,
-      agents: placed.draft.agents.map((a) =>
-        a.id === placed.agent.id ? { ...a, source } : a,
+      // The row [placeAgent] appended, addressed by its **position**. Keying this by the
+      // profile's slug would attach the link to every profile carrying it — and carrying
+      // one is exactly the collision an import is allowed to land in, so a configuration's
+      // own inline profile would come out following a saved agent nobody pointed it at,
+      // and go on doing so after the import beside it was removed.
+      agents: placed.draft.agents.map((a, i) =>
+        i === placed.draft.agents.length - 1 ? { ...a, source } : a,
       ),
     },
     agentId: placed.agent.id,
@@ -584,7 +540,7 @@ export function revertImportedAgent(
     ...draft,
     agents: draft.agents.filter((a) => a.id !== agentId),
   };
-  const placed = placeAgent(without, base, agent.id, name, source.modelSlots);
+  const placed = placeAgent(without, base, agent.id, name);
   const rebuilt = { ...placed.agent, source };
   const others = placed.draft.agents.slice(0, -1);
   return {
@@ -595,9 +551,7 @@ export function revertImportedAgent(
 }
 
 /**
- * One of a configuration's profiles as the library would store it: the profile itself,
- * and the model slots its bindings defer to, with the defaults this configuration gave
- * them.
+ * One of a configuration's profiles as the library would store it, model slots and all.
  *
  * This is what Save to library writes, and it is the same shape the standalone editor
  * produces — so a profile written to the library from a configuration comes back as an
@@ -606,45 +560,23 @@ export function revertImportedAgent(
 export function savedAgentFromProfile(
   draft: GgConfigDraft,
   agentId: string,
-): { agent: GgAgentConfig; modelSlots: GgModelSlot[] } | null {
-  const wire = wireAgentFromDraft(draft, agentId);
-  if (!wire) return null;
-  const wanted = new Set(deferredSlotNames(wire));
-  return {
-    agent: wire,
-    modelSlots: draft.modelSlots
-      .filter((slot) => wanted.has(slot.name.trim()))
-      .map((slot) => ({
-        name: slot.name.trim(),
-        ...(slot.defaultModelId.trim()
-          ? { defaultModelId: slot.defaultModelId.trim() }
-          : {}),
-      })),
-  };
+): GgAgentConfig | null {
+  return wireAgentFromDraft(draft, agentId);
 }
 
 /**
  * A saved agent opened as a one-agent configuration draft, which is what the standalone
- * editor mounts: the same per-agent form a configuration opens, over a draft holding
- * that agent and the slots it defers to.
+ * editor mounts: the same per-agent form a configuration opens, over a draft holding that
+ * agent and the slots it declares.
  */
 export function draftFromSavedAgent(saved: GgSavedAgent): GgConfigDraft {
-  return draftFromCapabilitySet({
-    agents: [saved.agent],
-    ...(saved.modelSlots.length ? { modelSlots: saved.modelSlots } : {}),
-  });
+  return draftFromCapabilitySet({ agents: [saved.agent] });
 }
 
-/**
- * A one-agent draft as the library stores it. Only the slots the agent actually defers
- * to are kept, exactly as a configuration keeps only the slots something in it binds.
- */
-export function savedAgentFromDraft(draft: GgConfigDraft): {
-  agent: GgAgentConfig;
-  modelSlots: GgModelSlot[];
-} | null {
-  const set = capabilitySetFromDraft(draft, null);
-  const agent = set.agents?.[0];
-  if (!agent) return null;
-  return { agent, modelSlots: set.modelSlots ?? [] };
+/** A one-agent draft as the library stores it. */
+export function savedAgentFromDraft(
+  draft: GgConfigDraft,
+): GgAgentConfig | null {
+  const agent = draft.agents[0];
+  return agent ? savedAgentFromProfile(draft, agent.id) : null;
 }

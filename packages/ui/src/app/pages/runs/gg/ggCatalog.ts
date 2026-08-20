@@ -46,32 +46,34 @@ export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
 // no profile id, and the Root is the working guess until it does. Null before gg announces
 // the configuration at all.
 //
-// Resolution is by [id](GgAgentConfig::id) and only by id, mirroring
-// `GgCapabilitySet::agent`: two profiles may carry one name, so a lookup by name would
-// silently merge them into whichever came first.
+// Resolution is by [slug](GgAgentConfig.slug) and only by slug, mirroring
+// `GgCapabilitySet::agent`. Every set reaching these surfaces is a *recorded* one, whose
+// internal ids the launch resolved away, and every telemetry row names a profile by its
+// slug. Two profiles may carry one display name, so a lookup by name would silently merge
+// them into whichever came first.
 export function agentProfile(
   set: GgCapabilitySet | null,
   agentId: string | null | undefined,
 ): GgAgentConfig | null {
   if (!set?.agents?.length) return null;
   return (
-    (agentId ? set.agents.find((a) => a.id === agentId) : undefined) ??
+    (agentId ? set.agents.find((a) => a.slug === agentId) : undefined) ??
     set.agents[0]!
   );
 }
 
-// One profile's display name, or the id itself where the run declares no such profile — a
-// dangling reference reads as the id it failed to resolve rather than as nothing. Mirrors
+// One profile's display name, or the slug itself where the run declares no such profile — a
+// dangling reference reads as the slug it failed to resolve rather than as nothing. Mirrors
 // `GgCapabilitySet::agent_name`.
 //
-// The single place a profile id becomes prose. For prose only: names may repeat, so a
-// surface that has to name a profile unambiguously names its id (and one that lists
+// The single place a profile slug becomes prose. For prose only: names may repeat, so a
+// surface that has to name a profile unambiguously names its slug (and one that lists
 // profiles side by side shows both).
 export function agentProfileName(
   set: GgCapabilitySet | null,
   agentId: string,
 ): string {
-  return set?.agents?.find((a) => a.id === agentId)?.name ?? agentId;
+  return set?.agents?.find((a) => a.slug === agentId)?.name ?? agentId;
 }
 
 // Whether the profile with `agentId` has the capability on — the per-agent question, and

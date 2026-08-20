@@ -4,52 +4,46 @@ import type { GgSavedAgentInput } from "@test-cabinet/run-record/gg";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
-import { ModelCombobox } from "../../components/ModelCombobox";
 import { BackChevron } from "../../components/BackChevron";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import { routes } from "../../routes";
-import { familyOf } from "../../data/families";
 import { GgAgentEditor } from "../runs/gg/GgAgentEditor";
-import { HelpTip } from "../runs/gg/GgCapabilityFields";
 import {
   draftFromSavedAgent,
   savedAgentFromDraft,
 } from "../runs/gg/ggAgentLibrary";
 import {
   blankAgentDraft,
-  blankModelSlot,
-  blankPrimaryModelSlot,
   draftSaveError,
-  referencedModelSlots,
+  renameAgentSlug,
   resetAgentForMode,
   seedAgentParams,
   seededRunLimits,
   type GgConfigDraft,
-  type GgModelSlotDraft,
 } from "../runs/gg/ggConfigDraft";
 import exec from "../runs/RunExec.module.scss";
-import gg from "../runs/gg/GgConfigEditor.module.scss";
 import styles from "./Coverage.module.scss";
 
-// gg reaches every model through OpenRouter, so a slot's default must name the model's
-// OpenRouter slug. Scoping the picker to this family commits the right alias.
-const GG_MODEL_FAMILY = familyOf("gg");
-
-/** A blank saved agent: one profile, deferred to a freshly declared `primary` slot. */
+/**
+ * A blank saved agent: one profile declaring and deferring to its own passthrough
+ * `primary` slot.
+ */
 function emptyAgentDraft(): GgConfigDraft {
-  const slot = blankPrimaryModelSlot();
   // Its `agent` params point at itself, which is the only profile a library entry can
-  // name. An importing configuration carries those references onto the name the profile
-  // arrives under, so seeding them here is also what keeps a fresh import from reading
-  // as a configuration that has already pinned something.
-  const blank = { ...blankAgentDraft(), modelSlotId: slot.id };
+  // name. An importing configuration mints the profile an internal id of its own and
+  // carries those references onto it, so seeding them here is also what keeps a fresh
+  // import from reading as a configuration that has already pinned something.
+  const blank = blankAgentDraft();
   const agent = seedAgentParams(blank, blank.id);
   return {
     agents: [agent],
     rootAgentId: agent.id,
-    modelSlots: [slot],
+    // A saved agent declares no configuration slots: what it carries are the agent slots
+    // its own bindings defer to, and the configuration that imports it decides how each
+    // one reaches the launch form.
+    modelSlots: [],
     // A saved agent is one profile, so the run-level halves of a configuration — its
     // ceilings and its session hooks — are not its to carry. They stay at their seeded
     // values and are never read back out.
@@ -171,30 +165,6 @@ export function GgAgentEditPage() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  function updateModelSlot(slotId: string, patch: Partial<GgModelSlotDraft>) {
-    setDraft((current) => ({
-      ...current,
-      modelSlots: current.modelSlots.map((s) =>
-        s.id === slotId ? { ...s, ...patch } : s,
-      ),
-    }));
-  }
-  function addModelSlot() {
-    setDraft((current) => ({
-      ...current,
-      modelSlots: [...current.modelSlots, blankModelSlot()],
-    }));
-  }
-  function removeModelSlot(slotId: string) {
-    setDraft((current) => ({
-      ...current,
-      modelSlots: current.modelSlots.filter((s) => s.id !== slotId),
-      agents: current.agents.map((a) =>
-        a.modelSlotId === slotId ? { ...a, modelSlotId: "" } : a,
-      ),
-    }));
-  }
-
   async function onSave() {
     if (!token || !savable) return;
     // Committing winds back what the types this agent was not saved under were
@@ -207,8 +177,7 @@ export function GgAgentEditPage() {
     if (!body) return;
     const input: GgSavedAgentInput = {
       description: description.trim(),
-      agent: body.agent,
-      modelSlots: body.modelSlots,
+      agent: body,
     };
     setBusy(true);
     setError(null);
@@ -271,8 +240,6 @@ export function GgAgentEditPage() {
     );
   }
 
-  const referenced = referencedModelSlots(draft);
-
   return (
     <PageLayout>
       {header}
@@ -296,72 +263,6 @@ export function GgAgentEditPage() {
             </label>
           </div>
 
-          {/* The slots this agent's bindings defer to. Named here rather than pinned,
-              because which model runs an agent is settled by the configuration that
-              imports it and the launch that fills its slot. */}
-          <section className={gg.limitsWidget}>
-            <p className={exec.sectionLabel}>
-              Model slots
-              <HelpTip text="The launch-time model parameters this agent's bindings defer to. A configuration importing this agent declares any of these it does not already have, taking the default given here." />
-            </p>
-            <div className={gg.slotList}>
-              {draft.modelSlots.map((slot) => (
-                <div key={slot.id} className={gg.slotBlock}>
-                  <div className={gg.slotFields}>
-                    <label className={`${exec.field} ${gg.slotNameField}`}>
-                      <span className={exec.fieldLabel}>Slot name</span>
-                      <input
-                        className={exec.input}
-                        type="text"
-                        value={slot.name}
-                        placeholder="e.g. primary"
-                        onChange={(e) =>
-                          updateModelSlot(slot.id, { name: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label className={`${exec.field} ${gg.slotModelField}`}>
-                      <span className={exec.fieldLabel}>
-                        Default model (optional)
-                      </span>
-                      <ModelCombobox
-                        value={slot.defaultModelId}
-                        onChange={(v) =>
-                          updateModelSlot(slot.id, { defaultModelId: v })
-                        }
-                        models={models}
-                        harnessFamily={GG_MODEL_FAMILY}
-                        inputClassName={exec.input}
-                        placeholder="left to the launcher"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className={gg.slotRemove}
-                      onClick={() => removeModelSlot(slot.id)}
-                      aria-label={`Remove the ${slot.name || "unnamed"} model slot`}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  {!referenced.has(slot.id) && (
-                    <p className={gg.fieldError}>
-                      This agent binds nothing to this slot, so it is dropped
-                      when the agent is saved.
-                    </p>
-                  )}
-                </div>
-              ))}
-              <button
-                type="button"
-                className={exec.secondary}
-                onClick={addModelSlot}
-              >
-                + Add model slot
-              </button>
-            </div>
-          </section>
-
           <GgAgentEditor
             config={draft}
             agent={agent}
@@ -372,6 +273,12 @@ export function GgAgentEditPage() {
                   a.id === agent.id ? { ...a, ...patch } : a,
                 ),
               }))
+            }
+            onRenameSlug={(slug) =>
+              // The one profile a library entry holds, which keeps the internal id it was
+              // authored under — a saved agent is a single profile, so the id names it
+              // whatever the operator types into the slug beside it.
+              setDraft((current) => renameAgentSlug(current, agent.id, slug))
             }
             models={models}
             readOnly={false}

@@ -22,12 +22,12 @@ fn refusal(set: &GgCapabilitySet) -> Result<(), String> {
         .join("\n"))
 }
 
-/// An ordinary (non-shell) agent profile with the given [id](GgAgentConfig::id), bound to the mock
+/// An ordinary (non-shell) agent profile with the given [slug](GgAgentConfig::slug), bound to the mock
 /// model. Its display name is deliberately not its id: nothing a machine reads resolves a profile
 /// by name.
 fn agent(id: &str) -> GgAgentConfig {
     GgAgentConfig {
-        id: id.to_string(),
+        slug: id.to_string(),
         name: format!("The {id} agent"),
         model_id: "mock/echo".to_string(),
         ..GgAgentConfig::root()
@@ -43,7 +43,7 @@ fn fsm_capability(states: Value) -> GgCapabilityConfig {
 }
 
 /// A capability set whose root is an FSM shell driving `states`, plus one ordinary profile per
-/// [id](GgAgentConfig::id) in `agents`.
+/// [slug](GgAgentConfig::slug) in `agents`.
 fn machine_set(states: Value, agents: &[&str]) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/echo");
     // A **bare** shell: the machine and nothing else — no model binding, no other capability. This
@@ -288,7 +288,7 @@ fn a_transfer_the_outgoing_state_could_not_make_is_refused() {
     let explorer = set
         .agents
         .iter_mut()
-        .find(|agent| agent.id == "explorer")
+        .find(|agent| agent.slug == "explorer")
         .unwrap();
     explorer
         .capabilities
@@ -319,7 +319,7 @@ fn a_transfer_of_the_runs_board_is_accepted_from_any_state() {
     let builder = set
         .agents
         .iter_mut()
-        .find(|agent| agent.id == "builder")
+        .find(|agent| agent.slug == "builder")
         .unwrap();
     crate::tools::grant_configured(
         builder,
@@ -446,11 +446,12 @@ fn a_shell_declaring_a_workers_configuration_is_refused_part_by_part() {
 fn a_dispatch_onto_a_shell_resolves_the_entry_states_agent() {
     let set = machine_set(two_state(), &["explorer", "builder"]);
     assert_eq!(
-        set.dispatched_agent(ROOT_PROFILE_ID).map(|a| a.id.as_str()),
+        set.dispatched_agent(ROOT_PROFILE_ID)
+            .map(|a| a.slug.as_str()),
         Ok("explorer")
     );
     assert_eq!(
-        set.dispatched_agent("builder").map(|a| a.id.as_str()),
+        set.dispatched_agent("builder").map(|a| a.slug.as_str()),
         Ok("builder")
     );
 }

@@ -14,9 +14,9 @@ account-scoped tooling, rather than being reassembled inside every launch form.
 
 ## Registering one
 
-Account → gg lists the configurations on the signed-in account, in a tab beside
-the account's saved agents. Every configuration an operator can pick is one that
-account wrote.
+Account → gg Configs lists the configurations on the signed-in account, in a tab
+beside gg Agents. Every configuration an operator can pick is one that account
+wrote.
 
 Creating or editing one opens the capability-set editor, which is organized into
 three tabs:
@@ -24,7 +24,8 @@ three tabs:
 - Configuration — the configuration's name and one-line purpose, the [run
   limits](#run-limits) every agent runs under, and the run's own [session
   hooks](/gg/hooks/).
-- Slots — the [model slots](#model-slots) it asks for at launch.
+- Slots — the [configuration slots](#configuration-slots) it asks for at launch
+  and the agent slots each one fills.
 - Agents — its [agent profiles](#agents). The capabilities themselves live in
   here, since in gg they are per agent.
 
@@ -82,8 +83,8 @@ root, which passes the flag to whatever is left. A configuration must have at
 least one agent to be saved.
 
 Opening an agent switches the editor into that profile's own view, itself
-organized into tabs: Agent, then whichever of Tools, APIs, Roster, Hooks and
-States the profile's type has. That view is saved or discarded on its own. Save
+organized into tabs: Agent, then whichever of Tools, APIs, Slots, Roster, Hooks
+and States the profile's type has. That view is saved or discarded on its own. Save
 agent returns to the configuration keeping the edits, Cancel returns discarding
 them, and the back chevron beside the title does the same as Cancel but asks
 first if there is anything to lose. The configuration itself is written to the
@@ -95,9 +96,9 @@ Each profile carries:
   what the rest of the form offers;
 - its own enabled capabilities, their implementations and params, and the
   [calls it is granted](#granting-calls) out of them;
-- one model, either pinned outright or deferred to a declared [model
-  slot](#model-slots), and the [prompt-cache lifetime](#prompt-cache-lifetime)
-  its requests ask for;
+- its own [model slots](#agent-slots), and one model either pinned outright or
+  deferred to one of them, with the
+  [prompt-cache lifetime](#prompt-cache-lifetime) its requests ask for;
 - optional custom instructions, operator prose inserted into the agent's [system
   prompt](/gg/prompts/), and a complete system-prompt template override for full
   control (the editor seeds the override with gg's built-in template, so the
@@ -118,10 +119,10 @@ an agent with no [subagents](/gg/subagents/) capability still uses its roster to
 staff issues. An entry naming no scope permits nothing at all and refuses the
 launch — gg grants none of the three on an operator's behalf, and the editor
 removes a roster row by clearing its last scope rather than saving one that can
-be used for nothing. Every such call names its target by its [id](#identity),
-and gg refuses one the roster does not list in the right scope. A profile may list
-itself, which allows recursion. The `subagent` scope is also the allowlist
-[`exec`](/gg/fork-and-exec/) is checked against.
+be used for nothing. Every such call names its target by its
+[slug](#identity), and gg refuses one the roster does not list in the right
+scope. A profile may list itself, which allows recursion. The `subagent` scope is
+also the allowlist [`exec`](/gg/fork-and-exec/) is checked against.
 
 Two capabilities backed by a [module](/gg/modules/), project management and
 agent-managed context, carry an `ownership` param deciding whether the agent's
@@ -131,27 +132,39 @@ prompt.
 
 ### Identity
 
-Every agent profile carries a stable id, minted when the profile is created and
-never changed afterwards. Everything that names a profile names its id: a roster
-entry, a machine's state, the merge agent, an
-[issue](/gg/project-management/)'s implementer and reviewers, a run's telemetry
-and its per-agent accounting, a configuration's link to a
-[saved agent](/gg/agents/), and the `agent` argument the model passes to
-`spawn_subagent`, `exec` and `create_issue`.
+An agent profile carries three names, and each answers a different question.
 
-A profile's name is display text. An operator renames a profile freely, and two
-profiles may carry the same name, because nothing resolves a reference by reading
-one.
+Its **id** is internal. It is minted when the profile is created, is never
+rewritten, and is shown to nobody: it is opaque text whose only job is to be the
+same text tomorrow. Everything inside the configuration that points at a profile
+points at its id — a roster entry, a machine's state, the merge agent, a
+[configuration slot](#configuration-slots)'s target, and a configuration's link
+to the [saved agent](/gg/agents/) a profile follows. That is what makes renaming
+free and importing safe: no reference breaks because a name changed, and two
+profiles that have landed on one slug are still two profiles the editor can tell
+apart while an operator separates them.
 
-That is also why the model names a profile by id: two agents called `reviewer`
-are one thing a brief cannot pick between. Ids are minted **readable** for it —
-a slug from the profile's first name, `reviewer` or `reviewer-2`, left alone
-after that — so a roster in a prompt reads as prose while still naming exactly
-one profile. A roster line carries the id the model copies, the profile's current
-name, and the caller's guidance for using it.
+Its **slug** is the name the model reads. It is written by the operator, unique
+within the configuration, and made of lowercase letters and digits in groups
+separated by single hyphens. A roster in a prompt names slugs, and the slug is
+what the model passes back as the `agent` argument of `spawn_subagent`, `exec`
+and `create_issue`. A run's telemetry, its
+[session record](/gg/analysis/session-records/) and the
+[query language](/gg/analysis/query-language/) name a profile by its slug too, so
+what an operator writes is what they later slice by.
 
-A launch is refused when a profile has no id, when two profiles share one, or
-when a reference names a profile the set does not declare. Names are not checked.
+Its **name** is display text. An operator renames a profile freely and two
+profiles may carry one name, because nothing resolves a reference by reading one.
+
+Launching resolves the internal ids away. Every reference in the capability set a
+run carries and records names a profile by its slug, and the ids are dropped, so
+what gg reads and what a run's analysis surfaces read are the same names. gg
+refuses a set that still carries one, on the same terms it refuses a
+[model slot](#model-slots) a launch left unbound.
+
+A launch is refused when a profile's slug is empty or malformed, when two
+profiles share one, or when a reference names a profile the set does not declare.
+Names are not checked.
 
 ### Granting calls
 
@@ -263,40 +276,64 @@ one of them shows what a fresh agent of that type would have been.
 ## Model slots
 
 A configuration is meant to be reusable across models, so the models its agents
-run on are not all baked into it. It declares run-level named model slots,
-which are launch-time model parameters, and each model binding either:
+run on are not all baked into it. Each model binding either:
 
 - pins a model outright, an internal binding identical on every run of the
   configuration and never asked about again; or
-- defers to a model slot, leaving the model to be supplied when a run is
+- defers to a named model slot, leaving the model to be supplied when a run is
   launched.
 
 An agent's own model is one such binding, and so is every capability param that
 names a model, today [compaction](/gg/compaction/)'s handoff model. Both offer
-the same Model from selector and are resolved by the same launch step.
+the same Model from selector and are resolved by the same launch step. gg routes
+every live model through OpenRouter and infers the provider from the model id,
+so a slot never pins a provider. Because each agent carries its own model, a run
+can span several models across several providers, which is why gg accounts usage
+and cost per agent profile rather than as one figure for one model.
 
-A model slot may carry a default, which the launch form pre-fills. Slots are
-named separately from the agents they feed so that two agents can share one:
-"run the reviewer and the merge agent on whatever I pick for `critic`" is one
-launch input rather than two. gg routes every live model through OpenRouter and
-infers the provider from the model id, so a slot never pins a provider. Because
-each agent carries its own model, a run can span several models across several
-providers, which is why gg accounts usage and cost per agent profile rather than
-as one figure for one model.
+### Agent slots
 
-A fresh configuration starts from the simple case: one `primary` model slot with
-the root agent deferred to it, so a configuration that says nothing about models
-still asks for exactly one at launch. A slot's name is only its label. Agents
-bind slots by identity, so renaming `primary` to `critic` keeps every agent
-bound to it, and deleting a slot leaves the agents that deferred to it deferring
-to nothing, which the save gate names rather than silently re-pointing them at
-another model.
+An agent declares the slots its own bindings defer to, on its Slots tab, and its
+bindings name them. A slot belongs to the agent that declares it, so a
+[saved agent](/gg/agents/) carries its slots into every configuration that
+imports it, and two agents may each declare a `critic` without meaning one
+launch input. A slot may carry a default model.
 
-Declaring a slot is an authoring-time concern. Launching resolves every deferred
+An agent slot is either mapped by the configuration or marked passthrough. A
+slot that is neither leaves a binding with no model to take, and one that is
+both asks twice for the same binding. Both refuse the save and the launch.
+
+### Configuration slots
+
+A run asks for exactly one set of models, and the configuration decides what
+that set is. A configuration slot is one launch input, and it names the agent
+slots it fills. One configuration slot filling several agent slots is how "run
+the reviewer and the merge agent on whatever I pick for `critic`" stays one
+launch input rather than two.
+
+A configuration slot may carry a default, which the launch form pre-fills. A
+slot that carries none takes the default of the first agent slot it fills, so
+importing an agent that defaults its own slot keeps that default working.
+
+Marking an agent slot passthrough exposes it at launch on its own, under
+`<agent slug>.<slot name>`, which spares the configuration a slot whose only job
+is to forward one. A passthrough slot pre-fills from its own default.
+
+Slots are named separately from the agents they feed, and the launch form asks
+for the configuration's slots and its passthrough slots and nothing else. A
+fresh configuration starts from the simple case: the root agent declares one
+`primary` slot, marked passthrough, so a configuration that says nothing about
+models still asks for exactly one model at launch.
+
+Agents bind slots by identity, so renaming a slot carries every binding along.
+Deleting one leaves the bindings that named it deferring to nothing, which the
+save gate names rather than silently re-pointing them at another model.
+
+Declaring slots is an authoring-time concern. Launching resolves every deferred
 binding to a concrete model, an agent's and a capability param's alike, so the
-capability set a run carries and records is fully pinned. That is what keeps
-results sliceable by which model ran which agent. The backend rejects a launch
-that leaves a binding unresolved, naming the agent.
+capability set a run carries and records is fully pinned and declares no slot.
+That is what keeps results sliceable by which model ran which agent. The backend
+rejects a launch that leaves a binding unresolved, naming the agent.
 
 ## Prompt cache lifetime
 
@@ -348,10 +385,11 @@ mode:
 
 - The per-row Harness column becomes a gg configuration column, offering
   the account's configurations.
-- The row grows one model picker per model slot the chosen configuration
-  declares and something in it defers to, labelled with the slot's name and
-  pre-filled with its default. A binding the configuration pinned itself never
-  appears here.
+- The row grows one model picker per launch slot the chosen configuration
+  exposes: its [configuration slots](#configuration-slots), then the
+  [passthrough](#configuration-slots) slots of its agents. Each is labelled with
+  the slot's name and pre-filled with its default. A binding the configuration
+  pinned itself never appears here.
 - The submission goes to gg's own enqueue endpoint (`POST /gg/runs`) with the
   resolved capability set rather than the flat launch body.
 

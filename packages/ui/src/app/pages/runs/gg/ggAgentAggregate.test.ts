@@ -112,16 +112,19 @@ function status(
 // module fold reads as the declared half of what its instances then got.
 type CapabilitySpec = string | [string, Record<string, unknown>];
 
-// A declared profile: its id, and the display name it reads as — which defaults to the id,
-// because nothing resolves a profile by reading its name.
+// A declared profile as a **recorded** set carries it: its slug, and the display name it
+// reads as — which defaults to the slug, because nothing resolves a profile by reading its
+// name. There is no internal id here, and that is the point: launching rewrites every
+// reference to the profile's slug and drops the ids, so the slug is what a run's telemetry
+// rows and this fold join on.
 function profile(
-  id: string,
+  slug: string,
   modelId: string,
   caps: CapabilitySpec[],
-  name = id,
+  name = slug,
 ): GgAgentConfig {
   return {
-    id,
+    slug,
     name,
     modelId,
     capabilities: caps.map((cap) => {

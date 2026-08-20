@@ -240,7 +240,7 @@
           "type": "string"
         },
         "profileId": {
-          "description": "The [id](GgAgentConfig::id) of the agent profile this rollup accounts for. Resolve it\nagainst the run's set for the [display name](GgCapabilitySet::agent_name) to show.",
+          "description": "The [slug](GgAgentConfig::slug) of the agent profile this rollup accounts for. Resolve it\nagainst the run's set for the [display name](GgCapabilitySet::agent_name) to show.",
           "type": "string"
         },
         "tokens": {

@@ -329,8 +329,8 @@ pub fn launch_summary(agents: &[GgAgentConfig]) -> Option<String> {
             match resolve_program_library(agent, &mut crate::validate::LaunchReport::Discarding)
                 .keep
             {
-                Some(keep) => format!("`{}` keeps its {keep} most recent", agent.id),
-                None => format!("`{}` keeps every one", agent.id),
+                Some(keep) => format!("`{}` keeps its {keep} most recent", agent.slug),
+                None => format!("`{}` keeps every one", agent.slug),
             }
         })
         .collect();

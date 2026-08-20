@@ -333,7 +333,7 @@ fn capability_set() -> GgCapabilitySet {
         preset: Some("planning-A".to_string()),
         agents: vec![
             GgAgentConfig {
-                id: ROOT_PROFILE_ID.to_string(),
+                slug: ROOT_PROFILE_ID.to_string(),
                 name: "Root".to_string(),
                 model_id: "anthropic/claude-a".to_string(),
                 capabilities: vec![
@@ -356,7 +356,7 @@ fn capability_set() -> GgCapabilitySet {
             // `the_capability_namespace_reads_every_agent` is where a subagent-only
             // enablement is exercised.
             GgAgentConfig {
-                id: "reviewer".to_string(),
+                slug: "reviewer".to_string(),
                 name: "Careful Reviewer".to_string(),
                 model_id: "openai/gpt-x".to_string(),
                 capabilities: Vec::new(),
@@ -642,7 +642,7 @@ fn the_per_agent_namespace_keys_on_the_id_so_two_profiles_sharing_a_name_stay_ap
     let mut record = gg_record();
     let set = record.subject.gg_capability_set.as_mut().expect("set");
     set.agents.push(GgAgentConfig {
-        id: "reviewer-2".to_string(),
+        slug: "reviewer-2".to_string(),
         // The same display name the `reviewer` profile carries: legal, and the case that used to
         // be inexpressible.
         name: "Careful Reviewer".to_string(),
