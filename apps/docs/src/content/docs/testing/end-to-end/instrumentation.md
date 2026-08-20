@@ -108,6 +108,15 @@ lifecycle is uniform across the catalog.
   It is the same ground truth the [debug overlay](#the-debug-overlay) shows a
   human, and it is a pure read.
 
+A case whose review items declare validation scripts exposes one more, because the
+runtime driving those scripts holds the clock to decide a verdict and hands it back
+to record the media at the speed the game runs.
+
+- `setAutoStep(auto)` chooses which clock drives the game. `setAutoStep(false)`
+  holds the simulation still, so `step()` is the only thing that advances it, and
+  `setAutoStep(true)` returns the game to its own frame loop. It changes no game
+  state.
+
 ### Control operations
 
 Beyond the core, a case declares its own control operations: the verbs that set

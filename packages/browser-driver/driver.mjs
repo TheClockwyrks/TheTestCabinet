@@ -43,6 +43,21 @@
 // no Chromium) exit non-zero so the caller degrades; a build/script failure is
 // reported in the result with `ran: false` and exits zero (the caller gates on it).
 //
+// SCOPE — this mode serves the NO-ENGINE instrumentation contract and nothing
+// else. There, the build supplies the whole surface itself: `reset`, `step`,
+// `snapshot`, the manual clock's `setAutoStep`, and the case's own control ops,
+// all on the one case handle `--handle` names. Every operation the script `api`
+// offers is bound to that handle, and there is deliberately no generic page
+// evaluation: a script drives the surface the case specified and mandated of the
+// build, not arbitrary page globals.
+//
+// A run under an ENGINE is not driven from here at all — it is decided by an
+// in-process vitest suite that imports the engine package and the module the build
+// exports its game from (see the validation docs). So an engine's host handle is
+// never reached through this driver, and a build that installs the case handle
+// without the manual clock is reported as a non-conformant build for this
+// contract, exactly as one that never installed the handle at all is.
+//
 // A third mode is the **build smoke check** the toolchain stage runs:
 //   node driver.mjs --mode smoke --url <url> --result <json-path>
 //                   [--width <px>] [--height <px>] [--settle <ms>]
@@ -258,6 +273,16 @@ async function runStep(page, step) {
  * exact same debug surface a build ships) plus the two capture affordances a
  * synthesized proof needs. `producedImages` records which declared image outputs
  * the script actually screenshotted, so the caller can flag a missing one.
+ *
+ * Every operation is bound to the CASE handle on purpose, and there is no generic
+ * `evaluate` escape hatch. What a script may drive is what the case specified and
+ * the build was required to implement; a raw page-evaluation primitive would let a
+ * script reach any global on the page — most obviously an engine's host interface,
+ * which is not this driver's contract to drive (see the scope note in the banner)
+ * — and would make the surface a script depends on unreviewable from the case's
+ * own specification. `probe` covers reflecting the handle's shape without calling
+ * into it, and `pixel`/`audio` cover the two observations that must come from
+ * outside the handle.
  */
 function makeScriptApi(page, handle, outDir, producedImages) {
   const call = (method, args) =>
@@ -572,6 +597,42 @@ async function runScript(args) {
     }
 
     const api = makeScriptApi(page, handle, outDir, producedImages);
+
+    // The manual clock is the runtime's own lever, not the item's: `validation.mjs`
+    // steps the build to decide a verdict and hands the clock back to record, so
+    // `step` and `setAutoStep` are called on EVERY drive whatever the item does. A
+    // build that installed the handle without them cannot be driven at all, so say
+    // which one is missing up front — a bare "window.__x.setAutoStep is not a
+    // function" thrown from the middle of a pass reads as a script bug, and a build
+    // running on an engine (whose validators run in process instead, see the banner)
+    // omits both by design and would otherwise fail here with no hint why. Reading
+    // the shape of the handle mutates nothing, so a conformant build reaches the
+    // drive exactly as it always has.
+    const CLOCK_OPS = ["step", "setAutoStep"];
+    const { ops: clockOps } = await api.probe(CLOCK_OPS);
+    const missingClock = CLOCK_OPS.filter(
+      (op) => clockOps?.[op] !== "function",
+    );
+    if (missingClock.length > 0) {
+      result = {
+        ran: false,
+        handleFound: true,
+        preconditionUnmet: false,
+        detail:
+          `window.${handle} does not provide ${missingClock.join(" or ")}: ` +
+          `automated validation decides a verdict by stepping the build's manual ` +
+          `clock, which the no-engine instrumentation contract requires the build ` +
+          `to expose on its debug API`,
+        verdicts: [],
+        producedOutputs: [],
+        consoleErrors,
+      };
+      await context.close();
+      await browser.close();
+      writeResult(result);
+      return;
+    }
+
     const mod = await import(pathToFileURL(path.resolve(args.script)).href);
 
     // PASS 1 — validate. Exact stepping on the build's manual clock decides the
