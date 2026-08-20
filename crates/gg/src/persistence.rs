@@ -112,7 +112,7 @@ pub fn is_persistent(profile: &GgAgentConfig) -> bool {
 /// disagree with the profile the agent actually runs under: the caller has already resolved the
 /// profile, so the key is the one the agent really holds.
 pub fn exclusive_key(profile: &GgAgentConfig) -> Option<String> {
-    is_persistent(profile).then(|| profile.id.clone())
+    is_persistent(profile).then(|| profile.slug.clone())
 }
 
 /// One persistent profile's **desk**: everything an instance of it had open in its window when it
@@ -225,7 +225,7 @@ impl PersistenceSetup {
     /// Resolve the setup for an agent running under `profile`, against the run's `store`.
     pub fn resolve(profile: &GgAgentConfig, store: Arc<AgentPersistence>) -> Self {
         Self {
-            agent: is_persistent(profile).then(|| profile.id.clone()),
+            agent: is_persistent(profile).then(|| profile.slug.clone()),
             store,
         }
     }

@@ -20,6 +20,32 @@ fn launch_attribution() -> JobAttribution {
     .expect("no origin is not an error")
 }
 
+/// The internal id an authored fixture mints for the profile whose slug is `slug`.
+///
+/// Deliberately not the slug: the two halves of a profile's identity are separate values, and a
+/// fixture that spelled them the same could not tell a reference resolved from one left alone.
+fn key_of(slug: &str) -> String {
+    format!("k-{slug}")
+}
+
+/// `set` as the **console authors** it: every profile carrying the internal id that every
+/// reference inside a stored configuration points at.
+///
+/// A launch arrives in this shape and leaves in the other one — [`GgRunRequest::into_launch_body`]
+/// checks the authored document, resolves the ids away, and stores the launched set — so every
+/// fixture that goes through it has to be authored, or it is refused before the property under
+/// test is reached.
+/// A profile that already carries one keeps it, so a fixture whose subject is a slug collision
+/// can still give its two profiles the distinct ids a real authored document would have.
+fn authored(mut set: GgCapabilitySet) -> GgCapabilitySet {
+    for agent in &mut set.agents {
+        if agent.id.is_none() {
+            agent.id = Some(key_of(&agent.slug));
+        }
+    }
+    set
+}
+
 /// A launchable gg request: the `pong` case bound to the mock model on the primary
 /// slot — the smallest set that a real gg session runs against.
 fn sample_request() -> GgRunRequest {
@@ -27,7 +53,7 @@ fn sample_request() -> GgRunRequest {
         test_case: "pong".to_string(),
         version: "v1.0.0".to_string(),
         variant: Some("base".to_string()),
-        capability_set: GgCapabilitySet::minimal("mock/echo"),
+        capability_set: authored(GgCapabilitySet::minimal("mock/echo")),
         max_runtime_seconds: None,
         retry_count: None,
     }
@@ -55,7 +81,7 @@ fn into_launch_body_requires_a_root_agent_model() {
     // The default capability set carries the Phase 0 capabilities but binds no model,
     // so it cannot launch: the handler rejects it with a gg-specific message.
     let req = GgRunRequest {
-        capability_set: GgCapabilitySet::default(),
+        capability_set: authored(GgCapabilitySet::default()),
         ..sample_request()
     };
     let err = req.into_launch_body().unwrap_err();
@@ -68,18 +94,20 @@ fn into_launch_body_rejects_a_set_with_an_agent_left_unbound() {
     // still deferred means the launch was incomplete — reject it here, naming the
     // agent, rather than burning a container on a run gg would refuse to start.
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.model_slots = vec![test_cabinet_core::gg::GgModelSlot {
-        name: "critic".to_string(),
-        default_model_id: None,
-    }];
     set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        slug: "reviewer".to_string(),
         name: "reviewer".to_string(),
         model_id: String::new(),
         model_slot: Some("critic".to_string()),
+        model_slots: vec![test_cabinet_core::gg::GgModelSlot {
+            name: "critic".to_string(),
+            default_model_id: None,
+            passthrough: true,
+        }],
         ..test_cabinet_core::gg::GgAgentConfig::root()
     });
     let err = GgRunRequest {
-        capability_set: set,
+        capability_set: authored(set),
         ..sample_request()
     }
     .into_launch_body()
@@ -101,12 +129,18 @@ fn into_launch_body_rejects_a_set_with_an_agent_left_unbound() {
 #[test]
 fn into_launch_body_lifts_a_machine_roots_entry_model_and_names_a_missing_one() {
     // A root that is an FSM shell over one worker: the shell carries the machine and the leftover
-    // model binding, and `Explorer` is what a dispatch onto it actually runs.
+    // model binding, and `explorer` is what a dispatch onto it actually runs.
+    //
+    // The authored state names the entry profile's **internal id**, which is what a state names
+    // until the launch rewrites it — so this fixture also exercises the resolution: the state has
+    // to be rewritten to `explorer` for the dispatch to find it at all.
     let machine_root = |entry: &str, workers: &[&str]| {
         let mut set = GgCapabilitySet::minimal("mock/shell-leftover");
         set.agents[0].capabilities = vec![test_cabinet_core::gg::GgCapabilityConfig {
             params: serde_json::json!({
-                test_cabinet_core::gg::FSM_PARAM_STATES: [{ "name": "explore", "agentId": entry }],
+                test_cabinet_core::gg::FSM_PARAM_STATES: [
+                    { "name": "explore", "agentId": key_of(entry) },
+                ],
             }),
             ..test_cabinet_core::gg::GgCapabilityConfig::enabled(
                 test_cabinet_core::gg::CAPABILITY_FSM,
@@ -114,17 +148,17 @@ fn into_launch_body_lifts_a_machine_roots_entry_model_and_names_a_missing_one() 
         }];
         for worker in workers {
             set.agents.push(test_cabinet_core::gg::GgAgentConfig {
-                id: worker.to_string(),
+                slug: worker.to_string(),
                 name: worker.to_string(),
                 model_id: "mock/worker".to_string(),
                 ..test_cabinet_core::gg::GgAgentConfig::root()
             });
         }
-        set
+        authored(set)
     };
 
     let launch = GgRunRequest {
-        capability_set: machine_root("Explorer", &["Explorer"]),
+        capability_set: machine_root("explorer", &["explorer"]),
         ..sample_request()
     }
     .into_launch_body()
@@ -135,12 +169,12 @@ fn into_launch_body_lifts_a_machine_roots_entry_model_and_names_a_missing_one() 
     );
 
     let err = GgRunRequest {
-        capability_set: machine_root("Explorer", &[]),
+        capability_set: machine_root("explorer", &[]),
         ..sample_request()
     }
     .into_launch_body()
     .unwrap_err();
-    assert!(err.contains("Explorer"), "unexpected reason: {err}");
+    assert!(err.contains("explorer"), "unexpected reason: {err}");
     assert!(
         !err.contains("mock/shell-leftover"),
         "the leftover binding must not have been lifted: {err}"
@@ -219,8 +253,14 @@ async fn enqueue_persists_and_retrieves_the_gg_capability_set() {
     let stored = job
         .gg_config_json
         .expect("the gg config is persisted on the job row");
+    // The **launched** set is what is stored: the request arrived authored, and the ids were
+    // resolved away on the way in, so the row a driver reads names profiles the way the run
+    // will record them.
     let from_column: GgCapabilitySet = serde_json::from_str(&stored).unwrap();
-    assert_eq!(from_column, sample_request().capability_set);
+    assert_eq!(
+        from_column,
+        sample_request().capability_set.resolve_agent_keys()
+    );
 
     // ...and the stored launch body round-trips it too, so the driver rebuilds the gg
     // run faithfully (this is what `POST /jobs/next` hands the driver).
@@ -228,7 +268,7 @@ async fn enqueue_persists_and_retrieves_the_gg_capability_set() {
     assert_eq!(claimed.harness, HarnessSlug::Gg);
     assert_eq!(
         claimed.gg_capability_set,
-        Some(sample_request().capability_set)
+        Some(sample_request().capability_set.resolve_agent_keys())
     );
 }
 
@@ -272,12 +312,13 @@ async fn launch_resolves_the_bound_models_context_windows() {
 
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        slug: "subagent".to_string(),
         name: "subagent".to_string(),
         model_id: "openai/gpt-5.4-mini".to_string(),
         ..test_cabinet_core::gg::GgAgentConfig::root()
     });
     let mut launch = GgRunRequest {
-        capability_set: set,
+        capability_set: authored(set),
         ..sample_request()
     }
     .into_launch_body()
@@ -316,17 +357,19 @@ async fn launch_resolves_the_bound_models_input_modalities() {
 
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        slug: "subagent".to_string(),
         name: "subagent".to_string(),
         model_id: "z-ai/glm-5.2".to_string(),
         ..test_cabinet_core::gg::GgAgentConfig::root()
     });
     set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        slug: "reviewer".to_string(),
         name: "reviewer".to_string(),
         model_id: "mystery/model".to_string(),
         ..test_cabinet_core::gg::GgAgentConfig::root()
     });
     let mut launch = GgRunRequest {
-        capability_set: set,
+        capability_set: authored(set),
         ..sample_request()
     }
     .into_launch_body()
@@ -362,7 +405,7 @@ async fn unknown_modalities_do_not_block_a_launch() {
         .unwrap();
 
     let mut launch = GgRunRequest {
-        capability_set: GgCapabilitySet::minimal("anthropic/claude-opus-4.8"),
+        capability_set: authored(GgCapabilitySet::minimal("anthropic/claude-opus-4.8")),
         ..sample_request()
     }
     .into_launch_body()
@@ -397,7 +440,7 @@ async fn launch_is_rejected_when_a_models_window_cannot_be_resolved() {
 async fn launch_rejects_the_scripted_mock_provider() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut launch = GgRunRequest {
-        capability_set: GgCapabilitySet::minimal("mock/scripted-builder"),
+        capability_set: authored(GgCapabilitySet::minimal("mock/scripted-builder")),
         ..sample_request()
     }
     .into_launch_body()
@@ -455,4 +498,122 @@ async fn launch_resolves_nothing_for_a_conventional_run() {
         .await
         .expect("a non-gg run resolves nothing");
     assert!(launch.gg_model_windows.is_empty());
+}
+
+/// Two profiles at one slug is refused at enqueue, not left for the container to discover.
+///
+/// A configuration can acquire one without being re-saved: an imported profile follows the
+/// saved agent's slug, and the saved agent can be renamed afterwards. So the check that runs
+/// when the configuration is stored has to run again when it is launched.
+#[test]
+fn into_launch_body_rejects_two_profiles_at_one_slug() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        // A distinct internal id, which is exactly how the collision arrives: two separate
+        // profiles that came to spell one slug, not one profile written down twice.
+        id: Some("k-imported".to_string()),
+        slug: test_cabinet_core::gg::ROOT_PROFILE_ID.to_string(),
+        name: "a second root".to_string(),
+        model_id: "mock/echo".to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
+    let err = GgRunRequest {
+        capability_set: authored(set),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap_err();
+    assert!(err.contains("carry the slug"), "unexpected reason: {err}");
+    assert!(
+        err.contains(test_cabinet_core::gg::ROOT_PROFILE_ID),
+        "unexpected reason: {err}"
+    );
+}
+
+/// **The launch is where a profile's two names become one.** A request arrives as the console
+/// authored it — every profile carrying an internal id, every reference pointing at one — and what
+/// is stored on the job is the resolved set: no ids left, and every reference naming the slug the
+/// operator wrote and the model will be shown.
+///
+/// It has to happen here rather than in the container, because this is the last place the ids
+/// exist to resolve *by*. gg refuses a set still carrying one, and everything downstream of the
+/// enqueue — the run record, the telemetry, the query language — names profiles by slug, so a set
+/// stored half-resolved would be a run nothing could slice by and gg would not start.
+#[test]
+fn into_launch_body_resolves_the_internal_ids_away_before_the_set_is_stored() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        slug: "careful-reviewer".to_string(),
+        name: "Careful Reviewer".to_string(),
+        model_id: "mock/echo".to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
+    // The roster points at the reviewer the way an authored document does: by its internal id,
+    // which is a different string from the slug the model will be offered.
+    set.agents[0].subagents = vec![test_cabinet_core::gg::GgSubagentRef::new(
+        key_of("careful-reviewer"),
+        &[test_cabinet_core::gg::GgSubagentScope::Subagent],
+    )];
+
+    let launch = GgRunRequest {
+        capability_set: authored(set),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .expect("both profiles are bound");
+    let stored = launch
+        .gg_capability_set
+        .expect("a gg launch body carries the capability set");
+
+    // Not one profile still carries an id — which is the shape gg's own launch check demands.
+    assert!(
+        stored.agents.iter().all(|agent| agent.id.is_none()),
+        "a stored set still carries an internal id: {stored:?}"
+    );
+    assert!(stored.unresolved_agent_keys().is_empty());
+    // …and the roster now names the slug, so the roster gg builds and the name the model passes
+    // back to `spawn_subagent` are the same string.
+    assert_eq!(stored.root().subagents[0].agent_id, "careful-reviewer");
+    assert!(stored.agent("careful-reviewer").is_some());
+}
+
+/// A malformed slug is refused for the same reason gg refuses it: the model is shown that name
+/// and passes it back.
+#[test]
+fn into_launch_body_rejects_a_malformed_slug() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].slug = "The Root".to_string();
+    let err = GgRunRequest {
+        capability_set: authored(set),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap_err();
+    assert!(
+        err.contains("slug is not lowercase"),
+        "unexpected reason: {err}"
+    );
+}
+
+/// An agent slot that reaches no launch input is a binding with no model, and the enqueue
+/// endpoint names it rather than letting the run start and stall.
+#[test]
+fn into_launch_body_rejects_an_agent_slot_that_reaches_no_launch_input() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].model_slots = vec![test_cabinet_core::gg::GgModelSlot {
+        name: "brain".to_string(),
+        default_model_id: None,
+        passthrough: false,
+    }];
+    set.agents[0].model_slot = Some("brain".to_string());
+    let err = GgRunRequest {
+        capability_set: authored(set),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap_err();
+    assert!(
+        err.contains("reaches no launch input"),
+        "unexpected reason: {err}"
+    );
 }

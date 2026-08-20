@@ -21,8 +21,8 @@ fn root_set(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
 }
 
 /// A set whose two non-root profiles carry **one display name** and are told apart only by their
-/// [ids](GgAgentConfig::id) — the shape every id-versus-name rule is asserted against. The root
-/// may spawn one of them and have the other review, so one roster serves both scope reads.
+/// [slugs](GgAgentConfig::slug) — the shape every slug-versus-name rule is asserted against. The
+/// root may spawn one of them and have the other review, so one roster serves both scope reads.
 fn two_reviewers() -> GgCapabilitySet {
     GgCapabilitySet {
         agents: vec![
@@ -38,13 +38,13 @@ fn two_reviewers() -> GgCapabilitySet {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "reviewer".to_string(),
+                slug: "reviewer".to_string(),
                 name: "Careful Reviewer".to_string(),
                 model_id: "anthropic/claude-haiku-4.5".to_string(),
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "reviewer-2".to_string(),
+                slug: "reviewer-2".to_string(),
                 name: "Careful Reviewer".to_string(),
                 model_id: "openai/gpt-5.5".to_string(),
                 ..GgAgentConfig::root()
@@ -121,7 +121,7 @@ fn default_capability_set_needs_no_model_and_binds_no_agent_model() {
 fn a_run_wide_read_asks_every_agent_where_the_root_read_asks_one() {
     let mut set = root_set(vec![]);
     set.agents.push(GgAgentConfig {
-        id: "reviewer".to_string(),
+        slug: "reviewer".to_string(),
         name: "Reviewer".to_string(),
         capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FSM)],
         ..GgAgentConfig::root()
@@ -151,19 +151,19 @@ fn a_capability_set_without_agents_reads_as_a_root_agent() {
     assert!(set.root().is_enabled(CAPABILITY_SHELL));
 }
 
-/// **Two profiles may carry one name, and only the id tells them apart.**
+/// **Two profiles may carry one name, and only the slug tells them apart.**
 ///
 /// There is no uniqueness rule on a display name anywhere, and nothing resolves a reference by
-/// reading one — so a set is addressed entirely by [id](GgAgentConfig::id), and the name survives
-/// only where a person or a model reads prose.
+/// reading one — so a launched set is addressed entirely by [slug](GgAgentConfig::slug), and the
+/// name survives only where a person or a model reads prose.
 #[test]
-fn two_profiles_may_share_a_name_and_are_still_addressed_apart_by_id() {
+fn two_profiles_may_share_a_name_and_are_still_addressed_apart_by_slug() {
     let set = two_reviewers();
 
     // The premise: one display name, two profiles.
     assert_eq!(set.agents[1].name, set.agents[2].name);
 
-    // Lookup is by id, and it resolves each of them to itself.
+    // Lookup is by slug, and it resolves each of them to itself.
     assert_eq!(
         set.agent("reviewer").map(|a| a.model_id.as_str()),
         Some("anthropic/claude-haiku-4.5")
@@ -179,7 +179,7 @@ fn two_profiles_may_share_a_name_and_are_still_addressed_apart_by_id() {
     assert_eq!(set.root_id(), ROOT_PROFILE_ID);
     assert_eq!(set.root_name(), ROOT_AGENT);
 
-    // The name is prose, and a reference that resolves to no profile at all reads back as the id
+    // The name is prose, and a reference that resolves to no profile at all reads back as the slug
     // it failed to resolve rather than as nothing.
     assert_eq!(set.agent_name("reviewer"), "Careful Reviewer");
     assert_eq!(set.agent_name("reviewer-2"), "Careful Reviewer");
@@ -245,7 +245,7 @@ fn capability_set_round_trips_through_json() {
         preset: Some("planning-A".to_string()),
         agents: vec![
             GgAgentConfig {
-                id: ROOT_PROFILE_ID.to_string(),
+                slug: ROOT_PROFILE_ID.to_string(),
                 name: ROOT_AGENT.to_string(),
                 capabilities: vec![
                     GgCapabilityConfig::enabled(CAPABILITY_SHELL),
@@ -261,7 +261,7 @@ fn capability_set_round_trips_through_json() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "reviewer".to_string(),
+                slug: "reviewer".to_string(),
                 name: "reviewer".to_string(),
                 capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)],
                 model_id: "openai/gpt-5.5".to_string(),
@@ -294,7 +294,7 @@ fn the_prompt_cache_lifetime_is_per_agent_and_omitted_at_its_default() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "scout".to_string(),
+                slug: "scout".to_string(),
                 name: "scout".to_string(),
                 model_id: "anthropic/claude-haiku-4.5".to_string(),
                 ..GgAgentConfig::root()
@@ -324,7 +324,7 @@ fn the_prompt_cache_lifetime_is_per_agent_and_omitted_at_its_default() {
 fn a_capability_set_without_a_prompt_cache_lifetime_reads_as_standard() {
     let stored = json!({
         "agents": [{
-            "id": ROOT_PROFILE_ID,
+            "slug": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
             "modelId": "anthropic/claude-opus-4.8",
@@ -440,7 +440,7 @@ fn loop_detection_is_per_agent_and_omitted_when_nothing_was_declared() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "scout".to_string(),
+                slug: "scout".to_string(),
                 name: "scout".to_string(),
                 model_id: "anthropic/claude-haiku-4.5".to_string(),
                 ..GgAgentConfig::root()
@@ -469,7 +469,7 @@ fn loop_detection_is_per_agent_and_omitted_when_nothing_was_declared() {
     // parse, so arming it is always something an operator did on purpose.
     let stored: GgCapabilitySet = serde_json::from_value(json!({
         "agents": [{
-            "id": ROOT_PROFILE_ID,
+            "slug": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
             "modelId": "openai/gpt-5.6",
@@ -588,7 +588,7 @@ fn an_integral_ceiling_reads_the_same_however_it_is_spelled() {
 fn a_capability_set_without_limits_deserializes_to_none_and_re_serializes_without_the_key() {
     let set: GgCapabilitySet = serde_json::from_value(json!({
         "agents": [{
-            "id": ROOT_PROFILE_ID,
+            "slug": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": "shell", "enabled": true }],
             "modelId": "anthropic/claude-opus-4.8",
@@ -699,18 +699,27 @@ fn a_deferred_agent_is_unresolved_until_a_launch_fills_its_model_slot() {
             GgAgentConfig {
                 model_id: String::new(),
                 model_slot: Some("critic".to_string()),
+                model_slots: vec![GgModelSlot {
+                    name: "critic".to_string(),
+                    default_model_id: None,
+                    passthrough: false,
+                }],
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "judge".to_string(),
+                slug: "judge".to_string(),
                 name: "judge".to_string(),
                 model_id: "openai/o-fixed".to_string(),
                 ..GgAgentConfig::root()
             },
         ],
-        model_slots: vec![GgModelSlot {
+        model_slots: vec![GgConfigSlot {
             name: "critic".to_string(),
             default_model_id: Some("anthropic/claude-haiku-4.5".to_string()),
+            targets: vec![GgSlotTarget {
+                agent: ROOT_PROFILE_ID.to_string(),
+                slot: "critic".to_string(),
+            }],
         }],
         limits: GgRunLimits::default(),
         hooks: Vec::new(),
@@ -761,7 +770,7 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "judge".to_string(),
+                slug: "judge".to_string(),
                 name: "Judge".to_string(),
                 model_id: "openai/o-fixed".to_string(),
                 ..GgAgentConfig::root()
@@ -769,7 +778,7 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
             // The same display name as the entry state's profile: only the id says which of the
             // two a state binds.
             GgAgentConfig {
-                id: "builder".to_string(),
+                slug: "builder".to_string(),
                 name: "Judge".to_string(),
                 model_id: "openai/o-fixed".to_string(),
                 ..GgAgentConfig::root()
@@ -788,11 +797,12 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
     // this machine runs — and an ordinary profile resolves as itself.
     assert_eq!(set.root().fsm_entry_agent(), Some("judge"));
     assert_eq!(
-        set.dispatched_agent(ROOT_PROFILE_ID).map(|a| a.id.as_str()),
+        set.dispatched_agent(ROOT_PROFILE_ID)
+            .map(|a| a.slug.as_str()),
         Ok("judge")
     );
     assert_eq!(
-        set.dispatched_agent("judge").map(|a| a.id.as_str()),
+        set.dispatched_agent("judge").map(|a| a.slug.as_str()),
         Ok("judge")
     );
 }
@@ -876,20 +886,20 @@ fn bound_model_ids_lists_each_resolved_model_once() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "subagent".to_string(),
+                slug: "subagent".to_string(),
                 name: "subagent".to_string(),
                 model_id: "openai/gpt-5.4-mini".to_string(),
                 ..GgAgentConfig::root()
             },
             // Two agents sharing one model contribute one entry.
             GgAgentConfig {
-                id: "judge".to_string(),
+                slug: "judge".to_string(),
                 name: "judge".to_string(),
                 model_id: "openai/gpt-5.4-mini".to_string(),
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "reviewer".to_string(),
+                slug: "reviewer".to_string(),
                 name: "reviewer".to_string(),
                 model_id: String::new(),
                 model_slot: Some("critic".to_string()),
@@ -975,7 +985,7 @@ fn a_set_without_model_slots_deserializes_unchanged() {
     // A fully pinned configuration defers nothing to a launch, so it declares no slots at all.
     let set: GgCapabilitySet = serde_json::from_value(json!({
         "agents": [{
-            "id": ROOT_PROFILE_ID,
+            "slug": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": "shell", "enabled": true }],
             "modelId": "anthropic/claude-opus-4.8",
@@ -3067,7 +3077,7 @@ fn an_unknown_key_is_refused_by_every_configuration_container() {
     refuses::<GgCapabilitySet>("GgCapabilitySet", json!({ "agents": [] }));
     refuses::<GgAgentConfig>(
         "GgAgentConfig",
-        json!({ "id": ROOT_PROFILE_ID, "name": ROOT_AGENT }),
+        json!({ "slug": ROOT_PROFILE_ID, "name": ROOT_AGENT }),
     );
     refuses::<GgCapabilityConfig>(
         "GgCapabilityConfig",
@@ -3111,7 +3121,7 @@ fn an_unknown_key_nested_in_the_invocation_is_refused() {
         "prompt": "build it",
         "capabilitySet": {
             "agents": [{
-                "id": ROOT_PROFILE_ID,
+                "slug": ROOT_PROFILE_ID,
                 "name": ROOT_AGENT,
                 "modelId": "anthropic/claude-opus-4.8",
                 "capabilities": [{
@@ -3165,4 +3175,483 @@ fn an_unknown_transfer_kind_is_refused() {
     let none: GgFsmTransition =
         serde_json::from_value(json!({ "to": "review" })).expect("deserialize");
     assert!(none.transfer.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Slugs, agent slots and configuration slots
+// ---------------------------------------------------------------------------
+
+/// The shape a profile slug has to take, and the shapes it must not: the slug is what the
+/// model is shown and passes back, so a name it would have to decide how to spell is one
+/// the launch refuses rather than one gg guesses at.
+#[test]
+fn a_profile_slug_is_lowercase_words_joined_by_single_hyphens() {
+    for good in ["root", "reviewer", "merge-agent", "gpt5", "a", "a-1-b"] {
+        assert!(is_valid_agent_slug(good), "`{good}` is a well-formed slug");
+    }
+    for bad in [
+        "",
+        "Root",
+        "merge agent",
+        "merge_agent",
+        "-lead",
+        "lead-",
+        "a--b",
+        "réviseur",
+        "a.b",
+    ] {
+        assert!(!is_valid_agent_slug(bad), "`{bad}` is not a slug");
+    }
+}
+
+/// Two profiles at one address is not a cosmetic clash: every reference resolves to the
+/// first, so the second is a profile nothing could ever name.
+#[test]
+fn a_repeated_slug_is_reported_once_however_many_profiles_carry_it() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig::root(),
+            GgAgentConfig {
+                slug: "reviewer".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                slug: "reviewer".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                slug: "reviewer".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+    assert_eq!(set.duplicate_agent_slugs(), vec!["reviewer"]);
+    assert!(
+        GgCapabilitySet::default()
+            .duplicate_agent_slugs()
+            .is_empty()
+    );
+}
+
+/// **The whole reason a profile's identity is in two halves.** Two profiles sharing a slug is
+/// a defect the operator has to clear, and clearing it means opening the *second* one and
+/// renaming it — so both have to stay separately addressable while the collision stands. The
+/// internal ids underneath are what keeps them apart: the slug lookup can only ever answer with
+/// the first, while each id still names exactly one.
+///
+/// This is not a hypothetical shape. A configuration that imports a saved agent follows that
+/// agent's slug, and the saved agent may be renamed afterwards onto a slug the configuration
+/// already uses — the collision arrives without either document being edited.
+#[test]
+fn two_profiles_at_one_slug_stay_separately_addressable_by_their_internal_ids() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                id: Some("k-root".to_string()),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("k-mine".to_string()),
+                slug: "reviewer".to_string(),
+                name: "My Reviewer".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("k-imported".to_string()),
+                slug: "reviewer".to_string(),
+                name: "Imported Reviewer".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+
+    assert_eq!(set.duplicate_agent_slugs(), vec!["reviewer"]);
+    // The slug resolves to the first of the two, which is precisely why the collision is a
+    // refusal: the second is a profile nothing could name by slug.
+    assert_eq!(
+        set.agent("reviewer").map(|a| a.name.as_str()),
+        Some("My Reviewer")
+    );
+    // …and yet the console can still open, rename or delete either one, because each id is
+    // unambiguous however the slugs collide.
+    assert_eq!(
+        set.agent_by_key("k-mine").map(|a| a.name.as_str()),
+        Some("My Reviewer")
+    );
+    assert_eq!(
+        set.agent_by_key("k-imported").map(|a| a.name.as_str()),
+        Some("Imported Reviewer")
+    );
+    // The ids themselves are distinct, so this set's only defect is the one an operator wrote.
+    assert!(set.duplicate_agent_keys().is_empty());
+}
+
+/// An internal id is minted rather than written, so a repeat is a document that was assembled
+/// wrongly — but it is the one thing that makes a reference in an authored configuration
+/// ambiguous, which is why it is reported at all rather than shrugged off as untidy.
+#[test]
+fn two_profiles_at_one_internal_id_are_reported_however_they_are_named() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                id: Some("k-root".to_string()),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("k-twin".to_string()),
+                slug: "reviewer".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("k-twin".to_string()),
+                slug: "merge-agent".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+
+    // Distinct slugs throughout: the two halves of the identity are checked independently, so
+    // a document that is sound by every name the operator wrote can still be one gg refuses.
+    assert!(set.duplicate_agent_slugs().is_empty());
+    assert_eq!(set.duplicate_agent_keys(), vec!["k-twin"]);
+    // A launched set carries no ids at all, so it can never earn this defect.
+    assert!(set.resolve_agent_keys().duplicate_agent_keys().is_empty());
+}
+
+/// The two lookups read the two halves of the identity and **nothing else**: a set in which one
+/// profile's slug happens to spell another's internal id resolves each name to the profile that
+/// actually carries it.
+///
+/// The ids are opaque, so nothing stops one from colliding with somebody's slug, and the two
+/// resolvers are used at different moments — `agent_by_key` while the configuration is authored,
+/// `agent` everywhere afterwards. A lookup that fell back from one to the other would silently
+/// hand a launch the wrong profile's model, prompt and capabilities.
+#[test]
+fn a_slug_and_an_internal_id_that_spell_the_same_text_resolve_to_their_own_profiles() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                id: Some("k-root".to_string()),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                // Its *slug* is the text that the next profile carries as its *id*.
+                id: Some("k-scout".to_string()),
+                slug: "reviewer".to_string(),
+                name: "The Scout".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("reviewer".to_string()),
+                slug: "merge-agent".to_string(),
+                name: "The Merger".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+
+    assert_eq!(
+        set.agent("reviewer").map(|a| a.name.as_str()),
+        Some("The Scout")
+    );
+    assert_eq!(
+        set.agent_by_key("reviewer").map(|a| a.name.as_str()),
+        Some("The Merger")
+    );
+    // And neither resolver falls back to the other: a slug nothing declares stays unresolved
+    // even though a profile carries it as an id, and the reverse.
+    assert!(set.agent("k-scout").is_none());
+    assert!(set.agent_by_key("merge-agent").is_none());
+}
+
+/// **The launch resolution**, which is the moment a profile's two names become one. Every
+/// reference an authored configuration points at an internal id — a roster entry, the merge
+/// agent, a machine's state — is rewritten to the target's slug, and the ids are dropped, so the
+/// set gg reads, the container runs and the run records names profiles by the one name the
+/// operator wrote and the model was shown.
+///
+/// A reference naming an id the set does not declare is left **exactly as written**. It is the
+/// one thing resolution must not tidy up: the launch check reports it as the dangling reference
+/// it is, and a resolution that dropped it or guessed at it would leave nothing to report and a
+/// run strictly smaller than the one written down.
+#[test]
+fn resolving_a_launch_rewrites_every_reference_to_a_slug_and_drops_the_ids() {
+    let authored = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                id: Some("k-root".to_string()),
+                subagents: vec![
+                    GgSubagentRef::new("k-reviewer", &[GgSubagentScope::Subagent]),
+                    // Points at nothing this set declares, and must survive verbatim.
+                    GgSubagentRef::new("k-ghost", &[GgSubagentScope::Reviewer]),
+                ],
+                capabilities: vec![
+                    GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+                        .with_param(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, "k-reviewer"),
+                    GgCapabilityConfig::enabled(CAPABILITY_FSM).with_param(
+                        FSM_PARAM_STATES,
+                        json!([
+                            { "name": "review", "agentId": "k-reviewer" },
+                            { "name": "haunt", "agentId": "k-ghost" },
+                        ]),
+                    ),
+                ],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("k-reviewer".to_string()),
+                slug: "careful-reviewer".to_string(),
+                name: "Careful Reviewer".to_string(),
+                model_id: "anthropic/claude-haiku-4.5".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        model_slots: vec![GgConfigSlot {
+            name: "cheap".to_string(),
+            default_model_id: None,
+            targets: Vec::new(),
+        }],
+        ..GgCapabilitySet::default()
+    };
+
+    let launched = authored.resolve_agent_keys();
+
+    // Not one profile still carries an id, which is what gg checks for before it resolves
+    // anything by slug.
+    assert!(launched.agents.iter().all(|agent| agent.id.is_none()));
+    assert!(launched.unresolved_agent_keys().is_empty());
+    // The three references, each now naming the slug the model is shown.
+    let root = launched.root();
+    assert_eq!(root.subagents[0].agent_id, "careful-reviewer");
+    let merge = root
+        .capability(CAPABILITY_PROJECT_MANAGEMENT)
+        .expect("the merge agent's capability survives resolution")
+        .params[PROJECT_MANAGEMENT_PARAM_MERGE_AGENT]
+        .clone();
+    assert_eq!(merge, json!("careful-reviewer"));
+    let states = root
+        .capability(CAPABILITY_FSM)
+        .expect("the machine survives resolution")
+        .params[FSM_PARAM_STATES]
+        .clone();
+    assert_eq!(states[0]["agentId"], json!("careful-reviewer"));
+    // The reference to an id nothing declares is untouched in all three places…
+    assert_eq!(root.subagents[1].agent_id, "k-ghost");
+    assert_eq!(states[1]["agentId"], json!("k-ghost"));
+    // …and the launch check has something to report it by.
+    assert!(launched.agent("k-ghost").is_none());
+
+    // Resolving also spends the slot table: a launch fills every input in, so a launched set
+    // has no mapping left to resolve anything by.
+    assert!(launched.model_slots.is_empty());
+    // Everything the resolution has no business touching is carried through untouched.
+    assert_eq!(launched.limits, authored.limits);
+    assert_eq!(launched.agents[1].model_id, "anthropic/claude-haiku-4.5");
+    assert_eq!(launched.agents[1].slug, "careful-reviewer");
+}
+
+/// The one set of models a run is launched with: the configuration's own slots first, in
+/// declaration order, then every passthrough agent slot under the name that keeps it
+/// distinct from every other input.
+#[test]
+fn a_launch_asks_for_the_configuration_slots_and_then_the_passthrough_ones() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                id: Some("k-root".to_string()),
+                model_slot: Some("brain".to_string()),
+                model_slots: vec![GgModelSlot {
+                    name: "brain".to_string(),
+                    default_model_id: Some("anthropic/opus".to_string()),
+                    passthrough: true,
+                }],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("k-reviewer".to_string()),
+                slug: "reviewer".to_string(),
+                model_slot: Some("critic".to_string()),
+                model_slots: vec![GgModelSlot {
+                    name: "critic".to_string(),
+                    default_model_id: Some("anthropic/haiku".to_string()),
+                    passthrough: false,
+                }],
+                ..GgAgentConfig::root()
+            },
+        ],
+        // Slots live only in an authored configuration, so a target names the profile's
+        // internal id rather than the slug the launch will rewrite everything else to.
+        model_slots: vec![GgConfigSlot {
+            name: "cheap".to_string(),
+            default_model_id: None,
+            targets: vec![GgSlotTarget {
+                agent: "k-reviewer".to_string(),
+                slot: "critic".to_string(),
+            }],
+        }],
+        ..GgCapabilitySet::default()
+    };
+
+    let inputs = set.launch_slots();
+    assert_eq!(
+        inputs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+        vec!["cheap", "root.brain"],
+    );
+    // A configuration slot with no default of its own takes the default of the first agent
+    // slot it fills, so importing an agent that defaulted its slot keeps that default.
+    assert_eq!(
+        inputs[0].default_model_id.as_deref(),
+        Some("anthropic/haiku")
+    );
+    assert_eq!(
+        inputs[1].default_model_id.as_deref(),
+        Some("anthropic/opus")
+    );
+    // A passthrough input is *labelled* by the slug, because that is the name an operator
+    // reads on the launch form, and *targeted* by the internal id, because that is what a
+    // target names everywhere else. The two are spelled differently here so a resolution
+    // that confused them could not pass.
+    assert_eq!(inputs[1].name, "root.brain");
+    assert_eq!(inputs[1].targets[0].agent, "k-root");
+    assert_eq!(inputs[1].targets[0].slot, "brain");
+    assert!(set.slot_defects().is_empty(), "{:?}", set.slot_defects());
+}
+
+/// An agent slot reaches the launch form exactly one way. Each of the four ways that can
+/// go wrong is reported, and a sound mapping reports nothing.
+#[test]
+fn an_agent_slot_reaches_exactly_one_launch_input() {
+    let with = |passthrough: bool, targets: Vec<GgSlotTarget>| GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            id: Some("k-root".to_string()),
+            model_slot: Some("brain".to_string()),
+            model_slots: vec![GgModelSlot {
+                name: "brain".to_string(),
+                default_model_id: None,
+                passthrough,
+            }],
+            ..GgAgentConfig::root()
+        }],
+        model_slots: targets
+            .into_iter()
+            .enumerate()
+            .map(|(i, target)| GgConfigSlot {
+                name: format!("input-{i}"),
+                default_model_id: None,
+                targets: vec![target],
+            })
+            .collect(),
+        ..GgCapabilitySet::default()
+    };
+    // A slot target names the profile's internal id, never its slug: slots exist only while
+    // the configuration is authored, which is the one form that still carries the ids.
+    let brain = || GgSlotTarget {
+        agent: "k-root".to_string(),
+        slot: "brain".to_string(),
+    };
+
+    // Neither passthrough nor mapped: the binding has no model to take.
+    let orphan = with(false, Vec::new()).slot_defects();
+    assert_eq!(orphan.len(), 1, "{orphan:?}");
+    assert!(orphan[0].contains("reaches no launch input"), "{orphan:?}");
+
+    // Both: a launch would ask for one binding twice.
+    let doubled = with(true, vec![brain()]).slot_defects();
+    assert!(
+        doubled.iter().any(|d| d.contains("passthrough")),
+        "{doubled:?}"
+    );
+
+    // Two configuration slots onto one agent slot: which one supplies it is unanswerable.
+    let twice = with(false, vec![brain(), brain()]).slot_defects();
+    assert!(
+        twice.iter().any(|d| d.contains("2 configuration slots")),
+        "{twice:?}"
+    );
+
+    // Mapped exactly once, and passthrough exactly once, are both sound.
+    assert!(with(false, vec![brain()]).slot_defects().is_empty());
+    assert!(with(true, Vec::new()).slot_defects().is_empty());
+}
+
+/// A configuration slot naming a profile or a slot the set does not declare, and a binding
+/// deferring to a slot its own agent does not declare, are both refusals rather than
+/// bindings gg would quietly leave empty.
+#[test]
+fn a_slot_reference_that_names_nothing_is_refused() {
+    let dangling = GgCapabilitySet {
+        agents: vec![GgAgentConfig::root()],
+        model_slots: vec![GgConfigSlot {
+            name: "cheap".to_string(),
+            default_model_id: None,
+            targets: vec![GgSlotTarget {
+                agent: "reviewer".to_string(),
+                slot: "critic".to_string(),
+            }],
+        }],
+        ..GgCapabilitySet::default()
+    };
+    assert!(
+        dangling
+            .slot_defects()
+            .iter()
+            .any(|d| d.contains("which this configuration does not declare")),
+        "{:?}",
+        dangling.slot_defects()
+    );
+
+    let undeclared = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            model_slot: Some("brain".to_string()),
+            ..GgAgentConfig::root()
+        }],
+        ..GgCapabilitySet::default()
+    };
+    assert!(
+        undeclared
+            .slot_defects()
+            .iter()
+            .any(|d| d.contains("does not declare as a model slot")),
+        "{:?}",
+        undeclared.slot_defects()
+    );
+}
+
+/// A launch asks for one model per input, so two inputs at one name is one model where the
+/// operator meant two.
+#[test]
+fn two_launch_inputs_at_one_name_are_refused() {
+    let set = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            id: Some("k-root".to_string()),
+            model_slot: Some("brain".to_string()),
+            model_slots: vec![GgModelSlot {
+                name: "brain".to_string(),
+                default_model_id: None,
+                passthrough: true,
+            }],
+            ..GgAgentConfig::root()
+        }],
+        // Named exactly as the passthrough slot is exposed — after the profile's **slug**,
+        // which is what the launch form labels a passthrough input by however the authored
+        // document refers to that profile internally. That is the only way the two halves of
+        // the launch form can collide.
+        model_slots: vec![GgConfigSlot {
+            name: passthrough_slot_name(ROOT_PROFILE_ID, "brain"),
+            default_model_id: None,
+            targets: Vec::new(),
+        }],
+        ..GgCapabilitySet::default()
+    };
+    let defects = set.slot_defects();
+    assert!(
+        defects
+            .iter()
+            .any(|d| d.contains("two launch inputs are named `root.brain`")),
+        "{defects:?}"
+    );
 }

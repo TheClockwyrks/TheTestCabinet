@@ -665,7 +665,7 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
     let agent = set
         .dispatched_agent(profile)
         .map_err(|err| format!("{err}; there is no model to run"))?;
-    let profile_id = agent.id.as_str();
+    let profile_id = agent.slug.as_str();
     let model_id = agent.resolved_model_id().ok_or_else(|| {
         format!("the `{profile_id}` agent profile has no model bound; there is no model to run")
     })?;
@@ -794,7 +794,7 @@ pub(crate) fn merge_agent_id(
             continue;
         };
         let declared = if capability.enabled {
-            report.for_agent(&agent.id, |report| {
+            report.for_agent(&agent.slug, |report| {
                 crate::validate::required_param(
                     &capability.params,
                     CAPABILITY_PROJECT_MANAGEMENT,
@@ -2005,7 +2005,7 @@ impl Orchestrator {
                 profile,
                 &invocation.workspace_dir,
             ))?;
-            agent_hooks.insert(profile.id.clone(), runtime);
+            agent_hooks.insert(profile.slug.clone(), runtime);
         }
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
@@ -2028,7 +2028,7 @@ impl Orchestrator {
                 resolved
                     .warnings
                     .iter()
-                    .map(|warning| format!("agent `{}`: {warning}", agent.id)),
+                    .map(|warning| format!("agent `{}`: {warning}", agent.slug)),
             );
             // The root is the set's **first** agent — identified by position, since an operator
             // may promote a different profile to first.
@@ -2128,7 +2128,7 @@ impl Orchestrator {
     /// one directory and its reviewer at another, and each agent's catalogue is the one its own
     /// profile named.
     fn skills_runtime(&self, profile: &GgAgentConfig) -> SkillsRuntime {
-        match self.skills.get(profile.id.as_str()) {
+        match self.skills.get(profile.slug.as_str()) {
             Some(library) => SkillsRuntime::new_in(Arc::clone(library), &self.module_ids),
             None => SkillsRuntime::disabled(),
         }
@@ -4169,7 +4169,7 @@ async fn drive_agent(
                         // declares no hooks rather than guessing at another profile's.
                         runtime: orch
                             .agent_hooks
-                            .get(&profile.id)
+                            .get(&profile.slug)
                             .map(Arc::clone)
                             .unwrap_or_else(|| Arc::new(crate::hooks::HookRuntime::undeclared())),
                         session: Arc::clone(&orch.session_hooks),
@@ -4510,8 +4510,8 @@ fn program_languages(agents: &[GgAgentConfig]) -> BTreeSet<GgProgramLanguage> {
 fn hook_sites(orch: &Orchestrator) -> Vec<(String, Arc<HookRuntime>)> {
     let mut sites = vec![("on the run".to_string(), Arc::clone(&orch.session_hooks))];
     sites.extend(orch.caps.agents.iter().filter_map(|profile| {
-        let runtime = orch.agent_hooks.get(&profile.id)?;
-        Some((format!("on agent `{}`", profile.id), Arc::clone(runtime)))
+        let runtime = orch.agent_hooks.get(&profile.slug)?;
+        Some((format!("on agent `{}`", profile.slug), Arc::clone(runtime)))
     }));
     sites
 }
@@ -10259,7 +10259,7 @@ fn check_window_limits(
     report: &mut crate::validate::LaunchReport,
 ) {
     for profile in &set.agents {
-        report.for_agent(&profile.id, |report| {
+        report.for_agent(&profile.slug, |report| {
             let Some(limit) = window_limit(profile, report) else {
                 return;
             };
@@ -10314,7 +10314,7 @@ pub(crate) fn check_invocation(
         report,
     );
     for profile in &invocation.capability_set.agents {
-        report.for_agent(&profile.id, |report| {
+        report.for_agent(&profile.slug, |report| {
             resolve_skills_dir(profile, &invocation.workspace_dir, report);
         });
     }
@@ -10389,7 +10389,7 @@ pub(crate) fn check_workspace(
                              the agent `{}` loads its skills from, and there is no such directory \
                              in the workspace; that agent would open with a library nobody \
                              authored.",
-                            profile.id,
+                            profile.slug,
                         ),
                     ));
                     Arc::new(SkillLibrary::empty())
@@ -10527,7 +10527,7 @@ fn resolve_skills(
                 library
             }
         };
-        by_profile.insert(profile.id.clone(), library);
+        by_profile.insert(profile.slug.clone(), library);
     }
     by_profile
 }
@@ -10589,7 +10589,7 @@ fn resolve_skills_dir(
                  the agent `{}` loads its skills from, and gg cannot read a path here; it reaches \
                  for no directory of its own, so the agent would open with a library nobody \
                  authored.",
-                profile.id,
+                profile.slug,
             ),
         ));
         return NO_SKILLS_DIRECTORY;

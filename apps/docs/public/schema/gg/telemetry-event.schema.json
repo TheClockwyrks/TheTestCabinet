@@ -189,7 +189,7 @@
       "description": "One [issue](https://docs.testcabinet.ai/gg/project-management/) on the board — a node of the\nblocked-by DAG reported in a [`BoardState`](GgTelemetryKind::BoardState) event.\n\nAn issue is the **heavyweight** counterpart to a [task](GgTaskEntry): rather than just a\ntitle and description it carries structured sections — [`in_scope`](Self::in_scope),\n[`out_of_scope`](Self::out_of_scope), and [`completion_criteria`](Self::completion_criteria)\n— whose explicit scope boundaries and completion criteria are what make an issue **safe to\ndispatch to a subagent** (Phase 4): they tell the subagent exactly what it is and is not\nresponsible for and how it will be judged done. Issues share the [tasks](GgTaskEntry)\nblocked-by relation — a **DAG**, so gg rejects any edge that would introduce a cycle — and\nan issue may be grouped under an [epic](GgBoardEpic) through its\n[`epic_id`](Self::epic_id). The whole board is retained across a [compaction] boundary\nverbatim, like the task list.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
         "agentId": {
-          "description": "The [id](GgAgentConfig::id) of the profile the issue was **assigned to** when it was\ncreated — the profile gg dispatches it under, and re-dispatches for every retry and review\nround. The creating agent names it by [label](GgAgentConfig::name) on `create_issue` (it is\nnot configured on the capability) out of its roster entries carrying the\n[`implementer`](GgSubagentScope::Implementer) scope, and gg records which profile that was.",
+          "description": "The [slug](GgAgentConfig::slug) of the profile the issue was **assigned to** when it was\ncreated — the profile gg dispatches it under, and re-dispatches for every retry and review\nround. The creating agent names it by [label](GgAgentConfig::name) on `create_issue` (it is\nnot configured on the capability) out of its roster entries carrying the\n[`implementer`](GgSubagentScope::Implementer) scope, and gg records which profile that was.",
           "type": "string"
         },
         "assignedAgentId": {
@@ -1082,7 +1082,7 @@
           "type": "string"
         },
         "profileId": {
-          "description": "The [id](GgAgentConfig::id) of the profile the reviewer ran under — one of the issue's\n[reviewers](GgBoardIssue::reviewer_ids).",
+          "description": "The [slug](GgAgentConfig::slug) of the profile the reviewer ran under — one of the issue's\n[reviewers](GgBoardIssue::reviewer_ids).",
           "type": "string"
         }
       },
@@ -1522,7 +1522,7 @@
           "type": "string"
         },
         "profileId": {
-          "description": "The [id](GgAgentConfig::id) of the agent profile that spent this — the same id\n[`AgentSpawned::profile_id`](Self::AgentSpawned::profile_id) and\n[`SlotUsage::profile_id`](Self::SlotUsage::profile_id) key on.",
+          "description": "The [slug](GgAgentConfig::slug) of the agent profile that spent this — the same id\n[`AgentSpawned::profile_id`](Self::AgentSpawned::profile_id) and\n[`SlotUsage::profile_id`](Self::SlotUsage::profile_id) key on.",
           "type": "string"
         },
         "tokens": {
@@ -2073,7 +2073,7 @@
           "type": "string"
         },
         "profileId": {
-          "description": "The [id](GgAgentConfig::id) of the agent profile this agent runs under. gg usage is\naccounted per profile (see [`SlotUsage`](Self::SlotUsage)), and every consumer that\nshows a name resolves it against the run's set\n([`agent_name`](GgCapabilitySet::agent_name)) rather than reading one off the\nstream — two profiles may carry the same name, so an id is the only thing that\ngroups a run's agents correctly.",
+          "description": "The [slug](GgAgentConfig::slug) of the agent profile this agent runs under. gg usage is\naccounted per profile (see [`SlotUsage`](Self::SlotUsage)), and every consumer that\nshows a name resolves it against the run's set\n([`agent_name`](GgCapabilitySet::agent_name)) rather than reading one off the\nstream — two profiles may carry the same name, so an id is the only thing that\ngroups a run's agents correctly.",
           "type": "string"
         },
         "type": {
@@ -2169,7 +2169,7 @@
           "type": "string"
         },
         "profileId": {
-          "description": "The [id](GgAgentConfig::id) of the agent profile this rollup accounts for.",
+          "description": "The [slug](GgAgentConfig::slug) of the agent profile this rollup accounts for.",
           "type": "string"
         },
         "tokens": {
@@ -2249,7 +2249,7 @@
           "type": ["string", "null"]
         },
         "fsmId": {
-          "description": "The machine: the [id](GgAgentConfig::id) of the **FSM shell** profile whose `states`\ntable is being driven. An agent may only ever be inside one, so this identifies the\ndocument the state came from.",
+          "description": "The machine: the [slug](GgAgentConfig::slug) of the **FSM shell** profile whose `states`\ntable is being driven. An agent may only ever be inside one, so this identifies the\ndocument the state came from.",
           "type": "string"
         },
         "profileId": {
@@ -2283,7 +2283,7 @@
           "type": "array"
         },
         "profileId": {
-          "description": "The [id](GgAgentConfig::id) of the agent profile the successor runs under.",
+          "description": "The [slug](GgAgentConfig::slug) of the agent profile the successor runs under.",
           "type": "string"
         },
         "state": {

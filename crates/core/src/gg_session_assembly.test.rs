@@ -360,7 +360,7 @@ fn a_reported_ceiling_truncation_survives_assembly() {
 // --- the provenance lines ---------------------------------------------------
 
 /// One agent row, as the recorder writes it when the agent comes into existence: the instance's
-/// id, the [id](crate::gg::GgAgentConfig::id) of the profile it ran under, and that profile's
+/// id, the [slug](crate::gg::GgAgentConfig::slug) of the profile it ran under, and that profile's
 /// display name.
 fn agent_line(
     agent_id: &str,

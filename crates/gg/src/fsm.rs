@@ -139,7 +139,7 @@ impl FsmSpec {
             .capability(CAPABILITY_FSM)
             .filter(|capability| capability.enabled)?;
         let states = capability.params.get(FSM_PARAM_STATES)?;
-        Some(Self::parse(&profile.id, states))
+        Some(Self::parse(&profile.slug, states))
     }
 
     /// Build the machine the shell profile with id `fsm` declares, from the raw
@@ -371,7 +371,7 @@ pub fn machines(set: &GgCapabilitySet) -> Result<BTreeMap<String, Arc<FsmSpec>>,
         let Some(spec) = FsmSpec::resolve(profile) else {
             continue;
         };
-        machines.insert(profile.id.trim().to_string(), Arc::new(spec?));
+        machines.insert(profile.slug.trim().to_string(), Arc::new(spec?));
     }
     Ok(machines)
 }
@@ -407,7 +407,7 @@ pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchR
         let Some(resolved) = FsmSpec::resolve(profile) else {
             continue;
         };
-        report.for_agent(&profile.id, |report| match resolved {
+        report.for_agent(&profile.slug, |report| match resolved {
             Err(err) => report.report(crate::validate::LaunchDefect::run_level(
                 param_locus(FSM_PARAM_STATES),
                 "",
@@ -463,7 +463,7 @@ fn check_states(set: &GgCapabilitySet, spec: &FsmSpec, report: &mut crate::valid
                         state.name, state.agent_id
                     ),
                 )
-                .known(set.agents.iter().map(|agent| agent.id.as_str())),
+                .known(set.agents.iter().map(|agent| agent.slug.as_str())),
             );
         }
         for transition in &state.transitions {
@@ -569,7 +569,7 @@ fn check_shell_declarations(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) {
-    let fsm = named(set, &profile.id);
+    let fsm = named(set, &profile.slug);
     let ignored = |locus: &str, what: &str| {
         crate::validate::LaunchDefect::run_level(
             locus,

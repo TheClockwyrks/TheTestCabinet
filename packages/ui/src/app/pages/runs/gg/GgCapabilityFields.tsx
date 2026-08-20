@@ -179,7 +179,7 @@ function ModelParamField({
       {deferred && !boundSlot && (
         <p className={gg.fieldError}>
           This defers to no model slot, so a run would never fill it in. Pick
-          one of the configuration&rsquo;s slots, or name a model outright.
+          one of the slots this agent declares, or name a model outright.
         </p>
       )}
     </div>
@@ -196,6 +196,11 @@ export interface CapabilityBodyProps {
    * states name them, so this control cannot be written against one profile alone.
    */
   agents: ReadonlyArray<GgAgentDraft>;
+  /**
+   * The slots **this agent** declares — the ones a `model` param may defer to. A model
+   * slot belongs to the profile whose bindings name it; the configuration's own slots
+   * fill these at launch and are never bound to directly.
+   */
   modelSlots: ReadonlyArray<GgModelSlotDraft>;
   models: Model[];
   /**
@@ -366,8 +371,12 @@ export function CapabilityBody({
                   <FieldLabel label={p.label} hint={p.hint} />
                   <GgFsmStatesField
                     states={statesFromDraft(draft.params?.[p.key])}
+                    // The option's value is the profile's internal id, which is what a
+                    // state stores; the slug is what it reads as, because that is the name
+                    // the operator wrote and the model will be shown.
                     agents={agents.map((a) => ({
                       id: a.id,
+                      slug: a.slug,
                       name: a.name,
                       machine: isFsmShell(a),
                     }))}
@@ -435,8 +444,10 @@ export function CapabilityBody({
                         </option>
                       )}
                     {agents.map((a) => (
+                      // Stored as the internal id, read as the slug: an `agent` param is a
+                      // reference, and the operator picks it by the name they wrote.
                       <option key={a.id} value={a.id}>
-                        {a.name || "unnamed"} ({a.id})
+                        {a.name || "unnamed"} ({a.slug})
                       </option>
                     ))}
                   </select>

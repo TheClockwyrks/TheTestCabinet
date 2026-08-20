@@ -293,17 +293,19 @@ function spawn(
 }
 
 describe("a profile's error record", () => {
+  // The set as a run records it: launching resolved the internal ids away, so each profile
+  // is named by the slug its `agent_spawned` events are stamped with.
   const SET: GgCapabilitySet = {
     agents: [
-      { id: "root", name: "Root", capabilities: [], modelId: "vendor/model" },
+      { slug: "root", name: "Root", capabilities: [], modelId: "vendor/model" },
       {
-        id: "reviewer",
+        slug: "reviewer",
         name: "Reviewer",
         capabilities: [],
         modelId: "vendor/model",
       },
-    ] as GgAgentConfig[],
-  } as GgCapabilitySet;
+    ] satisfies GgAgentConfig[],
+  };
 
   const EVENTS: HarnessEvent[] = [
     spawn("root", "root"),
@@ -345,25 +347,30 @@ describe("a profile's error record", () => {
 
   it("keeps two profiles that share a display name apart", () => {
     // Two reviewer profiles an operator called the same thing. The record is per profile,
-    // so the one that failed must not lend its failures to the one that did not: the id
+    // so the one that failed must not lend its failures to the one that did not: the slug
     // is what tells them apart, and the name says nothing.
     const twins: GgCapabilitySet = {
       agents: [
-        { id: "root", name: "Root", capabilities: [], modelId: "vendor/model" },
         {
-          id: "reviewer",
+          slug: "root",
+          name: "Root",
+          capabilities: [],
+          modelId: "vendor/model",
+        },
+        {
+          slug: "reviewer",
           name: "Reviewer",
           capabilities: [],
           modelId: "vendor/model",
         },
         {
-          id: "reviewer-2",
+          slug: "reviewer-2",
           name: "Reviewer",
           capabilities: [],
           modelId: "vendor/model",
         },
-      ] as GgAgentConfig[],
-    } as GgCapabilitySet;
+      ] satisfies GgAgentConfig[],
+    };
 
     const summaries = summarize(
       [

@@ -492,7 +492,7 @@ export function agentProfileId(
   set: GgCapabilitySet | null,
 ): string {
   if (node.profileId) return node.profileId;
-  if (node.id === ROOT_ID) return set?.agents?.[0]?.id ?? ROOT_PROFILE_ID;
+  if (node.id === ROOT_ID) return set?.agents?.[0]?.slug ?? ROOT_PROFILE_ID;
   return UNKNOWN_PROFILE_ID;
 }
 
@@ -539,13 +539,15 @@ export function deriveGgAgentSummaries(
 
   // Every profile worth a row: the declared ones in configuration order, then any the stream
   // introduced that the configuration does not carry.
-  const profileIds: string[] = declared.map((agent) => agent.id);
+  // A recorded set names its profiles by slug, which is also what every telemetry row
+  // carries: the launch resolved the internal ids away before the run started.
+  const profileIds: string[] = declared.map((agent) => agent.slug);
   for (const { profileId } of instances) {
     if (!profileIds.includes(profileId)) profileIds.push(profileId);
   }
 
   return profileIds.map((profileId) => {
-    const config = declared.find((agent) => agent.id === profileId) ?? null;
+    const config = declared.find((agent) => agent.slug === profileId) ?? null;
     const mine = instances.filter((entry) => entry.profileId === profileId);
 
     const usage = emptyTally();
@@ -652,7 +654,7 @@ export function deriveGgAgentSummaries(
       profileId,
       name: agentProfileName(capabilitySet, profileId),
       declared: config != null,
-      root: declared.length > 0 && declared[0]?.id === profileId,
+      root: declared.length > 0 && declared[0]?.slug === profileId,
       configuredModelId: config?.modelId || null,
       modelIds,
       modelName: modelId ? (nameOf(modelId) ?? modelId) : null,

@@ -2162,7 +2162,6 @@ impl Db {
             name: Set(agent.name.clone()),
             description: Set(agent.description.clone()),
             agent_json: Set(serde_json::to_string(&agent.agent)?),
-            model_slots_json: Set(serde_json::to_string(&agent.model_slots)?),
             updated_at: Set(agent.updated_at.clone()),
         }
         .insert(&self.conn())
@@ -2187,10 +2186,6 @@ impl Db {
             .col_expr(
                 gg_agent::Column::AgentJson,
                 Expr::value(serde_json::to_string(&agent.agent)?),
-            )
-            .col_expr(
-                gg_agent::Column::ModelSlotsJson,
-                Expr::value(serde_json::to_string(&agent.model_slots)?),
             )
             .col_expr(
                 gg_agent::Column::UpdatedAt,
@@ -3144,14 +3139,13 @@ fn gg_config_from_row(row: gg_config::Model) -> Result<crate::api::GgConfig> {
     })
 }
 
-/// One saved gg agent as the API carries it. Fallible: both JSON columns are parsed.
+/// One saved gg agent as the API carries it. Fallible: the profile column is parsed.
 fn gg_agent_from_row(row: gg_agent::Model) -> Result<crate::api::GgSavedAgent> {
     Ok(crate::api::GgSavedAgent {
         id: row.id,
         name: row.name,
         description: row.description,
         agent: serde_json::from_str(&row.agent_json)?,
-        model_slots: serde_json::from_str(&row.model_slots_json)?,
         updated_at: row.updated_at,
     })
 }

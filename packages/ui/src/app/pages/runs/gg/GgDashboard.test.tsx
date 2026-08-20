@@ -114,17 +114,18 @@ const EVENTS: HarnessEvent[] = [
 ];
 
 // Both profiles the fixture's attributions name, so the spend split has a name to read each
-// id as. `id` is what everything joins on; `name` is only ever the prose beside it.
+// slug as. This is a set as a run records it — launching resolved its internal ids away —
+// so `slug` is what everything joins on; `name` is only ever the prose beside it.
 const CAPABILITY_SET: GgCapabilitySet = {
   agents: [
     {
-      id: "root",
+      slug: "root",
       name: "Root",
       capabilities: [{ id: "shell", enabled: true, params: {} }],
       modelId: "vendor/big",
     },
     {
-      id: "reviewer",
+      slug: "reviewer",
       name: "Reviewer",
       capabilities: [{ id: "shell", enabled: true, params: {} }],
       modelId: "vendor/small",
@@ -471,15 +472,15 @@ function renderSharedName(): HTMLElement {
   ];
   const set: GgCapabilitySet = {
     agents: [
-      { id: "root", name: "Root", capabilities: [], modelId: "vendor/big" },
+      { slug: "root", name: "Root", capabilities: [], modelId: "vendor/big" },
       {
-        id: "reviewer",
+        slug: "reviewer",
         name: "Reviewer",
         capabilities: [],
         modelId: "vendor/small",
       },
       {
-        id: "reviewer-2",
+        slug: "reviewer-2",
         name: "Reviewer",
         capabilities: [],
         modelId: "vendor/tiny",

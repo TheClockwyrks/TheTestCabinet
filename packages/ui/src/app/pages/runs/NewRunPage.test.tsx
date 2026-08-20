@@ -92,10 +92,22 @@ const DUAL_FAMILY_MODEL = {
   releasedAt: null,
 } as unknown as Model;
 
-// A saved configuration exercising the whole model-slot contract: two declared
-// launch slots (one carrying a default), an agent deferring to each, and a `judge`
-// agent pinned to a model *inside* the configuration — which must never be asked
-// about again on the launch form.
+// A saved configuration exercising the whole model-slot contract, which is now two
+// kinds of launch input at once:
+//
+//   * a **configuration slot** (`shared`) filling the slots two agents declare, so one
+//     picker at launch decides what both of them run on — the whole reason to declare one;
+//   * a **passthrough** agent slot, which the launch form asks for on its own under the
+//     name the agent that declares it lends it (`solo.primary`);
+//   * and a `judge` agent pinned to a model *inside* the configuration, which must never
+//     be asked about again on the launch form.
+//
+// This is an **authored** set, so each profile spells its identity in all three of the ways
+// that identity is now split: an opaque internal `id` nobody is shown, a `slug` the operator
+// wrote and the model reads, and a free-form `name`. The three are deliberately different
+// text on every profile here, because everything this fixture is for turns on which of them
+// a given place uses — a configuration slot's `targets[].agent` names the **id**, while the
+// launch form labels a passthrough slot by the **slug**, and neither is the name.
 const SAVED_CONFIG = {
   id: "cfg-1",
   name: "critic-sweep",
@@ -106,40 +118,71 @@ const SAVED_CONFIG = {
   capabilitySet: {
     preset: "critic-sweep",
     modelSlots: [
-      { name: "primary" },
-      { name: "critic", defaultModelId: "anthropic/claude-haiku-4.5" },
+      {
+        name: "shared",
+        // By internal id, which is what a reference inside an authored configuration is:
+        // renaming either profile leaves this pointing at the same two agents.
+        targets: [
+          { agent: "k-9f21", slot: "primary" },
+          { agent: "k-3c07", slot: "primary" },
+        ],
+      },
     ],
     agents: [
       {
+        id: "k-9f21",
+        slug: "root",
         name: "Root",
         capabilities: [{ id: "shell", enabled: true, params: {} }],
         modelId: "",
         modelSlot: "primary",
+        modelSlots: [{ name: "primary" }],
       },
-      { name: "reviewer", capabilities: [], modelId: "", modelSlot: "critic" },
-      { name: "judge", capabilities: [], modelId: "openai/o-fixed" },
+      {
+        id: "k-3c07",
+        slug: "reviewer",
+        name: "Critic",
+        capabilities: [],
+        modelId: "",
+        modelSlot: "primary",
+        modelSlots: [{ name: "primary" }],
+      },
+      {
+        id: "k-2b58",
+        slug: "solo",
+        name: "Lone critic",
+        capabilities: [],
+        modelId: "",
+        modelSlot: "primary",
+        modelSlots: [
+          {
+            name: "primary",
+            passthrough: true,
+            defaultModelId: "anthropic/claude-haiku-4.5",
+          },
+        ],
+      },
+      {
+        id: "k-77d4",
+        slug: "judge",
+        name: "Judge",
+        capabilities: [],
+        modelId: "openai/o-fixed",
+      },
     ],
   },
 };
 
 // The account's one saved gg configuration: a single Root agent with the default
-// capabilities, deferring to a declared `primary` model slot. There are no shared
-// built-ins any more, so a picker has something to offer only because an account saved
-// something — which is what these tests set up.
+// capabilities, deferring to the passthrough `primary` slot it declares itself. There are
+// no shared built-ins any more, so a picker has something to offer only because an account
+// saved something — which is what these tests set up.
 const MINIMAL_DRAFT = (() => {
   const base = emptyDraft();
   const root = blankAgentDraft("Root", DEFAULT_CAP_IDS);
-  return {
-    ...base,
-    agents: [
-      {
-        ...root,
-        id: base.agents[0]!.id,
-        modelSource: "model-slot" as const,
-        modelSlotId: base.modelSlots[0]!.id,
-      },
-    ],
-  };
+  // A fresh profile is born declaring and deferring to its own passthrough `primary`
+  // slot, so there is no configuration-level declaration to point it at.
+  return { ...base, agents: [{ ...root, id: base.agents[0]!.id }] };
 })();
 
 const SAVED_GG_CONFIG = {
@@ -236,11 +279,16 @@ describe("NewRunPage", () => {
     expect(screen.getByRole("option", { name: "minimal" })).toBeInTheDocument();
   });
 
-  it("launches the picked gg configuration with the model bound to its primary slot", async () => {
+  it("launches the picked gg configuration with the model bound to its root's slot", async () => {
     const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-1" });
     renderPage(launchGgRun);
     chooseGg();
     await screen.findByLabelText("gg configuration");
+
+    // A configuration that declares no launch input of its own still asks for a model:
+    // the root's slot is passthrough, so the form asks for it under the name the agent
+    // that declares it lends it.
+    expect(await screen.findByLabelText("root.primary")).toBeInTheDocument();
 
     // gg reaches every slot's model through OpenRouter, so a model catalogued under
     // several families must be bound by its `openrouter` alias — never the
@@ -323,7 +371,7 @@ describe("NewRunPage", () => {
     expect(track).not.toHaveBeenCalled();
   });
 
-  it("asks only for the configuration's declared model slots, pre-filled with their defaults", async () => {
+  it("asks for exactly one model per launch input, pre-filled with its default", async () => {
     const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-2" });
     renderPage(launchGgRun, [SAVED_CONFIG]);
     chooseGg();
@@ -333,41 +381,92 @@ describe("NewRunPage", () => {
       target: { value: "saved:cfg-1" },
     });
 
-    // One picker per declared model slot, labelled by the slot's name — and none for
-    // the `judge` role the configuration pinned itself.
-    const primary = await screen.findByLabelText("primary");
-    const critic = screen.getByLabelText("critic");
+    // A run asks for exactly one set of models: the configuration's own slots, then every
+    // passthrough agent slot under the name the agent that declares it lends it. Two
+    // inputs here for four agents — three of them bound, two off one picker — and none
+    // for the `judge` role the configuration pinned itself.
+    const shared = await screen.findByLabelText("shared");
+    const solo = screen.getByLabelText("solo.primary");
     expect(screen.queryByLabelText("judge")).toBeNull();
-    // The slot's declared default is pre-filled; the one with no default is empty, so
+    // And in that order — every configuration slot as the configuration declared them,
+    // then the passthrough agent slots. The order is the operator's, so a form that
+    // reshuffled it would make a configuration impossible to write instructions about.
+    expect(
+      screen
+        .getAllByPlaceholderText(/^model id/)
+        .map(
+          (input) => input.closest("label")!.querySelector("span")!.textContent,
+        ),
+    ).toEqual(["shared", "solo.primary"]);
+    // Nothing is asked under a bare slot name: `primary` is what three of these agents
+    // call their own slot, and one picker per binding would be three pickers.
+    expect(screen.queryByLabelText("primary")).toBeNull();
+    // The passthrough input is labelled by its agent's **slug** and by nothing else. The
+    // operator wrote that slug, the model is shown it, and it is what the run will name
+    // the profile by afterwards — so it is the one half of the profile's identity worth
+    // reading on a form. The display name is prose that two profiles may share, and the
+    // internal id is opaque text minted for references and shown to nobody; a form
+    // labelled by either would be asking about an agent the operator cannot place.
+    expect(screen.queryByLabelText("Lone critic.primary")).toBeNull();
+    expect(screen.queryByLabelText("k-2b58.primary")).toBeNull();
+    // The input's declared default is pre-filled; the one with no default is empty, so
     // the operator must choose before the run can launch.
-    expect(critic).toHaveValue("anthropic/claude-haiku-4.5");
-    expect(primary).toHaveValue("");
+    expect(solo).toHaveValue("anthropic/claude-haiku-4.5");
+    expect(shared).toHaveValue("");
     expect(screen.getByRole("button", { name: "Launch run" })).toBeDisabled();
 
-    fireEvent.focus(primary);
+    fireEvent.focus(shared);
     fireEvent.click(
       await screen.findByRole("option", { name: /GPT-5\.6 Sol/ }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
     await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
 
-    // The launched set is fully pinned: each deferred agent resolved to the model its
-    // slot collected, the internal `judge` binding carried through untouched, and the
-    // declarations dropped — what runs is what the run records.
+    // The launched set is fully pinned: each deferred agent resolved to the model the
+    // launch input filling its slot collected — the two off `shared` running on one — the
+    // internal `judge` binding carried through untouched, and every declaration dropped.
+    //
+    // The two `shared` agents are the half of this that proves the second level was
+    // resolved through the ids: the declaration named `k-9f21` and `k-3c07`, not `root`
+    // and `reviewer`, and nothing but reading the targets as ids gets both of them onto
+    // the one model the operator picked.
     const { capabilitySet } = launchGgRun.mock.calls[0]![0];
     expect(
-      capabilitySet.agents.map((a: { name: string; modelId: string }) => ({
-        name: a.name,
-        modelId: a.modelId,
-      })),
+      capabilitySet.agents.map(
+        (a: { slug: string; name: string; modelId: string }) => ({
+          slug: a.slug,
+          name: a.name,
+          modelId: a.modelId,
+        }),
+      ),
     ).toEqual([
-      { name: "Root", modelId: "openai/gpt-5.6-sol" },
-      { name: "reviewer", modelId: "anthropic/claude-haiku-4.5" },
-      { name: "judge", modelId: "openai/o-fixed" },
+      { slug: "root", name: "Root", modelId: "openai/gpt-5.6-sol" },
+      { slug: "reviewer", name: "Critic", modelId: "openai/gpt-5.6-sol" },
+      {
+        slug: "solo",
+        name: "Lone critic",
+        modelId: "anthropic/claude-haiku-4.5",
+      },
+      { slug: "judge", name: "Judge", modelId: "openai/o-fixed" },
     ]);
+    // Nothing is left for gg to resolve: it is handed a set whose bindings are decided.
     expect(
-      capabilitySet.agents.every((a: { modelSlot?: string }) => !a.modelSlot),
+      capabilitySet.agents.every(
+        (a: { modelSlot?: string; modelSlots?: unknown[] }) =>
+          !a.modelSlot && !a.modelSlots,
+      ),
     ).toBe(true);
     expect(capabilitySet.modelSlots).toBeUndefined();
+    // The internal ids ride along untouched. Binding models is not what resolves a
+    // profile's identity: the console posts the set as it was authored, ids and all, and
+    // the backend is the one place that rewrites every reference onto the slug and drops
+    // them — which is also the last place a reference can still be judged against the ids
+    // it names.
+    expect(capabilitySet.agents.map((a: { id?: string }) => a.id)).toEqual([
+      "k-9f21",
+      "k-3c07",
+      "k-2b58",
+      "k-77d4",
+    ]);
   });
 });

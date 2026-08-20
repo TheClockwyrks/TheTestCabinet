@@ -354,6 +354,7 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 gg::GgAgentConfig, gg::GgSubagentRef, gg::GgSubagentScope,
                 gg::GgPromptCacheTtl, gg::GgLoopDetection, gg::GgModelSlot,
+                gg::GgConfigSlot, gg::GgSlotTarget,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgModuleKind, gg::GgModuleOwnership, gg::GgModuleOrigin,
                 gg::GgAgentModule, gg::GgModuleDisposition, gg::GgTransitionModule,
@@ -673,6 +674,8 @@ fn main() -> Result<()> {
                 "GgPromptCacheTtl",
                 "GgCapabilityConfig",
                 "GgModelSlot",
+                "GgConfigSlot",
+                "GgSlotTarget",
                 "GgRunLimits",
                 // The run's hooks are configured on the capability set, so they are owned
                 // by the same document its ceilings are — for the same reason: this is

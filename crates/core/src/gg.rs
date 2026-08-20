@@ -1096,9 +1096,9 @@ pub const DEFAULT_SIGNAL_THRESHOLD_PERCENT: u64 = 75;
 /// [wait on an issue]: https://docs.testcabinet.ai/gg/project-management/
 pub const CAPABILITY_PROJECT_MANAGEMENT: &str = "project-management";
 
-/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability param holding the
-/// [id](GgAgentConfig::id) of the run's **merge agent**: the profile gg dispatches when merging an
-/// accepted issue's worktree back into the main tree hits a **conflict**, so the conflict is
+/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability param naming the run's
+/// **merge agent**: the profile gg dispatches when merging an accepted issue's worktree back into
+/// the main tree hits a **conflict**, so the conflict is
 /// resolved and the merge finished rather than the issue's work being stranded on its branch.
 ///
 /// It is **required** — a set that enables project management without a merge agent is refused at
@@ -1223,9 +1223,13 @@ pub struct GgFsmState {
     /// names it when it moves. Must be non-empty and unique within the machine; both are launch
     /// failures, because a transition to an ambiguous name has no answer.
     pub name: String,
-    /// The [id](GgAgentConfig::id) of the [agent profile](GgAgentConfig) this state runs: its
-    /// model, its capabilities, its system prompt. Must be a profile the set declares, and must
-    /// not be an FSM shell (a shell cannot be a state — it would recurse).
+    /// The [agent profile](GgAgentConfig) this state runs: its model, its capabilities, its system
+    /// prompt. Must be a profile the set declares, and must not be an FSM shell (a shell cannot be
+    /// a state — it would recurse).
+    ///
+    /// Names the profile's internal [id](GgAgentConfig::id) while the configuration is authored and
+    /// its [slug](GgAgentConfig::slug) once launching has resolved them; whether the set still
+    /// carries ids says which.
     ///
     /// Defaulted rather than required so a state that omits it is refused by the machine's own
     /// validation — which names the state and says what is missing — instead of by a serde error
@@ -1844,9 +1848,9 @@ pub const GG_WORKSPACE_SKILLS_DIR: &str = ".gg/skills";
 /// whose root was renamed would fail to launch.
 pub const ROOT_AGENT: &str = "Root";
 
-/// The [id](GgAgentConfig::id) a fresh capability set's **root profile** is seeded with.
+/// The [slug](GgAgentConfig::slug) a fresh capability set's **root profile** is seeded with.
 ///
-/// This is the one well-known profile id, so a hand-written set and a default one agree on what
+/// This is the one well-known profile slug, so a hand-written set and a default one agree on what
 /// the first profile is called. It is still only a starting value: the root is the **first**
 /// profile a set declares, whatever its id.
 ///
@@ -1854,6 +1858,23 @@ pub const ROOT_AGENT: &str = "Root";
 /// identifies one *instance* of a profile within one run — a profile is a template, and a run may
 /// hold many instances of it at once. The two happen to spell the run's first of each `root`.
 pub const ROOT_PROFILE_ID: &str = "root";
+
+/// Whether `slug` is a well-formed [profile slug](GgAgentConfig::id): one or more groups
+/// of lowercase ASCII letters and digits, separated by single hyphens.
+///
+/// The rule exists because the slug is what the **model** is shown and passes back. A
+/// roster in a prompt reads as prose only while every name in it is one word the model can
+/// copy without deciding how to spell it, so a slug carries no whitespace, no case and no
+/// punctuation to get wrong.
+pub fn is_valid_agent_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.split('-').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        })
+}
 
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
@@ -1887,12 +1908,16 @@ pub struct GgCapabilitySet {
     /// configuration with no root, and a launch rejects it by name.
     #[serde(default = "default_agents")]
     pub agents: Vec<GgAgentConfig>,
-    /// The [launch-time model parameters](GgModelSlot) this set declares, for the
-    /// [agent bindings](GgAgentConfig::model_slot) that defer to one instead of pinning
-    /// a model. Empty for a fully pinned set — and empty on the set a run *records*,
-    /// because launching resolves every deferred binding first.
+    /// The [launch inputs](GgConfigSlot) this set declares, each naming the
+    /// [agent slots](GgModelSlot) it fills.
+    ///
+    /// This is not the whole of what a launch asks for: a
+    /// [passthrough](GgModelSlot::passthrough) agent slot is exposed on its own without a
+    /// declaration here. [`launch_slots`](Self::launch_slots) is the one set of inputs a
+    /// run is launched with. Empty for a fully pinned set, and empty on the set a run
+    /// records, because launching resolves every deferred binding first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub model_slots: Vec<GgModelSlot>,
+    pub model_slots: Vec<GgConfigSlot>,
     /// The **run-level guardrails** this run is bounded by — the turn, runtime, error and
     /// cost ceilings that stop a session and record which one stopped it, plus the
     /// [parallelism cap](GgRunLimits::max_parallel) that bounds how many of its agents run
@@ -2009,29 +2034,40 @@ impl GgCapabilitySet {
         &self.root().name
     }
 
-    /// The [root agent](Self::root)'s [id](GgAgentConfig::id) — what a reference means when it
-    /// means "whichever profile drives this run".
+    /// The [root agent](Self::root)'s [slug](GgAgentConfig::slug) — what a reference means when
+    /// it means "whichever profile drives this run".
     pub fn root_id(&self) -> &str {
-        &self.root().id
+        &self.root().slug
     }
 
-    /// The agent profile with the given [id](GgAgentConfig::id), or `None` when this set
+    /// The agent profile with the given [slug](GgAgentConfig::slug), or `None` when this set
     /// declares none.
     ///
-    /// The only way to resolve a reference. Profile [names](GgAgentConfig::name) are display
-    /// text and may repeat, so there is deliberately no lookup by one.
-    pub fn agent(&self, id: &str) -> Option<&GgAgentConfig> {
-        self.agents.iter().find(|a| a.id == id)
+    /// The only way to resolve a reference in a **launched** set, which is every set gg reads:
+    /// launching rewrites each one to the profile's slug. Profile [names](GgAgentConfig::name) are
+    /// display text and may repeat, so there is deliberately no lookup by one.
+    pub fn agent(&self, slug: &str) -> Option<&GgAgentConfig> {
+        self.agents.iter().find(|a| a.slug == slug)
     }
 
-    /// The [display name](GgAgentConfig::name) of one profile, or its id when this set declares no
-    /// such profile — a dangling reference reads as the id it failed to resolve rather than as
-    /// nothing.
+    /// The agent profile carrying the internal [id](GgAgentConfig::id) `id`, or `None` when this
+    /// set declares none.
+    ///
+    /// The lookup an **authored** configuration resolves a reference by, before a launch has
+    /// rewritten those references to slugs. Two profiles may legitimately share a slug while an
+    /// operator is clearing a collision, and this still names exactly one of them.
+    pub fn agent_by_key(&self, id: &str) -> Option<&GgAgentConfig> {
+        self.agents.iter().find(|a| a.id.as_deref() == Some(id))
+    }
+
+    /// The [display name](GgAgentConfig::name) of one profile, or the slug when this set declares
+    /// no such profile — a dangling reference reads as the slug it failed to resolve rather than
+    /// as nothing.
     ///
     /// For prose only. Names may repeat, so nothing may resolve one back to a profile; a surface
-    /// that has to *name* a profile unambiguously names its [id](GgAgentConfig::id).
-    pub fn agent_name<'a>(&'a self, id: &'a str) -> &'a str {
-        self.agent(id).map(|a| a.name.as_str()).unwrap_or(id)
+    /// that has to *name* a profile unambiguously names its [slug](GgAgentConfig::slug).
+    pub fn agent_name<'a>(&'a self, slug: &'a str) -> &'a str {
+        self.agent(slug).map(|a| a.name.as_str()).unwrap_or(slug)
     }
 
     /// One agent's roster in `scope`, resolved for a **model-facing** surface: the profiles it may
@@ -2104,7 +2140,7 @@ impl GgCapabilitySet {
     }
 
     /// The profile that actually **runs** when work is dispatched onto the profile with
-    /// [id](GgAgentConfig::id) `id`: that profile, or — when it is an
+    /// [slug](GgAgentConfig::slug) `id`: that profile, or — when it is an
     /// [FSM shell](GgAgentConfig::is_fsm_shell) — the agent its machine's
     /// [entry state](GgAgentConfig::fsm_entry_agent) runs.
     ///
@@ -2137,18 +2173,279 @@ impl GgCapabilitySet {
         // must not share a report.
         let entry = agent
             .fsm_entry_agent()
-            .ok_or(GgDispatchError::UnreadableMachine { shell: &agent.id })?;
+            .ok_or(GgDispatchError::UnreadableMachine { shell: &agent.slug })?;
         self.agent(entry)
             .ok_or(GgDispatchError::UndeclaredEntryAgent {
-                shell: &agent.id,
+                shell: &agent.slug,
                 entry,
             })
     }
 
-    /// The declaration of the named [model slot](GgModelSlot), or `None` when this set
-    /// declares no such slot.
-    pub fn model_slot(&self, name: &str) -> Option<&GgModelSlot> {
+    /// The declaration of the named [configuration slot](GgConfigSlot), or `None` when
+    /// this set declares no such slot.
+    pub fn model_slot(&self, name: &str) -> Option<&GgConfigSlot> {
         self.model_slots.iter().find(|s| s.name == name)
+    }
+
+    /// The one set of [launch inputs](GgLaunchSlot) this configuration asks for: every
+    /// [configuration slot](GgConfigSlot) in declaration order, then every
+    /// [passthrough](GgModelSlot::passthrough) agent slot in agent order.
+    ///
+    /// A configuration slot pre-fills from its own default, or from the first
+    /// [target](GgSlotTarget) that carries one.
+    pub fn launch_slots(&self) -> Vec<GgLaunchSlot> {
+        let mut out: Vec<GgLaunchSlot> = Vec::new();
+        for slot in &self.model_slots {
+            // A target names the profile's internal id, which is the half of its identity an
+            // authored set carries — and a set with a slot table to read is an authored one.
+            let default = slot.default_model_id.clone().or_else(|| {
+                slot.targets.iter().find_map(|t| {
+                    self.agent_by_key(&t.agent)?
+                        .model_slot_decl(&t.slot)?
+                        .default_model_id
+                        .clone()
+                })
+            });
+            out.push(GgLaunchSlot {
+                name: slot.name.clone(),
+                default_model_id: default,
+                targets: slot.targets.clone(),
+            });
+        }
+        for agent in &self.agents {
+            for slot in agent.model_slots.iter().filter(|s| s.passthrough) {
+                out.push(GgLaunchSlot {
+                    name: passthrough_slot_name(&agent.slug, &slot.name),
+                    default_model_id: slot.default_model_id.clone(),
+                    // Labelled by the slug, because that is what an operator reads on the
+                    // launch form; targeted by the internal id, because that is what a
+                    // target names everywhere else.
+                    targets: vec![GgSlotTarget {
+                        agent: agent.id.clone().unwrap_or_else(|| agent.slug.clone()),
+                        slot: slot.name.clone(),
+                    }],
+                });
+            }
+        }
+        out
+    }
+
+    /// Every profile [slug](GgAgentConfig::slug) this set declares more than once, in
+    /// declaration order and each named once.
+    ///
+    /// A slug is what the model is shown and passes back, and what everything a run produces names
+    /// a profile by. A repeat therefore makes every one of those ambiguous rather than merely
+    /// untidy, which is why it refuses the launch instead of being tidied up on the operator's
+    /// behalf. The [ids](GgAgentConfig::id) underneath stay distinct, so both profiles remain
+    /// addressable while an operator clears it.
+    pub fn duplicate_agent_slugs(&self) -> Vec<&str> {
+        repeated(self.agents.iter().map(|a| a.slug.trim()))
+    }
+
+    /// Every internal [id](GgAgentConfig::id) this set declares more than once, in declaration
+    /// order and each named once.
+    ///
+    /// An id is minted, never written, so a repeat is a document that was assembled wrongly rather
+    /// than an operator's mistake — but it is the one thing that would make a reference in an
+    /// authored configuration ambiguous, so it is refused before the configuration is stored.
+    pub fn duplicate_agent_keys(&self) -> Vec<&str> {
+        repeated(self.agents.iter().filter_map(|a| a.id.as_deref()))
+    }
+
+    /// The [slugs](GgAgentConfig::slug) of the profiles still carrying an internal
+    /// [id](GgAgentConfig::id) — empty for a launched set, and every profile of an authored one.
+    ///
+    /// Launching rewrites every reference to a slug and drops the ids, so one still on the document
+    /// means the launch was incomplete and the references gg is about to resolve name ids nothing
+    /// will match.
+    pub fn unresolved_agent_keys(&self) -> Vec<&str> {
+        self.agents
+            .iter()
+            .filter(|a| a.id.is_some())
+            .map(|a| a.slug.as_str())
+            .collect()
+    }
+
+    /// This set with every reference to a profile's internal [id](GgAgentConfig::id) rewritten to
+    /// that profile's [slug](GgAgentConfig::slug), and the ids dropped — the **launched** form of
+    /// an authored configuration.
+    ///
+    /// Three references name a profile and are rewritten: a
+    /// [roster entry](GgSubagentRef::agent_id), the
+    /// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) param, and each of a machine's
+    /// [states](FSM_PARAM_STATES). A [configuration slot](GgConfigSlot)'s
+    /// [target](GgSlotTarget::agent) is not among them because a launch resolves the slots away
+    /// entirely.
+    ///
+    /// A reference naming an id this set does not declare is left exactly as written rather than
+    /// dropped or guessed at: the launch check reports it as the dangling reference it is, and a
+    /// resolution that quietly deleted it would leave nothing to report.
+    pub fn resolve_agent_keys(&self) -> GgCapabilitySet {
+        let slug_of = |id: &str| {
+            self.agent_by_key(id)
+                .map(|a| a.slug.clone())
+                .unwrap_or_else(|| id.to_string())
+        };
+        let agents = self
+            .agents
+            .iter()
+            .map(|agent| {
+                let mut resolved = agent.clone();
+                resolved.id = None;
+                for entry in &mut resolved.subagents {
+                    entry.agent_id = slug_of(&entry.agent_id);
+                }
+                for capability in &mut resolved.capabilities {
+                    if capability.id == CAPABILITY_PROJECT_MANAGEMENT
+                        && let Some(Value::String(merge)) = capability
+                            .params
+                            .get_mut(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT)
+                    {
+                        *merge = slug_of(merge);
+                    }
+                    if capability.id == CAPABILITY_FSM
+                        && let Some(Value::Array(states)) =
+                            capability.params.get_mut(FSM_PARAM_STATES)
+                    {
+                        for state in states.iter_mut() {
+                            if let Some(Value::String(agent_id)) = state.get_mut("agentId") {
+                                *agent_id = slug_of(agent_id);
+                            }
+                        }
+                    }
+                }
+                resolved
+            })
+            .collect();
+        GgCapabilitySet {
+            agents,
+            model_slots: Vec::new(),
+            ..self.clone()
+        }
+    }
+
+    /// Why this **authored** set's [slots](GgModelSlot) cannot be launched from, each defect in
+    /// one sentence naming what is wrong, or empty when the mapping is sound.
+    ///
+    /// Authored, because a [target](GgSlotTarget::agent) names a profile's internal
+    /// [id](GgAgentConfig::id): a launch resolves every slot away, so a launched set has no mapping
+    /// left to check and gg refuses one that still declares any.
+    pub fn slot_defects(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+
+        // Which configuration slots name each agent slot, so "mapped nowhere" and "mapped
+        // twice" are both answered from one pass.
+        let mut mapped: Vec<(&str, &str, usize)> = Vec::new();
+        let mut names: Vec<&str> = Vec::new();
+        for slot in &self.model_slots {
+            let name = slot.name.trim();
+            if name.is_empty() {
+                out.push("a configuration slot has no name; the launch form labels an input by its name.".to_string());
+            } else if names.contains(&name) {
+                out.push(format!(
+                    "the `{name}` configuration slot is declared more than once; the launch form keys one model by each name."
+                ));
+            } else {
+                names.push(name);
+            }
+            for target in &slot.targets {
+                let Some(agent) = self.agent_by_key(target.agent.trim()) else {
+                    out.push(format!(
+                        "the `{name}` configuration slot fills a slot on `{}`, which this configuration does not declare.",
+                        target.agent
+                    ));
+                    continue;
+                };
+                let Some(declared) = agent.model_slot_decl(target.slot.trim()) else {
+                    out.push(format!(
+                        "the `{name}` configuration slot fills `{}` on `{}`, which declares no such slot.",
+                        target.slot, target.agent
+                    ));
+                    continue;
+                };
+                if declared.passthrough {
+                    out.push(format!(
+                        "the `{}` slot on `{}` is passthrough and is also filled by the `{name}` configuration slot, so a launch would ask for it twice.",
+                        target.slot, target.agent
+                    ));
+                }
+                match mapped
+                    .iter_mut()
+                    .find(|(a, s, _)| *a == agent.slug && *s == declared.name)
+                {
+                    Some((_, _, count)) => *count += 1,
+                    None => mapped.push((&agent.slug, &declared.name, 1)),
+                }
+            }
+        }
+
+        for agent in &self.agents {
+            let mut declared: Vec<&str> = Vec::new();
+            for slot in &agent.model_slots {
+                let slot_name = slot.name.trim();
+                if slot_name.is_empty() {
+                    out.push(format!(
+                        "a model slot on `{}` has no name; a binding names a slot to defer to it.",
+                        agent.slug
+                    ));
+                    continue;
+                }
+                if declared.contains(&slot_name) {
+                    out.push(format!(
+                        "the `{slot_name}` slot is declared more than once on `{}`; a binding names one and the first answers.",
+                        agent.slug
+                    ));
+                    continue;
+                }
+                declared.push(slot_name);
+                let fills = mapped
+                    .iter()
+                    .find(|(a, s, _)| *a == agent.slug && *s == slot_name)
+                    .map_or(0, |(_, _, count)| *count);
+                if fills > 1 {
+                    out.push(format!(
+                        "the `{slot_name}` slot on `{}` is filled by {fills} configuration slots; exactly one launch input supplies each binding.",
+                        agent.slug
+                    ));
+                }
+                if fills == 0 && !slot.passthrough {
+                    out.push(format!(
+                        "the `{slot_name}` slot on `{}` reaches no launch input; map a configuration slot onto it, or mark it passthrough.",
+                        agent.slug
+                    ));
+                }
+            }
+            for deferred in agent.deferred_slot_names() {
+                if !declared.contains(&deferred) {
+                    out.push(format!(
+                        "`{}` defers a model to `{deferred}`, which it does not declare as a model slot.",
+                        agent.slug
+                    ));
+                }
+            }
+        }
+
+        // Two launch inputs at one name is one model where the operator meant two. A
+        // passthrough input is named after the agent that declares it, so the configuration
+        // slot is the half that can be renamed.
+        let mut seen: Vec<String> = Vec::new();
+        let mut collided: Vec<String> = Vec::new();
+        for input in self.launch_slots() {
+            if seen.contains(&input.name) {
+                if !collided.contains(&input.name) {
+                    collided.push(input.name.clone());
+                }
+            } else {
+                seen.push(input.name);
+            }
+        }
+        for name in collided {
+            out.push(format!(
+                "two launch inputs are named `{name}`; rename the configuration slot, since a \
+                 passthrough slot takes its name from the agent that declares it."
+            ));
+        }
+        out
     }
 
     /// Every distinct model the set can actually run an agent on, in agent order —
@@ -2220,19 +2517,19 @@ impl GgCapabilitySet {
 /// are read, formatted and dropped at the site that asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GgDispatchError<'a> {
-    /// The set declares no profile with this [id](GgAgentConfig::id) at all.
+    /// The set declares no profile with this [slug](GgAgentConfig::slug) at all.
     UndeclaredProfile(&'a str),
     /// `shell` is an [FSM shell](GgAgentConfig::is_fsm_shell) whose machine has no readable
     /// [entry state](GgAgentConfig::fsm_entry_agent) — no states, or a first state naming no
     /// agent — so there is nothing for a dispatch onto it to become.
     UnreadableMachine {
-        /// The [id](GgAgentConfig::id) of the shell profile whose machine could not be entered.
+        /// The [slug](GgAgentConfig::slug) of the shell profile whose machine could not be entered.
         shell: &'a str,
     },
     /// `shell` is an [FSM shell](GgAgentConfig::is_fsm_shell) whose machine enters a state running
     /// the `entry` agent, which the set does not declare.
     UndeclaredEntryAgent {
-        /// The [id](GgAgentConfig::id) of the shell profile the dispatch was aimed at.
+        /// The [slug](GgAgentConfig::slug) of the shell profile the dispatch was aimed at.
         shell: &'a str,
         /// The entry state's [`agent_id`](GgFsmState::agent_id) — the id that is actually missing.
         entry: &'a str,
@@ -2281,20 +2578,38 @@ impl fmt::Display for GgDispatchError<'_> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentConfig {
-    /// The profile's **stable identifier**, unique within a set and never rewritten once the
-    /// profile exists. Everything that names this profile names this: a
-    /// [roster entry](GgSubagentRef::agent_id), a machine's [state](GgFsmState::agent_id), the
-    /// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT), an
-    /// [issue](GgBoardIssue::agent_id)'s implementer and reviewers, every telemetry event and
-    /// accounting row the run produces — and the `agent` argument the **model** passes to
-    /// `spawn_subagent`, `exec` and `create_issue`.
+    /// The profile's **internal identifier**: opaque text, minted when the profile is created,
+    /// never rewritten, and shown to nobody. Its only job is to be the same text tomorrow.
     ///
-    /// The model names profiles by id for the same reason everything else does: a display name
-    /// may repeat, so it cannot say which profile is meant. Ids are therefore minted **readable**
-    /// — a slug taken from the profile's first name, `reviewer` or `reviewer-2`, and left alone
-    /// after that — so a roster in a prompt reads as prose while still naming exactly one thing.
-    /// [`ROOT_PROFILE_ID`] is the first profile of a default set.
-    pub id: String,
+    /// Everything *inside an authored configuration* that points at a profile points at this —
+    /// a [roster entry](GgSubagentRef::agent_id), a machine's [state](GgFsmState::agent_id), the
+    /// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT), a
+    /// [configuration slot](GgConfigSlot)'s [target](GgSlotTarget::agent), and a configuration's
+    /// link to the saved agent a profile follows. That is what makes renaming free and importing
+    /// safe: no reference breaks because a name changed, and two profiles showing one name are
+    /// still two profiles.
+    ///
+    /// **Absent once a launch has resolved the set**, which is what the field says. Launching
+    /// rewrites every reference to the profile's [slug](Self::slug) and drops the ids, so the set
+    /// gg reads and a run records names profiles by the one name the operator wrote and the model
+    /// was shown. gg refuses a set that still carries one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub id: Option<String>,
+    /// The profile's **slug**: the name the model reads, written by the operator, unique within
+    /// the set, and shaped by [`is_valid_agent_slug`].
+    ///
+    /// A roster in a prompt names slugs, and the slug is what the model passes back as the `agent`
+    /// argument of `spawn_subagent`, `exec` and `create_issue`. It is also what a run names a
+    /// profile by everywhere afterwards — every telemetry event, every accounting row, an
+    /// [issue](GgBoardIssue::agent_id)'s implementer and reviewers, and the analysis query
+    /// language — so what an operator writes is what they later slice by.
+    ///
+    /// The model needs a name of its own for the same reason everything else does: a display
+    /// [name](Self::name) may repeat, so it cannot say which profile is meant. It is shaped rather
+    /// than free because the model has to copy it back without deciding how to spell it.
+    /// [`ROOT_PROFILE_ID`] is the slug of the first profile of a default set.
+    pub slug: String,
     /// The profile's **display name**: what the console, the run log and a roster's prose call
     /// this agent. `"Root"` ([`ROOT_AGENT`]) for the first profile of a default set.
     ///
@@ -2330,6 +2645,17 @@ pub struct GgAgentConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_slot: Option<String>,
+    /// The [launch-time model parameters](GgModelSlot) this agent declares, for its own
+    /// bindings that defer to one instead of pinning a model.
+    ///
+    /// The slots belong to the agent, so they travel with it: a
+    /// [saved agent](GgAgentConfig) imported into a configuration brings the slots its
+    /// bindings name, and the configuration decides how each reaches the launch form.
+    /// Empty for a fully pinned agent, for an [FSM shell](Self::is_fsm_shell), which runs
+    /// no model, and on the set a run records, because launching resolves every deferred
+    /// binding first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_slots: Vec<GgModelSlot>,
     /// The gg **tool names** this agent may call — the allowlist that decides which of the tools
     /// its enabled capabilities offer it actually gets. Meaningful for an agent that answers with
     /// tool calls; inert for one that writes programs, which is offered no tools at all and takes
@@ -2447,11 +2773,13 @@ impl GgAgentConfig {
     /// short of a call.
     pub fn root() -> Self {
         Self {
-            id: ROOT_PROFILE_ID.to_string(),
+            id: None,
+            slug: ROOT_PROFILE_ID.to_string(),
             name: ROOT_AGENT.to_string(),
             capabilities: default_capabilities(),
             model_id: String::new(),
             model_slot: None,
+            model_slots: Vec::new(),
             tools: DEFAULT_TOOLS.iter().map(|name| name.to_string()).collect(),
             operations: DEFAULT_OPERATIONS.iter().map(|id| id.to_string()).collect(),
             custom_instructions: None,
@@ -2572,6 +2900,36 @@ impl GgAgentConfig {
         (!model.is_empty()).then_some(model)
     }
 
+    /// The declaration of this agent's [model slot](GgModelSlot) named `name`, or `None`
+    /// when it declares no such slot.
+    pub fn model_slot_decl(&self, name: &str) -> Option<&GgModelSlot> {
+        self.model_slots.iter().find(|s| s.name == name)
+    }
+
+    /// Every [model slot](GgModelSlot) name this agent's bindings defer to, in the order
+    /// they are read and without repeats: its own model binding, then each capability
+    /// param that names a slot.
+    ///
+    /// A name here that this agent does not [declare](Self::model_slots) is a binding
+    /// nothing can fill, which refuses the launch.
+    pub fn deferred_slot_names(&self) -> Vec<&str> {
+        let compaction = self
+            .capability(CAPABILITY_COMPACTION)
+            .and_then(|c| c.params.get(COMPACTION_PARAM_MODEL_SLOT))
+            .and_then(|v| v.as_str());
+        let mut names: Vec<&str> = Vec::new();
+        for name in [self.model_slot.as_deref(), compaction]
+            .into_iter()
+            .flatten()
+        {
+            let name = name.trim();
+            if !name.is_empty() && !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        names
+    }
+
     /// Whether this agent names a model to run — a pinned binding, or a deferred one the
     /// launch has since filled in.
     ///
@@ -2617,15 +2975,15 @@ impl GgAgentConfig {
 }
 
 /// One roster entry as a **model-facing** surface presents it: the target profile's
-/// [id](GgAgentConfig::id) — which is what the model passes back — its
+/// [slug](GgAgentConfig::slug) — which is what the model passes back — its
 /// [name](GgAgentConfig::name), and the caller-scoped guidance for using it.
 ///
-/// The name is here so a menu reads as prose (`` `reviewer-2` (Careful Reviewer) ``); the id is
+/// The name is here so a menu reads as prose (`` `reviewer` (Careful Reviewer) ``); the slug is
 /// the whole of what a call is resolved against. Nothing matches on the name, because two
 /// profiles may share one and a call has to name exactly one thing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GgRosterEntry {
-    /// The [id](GgAgentConfig::id) of the profile this entry points at — the value the model
+    /// The [slug](GgAgentConfig::slug) of the profile this entry points at — the value the model
     /// passes as `agent`.
     pub agent_id: String,
     /// The target's [display name](GgAgentConfig::name), for the menu's prose.
@@ -2659,8 +3017,12 @@ impl GgRosterEntry {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSubagentRef {
-    /// The [id](GgAgentConfig::id) of the target profile this agent may put to work (may be
-    /// the spawner itself). An id the set does not declare refuses the launch.
+    /// The target profile this agent may put to work (may be the spawner itself). A reference the
+    /// set does not declare refuses the launch.
+    ///
+    /// Names the profile's internal [id](GgAgentConfig::id) while the configuration is authored and
+    /// its [slug](GgAgentConfig::slug) once launching has resolved them; whether the set still
+    /// carries ids says which.
     pub agent_id: String,
     /// Caller-scoped guidance on when to use the target, surfaced in the spawning
     /// agent's `spawn_subagent` tool description and in the prompt's roster. May be empty.
@@ -3266,35 +3628,143 @@ impl GgSlotBinding {
     }
 }
 
-/// A **launch-time model parameter** a [`GgCapabilitySet`] declares.
+/// A **launch-time model parameter** an [agent profile](GgAgentConfig) declares.
 ///
-/// A saved configuration is meant to be reusable across models, so the models it runs
-/// on are not all baked into it. It declares named model slots — `primary`, `critic`,
-/// … — and each [role binding](GgSlotBinding) either pins a model outright (an
-/// *internal* binding, identical on every run of the configuration and never asked
-/// about again) or [defers](GgSlotBinding::model_slot) to one of these, which the
-/// operator fills in on the launch form. A slot may carry a
-/// [default](Self::default_model_id) the form pre-fills.
+/// An agent is meant to be reusable across models, so the model it runs on need not be
+/// baked into it. Each of its model bindings — its own [model](GgAgentConfig::model_slot)
+/// and every capability param that names one, today
+/// [compaction's handoff](COMPACTION_PARAM_MODEL_SLOT) — either pins a model outright or
+/// defers to one of the slots the agent declares here.
 ///
-/// Model slots are named separately from the role slots they feed precisely so that two
-/// roles can share one: "run the reviewer *and* the judge on whatever I pick for
-/// `critic`" is one launch input, not two.
+/// A slot belongs to the agent that declares it, which is what lets a
+/// [saved agent](GgAgentConfig) carry its slots into every configuration that imports it,
+/// and lets two agents each declare a `critic` without meaning one launch input.
 ///
-/// Declaring one is a configuration-authoring concern only. Launching resolves every
-/// deferred binding to a concrete model, so this list is empty on the capability set a
-/// run records — what ran is a set of pinned bindings.
+/// An agent slot reaches the launch form one of two ways, and exactly one: a
+/// [configuration slot](GgConfigSlot) [names](GgSlotTarget) it, or it is
+/// [passthrough](Self::passthrough) and is exposed on its own. A slot that is neither
+/// leaves its bindings with no model to take; one that is both asks twice for the same
+/// binding. Both refuse the launch.
+///
+/// Declaring one is an authoring concern only. Launching resolves every deferred binding
+/// to a concrete model, so this list is empty on the capability set a run records — what
+/// ran is a set of pinned bindings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgModelSlot {
-    /// The slot's name, as the launch form labels it and as a
-    /// [binding](GgSlotBinding::model_slot) refers to it. Unique within a set.
+    /// The slot's name, as this agent's bindings refer to it. Unique within the agent.
     pub name: String,
-    /// The model the launch form pre-fills this slot with. `None` leaves it empty, so
-    /// the operator must choose one before the run can be launched.
+    /// The model the launch form pre-fills this slot with. `None` leaves it to the
+    /// [configuration slot](GgConfigSlot::default_model_id) that fills this one, or —
+    /// when nothing supplies a default — to the operator on the launch form.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub default_model_id: Option<String>,
+    /// Whether this slot is exposed at launch on its own, without a
+    /// [configuration slot](GgConfigSlot) naming it. The launch form labels a passthrough
+    /// slot `<agent id>.<slot name>`, which is what keeps it distinct from every other
+    /// launch input.
+    ///
+    /// It exists so a configuration is spared declaring a slot whose only job is to
+    /// forward one, which is the common case: most agents want their own model chosen at
+    /// launch and share it with nobody.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub passthrough: bool,
+}
+
+/// The values `items` yields more than once, in first-seen order and each reported once.
+fn repeated<'a>(items: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
+    let mut seen: Vec<&'a str> = Vec::new();
+    let mut twice: Vec<&'a str> = Vec::new();
+    for item in items {
+        if seen.contains(&item) {
+            if !twice.contains(&item) {
+                twice.push(item);
+            }
+        } else {
+            seen.push(item);
+        }
+    }
+    twice
+}
+
+/// Whether `value` is `false` — the `skip_serializing_if` for a flag whose absence is its
+/// off position.
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// The [launch input](GgLaunchSlot) name a [passthrough](GgModelSlot::passthrough) agent
+/// slot is exposed under: the profile's [slug](GgAgentConfig::slug) and the slot's name,
+/// separated by a dot.
+///
+/// Agent ids are unique within a set and slot names unique within an agent, so this names
+/// exactly one agent slot.
+pub fn passthrough_slot_name(agent_id: &str, slot: &str) -> String {
+    format!("{agent_id}.{slot}")
+}
+
+/// A **launch input** a [`GgCapabilitySet`] declares, and the
+/// [agent slots](GgModelSlot) it fills.
+///
+/// A run asks for exactly one set of models and the configuration decides what that set
+/// is. One configuration slot filling several agent slots is what makes "run the reviewer
+/// *and* the merge agent on whatever I pick for `critic`" one launch input rather than
+/// two.
+///
+/// Declaring one is a configuration-authoring concern only. Launching resolves every
+/// deferred binding to a concrete model, so this list is empty on the capability set a
+/// run records.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgConfigSlot {
+    /// The slot's name, as the launch form labels it and keys its answer by. Unique
+    /// within a set, and distinct from every `<agent id>.<slot name>` a
+    /// [passthrough](GgModelSlot::passthrough) slot is exposed under.
+    pub name: String,
+    /// The model the launch form pre-fills this slot with. `None` takes the default of
+    /// the first [target](Self::targets) that carries one, so importing an agent that
+    /// defaults its own slot keeps that default working.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub default_model_id: Option<String>,
+    /// The [agent slots](GgModelSlot) this input fills. Each names a profile the set
+    /// declares and a slot that profile declares, and no agent slot is named by two
+    /// configuration slots.
+    #[serde(default)]
+    pub targets: Vec<GgSlotTarget>,
+}
+
+/// One [agent slot](GgModelSlot) a [configuration slot](GgConfigSlot) fills.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgSlotTarget {
+    /// The [id](GgAgentConfig::id) of the profile whose slot this fills.
+    pub agent: String,
+    /// The [name](GgModelSlot::name) of that profile's slot.
+    pub slot: String,
+}
+
+/// One **launch input** a configuration exposes, as the launch form asks for it: every
+/// [configuration slot](GgConfigSlot) in declaration order, then every
+/// [passthrough](GgModelSlot::passthrough) agent slot in agent order.
+///
+/// This is the single set of models a run is launched with. What differs between the two
+/// kinds is only where the declaration lives; both fill the same
+/// [agent slots](Self::targets).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GgLaunchSlot {
+    /// The name the form labels this input with and keys its answer by — a configuration
+    /// slot's own name, or `<agent id>.<slot name>` for a passthrough one.
+    pub name: String,
+    /// The model the form pre-fills, resolved through the configuration slot's own
+    /// default and then its targets'.
+    pub default_model_id: Option<String>,
+    /// The [agent slots](GgModelSlot) this input fills.
+    pub targets: Vec<GgSlotTarget>,
 }
 
 // ---------------------------------------------------------------------------
@@ -5034,7 +5504,7 @@ pub struct GgBoardIssue {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub epic_id: Option<String>,
-    /// The [id](GgAgentConfig::id) of the profile the issue was **assigned to** when it was
+    /// The [slug](GgAgentConfig::slug) of the profile the issue was **assigned to** when it was
     /// created — the profile gg dispatches it under, and re-dispatches for every retry and review
     /// round. The creating agent names it by [label](GgAgentConfig::name) on `create_issue` (it is
     /// not configured on the capability) out of its roster entries carrying the
@@ -5331,7 +5801,7 @@ pub struct GgReviewer {
     /// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
     /// events carry.
     pub agent_id: String,
-    /// The [id](GgAgentConfig::id) of the profile the reviewer ran under — one of the issue's
+    /// The [slug](GgAgentConfig::slug) of the profile the reviewer ran under — one of the issue's
     /// [reviewers](GgBoardIssue::reviewer_ids).
     pub profile_id: String,
     /// The [display name](GgCapabilitySet::agent_name) that profile carried, so a review reads
@@ -6091,7 +6561,7 @@ impl GgUndocumentedCalls {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSlotCost {
-    /// The [id](GgAgentConfig::id) of the agent profile this rollup accounts for. Resolve it
+    /// The [slug](GgAgentConfig::slug) of the agent profile this rollup accounts for. Resolve it
     /// against the run's set for the [display name](GgCapabilitySet::agent_name) to show.
     pub profile_id: String,
     /// The model id (within the profile) this rollup accounts for. A profile normally resolves to
@@ -6517,7 +6987,7 @@ pub enum GgTelemetryKind {
     /// finished, which is too late for a run being watched. Summing the deltas of one
     /// `(profile_id, model_id)` key reproduces that key's rollup exactly.
     Usage {
-        /// The [id](GgAgentConfig::id) of the agent profile that spent this — the same id
+        /// The [slug](GgAgentConfig::slug) of the agent profile that spent this — the same id
         /// [`AgentSpawned::profile_id`](Self::AgentSpawned::profile_id) and
         /// [`SlotUsage::profile_id`](Self::SlotUsage::profile_id) key on.
         profile_id: String,
@@ -6947,7 +7417,7 @@ pub enum GgTelemetryKind {
     /// `parent_agent_id` and the `slot`/`modelId` together are why gg usage is accounted **per
     /// slot** (see [`SlotUsage`](Self::SlotUsage)) rather than for one model.
     AgentSpawned {
-        /// The [id](GgAgentConfig::id) of the agent profile this agent runs under. gg usage is
+        /// The [slug](GgAgentConfig::slug) of the agent profile this agent runs under. gg usage is
         /// accounted per profile (see [`SlotUsage`](Self::SlotUsage)), and every consumer that
         /// shows a name resolves it against the run's set
         /// ([`agent_name`](GgCapabilitySet::agent_name)) rather than reading one off the
@@ -7129,7 +7599,7 @@ pub enum GgTelemetryKind {
     /// so an ingester must not add `SlotUsage` into the run total or it would double-count. One
     /// `SlotUsage` is emitted per `(profile, model)` the run touched.
     SlotUsage {
-        /// The [id](GgAgentConfig::id) of the agent profile this rollup accounts for.
+        /// The [slug](GgAgentConfig::slug) of the agent profile this rollup accounts for.
         profile_id: String,
         /// The model id (within the profile) this rollup accounts for. A profile normally resolves
         /// to one model, but the accounting keys on the model too so a re-pointed binding stays
@@ -7216,7 +7686,7 @@ pub enum GgTelemetryKind {
     /// precedes each move on the *outgoing* instance's stream, the pair says both what happened and
     /// what it carried.
     FsmState {
-        /// The machine: the [id](GgAgentConfig::id) of the **FSM shell** profile whose `states`
+        /// The machine: the [slug](GgAgentConfig::slug) of the **FSM shell** profile whose `states`
         /// table is being driven. An agent may only ever be inside one, so this identifies the
         /// document the state came from.
         fsm_id: String,
@@ -7243,7 +7713,7 @@ pub enum GgTelemetryKind {
         kind: GgAgentTransitionKind,
         /// The id of the agent instance that takes over (or, for a `fork`, of the copy).
         to_agent_id: String,
-        /// The [id](GgAgentConfig::id) of the agent profile the successor runs under.
+        /// The [slug](GgAgentConfig::slug) of the agent profile the successor runs under.
         profile_id: String,
         /// The [FSM state](GgFsmState::name) the successor stands in once the succession has been
         /// applied, when it stands in one at all.

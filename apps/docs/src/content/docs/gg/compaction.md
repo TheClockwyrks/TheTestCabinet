@@ -155,11 +155,12 @@ was never measured.
 
 #### Picking the compaction model at launch
 
-The compaction model can be deferred to a [model slot](/gg/configurations/)
-instead of pinned in the configuration, the same way an agent's own binding is.
-The editor's Model from selector offers a model slot alongside a specific
-model, and the launch form then collects that slot with every other one the
-configuration declares. Deferring writes a `modelSlot` parameter beside `model`;
+The compaction model can be deferred to one of the agent's own
+[model slots](/gg/configurations/#agent-slots) instead of pinned in the
+configuration, the same way the agent's own binding is. The editor's Model from
+selector offers the agent's slots alongside a specific model, and the launch form
+then collects that slot with every other launch input the configuration exposes.
+Deferring writes a `modelSlot` parameter beside `model`;
 launching writes the collected id to `model` and drops `modelSlot`, so the set a
 run records is fully pinned and one configuration can sweep the summarizer
 across models.

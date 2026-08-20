@@ -83,19 +83,20 @@ function held(
   };
 }
 
-// A configured profile. The `id` is what every reference to it — a spawn's attribution, a
-// module's holder, an open row — is keyed by; the `name` is the prose the panel prints.
+// A configured profile as a *recorded* set carries one: launching resolved the internal ids
+// away, so the `slug` is what every reference to it — a spawn's attribution, a module's
+// holder, an open row — is keyed by; the `name` is the prose the panel prints.
 function profile(
-  id: string,
+  slug: string,
   name: string,
   capabilities: string[],
 ): GgAgentConfig {
   return {
-    id,
+    slug,
     name,
     modelId: "vendor/small",
     capabilities: capabilities.map((id) => ({ id, enabled: true, params: {} })),
-  } as GgAgentConfig;
+  };
 }
 
 // One root and two reviewers. The reviewers are the row every case here opens, and their
@@ -303,18 +304,18 @@ const CAPABILITIES: GgCapabilitySet = {
     profile("root", "Root", ["board"]),
     profile("reviewer", "Reviewer", ["memories"]),
   ],
-} as GgCapabilitySet;
+};
 
 // A configuration that names two of its arms alike, with one instance each. Two profiles
 // under one name is what a within-run A/B of a reviewer against itself looks like, and
-// nothing forbids it: names are prose, and only the ids below tell the two arms apart.
+// nothing forbids it: names are prose, and only the slugs below tell the two arms apart.
 const SHARED_NAME_CAPABILITIES: GgCapabilitySet = {
   agents: [
     profile("root", "Root", ["board"]),
     profile("reviewer", "Reviewer", ["memories"]),
     profile("reviewer-2", "Reviewer", ["memories"]),
   ],
-} as GgCapabilitySet;
+};
 
 const SHARED_NAME_EVENTS: HarnessEvent[] = [
   gg("root", {
@@ -442,9 +443,10 @@ function sectionOrder(detail: HTMLElement): string[] {
 describe("GgAgentsSummary agent list", () => {
   it("keeps two profiles that share a name in rows of their own", () => {
     // The panel groups a run's instances by the profile they ran under, and that grouping is
-    // by id. On the name, the two arms of this A/B would fold into one row carrying both
-    // instances and the sum of their figures — the one reading that answers neither of the
-    // questions the A/B was set up to ask.
+    // by slug — the one name a run stamps on every event it records. On the display name,
+    // the two arms of this A/B would fold into one row carrying both instances and the sum
+    // of their figures — the one reading that answers neither of the questions the A/B was
+    // set up to ask.
     renderPanel(stubNav(), SHARED_NAME_EVENTS, SHARED_NAME_CAPABILITIES);
     expect(screen.getByText("Agents · 3")).toBeInTheDocument();
     const rows = screen
@@ -458,7 +460,7 @@ describe("GgAgentsSummary agent list", () => {
     expect(within(rows[1]!).getByTitle(/profile id/)).toHaveTextContent(
       /^reviewer-2$/,
     );
-    // The root's name collides with nothing, so its row is left as prose alone: the id is
+    // The root's name collides with nothing, so its row is left as prose alone: the slug is
     // shown where it is needed to read the list, not as a second label on every row.
     expect(
       within(screen.getByText("Root").closest("li")!).queryByTitle(

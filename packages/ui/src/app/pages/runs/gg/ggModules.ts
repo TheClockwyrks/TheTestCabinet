@@ -842,7 +842,7 @@ function foldByProfile(
   // A declared profile the run never instantiated still gets an (empty) entry, so a surface
   // iterating the configuration finds a row rather than a hole.
   for (const declared of set?.agents ?? []) {
-    if (!out.has(declared.id)) out.set(declared.id, []);
+    if (!out.has(declared.slug)) out.set(declared.slug, []);
   }
   return out;
 }

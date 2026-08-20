@@ -124,7 +124,7 @@ async fn drive_profile(
 /// the same way for the same reason, and the diagnostic names the profile.
 ///
 /// Running it as the root instead would have produced a complete, plausible, wholly fictional
-/// session recorded under the name `Ghost`.
+/// session recorded under the name `ghost`.
 #[tokio::test]
 async fn an_undeclared_incarnation_profile_ends_the_session_with_internal_error() {
     let dir = TempDir::new().unwrap();
@@ -138,7 +138,7 @@ async fn an_undeclared_incarnation_profile_ends_the_session_with_internal_error(
 
     let end = drive_profile(
         &orch,
-        "Ghost",
+        "ghost",
         Box::new(MockClient::new("mock/primary".to_string(), Vec::new())),
     )
     .await;
@@ -159,7 +159,7 @@ async fn an_undeclared_incarnation_profile_ends_the_session_with_internal_error(
     assert!(
         errors
             .iter()
-            .any(|message| message.contains("`Ghost`")
+            .any(|message| message.contains("`ghost`")
                 && message.contains("not declared by this run")),
         "the diagnostic must name the profile that is missing: {errors:?}"
     );
@@ -171,7 +171,7 @@ async fn an_undeclared_incarnation_profile_ends_the_session_with_internal_error(
         .raised()
         .expect("an agent gg cannot stand up ends the run, not only itself");
     assert!(
-        fault.contains("`Ghost`") && fault.contains(&format!("`{ROOT_AGENT_ID}`")),
+        fault.contains("`ghost`") && fault.contains(&format!("`{ROOT_AGENT_ID}`")),
         "the run-level diagnostic must name the agent and the profile it was asked to run as: \
          {fault}"
     );
@@ -184,7 +184,7 @@ fn exec_roster_set() -> GgCapabilitySet {
         name: ROOT_AGENT.to_string(),
         model_id: "mock/exec-before".to_string(),
         subagents: vec![GgSubagentRef {
-            agent_id: "After".to_string(),
+            agent_id: "after".to_string(),
             description: String::new(),
             scopes: ALL_SUBAGENT_SCOPES.to_vec(),
         }],
@@ -214,11 +214,11 @@ fn exec_roster_set() -> GgCapabilitySet {
 fn undeclared_entry_state_set() -> GgCapabilitySet {
     let mut set = exec_roster_set();
     set.agents.push(GgAgentConfig {
-        id: "After".to_string(),
+        slug: "after".to_string(),
         name: "The Successor".to_string(),
         model_id: String::new(),
         capabilities: vec![GgCapabilityConfig {
-            params: json!({ "states": [{ "name": "only", "agentId": "Ghost" }] }),
+            params: json!({ "states": [{ "name": "only", "agentId": "ghost" }] }),
             ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
         }],
         ..GgAgentConfig::root()
@@ -256,7 +256,7 @@ async fn an_undeclared_successor_profile_ends_the_session_with_internal_error() 
     assert!(
         errors
             .iter()
-            .any(|message| message.contains("`Ghost`")
+            .any(|message| message.contains("`ghost`")
                 && message.contains("not declared by this run")),
         "the diagnostic must name the successor that is missing: {errors:?}"
     );
@@ -265,7 +265,7 @@ async fn an_undeclared_successor_profile_ends_the_session_with_internal_error() 
     assert!(
         orch.fault
             .raised()
-            .is_some_and(|fault| fault.contains("`Ghost`")),
+            .is_some_and(|fault| fault.contains("`ghost`")),
         "a succession gg cannot resolve ends the run, not only the agent that tried to make it"
     );
 }
@@ -279,7 +279,7 @@ async fn an_undeclared_successor_profile_ends_the_session_with_internal_error() 
 fn modelless_successor_set() -> GgCapabilitySet {
     let mut set = exec_roster_set();
     set.agents.push(GgAgentConfig {
-        id: "After".to_string(),
+        slug: "after".to_string(),
         name: "The Successor".to_string(),
         model_id: String::new(),
         ..GgAgentConfig::root()
@@ -329,13 +329,13 @@ async fn a_successor_with_no_model_bound_ends_the_session_with_internal_error() 
     assert!(
         errors
             .iter()
-            .any(|message| message.contains("`After`") && message.contains("no model bound")),
+            .any(|message| message.contains("`after`") && message.contains("no model bound")),
         "the diagnostic must name the successor and what is missing from it: {errors:?}"
     );
     assert!(
         orch.fault
             .raised()
-            .is_some_and(|fault| fault.contains("`After`")),
+            .is_some_and(|fault| fault.contains("`after`")),
         "and it ends the run, on the same terms as the undeclared name it is a face of"
     );
 }
@@ -353,7 +353,7 @@ async fn a_successor_whose_credential_is_refused_ends_the_session_with_auth_erro
     let emitter = Emitter::with_sink(Some("run-exec-keyless".to_string()), Box::new(sink.clone()));
     let mut set = exec_roster_set();
     set.agents.push(GgAgentConfig {
-        id: "After".to_string(),
+        slug: "after".to_string(),
         name: "The Successor".to_string(),
         model_id: "openrouter/live".to_string(),
         ..GgAgentConfig::root()
@@ -379,12 +379,12 @@ async fn a_successor_whose_credential_is_refused_ends_the_session_with_auth_erro
 }
 
 /// The set the two **whole-session** cases below run on: the [exec roster](exec_roster_set)
-/// with `After` declared and bound to a live model, so nothing about it is a configuration a launch
+/// with `after` declared and bound to a live model, so nothing about it is a configuration a launch
 /// would refuse.
 fn live_successor_set() -> GgCapabilitySet {
     let mut set = exec_roster_set();
     set.agents.push(GgAgentConfig {
-        id: "After".to_string(),
+        slug: "after".to_string(),
         name: "The Successor".to_string(),
         model_id: "openrouter/live".to_string(),
         ..GgAgentConfig::root()
@@ -467,7 +467,7 @@ async fn a_session_whose_succession_cannot_be_built_ends_as_gg_s_defect() {
     assert!(
         errors
             .iter()
-            .any(|message| message.contains("`After`") && message.contains("exits non-zero")),
+            .any(|message| message.contains("`after`") && message.contains("exits non-zero")),
         "the run-level diagnostic must name the profile gg could not resolve: {errors:?}"
     );
 }
@@ -522,7 +522,7 @@ fn an_undeclared_spawner_profile_fails_the_delegation_call() {
     let orch = orchestrator(dir.path(), set, &emitter);
 
     let spawner = Agent {
-        profile_id: "Ghost".to_string(),
+        profile_id: "ghost".to_string(),
         ..Agent::root(ROOT_PROFILE_ID)
     };
     let outcome = resolve_delegation_target(&orch, &spawner, &json!({ "agent": ROOT_PROFILE_ID }))
@@ -530,7 +530,7 @@ fn an_undeclared_spawner_profile_fails_the_delegation_call() {
 
     let rendered = format!("{outcome:?}");
     assert!(
-        rendered.contains("`Ghost`") && rendered.contains("not declared by this run"),
+        rendered.contains("`ghost`") && rendered.contains("not declared by this run"),
         "the refusal must name the profile that is missing: {rendered}"
     );
 }
@@ -548,7 +548,7 @@ impl ClientFactory for BrokenFactory {
     }
 }
 
-/// A root that may spawn `Unbound`, with `Unbound` declared and left with no model.
+/// A root that may spawn `unbound`, with `unbound` declared and left with no model.
 ///
 /// The spawn path's version of [`modelless_successor_set`]: the name is on the spawner's roster, so
 /// `can_spawn` accepts it and the dispatch gets as far as binding a model that is not there.
@@ -557,7 +557,7 @@ fn modelless_spawnee_set() -> GgCapabilitySet {
         name: ROOT_AGENT.to_string(),
         model_id: "mock/primary".to_string(),
         subagents: vec![GgSubagentRef {
-            agent_id: "Unbound".to_string(),
+            agent_id: "unbound".to_string(),
             description: String::new(),
             scopes: ALL_SUBAGENT_SCOPES.to_vec(),
         }],
@@ -569,7 +569,7 @@ fn modelless_spawnee_set() -> GgCapabilitySet {
         agents: vec![
             root,
             GgAgentConfig {
-                id: "Unbound".to_string(),
+                slug: "unbound".to_string(),
                 name: "The Unbound One".to_string(),
                 model_id: String::new(),
                 ..GgAgentConfig::root()
@@ -623,7 +623,7 @@ fn a_spawn_of_an_unbindable_profile_ends_the_run_rather_than_blaming_the_argumen
     );
     let orch = orchestrator(dir.path(), modelless_spawnee_set(), &emitter);
 
-    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "Unbound");
+    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "unbound");
 
     assert_ne!(
         refusal.failure,
@@ -633,7 +633,7 @@ fn a_spawn_of_an_unbindable_profile_ends_the_run_rather_than_blaming_the_argumen
     assert_eq!(refusal.failure, ToolFailure::Refused);
     let message = refusal.to_string();
     assert!(
-        message.contains("`Unbound`") && message.contains("gg defect"),
+        message.contains("`unbound`") && message.contains("gg defect"),
         "the refusal must name the profile and whose failure it is: {message}"
     );
     let fault = orch
@@ -641,7 +641,7 @@ fn a_spawn_of_an_unbindable_profile_ends_the_run_rather_than_blaming_the_argumen
         .raised()
         .expect("a subagent gg could not stand up ends the run");
     assert!(
-        fault.contains("`Unbound`"),
+        fault.contains("`unbound`"),
         "the run-level diagnostic must name the profile gg could not stand up: {fault}"
     );
 }
@@ -660,13 +660,13 @@ fn a_spawn_whose_client_cannot_be_built_ends_the_run() {
     set.agents[1].model_id = "mock/secondary".to_string();
     let orch = orchestrator_with(dir.path(), set, Arc::new(BrokenFactory), &emitter);
 
-    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "Unbound");
+    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "unbound");
 
     assert_eq!(refusal.failure, ToolFailure::Refused);
     assert!(
         orch.fault
             .raised()
-            .is_some_and(|fault| fault.contains("`Unbound`")),
+            .is_some_and(|fault| fault.contains("`unbound`")),
         "a provider gg could not build for a profile it validated is gg's defect"
     );
 }
@@ -689,7 +689,7 @@ fn a_spawn_whose_credential_is_refused_does_not_end_the_run() {
     set.agents[1].model_id = "openrouter/live".to_string();
     let orch = orchestrator_with(dir.path(), set, Arc::new(KeylessFactory), &emitter);
 
-    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "Unbound");
+    let refusal = dispatch_refusal(&orch, ROOT_PROFILE_ID, "unbound");
 
     assert_eq!(
         refusal.failure,
@@ -747,7 +747,7 @@ async fn an_issue_assigned_to_an_undeclared_profile_fails_rather_than_dispatchin
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-issue-ghost".to_string()), Box::new(sink.clone()));
     let orch = orchestrator(dir.path(), board_set(), &emitter);
-    let issue_id = file_issue(&orch, "Ghost", &[]);
+    let issue_id = file_issue(&orch, "ghost", &[]);
 
     orch.spawn_issue_agent(
         "agent-ghost-1".to_string(),
@@ -766,7 +766,7 @@ async fn an_issue_assigned_to_an_undeclared_profile_fails_rather_than_dispatchin
     assert!(
         errors
             .iter()
-            .any(|message| message.contains(&issue_id) && message.contains("`Ghost`")),
+            .any(|message| message.contains(&issue_id) && message.contains("`ghost`")),
         "the diagnostic must name both the issue and the assignee: {errors:?}"
     );
     // ...and the run ends with it. A red issue on the board is visible, but the tree this run would
@@ -777,7 +777,7 @@ async fn an_issue_assigned_to_an_undeclared_profile_fails_rather_than_dispatchin
         .raised()
         .expect("a dispatch gg's own defect stopped ends the run");
     assert!(
-        fault.contains(&issue_id) && fault.contains("`Ghost`"),
+        fault.contains(&issue_id) && fault.contains("`ghost`"),
         "the run-level diagnostic must name the issue and the assignee: {fault}"
     );
 }
@@ -878,7 +878,7 @@ async fn an_issue_whose_reviewer_is_undeclared_fails_rather_than_merging() {
     );
 }
 
-/// [`board_set`] with `Unbound` declared as a second profile carrying no model, and named on the
+/// [`board_set`] with `unbound` declared as a second profile carrying no model, and named on the
 /// root's roster as a reviewer.
 ///
 /// The reviewer path's version of [`modelless_spawnee_set`]: the name is declared, so the check
@@ -887,12 +887,12 @@ async fn an_issue_whose_reviewer_is_undeclared_fails_rather_than_merging() {
 fn modelless_reviewer_set() -> GgCapabilitySet {
     let mut set = board_set();
     set.agents[0].subagents = vec![GgSubagentRef {
-        agent_id: "Unbound".to_string(),
+        agent_id: "unbound".to_string(),
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     }];
     set.agents.push(GgAgentConfig {
-        id: "Unbound".to_string(),
+        slug: "unbound".to_string(),
         name: "The Unbound One".to_string(),
         model_id: String::new(),
         ..GgAgentConfig::root()
@@ -916,7 +916,7 @@ async fn an_issues_unbindable_reviewer_ends_the_run() {
         Box::new(sink.clone()),
     );
     let orch = orchestrator(dir.path(), modelless_reviewer_set(), &emitter);
-    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["Unbound".to_string()]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["unbound".to_string()]);
 
     reconcile_issue(&orch, &issue_id, 0, true, &emitter).await;
 
@@ -930,7 +930,7 @@ async fn an_issues_unbindable_reviewer_ends_the_run() {
         .raised()
         .expect("a review gg could not dispatch ends the run");
     assert!(
-        fault.contains(&issue_id) && fault.contains("`Unbound`"),
+        fault.contains(&issue_id) && fault.contains("`unbound`"),
         "the run-level diagnostic must name the issue and the reviewer: {fault}"
     );
 }
@@ -960,7 +960,7 @@ async fn an_issues_reviewer_whose_client_cannot_be_built_ends_the_run() {
     // unbindable case above can never reach.
     set.agents[1].model_id = "mock/secondary".to_string();
     let orch = orchestrator_with(dir.path(), set, Arc::new(BrokenFactory), &emitter);
-    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["Unbound".to_string()]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["unbound".to_string()]);
 
     reconcile_issue(&orch, &issue_id, 0, true, &emitter).await;
 
@@ -974,7 +974,7 @@ async fn an_issues_reviewer_whose_client_cannot_be_built_ends_the_run() {
         .raised()
         .expect("a review gg could not dispatch ends the run");
     assert!(
-        fault.contains(&issue_id) && fault.contains("`Unbound`"),
+        fault.contains(&issue_id) && fault.contains("`unbound`"),
         "the run-level diagnostic must name the issue and the reviewer: {fault}"
     );
     assert!(
@@ -1000,7 +1000,7 @@ async fn an_issues_reviewer_with_no_credential_fails_the_issue_alone() {
     let mut set = modelless_reviewer_set();
     set.agents[1].model_id = "openrouter/live".to_string();
     let orch = orchestrator_with(dir.path(), set, Arc::new(KeylessFactory), &emitter);
-    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["Unbound".to_string()]);
+    let issue_id = file_issue(&orch, ROOT_PROFILE_ID, &["unbound".to_string()]);
 
     reconcile_issue(&orch, &issue_id, 0, true, &emitter).await;
 

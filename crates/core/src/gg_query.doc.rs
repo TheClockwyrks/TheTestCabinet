@@ -287,7 +287,7 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
     doc.insert("agents", set.agents.len() as f64);
     for agent in &set.agents {
         if let Some(model) = agent.resolved_model_id() {
-            doc.insert(format!("agent.{}.model", agent.id), model.to_string());
+            doc.insert(format!("agent.{}.model", agent.slug), model.to_string());
         }
     }
 
@@ -338,7 +338,7 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
             // `is_enabled` so a profile that declares a capability and disables it
             // answers the same question the run-wide flag did.
             if agent.is_enabled(id) {
-                doc.insert(format!("agent.{}.cap.{id}", agent.id), true);
+                doc.insert(format!("agent.{}.cap.{id}", agent.slug), true);
             }
         }
     }

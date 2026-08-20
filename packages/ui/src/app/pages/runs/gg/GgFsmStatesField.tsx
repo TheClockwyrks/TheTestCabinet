@@ -35,7 +35,12 @@ interface GgFsmStatesFieldProps {
    * stored machine that names one must round-trip and be *shown* to be wrong rather
    * than silently repointed), and the label says so.
    */
-  agents: ReadonlyArray<{ id: string; name: string; machine: boolean }>;
+  agents: ReadonlyArray<{
+    id: string;
+    slug: string;
+    name: string;
+    machine: boolean;
+  }>;
   readOnly: boolean;
   /**
    * What is wrong with the machine, if anything, and what is odd about it — the
@@ -129,12 +134,13 @@ export function GgFsmStatesField({
                         : "(pick an agent)"}
                     </option>
                   )}
-                  {/* The id is offered beside the name because the state stores the id
-                      and two profiles may carry one name — a menu of two identical
-                      labels would be a choice the author could not make. */}
+                  {/* The slug is offered beside the name because two profiles may carry
+                      one name — a menu of two identical labels would be a choice the
+                      author could not make. The state stores the profile's internal id,
+                      which is the option's value and is shown to nobody. */}
                   {agents.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name || "unnamed"} ({a.id}
+                      {a.name || "unnamed"} ({a.slug}
                       {a.machine ? ", a machine" : ""})
                     </option>
                   ))}

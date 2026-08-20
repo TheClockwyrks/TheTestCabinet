@@ -47,9 +47,14 @@ const NO_TOKENS = {
   reasoning: null,
 };
 
-// A one-arm comparison whose single arm is a gg configuration — the shared
-// `minimal` built-in, bound to a model on its launch slot — with none of its `n`
+// A one-arm comparison whose single arm is a gg configuration — the account's saved
+// `minimal` configuration, bound to a model on its launch slot — with none of its `n`
 // runs launched yet, so the trigger button has exactly one run to fire.
+//
+// The arm's models are keyed by **launch input**, and the input here is the root's own
+// passthrough slot, which is asked for under `<slug>.<slot>`. Keying it by the bare slot
+// name would bind nothing: `primary` is what the agent calls its slot, not what the launch
+// form asks for, and a set that reached gg with an unfilled slot would be refused.
 const COMPARISON = {
   id: "cmp-1",
   userId: "u-1",
@@ -70,7 +75,7 @@ const COMPARISON = {
         id: "arm-1",
         label: "gg minimal",
         ggConfigId: "saved:cfg-minimal",
-        ggSlotModels: { primary: "openai/gpt-5.6-sol" },
+        ggSlotModels: { "root.primary": "openai/gpt-5.6-sol" },
         runIds: [],
       },
     ],

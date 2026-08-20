@@ -69,8 +69,9 @@ this section. Every capability is:
 
 A gg run is configured by a capability set: one or more per-agent
 [profiles](/gg/configurations/#agents), each with its own enabled capabilities,
-their implementations and parameters, and one model binding, plus the run-level
-model slots and limits. The capability set is the independent variable of an
+their implementations and parameters, its
+[model slots](/gg/configurations/#model-slots) and one model binding, plus the
+run-level launch inputs and limits. The capability set is the independent variable of an
 experiment. Freeze the model and the test case, vary the capability set, and the
 harness becomes a laboratory. It must be:
 

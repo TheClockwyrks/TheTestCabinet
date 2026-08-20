@@ -183,7 +183,7 @@ fn refuses_a_session_event_declared_on_an_agent() {
         GgHookEvent::SessionEnd,
         "#!/bin/sh\ntrue",
     )]);
-    agent.id = "reviewer".to_string();
+    agent.slug = "reviewer".to_string();
     let errors = HookRuntime::resolve_agent(&agent, Path::new("/tmp")).unwrap_err();
     assert_eq!(errors.len(), 1);
     assert!(errors[0].contains("session-end"), "{}", errors[0]);
@@ -418,9 +418,9 @@ fn hooks_gg_can_arm_launch() {
 #[test]
 fn two_profiles_naming_a_hook_alike_do_not_share_a_script_file() {
     let mut implementer = agent_with(vec![script_hook(GgHookEvent::PreShell, "#!/bin/sh\ntrue")]);
-    implementer.id = "implementer".to_string();
+    implementer.slug = "implementer".to_string();
     let mut reviewer = agent_with(vec![script_hook(GgHookEvent::PreShell, "#!/bin/sh\nfalse")]);
-    reviewer.id = "reviewer".to_string();
+    reviewer.slug = "reviewer".to_string();
 
     let one = HookRuntime::resolve_agent(&implementer, Path::new("/tmp")).unwrap();
     let two = HookRuntime::resolve_agent(&reviewer, Path::new("/tmp")).unwrap();

@@ -657,12 +657,12 @@ pub(super) fn succession_note(
 ) -> String {
     // Every profile the note names, it names by id — that is the vocabulary the successor would
     // use in a later `exec` — with the display name beside it so the sentence reads as prose.
-    let successor = format!("`{}` ({})", profile.id, profile.name);
+    let successor = format!("`{}` ({})", profile.slug, profile.name);
     let mut note = match (&handoff.reason, fsm) {
         (HandoffReason::Fsm { from }, position) => format!(
             "This process has moved from `{from}` to `{}`. You are now running as the {successor} \
              agent, continuing the same session.",
-            position.map(FsmPosition::state).unwrap_or(&profile.id),
+            position.map(FsmPosition::state).unwrap_or(&profile.slug),
         ),
         (HandoffReason::Exec { from }, Some(position)) => format!(
             "The `{from}` agent has handed this session to the `{}` process, which starts in its \
@@ -781,7 +781,7 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
                 .is_empty()
         {
             report.report(crate::validate::LaunchDefect::on_agent(
-                &profile.id,
+                &profile.slug,
                 "subagents",
                 "",
                 format!(
@@ -789,13 +789,13 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
                      use, so there is nothing for `{EXEC_TOOL}` to become and the call is not \
                      offered. Add the agents it may continue as to its roster, or switch \
                      `{CAPABILITY_EXEC}` off.",
-                    profile.id, profile.name,
+                    profile.slug, profile.name,
                 ),
             ));
         }
         if fork && !profile.is_enabled(CAPABILITY_SUBAGENTS) {
             report.report(crate::validate::LaunchDefect::on_agent(
-                &profile.id,
+                &profile.slug,
                 locus(CAPABILITY_FORK),
                 "",
                 format!(
@@ -804,13 +804,13 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
                      `send_message` — so a copy of it could never be waited on or messaged, and \
                      `{FORK_TOOL}` is not offered. Enable `{CAPABILITY_SUBAGENTS}`, or switch \
                      `{CAPABILITY_FORK}` off.",
-                    profile.id, profile.name,
+                    profile.slug, profile.name,
                 ),
             ));
         }
-        if exec && state_agents.contains(profile.id.trim()) {
+        if exec && state_agents.contains(profile.slug.trim()) {
             report.report(crate::validate::LaunchDefect::on_agent(
-                &profile.id,
+                &profile.slug,
                 locus(CAPABILITY_EXEC),
                 "",
                 format!(
@@ -818,7 +818,7 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
                      machine, so it is not offered `{EXEC_TOOL}` — inside a machine the next move \
                      is `{TRANSITION_STATE_TOOL}`'s. Switch `{CAPABILITY_EXEC}` off on it, or run \
                      it outside the machine. `{FORK_TOOL}` is unaffected.",
-                    profile.id, profile.name,
+                    profile.slug, profile.name,
                 ),
             ));
         }

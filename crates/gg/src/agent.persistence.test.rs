@@ -26,7 +26,7 @@ const PAGING_LINE_CAP: usize = 50;
 /// mode).
 fn persistent_profile() -> GgAgentConfig {
     GgAgentConfig {
-        id: "owner".to_string(),
+        slug: "owner".to_string(),
         name: "Owner".to_string(),
         capabilities: vec![
             GgCapabilityConfig::enabled(CAPABILITY_READ_FILE),
@@ -97,7 +97,7 @@ async fn drive_instance_in(
         agents: vec![profile.clone()],
         ..GgCapabilitySet::default()
     };
-    let end = Agent::root(&profile.id)
+    let end = Agent::root(&profile.slug)
         .drive(
             client.as_ref(),
             "go",

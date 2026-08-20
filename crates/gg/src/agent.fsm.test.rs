@@ -41,11 +41,11 @@ use super::tests::{ScriptedFactory, invocation};
 /// visibly empty rather than merely absent).
 ///
 /// The id and the display name deliberately differ: a state names its agent by
-/// [id](GgAgentConfig::id), and the telemetry every assertion below reads keys on the same, so a
+/// [slug](GgAgentConfig::slug), and the telemetry every assertion below reads keys on the same, so a
 /// fixture whose two halves matched would hide which of them the run is actually using.
 fn state_agent(id: &str, name: &str, script: &str) -> GgAgentConfig {
     GgAgentConfig {
-        id: id.to_string(),
+        slug: id.to_string(),
         name: name.to_string(),
         model_id: format!("mock/{script}"),
         capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_TASKS)],

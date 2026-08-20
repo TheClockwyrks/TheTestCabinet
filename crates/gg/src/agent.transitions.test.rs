@@ -208,7 +208,7 @@ fn an_ending_declared_this_turn_beats_a_later_exec() {
 fn exec_is_refused_for_an_agent_standing_in_a_machine() {
     let machine = Arc::new(
         crate::fsm::FsmSpec::resolve(&GgAgentConfig {
-            id: "process".to_string(),
+            slug: "process".to_string(),
             name: "Process".to_string(),
             capabilities: vec![GgCapabilityConfig {
                 params: json!({ "states": [{ "name": "explore", "agentId": "before" }] }),
@@ -270,7 +270,7 @@ fn an_exec_note_states_the_inheritance_and_carries_the_predecessors_message() {
     };
 
     let successor = GgAgentConfig {
-        id: "after".to_string(),
+        slug: "after".to_string(),
         name: "After".to_string(),
         ..GgAgentConfig::root()
     };
@@ -369,7 +369,7 @@ fn exec_on_a_profile_a_machine_runs_is_refused() {
         },
     );
     let mut worker = GgAgentConfig {
-        id: "worker".to_string(),
+        slug: "worker".to_string(),
         name: "Worker".to_string(),
         model_id: "mock/primary".to_string(),
         subagents: vec![roster(ROOT_PROFILE_ID)],
@@ -413,7 +413,7 @@ fn exec_set() -> GgCapabilitySet {
     let mut before = GgAgentConfig {
         name: ROOT_AGENT.to_string(),
         model_id: "mock/exec-before".to_string(),
-        subagents: vec![roster("After")],
+        subagents: vec![roster("after")],
         ..GgAgentConfig::root()
     };
     before.capabilities = vec![
@@ -427,7 +427,7 @@ fn exec_set() -> GgCapabilitySet {
     let mut after = GgAgentConfig {
         // The id the scripted predecessor's `exec` names, with a display name that is not it — so
         // the roster check, the telemetry and the successor's note are all visibly the id.
-        id: "After".to_string(),
+        slug: "after".to_string(),
         name: "The Successor".to_string(),
         model_id: "mock/exec-after".to_string(),
         capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)],
@@ -459,7 +459,7 @@ async fn run_exec(
     };
     let factory = ScriptedFactory::new()
         .slot(ROOT_PROFILE_ID, scripted)
-        .slot("After", scripted);
+        .slot("after", scripted);
     let launched = invocation(dir, set);
     let invocation = match windows {
         Some(model_windows) => GgInvocation {
@@ -513,7 +513,7 @@ async fn an_exec_carries_the_conversation_drops_what_the_successor_lacks_and_sta
         transition.1, ROOT_AGENT_ID,
         "reported by the outgoing agent"
     );
-    assert_eq!(transition.3, "After", "the id of the profile it became");
+    assert_eq!(transition.3, "after", "the id of the profile it became");
     assert_eq!(
         transition.4,
         vec!["history".to_string()],
@@ -545,7 +545,7 @@ async fn an_exec_carries_the_conversation_drops_what_the_successor_lacks_and_sta
         .expect("the successor was announced");
     assert_eq!(
         spawned,
-        (Some(ROOT_AGENT_ID.to_string()), "After".to_string(), 0),
+        (Some(ROOT_AGENT_ID.to_string()), "after".to_string(), 0),
         "a succession keeps its depth and parents to its predecessor"
     );
 

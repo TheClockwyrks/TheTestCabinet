@@ -887,7 +887,7 @@ fn a_diverging_run_level_param_is_refused() {
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 3),
     );
     set.agents.push(GgAgentConfig {
-        id: "worker".to_string(),
+        slug: "worker".to_string(),
         name: "worker".to_string(),
         model_id: set.agents[0].model_id.clone(),
         capabilities: vec![
@@ -909,7 +909,7 @@ fn a_skills_directory_may_differ_per_agent() {
         GgCapabilityConfig::enabled(CAPABILITY_SKILLS).with_param(PARAM_SKILLS_DIR, ".gg/skills"),
     );
     set.agents.push(GgAgentConfig {
-        id: "worker".to_string(),
+        slug: "worker".to_string(),
         name: "worker".to_string(),
         capabilities: vec![
             GgCapabilityConfig::enabled(CAPABILITY_SKILLS)
@@ -932,7 +932,7 @@ fn a_run_level_param_repeated_unchanged_is_accepted() {
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 3),
     );
     set.agents.push(GgAgentConfig {
-        id: "worker".to_string(),
+        slug: "worker".to_string(),
         name: "worker".to_string(),
         capabilities: vec![
             GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS).with_param(PARAM_MAX_DEPTH, 3.0),
@@ -1005,7 +1005,7 @@ fn an_empty_set_reports_the_cause_and_nothing_else() {
 fn a_repeated_profile_id_is_refused() {
     let mut set = minimal();
     set.agents.push(GgAgentConfig {
-        id: set.agents[0].id.clone(),
+        slug: set.agents[0].slug.clone(),
         name: "Twin".to_string(),
         model_id: set.agents[0].model_id.clone(),
         capabilities: Vec::new(),
@@ -1019,7 +1019,7 @@ fn a_repeated_profile_id_is_refused() {
 #[test]
 fn an_empty_profile_id_is_refused() {
     let mut set = minimal();
-    set.agents[0].id = "  ".to_string();
+    set.agents[0].slug = "  ".to_string();
     let refusal = refusal_text(&set);
     assert!(refusal.contains("agents[0].id"), "{refusal}");
 }
@@ -1033,7 +1033,7 @@ fn two_profiles_may_share_a_name_and_are_addressed_apart_by_id() {
     set.agents[0].name = "Reviewer".to_string();
     set.agents[0].subagents = vec![GgSubagentRef::any("reviewer-2")];
     set.agents.push(GgAgentConfig {
-        id: "reviewer-2".to_string(),
+        slug: "reviewer-2".to_string(),
         name: "Reviewer".to_string(),
         model_id: set.agents[0].model_id.clone(),
         capabilities: Vec::new(),
@@ -1041,11 +1041,11 @@ fn two_profiles_may_share_a_name_and_are_addressed_apart_by_id() {
     });
     assert_eq!(defects(&set), Vec::new());
     assert_eq!(
-        set.agent("reviewer-2").map(|a| a.id.as_str()),
+        set.agent("reviewer-2").map(|a| a.slug.as_str()),
         Some("reviewer-2")
     );
     assert_eq!(
-        set.agent(ROOT_PROFILE_ID).map(|a| a.id.as_str()),
+        set.agent(ROOT_PROFILE_ID).map(|a| a.slug.as_str()),
         Some(ROOT_PROFILE_ID)
     );
 }
@@ -1068,7 +1068,7 @@ fn a_merge_agent_gg_would_read_past_is_refused() {
                 .with_param(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_PROFILE_ID),
         );
         set.agents.push(GgAgentConfig {
-            id: "helper".to_string(),
+            slug: "helper".to_string(),
             name: "helper".to_string(),
             model_id: set.agents[0].model_id.clone(),
             capabilities: vec![
@@ -1097,7 +1097,7 @@ fn one_merge_agent_named_on_every_profile_is_accepted() {
     crate::tools::grant_configured(&mut set.agents[0], board());
     set.agents[0].subagents.push(GgSubagentRef::any("helper"));
     set.agents.push(GgAgentConfig {
-        id: "helper".to_string(),
+        slug: "helper".to_string(),
         name: "helper".to_string(),
         model_id: set.agents[0].model_id.clone(),
         capabilities: vec![board()],
@@ -1146,7 +1146,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // of which gg can honour: an arm it does not offer, a limit that is not a count, a
             // scope that names no instance, an ownership that names neither.
             GgAgentConfig {
-                id: "resolvers".to_string(),
+                slug: "resolvers".to_string(),
                 name: "resolvers".to_string(),
                 model_id: "mock/c".to_string(),
                 capabilities: vec![
@@ -1170,7 +1170,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // …and one whose values are each fine on their own and contradict one another: a
             // memory compaction on a profile that has no memories to write.
             GgAgentConfig {
-                id: "contradiction".to_string(),
+                slug: "contradiction".to_string(),
                 name: "contradiction".to_string(),
                 model_id: "mock/d".to_string(),
                 capabilities: vec![GgCapabilityConfig {
@@ -1184,7 +1184,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // requires. gg has nothing to put in either hole, so both refuse the launch rather than
             // being filled in behind the operator.
             GgAgentConfig {
-                id: "unspecified".to_string(),
+                slug: "unspecified".to_string(),
                 name: "unspecified".to_string(),
                 model_id: "mock/k".to_string(),
                 capabilities: vec![
@@ -1201,7 +1201,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             },
             // A profile whose model was never bound, and whose id is declared twice.
             GgAgentConfig {
-                id: "worker".to_string(),
+                slug: "worker".to_string(),
                 name: "worker".to_string(),
                 model_id: String::new(),
                 model_slot: Some("critic".to_string()),
@@ -1209,7 +1209,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "worker".to_string(),
+                slug: "worker".to_string(),
                 name: "worker".to_string(),
                 model_id: "mock/b".to_string(),
                 capabilities: Vec::new(),
@@ -1219,7 +1219,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // state nothing can enter, and which carries a worker's configuration a shell never
             // reads.
             GgAgentConfig {
-                id: "machine".to_string(),
+                slug: "machine".to_string(),
                 name: "machine".to_string(),
                 model_id: "mock/g".to_string(),
                 capabilities: vec![
@@ -1238,7 +1238,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // offered — the misconfiguration a model can never report, because it simply never makes
             // the call.
             GgAgentConfig {
-                id: "delegation".to_string(),
+                slug: "delegation".to_string(),
                 name: "delegation".to_string(),
                 model_id: "mock/h".to_string(),
                 capabilities: vec![
@@ -1250,7 +1250,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // A profile whose allowlists each name a call in the *other* surface's vocabulary: an
             // agent narrowed by accident, which reads exactly like one narrowed on purpose.
             GgAgentConfig {
-                id: "allowlists".to_string(),
+                slug: "allowlists".to_string(),
                 name: "allowlists".to_string(),
                 model_id: "mock/i".to_string(),
                 tools: vec!["fs.read_file".to_string()],
@@ -1263,7 +1263,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // with no log line anywhere — and the prompt an agent reasons under *is* the
             // experiment.
             GgAgentConfig {
-                id: "prompt".to_string(),
+                slug: "prompt".to_string(),
                 name: "prompt".to_string(),
                 model_id: "mock/j".to_string(),
                 system_prompt_template: Some("Build it. {{#if skills}} unclosed".to_string()),
@@ -1276,7 +1276,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // bound nothing, a read mode that would have handed the agent *uncapped* reads, and a
             // built-in skill id that switches nothing off.
             GgAgentConfig {
-                id: "code".to_string(),
+                slug: "code".to_string(),
                 name: "code".to_string(),
                 model_id: "mock/f".to_string(),
                 capabilities: vec![
@@ -1318,7 +1318,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             // Every value the `code` profile above spelled wrong, spelled right — and carrying the
             // same display name, which is no defect at all: the two are told apart by their ids.
             GgAgentConfig {
-                id: "code-2".to_string(),
+                slug: "code-2".to_string(),
                 name: "code".to_string(),
                 model_id: "mock/f".to_string(),
                 capabilities: vec![
@@ -1356,7 +1356,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             },
             // …and an override that parses, which is all a launch can ask of one.
             GgAgentConfig {
-                id: "prompt-2".to_string(),
+                slug: "prompt-2".to_string(),
                 name: "prompt".to_string(),
                 model_id: "mock/j".to_string(),
                 system_prompt_template: Some(
@@ -1366,7 +1366,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "ceilings".to_string(),
+                slug: "ceilings".to_string(),
                 name: "ceilings".to_string(),
                 model_id: "mock/e".to_string(),
                 // An armed detector that bounds nothing with the one knob it wrote, and writes
@@ -1572,7 +1572,7 @@ fn the_corrected_configuration_launches() {
         agents: vec![
             root,
             GgAgentConfig {
-                id: "worker".to_string(),
+                slug: "worker".to_string(),
                 name: "worker".to_string(),
                 model_id: "mock/b".to_string(),
                 capabilities: Vec::new(),
@@ -1581,7 +1581,7 @@ fn the_corrected_configuration_launches() {
             // Every value the golden case above spelled wrong, spelled right — including the arm
             // that needs another capability to be honourable.
             GgAgentConfig {
-                id: "resolvers".to_string(),
+                slug: "resolvers".to_string(),
                 name: "resolvers".to_string(),
                 model_id: "mock/c".to_string(),
                 capabilities: vec![
@@ -1608,7 +1608,7 @@ fn the_corrected_configuration_launches() {
             // A bare shell — no model, no other capability — driving a machine every state of which
             // is reachable from the entry.
             GgAgentConfig {
-                id: "machine".to_string(),
+                slug: "machine".to_string(),
                 name: "machine".to_string(),
                 model_id: String::new(),
                 capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FSM).with_param(
@@ -1623,7 +1623,7 @@ fn the_corrected_configuration_launches() {
             // Both delegation capabilities with what each of them needs to offer its call, and two
             // allowlist entries each in its own surface's vocabulary.
             GgAgentConfig {
-                id: "delegation".to_string(),
+                slug: "delegation".to_string(),
                 name: "delegation".to_string(),
                 model_id: "mock/h".to_string(),
                 subagents: vec![GgSubagentRef::new("worker", &[GgSubagentScope::Subagent])],
@@ -1640,7 +1640,7 @@ fn the_corrected_configuration_launches() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "ceilings".to_string(),
+                slug: "ceilings".to_string(),
                 name: "ceilings".to_string(),
                 model_id: "mock/e".to_string(),
                 // An armed detector writes all five knobs; there is no half-armed detector, and
@@ -1846,7 +1846,7 @@ fn a_board_ceiling_that_diverges_from_the_board_owners_is_refused() {
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
-                id: "implementer".to_string(),
+                slug: "implementer".to_string(),
                 name: "implementer".to_string(),
                 model_id: "mock/echo".to_string(),
                 capabilities: vec![board(implementer_retries)],
@@ -1903,4 +1903,101 @@ fn a_roster_entry_that_names_no_scope_is_refused() {
         &[GgSubagentScope::Subagent],
     )];
     assert_eq!(defects(&set), Vec::new());
+}
+
+// ---------------------------------------------------------------------------
+// Slugs and leftover slot declarations
+// ---------------------------------------------------------------------------
+
+/// The slug is what the model is shown and passes back, so a profile named in a way a model
+/// would have to decide how to spell refuses the launch rather than reaching a roster.
+#[test]
+fn a_malformed_profile_slug_refuses_the_launch() {
+    for bad in ["Reviewer", "merge agent", "merge_agent", "-lead"] {
+        let mut set = minimal();
+        set.agents[0].slug = bad.to_string();
+        let text = refusal_text(&set);
+        assert!(
+            text.contains("well-formed profile slug"),
+            "`{bad}` must be named as a malformed slug: {text}"
+        );
+    }
+    // The slug a default set is born with, and the shapes an operator legitimately writes.
+    for good in [ROOT_PROFILE_ID, "merge-agent", "gpt5"] {
+        let mut set = minimal();
+        set.agents[0].slug = good.to_string();
+        assert!(
+            !refusal_text_or_empty(&set).contains("well-formed profile slug"),
+            "`{good}` is a slug gg accepts"
+        );
+    }
+}
+
+/// A profile's identity is in two halves, and gg is only ever handed one of them. An authored
+/// configuration points every reference at the profile's **internal id**; launching rewrites each
+/// one to that profile's **slug** and drops the ids. So an id still on the document says the
+/// resolution did not happen — and gg is about to resolve a roster, a merge agent and a machine's
+/// states by ids that no longer name anything, offering a roster short of the profiles the
+/// operator wrote.
+///
+/// It is refused rather than resolved here for the same reason a leftover model slot is: gg has no
+/// id table of its own to finish the launch from, and a run conducted off half a resolution is not
+/// a differently-configured run, it is one strictly smaller than the document describes.
+#[test]
+fn a_set_that_still_carries_a_profiles_internal_id_is_refused() {
+    let mut set = minimal();
+    set.agents[0].id = Some("k-root".to_string());
+    let text = refusal_text(&set);
+    assert!(
+        text.contains("still carries an internal id"),
+        "unexpected refusal: {text}"
+    );
+    // Named by the agent it is on, because that is the profile an operator would open — and the
+    // id itself, which is what a console tracking the resolution greps its own document for.
+    assert!(text.contains(ROOT_PROFILE_ID), "unexpected refusal: {text}");
+    assert!(text.contains("k-root"), "unexpected refusal: {text}");
+
+    // The launched form of that same document — the one the backend actually stores — carries no
+    // id and is refused for nothing.
+    assert_eq!(defects(&set.resolve_agent_keys()), Vec::new());
+}
+
+/// A slot is a launch input, and launching fills every one of them in. A declaration still on
+/// the document — at either level — means the launch was incomplete, and gg has no slot table
+/// to finish it from.
+#[test]
+fn a_set_that_still_declares_a_model_slot_is_refused() {
+    let mut set = minimal();
+    set.model_slots = vec![test_cabinet_core::gg::GgConfigSlot {
+        name: "cheap".to_string(),
+        default_model_id: None,
+        targets: Vec::new(),
+    }];
+    let text = refusal_text(&set);
+    assert!(
+        text.contains("still declares the `cheap` model slot"),
+        "unexpected refusal: {text}"
+    );
+
+    let mut set = minimal();
+    set.agents[0].model_slots = vec![test_cabinet_core::gg::GgModelSlot {
+        name: "brain".to_string(),
+        default_model_id: None,
+        passthrough: true,
+    }];
+    let text = refusal_text(&set);
+    assert!(
+        text.contains("still declares the `brain` model slot"),
+        "unexpected refusal: {text}"
+    );
+}
+
+/// The refusal blob, or the empty string when the set launches — for the cases that assert a
+/// value is *absent* from the refusal rather than present in it.
+fn refusal_text_or_empty(set: &GgCapabilitySet) -> String {
+    defects(set)
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
 }

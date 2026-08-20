@@ -83,14 +83,14 @@ impl World {
     }
 }
 
-/// The profile with [id](GgAgentConfig::id) `id` whose memories capability is on, organized by
+/// The profile with [slug](GgAgentConfig::slug) `id` whose memories capability is on, organized by
 /// `strategy` and scoped by `scope` — the one configuration every test here varies.
 ///
 /// Its display name is deliberately unlike its id: a store is bound to the profile **id**, so a
 /// registry that keyed on a name would hand two profiles one notebook.
 fn profile(id: &str, strategy: MemoryStrategy, scope: MemoryScope) -> GgAgentConfig {
     GgAgentConfig {
-        id: id.to_string(),
+        slug: id.to_string(),
         name: format!("The {id} agent"),
         capabilities: vec![GgCapabilityConfig {
             id: CAPABILITY_MEMORIES.to_string(),

@@ -717,7 +717,7 @@ pub fn check_launch(
     report: &mut crate::validate::LaunchReport,
 ) {
     for agent in &set.agents {
-        report.for_agent(&agent.id, |report| {
+        report.for_agent(&agent.slug, |report| {
             resolve_loop_guard(&agent.loop_detection, report);
         });
     }

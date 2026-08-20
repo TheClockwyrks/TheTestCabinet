@@ -1,5 +1,6 @@
-// The gg configuration editor's **per-agent form**, on the things it has to get right
-// about a control that is not always meaningful.
+// The gg configuration editor — its **per-agent form**, and the configuration's own
+// sections around it — on the things it has to get right about a control that is not
+// always meaningful, and about which profile a control is acting on.
 //
 // 1. An agent's **type** decides what the form offers at all: a capability only one type
 //    reads is listed only under that type, and a machine — which has no capabilities of
@@ -14,6 +15,11 @@
 //    the launch form fills in, or pinned here. That control is two fields that swap, and
 //    which one is showing is decided by whether the param's slot key is *present* in the
 //    draft, which is a distinction no unit test of the draft can see.
+// 4. A profile is opened, patched and removed by its **internal id**, while everything an
+//    operator or a model reads of it is its **slug** — and two profiles carrying one slug
+//    is a state the editor deliberately lets an operator reach. Only driving the form
+//    shows that both of them stay separately addressable while it lasts, and that a
+//    rename moves the one name and nothing else.
 
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -49,7 +55,7 @@ function Harness({ initial }: { initial: GgConfigDraft }) {
       onNameChange={() => {}}
       description=""
       onDescriptionChange={() => {}}
-      editingAgentId={draft.agents[0]!.id}
+      editingAgentId={initial.agents[0]!.id}
       onEditingAgentChange={() => {}}
       models={[]}
     />
@@ -245,10 +251,10 @@ describe("an agent's type", () => {
   // as tools or as APIs, and a machine that has neither because it takes no turns.
   it("decides which sections the agent has at all", () => {
     render(<Harness initial={emptyDraft()} />);
-    expect(tabNames()).toEqual(["Agent", "Tools", "Roster", "Hooks"]);
+    expect(tabNames()).toEqual(["Agent", "Tools", "Slots", "Roster", "Hooks"]);
 
     fireEvent.click(typeSegment("RaC"));
-    expect(tabNames()).toEqual(["Agent", "APIs", "Roster", "Hooks"]);
+    expect(tabNames()).toEqual(["Agent", "APIs", "Slots", "Roster", "Hooks"]);
 
     fireEvent.click(typeSegment("FSM"));
     expect(tabNames()).toEqual(["Agent", "States"]);
@@ -425,8 +431,21 @@ describe("a capability param that names a model", () => {
   const handoff = (params: Record<string, string> = {}) =>
     draftWith("compaction", "handoff-summarization", params);
 
+  // The slots a `model` param may defer to are the **agent's own**: a model slot belongs
+  // to the profile whose bindings name it, and the configuration's own slots are launch
+  // inputs that fill those rather than a second list to bind against. Passthrough, so the
+  // declaration is one a launch would actually ask about.
   function withSlot(draft: GgConfigDraft): GgConfigDraft {
-    return { ...draft, modelSlots: [blankModelSlot("summarizer")] };
+    const agent = draft.agents[0]!;
+    return {
+      ...draft,
+      agents: [
+        {
+          ...agent,
+          modelSlots: [...agent.modelSlots, blankModelSlot("summarizer", true)],
+        },
+      ],
+    };
   }
 
   it("offers a model slot beside a pinned model, and swaps the field with it", () => {
@@ -439,17 +458,26 @@ describe("a capability param that names a model", () => {
 
     select(within(row).getByLabelText(/Model from/), "model-slot");
     const slot = within(row).getByLabelText(/Model slot/) as HTMLSelectElement;
-    // Deferring picks the configuration's first slot rather than landing on "(none)":
-    // an operator who chose to defer meant to defer to something.
+    // The list is this agent's own declarations, and deferring lands on the first of them
+    // rather than on "(none)": an operator who chose to defer meant to defer to something.
     expect(
-      within(slot).getByRole("option", { name: "summarizer" }),
-    ).toBeDefined();
+      within(slot)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["primary", "summarizer"]);
+    expect(within(slot).queryByRole("option", { name: "(none)" })).toBeNull();
     expect(within(row).queryByLabelText(/^Model$/)).toBeNull();
   });
 
   it("says so when it defers to no slot, which a run could never fill in", () => {
-    // A configuration with no slots declared at all: deferring cannot pick one.
-    renderCaps({ ...handoff(), modelSlots: [] });
+    // An agent declaring no slots at all: deferring cannot pick one. The configuration's
+    // own slots are no help here — they fill an agent's declarations rather than standing
+    // in for them — so a profile that declares nothing has nothing to defer to.
+    const draft = handoff();
+    renderCaps({
+      ...draft,
+      agents: [{ ...draft.agents[0]!, modelSlots: [], modelSlotId: "" }],
+    });
     const row = capabilityRow("compaction");
 
     select(within(row).getByLabelText(/Model from/), "model-slot");
@@ -1070,17 +1098,23 @@ describe("the sections that no longer explain themselves", () => {
 // each has pinned, and how to stop following one — none of which is derivable from the
 // draft alone.
 describe("importing a saved agent", () => {
-  // A saved agent as the library returns it: one profile deferring to a `critic` slot
-  // this configuration does not declare.
-  function savedReviewer(): GgSavedAgent {
-    const slot = { ...blankModelSlot("critic") };
-    const blank = { ...blankAgentDraft("reviewer"), modelSlotId: slot.id };
+  // A saved agent as the library returns it: one whole profile, declaring the passthrough
+  // `critic` slot its own binding defers to. A saved agent is one profile and nothing
+  // else — the slots ride on it, so an import brings them along without the configuration
+  // having to declare anything.
+  function savedReviewer(name = "reviewer"): GgSavedAgent {
+    const slot = { ...blankModelSlot("critic", true) };
+    const blank = {
+      ...blankAgentDraft(name),
+      modelSlots: [slot],
+      modelSlotId: slot.id,
+    };
     const agent = seedAgentParams(blank, blank.id);
     const set = capabilitySetFromDraft(
       {
         agents: [agent],
         rootAgentId: agent.id,
-        modelSlots: [slot],
+        modelSlots: [],
         limits: emptyDraft().limits,
         hooks: [],
       },
@@ -1088,17 +1122,22 @@ describe("importing a saved agent", () => {
     );
     return {
       id: "saved-1",
-      name: "reviewer",
+      name,
       description: "reviews what the implementer wrote",
       agent: set.agents![0]!,
-      modelSlots: set.modelSlots ?? [],
       updatedAt: "2026-08-18T00:00:00Z",
     };
   }
 
   // The editor with its open view under the test's control, so importing (which opens
   // the imported profile) and returning to the configuration are both reachable.
-  function LibraryHarness({ initial }: { initial: GgConfigDraft }) {
+  function LibraryHarness({
+    initial,
+    saved = savedReviewer(),
+  }: {
+    initial: GgConfigDraft;
+    saved?: GgSavedAgent;
+  }) {
     const [draft, setDraft] = useState(initial);
     const [open, setOpen] = useState<string | null>(null);
     return (
@@ -1118,7 +1157,7 @@ describe("importing a saved agent", () => {
           editingAgentId={open}
           onEditingAgentChange={setOpen}
           models={[]}
-          savedAgents={[savedReviewer()]}
+          savedAgents={[saved]}
         />
       </>
     );
@@ -1128,8 +1167,8 @@ describe("importing a saved agent", () => {
     fireEvent.click(screen.getByRole("button", { name: "close agent" }));
   }
 
-  function importReviewer() {
-    render(<LibraryHarness initial={emptyDraft()} />);
+  function importReviewer(saved?: GgSavedAgent) {
+    render(<LibraryHarness initial={emptyDraft()} saved={saved} />);
     openTab("Agents");
     fireEvent.change(
       screen.getByRole("combobox", { name: "Saved agent to import" }),
@@ -1187,10 +1226,570 @@ describe("importing a saved agent", () => {
     expect(screen.queryByText("follows reviewer")).toBeNull();
   });
 
-  it("declares the model slot the imported profile defers to", () => {
+  // The slot an imported profile defers to arrives **on** the profile, so the import is
+  // whole on its own: the configuration declares nothing, and the launch asks for the
+  // slot under the name the profile lends it. The Slots tab an operator finds it on is
+  // therefore the agent's, not the configuration's.
+  it("brings the model slot the imported profile defers to along with it", () => {
     importReviewer();
+    openTab("Slots");
+    expect(screen.getByLabelText("Slot name")).toHaveValue("critic");
+    expect(
+      screen.getByRole("checkbox", { name: /^Passthrough/ }),
+    ).toBeChecked();
+
+    // …and the configuration itself declares no launch input of its own, because it did
+    // not have to: a passthrough slot reaches the launch form unaided.
     closeAgent();
     openTab("Slots");
-    expect(screen.getByDisplayValue("critic")).toBeVisible();
+    expect(screen.getByText(/No configuration slots/)).toBeVisible();
+    expect(screen.getByText("reviewer.critic")).toBeVisible();
+  });
+
+  // A slug is unique within a configuration, and an import arrives under the saved
+  // agent's own — nothing is uniquified, because a silently renamed import is a profile
+  // the operator's other configurations, and the model's own roster, no longer agree on.
+  // So a collision is *shown*, on both of the rows it is about.
+  it("flags both rows when an import lands on a slug a profile already carries", () => {
+    // The library's profile answers to `root`, which is the slug the configuration's own
+    // first profile was minted with.
+    importReviewer(savedReviewer("Root"));
+    closeAgent();
+    openTab("Agents");
+    const complaints = screen.getAllByText(/Another profile carries the slug/);
+    expect(complaints).toHaveLength(2);
+    expect(complaints[0]).toHaveTextContent(
+      "rename one of them, or override the imported profile’s slug",
+    );
+    // The tab strip says how many rows to look at, so the fault is findable from any tab.
+    expect(
+      screen
+        .getAllByRole("tab")
+        .find((tab) => tab.firstElementChild?.textContent?.trim() === "Agents")!
+        .textContent,
+    ).toContain("2");
+  });
+
+  // …and the way out of it. Both remedies the complaint offers act on a *row*: renaming
+  // one of the two, and removing one of the two. Neither could be addressed by slug —
+  // that is the one thing the pair does not tell apart — so this is the test that says the
+  // collision is a state an operator can get out of rather than one that bricks the
+  // configuration.
+  it("makes the configuration savable again when the imported row is renamed", () => {
+    importReviewer(savedReviewer("Root"));
+    // The import opened the profile it appended: the *second* `root`, which is the row a
+    // slug could not have named.
+    expect(screen.getByText(/Follows the saved agent/)).toBeVisible();
+    fireEvent.change(screen.getByLabelText(/^Slug/), {
+      target: { value: "reviewer" },
+    });
+    // A slug the configuration wrote is a field it pins, like any other: the profile still
+    // follows the saved agent in everything else, under a slug of its own.
+    expect(screen.getByText(/^Pinned here: Slug\b/)).toBeVisible();
+
+    closeAgent();
+    openTab("Agents");
+    expect(screen.queryByText(/Another profile carries the slug/)).toBeNull();
+    expect(
+      screen
+        .getAllByRole("tab")
+        .find((tab) => tab.firstElementChild?.textContent?.trim() === "Agents")!
+        .textContent,
+    ).toBe("Agents");
+  });
+
+  it("removes only the imported row when it is the row removed", () => {
+    importReviewer(savedReviewer("Root"));
+    closeAgent();
+    openTab("Agents");
+    // The import is named apart from the profile it landed beside — names are prose, so
+    // they are uniquified where the slugs deliberately are not.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove the Root-2 agent" }),
+    );
+
+    // One row left, and it is the configuration's own: a removal keyed by slug would have
+    // taken both, leaving a configuration with no agents at all.
+    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
+    expect(screen.queryByText("follows Root")).toBeNull();
+    expect(screen.queryByText(/Another profile carries the slug/)).toBeNull();
+  });
+
+  it("opens the row Edit was pressed on, and edits that row alone", () => {
+    importReviewer(savedReviewer("Root"));
+    closeAgent();
+    openTab("Agents");
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[1]!);
+
+    // The second row is the imported one; the first is declared inline and follows
+    // nothing, so the note is proof of which of the two answered.
+    expect(screen.getByText(/Follows the saved agent/)).toBeVisible();
+    fireEvent.change(screen.getByLabelText(/^Agent name/), {
+      target: { value: "Second opinion" },
+    });
+
+    closeAgent();
+    openTab("Agents");
+    // The profile beside it is untouched: an edit keyed by slug would have landed on both.
+    // Read off the remove controls, which name each row, because the list also carries the
+    // library's own `Root` in the import picker.
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Remove the / })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Remove the Root agent", "Remove the Second opinion agent"]);
+  });
+});
+
+// A profile's **slug** is the name the *model* is shown — in a roster, in a dispatch, in a
+// transition — and it is the operator's to write. Nothing inside the configuration points
+// at it: a roster entry, an `agent` param, a machine's state and the root flag all name the
+// profile's internal id, which is minted once and never rewritten. That is what makes
+// renaming an ordinary edit rather than a repointing exercise, and it is what leaves the
+// *second* of two profiles that happen to carry one slug still separately openable and
+// separately editable. Nothing but rendering the form and typing shows either.
+describe("renaming an agent's slug", () => {
+  // A configuration of two profiles carrying the two references one profile can make to
+  // another: the root has the other on its roster (with the description an operator would
+  // have to retype if the entry were dropped), and its board names the same profile as the
+  // agent dispatched to resolve a conflicted merge.
+  function referringDraft(): GgConfigDraft {
+    const base = emptyDraft();
+    const root = base.agents[0]!;
+    const helper = blankAgentDraft("Helper", [], {}, base.agents);
+    const board = root.capabilities["project-management"]!;
+    return {
+      ...base,
+      agents: [
+        {
+          ...root,
+          subagents: [
+            {
+              agentId: helper.id,
+              description: "for the tricky bits",
+              scopes: ["subagent"],
+            },
+          ],
+          capabilities: {
+            ...root.capabilities,
+            "project-management": {
+              ...board,
+              enabled: true,
+              params: { ...board.params, mergeAgentId: helper.id },
+            },
+          },
+        },
+        helper,
+      ],
+    };
+  }
+
+  // A configuration whose root is a machine over one worker. A state *binds* a profile,
+  // which is the third kind of reference, and the one an operator would have to re-point
+  // by hand if a rename orphaned it.
+  function machineDraft(): GgConfigDraft {
+    const base = emptyDraft();
+    const worker = blankAgentDraft("Explorer", [], {}, base.agents);
+    const shell = base.agents[0]!;
+    return {
+      ...base,
+      agents: [
+        {
+          ...shell,
+          name: "Feature",
+          mode: "fsm" as const,
+          capabilities: {
+            ...shell.capabilities,
+            fsm: {
+              enabled: true,
+              params: {
+                states: statesDraftValue([
+                  { name: "explore", agentId: worker.id, transitions: [] },
+                ]),
+              },
+              extraParams: {},
+            },
+          },
+        },
+        worker,
+      ],
+    };
+  }
+
+  // The editor with its open view under the test's control, so a rename (which happens on
+  // an agent) and its consequences (which are on the configuration) are both reachable.
+  // Opened on a profile's **internal id**, which is what the page holds too — an index
+  // would move under a removal, and a slug names two rows exactly when it matters most.
+  function OpenHarness({
+    initial,
+    open,
+  }: {
+    initial: GgConfigDraft;
+    open: string;
+  }) {
+    const [draft, setDraft] = useState(initial);
+    const [editing, setEditing] = useState<string | null>(open);
+    return (
+      <>
+        {/* The page owns the control that returns from an agent to the configuration,
+            so the harness stands in for it. */}
+        <button type="button" onClick={() => setEditing(null)}>
+          close agent
+        </button>
+        <GgConfigEditor
+          value={draft}
+          onChange={setDraft}
+          name="under test"
+          onNameChange={() => {}}
+          description=""
+          onDescriptionChange={() => {}}
+          editingAgentId={editing}
+          onEditingAgentChange={setEditing}
+          models={[]}
+        />
+      </>
+    );
+  }
+
+  function closeAgent() {
+    fireEvent.click(screen.getByRole("button", { name: "close agent" }));
+  }
+
+  // Return to the configuration and open the profile in row `index` — the way an operator
+  // reaches the *other* profile, and the only way the effect of a rename on what points at
+  // the renamed one can be looked at.
+  function reopen(index: number) {
+    closeAgent();
+    openTab("Agents");
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[index]!);
+  }
+
+  function renameSlug(slug: string) {
+    fireEvent.change(screen.getByLabelText(/^Slug/), {
+      target: { value: slug },
+    });
+  }
+
+  it("leaves the roster entry that named the profile granted, under the new slug", () => {
+    const draft = referringDraft();
+    render(<OpenHarness initial={draft} open={draft.agents[1]!.id} />);
+    renameSlug("critic");
+    // The view stayed on the profile it was opened on: which profile is open is that
+    // profile's id, so there is no instant at which it stops answering to it.
+    expect(screen.getByLabelText(/^Slug/)).toHaveValue("critic");
+    expect(screen.getByLabelText(/^Agent name/)).toHaveValue("Helper");
+
+    reopen(0);
+    openTab("Roster");
+    // Still granted and still carrying its description — the entry named the profile's
+    // id, so the rename had nothing to fix up — and the row now offers the model the new
+    // slug, which is the one thing about it that did move.
+    expect(screen.getByDisplayValue("for the tricky bits")).toBeVisible();
+    expect(screen.getByText("critic")).toBeVisible();
+    expect(screen.queryByText("helper")).toBeNull();
+  });
+
+  it("leaves an `agent` param naming the profile pointed at it, relabelled", () => {
+    const draft = referringDraft();
+    const helperId = draft.agents[1]!.id;
+    render(<OpenHarness initial={draft} open={helperId} />);
+    renameSlug("critic");
+
+    reopen(0);
+    openTab("Tools");
+    const merge = within(capabilityRow("project-management")).getByLabelText(
+      /Merge agent/,
+    ) as HTMLSelectElement;
+    // The param stores the id, so it is still pointed at the same profile rather than
+    // having fallen back to the "(missing)" option a dropped reference would leave — and
+    // the option it selects is spelled with the slug the operator has just written.
+    expect(merge.value).toBe(helperId);
+    expect(within(merge).queryByRole("option", { name: /missing/ })).toBeNull();
+    expect(
+      (
+        within(merge).getByRole("option", {
+          name: "Helper (critic)",
+        }) as HTMLOptionElement
+      ).value,
+    ).toBe(helperId);
+  });
+
+  it("leaves a machine's state running the profile that state bound", () => {
+    const draft = machineDraft();
+    const workerId = draft.agents[1]!.id;
+    render(<OpenHarness initial={draft} open={workerId} />);
+    renameSlug("scout");
+
+    reopen(0);
+    openTab("States");
+    const bound = screen.getByLabelText("State 1 agent") as HTMLSelectElement;
+    expect(bound.value).toBe(workerId);
+    // A state whose agent had been orphaned says so beside the row, so the machine being
+    // silent here is the whole of "gg would still launch it".
+    expect(screen.queryByText(/runs no agent/)).toBeNull();
+    expect(
+      within(bound).getByRole("option", { name: "Explorer (scout)" }),
+    ).toBeDefined();
+  });
+
+  it("leaves the root flag on the profile it was already on", () => {
+    const draft = referringDraft();
+    render(<OpenHarness initial={draft} open={draft.agents[0]!.id} />);
+    renameSlug("conductor");
+
+    closeAgent();
+    openTab("Agents");
+    // The root is a flag naming a profile's id, so there is nothing here for the rename to
+    // have carried — and the badge is still on the row whose slug moved.
+    const badge = screen.getByText("root", { selector: "span" });
+    expect(badge.parentElement?.parentElement).toHaveTextContent("conductor ·");
+    // …and the role did not quietly spread: the other profile is still offered the
+    // control that would take it.
+    expect(screen.getAllByRole("button", { name: "Make root" })).toHaveLength(
+      1,
+    );
+  });
+
+  it("refuses a slug gg could not hold, and one another profile already answers to", () => {
+    const draft = referringDraft();
+    render(<OpenHarness initial={draft} open={draft.agents[1]!.id} />);
+
+    // The shape gg holds a slug to — it is prose the *model* is shown and passes back.
+    renameSlug("Merge Bot");
+    expect(
+      screen.getByText(/^A slug is lowercase letters and digits/),
+    ).toBeVisible();
+
+    renameSlug("critic");
+    expect(screen.queryByText(/^A slug is lowercase/)).toBeNull();
+
+    // …and the one thing about a slug that cannot be decided by looking at this profile
+    // alone: whether another already answers to it, which would leave the model shown one
+    // name for two profiles.
+    renameSlug(draft.agents[0]!.slug);
+    expect(
+      screen.getByText(
+        /^Another agent in this configuration carries this slug/,
+      ),
+    ).toBeVisible();
+  });
+
+  // Two profiles under one slug is a state the editor deliberately lets an operator reach —
+  // an import arrives under the saved agent's own slug rather than a quietly uniquified one
+  // — and it is the state the two-field identity exists for. While it lasts the slug names
+  // both rows and so identifies neither, and everything the editor does keyed by profile
+  // has to go on naming exactly one of them.
+  it("opens the second of two profiles carrying one slug, and edits that one alone", () => {
+    const base = emptyDraft();
+    const twin = {
+      ...blankAgentDraft("Twin", [], {}, base.agents),
+      slug: base.agents[0]!.slug,
+    };
+    const draft = { ...base, agents: [...base.agents, twin] };
+    render(<OpenHarness initial={draft} open={twin.id} />);
+
+    // The row that answered is the second: its name is the half of the two rows they do
+    // not share. And the collision is reported rather than resolved for the operator.
+    expect(screen.getByLabelText(/^Agent name/)).toHaveValue("Twin");
+    expect(
+      screen.getByText(
+        /^Another agent in this configuration carries this slug/,
+      ),
+    ).toBeVisible();
+
+    renameSlug("twin");
+    fireEvent.change(screen.getByLabelText(/^Agent name/), {
+      target: { value: "Second opinion" },
+    });
+
+    closeAgent();
+    openTab("Agents");
+    // Both edits landed on the second row alone. Read off the remove controls, which name
+    // each row: an editor keyed by slug would have written both at once, which is exactly
+    // what a collision would have made it do.
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Remove the / })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Remove the Root agent", "Remove the Second opinion agent"]);
+    expect(screen.queryByText(/Another profile carries the slug/)).toBeNull();
+  });
+});
+
+// The Slots tab is where the two halves of the model mapping meet: the agents declare the
+// slots their bindings defer to, and the configuration declares the **launch inputs** that
+// fill them. Neither half says on its own what a run will actually be asked for, which is
+// what the tab's summary is for — and an agent slot that reaches that set no way at all
+// leaves a binding with nowhere to get a model from, which is what its errors are for.
+describe("the configuration's launch inputs", () => {
+  // Two profiles whose slots are *not* passthrough: the shape a configuration slot exists
+  // for, since one launch input filling several agents' slots at once is the whole reason
+  // to declare one.
+  function unmappedDraft(): GgConfigDraft {
+    const base = emptyDraft();
+    const helper = blankAgentDraft("Helper", [], {}, base.agents);
+    return {
+      ...base,
+      agents: [...base.agents, helper].map((agent) => ({
+        ...agent,
+        modelSlots: agent.modelSlots.map((slot) => ({
+          ...slot,
+          passthrough: false,
+        })),
+      })),
+    };
+  }
+
+  // One line of the "Exposed at launch" summary, by the name the launch form asks under.
+  function launchRow(name: string): HTMLElement {
+    return screen.getByText(name, { selector: "code" }).closest("li")!;
+  }
+
+  it("asks for a passthrough slot under the name the agent that declares it lends it", () => {
+    render(<ConfigHarness initial={emptyDraft()} />);
+    openTab("Slots");
+    // Nothing declared here, and a launch that still asks for a model: a passthrough slot
+    // reaches the form unaided, which is what makes a configuration that says nothing
+    // about models launchable.
+    expect(screen.getByText(/No configuration slots/)).toBeVisible();
+    expect(launchRow("root.primary")).toHaveTextContent("→ Root (root) · primary");
+  });
+
+  it("reports each agent slot that reaches no launch input, on the tab and on the strip", () => {
+    render(<ConfigHarness initial={unmappedDraft()} />);
+    openTab("Slots");
+    expect(
+      screen.getAllByText(/reaches no launch input, so its bindings would run/),
+    ).toHaveLength(2);
+    // A launch would ask for nothing at all, which is the other half of the same fault.
+    expect(screen.getByText(/a launch asks for no model at all/)).toBeVisible();
+    expect(
+      screen
+        .getAllByRole("tab")
+        .find((tab) => tab.firstElementChild?.textContent?.trim() === "Slots")!
+        .textContent,
+    ).toContain("2");
+  });
+
+  it("fills two agents' slots from one launch input, and says so in the summary", () => {
+    render(<ConfigHarness initial={unmappedDraft()} />);
+    openTab("Slots");
+    fireEvent.click(
+      screen.getByRole("button", { name: "+ Add configuration slot" }),
+    );
+    // A launch input that fills nothing is a model collected and handed to nobody, so it
+    // is a fault of its own until it names a target.
+    expect(screen.getByText(/hand it to no agent/)).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Slot name"), {
+      target: { value: "shared" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Root (root) · primary" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Helper (helper) · primary" }));
+
+    // One picker at launch, two agents run off it — and both complaints are answered.
+    expect(launchRow("shared")).toHaveTextContent(
+      "→ Root (root) · primary, Helper (helper) · primary",
+    );
+    expect(screen.queryByText(/reaches no launch input/)).toBeNull();
+    expect(screen.queryByText(/hand it to no agent/)).toBeNull();
+  });
+
+  it("clears a fill with the checkbox that set it, and reports the slot again", () => {
+    // A `Fills` box is the only control that maps or unmaps, and unmapping is not just a
+    // narrower mapping: it puts a binding back to having no model to run at all, which the
+    // tab has to start reporting again the instant the box is cleared. A checkbox that only
+    // ever added would leave an operator deleting a launch input and declaring it afresh in
+    // order to take one agent back off it.
+    render(<ConfigHarness initial={unmappedDraft()} />);
+    openTab("Slots");
+    fireEvent.click(
+      screen.getByRole("button", { name: "+ Add configuration slot" }),
+    );
+    fireEvent.change(screen.getByLabelText("Slot name"), {
+      target: { value: "shared" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Root (root) · primary" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Helper (helper) · primary" }));
+    expect(launchRow("shared")).toHaveTextContent(
+      "→ Root (root) · primary, Helper (helper) · primary",
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Helper (helper) · primary" }));
+    expect(
+      screen.getByRole("checkbox", { name: "Helper (helper) · primary" }),
+    ).not.toBeChecked();
+    expect(launchRow("shared")).toHaveTextContent("→ Root (root) · primary");
+    // …and the binding it had been filling is back to having nowhere to get a model from,
+    // which is the state an operator has to be told about rather than left to launch into.
+    expect(
+      screen.getAllByText(/reaches no launch input, so its bindings would run/),
+    ).toHaveLength(1);
+  });
+
+  it("asks for a passthrough slot under the profile's slug, and offers it under its name", () => {
+    // The tab reads a profile two ways on purpose, and only a configuration where the two
+    // differ can tell them apart. The checkbox list is prose an operator scans, so it names
+    // a profile the way they wrote it; the summary is what the new-run form will actually
+    // ask under, so it names it the way the *model* and the launch form do — `<slug>.<slot>`,
+    // built off the same field [launchModelSlots] builds it off. A summary spelled from the
+    // display name would promise an input no run asks for.
+    const base = emptyDraft();
+    const helper = blankAgentDraft("Helper", [], {}, base.agents);
+    const draft: GgConfigDraft = {
+      ...base,
+      agents: [
+        { ...base.agents[0]!, name: "The conductor", slug: "maestro" },
+        {
+          ...helper,
+          modelSlots: helper.modelSlots.map((slot) => ({
+            ...slot,
+            passthrough: false,
+          })),
+        },
+      ],
+    };
+    render(<ConfigHarness initial={draft} />);
+    openTab("Slots");
+    expect(launchRow("maestro.primary")).toHaveTextContent(
+      "→ The conductor (maestro) · primary",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "+ Add configuration slot" }),
+    );
+    fireEvent.change(screen.getByLabelText("Slot name"), {
+      target: { value: "shared" },
+    });
+    // The one candidate is the profile that is not exposed on its own, and it is offered
+    // by name — the row is about which binding this input feeds, not about what the launch
+    // form will call the input.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Helper (helper) · primary" }));
+    expect(launchRow("shared")).toHaveTextContent("→ Helper (helper) · primary");
+  });
+
+  it("offers a slot already filled by another input as taken rather than hiding it", () => {
+    render(<ConfigHarness initial={unmappedDraft()} />);
+    openTab("Slots");
+    fireEvent.click(
+      screen.getByRole("button", { name: "+ Add configuration slot" }),
+    );
+    fireEvent.change(screen.getByLabelText("Slot name"), {
+      target: { value: "shared" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Root (root) · primary" }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "+ Add configuration slot" }),
+    );
+    const names = screen.getAllByLabelText("Slot name");
+    fireEvent.change(names[1]!, { target: { value: "second" } });
+    // Shown, disabled and explained: "why is it missing?" is the question hiding it
+    // would leave, and exactly one launch input supplies each binding.
+    const taken = screen.getByRole("checkbox", {
+      name: /Root \(root\) · primary filled by shared/,
+    });
+    expect(taken).toBeDisabled();
+    expect(taken).not.toBeChecked();
   });
 });

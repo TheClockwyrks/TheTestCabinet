@@ -1957,7 +1957,7 @@ async fn an_unusable_loop_detection_knob_refuses_the_launch() {
     );
     let mut set = GgCapabilitySet::minimal("mock/echo");
     // Given its own id, so the refusal has a profile to name that is not the default one.
-    set.agents[0].id = "builder".to_string();
+    set.agents[0].slug = "builder".to_string();
     set.agents[0].loop_detection = GgLoopDetection {
         enabled: true,
         window_words: Some(0),
@@ -2052,7 +2052,7 @@ fn a_profiles_loop_detection_travels_on_its_binding() {
         ..GgLoopDetection::default()
     };
     set.agents.push(GgAgentConfig {
-        id: "quiet".to_string(),
+        slug: "quiet".to_string(),
         name: "Quiet".to_string(),
         model_id: "mock/secondary".to_string(),
         ..GgAgentConfig::root()

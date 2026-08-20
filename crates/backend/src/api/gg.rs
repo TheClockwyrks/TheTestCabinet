@@ -102,11 +102,28 @@ impl GgRunRequest {
     /// model to its root agent — the one gg-specific precondition the flat
     /// [`build_new_job`] validation cannot express.
     fn into_launch_body(self) -> Result<LaunchBody, String> {
+        // The identity half first, on the set as the console authored it: the internal ids are
+        // still here, so this is the last place a reference can be judged against the ids it names.
+        if let Some(defect) = super::gg_config::authored_capability_set_defect(&self.capability_set)
+        {
+            return Err(format!(
+                "the gg capability set cannot be launched: {defect}"
+            ));
+        }
+        // Then the resolution itself. Every reference is rewritten to the profile's slug and the
+        // ids are dropped, so what is stored, what the container reads and what the run records
+        // name a profile by the one name the operator wrote and the model was shown.
+        let capability_set = self.capability_set.resolve_agent_keys();
+        if let Some(defect) = super::gg_config::launched_capability_set_defect(&capability_set) {
+            return Err(format!(
+                "the gg capability set cannot be launched: {defect}"
+            ));
+        }
         // Every [model slot](test_cabinet_core::gg::GgModelSlot) a configuration declares
         // is filled in by the launch form, so a set arriving here with an agent still
         // deferred was launched incompletely — reject it now, by name, rather than letting
         // the run reach a container and fail its check there.
-        let unresolved = self.capability_set.unresolved_agents();
+        let unresolved = capability_set.unresolved_agents();
         if !unresolved.is_empty() {
             return Err(format!(
                 "the gg capability set leaves the {} agent(s) without a model; \
@@ -121,7 +138,7 @@ impl GgRunRequest {
         // The root is the *first* profile a set declares, whatever it is named — a configuration
         // may rename it or promote another profile to it — so an empty set is what "there is no
         // root" looks like, and the model is lifted off whichever profile is first.
-        if self.capability_set.agents.is_empty() {
+        if capability_set.agents.is_empty() {
             return Err(
                 "the gg capability set declares no agent profiles; it must declare at least one"
                     .to_string(),
@@ -136,10 +153,9 @@ impl GgRunRequest {
         // set that is *supposed* to carry no model, so reporting it would name the only agent whose
         // empty binding is correct — and a shell left holding a stray `modelId` would sail through
         // and record the whole run against a model nothing asked it to run.
-        let root = self.capability_set.root();
-        let runner = self
-            .capability_set
-            .dispatched_agent(&root.id)
+        let root = capability_set.root();
+        let runner = capability_set
+            .dispatched_agent(&root.slug)
             .map_err(|err| format!("the gg capability set cannot be launched: {err}"))?;
         let model = runner
             .resolved_model_id()
@@ -147,7 +163,7 @@ impl GgRunRequest {
                 if runner.id == root.id {
                     format!(
                         "the gg capability set must bind a model to its root agent (`{}`)",
-                        root.id
+                        root.slug
                     )
                 } else {
                     // The root is a machine, so the agent needing the binding is the one its
@@ -156,7 +172,7 @@ impl GgRunRequest {
                     format!(
                         "the gg capability set must bind a model to the `{}` agent, which its \
                          root agent (`{}`) enters first",
-                        runner.id, root.id
+                        runner.slug, root.slug
                     )
                 }
             })?
@@ -174,7 +190,7 @@ impl GgRunRequest {
             max_runtime_seconds: self.max_runtime_seconds,
             auth_mode: None,
             retry_count: self.retry_count,
-            gg_capability_set: Some(self.capability_set),
+            gg_capability_set: Some(capability_set),
             // Resolved from the model catalog by the handler, which has the database
             // this lowering does not; never taken from the request.
             gg_model_windows: Default::default(),

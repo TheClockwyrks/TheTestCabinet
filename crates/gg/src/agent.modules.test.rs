@@ -51,7 +51,7 @@ fn inherited_memories_set(child_scope: GgMemoryScope) -> GgCapabilitySet {
             None => GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
         };
         GgAgentConfig {
-            id: id.to_string(),
+            slug: id.to_string(),
             name: name.to_string(),
             model_id: model.to_string(),
             subagents: roster.clone(),

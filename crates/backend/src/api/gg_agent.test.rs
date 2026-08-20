@@ -7,12 +7,13 @@ fn sample_input(name: &str) -> GgSavedAgentInput {
         agent: GgAgentConfig {
             name: name.to_string(),
             model_slot: Some("critic".to_string()),
+            model_slots: vec![test_cabinet_core::gg::GgModelSlot {
+                name: "critic".to_string(),
+                default_model_id: Some("mock/echo".to_string()),
+                passthrough: true,
+            }],
             ..GgAgentConfig::root()
         },
-        model_slots: vec![GgModelSlot {
-            name: "critic".to_string(),
-            default_model_id: Some("mock/echo".to_string()),
-        }],
     }
 }
 
@@ -85,8 +86,8 @@ fn agent_from_input_keeps_a_deferred_model_binding() {
     )
     .unwrap();
     assert_eq!(agent.agent.model_slot.as_deref(), Some("critic"));
-    assert_eq!(agent.model_slots.len(), 1);
-    assert_eq!(agent.model_slots[0].name, "critic");
+    assert_eq!(agent.agent.model_slots.len(), 1);
+    assert_eq!(agent.agent.model_slots[0].name, "critic");
 }
 
 #[test]
