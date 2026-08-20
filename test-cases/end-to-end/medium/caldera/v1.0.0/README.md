@@ -33,19 +33,15 @@ It is among the catalog's largest builds.
 
 ## Layout
 
-- `test-case.toml` — the manifest (metadata, `[build]`, common specs, references,
-  proofs, the title-screen check, five scoring domains, and the reviewer checklist).
+- `test-case.toml` — the manifest (metadata, `[build]`, common specs, five scoring
+  domains, and the reviewer checklist).
 - `specs/` — the seeded specification, decomposed by concern: `overview`, `world`
   (hex caldera + terraces/cliffs + water + vents), `build` (economy + structures),
   `fluids` (the flow simulation), `enemies` (the Slag roster + pathfinding), `towers`
   (the Holdfast towers), `waves` (the wave loop + win/loss), `flow` (states,
-  controls, HUD), `proof`, and `standard` (The Hold mode).
+  controls, HUD), and `standard` (The Hold mode).
 - `variants/base.toml` — the single default variant (The Hold).
 - `prompt.hbs` — the rendered build instruction (not seeded).
-- `reference/` — mockup **source** for the `title`, `gameplay`, and `game-over` views
-  and the shared `theme.css`; rendered to screenshots by the harness, never seeded
-  directly. The mockups do not fake the 3D view — the gameplay mockup is HUD-only —
-  and exist to pin the palette, HUD, and type.
 - `workspaces/base/` — the seeded starter project (a `package.json` pinning
   Playwright, plus a `.gitignore`).
 - `description.md`, `README.md` — site/human prose (not seeded).

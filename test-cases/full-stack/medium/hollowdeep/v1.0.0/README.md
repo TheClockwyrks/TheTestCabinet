@@ -50,22 +50,18 @@ strong build must both simulate and produce well.
 | --------------------- | -------------- | ------------------------------------------------------ |
 | `specs/`              | **Yes**        | The spec handed to the model, by concern.              |
 | `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.          |
-| `reference/` (source) | No             | Canonical visual mockups; rendered to screenshots.     |
-| reference screenshots | **Yes**        | Rendered from `reference/`; seeded as targets.         |
 | `workspaces/base/`    | **Yes**        | Starter project seeded to the run root.                |
-| `test-case.toml`      | No             | Manifest: type, specs, variants, checks, review items. |
+| `test-case.toml`      | No             | Manifest: type, specs, variants, review items.         |
 | `README.md`           | No             | This overview.                                         |
 
 The specification is split across `specs/` by concern: `overview.md`, `world.md`,
 `gas.md`, `power.md`, `delvers.md`, `economy.md`, `controls.md`, `flow.md`,
-`assets.md` (the asset-production contract), `proof.md`, and the mode specs under
+`assets.md` (the asset-production contract), and the mode specs under
 `specs/modes/`. The common specs (everything except the variant-only mode spec) are
 seeded for every variant; the variant seeds its own mode spec. The case offers a single
 variant — `base` (the standard colony start).
 
-The seeded specs and the rendered reference screenshots are copied into a run's
-repository. The reference *source* mockups are not seeded, so a model builds the UI from
-the specs and the screenshots rather than copying the mockup code.
+The seeded specs are copied into a run's repository.
 
 ## Versioning
 

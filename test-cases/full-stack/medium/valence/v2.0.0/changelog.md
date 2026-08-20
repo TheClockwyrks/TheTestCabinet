@@ -59,8 +59,6 @@ than as dozens of unrelated-looking verdicts.
 - The prompt's mandatory verification pass is replaced by a note that Playwright and
   Chromium are available for driving and validating the build, leaving their use to
   the model's judgment.
-- `specs/proof.md` notes the debug API can set up the exact state each capture needs;
-  the captures and their fixed paths are unchanged.
 - Every menu must be operable with the mouse alone AND with the keyboard alone, rather
   than with either one — the keyboard is the half `specs/instrumentation.md` can inject,
   so a pointer-only menu leaves its screen unreachable from code.

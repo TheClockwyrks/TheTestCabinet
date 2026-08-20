@@ -217,25 +217,3 @@ The build is a small state machine (defined fully in `specs/flow.md`): a
 **title / main menu**, a **how-to-play** screen, the **in-match** game, a
 **paused** overlay, and a **match-over** screen. Every state must be reachable
 and behave as `specs/flow.md` describes.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look. The
-in-match reference is **HUD-only** — a flat mockup cannot fake the 3D battlefield
-convincingly, so the gameplay reference shows the HUD overlay (its layout, palette,
-and type) over a neutral viewport; you render the 3D world itself from this
-specification.
-
-- `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — the in-match **HUD** over a neutral viewport: the sol
-  and income readout, the wave number and countdown, both base health bars, the build
-  palette, a selected-structure panel, and the performance overlay.
-- `reference/game-over.png` — the match-over screen.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — build the screens from this specification.
-</content>
-</invoke>

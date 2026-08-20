@@ -48,8 +48,7 @@ The build is a small state machine. Each state has a clear screen and controls.
    (restart at the same starting wave) and **RETURN** (to the title).
 7. **Overrun (defeat).** Shown when the Core falls. Displays a defeat line (e.g. `THE
    CORE IS LOST`), the **wave reached**, **Slag destroyed**, and **time**, with the
-   same two options. Both end screens share the layout of `reference/game-over.png`,
-   recolored by result.
+   same two options. Both end screens share one layout, recolored by result.
 
 Every state must be reachable and behave as described.
 

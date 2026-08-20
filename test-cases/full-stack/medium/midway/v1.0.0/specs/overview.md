@@ -184,19 +184,3 @@ opposite of a spreadsheet. The canonical palette and type are below; match them.
 - The three canonical screens — the title screen, the in-park view, and the
   park-closed screen — are described in full under Game states in `specs/flow.md`.
   Implement each as described, in this palette and type.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look:
-
-- `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — a representative in-park frame, mid-play.
-- `reference/game-over.png` — the park-closed screen.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — and the exact park layout, crowd, and ride
-positions they show are just **one example moment**. Build the screens from this
-specification, and design your own conforming park.

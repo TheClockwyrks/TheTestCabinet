@@ -64,12 +64,6 @@ summary here. Three things bear restating, because the harness depends on them:
   `draw`. **`specs/simulation.md` is the authoritative contract**: it states what must
   live in Rust, what stays in JS/TS, the determinism and no-DOM rules, and that the
   committed `.wasm` is consumed directly at build time.
-- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are **illustrative examples, not targets to reproduce**, of the
-  title, gameplay, and bankruptcy screens — they show one way the screens can look.
-  Design your own menus and layout from the specification; the images only illustrate
-  the intended look, so build the screens from the specification rather than copying
-  them.
 
 ## Verify before you finish
 
@@ -86,14 +80,8 @@ it works. Before you consider the task complete:
   path across the network, toggle the traffic overlay to see a corridor congest, then
   over-build or over-tax the city until the budget goes negative and reach the
   bankruptcy loss state — and **screenshot** the title, in-city, and bankruptcy
-  screens. Verify each against the specs, treating the `reference/` images as
-  examples of the intended look only — not a layout to match — and fix what does not
-  follow the specification before finishing.
-- **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
-  screenshots and the two short clips, each written to the precise `proof/` path that
-  spec names. These are required deliverables of the finished build, not a private
-  check. Do not invent a different folder or filename, and do not skip the `.webm`
-  clips.
+  screens. Verify each against the specs and fix what does not follow the
+  specification before finishing.
 
 Use the project's own Playwright: import it from your project (for example
 `import { chromium } from "playwright"`) or run the project-local CLI with
@@ -112,7 +100,7 @@ published. When the build is complete and verified, commit everything: run
 with nothing uncommitted or untracked. A `.gitignore` already excludes `node_modules/`
 and the build output (`dist/`/`build/`/`out/`), so a clean tree does not mean
 committing those — but it does mean committing your source, your `package-lock.json`,
-your `README.md`, the **produced assets under `assets/`**, your **Rust simulation source
-and the compiled `.wasm` (plus its binding glue)**, and the `proof/` artifacts. Add
+your `README.md`, the **produced assets under `assets/`**, and your **Rust simulation
+source and the compiled `.wasm` (plus its binding glue)**. Add
 Rust's build directory (`target/`) to your `.gitignore` so it stays out of the committed
 tree, but the committed `.wasm` build input must be tracked.

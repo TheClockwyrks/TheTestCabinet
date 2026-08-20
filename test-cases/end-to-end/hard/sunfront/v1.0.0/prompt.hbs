@@ -41,12 +41,6 @@ Two things bear restating, because the harness depends on them:
   root of any static file server must run the game; it is deployed to static
   hosting exactly that way. `specs/overview.md` states this in full; follow it
   exactly.
-- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are illustrative **examples** of the title, gameplay, and
-  game-over screens — they show one way the screens can look, not layouts to
-  reproduce. Design your own menus and layout from the specification; the images
-  only illustrate the intended look. The firm requirement is that every menu and
-  screen the specs mandate is present, in the palette and type the spec defines.
 
 ## Verify before you finish
 
@@ -59,14 +53,8 @@ assume it works. Before you consider the task complete:
   uncaught exceptions.
 - **Drive the game** — arm and place build-grid structures, let waves fire, fight a match to a
   razed base — and **screenshot** the title, gameplay, and game-over screens.
-  Verify each against the specs, treating the `reference/` images as examples of
-  the intended look only (not a layout to match), and fix what does not follow
-  the specification before finishing.
-- **Capture the proof of implementation** exactly as `specs/proof.md` specifies:
-  the screenshots and the short wave clip, each written to the precise `proof/`
-  path that spec names. These are required deliverables of the finished build, not
-  a private check. Do not invent a different folder or filename, and do not skip
-  the `.webm`.
+  Verify each against the specs and fix what does not follow the specification
+  before finishing.
 
 Use the project's own Playwright: import it from your project (for example
 `import { chromium } from "playwright"`) or run the project-local CLI with
@@ -85,4 +73,4 @@ run `git add -A` then `git commit`, and confirm `git status` reports a clean
 working tree with nothing uncommitted or untracked. A `.gitignore` already
 excludes `node_modules/` and the build output (`dist/`/`build/`/`out/`), so a
 clean tree does not mean committing those — but it does mean committing your
-source, your `package-lock.json`, your `README.md`, and the `proof/` artifacts.
+source, your `package-lock.json`, and your `README.md`.

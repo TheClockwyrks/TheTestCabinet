@@ -11,7 +11,6 @@ description = "The standard park, played under changing weather: periodic rain t
 # specs reference, so the model sees a single, self-contained mode spec. Downpour seeds
 # the standard park start played under changing weather.
 spec = [{ source = "specs/mode-downpour.md", dest = "specs/mode.md" }]
-reference = [{ view = "title", path = "reference/menu-downpour.html" }]
 
 [[review_item]]
 id = "downpour-weather"

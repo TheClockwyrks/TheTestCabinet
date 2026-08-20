@@ -65,7 +65,6 @@ start; they cross-reference each other **by name** and form a single spec.
   out of scope.
 - `specs/assets.md` — the **provided unit models** and how the build must load and
   use them.
-- `specs/proof.md` — the proof-of-implementation artifacts the build must capture.
 - `specs/mode.md` — the **Open Battle** the game plays and its deploy-screen setup.
 
 ## Goal of this build
@@ -271,26 +270,3 @@ possess), a **paused** overlay, and two end screens — **victory** (the enemy
 flagship destroyed) and **defeat** (your flagship lost). Every state must be
 reachable and behave as `specs/flow.md` describes. The title screen is what the
 game shows on load.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look. The
-in-battle references are **HUD-only** — a flat mockup cannot fake the 3D world
-convincingly, so they show only the HUD overlay (its layout, palette, and type)
-over a neutral viewport; you render the 3D world itself from this specification.
-
-- `reference/title.png` — the **title** screen shown on load: the `THUNDERHEAD`
-  title and the **PLAY** and **HOW TO PLAY** options.
-- `reference/tactical.png` — the in-battle **tactical HUD** over a neutral
-  viewport: the fleet roster, the flagship health, the requisition and reinforcement
-  readout, the selection and order panel, and the minimap/contacts.
-- `reference/control.png` — the **direct-control HUD** over a neutral viewport: the
-  possessed unit and station readout, its weapon and station status, and the
-  station-switch indicator.
-- `reference/game-over.png` — an end screen with the battle's result and stats.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — build the screens from this specification.

@@ -53,7 +53,7 @@ The build is a small state machine. Each state has a clear screen and controls.
 6. **Defeat.** Shown when redoubt C falls. Displays `THE LINE HAS FALLEN` (or
    similar), the **survival time** reached and the **total kills**, with
    **REDEPLOY** (back to the title) and **DEPLOY AGAIN** (restart a fresh siege at
-   the same starting phase). See `reference/game-over.png`.
+   the same starting phase).
 
 Every state must be reachable and behave as described.
 

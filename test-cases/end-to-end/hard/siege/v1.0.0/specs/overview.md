@@ -205,25 +205,3 @@ which you pick your **class** on the spawn UI each time you deploy or respawn �
 **paused** overlay, and a **defeat** screen. Every state must be reachable and
 behave as `specs/flow.md` describes. The title screen is what the game shows on
 load.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look.
-The gameplay reference is **HUD-only** — the mockups cannot fake the 3D world
-convincingly, so the in-siege reference shows only the HUD overlay (its layout,
-palette, and type) over a neutral viewport; you render the 3D world itself from
-this specification.
-
-- `reference/title.png` — the **title** screen shown on load: the `SIEGE` title
-  and the **PLAY** and **HOW TO PLAY** options.
-- `reference/gameplay.png` — the in-siege **HUD** over a neutral viewport: the
-  crosshair and the full HUD (health, ammo, survival clock, kills, the active
-  redoubt label and health bar, and the squad panel).
-- `reference/game-over.png` — the defeat screen with the run's survival time and
-  kill count.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — build the screens from this specification.

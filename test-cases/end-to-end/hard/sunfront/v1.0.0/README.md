@@ -25,20 +25,17 @@ beatable AI.
 
 ## Layout
 
-- `test-case.toml` — the manifest (metadata, `[build]`, common specs, references,
-  proofs, the title check, scoring domains, and the reviewer checklist).
+- `test-case.toml` — the manifest (metadata, `[build]`, common specs, scoring
+  domains, and the reviewer checklist).
 - `specs/` — the seeded specification, decomposed by concern: `overview`,
   `playfield` (diagonal geometry + fog), `assets` (the provided models), `economy`,
   `units` (roster + counter matrix), `waves` (wave clock + Reliquary/Aegis), `flow`
-  (states, controls, HUD, AI), `proof`, and `standard` (the Skirmish mode).
+  (states, controls, HUD, AI), and `standard` (the Skirmish mode).
 - `assets/` — the **provided models** (one directory per entity) plus `models.json`,
   seeded into the run root via the manifest `assets` key; the only art the build gets.
   See `assets/README.md` (models are populated once authored).
 - `variants/base.toml` — the single default variant (Skirmish).
 - `prompt.hbs` — the rendered build instruction (not seeded).
-- `reference/` — mockup **source** for the title, gameplay, and game-over views
-  and the shared `theme.css`; rendered to screenshots by the harness, never seeded
-  directly.
 - `workspaces/base/` — the seeded starter project (a `package.json` pinning
   Playwright, plus a `.gitignore`).
 - `description.md`, `README.md` — site/human prose (not seeded).
