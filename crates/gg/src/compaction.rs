@@ -17,7 +17,10 @@
 //!   [`trigger_fullness`](CompactionPolicy::trigger_fullness) threshold — **defined as
 //!   `1 - summary_headroom`**, the point at which the working window is full and only the
 //!   reserved headroom remains, not a separately configured value — and there is ephemeral
-//!   history to reclaim, [`should_compact`] is true.
+//!   history to reclaim, [`CompactionTrigger`] says to compact. It is also what says *stop*: a
+//!   boundary that fires and leaves the window still at the threshold has reclaimed nothing, so
+//!   the trigger retries while [`max_retries`](CompactionPolicy::max_retries) allows one and ends
+//!   the agent as failed when it does not.
 //! - **The rewrite.** The pinned prefix is kept verbatim and the ephemeral history is
 //!   replaced by a single summary item (plus, for the two `compact`-tool strategies, a fresh
 //!   [file view](RestoredFile) per path the model asked to keep) via [`apply_compaction`].
@@ -68,7 +71,7 @@ use test_cabinet_core::gg::{
     COMPACTION_STRATEGY_HANDOFF_COMPACTION, COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION,
     COMPACTION_STRATEGY_MEMORY, COMPACTION_STRATEGY_SELF_COMPACTION,
     COMPACTION_STRATEGY_SELF_SUMMARIZATION, GgAgentConfig, GgContextSource, GgRetainedState,
-    GgTelemetryKind, PARAM_SUMMARY_HEADROOM,
+    GgTelemetryKind, PARAM_MAX_RETRIES, PARAM_SUMMARY_HEADROOM,
 };
 
 use crate::context::{ContextModel, Retention, item_heading};
@@ -743,9 +746,19 @@ fn handoff_label(source: GgContextSource, label: Option<&str>, role: Role) -> St
 pub struct CompactionPolicy {
     /// The fraction of the model's window **withheld from the agent** so that a compaction
     /// can actually be performed — see [`working_window`](Self::working_window). This is the
-    /// single knob: the fullness [trigger](Self::trigger_fullness) is derived from it, not
-    /// configured separately.
+    /// knob the trigger is cut from: the fullness [trigger](Self::trigger_fullness) is derived
+    /// from it, not configured separately.
     pub summary_headroom: f64,
+    /// How many times a compaction that **did not relieve the window** is attempted again before
+    /// the agent is ended as [failed](CompactionVerdict::Exhausted).
+    ///
+    /// Zero — which is what an absent [`maxRetries`](PARAM_MAX_RETRIES) says — means one
+    /// compaction and no more: a boundary that leaves the window still at the trigger has nothing
+    /// further to try, and the agent fails there. It is the figure every configuration should be
+    /// running under, because a compaction that reclaims nothing is a run that is over already;
+    /// what a retry buys is the one shape where a second pass can help — a strategy whose first
+    /// summary came back nearly as long as the thread it replaced.
+    pub max_retries: u64,
 }
 
 impl CompactionPolicy {
@@ -755,13 +768,14 @@ impl CompactionPolicy {
     ///
     /// Reaching it means the [headroom](PARAM_SUMMARY_HEADROOM) was absent from an enabled
     /// capability or was a value gg cannot honour — the launch is refused either way, before a
-    /// turn is taken — or that compaction is off, in which case
-    /// [`should_compact`] is false for the whole run and nothing here is read. It is written out
-    /// rather than reached through a `Default` so the line that returns it cannot be mistaken for
-    /// the run getting a headroom nobody wrote; the fraction it names withholds nothing, which is
-    /// the only honest thing to withhold on behalf of a document that did not ask.
+    /// turn is taken — or that compaction is off, in which case the [trigger](CompactionTrigger)
+    /// is idle for the whole run and nothing here is read. It is written out rather than reached
+    /// through a `Default` so the line that returns it cannot be mistaken for the run getting a
+    /// headroom nobody wrote; the fraction it names withholds nothing, which is the only honest
+    /// thing to withhold on behalf of a document that did not ask.
     pub const NO_COMPACTION: Self = Self {
         summary_headroom: 0.0,
+        max_retries: 0,
     };
 
     /// Resolve the policy from an **enabled** compaction capability's `params` object.
@@ -781,6 +795,11 @@ impl CompactionPolicy {
     /// unreadable value and nothing at all for an absent one.
     ///
     /// The fullness trigger is not a separate param — it is defined by the headroom.
+    ///
+    /// [`maxRetries`](PARAM_MAX_RETRIES) is the capability's one **optional** param, read the way
+    /// every optional count is: absent is `0`, which is the setting rather than a substitution —
+    /// one compaction, and an agent the boundary could not relieve is failed rather than compacted
+    /// round again.
     pub fn resolve(params: &Value, report: &mut LaunchReport) -> Self {
         let headroom = crate::validate::required_param(
             params,
@@ -789,8 +808,14 @@ impl CompactionPolicy {
             report,
         )
         .and_then(|raw| read_summary_headroom(raw, report));
+        let max_retries =
+            crate::validate::count_param(params, CAPABILITY_COMPACTION, PARAM_MAX_RETRIES, report)
+                .unwrap_or(0);
         match headroom {
-            Some(summary_headroom) => Self { summary_headroom },
+            Some(summary_headroom) => Self {
+                summary_headroom,
+                max_retries,
+            },
             None => Self::NO_COMPACTION,
         }
     }
@@ -808,6 +833,7 @@ impl CompactionPolicy {
         {
             read_summary_headroom(raw, report);
         }
+        crate::validate::count_param(params, CAPABILITY_COMPACTION, PARAM_MAX_RETRIES, report);
     }
 
     /// The window-fullness fraction at (or above) which a compaction fires, defined as
@@ -933,9 +959,9 @@ impl CompactionSetup {
     /// [compaction](CAPABILITY_COMPACTION) capability, or declares it switched off.
     ///
     /// It is the value that says so rather than an arm: [`enabled`](Self::enabled) is `false`,
-    /// which is what [`should_compact`] and every reader in the [loop](crate::agent) gate on, and
-    /// the policy and strategy beside it are the two `NO_COMPACTION` placeholders that nothing
-    /// reads.
+    /// which is what the [trigger](CompactionTrigger) and every reader in the [loop](crate::agent)
+    /// gate on, and the policy and strategy beside it are the two `NO_COMPACTION` placeholders
+    /// that nothing reads.
     fn not_compacting() -> Self {
         Self {
             enabled: false,
@@ -1113,19 +1139,101 @@ pub struct RetainedCounts {
 // The trigger and the rewrite
 // ---------------------------------------------------------------------------
 
-/// Whether a compaction should fire **now** — at a turn boundary, with the window fully
-/// assembled.
+/// Whether the assembled window has reached the [trigger](CompactionPolicy::trigger_fullness) —
+/// the condition that says *this agent is in trouble*, which [`CompactionTrigger::judge`] then
+/// decides what to do about.
 ///
-/// Three conditions, all necessary: the capability is on; window
-/// [fullness](ContextModel::fullness) has reached the [trigger](CompactionPolicy::trigger_fullness)
-/// (an unknown window limit has no fullness denominator, so it never fires); and there is ephemeral
-/// history to reclaim — compacting with none would reclaim nothing and could loop.
-pub fn should_compact(context: &ContextModel, setup: &CompactionSetup) -> bool {
-    setup.enabled
-        && context
-            .fullness()
-            .is_some_and(|fullness| fullness >= setup.policy.trigger_fullness())
-        && context.has_ephemeral()
+/// It is deliberately not the whole of "should a compaction fire": that also wants a capability
+/// that is on and ephemeral history to reclaim, and — the part no window can answer — whether the
+/// boundary before this one already fired and left the window here. A window over the trigger with
+/// nothing ephemeral left is not a boundary that need not fire; it is one that **cannot**, and
+/// telling those apart is the judgement.
+///
+/// An unknown window limit has no denominator and so is never over anything: a model gg has no
+/// window figure for is measured against nothing, and inventing a fullness for it would invent the
+/// trigger too.
+fn over_trigger(context: &ContextModel, setup: &CompactionSetup) -> bool {
+    context
+        .fullness()
+        .is_some_and(|fullness| fullness >= setup.policy.trigger_fullness())
+}
+
+/// What the trigger says about one turn boundary — the answer [`CompactionTrigger::judge`] hands
+/// the [loop](crate::agent), which acts on all three arms and on nothing else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompactionVerdict {
+    /// The window is below the trigger, or the capability is off. The turn proceeds.
+    Idle,
+    /// Compact now, by whichever [shape](CompactionStrategy) this run's strategy is.
+    Compact,
+    /// The window is **still** at the trigger with the retry allowance
+    /// ([`max_retries`](CompactionPolicy::max_retries)) spent, so the agent has failed.
+    ///
+    /// This is the arm that makes the capability's promise falsifiable. A compaction exists to hand
+    /// the agent a window it can work in; one that comes back over the trigger did not, and the
+    /// next turn assembles the same over-full window and asks for the same compaction — so an
+    /// agent left to carry on here compacts at every boundary for the rest of the run, burning the
+    /// operator's ceilings on a thread that never advances. gg ends it instead, and says so.
+    Exhausted,
+}
+
+/// The compaction trigger **with a memory** — how many boundaries in a row have compacted without
+/// getting the window back under the trigger, which is the whole of what tells a working backstop
+/// from a stuck one.
+///
+/// Held by the turn loop for the life of an agent (and re-made for each incarnation of a
+/// [succession](crate::agent::transitions), which is a different window against a different
+/// setup). Every boundary is [judged](Self::judge) through it, including the boundaries that do
+/// nothing: a window that came back under the trigger is what clears the count, and a count that
+/// only ever rose would fail an agent for a compaction that worked and a window that filled up
+/// again honestly.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CompactionTrigger {
+    /// Compactions fired since the window was last seen **below** the trigger. `0` at every
+    /// boundary of a run whose compactions are doing their job, including the boundary right after
+    /// one fires.
+    fired: u64,
+}
+
+impl CompactionTrigger {
+    /// Judge one turn boundary, with the window fully assembled and no compaction already in
+    /// flight — the [pending](PendingCompaction) case is the loop's to skip, because a compaction
+    /// the agent has been asked for and has not yet supplied has not failed at anything.
+    ///
+    /// The order the three questions are asked in is the point. Whether the window is over the
+    /// trigger comes first and decides everything: under it, the count is cleared and the agent
+    /// works. Over it, the count is what separates the first attempt from the fourth — and it is
+    /// compared against the allowance *before* the window is asked whether anything is left to
+    /// reclaim, so an agent whose compaction emptied the history and still could not get under the
+    /// trigger is failed rather than left to run at a window nothing can shrink.
+    pub fn judge(&mut self, context: &ContextModel, setup: &CompactionSetup) -> CompactionVerdict {
+        if !setup.enabled || !over_trigger(context, setup) {
+            self.fired = 0;
+            return CompactionVerdict::Idle;
+        }
+        if self.fired > setup.policy.max_retries {
+            return CompactionVerdict::Exhausted;
+        }
+        if !context.has_ephemeral() {
+            // Nothing to reclaim. Before the first compaction that is the opening window itself
+            // being over the trigger — a pinned prefix too large for the model, which no boundary
+            // was ever going to fix and which the turn is left to meet as it always has. After one,
+            // it is the same dead end the count exists to stop.
+            return match self.fired {
+                0 => CompactionVerdict::Idle,
+                _ => CompactionVerdict::Exhausted,
+            };
+        }
+        self.fired += 1;
+        CompactionVerdict::Compact
+    }
+
+    /// How many compactions have fired since the window was last under the trigger — `1` on the
+    /// boundary that fires the first one. Read for the operator-facing line that says which attempt
+    /// this is out of how many.
+    pub fn fired(&self) -> u64 {
+        self.fired
+    }
 }
 
 /// One file carried across a compaction boundary by name: the path the model asked for, the body gg

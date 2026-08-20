@@ -1688,10 +1688,11 @@ function buildAgentForest(agents: Map<string, AgentNode>): AgentTreeNode[] {
 // stream (see `reduceGgEventsPerAgent`).
 // The gg session-end statuses that mean an agent actually **failed** — the model was
 // reached and the turn did not work out, the credential was refused, one of the run's
-// hooks broke, or gg walked into its own defect. Every other terminal status
-// (`completed`, the ceiling statuses `exhausted` / `timed_out` / `limit_exceeded`, and
-// `canceled`) ended the session without anything failing, so an agent still running when
-// it landed is reconciled to `done` rather than `failed`.
+// hooks broke, the agent's compaction could not give it back a window to work in, or gg
+// walked into its own defect. Every other terminal status (`completed`, the ceiling
+// statuses `exhausted` / `timed_out` / `limit_exceeded`, and `canceled`) ended the session
+// without anything failing, so an agent still running when it landed is reconciled to
+// `done` rather than `failed`.
 //
 // Kept in step with gg's own `is_failure_status` (crates/gg/src/agent.rs), which is the
 // authority and draws the line in exactly the same place.
@@ -1699,6 +1700,7 @@ const FAILED_SESSION_STATUSES: ReadonlySet<string> = new Set([
   "model_error",
   "auth_error",
   "hook_error",
+  "compaction_failed",
   "internal_error",
 ]);
 

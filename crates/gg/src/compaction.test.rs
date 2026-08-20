@@ -55,15 +55,30 @@ fn mock() -> MockClient {
 }
 
 /// A setup for `strategy` whose trigger is `1 - summary_headroom`, with no handoff client (so an
-/// out-of-band condensation runs on whatever client it is handed).
+/// out-of-band condensation runs on whatever client it is handed) and **no retry allowance** —
+/// the figure an absent `maxRetries` gives every configuration that does not ask for one.
 pub(super) fn setup(
     strategy: CompactionStrategy,
     summary_headroom: f64,
     enabled: bool,
 ) -> CompactionSetup {
+    setup_with_retries(strategy, summary_headroom, enabled, 0)
+}
+
+/// [`setup`] with the retry allowance spelled out, for the cases whose subject is what happens to
+/// an agent a compaction cannot relieve.
+fn setup_with_retries(
+    strategy: CompactionStrategy,
+    summary_headroom: f64,
+    enabled: bool,
+    max_retries: u64,
+) -> CompactionSetup {
     CompactionSetup {
         enabled,
-        policy: CompactionPolicy { summary_headroom },
+        policy: CompactionPolicy {
+            summary_headroom,
+            max_retries,
+        },
         strategy,
         summarizer: resolve_summarizer(strategy),
         handoff_client: None,
@@ -79,7 +94,7 @@ async fn compact_if_needed(
     setup: &CompactionSetup,
     retained: RetainedCounts,
 ) -> Option<GgTelemetryKind> {
-    if !should_compact(context, setup) {
+    if CompactionTrigger::default().judge(context, setup) != CompactionVerdict::Compact {
         return None;
     }
     let (request, fallback) = condense_out_of_band(context, client, setup).await;
@@ -282,6 +297,7 @@ fn a_summary_headroom_gg_cannot_honour_is_refused() {
 fn policy_working_window_reserves_the_headroom() {
     let fifth = CompactionPolicy {
         summary_headroom: 0.2,
+        max_retries: 0,
     };
     assert_eq!(fifth.working_window(200_000), 160_000);
     // A tiny window still leaves the agent something to fill, rather than a zero
@@ -290,6 +306,7 @@ fn policy_working_window_reserves_the_headroom() {
     assert_eq!(
         CompactionPolicy {
             summary_headroom: 0.0,
+            max_retries: 0,
         }
         .working_window(200_000),
         200_000
@@ -563,6 +580,182 @@ async fn does_not_compact_with_no_ephemeral_history() {
     assert!(
         event.is_none(),
         "with no ephemeral history, compaction is a no-op"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The trigger's memory: a compaction that does not relieve the window
+// ---------------------------------------------------------------------------
+
+/// A window over the trigger with ephemeral history to reclaim.
+fn stuck_window() -> ContextModel {
+    // Headroom 0.5 → trigger 0.5, which this tiny window is far past.
+    let mut ctx = model(20);
+    ctx.set_system("a pinned system prompt");
+    ctx.push_assistant(Some("ephemeral work ".repeat(4)), Vec::new());
+    assert!(ctx.fullness().unwrap() >= 0.5);
+    ctx
+}
+
+/// **A compaction that leaves the window where it found it fails the agent.**
+///
+/// The default allowance is none, so the boundary after the one that compacted has nothing left to
+/// try — and it says so every time it is asked rather than starting the count over, since the loop
+/// reads the verdict at a boundary it may reach more than once.
+#[test]
+fn a_compaction_that_does_not_relieve_the_window_fails_the_agent() {
+    let setup = setup(CompactionStrategy::HandoffSummarization, 0.5, true);
+    let stuck = stuck_window();
+    let mut trigger = CompactionTrigger::default();
+
+    assert_eq!(trigger.judge(&stuck, &setup), CompactionVerdict::Compact);
+    assert_eq!(trigger.fired(), 1);
+    assert_eq!(trigger.judge(&stuck, &setup), CompactionVerdict::Exhausted);
+    assert_eq!(trigger.judge(&stuck, &setup), CompactionVerdict::Exhausted);
+}
+
+/// A written `maxRetries` buys exactly that many further attempts — three compactions for an
+/// allowance of two — and then the agent fails on the same terms.
+#[test]
+fn an_armed_allowance_compacts_again_before_it_gives_up() {
+    let setup = setup_with_retries(CompactionStrategy::HandoffSummarization, 0.5, true, 2);
+    let stuck = stuck_window();
+    let mut trigger = CompactionTrigger::default();
+
+    for attempt in 1..=3 {
+        assert_eq!(
+            trigger.judge(&stuck, &setup),
+            CompactionVerdict::Compact,
+            "attempt {attempt}"
+        );
+        assert_eq!(trigger.fired(), attempt);
+    }
+    assert_eq!(trigger.judge(&stuck, &setup), CompactionVerdict::Exhausted);
+}
+
+/// **A compaction that worked clears the count.** Otherwise a long run whose backstop is doing its
+/// job would spend its allowance on boundaries that each reclaimed the window honestly, and fail an
+/// agent for filling its window up again.
+#[test]
+fn a_window_back_under_the_trigger_clears_the_count() {
+    let setup = setup(CompactionStrategy::HandoffSummarization, 0.5, true);
+    let stuck = stuck_window();
+    // The window the same boundary leaves behind when the compaction did its job.
+    let mut relieved = model(100_000);
+    relieved.set_system("a pinned system prompt");
+    relieved.push_assistant(Some("the summary".to_string()), Vec::new());
+    assert!(relieved.fullness().unwrap() < 0.5);
+
+    let mut trigger = CompactionTrigger::default();
+    assert_eq!(trigger.judge(&stuck, &setup), CompactionVerdict::Compact);
+    assert_eq!(trigger.judge(&relieved, &setup), CompactionVerdict::Idle);
+    assert_eq!(trigger.fired(), 0);
+    // So the next time the window fills up honestly, it is a first attempt again.
+    assert_eq!(trigger.judge(&stuck, &setup), CompactionVerdict::Compact);
+    assert_eq!(trigger.fired(), 1);
+}
+
+/// A window over the trigger with **nothing left to reclaim** is read two ways, and the count is
+/// what tells them apart.
+///
+/// Before any compaction it is the opening window itself being too large for the model — a pinned
+/// prefix no boundary was ever going to shrink — which is left exactly as it always was. After one,
+/// it is a compaction that emptied the history and still could not get under the trigger, which is
+/// the dead end the count exists to stop.
+#[test]
+fn nothing_left_to_reclaim_is_idle_before_a_compaction_and_a_failure_after_one() {
+    // Headroom 0.9 → trigger 0.1, which the pinned prefix alone clears.
+    let setup = setup(CompactionStrategy::HandoffSummarization, 0.9, true);
+    let mut pinned_only = model(20);
+    pinned_only.set_system("a pinned system prompt with enough text to cross the low threshold");
+    pinned_only.push_user_prompt("a pinned build prompt");
+    assert!(pinned_only.fullness().unwrap() >= 0.1);
+    assert!(!pinned_only.has_ephemeral());
+
+    let mut untouched = CompactionTrigger::default();
+    assert_eq!(
+        untouched.judge(&pinned_only, &setup),
+        CompactionVerdict::Idle
+    );
+
+    let mut spent = CompactionTrigger::default();
+    assert_eq!(
+        spent.judge(&stuck_window(), &setup),
+        CompactionVerdict::Compact
+    );
+    assert_eq!(
+        spent.judge(&pinned_only, &setup),
+        CompactionVerdict::Exhausted
+    );
+}
+
+/// A capability that is **off** is never judged at all, however full the window is — and a boundary
+/// that finds it off clears the count, since there is no backstop to have failed.
+#[test]
+fn a_disabled_compaction_is_always_idle() {
+    let off = setup(CompactionStrategy::HandoffSummarization, 0.5, false);
+    let mut trigger = CompactionTrigger::default();
+    assert_eq!(
+        trigger.judge(&stuck_window(), &off),
+        CompactionVerdict::Idle
+    );
+    assert_eq!(trigger.fired(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// The retry allowance as configuration
+// ---------------------------------------------------------------------------
+
+/// **`maxRetries` is optional, and absent is none.** A compaction that reclaimed nothing is a run
+/// that is over, so the figure every configuration which does not ask for a retry runs under is
+/// zero — and that is the setting rather than a substitution.
+#[test]
+fn an_absent_max_retries_is_no_retries() {
+    for params in [
+        json!({ "summaryHeadroom": 0.2 }),
+        json!({ "summaryHeadroom": 0.2, "maxRetries": null }),
+    ] {
+        assert_eq!(
+            CompactionPolicy::resolve(&params, &mut honoured()).max_retries,
+            0,
+            "{params}"
+        );
+    }
+    assert_eq!(
+        CompactionPolicy::resolve(
+            &json!({ "summaryHeadroom": 0.2, "maxRetries": 3 }),
+            &mut honoured()
+        )
+        .max_retries,
+        3
+    );
+}
+
+/// A `maxRetries` gg cannot read as a count is **refused**, on the enabled arm and on the disabled
+/// one alike — the same rule the headroom beside it is read by.
+#[test]
+fn a_max_retries_gg_cannot_read_is_refused() {
+    let defects = reported(|report| {
+        CompactionPolicy::resolve(
+            &json!({ "summaryHeadroom": 0.2, "maxRetries": "two" }),
+            report,
+        );
+    });
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert!(
+        defects[0].locus.ends_with("params.maxRetries"),
+        "{}",
+        defects[0].locus
+    );
+
+    let declared = reported(|report| {
+        CompactionPolicy::check_declared(&json!({ "maxRetries": -1 }), report);
+    });
+    assert_eq!(declared.len(), 1, "{declared:?}");
+    assert!(
+        declared[0].locus.ends_with("params.maxRetries"),
+        "{}",
+        declared[0].locus
     );
 }
 

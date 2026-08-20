@@ -413,8 +413,9 @@ the fact which disqualifies it.
 An agent's terminal status is judged against the latch at the one seam that
 produces it, on the same rule the turn is judged on. Every failure status an
 agent can end under is gg's when the run was already broken, so `model_error`,
-`auth_error` and `hook_error` all become `internal_error`, and the record of the
-turn and the record of the agent agree about whose failure it was. An agent's
+`auth_error`, `hook_error` and `compaction_failed` all become `internal_error`,
+and the record of the turn and the record of the agent agree about whose failure
+it was. An agent's
 final word is written from the status it actually ended under, since a spawner
 reads that sentence as its child's answer.
 

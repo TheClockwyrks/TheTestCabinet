@@ -507,3 +507,85 @@ async fn a_handoff_model_that_will_not_resolve_ends_the_run() {
     // No boundary was crossed on the working model, which is the substitution that used to happen.
     assert!(boundaries(&events).is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// A compaction that cannot give the window back
+// ---------------------------------------------------------------------------
+
+/// A trigger so low that even the compacted window — the pinned prefix plus the summary — is over
+/// it, which is what a compaction that reclaimed nothing looks like from the loop's side.
+const UNREACHABLE_TRIGGER: f64 = 0.01;
+
+/// The `error` lines on a stream.
+fn errors(events: &[GgTelemetryEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// **An agent whose compaction cannot relieve its window is failed, not compacted round in
+/// circles.**
+///
+/// With no retry allowance — which is what an absent `maxRetries` gives every configuration — one
+/// boundary fires, comes back over the trigger, and the agent ends there. Without this the loop
+/// would ask for the same compaction at every boundary until the run's turn ceiling stopped it,
+/// with nothing to show for any of them.
+#[tokio::test]
+async fn a_compaction_that_cannot_relieve_the_window_fails_the_agent() {
+    let dir = TempDir::new().unwrap();
+    let (end, events) = drive_compaction(
+        &dir,
+        compaction_script(),
+        compaction_retrying(
+            CompactionStrategy::HandoffSummarization,
+            UNREACHABLE_TRIGGER,
+            0,
+        ),
+    )
+    .await;
+
+    assert_eq!(end.status, STATUS_COMPACTION_FAILED);
+    assert!(end.status.is_failure(), "it is a failure, not a ceiling");
+    assert_eq!(end.limit, None, "no ceiling of the operator's was crossed");
+    assert_eq!(
+        boundaries(&events).len(),
+        1,
+        "one compaction was tried, and no more"
+    );
+    let errors = errors(&events);
+    assert!(
+        errors
+            .iter()
+            .any(|message| message.contains("maxRetries") && message.contains("threshold")),
+        "the ending says what failed and which figure to move: {errors:?}"
+    );
+}
+
+/// A written allowance buys further attempts before the same ending. Out of band the retry is
+/// immediate — gg condenses at the boundary itself, so both attempts happen without spending a
+/// model turn on a window the agent cannot work in.
+#[tokio::test]
+async fn an_armed_allowance_is_spent_before_the_agent_is_failed() {
+    let dir = TempDir::new().unwrap();
+    let (end, events) = drive_compaction(
+        &dir,
+        compaction_script(),
+        compaction_retrying(
+            CompactionStrategy::HandoffSummarization,
+            UNREACHABLE_TRIGGER,
+            1,
+        ),
+    )
+    .await;
+
+    assert_eq!(end.status, STATUS_COMPACTION_FAILED);
+    assert_eq!(
+        boundaries(&events).len(),
+        2,
+        "the first attempt and the retry it was allowed"
+    );
+}

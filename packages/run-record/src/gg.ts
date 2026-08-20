@@ -2433,9 +2433,10 @@ export type GgSessionSummary = {
    * How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this
    * summary precedes. A slice-by facet for "how often does configuration X finish cleanly?".
    *
-   * One of gg's nine terminal statuses, and here they all are: `"completed"`; the three ceiling
+   * One of gg's ten terminal statuses, and here they all are: `"completed"`; the three ceiling
    * endings `"exhausted"`, `"timed_out"` and `"limit_exceeded"`; an operator's `"canceled"`; and
-   * the four failures `"model_error"`, `"auth_error"`, `"hook_error"` and `"internal_error"`.
+   * the five failures `"model_error"`, `"auth_error"`, `"hook_error"`, `"compaction_failed"`
+   * and `"internal_error"`.
    * Written out rather than sampled with a "for example", because this is where a consumer of
    * the schema meets the vocabulary and a facet built from a partial list does not report the
    * statuses it never heard of — it silently drops the runs that ended on one.
@@ -3690,12 +3691,13 @@ export type GgTelemetryKind =
   | {
       type: "session_ended";
       /**
-       * How the session ended, as one of gg's ten status words — and here they all are:
+       * How the session ended, as one of gg's eleven status words — and here they all are:
        * `"completed"`; the three ceiling endings `"exhausted"`, `"timed_out"` and
-       * `"limit_exceeded"`; an operator's `"canceled"`; the four failures `"model_error"`,
-       * `"auth_error"`, `"hook_error"` and `"internal_error"`; and `"error"` for a session that
-       * never launched, which is the one value [`GgSessionSummary::terminal_status`] cannot carry,
-       * because a launch failure has nothing to summarize.
+       * `"limit_exceeded"`; an operator's `"canceled"`; the five failures `"model_error"`,
+       * `"auth_error"`, `"hook_error"`, `"compaction_failed"` and `"internal_error"`; and
+       * `"error"` for a session that never launched, which is the one value
+       * [`GgSessionSummary::terminal_status`] cannot carry, because a launch failure has nothing
+       * to summarize.
        *
        * Listed in full rather than sampled with a few: a consumer branching on this is deciding
        * whether a run is scoreable at all, and the words that decide it — `"error"`,
@@ -4794,12 +4796,13 @@ export type GgTelemetryEvent = {
   | {
       type: "session_ended";
       /**
-       * How the session ended, as one of gg's ten status words — and here they all are:
+       * How the session ended, as one of gg's eleven status words — and here they all are:
        * `"completed"`; the three ceiling endings `"exhausted"`, `"timed_out"` and
-       * `"limit_exceeded"`; an operator's `"canceled"`; the four failures `"model_error"`,
-       * `"auth_error"`, `"hook_error"` and `"internal_error"`; and `"error"` for a session that
-       * never launched, which is the one value [`GgSessionSummary::terminal_status`] cannot carry,
-       * because a launch failure has nothing to summarize.
+       * `"limit_exceeded"`; an operator's `"canceled"`; the five failures `"model_error"`,
+       * `"auth_error"`, `"hook_error"`, `"compaction_failed"` and `"internal_error"`; and
+       * `"error"` for a session that never launched, which is the one value
+       * [`GgSessionSummary::terminal_status`] cannot carry, because a launch failure has nothing
+       * to summarize.
        *
        * Listed in full rather than sampled with a few: a consumer branching on this is deciding
        * whether a run is scoreable at all, and the words that decide it — `"error"`,

@@ -272,11 +272,12 @@ export interface ParamSpec {
   // value nobody may choose for the operator.
   defaultValue?: string;
   // Whether gg refuses a launch this param is absent from — which is every param but the
-  // three whose absence is itself a setting (compaction's `model` and `modelSlot`, and
-  // project management's `reviewers`). A required control always writes: it is seeded when
-  // the capability is switched on, filled in when a stored configuration is short of it,
-  // and refused by the save gate when it is emptied. The form reports it where the
-  // operator can still fix it, rather than letting the launch be the first to say so.
+  // four whose absence is itself a setting (compaction's `maxRetries`, `model` and
+  // `modelSlot`, and project management's `reviewers`). A required control always
+  // writes: it is seeded when the capability is switched on, filled in when a stored
+  // configuration is short of it, and refused by the save gate when it is emptied. The
+  // form reports it where the operator can still fix it, rather than letting the launch
+  // be the first to say so.
   required?: boolean;
   // How gg reads the object a `toggles` param writes, and therefore what the form has to
   // write into it. Required on a `toggles` param and meaningless on any other.
@@ -1589,6 +1590,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         defaultValue: String(AUTHORED_SUMMARY_HEADROOM),
         hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. This also defines the trigger: a compaction fires once the window is 1 − headroom full (the working window is full and only the headroom remains).",
+      },
+      {
+        // The second of the params whose absence is the setting, and the one whose
+        // absence is what almost every configuration wants: a compaction that
+        // reclaimed nothing is a run that is over, and retrying it is the exception.
+        key: "maxRetries",
+        label: "Max retries",
+        kind: "number",
+        hint: "How many times gg compacts again after a boundary that left the window still at the threshold, before ending the agent as failed. Left unset it is none: one compaction, and an agent that boundary could not relieve has failed — which is the right setting unless a strategy is being studied whose first summary can come back nearly as long as the thread it replaced.",
       },
       {
         key: "model",

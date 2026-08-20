@@ -553,6 +553,18 @@ fn compaction_with(strategy: CompactionStrategy, trigger_fullness: f64) -> Compa
     compaction_setup(true, strategy, trigger_fullness)
 }
 
+/// [`compaction_with`] carrying a retry allowance, for the `drive` e2es whose subject is a
+/// compaction that cannot get the window back under its trigger.
+fn compaction_retrying(
+    strategy: CompactionStrategy,
+    trigger_fullness: f64,
+    max_retries: u64,
+) -> CompactionSetup {
+    let mut setup = compaction_setup(true, strategy, trigger_fullness);
+    setup.policy.max_retries = max_retries;
+    setup
+}
+
 /// The shared constructor behind the three above: a setup with no handoff client, so an out-of-band
 /// condensation runs on the agent's own (mock) client.
 fn compaction_setup(
@@ -564,6 +576,10 @@ fn compaction_setup(
         enabled,
         policy: crate::compaction::CompactionPolicy {
             summary_headroom: 1.0 - trigger_fullness,
+            // No retry allowance, which is what an absent `maxRetries` gives a real run: a
+            // compaction that leaves the window over the threshold fails the agent, and a fixture
+            // that trips this is a fixture whose window was never wide enough to work in.
+            max_retries: 0,
         },
         strategy,
         summarizer: crate::compaction::resolve_summarizer(strategy),

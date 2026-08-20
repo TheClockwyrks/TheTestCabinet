@@ -17,6 +17,9 @@ Requirements:
   verbatim.
 - Complete once triggered. A failed summarization restarts the thread from a
   fixed note and records that it did.
+- Give the window back. A boundary that leaves the window still at the trigger
+  is retried while `maxRetries` allows one, and ends the agent as failed when it
+  does not.
 
 ## The reserved headroom and the trigger
 
@@ -28,7 +31,7 @@ fullness figure and the basis of the trigger, is the model's window less the
 round-trip runs in. Against a 200k model at a headroom of `0.2` the agent works
 against 160k.
 
-`summaryHeadroom` is the capability's one tuning parameter, and an enabled
+`summaryHeadroom` is the capability's main tuning parameter, and an enabled
 compaction capability writes it. It accepts `0.0` to `0.9`; a value outside that
 range, one gg cannot read as a fraction, and an absent one each refuse the
 launch. The fullness threshold that fires a compaction is `1 - summaryHeadroom`,
@@ -163,6 +166,40 @@ across models.
 
 A set that reaches gg still carrying `modelSlot` named a slot nobody bound, and
 refuses the launch.
+
+## When a compaction does not relieve the window
+
+A compaction exists to hand the agent back a window it can work in. One that
+comes back still at the trigger did not: the next turn assembles the same
+over-full window and asks for the same compaction, and an agent left to carry on
+compacts at every boundary for the rest of the run without ever advancing.
+
+So gg counts the boundaries that fire without getting the window back under the
+trigger. `maxRetries` is how many of those are tried again, and it is optional:
+absent, it is none, which means one compaction and an agent that compaction
+could not relieve is **failed**. The
+session ends with a terminal status of `compaction_failed`, which is a failure
+status in exactly the sense `model_error` and `hook_error` are, and never a
+ceiling ending: no bound of the operator's was crossed, the run's own backstop
+stopped working.
+
+The count is per agent and per incarnation, and it is cleared the moment the
+window is seen below the trigger — so a compaction that worked, followed by an
+honest refill hours later, is two first attempts rather than a second one.
+
+Writing a figure arms a retry. It is worth arming only where the first pass can
+plausibly do better on a second: a strategy whose summary can come back nearly
+as long as the thread it replaced. It cannot help where the window is over the
+trigger because the *pinned* prefix alone fills it — skills, memories, the board
+and locked specifications all cross the boundary verbatim, so no number of
+retries reclaims a byte of them. That configuration wants a wider window or less
+pinned state, and gg says so rather than compacting round in circles.
+
+The retry is immediate for a handoff strategy, which gg performs at the boundary
+itself: the window it produced is judged on the spot and the next attempt (or
+the failure) happens without spending a model turn. For an in-loop strategy the
+agent writes the summary, so the retry is the next boundary's — the same
+attempt, one turn later.
 
 ## Failed condensations
 

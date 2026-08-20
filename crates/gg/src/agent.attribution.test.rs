@@ -8,8 +8,9 @@
 use super::*;
 
 use crate::agent::{
-    STATUS_AUTH_ERROR, STATUS_CANCELED, STATUS_COMPLETED, STATUS_EXHAUSTED, STATUS_HOOK_ERROR,
-    STATUS_LIMIT_EXCEEDED, STATUS_MODEL_ERROR, STATUS_TIMED_OUT,
+    STATUS_AUTH_ERROR, STATUS_CANCELED, STATUS_COMPACTION_FAILED, STATUS_COMPLETED,
+    STATUS_EXHAUSTED, STATUS_HOOK_ERROR, STATUS_LIMIT_EXCEEDED, STATUS_MODEL_ERROR,
+    STATUS_TIMED_OUT,
 };
 
 /// A run that is nothing but its [latch](FaultLatch) — which is the whole of what an attribution
@@ -55,6 +56,7 @@ fn a_healthy_run_leaves_every_ending_alone() {
         STATUS_MODEL_ERROR,
         STATUS_AUTH_ERROR,
         STATUS_HOOK_ERROR,
+        STATUS_COMPACTION_FAILED,
         STATUS_INTERNAL_ERROR,
     ] {
         assert_eq!(
@@ -67,10 +69,11 @@ fn a_healthy_run_leaves_every_ending_alone() {
 
 /// **Every failure ending taken on a broken run is gg's.**
 ///
-/// The three that are somebody else's on a healthy run are the point: a provider that refused, a
-/// credential that was rejected and an operator's script that exited non-zero are all things that
-/// happen *around* a run gg had already broken, and none of them is what disqualified it. Filing any
-/// of them as the agent's ending puts our defect in somebody else's column.
+/// The four that are somebody else's on a healthy run are the point: a provider that refused, a
+/// credential that was rejected, an operator's script that exited non-zero and a compaction that
+/// could not give an agent its window back are all things that happen *around* a run gg had already
+/// broken, and none of them is what disqualified it. Filing any of them as the agent's ending puts
+/// our defect in somebody else's column.
 #[test]
 fn a_broken_run_attributes_every_failure_ending_to_gg() {
     let broken = broken();
@@ -78,6 +81,7 @@ fn a_broken_run_attributes_every_failure_ending_to_gg() {
         STATUS_MODEL_ERROR,
         STATUS_AUTH_ERROR,
         STATUS_HOOK_ERROR,
+        STATUS_COMPACTION_FAILED,
         STATUS_INTERNAL_ERROR,
     ] {
         let attributed = TerminalStatus::attributed(status, &broken);

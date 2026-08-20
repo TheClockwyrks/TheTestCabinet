@@ -754,6 +754,7 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
                     "the slice of the window held back for the summarization round trip",
                 ),
             ),
+            (PARAM_MAX_RETRIES, Requirement::OffWhenAbsent),
             (COMPACTION_PARAM_MODEL, Requirement::OffWhenAbsent),
             (COMPACTION_PARAM_MODEL_SLOT, Requirement::OffWhenAbsent),
         ],

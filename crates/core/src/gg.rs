@@ -1088,12 +1088,20 @@ pub const PARAM_MAX_EPICS: &str = "maxEpics";
 /// [`maxEpics`](PARAM_MAX_EPICS) is.
 pub const PARAM_MAX_ISSUES: &str = "maxIssues";
 
-/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability's `maxRetries` param: how
-/// many times gg re-dispatches an issue whose assigned agent finished without completing it before
-/// marking it [failed](GgIssueStatus::Failed). A review round is not a retry.
+/// The `maxRetries` param: how many times gg tries again after an attempt that did not take. Two
+/// capabilities read it, and each says for itself what an attempt is.
 ///
-/// Written and required on the terms [`maxEpics`](PARAM_MAX_EPICS) is, and `0` is a legitimate
-/// figure: it says one attempt and no more.
+/// On [project-management](CAPABILITY_PROJECT_MANAGEMENT) it is how many times gg re-dispatches an
+/// issue whose assigned agent finished without completing it before marking it
+/// [failed](GgIssueStatus::Failed) — a review round is not a retry. Written and required there on
+/// the terms [`maxEpics`](PARAM_MAX_EPICS) is, and `0` is a legitimate figure: it says one attempt
+/// and no more.
+///
+/// On [compaction](CAPABILITY_COMPACTION) it is how many times gg compacts again after a boundary
+/// that left the window still at its [trigger](PARAM_SUMMARY_HEADROOM), before the agent is ended
+/// as **failed**. There the param is **optional**, and its absence is the setting rather than a
+/// gap: one compaction, and an agent whose window that compaction could not relieve has failed.
+/// Writing a figure is what arms a retry, which is the same rule the run's own ceilings follow.
 pub const PARAM_MAX_RETRIES: &str = "maxRetries";
 
 /// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability's `reviewers` param: when
@@ -5988,9 +5996,10 @@ pub struct GgSessionSummary {
     /// How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this
     /// summary precedes. A slice-by facet for "how often does configuration X finish cleanly?".
     ///
-    /// One of gg's nine terminal statuses, and here they all are: `"completed"`; the three ceiling
+    /// One of gg's ten terminal statuses, and here they all are: `"completed"`; the three ceiling
     /// endings `"exhausted"`, `"timed_out"` and `"limit_exceeded"`; an operator's `"canceled"`; and
-    /// the four failures `"model_error"`, `"auth_error"`, `"hook_error"` and `"internal_error"`.
+    /// the five failures `"model_error"`, `"auth_error"`, `"hook_error"`, `"compaction_failed"`
+    /// and `"internal_error"`.
     /// Written out rather than sampled with a "for example", because this is where a consumer of
     /// the schema meets the vocabulary and a facet built from a partial list does not report the
     /// statuses it never heard of — it silently drops the runs that ended on one.
@@ -7421,12 +7430,13 @@ pub enum GgTelemetryKind {
     },
     /// A gg session ended.
     SessionEnded {
-        /// How the session ended, as one of gg's ten status words — and here they all are:
+        /// How the session ended, as one of gg's eleven status words — and here they all are:
         /// `"completed"`; the three ceiling endings `"exhausted"`, `"timed_out"` and
-        /// `"limit_exceeded"`; an operator's `"canceled"`; the four failures `"model_error"`,
-        /// `"auth_error"`, `"hook_error"` and `"internal_error"`; and `"error"` for a session that
-        /// never launched, which is the one value [`GgSessionSummary::terminal_status`] cannot carry,
-        /// because a launch failure has nothing to summarize.
+        /// `"limit_exceeded"`; an operator's `"canceled"`; the five failures `"model_error"`,
+        /// `"auth_error"`, `"hook_error"`, `"compaction_failed"` and `"internal_error"`; and
+        /// `"error"` for a session that never launched, which is the one value
+        /// [`GgSessionSummary::terminal_status`] cannot carry, because a launch failure has nothing
+        /// to summarize.
         ///
         /// Listed in full rather than sampled with a few: a consumer branching on this is deciding
         /// whether a run is scoreable at all, and the words that decide it — `"error"`,

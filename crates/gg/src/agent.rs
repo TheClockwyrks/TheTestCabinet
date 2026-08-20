@@ -160,7 +160,7 @@ use crate::cancel::CancelWatch;
 use crate::capture::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::client::{AgentIdentity, ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{
-    self, CompactionRequest, CompactionSetup, PendingCompaction, RestoredFile,
+    self, CompactionRequest, CompactionSetup, CompactionVerdict, PendingCompaction, RestoredFile,
 };
 use crate::completion;
 use crate::config::GgInvocation;
@@ -301,6 +301,25 @@ const STATUS_AUTH_ERROR: &str = "auth_error";
 /// never asked for the hook and cannot fix it.
 const STATUS_HOOK_ERROR: &str = "hook_error";
 
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for an agent whose
+/// [compaction] could not give it back a window to work in — a boundary fired,
+/// the thread restarted from the summary, and the window was **still** at the trigger, for one more
+/// attempt than the capability's [`maxRetries`](crate::compaction::CompactionPolicy::max_retries)
+/// allowed.
+///
+/// It **is** a failure ([`is_failure_status`]), and that is the judgement rather than an accident of
+/// which list it was written into. A spent ceiling is a bound the operator chose and the agent ran
+/// into honestly; this is the run's own backstop failing at the one thing it exists to do. Nothing
+/// downstream should read it as a configuration that merely ran out of room, because the thread it
+/// leaves behind is one no further turn could have advanced.
+///
+/// Whose failure it is, is deliberately left unstated — it is neither the model's turn nor gg's
+/// defect, and both of those statuses would be a lie about a run that a study reads by status. What
+/// produced it is a summary that came back no smaller than the thread it replaced, or a pinned
+/// prefix that alone fills the window, and which of those it was is on the compaction records the
+/// run already carries.
+const STATUS_COMPACTION_FAILED: &str = "compaction_failed";
+
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session **gg itself** broke in,
 /// in either of the two ways it can: gg reached a state [launch
 /// validation](crate::validate::validate_launch) proves
@@ -365,6 +384,7 @@ pub(crate) fn is_failure_status(status: &str) -> bool {
     status == STATUS_MODEL_ERROR
         || status == STATUS_AUTH_ERROR
         || status == STATUS_HOOK_ERROR
+        || status == STATUS_COMPACTION_FAILED
         || status == STATUS_INTERNAL_ERROR
 }
 
@@ -374,8 +394,9 @@ pub(crate) fn is_failure_status(status: &str) -> bool {
 /// process level, whatever it ended as, with the real outcome carried in the telemetry stream. That
 /// is **every** terminal status — [`STATUS_COMPLETED`], the three ceiling endings
 /// ([`STATUS_EXHAUSTED`], [`STATUS_TIMED_OUT`], [`STATUS_LIMIT_EXCEEDED`]), an operator's
-/// [`STATUS_CANCELED`], a [`STATUS_MODEL_ERROR`], a broken script's [`STATUS_HOOK_ERROR`] — bar
-/// two: [`STATUS_AUTH_ERROR`] when it is the **root's** ending, and [`STATUS_INTERNAL_ERROR`]
+/// [`STATUS_CANCELED`], a [`STATUS_MODEL_ERROR`], a broken script's [`STATUS_HOOK_ERROR`], a
+/// backstop that stopped working ([`STATUS_COMPACTION_FAILED`]) — bar two:
+/// [`STATUS_AUTH_ERROR`] when it is the **root's** ending, and [`STATUS_INTERNAL_ERROR`]
 /// wherever in the tree the defect behind it was raised. Written out rather than illustrated with a
 /// few, because a partial list here reads as the whole rule, and a reader who found their status
 /// missing from it would have to guess which side of the exit code it falls on. Only a
@@ -6689,6 +6710,16 @@ impl Agent {
         // the loop is narrowed: the agent may do the one thing compaction asked for and nothing
         // else, since everything else adds to a window that is already full.
         let mut pending_compaction: Option<PendingCompaction> = None;
+        // The compaction trigger's memory across this incarnation's turn boundaries: how many
+        // compactions have fired since the window was last under the threshold. It is what makes a
+        // backstop that is not working *visible* — a boundary that compacts and comes back over the
+        // trigger has reclaimed nothing, and without a count the loop would ask for the same
+        // compaction at every boundary until the run's ceilings stopped it.
+        //
+        // One per incarnation rather than per agent, because a [succession](transitions) is a
+        // different window measured against a different setup: the compactions the previous
+        // incarnation could not get relief from say nothing about the one that inherits the thread.
+        let mut compaction_trigger = compaction::CompactionTrigger::default();
         // This agent's error accounting against the run's ceilings. One per agent, owned outright,
         // because "consecutive" and "the last N turns" are only definable within one agent's turn
         // sequence — see [`crate::limits`].
@@ -6872,9 +6903,57 @@ impl Agent {
             // performed here and now, invisibly to the agent, and this turn simply proceeds against
             // a smaller window. An **in-loop** one cannot be: the agent itself writes the summary,
             // so gg appends the instruction, records what it is waiting for, and the turn that
-            // follows is the compaction. The `pending_compaction.is_none()` guard is what stops a
-            // still-full window from opening a second compaction on top of the one in flight.
-            if pending_compaction.is_none() && compaction::should_compact(context, &compaction) {
+            // follows is the compaction.
+            //
+            // The boundary is judged by [`CompactionTrigger`] rather than by the window alone,
+            // because the question here is not only "is it full?" but "did the last compaction
+            // help?". A boundary that fires and comes back over the threshold has reclaimed
+            // nothing, and the loop that simply asked again would ask at every boundary for the
+            // rest of the run. The trigger counts those, retries while the capability's
+            // `maxRetries` allows one, and ends the agent when it does not.
+            //
+            // The `loop` is what makes an out-of-band retry immediate: the strategy runs here and
+            // now, so the window it produced can be judged here and now, and an agent whose
+            // allowance is already spent is stopped without first spending a model turn on a window
+            // it cannot work in. An in-loop strategy breaks out after arming its instruction — its
+            // retry is the next boundary's, because only the agent's own next turn can supply the
+            // summary. A compaction already pending is nobody's failure yet, so it is not judged at
+            // all; that is also what stops a still-full window from opening a second compaction on
+            // top of the one in flight.
+            loop {
+                let verdict = match pending_compaction {
+                    Some(_) => CompactionVerdict::Idle,
+                    None => compaction_trigger.judge(context, &compaction),
+                };
+                match verdict {
+                    CompactionVerdict::Idle => break,
+                    CompactionVerdict::Exhausted => {
+                        return self.stop_on_stuck_compaction(
+                            emitter,
+                            &limits,
+                            &compaction,
+                            compaction_trigger.fired(),
+                            turn,
+                            total_tokens,
+                            total_cost,
+                            code.enabled,
+                            last_report.as_deref(),
+                            last_text,
+                        );
+                    }
+                    CompactionVerdict::Compact => {}
+                }
+                if compaction_trigger.fired() > 1 {
+                    emitter.emit(log(
+                        "warn",
+                        format!(
+                            "the window is still at the compaction threshold after the last \
+                             boundary; compacting again (attempt {} of {}).",
+                            compaction_trigger.fired(),
+                            compaction.policy.max_retries + 1
+                        ),
+                    ));
+                }
                 let retained = caps.retained_counts();
                 match compaction.strategy.pending() {
                     None => {
@@ -6938,6 +7017,7 @@ impl Agent {
                             Message::user(pending.instruction(code_language, memory_calls.clone())),
                         );
                         pending_compaction = Some(pending);
+                        break;
                     }
                 }
             }
@@ -8532,6 +8612,63 @@ impl Agent {
                  run ends here, because a tree a gg defect stopped is not a tree the model produced \
                  and must not be scored as one.",
                 self.id
+            ),
+        ));
+        LoopEnd {
+            status,
+            turns,
+            tokens,
+            cost,
+            profile_id: self.profile_id.clone(),
+            final_text: ended_text(code_mode, status, last_report, last_text),
+            ending: None,
+            limit: None,
+            handoff: None,
+        }
+    }
+
+    /// End this agent because its [compaction] **stopped working** — the window
+    /// came back at the trigger once more than the capability's
+    /// [`maxRetries`](crate::compaction::CompactionPolicy::max_retries) allows.
+    ///
+    /// A sibling of [`stop_on_cancel`](Self::stop_on_cancel) and
+    /// [`stop_on_fault`](Self::stop_on_fault), and the same shape as both: a condition observed at a
+    /// turn boundary, with nothing in flight, ending the agent through the same [attribution
+    /// seam](attribution) and into the same epilogue. It carries **no** [breach](GgLimitBreach) for
+    /// the reason a cancellation carries none — no ceiling of the operator's was crossed, and
+    /// writing a fabricated one into the field a study reads for "why did runs stop?" would put this
+    /// ending in the ceilings' column.
+    ///
+    /// The `error` line names how many boundaries fired, the threshold none of them got under, and
+    /// the allowance that is now spent — which is both halves of what an operator needs: what
+    /// happened, and which figure to move. What each boundary actually produced is on the run's own
+    /// compaction records, so it is not restated here.
+    #[allow(clippy::too_many_arguments)]
+    fn stop_on_stuck_compaction(
+        &self,
+        emitter: &Emitter,
+        limits: &LimitsSetup,
+        setup: &CompactionSetup,
+        fired: u64,
+        turns: usize,
+        tokens: TokenCounts,
+        cost: Option<Cost>,
+        code_mode: bool,
+        last_report: Option<&str>,
+        last_text: Option<String>,
+    ) -> LoopEnd {
+        let status = TerminalStatus::attributed(STATUS_COMPACTION_FAILED, limits);
+        emitter.emit(log(
+            "error",
+            format!(
+                "agent `{}` stopped after {turns} turns: {} with the `{}` strategy left the window \
+                 at or above the compaction threshold of {:.0}%, and the retry allowance \
+                 (`maxRetries` = {}) is spent. There is no window left for this agent to work in.",
+                self.id,
+                plural(fired as usize, "compaction"),
+                setup.strategy.id(),
+                setup.policy.trigger_fullness() * 100.0,
+                setup.policy.max_retries,
             ),
         ));
         LoopEnd {
