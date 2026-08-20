@@ -677,8 +677,11 @@ halting verbatim, so only its own endpoints are listed here.
 - `GET|PUT /ladders/{id}/schedule`, `POST /ladders/{id}/topup`,
   `GET /ladders/{id}/queue`, `POST /ladders/{id}/pause`, `.../halt`,
   `.../halt-all` — the plan endpoints above, with two differences: a top-up only ever
-  launches a climber's **current** rung, and `pause` is the ladder's enable/disable
-  switch — a ladder starts on its paused side, and `{ "paused": false }` only permits
+  launches a climber's **current** rung — while the queue and the buffer cover every
+  rung a climber has **reached**, so a rung the gate has decided keeps offering the
+  runs nobody reviewed
+  ([why](/components/backend/ladders/#feeding-and-reviewing-are-different-sets-of-rungs))
+  — and `pause` is the ladder's enable/disable switch — a ladder starts on its paused side, and `{ "paused": false }` only permits
   spending, so the caller that enables follows with a `topup` (the console does).
 
 ## Stopping runs in bulk

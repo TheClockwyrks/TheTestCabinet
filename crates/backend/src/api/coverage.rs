@@ -59,7 +59,7 @@ use time::format_description::well_known::Rfc3339;
 use test_cabinet_core::run_record::HarnessSlug;
 
 use crate::auth::AuthUser;
-use crate::coverage::schedule::{CellDemand, outstanding_across, top_up};
+use crate::coverage::schedule::{CellDemand, HarnessCapacity, outstanding_across, top_up};
 use crate::db::{
     CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, CellKey, JobCancelFilter, JobOrigin,
     SortDir, SummaryFilter, SummarySort, SummaryState,
@@ -1063,7 +1063,7 @@ async fn plan_top_up_locked(
         .map(|(case, combo)| ctx.demand(plan.runs_per_cell, case, combo))
         .collect();
     let outstanding = outstanding_across(&demands);
-    let launches = top_up(&demands, buffer_target, outstanding);
+    let launches = top_up(&demands, ctx.harness_capacity(), buffer_target, outstanding);
 
     let cells: Vec<TopUpCell<'_>> = launches
         .iter()
@@ -1436,6 +1436,11 @@ pub(super) struct MatrixCtx {
     /// Completed runs the requesting account has not reviewed, per cell. The only
     /// per-account number here.
     unreviewed: crate::db::CellCounts,
+    /// How much room each harness has to start another run, indexed by
+    /// [`harness_lane`]. Read by the top-up scheduler so the review buffer is spent
+    /// on work the queue can actually claim rather than deepening one throttled
+    /// harness's backlog; see [`crate::coverage::schedule`].
+    harness_capacity: Vec<HarnessCapacity>,
     /// The newest ingested version per case slug.
     latest_by_slug: HashMap<String, String>,
 }
@@ -1474,7 +1479,8 @@ impl MatrixCtx {
             .count_unreviewed_runs_by_cell(&slugs, reviewer_user_id, exclude_unloaded)
             .await
             .map_err(ApiError::from)?;
-        let pending = pending_jobs_by_cell(state).await?;
+        let queue = queue_snapshot(state).await?;
+        let harness_capacity = harness_capacity(state, &queue.in_flight_by_harness).await?;
         let mut latest_by_slug = HashMap::new();
         for slug in slugs {
             let version = state
@@ -1488,8 +1494,9 @@ impl MatrixCtx {
         Ok(Self {
             completed,
             in_flight,
-            pending,
+            pending: queue.pending,
             unreviewed,
+            harness_capacity,
             latest_by_slug,
         })
     }
@@ -1618,7 +1625,14 @@ impl MatrixCtx {
             completed: self.completed.get(&key).copied().unwrap_or(0),
             in_flight: self.in_flight.get(&key).copied().unwrap_or(0),
             unreviewed: self.unreviewed.get(&key).copied().unwrap_or(0),
+            harness: harness_lane(combo.harness),
         }
+    }
+
+    /// How much room each harness has to start another run, in the lane order
+    /// [`CellDemand::harness`] indexes. Handed straight to the top-up scheduler.
+    pub(super) fn harness_capacity(&self) -> &[HarnessCapacity] {
+        &self.harness_capacity
     }
 
     /// The newest ingested version of one case slug, or the empty string when the case
@@ -1653,23 +1667,38 @@ pub(super) fn cell_key(case: &ReviewPlanCase, combo: &ReviewPlanCombo) -> CellKe
     )
 }
 
-/// Count the jobs sitting in `pending` — held back behind a harness parallelism cap
-/// or a same-model game jam — per coverage cell.
+/// What one read of the live queue tells a coverage computation.
+struct QueueSnapshot {
+    /// The `pending` subset of the in-flight jobs, per coverage cell.
+    pending: crate::db::CellCounts,
+    /// In-flight jobs per harness slug — every state, across every plan, ladder, and
+    /// hand-launched run, not only the cells being tallied. A harness's parallelism
+    /// cap is global, so anything already queued for it consumes the cap ahead of
+    /// whatever a top-up adds.
+    in_flight_by_harness: HashMap<String, u32>,
+}
+
+/// Read the live queue once, for both the per-cell `pending` counts and the
+/// per-harness in-flight totals.
 ///
-/// Derived from the same active-job read `GET /jobs/active` serves rather than from a
-/// grouped query, because `pending` is a *display* distinction: the authority for
+/// Derived from the same active-job read `GET /jobs/active` serves rather than from
+/// grouped queries, because `pending` is a *display* distinction: the authority for
 /// what counts toward a cell's target is [`crate::db::Db::count_in_flight_jobs_by_cell`],
 /// which includes pending jobs and must keep doing so. Surfacing the subset separately
 /// is what makes "the buffer is full but nothing is running" explicable instead of
 /// looking like a stuck queue. The read is bounded by the queue's actual depth, which
 /// is the same set the console already fetches whole for its in-progress list.
-async fn pending_jobs_by_cell(state: &AppState) -> Result<crate::db::CellCounts, ApiError> {
-    let mut counts = crate::db::CellCounts::new();
+async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
+    let mut pending = crate::db::CellCounts::new();
+    let mut in_flight_by_harness: HashMap<String, u32> = HashMap::new();
     for job in state.db.active_jobs().await.map_err(ApiError::from)? {
+        *in_flight_by_harness
+            .entry(job.harness_slug.clone())
+            .or_insert(0) += 1;
         if job.state != "pending" {
             continue;
         }
-        *counts
+        *pending
             .entry((
                 job.test_case_slug,
                 job.test_case_version,
@@ -1679,7 +1708,53 @@ async fn pending_jobs_by_cell(state: &AppState) -> Result<crate::db::CellCounts,
             ))
             .or_insert(0) += 1;
     }
-    Ok(counts)
+    Ok(QueueSnapshot {
+        pending,
+        in_flight_by_harness,
+    })
+}
+
+/// Cross the configured per-harness parallelism caps with what is already in flight,
+/// producing the capacity lane the top-up scheduler reads for every harness.
+///
+/// A harness with no `harness_config` row — the default — is unlimited. A stored cap
+/// that is not a sane positive count is treated as zero rather than as unlimited: bad
+/// data should hold runs back, not quietly lift a throttle an operator asked for.
+async fn harness_capacity(
+    state: &AppState,
+    in_flight: &HashMap<String, u32>,
+) -> Result<Vec<HarnessCapacity>, ApiError> {
+    let caps: HashMap<String, Option<i32>> = state
+        .db
+        .list_harness_configs()
+        .await
+        .map_err(ApiError::from)?
+        .into_iter()
+        .map(|row| (row.harness_slug, row.max_parallelism))
+        .collect();
+    Ok(HarnessSlug::ALL
+        .iter()
+        .map(|slug| HarnessCapacity {
+            in_flight: in_flight.get(slug.as_str()).copied().unwrap_or(0),
+            max_parallel: caps
+                .get(slug.as_str())
+                .copied()
+                .flatten()
+                .map(|max| u32::try_from(max).unwrap_or(0)),
+        })
+        .collect())
+}
+
+/// The lane a harness occupies in the capacity slice the top-up scheduler walks.
+///
+/// [`HarnessSlug::ALL`] is exhaustive, so the position always resolves; the fallback
+/// only keeps the lookup total, and lands past the end of the slice — which the
+/// scheduler reads as an uncapped harness rather than as some other harness's lane.
+fn harness_lane(harness: HarnessSlug) -> usize {
+    HarnessSlug::ALL
+        .iter()
+        .position(|slug| *slug == harness)
+        .unwrap_or(HarnessSlug::ALL.len())
 }
 
 // ---- Shared top-up enqueue + queue assembly --------------------------------

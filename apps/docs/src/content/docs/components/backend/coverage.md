@@ -65,7 +65,9 @@ a job sits `pending` when its harness is at its
 it is a [game jam](/testing/game-jam/overview/#repeated-runs-build-something-distinct)
 run of a model that already has a jam run in flight. Both are the queue working as
 designed, and neither is distinguishable from a wedged dispatcher unless the count
-is reported on its own.
+is reported on its own. A top-up will not *prefer* to create the first kind — see
+[harness parallelism comes first](#harness-parallelism-comes-first) — but it will
+still queue depth behind a cap once there is nothing else to launch.
 
 A cell counts against the **pinned** version only. A case version is frozen once it
 has runs, so an older minor is a different specification whose runs are not
@@ -79,9 +81,12 @@ way to execution without any component in between having to preserve it.
 
 Each job takes a monotonic `queue_seq` when it is inserted, and the
 [dispatcher](/components/dispatcher/overview/#queue-order) claims strictly in
-ascending order. So the sequence in which a top-up *emits* cells is the sequence in
-which the runs *start*. Nothing in the dispatcher, the driver, or the queue needs to
-know a plan exists: choosing the emission order is the entire mechanism.
+ascending order — passing over only a job whose harness is at its cap. So the
+sequence in which a top-up *emits* cells is the sequence in which the runs *start*.
+Nothing in the dispatcher, the driver, or the queue needs to know a plan exists:
+choosing the emission order is the entire mechanism. That is also why the top-up
+itself reads the caps when it chooses that order — see
+[harness parallelism comes first](#harness-parallelism-comes-first).
 
 That is what makes `outerAxis` a real control rather than a cosmetic one:
 
@@ -150,9 +155,11 @@ The algorithm is the same for plans and ladders:
 
 1. Walk the cells in the plan's configured [outer-axis order](#emission-order-is-execution-order).
 2. Skip any cell already at its per-cell target, counted **globally**.
-3. Emit **whole** cells — all of a cell's missing repeats together — until
+3. Defer any cell whose harness is already at its
+   [parallelism cap](#harness-parallelism-comes-first).
+4. Emit **whole** cells — all of a cell's missing repeats together — until
    `outstanding` reaches the buffer target.
-4. Stop.
+5. Walk the deferred cells, in the same order, until the buffer target is reached.
 
 `POST /coverage-plans/{id}/topup` reports what it did in enough detail that an idle
 plan is never a mystery: the buffer target in force, the occupancy it observed, the
@@ -161,9 +168,42 @@ top-up that ran and enqueued nothing reports `skipped: null` with `enqueued: 0` 
 deliberately distinct from one that never ran because the plan was `paused` or
 because another top-up held the claim.
 
+### Harness parallelism comes first
+
+The buffer bounds the *reviewer's* backlog, but what produces that backlog is the
+queue — and the queue will not start a run whose harness is already at its
+[maximum parallelism](/components/core/harnesses/#per-harness-configuration).
+
+Filling the buffer without reading that cap is how a plan starves itself. Walk the
+cells in plain order and the whole buffer goes to the first harness the walk meets;
+if that harness is throttled to two, ten queued runs still produce two at a time
+while every other harness in the plan sits idle. The reviewer then drains the buffer
+faster than a deliberately-throttled harness can refill it, and the buffer — the
+thing that exists to keep them fed — becomes the thing holding the machine back. It
+looks like a resource limit and is not one.
+
+So the walk prefers cells that can actually start. A cell whose harness has no free
+slot is set aside, the cells behind it on idle harnesses are emitted first, and the
+set-aside cells are picked up in a second pass over whatever buffer is left. Within
+one harness the plan's order is untouched; only the interleaving *between* harnesses
+changes — which is the same reordering the
+[dispatcher](/components/dispatcher/overview/#queue-order) already performs when it
+skips a capped job to claim a later claimable one.
+
+The second pass is not an afterthought. A plan whose harnesses are *all* throttled
+must still queue real depth ahead of the reviewer, because top-up is an endpoint the
+console calls and not a daemon: a plan holding only as many runs as can execute at
+once would stop dead the moment the reviewer stopped submitting reviews. A single-
+harness plan therefore enqueues exactly what it always did.
+
+Capacity is read **globally** and across every job state, not just the states that
+occupy a slot: a run merely queued for a harness consumes that harness's cap before
+anything enqueued after it, whoever queued it. The question being asked is "would one
+more run start soon", not "is a slot free this instant".
+
 ### Why whole cells
 
-Step 3 overshoots the buffer target by up to one cell, on purpose.
+Step 4 overshoots the buffer target by up to one cell, on purpose.
 
 A cell's repeats are the **unit of judgement**. Five runs of one case on one model
 are reviewed against each other — that is how you tell a model that fails from a

@@ -10,11 +10,20 @@
 
 use super::*;
 
-use crate::coverage::schedule::top_up;
+use crate::coverage::schedule::{HarnessCapacity, top_up};
 
 fn combo(model: &str) -> ReviewPlanCombo {
     ReviewPlanCombo {
         harness: HarnessSlug::Claude,
+        model: model.to_string(),
+        provider: None,
+    }
+}
+
+/// The same, on an explicit harness rather than the default Claude Code.
+fn combo_on(harness: HarnessSlug, model: &str) -> ReviewPlanCombo {
+    ReviewPlanCombo {
+        harness,
         model: model.to_string(),
         provider: None,
     }
@@ -75,6 +84,9 @@ fn empty_ctx() -> MatrixCtx {
         in_flight: crate::db::CellCounts::new(),
         pending: crate::db::CellCounts::new(),
         unreviewed: crate::db::CellCounts::new(),
+        // Every harness idle and unthrottled, which is the default deployment and
+        // the state in which the top-up walks its cells in plain order.
+        harness_capacity: vec![HarnessCapacity::UNLIMITED; HarnessSlug::ALL.len()],
         latest_by_slug: HashMap::new(),
     }
 }
@@ -321,7 +333,7 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
         .iter()
         .map(|(case, combo)| ctx.demand(5, case, combo))
         .collect();
-    let launches = top_up(&demands, 5, 0);
+    let launches = top_up(&demands, ctx.harness_capacity(), 5, 0);
     assert_eq!(launches.len(), 1);
     assert_eq!(launches[0].runs, 5);
     assert_eq!(order(&[ordered[launches[0].cell]]), vec!["pong/opus"]);
@@ -333,7 +345,7 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
         .iter()
         .map(|(case, combo)| ctx.demand(5, case, combo))
         .collect();
-    let launches = top_up(&demands, 10, 0);
+    let launches = top_up(&demands, ctx.harness_capacity(), 10, 0);
     assert_eq!(
         launches
             .iter()
@@ -341,6 +353,83 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
             .collect::<Vec<_>>(),
         vec!["pong/opus", "carom/opus"]
     );
+}
+
+#[test]
+fn a_throttled_harness_does_not_starve_the_rest_of_the_plan() {
+    // "One model at a time" puts every Claude cell first, so a plain in-order walk
+    // spends the whole buffer on a harness capped at two and leaves Codex — which
+    // could start immediately — idle. The scheduler reads the cap and interleaves.
+    let cases = vec![case("pong"), case("carom")];
+    let combos = vec![
+        combo_on(HarnessSlug::Claude, "opus"),
+        combo_on(HarnessSlug::Codex, "gpt"),
+    ];
+    let mut ctx = empty_ctx();
+    ctx.harness_capacity[harness_lane(HarnessSlug::Claude)] = HarnessCapacity {
+        in_flight: 0,
+        max_parallel: Some(2),
+    };
+
+    let ordered = cells_in_order(CoverageAxis::Combination, &combos, &cases);
+    let demands: Vec<_> = ordered
+        .iter()
+        .map(|(case, combo)| ctx.demand(2, case, combo))
+        .collect();
+    let launches = top_up(&demands, ctx.harness_capacity(), 8, 0);
+    // Claude's first cell fills its two slots, so its second is deferred behind both
+    // of Codex's — and only then takes the buffer that is left.
+    assert_eq!(
+        launches
+            .iter()
+            .map(|launch| order(&[ordered[launch.cell]]).remove(0))
+            .collect::<Vec<_>>(),
+        vec!["pong/opus", "pong/gpt", "carom/gpt", "carom/opus"]
+    );
+}
+
+#[test]
+fn a_harness_already_at_its_cap_yields_the_buffer_to_one_that_is_not() {
+    // The steady state: Claude's earlier runs are still working through the queue,
+    // so nothing more of it can start until they do.
+    let cases = vec![case("pong")];
+    let combos = vec![
+        combo_on(HarnessSlug::Claude, "opus"),
+        combo_on(HarnessSlug::Codex, "gpt"),
+    ];
+    let mut ctx = empty_ctx();
+    ctx.harness_capacity[harness_lane(HarnessSlug::Claude)] = HarnessCapacity {
+        in_flight: 6,
+        max_parallel: Some(2),
+    };
+
+    let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
+    let demands: Vec<_> = ordered
+        .iter()
+        .map(|(case, combo)| ctx.demand(3, case, combo))
+        .collect();
+    let launches = top_up(&demands, ctx.harness_capacity(), 3, 0);
+    // Only three buffer slots, and the runnable harness gets them.
+    assert_eq!(
+        launches
+            .iter()
+            .map(|launch| order(&[ordered[launch.cell]]).remove(0))
+            .collect::<Vec<_>>(),
+        vec!["pong/gpt"]
+    );
+}
+
+#[test]
+fn every_harness_slug_has_its_own_capacity_lane() {
+    // The lanes must be distinct and must all land inside the slice `empty_ctx`
+    // sizes from `HarnessSlug::ALL`, or a cell would borrow another harness's
+    // throttle — or silently read as unlimited.
+    let lanes: Vec<usize> = HarnessSlug::ALL.iter().copied().map(harness_lane).collect();
+    let mut unique = lanes.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(unique.len(), HarnessSlug::ALL.len());
+    assert!(lanes.iter().all(|lane| *lane < HarnessSlug::ALL.len()));
 }
 
 #[test]
@@ -355,7 +444,7 @@ fn a_satisfied_cell_is_skipped_rather_than_stopping_the_walk() {
         .iter()
         .map(|(case, combo)| ctx.demand(5, case, combo))
         .collect();
-    let launches = top_up(&demands, 10, 0);
+    let launches = top_up(&demands, ctx.harness_capacity(), 10, 0);
     // `pong` is done and costs nothing; the walk continues to `carom` rather than
     // stalling behind a finished case.
     assert_eq!(launches.len(), 1);
@@ -379,7 +468,7 @@ fn unreviewed_runs_hold_the_buffer_closed_even_when_nothing_is_in_flight() {
         .map(|(case, combo)| ctx.demand(15, case, combo))
         .collect();
     assert_eq!(demands[0].outstanding(), 10);
-    assert!(top_up(&demands, 10, 10).is_empty());
+    assert!(top_up(&demands, ctx.harness_capacity(), 10, 10).is_empty());
 }
 
 #[test]

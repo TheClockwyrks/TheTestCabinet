@@ -3,7 +3,8 @@
 Shared validation scripts invoked by both CI systems:
 
 - **Azure DevOps** (`azure-pipelines.yml`) is the primary CI and runs every
-  script. It covers the Linux and Windows platforms.
+  script, on both the Linux and Windows platforms. If a check can run without a
+  macOS agent, it runs here — a release must never be the first thing to fail.
 - **GitHub Actions** (`.github/workflows/`) runs the critical subset so a green
   GitHub run still means the components actually build and pass. It
   also owns **macOS** validation, since Azure has no macOS agents — but because
@@ -36,6 +37,7 @@ and can be run from anywhere, including locally:
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
 | `web-test.sh`      | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace | yes |
+| `desktop-build.sh` | `npm ci`, build the workspace runtime packages, type-check + `vite build` of the desktop UI, then clippy/rustdoc/build/test `crates/desktop` | yes |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings + JSON Schemas, fail on diff | yes     |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
@@ -59,6 +61,19 @@ test rather than as a failing build; and the two need different things, so they
 run in parallel — the tests need only the small workspace runtime packages built
 (`npm run build:packages`), never the app bundles.
 
+`desktop-build.sh` covers the Tauri desktop app —
+both its React UI (`apps/desktop`) and its Rust shell (`crates/desktop`). It exists
+because the app used to be validated nowhere but the Release workflow, which is
+the last possible place to find a break: a release fanned out to three platforms
+and all three failed in the UI's `tsc -b`, on code no earlier gate had ever
+compiled. It is also the only script that lints and tests `test-cabinet-desktop`,
+the one crate the Rust scripts exclude, so between them the Cargo workspace is
+covered with no holes. Its runner is the only one that needs the Linux GUI system
+libraries, which it installs from the devcontainer's curated list
+(`.devcontainer/languages/rust/tauri.sh`) rather than a second copy of it. It does
+**not** produce the platform installers or their k3d/kubectl sidecars: that is
+release-time packaging and stays in `release.yml`.
+
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the
 suite in that profile, and then hands the produced binary to `smoke-binary.sh`,
@@ -73,25 +88,33 @@ artifact**, so the exact check that guards CI also guards a release — a green
 Azure run is never the only thing between a broken binary and users. It takes a
 binary path rather than resolving the repo root, so it does not use `lib.sh`.
 
+`lib.sh` is a sourced helper (not a standalone script): it resolves the repo root
+and provides the `log` helper.
+
 ## Scope
 
-These cover every **headless** component. On the Rust side that is the whole
-Cargo workspace except the Tauri desktop shell — the `tcab` CLI (`crates/cli`),
-the `tcab-backend` (`crates/backend`) server, the run-topology services
-(`tcab-dispatcher`, `tcab-driver`, `tcab-artifacts`), and the
-`crates/core`/`crates/telemetry` libraries they share. On the TypeScript
-side it is the front ends built by `web-build.sh`: the gallery (`apps/site`), the
-operator web console (`apps/web`), and these docs (`apps/docs`), all on top of
+These cover **every component the project ships**. On the Rust side that is the
+whole Cargo workspace — the `tcab` CLI (`crates/cli`), the `tcab-backend`
+(`crates/backend`) server, the run-topology services (`tcab-dispatcher`,
+`tcab-driver`, `tcab-artifacts`), the `crates/core`/`crates/telemetry` libraries
+they share, and the Tauri desktop shell (`crates/desktop`). On the TypeScript side
+it is the front ends built by `web-build.sh` — the gallery (`apps/site`), the
+operator web console (`apps/web`), and these docs (`apps/docs`) — plus the desktop
+UI (`apps/desktop`) built by `desktop-build.sh`, all on top of
 `packages/run-record` and the source-consumed `packages/ui`; plus, through
 `web-test.sh`, every workspace's unit suite.
 
-The Tauri desktop app (`crates/desktop`, `apps/desktop`) is deliberately **not**
-built by these per-change CI scripts, so their runners do not need the desktop
-app's GUI system libraries. The Rust scripts therefore pass
-`--workspace --exclude test-cabinet-desktop` rather than a bare `--workspace`; the
-one excluded crate is the only one with that dependency. The desktop app is built
-and bundled for every platform in the GitHub Release workflow
-(`.github/workflows/release.yml`) instead.
+The desktop app is split across two scripts rather than folded into the rest, for
+one reason: its Linux build needs GUI system libraries nothing else does. So the
+Rust scripts pass `--workspace --exclude test-cabinet-desktop` rather than a bare
+`--workspace` — the one excluded crate is the only one with that dependency — and
+`desktop-build.sh` picks it up on a runner that installs them. Excluded from the
+common runners, not from CI.
 
-`lib.sh` is a sourced helper (not a standalone script): it resolves the repo root
-and provides the `log` helper.
+### The one gap: macOS
+
+Nothing a CI agent can build is left for a release to discover. The single
+exception is **macOS**, which Azure has no agents for: the macOS `tcab` binary is
+checked on demand by GitHub's `binary-macos.yml`, and the macOS desktop app is
+first built when `release.yml` bundles it. Every other platform and component is
+validated on every change.
