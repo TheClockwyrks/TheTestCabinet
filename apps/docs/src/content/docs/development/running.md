@@ -91,6 +91,23 @@ Foray/Lattice tooling, is rebuilt separately with
 `run-images-asset`, `run-images-adversarial`, `run-images-performance`,
 `run-images-gg`, or `run-image-<name>` for a single image.
 
+### Waiting for a rollout
+
+`local-up` and `local-rebuild` wait for each workload to finish rolling out,
+allowing each one `ROLLOUT_TIMEOUT`, which defaults to 600s. Both wait on every
+workload before reporting, so a failure names all of the workloads that timed
+out rather than only the first.
+
+A timeout reported alongside pods still in `Terminating` means the node's
+container runtime has yet to reap the outgoing pods, which holds their
+replacements back. The wait prints those pods and the runtime's `FailedKillPod`
+events, identifying the stall as a property of the node rather than of the
+images just built. Retry once the node settles, or allow more time:
+
+```sh
+make -C deployments/local local-rebuild ROLLOUT_TIMEOUT=1800s
+```
+
 ### Reaching the stack from the host
 
 `make local-forward` holds the backend on `127.0.0.1:8787`, the auth service on

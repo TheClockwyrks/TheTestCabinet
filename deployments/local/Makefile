@@ -233,7 +233,7 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg apply sts-reconcile
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg apply rollout-wait sts-reconcile
 
 local-up: cluster images run-images apply local-ingest
 	@echo ""
@@ -582,18 +582,71 @@ sts-reconcile:
 	    fi; \
 	  done
 
+# How long `rollout-wait` gives EACH workload before it gives up. Deliberately
+# generous, because of what runs immediately before it: a rebuild's last act prior
+# to restarting the services is `k3d image import`, which pushes several gigabytes
+# of saved tarballs into the node's containerd content store, and the node can still
+# be digesting that when the restart lands. A container runtime stalled that way has
+# been observed to take many minutes to reap the OUTGOING pods — far past their 30s
+# termination grace period, SIGKILL notwithstanding — and until those die their
+# replacements cannot start. So the wait is on the node settling, not on anything
+# the build produced. Lower it to fail faster when you suspect a genuinely broken
+# image:
+#   make local-rebuild ROLLOUT_TIMEOUT=120s
+ROLLOUT_TIMEOUT ?= 600s
+
+# The workloads each caller waits on. `apply` covers everything the overlay owns,
+# including the observability stack. `local-rebuild` restarts only the services it
+# rebuilds, so it waits on exactly those — tcab-lgtm is neither rebuilt nor
+# restarted there, and waiting on a rollout nobody started proves nothing.
+APPLY_WORKLOADS   := statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts statefulset/tcab-lgtm deployment/tcab-arena deployment/tcab-dispatcher
+RESTART_WORKLOADS := statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
+
+# Wait for every workload in $(WAIT_WORKLOADS) to finish rolling out, then report once.
+#
+# This deliberately does NOT stop at the first workload that times out, the way a
+# bare sequence of `rollout status` lines does. When the node's container runtime
+# stalls it stalls for ALL of them at once, and an operator told only about the
+# first cannot distinguish that from "the image I just built is broken" — two
+# problems with completely different fixes, one of which is not a problem with the
+# build at all. So: wait on all of them, name every one that failed, and print the
+# evidence that separates the two cases. Pods still Terminating long past their
+# grace period, and the runtime's own FailedKillPod events, mean the node is wedged
+# and the answer is to wait or retry, rather than to go hunting through a build that
+# in all likelihood succeeded.
+rollout-wait:
+	@set -u; failed=''; \
+	  for w in $(WAIT_WORKLOADS); do \
+	    if ! $(KUBECTL) -n '$(NS)' rollout status "$$w" --timeout='$(ROLLOUT_TIMEOUT)'; then \
+	      failed="$$failed $$w"; \
+	    fi; \
+	  done; \
+	  if [ -z "$$failed" ]; then exit 0; fi; \
+	  echo "" >&2; \
+	  echo "ERROR: did not become ready within $(ROLLOUT_TIMEOUT):$$failed" >&2; \
+	  echo "" >&2; \
+	  $(KUBECTL) -n '$(NS)' get pods >&2 || true; \
+	  stuck="$$($(KUBECTL) -n '$(NS)' get pods --no-headers 2>/dev/null | awk '$$3 == "Terminating" { printf " %s", $$1 }')"; \
+	  if [ -n "$$stuck" ]; then \
+	    echo "" >&2; \
+	    echo "Pods still Terminating:$$stuck" >&2; \
+	    echo "They were SIGKILLed after a 30s grace period and the node has STILL not reaped them, so" >&2; \
+	    echo "their replacements cannot start. That is a node/container-runtime stall — commonly the" >&2; \
+	    echo "runtime still digesting the multi-gigabyte 'k3d image import' that ran just before this —" >&2; \
+	    echo "and NOT a fault in the images that were just built. Recent kill failures, if any:" >&2; \
+	    $(KUBECTL) -n '$(NS)' get events --field-selector reason=FailedKillPod 2>/dev/null | tail -5 >&2 || true; \
+	    echo "" >&2; \
+	    echo "Re-run this target once the node settles, or give it longer: ROLLOUT_TIMEOUT=1800s" >&2; \
+	  fi; \
+	  exit 1
+
 # Apply the local overlay and wait for every service to become ready. Secrets are
 # created first (from the environment) so the pods find them on their first start,
 # and any StatefulSet whose immutable fields drifted is cleared out first (see
 # sts-reconcile) so the apply is not rejected.
 apply: secrets sts-reconcile
 	$(KUBECTL) apply -k '$(OVERLAY)'
-	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-lgtm      --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
+	@$(MAKE) --no-print-directory rollout-wait WAIT_WORKLOADS='$(APPLY_WORKLOADS)'
 
 # Ingest (force) the test-case catalog from the repo the backend has mounted.
 # Uses an ephemeral port-forward that is torn down when the recipe exits, then
@@ -691,12 +744,8 @@ local-grafana:
 # restart below still forces the pods to pick up rebuilt images even when their spec
 # is byte-identical (same :local tag), which apply alone would not trigger.
 local-rebuild: images apply
-	$(KUBECTL) -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
-	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout restart $(RESTART_WORKLOADS)
+	@$(MAKE) --no-print-directory rollout-wait WAIT_WORKLOADS='$(RESTART_WORKLOADS)'
 
 # Re-apply the overlay ONLY, with no image rebuild or service restart — the fast
 # path after a manifest-only change (RBAC, env, volumes). `kubectl apply -k` is
