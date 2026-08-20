@@ -2,36 +2,52 @@
 title: Assets
 ---
 
-The asset loader is reached as `engine.assets`. Every path it is given resolves
-under one fixed root, and every load it performs is recorded.
+A game loads what it needs during initialization, from
+[`InitApi.assets`](/engines/simple-2d/apis/game/), and keeps the results in its
+state. Every path resolves under one root, and every load announces its outcome
+as an engine event.
 
 ## The asset root
 
-The root is `assets/`, relative to the page the build is served from. A path is
-written relative to that root, and `resolve` is the concatenation of the two.
+The root is [`EngineOptions.assetRoot`](/engines/simple-2d/apis/engine/),
+defaulting to `assets/` and relative to the page the build is served from. A
+path is written relative to that root, and `resolve` is the concatenation of the
+two.
 
 ```ts
-engine.assets.resolve("sprites/ship.png"); // "assets/sprites/ship.png"
+api.assets.resolve("sprites/ship.png"); // "assets/sprites/ship.png"
 ```
 
-## AssetLoader
+## Loading
 
 ```ts
-resolve(path: string): string;
-load(path: string): Promise<Blob>;
-log(): AssetEvent[];
+readonly assets: {
+  loadImage(path: string): Promise<ImageBitmap>;
+  loadAudio(path: string): Promise<AudioBuffer>;
+  load(path: string): Promise<Blob>;
+  resolve(path: string): string;
+};
 ```
 
-| Member | Behaviour |
+| Member | Behavior |
 | --- | --- |
-| `resolve` | Returns the URL `path` loads from. Pure: it neither fetches nor logs. Throws when the path would name a location outside the root. |
-| `load` | Resolves the path, fetches it, and resolves to the response body as a `Blob`. Appends exactly one log entry per call. |
-| `log` | Every load attempt, oldest first, as a copy the caller owns. |
+| `loadImage` | Resolves the path, fetches it, and decodes the body to an `ImageBitmap` ready to draw. |
+| `loadAudio` | Resolves the path, fetches it, and decodes the body to an `AudioBuffer` ready to play. |
+| `load` | Resolves the path, fetches it, and resolves to the response body as a `Blob`. |
+| `resolve` | Returns the URL `path` loads from. Pure: it neither fetches nor emits. |
+
+Each of the three loaders emits exactly one event per call. `resolve` is the
+shared first step, so a path any loader refuses is refused identically by all of
+them.
+
+Because a game awaits its loads inside `initialize`, every field of its state is
+present by the time a frame can observe it, and `update` and `render` read
+assets as plain values.
 
 ## Path rules
 
 `resolve` accepts a non-empty relative path with no `..` segment and no URI
-scheme, and throws otherwise.
+scheme.
 
 | Path | Result |
 | --- | --- |
@@ -42,36 +58,38 @@ scheme, and throws otherwise.
 | `"../secrets.txt"` | Throws: a `..` segment leaves the root. |
 | `"https://example.com/ship.png"` | Throws: an absolute URL is not an asset path. |
 
-## AssetEvent
+## Events
+
+Loading reports itself through the engine's [event
+broadcaster](/engines/simple-2d/apis/game/), subscribed with
+`api.events.on(name, handler)`.
 
 ```ts
-interface AssetEvent {
-  path: string;
-  url: string;
-  ok: boolean;
-}
+"asset:loaded": { path: string; url: string };
+"asset:failed": { path: string; url: string; reason: string };
 ```
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `path` | `string` | The path the game passed to `load`. |
-| `url` | `string` | The URL it resolved to, or `""` for a refused path. |
-| `ok` | `boolean` | `true` once the response body has been read in full. |
+| Field | Meaning |
+| --- | --- |
+| `path` | The path the game passed to the loader. |
+| `url` | The URL it resolved to, or `""` for a refused path. |
+| `reason` | Why the load failed: the refusal, the HTTP status, the network error, or the decode error. |
+
+Subscribing to `asset:failed` on
+[`engine.events`](/engines/simple-2d/apis/engine/) before
+`engine.initialize` is what lets a caller observe the game's own loading, since
+the engine exists before any game code has run.
 
 ## Load outcomes
 
-`load` records the attempt in every case, and rejects whenever the `Blob` did
-not arrive. The rejection carries the original cause unchanged, so the caller
-sees the refused path, the HTTP status, or the network error itself.
+Every loader announces the attempt in every case, and rejects whenever the value
+did not arrive. The rejection carries the original cause unchanged, so the
+caller sees the refused path, the HTTP status, or the network error itself.
 
-| Condition | Log entry | Promise |
+| Condition | Event | Promise |
 | --- | --- | --- |
-| The body arrives in full | `url` resolved, `ok: true` | Resolves to the `Blob`. |
-| The path is refused | `url: ""`, `ok: false` | Rejects with the `resolve` error. |
-| The response status is not `2xx` | `url` resolved, `ok: false` | Rejects, naming the status. |
-| The fetch fails | `url` resolved, `ok: false` | Rejects with the fetch error. |
-
-## Exports
-
-`AssetEvent` is exported as a type from `@test-cabinet/simple-2d`. `AssetLoader`
-is exported as a type only, since the engine constructs the loader.
+| The value arrives | `asset:loaded` with the resolved `url` | Resolves to the value. |
+| The path is refused | `asset:failed` with `url: ""` | Rejects with the `resolve` error. |
+| The response status is not `2xx` | `asset:failed` with the resolved `url` | Rejects, naming the status. |
+| The fetch fails | `asset:failed` with the resolved `url` | Rejects with the fetch error. |
+| The body fails to decode | `asset:failed` with the resolved `url` | Rejects with the decode error. |

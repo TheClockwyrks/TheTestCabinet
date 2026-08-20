@@ -2,10 +2,11 @@
 title: Diagnostics
 ---
 
-The debug overlay is a read-only window onto values the game names. The engine
-cannot know what is worth watching inside someone else's simulation, so the game
-registers named sources and the engine owns everything around them: the panel,
-the toggle key, and the read a driver performs.
+The debug overlay is a read-only window onto values the game names and onto the
+engine's own frame metrics. The engine cannot know what is worth watching inside
+someone else's simulation, so the game registers named sources and the engine
+owns everything around them: the panel, the toggle key, the frame metrics, and
+the read the host interface answers.
 
 ## Sources are pulled, not pushed
 
@@ -26,32 +27,50 @@ the remaining lines draw normally.
 
 ## One evaluation, two audiences
 
-The panel the engine draws and the read the host interface answers both come
-from evaluating the same registered sources. A human pressing the toggle sees
-the values a validation script reads back, with no second code path to keep in
-step, so the overlay and the driver's view of the game cannot diverge.
+The panel the engine draws and the read the [host
+interface](/engines/simple-2d/concepts/host/) answers both come from evaluating
+the same registered sources. A person pressing the toggle sees the values a
+console read returns, with no second code path to keep in step.
 
-The driver's read is independent of whether the panel is visible. Inspecting the
-game's state never requires switching on a piece of human-facing chrome.
+The read is independent of whether the panel is visible. Inspecting the game's
+named values never requires switching on a piece of human-facing chrome.
+
+## Frame metrics
+
+The engine measures its own frames and reports them without the game registering
+anything. A frame-time graph draws one bar per recent frame, and three figures
+summarize the same window: the mean frame time, the 95th percentile, and the 99th
+percentile.
+
+The percentiles carry what the mean hides. An average frame time stays
+comfortable while the occasional long frame a player actually feels sits in the
+tail, so the two percentiles are what say whether a build is uniformly slow or
+intermittently uneven.
+
+The window is the last ten seconds of frames, held in a ring buffer of 600
+samples. The capacity is fixed, so a build delivering frames faster than sixty a
+second summarizes a shorter span of history in place of growing the buffer, and
+the engine's memory stays flat for a run of any length.
+
+The graph and the three figures occupy the top of the panel, above the registered
+lines, so a game's own values keep their order below them.
 
 ## The toggle belongs to the engine
 
-The engine listens for the backtick key on the canvas's own document and flips
+The engine listens for the backtick key on the surface's event target and flips
 the overlay on each press, ignoring auto-repeat so a held key leaves the panel
-steady. The key is engine chrome rather than a registered action, which keeps
-the action registry exactly the game's vocabulary: a driver reading the
-registered actions sees the bindings the case asked for and nothing the engine
-added. The backtick key is reserved for the engine, and the overlay starts
-hidden.
+steady. The key is engine chrome rather than a registered action, which keeps the
+action registry exactly the game's vocabulary. The backtick key is reserved for
+the engine, and the overlay starts hidden.
 
 ## Chrome over the finished picture
 
-The overlay is drawn after the game's render, with the canvas transform reset
-to the identity. Its geometry is therefore in the device pixels of the canvas
-backing store rather than in the game's letterboxed logical coordinates, so
-debug text stays the same physical size and stays crisp however far the game's
-own coordinates are being scaled. Type size tracks the surface height with a
-floor for legibility, which follows the device pixel ratio for free.
+The overlay is drawn after the game's render, with the canvas transform reset to
+the identity. Its geometry is therefore in the device pixels of the canvas
+backing store rather than in the game's letterboxed logical coordinates, so debug
+text stays the same physical size and stays crisp however far the game's own
+coordinates are being scaled. Type size tracks the surface height with a floor
+for legibility, which follows the device pixel ratio for free.
 
 The panel sits in the top-left corner, sized to its own text, clamped to the
 surface, and translucent so the game reads underneath it. The engine saves and
@@ -59,8 +78,9 @@ restores the drawing context around everything the overlay does, including when
 drawing fails, so a fill style or font set for the panel stays out of the next
 frame's drawing.
 
-The overlay draws while it is enabled and at least one source is registered. An
-empty panel is chrome that covers the game and reports nothing.
+The overlay draws while it is enabled. Frame metrics are always available, so an
+enabled panel always reports something even before the game registers a source of
+its own.
 
 ## Values on one line
 

@@ -13,18 +13,23 @@ package's own `docs/` directory.
 
 ## What each side owns
 
-The engine owns the frame loop and the delta time it hands the game, the canvas
-fit, the input action registry and its bindings, the audio bus, the asset
-loader, and the debug overlay. It also owns the host interface a validator
-drives, which is engine code and therefore present in every build.
+The engine owns the frame loop, the [clock](/engines/simple-2d/apis/clocks/)
+that decides what each frame's delta time is, the fit from the logical design
+size to the canvas, the input action registry and its bindings, the audio bus,
+the asset loader, and the debug overlay together with the frame metrics it
+reports.
 
-The game owns its simulation and its drawing. It supplies an update taking a
-delta time in seconds and a render taking a 2D drawing context, plus the
-declarations the engine works from: action bindings, cue definitions, and
-diagnostic sources.
+The game owns its simulation and its drawing, supplied as a
+[`Game<S>`](/engines/simple-2d/apis/game/): an `initialize` that builds the
+state, an `update` that advances it by a delta in seconds, and a `render` that
+draws it through a 2D context. The declarations the engine works from are made
+during initialization: action bindings, cue definitions, the assets the state
+holds, and the diagnostic sources the overlay reads.
 
-Collision detection, physics, and gameplay structure belong to the game, so a
-case that measures those measures them directly.
+Each function receives only the part of the engine it may use, so a frame's
+audible and observable behavior belongs to the update and the picture belongs to
+the render. Collision detection, physics, and gameplay structure belong to the
+game, so a case that measures those measures them directly.
 
 ## The sections
 
@@ -33,7 +38,8 @@ case that measures those measures them directly.
 | [APIs](/engines/simple-2d/apis/overview/) | The types and functions the engine exposes, as the specification its implementation satisfies. |
 | [Concepts](/engines/simple-2d/concepts/overview/) | How each subsystem works and why it is shaped that way. |
 | [Usage](/engines/simple-2d/usage/overview/) | How a build is expected to write its code against the engine. |
-| [Validators](/engines/simple-2d/validators/overview/) | How a validation script drives a build through the engine. |
+| [Examples](/engines/simple-2d/examples/overview/) | Complete games written against the engine, read as working reference. |
+| [Validators](/engines/simple-2d/validators/overview/) | How a test case checks a build through the engine. |
 
 ## Where it fits
 
@@ -42,8 +48,12 @@ Carom-class games write their own collision response and draw their own
 playfield, and the engine removes the surrounding work a case never intended to
 measure.
 
-Because every surface the engine owns is driven through the host interface
-rather than through code the model wrote, the clock, the input, the audio log,
-the asset log, and the diagnostics are checkable without the build exposing
-instrumentation of its own. A case still declares the control operations its
-checks need to arrange a situation, since the scenario setup remains the game's.
+A case's validators are vitest suites that run in the same process as the build
+they check. A suite imports the engine and the build's own game module, creates
+an engine over a scripted clock and a canvas it owns, and steps the game with
+`engine.advance`. The clock, the input, the cues that played, the assets that
+resolved, and the diagnostics are therefore read off engine code, and the frames
+a check depends on are exactly the frames it asked for.
+
+A case still declares the scenario its checks arrange, since setting up a
+situation runs through the game's own state.

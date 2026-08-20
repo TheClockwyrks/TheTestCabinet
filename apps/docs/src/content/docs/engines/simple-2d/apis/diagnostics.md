@@ -2,49 +2,97 @@
 title: Diagnostics
 ---
 
-`engine.diagnostics` is the named-value registry behind the debug overlay. Its
-class is exported from `@test-cabinet/simple-2d` as a type only.
+The debug overlay draws two things: the named values a game registers, and the
+engine's own frame-time metrics. A game registers its sources once, from
+[`InitApi.diagnostics`](/engines/simple-2d/apis/game/); the engine owns
+everything around them.
+
+## Registration
 
 ```ts
-class Diagnostics {
+readonly diagnostics: {
   register(name: string, source: () => unknown): void;
-  setEnabled(enabled: boolean): void;
-  enabled(): boolean;
-  toggle(): void;
-  read(): Record<string, unknown>;
-  draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
-}
+};
 ```
 
-## Methods
+`source` is a zero-argument function returning the value to display. It is
+invoked on each read, never sampled at registration, so it reports whatever the
+game holds at that instant.
 
-| Method | Returns | Behaviour |
+Re-registering a name replaces its source and retains the name's original
+position in the registry.
+
+## The registry
+
+The engine holds the registry and drives it.
+
+```ts
+setEnabled(enabled: boolean): void;
+enabled(): boolean;
+toggle(): void;
+read(): Record<string, unknown>;
+metrics(): FrameMetrics;
+draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
+```
+
+| Member | Returns | Behavior |
 | --- | --- | --- |
-| `register(name, source)` | `void` | Binds `name` to `source`. Re-registering a name replaces the source and retains the name's original position in the registry. |
 | `setEnabled(enabled)` | `void` | Shows the overlay when `true`, hides it when `false`. |
 | `enabled()` | `boolean` | Whether the overlay is currently drawn. |
 | `toggle()` | `void` | Inverts the enabled state. |
 | `read()` | `Record<string, unknown>` | Evaluates every registered source and returns the values. |
+| `metrics()` | `FrameMetrics` | The frame-time metrics over the current window. |
 | `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine after the game's `render`. |
 
-The overlay is disabled when the engine is created.
-
-## `register`
-
-`source` is a zero-argument function returning the value to display. It is
-invoked on each call to `read`, never sampled at registration.
+The overlay is hidden when the engine is created.
 
 ## `read`
 
 Returns a plain object keyed by registered name, in registration order, whose
 values are whatever the sources returned. Values are returned unformatted; the
-formatting in the table below applies to the overlay only.
+formatting below applies to the overlay only.
 
 A source that throws contributes its error message as a `string` value: the
 `message` of a thrown `Error`, otherwise the `String` form of what was thrown.
 `read` itself never throws.
 
-`read` is independent of `enabled()`; a disabled overlay is still read.
+`read` is independent of `enabled()`, so a hidden overlay is still readable.
+
+## Frame metrics
+
+The engine times each frame it runs, measuring the wall time spent in `update`,
+`render`, and the overlay itself. One sample is recorded per frame that ran.
+
+```ts
+interface FrameMetrics {
+  samples: number;
+  meanMs: number;
+  p95Ms: number;
+  p99Ms: number;
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `samples` | How many frames the window holds. |
+| `meanMs` | The arithmetic mean of the window's samples, in milliseconds. |
+| `p95Ms` | The 95th percentile of the window's samples, in milliseconds. |
+| `p99Ms` | The 99th percentile of the window's samples, in milliseconds. |
+
+Percentiles are nearest-rank over the window's samples sorted ascending, so
+`p95Ms` is the sample at index `ceil(0.95 * samples) - 1`. An empty window
+reports `0` for all three.
+
+### The window
+
+The window is the last 10 seconds of frames, held in a ring buffer whose
+capacity is 2048 samples. A frame rate above 204 frames per second therefore
+reports over the most recent 2048 frames, which keeps the window bounded at any
+frame rate.
+
+Age is measured against the frame loop's simulated time, so the window covers 10
+seconds of the time the game was stepped by rather than 10 seconds of real time.
+A sample older than the window is dropped as each new frame arrives.
 
 ## `draw`
 
@@ -53,15 +101,25 @@ pixels. The engine resets the context transform to the identity before calling
 `draw`, and `draw` saves and restores the context around all of its own work,
 including when measuring or drawing throws.
 
-`draw` performs no drawing when the overlay is disabled and no drawing when the
-registry is empty.
+The overlay draws the registered lines first, then a metrics line reading
+`` `frame: ${meanMs} / ${p95Ms} / ${p99Ms} ms` ``, then the frame-time graph.
+`draw` performs no drawing when the overlay is hidden.
+
+### The graph
+
+The graph plots the window's samples oldest at the left and newest at the right,
+one column per sample. The vertical scale runs from `0` to the largest sample in
+the window, with a floor of `33.3` milliseconds so an even run reads as flat
+rather than as amplified noise.
 
 ## Overlay toggle key
 
-The engine installs a `keydown` listener on the canvas's owning document that
-calls `toggle()` when `KeyboardEvent.code` is `"Backquote"` and
-`KeyboardEvent.repeat` is `false`. The key is not a registered input action and
-does not appear in `engine.input.actions()`.
+The engine listens for `keydown` on the event target
+[`EngineOptions.surface`](/engines/simple-2d/apis/engine/) supplies, and on the
+canvas's owning document when the engine was built without a surface. It calls
+`toggle()` when `KeyboardEvent.code` is `"Backquote"` and `KeyboardEvent.repeat`
+is `false`. The key is engine chrome rather than a registered
+[input](/engines/simple-2d/apis/input/) action.
 
 ## Display formatting
 
@@ -78,6 +136,9 @@ One line per source, formatted `` `${name}: ${value}` ``.
 
 ## Host operations
 
-A driver reaches the registry through `diagnostics()` and `setOverlay(enabled)`
-on the host interface, specified in [the host
-API](/engines/simple-2d/apis/host/).
+A build's overlay is reached from outside through the host interface, specified
+in [the host API](/engines/simple-2d/apis/host/).
+
+## Exports
+
+`FrameMetrics` is exported as a type from `@test-cabinet/simple-2d`.

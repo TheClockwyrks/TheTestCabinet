@@ -2,32 +2,36 @@
 title: Actions
 ---
 
-A build declares its actions once at start-up and reads them inside `update`.
-Every question about the player goes through the registry, and the build
-installs no key listener of its own.
+A game declares its actions once in `initialize` and reads them inside `update`.
+Every question about the player goes through the registry, so a validator drives
+the game by action name and the build holds one description of its own controls.
 
 ## Selecting a layout
 
-Pass the touch layout the case asks for to `createEngine`, so it is selected
-before anything is registered and every action it names is tagged with it.
+Pass the touch layout the case asks for to `createEngine`. It is selected before
+any registration happens, so every action the layout names is tagged with it.
 
 ```ts
+import { createEngine } from "@test-cabinet/simple-2d";
+
 const engine = createEngine({
   canvas,
   width: 1280,
   height: 720,
+  game,
   layout: "dual-vertical",
 });
 ```
 
 ## Registering the vocabulary
 
-Register one action per name with the `KeyboardEvent.code` values that drive it.
-Driving a whole vocabulary from a key table keeps the layout and the bindings in
-one place.
+Register one action per name in `initialize`, giving the `KeyboardEvent.code`
+values that drive it. `api.input.layout()` reports the layout the engine was
+created with, so a key table indexed by action name registers the whole
+vocabulary in one pass.
 
 ```ts
-import { TOUCH_LAYOUTS, createEngine } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@test-cabinet/simple-2d";
 
 const KEYS: Record<string, string[]> = {
   "p1-up": ["KeyW"],
@@ -40,53 +44,58 @@ const KEYS: Record<string, string[]> = {
   mute: ["KeyM"],
 };
 
-for (const action of TOUCH_LAYOUTS["dual-vertical"].actions) {
-  engine.input.register(action, { keys: KEYS[action] ?? [] });
+function registerActions(api: InitApi): void {
+  for (const action of api.input.layout()?.actions ?? []) {
+    api.input.register(action, { keys: KEYS[action] ?? [] });
+  }
 }
 ```
 
-Register anything the design needs beyond the layout's vocabulary the same way,
-and give an action a partial magnitude only where the game is written to use
-one.
+Register anything the design needs beyond the layout's vocabulary the same way.
+An action is digital by default and reports `0` or `1`; declare it analog where
+the game is written to use a partial magnitude.
 
 ```ts
-engine.input.register("boost", { keys: ["ShiftLeft", "ShiftRight"] });
-engine.input.register("steer", { keys: ["KeyA", "KeyD"], kind: "analog" });
+api.input.register("boost", { keys: ["ShiftLeft", "ShiftRight"] });
+api.input.register("steer", { keys: ["KeyA", "KeyD"], kind: "analog" });
 ```
 
-Register every action before the first frame runs.
+Every registration belongs in `initialize`, which the engine runs to completion
+before the first frame. The full vocabulary is therefore live by the time the
+first `update` reads it.
 
 ## Reading held input
 
-`value` is the held read. Scale it by the frame's delta time, and take a signed
-axis as the difference between the two directions so pressing both cancels out.
+`api.input.value(name)` is the held read. Scale it by the frame's delta time,
+and take a signed axis as the difference between the two directions so pressing
+both cancels out.
 
 ```ts
-function update(dt: number): void {
-  const p1 = engine.input.value("p1-down") - engine.input.value("p1-up");
-  left.cy = clamp(left.cy + p1 * PADDLE_SPEED * dt, PADDLE_MIN, PADDLE_MAX);
+import type { UpdateApi } from "@test-cabinet/simple-2d";
 
-  const p2 = engine.input.value("p2-down") - engine.input.value("p2-up");
-  right.cy = clamp(right.cy + p2 * PADDLE_SPEED * dt, PADDLE_MIN, PADDLE_MAX);
+function update(state: Match, api: UpdateApi, dt: number): void {
+  const p1 = api.input.value("p1-down") - api.input.value("p1-up");
+  state.left.cy = clamp(state.left.cy + p1 * PADDLE_SPEED * dt, MIN_Y, MAX_Y);
+
+  const p2 = api.input.value("p2-down") - api.input.value("p2-up");
+  state.right.cy = clamp(state.right.cy + p2 * PADDLE_SPEED * dt, MIN_Y, MAX_Y);
 }
 ```
 
 ## Reading presses
 
-`pressed` is the edge read, and it is true once per press however long the key
-is held. Use it for anything that happens a single time: confirming a menu
-entry, pausing, firing a shot.
+`api.input.pressed(name)` is the edge read, and it is true once per press
+however long the key is held. Use it for anything that happens a single time:
+confirming a menu entry, pausing, firing a shot, toggling mute.
 
 ```ts
-function update(dt: number): void {
-  if (engine.input.pressed("pause")) togglePause();
-  if (engine.input.pressed("mute")) {
-    engine.audio.setMuted(!engine.audio.muted());
-  }
+function update(state: Match, api: UpdateApi, dt: number): void {
+  if (api.input.pressed("pause")) state.paused = !state.paused;
+  if (api.input.pressed("mute")) api.audio.setMuted(!api.audio.muted());
 
-  if (paused) return;
-  if (engine.input.pressed("confirm")) serve();
-  advance(dt);
+  if (state.paused) return;
+  if (api.input.pressed("confirm")) serve(state);
+  step(state, dt);
 }
 ```
 
@@ -96,10 +105,14 @@ single press between them.
 
 ## Where reads belong
 
-Read actions inside `update`. Edges are armed as input arrives and discarded
-once the frame ends, so a read from a timer or a DOM handler sees whatever the
-last frame left behind rather than the input for the frame being simulated.
+Read actions inside `update`. Edges are armed as input arrives and the frame
+loop closes the input frame after the render, so a read taken during `update` is
+the input for the frame being simulated.
 
-A build that wants a key the engine has no action for registers an action for it
-instead of listening for the key. Everything the game reads then comes from one
-place, and a driver can drive it without synthesizing a keystroke.
+`render` receives a context, the frame counter, and the viewport, which keeps a
+frame's response to the player decided entirely by `update`. A value the drawing
+depends on is computed in `update` and stored in the state.
+
+A game that wants a key the engine has no action for registers an action for it.
+Everything the game reads then comes from one registry, and a validator drives
+that action by name with no keystroke to synthesize.

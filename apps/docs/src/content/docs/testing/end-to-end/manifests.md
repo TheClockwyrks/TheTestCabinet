@@ -4,9 +4,9 @@ title: Manifests
 
 Each end-to-end test case version declares its contents in a `test-case.toml`
 manifest in the version folder. Resolution reads this manifest to decide what is
-seeded into a run, which references are rendered as visual targets, and which
-validation checks run. For what the declared pieces mean, see
-[Overview](/testing/end-to-end/overview/).
+seeded into a run, which engines a run may select, how the produced
+implementation is built and checked, and what a reviewer grades. For what the
+declared pieces mean, see [Overview](/testing/end-to-end/overview/).
 
 Every path a manifest names is relative to the version folder and must resolve
 inside it, so a version stays self-contained. A declared path is validated to
@@ -31,7 +31,7 @@ workspace = "workspaces/base" # optional starter directory, seeded into the run 
 init = "npm install"         # optional command run after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
 packages = []                # Test Cabinet packages the build imports (npm names)
-engines = ["none"]           # engines a run of this case may select (default ["none"])
+engines = ["none"]           # supported engines carrying no version range (default ["none"])
 
 # Variants: an ORDERED list of paths to standalone variant files (the first is the
 # default). Exactly one variant runs per run, and its slug is recorded in the run
@@ -42,11 +42,26 @@ variants = [
   "variants/frenzy.toml",
 ]
 
+# Supported engines carrying a version range, one table per engine. See
+# "Supported engines".
+[[engine]]
+slug = "simple-2d"           # engine slug the catalogue knows (required)
+min_version = "2.0.0"        # lowest supported engine version, inclusive (required)
+max_version = "3.0.0"        # optional exclusive ceiling; unbounded by default
+
 # How validation builds the produced implementation into a served static site.
 # Required: a case must state both commands explicitly; there are no defaults.
 [build]
 install = "npm ci"           # dependency install command (required, non-empty)
 build = "npm run build"      # static-build command (required, non-empty)
+
+# The TypeScript toolchain run over the produced implementation. Required. See
+# "The TypeScript toolchain".
+[toolchain]
+typecheck = "npx tsc --noEmit"     # required; a non-zero exit rates the run broken
+lint = "npx eslint ."              # optional; recorded
+format = "npx prettier --check ."  # optional; recorded
+test = "npx vitest run --coverage" # optional; recorded with its test count and coverage
 
 # Common specs, seeded for EVERY variant. Each maps a `source` inside the version
 # folder to a `dest` in the run's workspace. A `.hbs` source is rendered; any other
@@ -58,16 +73,17 @@ source = "specs/overview.md" # source path (required); dest defaults to it
 # dest = "specs/renamed.md"  # optional remap
 # kind = "spec"              # optional role: spec (default) | script
 
-# Common reference views, seeded for EVERY variant. A reference is EITHER an HTML
+# Common reference views, seeded for EVERY variant. Retained so shipped case
+# versions keep resolving; a new case declares none. A reference is EITHER an HTML
 # mockup rendered to a screenshot (`path`) OR a static image/video served as-is
 # (`media`) — exactly one. A rendered source is not seeded; a static one is.
-# A reference is compared against only when a [[check]] names it.
 [[reference]]
 view = "gameplay"            # view slug
 path = "reference/gameplay.html" # rendered mockup
 # media = "reference/intro.mp4"  # served as-is; media kind inferred from the extension
 
-# Proof of implementation, requested for EVERY variant. Each declares a `dest` the
+# Proof of implementation, requested for EVERY variant. Retained so shipped case
+# versions keep resolving; a new case declares none. Each declares a `dest` the
 # build must write a screenshot or clip to as evidence; the spec that asks for it
 # must name the same path. Validation records whether each is present.
 [[proof]]
@@ -75,7 +91,8 @@ id = "title"                 # stable slug, recorded in validation; paired by re
 name = "Title menu"          # display name (optional; defaults to a humanized id)
 dest = "proof/title.png"     # where the build must write it (relative to the run root)
 
-# Validation checks (opt-in). Only declared checks run.
+# Validation checks (opt-in). Retained so shipped case versions keep resolving; a
+# new case declares none.
 [[check]]
 view = "title"               # the view this check records under
 name = "Title"               # display name (optional; defaults to a humanized view slug)
@@ -213,13 +230,11 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   the case's Inputs tab, tagged `Package`, with a description defined centrally
   in `core` rather than per case. See
   [Packages](/testing/end-to-end/overview/#packages).
-- `engines` names the engines a run of this case version may select. Each entry
-  must be a slug the engine catalogue knows, and an unknown one is rejected when
-  the case resolves. It defaults to `["none"]`, and `none` is supported whether
-  declared or not. A case that declares an engine providing a runtime must ship a
-  `workspace` containing a `package.json`, because the engine's dependency is
-  written into that file at seed time. It is valid for the end-to-end,
-  full-stack, and game-jam types only. See [Engines](/components/core/engines/).
+- `engines` names the engines a run of this case version may select as bare
+  slugs, each carrying no version range. It defaults to `["none"]`, and `none`
+  is supported whether declared or not. It is valid for the end-to-end,
+  full-stack, and game-jam types only. See
+  [Supported engines](#supported-engines).
 - `variants` names the builds the case offers, in order, as paths to standalone
   variant files. The first is the default and at least one is required. It is a
   root key, so it must precede the first table header. See
@@ -227,6 +242,10 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
 
 ## Case tables
 
+- `[[engine]]` declares support for one engine together with the range of engine
+  versions this case version supports. It carries the engine's `slug`, a
+  required `min_version`, and an optional `max_version`. See
+  [Supported engines](#supported-engines).
 - `[build]` is required and declares the commands validation runs to turn a
   produced implementation into a served static site: `install` then `build`.
   Both are required, must be non-empty, and run from the implementation's
@@ -236,6 +255,10 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   `build/`, or `out/`. Both steps are reported in the run's validation results.
   A `module` key belongs to the adversarial and performance types and is
   rejected here.
+- `[toolchain]` is required and declares the TypeScript commands validation runs
+  over the produced implementation once it is installed: a required `typecheck`
+  and the optional `lint`, `format`, and `test`. See
+  [The TypeScript toolchain](#the-typescript-toolchain).
 - `[[spec]]` declares a common spec, seeded for every variant, mapping a
   `source` inside the version folder onto a `dest` in the run workspace. `dest`
   defaults to `source` with a trailing `.hbs` removed; give it explicitly only
@@ -246,29 +269,32 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   `kind` is presentation only: it changes how the Inputs tab tags the file, not
   how it is seeded.
 - `[[reference]]` declares a common reference view, seeded as a visual target
-  for every variant. A reference declares exactly one of `path`, an HTML mockup
-  rendered to a PNG whose source is never seeded, or `media`, a static file
-  seeded and served unchanged. Declaring both or neither is rejected. A static
-  reference's media kind is inferred from its extension: `png`, `jpg`, `jpeg`,
-  `webp`, and `gif` are images; `webm` and `mp4` are video. A variant may
-  declare additional references. A view slug must not be declared both commonly
-  and by a variant, and a variant must not declare one twice.
+  for every variant. It is retained so shipped case versions keep resolving, and
+  a new case declares none. A reference declares exactly one of `path`, an HTML
+  mockup rendered to a PNG whose source is never seeded, or `media`, a static
+  file seeded and served unchanged. Declaring both or neither is rejected. A
+  static reference's media kind is inferred from its extension: `png`, `jpg`,
+  `jpeg`, `webp`, and `gif` are images; `webm` and `mp4` are video. A variant
+  may declare additional references. A view slug must not be declared both
+  commonly and by a variant, and a variant must not declare one twice.
 - `[[proof]]` declares a proof-of-implementation artifact the build is asked to
-  produce, requested for every variant. It names a stable `id`, recorded in the
-  run's validation results and used to pair a review item with the submitted
-  media, an optional `name` defaulting to a humanized `id`, and a `dest` path
-  relative to the run root. The media kind is inferred from the `dest`
-  extension, from the same lists a reference uses, and any other extension is
-  rejected. A video proof should be a `.webm`, the format Playwright records
-  natively, which the public gallery transcodes to `.mp4` at snapshot time for
-  playback on every browser. A proof is output the agent produces rather than a
-  seeded file, so the spec that requests it must name the same `dest`, and that
-  `dest` must not collide with a seeded file. A variant may declare additive
-  proofs; an id must be unique within a variant's effective set. See
-  [Proofs](/testing/end-to-end/evaluation/#proofs).
-- `[[check]]` is an opt-in validation comparison. `view` is the slug the result
-  is recorded under, the optional `name` is a display label defaulting to a
-  humanized `view`, and `reference` names the reference view whose rendered
+  produce, requested for every variant. It is retained so shipped case versions
+  keep resolving, and a new case declares none. It names a stable `id`, recorded
+  in the run's validation results and used to pair a review item with the
+  submitted media, an optional `name` defaulting to a humanized `id`, and a
+  `dest` path relative to the run root. The media kind is inferred from the
+  `dest` extension, from the same lists a reference uses, and any other
+  extension is rejected. A video proof should be a `.webm`, the format
+  Playwright records natively, which the public gallery transcodes to `.mp4` at
+  snapshot time for playback on every browser. A proof is output the agent
+  produces rather than a seeded file, so the spec that requests it must name the
+  same `dest`, and that `dest` must not collide with a seeded file. A variant
+  may declare additive proofs; an id must be unique within a variant's effective
+  set. See [Proofs](/testing/end-to-end/evaluation/#proofs).
+- `[[check]]` is an opt-in validation comparison, retained so shipped case
+  versions keep resolving, and a new case declares none. `view` is the slug the
+  result is recorded under, the optional `name` is a display label defaulting to
+  a humanized `view`, and `reference` names the reference view whose rendered
   screenshot is the baseline, defaulting to `view`. That reference must resolve
   for every variant, either commonly or from each variant's own set. `actions`
   drives the built implementation into the view before capture; an empty list
@@ -287,12 +313,12 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   as any verdict unit declares a `validation` script. The optional `tick_hz` is
   the case's fixed simulation rate in whole ticks per second and must be
   positive; it is what lets the validation runtime convert an exact number of
-  stepped ticks into real time, and under an
-  [engine](/components/core/engines/) it is the step the engine host's manual
-  clock takes by default. Omit it for a case whose build is clocked in
-  real time. The table is reporter-side and never seeded; the seeded
-  specification documents the same handle independently as an ordinary game
-  debug feature.
+  stepped ticks into simulated time, and under an
+  [engine](/components/core/engines/) it is the step a scripted
+  [clock](/engines/simple-2d/apis/clocks/) takes by default. Omit it for a case
+  whose build is clocked in real time. The table is reporter-side and never
+  seeded; the seeded specification documents the same handle independently as an
+  ordinary game debug feature.
 - `[[review_item]]` declares a common reviewer checklist item. It carries a
   stable `id` recorded with the verdict, a short `title` shown above the item,
   the `text` a reviewer reads, and a `weight`: the points the item is worth
@@ -304,11 +330,12 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   optional `domain` names the scoring domain the item rolls up to; a common item
   may name only a common domain, a variant's own item may name a common domain
   or one of that variant's own, and a general item omits it. The optional
-  `reference` names a reference view shown as the expected target and the
-  optional `proof` names a proof id whose submitted media is shown; the two are
-  independent, and the reviewer UI gives a single declared side the full width.
-  Each named id must resolve for the item's variant. An item may break into
-  [sub-items](#sub-items) and may declare
+  `reference` and `proof` keys pair the item with a reference view shown as the
+  expected target and a proof id whose submitted media is shown; both are
+  retained so shipped case versions keep resolving, and a new case declares
+  neither. The two are independent, each named id must resolve for the item's
+  variant, and the reviewer UI gives a single declared side the full width. An
+  item may break into [sub-items](#sub-items) and may declare
   [automated validation](#automated-validation).
 - `[[domain]]` declares a scoring domain the reviewer rates independently, by a
   stable `id` recorded with the per-domain rating, an optional `name` defaulting
@@ -319,6 +346,92 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   variant's own; ids must be unique across that set. The run's overall rating is
   the worst rating across the effective set. See
   [Scoring](/testing/end-to-end/evaluation/#scoring).
+
+## Supported engines
+
+A case version declares the engines a run of it may select. The `engines` root
+key lists bare slugs, each supported at any version:
+
+```toml
+engines = ["none", "simple-2d"]
+```
+
+An `[[engine]]` table declares one slug together with the engine versions this
+case version supports, so a case pins the runtime contract its specification is
+written against:
+
+```toml
+[[engine]]
+slug = "simple-2d"
+min_version = "2.0.0"
+max_version = "3.0.0"
+```
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `slug` | Yes | An engine slug the catalogue knows. |
+| `min_version` | Yes | The lowest engine version a run may select, inclusive. |
+| `max_version` | No | The version support stops at, exclusive. Unbounded by default. |
+
+Both forms may appear in one manifest, and each slug is declared at most once
+across the two. Every slug must be one the engine catalogue knows and every
+declared version must be a semantic version, both checked when the case
+resolves, before a run is spent. A `max_version` at or below `min_version` is
+rejected there too.
+
+`none` supplies no runtime and therefore carries no version, so it is declared
+in the `engines` list. It is supported whether it is declared or not, and
+declaring it explicitly is the readable form.
+
+A case declaring an engine that provides a runtime ships a `workspace`
+containing a `package.json`, because the engine dependency is written into that
+file at seed time. An engine's version is the version of its npm package in the
+host package store, read at seed time and recorded on the run.
+
+A run selects an engine by slug, and the version it receives is the one the
+store holds. A run whose engine version falls outside the case's declared range
+is refused before any container work begins, alongside the check that refuses an
+engine the case does not support. Support and its range are declared per
+version: widening or moving a range means adding a new case version, because the
+specification carries the statements specific to the engine contract it targets.
+
+## The TypeScript toolchain
+
+An end-to-end build is written in TypeScript. The case ships the TypeScript,
+lint, format, and test configuration in its `workspace`, and the produced
+implementation compiles under it. The `[toolchain]` table declares the commands
+that check it:
+
+```toml
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+```
+
+| Key | Required | Effect |
+| --- | --- | --- |
+| `typecheck` | Yes | Gating. A non-zero exit rates the run `broken` and scores it zero. |
+| `lint` | No | Recorded. |
+| `format` | No | Recorded. |
+| `test` | No | Recorded, with the test count and coverage it reports. |
+
+Each declared command must be non-empty and runs from the implementation's
+repository root once the `[build]` install has completed, so the dependencies it
+needs are present. Each is reported as its own validation result carrying its
+exit status and its output, beside the install and build results.
+
+A failing `typecheck` earns the run a `broken` overall rating and a score of
+zero, because code that does not compile is not reviewable. The run is still
+published with its results and the compiler output, so the failure is legible
+rather than silent. The other three commands are recorded and leave the run's
+rating and score to validation and the reviewer.
+
+`test` runs the produced implementation's own test suite. The number of tests
+that ran, the number that failed, and the coverage the command measured are
+recorded with the run and shown beside its validation results, so a build that
+ships a tested implementation is distinguishable from one that ships none.
 
 ## Variant keys
 
@@ -498,8 +611,6 @@ validation = { script = "validation/spin/stationary.mjs", outputs = [
 id = "decay"
 title = "Spin decays"
 description = "Imparted spin decays back to straight within a couple of seconds."
-reference = "gameplay"         # a review item pairs its OWN media (a category pairs none)
-proof = "gameplay"
 ```
 
 A category resolves to a review item whose sub-items are its review items, so
@@ -512,10 +623,11 @@ scoring, validation, and the reviewer UI treat both grammars identically:
 - A review item is the scored leaf. It carries a non-empty `id` and `title`, an
   optional `description` holding the requirement prose a reviewer reads, an
   optional `weight` defaulting to `1` and greater than zero, optional paired
-  `reference` and `proof` media, and an optional `validation` driver. A declared
-  `description` must be non-empty. Its verdict is recorded under the composite
-  id `<category id>.<item id>`, so item ids need only be unique within their
-  category. Scoring credits each passed item its own weight.
+  `reference` and `proof` media retained for shipped versions, and an optional
+  `validation` driver. A declared `description` must be non-empty. Its verdict
+  is recorded under the composite id `<category id>.<item id>`, so item ids need
+  only be unique within their category. Scoring credits each passed item its own
+  weight.
 - The `format` is declared once, in the case manifest. A variant file adds its
   own `[[review.categories]]` and inherits the format; it must not use
   `[[review_item]]` or repeat `format`.

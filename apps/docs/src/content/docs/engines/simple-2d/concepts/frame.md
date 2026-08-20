@@ -2,36 +2,25 @@
 title: The Frame
 ---
 
-The engine owns the frame loop. A game supplies two functions, an update and a
-render, and the loop decides when each frame happens. The game schedules
-nothing.
+The engine owns the frame loop. A game supplies an update and a render, and the
+loop decides when each frame happens and how much time it is worth. The game
+schedules nothing.
 
 ## Delta time
 
-Every frame hands the update the real elapsed time for that frame, in seconds.
+Every frame hands the update the elapsed time for that frame, in seconds.
 Seconds are the unit a 2D game already writes its quantities in: pixels per
 second, pixels per second squared, a cooldown measured in seconds.
 
-The loop neither accumulates the delta nor fixes the step. Two consecutive
-frames step by whatever the clock delivered, and a game integrates against the
-delta time it is given. A game that wants a fixed timestep for its own reasons
-builds one on top of that delta, which keeps the choice with the game rather
-than imposing one on every game.
+The loop neither accumulates the delta nor fixes the step. Each frame steps by
+whatever the clock delivered, and a game integrates against the delta it is
+given. A game that wants a fixed timestep builds one on top of that delta, which
+keeps the choice with the game.
 
-Under the wall clock a step is clamped to 100 milliseconds and floored at zero.
-A tab that stops delivering frames resumes as though the game paused for the
-gap, and a non-monotonic timestamp advances the simulation by nothing rather
-than rewinding it.
-
-Clamping makes real time and simulated time diverge whenever the browser stops
-delivering frames, and the loop reports simulated time: the sum of the deltas it
-actually delivered. Anything that must track wall time regardless reads the wall
+The loop reports simulated time: the sum of the deltas it delivered. That
+diverges from wall time whenever the browser stops delivering frames or a clock
+supplies its own deltas, and a game that must track wall time reads the wall
 clock for itself.
-
-A frame with no baseline before it reports a zero step. That is the first frame
-after the loop starts, and the first frame after the clock returns to the wall
-clock, where charging the game for the gap would advance the simulation by time
-that did not elapse under the loop.
 
 ## Update and render
 
@@ -43,94 +32,74 @@ After the render, the engine's own per-frame work runs: the debug overlay is
 drawn over the finished picture, and the input frame is closed so an
 edge-triggered action is consumed exactly once.
 
-The loop owns when a frame happens, never what it draws on. The canvas, its
-letterboxing, and its device-pixel-ratio scaling belong to the engine, which
-prepares the drawing context and supplies it to the render. A loop with no
-destination still runs the render, which is what lets a build be stepped
-headlessly.
-
-Keeping the two halves separate is what makes the simulation examinable on its
-own: a delta-time check steps the update repeatedly and reads the outcome
-without the rendering taking part in the result.
+Each function receives only the part of the engine it may use. The update reads
+input and plays cues with nothing that draws; the render draws with nothing that
+reads input or plays a cue. A frame's audible and observable behavior therefore
+belongs entirely to the update, which is what makes a simulation examinable with
+no drawing surface taking part in the result.
 
 ## The clock
 
-The clock behind the delta time is replaceable, and which one is in force
-decides where a frame's time comes from.
+A [clock](/engines/simple-2d/apis/clocks/) answers one question: how much time
+is this frame worth. It is the single seam behind delta time, supplied when the
+engine is built and replaceable afterwards.
 
-The auto clock is the wall clock driving `requestAnimationFrame`. It is what a
-player gets, and it is the clock a build runs under unless a driver takes it.
+The engine calls the clock once per tick. A tick is a host frame callback while
+the game runs, or one step of an explicit advance. A clock that ignores the host
+timestamp therefore produces the same deltas under both, so the sequence a
+validator steps through synchronously is the sequence a reviewer watches play.
 
-The manual clock hands the frame loop to the host interface. Frames run only
-when a driver asks for them, each taking its delta from a schedule, and a
-request for a given number of frames runs exactly that many synchronously. A
-validation script counting ticks therefore never sleeps, never polls, and never
-has to tolerate a slow machine. Stepping is available under the manual clock
-only, because interleaved wall-clock frames the driver did not ask for would
-quietly break the exact frame count that is the manual clock's whole purpose.
+A clock may decline a tick. Returning nothing leaves the simulation and the
+frame counter untouched, which is how a clock paces below the rate its ticks
+arrive at.
 
-Manual steps carry no ceiling. A scheduled step is delivered exactly as
-scheduled, so a driver can pose a frame of any duration.
+The two real-time clocks read the host timestamp. The wall clock reports the
+time that actually elapsed, and the paced clock reports its own fixed interval.
+The three scripted clocks supply deltas from a constant, a repeating list, or a
+seeded draw, and ignore the timestamp entirely.
 
-Switching clocks is safe at any point, including from inside a frame. Taking the
-manual clock drops the frame the wall clock had pending, and handing the clock
-back starts from no baseline so the game is not charged for the real time that
-elapsed while the manual clock was stepping.
+## Pacing
 
-## Schedules
+A paced clock holds an ideal grid: frame `n` is due at `n` intervals after the
+first. A tick before the next due time is declined, and a tick at or after it
+delivers one interval and moves the grid on by one.
 
-A schedule is the delta pattern the manual clock walks. Three kinds cover what a
-driver needs to say.
+The grid is what keeps a cadence from drifting. A frame that overruns its
+interval shortens the wait for the next one, so the average rate holds instead
+of losing the overrun on every frame. Pacing against the previous frame's
+completion instead would accumulate every overrun for the length of the run.
 
-- `fixed` steps by the same amount every frame. It is the reference a comparison
-  is made against.
-- `sequence` walks a list of deltas in order and cycles once it runs off the
-  end. This is how an uneven but reproducible pattern is expressed: a long frame
-  every so often, a stutter, a burst of short frames.
-- `jitter` draws each delta uniformly between a floor and a ceiling, which is
-  the closest a schedule comes to what a real display delivers.
+Every delivered frame is worth exactly one interval, whatever the tick's real
+arrival time. The delta the game integrates against therefore equals the delta
+the pacing targets, which is what makes a paced run reproducible.
 
-Jitter carries a required seed, so a run that failed replays exactly.
+Falling far enough behind abandons the missed slots and restarts the grid from
+the current tick. A long stall costs the game a pause, in place of a burst of
+frames replaying time the player did not experience.
 
-A schedule is evaluated as a pure function of the schedule and the frame index,
-with no state carried between frames. The delta for frame 900 under a given seed
-is the same whether that frame was reached by running 900 frames or asked for
-directly, so a failing run replays step for step and a jittered pattern cannot
-drift out of step with the frame counter.
+The rate ticks arrive at bounds what pacing can deliver. A target above it
+yields a frame per tick, and a target it does not divide evenly yields the
+nearest slot to each ideal instant.
 
-Installing a schedule restarts it at its first step, so a schedule means the
-same thing however many frames preceded it. The loop keeps its own copy of the
-pattern, so nothing outside it can alter the deltas of a run in progress.
+## Clamping
 
-Until a driver installs one, the manual clock runs a fixed schedule of
-`1000 / 120` milliseconds, which is 120 Hz. That is the rate cases instrument
-at, so a case declaring a `tick_hz` of 120 counts one step as one tick without
-installing a schedule of its own.
+The wall clock bounds what a single frame can be worth, and floors it at zero. A
+tab that stops receiving frames resumes as though the game paused for the gap,
+and a timestamp behind the previous one advances the simulation by nothing.
 
-## What one step means
-
-One step of the manual clock is one frame. The frame counter is therefore the
-tick unit a validation script asserts against, and it counts the same thing
-under every schedule: a schedule changes what a frame is worth in simulated
-milliseconds, never what a frame is. A check written as a number of ticks reads
-identically under a fixed step, an uneven sequence, and a seeded jitter.
-
-Alongside the counter the loop reports the accumulated simulated time and the
-delta the most recent frame was stepped by. The accumulated time is the sum of
-the deltas delivered rather than elapsed wall time, and the most recent delta is
-how a driver confirms that the schedule it installed took effect.
+A frame with no baseline before it reports zero. That is the first frame after
+the loop starts, where charging the game for time before it began would advance
+the simulation by time that did not elapse under the loop.
 
 ## Delta-time independence
 
-Because one scenario can be posed once and then driven under several schedules,
-a build that advances per frame rather than per second is directly detectable
-rather than merely suspected. Such a build traces the same path through the
-field whatever the step size, but it cannot take the same amount of simulated
-time to trace it, and simulated time comes from the engine's own frame clock.
+Running one scenario under several clocks and comparing the outcomes is how a
+build is shown to integrate against the delta it is given rather than against a
+count of frames. A constant clock, a repeating sequence, and a seeded jitter
+cover the ground between them.
 
-A comparison across schedules holds to outcomes that survive a legitimate change
-in step size: whether an event occurred, which side scored, what state the
-result left behind, and how much game time the scenario took. Numerical
-integration of a nonlinear system diverges across step sizes even when every
-step of it is correct, so exact positions are not outcomes a correct build is
-required to reproduce.
+Compare the elapsed simulated time and the outcomes that survive a change in
+step size: whether an event occurred, which side scored, and the state the
+result left behind. Numerical integration of a nonlinear system diverges across
+step sizes even when every step of it is correct, so exact positions and
+velocities differ legitimately between two correct runs.

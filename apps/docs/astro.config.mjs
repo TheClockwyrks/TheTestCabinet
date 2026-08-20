@@ -532,8 +532,8 @@ export default defineConfig({
         // The engines — the runtimes a produced game is built on. The catalogue
         // overview lists every engine; each engine then has its own section,
         // split into the APIs it exposes, the concepts behind its internals, how
-        // a build uses it, and how a validator drives it. The contract they all
-        // implement lives under Core.
+        // a build uses it, complete example builds, and how a validator drives
+        // it. The contract they all implement lives under Core.
         {
           label: "Engines",
           collapsed: true,
@@ -551,7 +551,9 @@ export default defineConfig({
                   items: [
                     "engines/simple-2d/apis/overview",
                     "engines/simple-2d/apis/engine",
-                    "engines/simple-2d/apis/frame",
+                    "engines/simple-2d/apis/game",
+                    "engines/simple-2d/apis/clocks",
+                    "engines/simple-2d/apis/viewport",
                     "engines/simple-2d/apis/input",
                     "engines/simple-2d/apis/audio",
                     "engines/simple-2d/apis/assets",
@@ -587,14 +589,27 @@ export default defineConfig({
                   ],
                 },
                 {
+                  label: "Examples",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/examples/overview",
+                    "engines/simple-2d/examples/a-minimal-game",
+                    "engines/simple-2d/examples/input-and-actions",
+                    "engines/simple-2d/examples/audio-and-assets",
+                    "engines/simple-2d/examples/diagnostics-and-overlay",
+                    "engines/simple-2d/examples/validating-a-game",
+                    "engines/simple-2d/examples/scripted-clocks",
+                  ],
+                },
+                {
                   label: "Validators",
                   collapsed: true,
                   items: [
                     "engines/simple-2d/validators/overview",
-                    "engines/simple-2d/validators/the-host",
-                    "engines/simple-2d/validators/clock",
-                    "engines/simple-2d/validators/input",
-                    "engines/simple-2d/validators/observations",
+                    "engines/simple-2d/validators/the-suite",
+                    "engines/simple-2d/validators/simulation",
+                    "engines/simple-2d/validators/rendering",
+                    "engines/simple-2d/validators/input-and-audio",
                   ],
                 },
               ],

@@ -9,12 +9,12 @@ in its `package.json`. One import brings in the factory.
 import { createEngine } from "@test-cabinet/simple-2d";
 ```
 
-The touch layout catalogue and every type the engine names come from the same
-specifier.
+The clock catalogue, the touch layout catalogue, and every type the engine names
+come from the same specifier.
 
 ```ts
-import { createEngine, TOUCH_LAYOUTS } from "@test-cabinet/simple-2d";
-import type { CueSpec, Engine, EngineOptions } from "@test-cabinet/simple-2d";
+import { createEngine, PacedClock, TOUCH_LAYOUTS } from "@test-cabinet/simple-2d";
+import type { CueSpec, Engine, EngineOptions, Game } from "@test-cabinet/simple-2d";
 ```
 
 ## Pick a logical design size
@@ -25,16 +25,20 @@ suits the game's aspect ratio and state every speed, size, and distance in those
 units; the engine fits that field onto whatever size the page gives the canvas.
 
 A landscape action game is comfortable at `640 × 360`, a puzzle board at
-`480 × 640`. The number itself matters less than committing to one and never
-reading the canvas element's size again.
+`480 × 640`. The number itself matters less than committing to one and writing
+every coordinate in it.
 
 ## Create it once
 
-Create the engine after the canvas is in the document, and hold the returned
-object for the life of the page.
+`createEngine` binds the game and builds the engine over the canvas. It runs
+synchronously and runs no game code, so the engine exists before anything the
+game does is observable. [`engine.initialize`](/engines/simple-2d/apis/engine/)
+then runs the game's own `initialize` and resolves once the state is built, and
+`engine.run` drives frames from there.
 
 ```ts
 import { createEngine } from "@test-cabinet/simple-2d";
+import { game } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 if (canvas === null) throw new Error("missing #game canvas");
@@ -43,28 +47,48 @@ const engine = createEngine({
   canvas,
   width: 640,
   height: 360,
+  game,
   background: "#101018",
 });
+
+await engine.initialize();
+await engine.run();
 ```
 
-`background` is the CSS colour the whole canvas is filled with before every
-frame. Leave it out to clear to transparency instead, so the page shows through
-behind the game.
+That ordering is what lets a caller subscribe to
+[engine events](/engines/simple-2d/apis/game/) before the game loads anything,
+so a failed asset is observed as it happens rather than inferred afterwards.
 
-`layout` selects a touch layout from the catalogue, whose vocabulary the game
-then registers as actions:
+```ts
+engine.events.on("asset:failed", (event) => {
+  console.error(`asset ${event.path} failed: ${event.reason}`);
+});
+
+const state = await engine.initialize();
+```
+
+## The remaining options
+
+| Option | Effect |
+| --- | --- |
+| `background` | A CSS color the whole canvas is filled with before every frame. Left out, the frame clears to transparency and the page shows through behind the game. |
+| `layout` | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions. |
+| `assetRoot` | The root every asset path resolves under. Defaults to `assets/`. |
+| `surface` | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document. |
 
 ```ts
 const engine = createEngine({
   canvas,
   width: 640,
   height: 360,
+  game,
   layout: "dpad-4-two-buttons",
+  assetRoot: "assets/",
 });
 ```
 
-With the engine built, register the actions, define the cues, and start the
-loop.
+A build in the browser takes the default surface. Supplying one is how a
+validator runs the same engine over a canvas with no document behind it.
 
 ## Size the canvas
 
@@ -85,11 +109,47 @@ The engine reads the laid-out size at the top of every frame and resizes the
 backing store to match the device pixel ratio, so a window resize needs no
 handler and no code in the game.
 
+## Choose a clock
+
+A [clock](/engines/simple-2d/apis/clocks/) decides what each frame's delta is,
+and the engine holds exactly one. A build that omits the option gets a
+`WallClock`, which reports the real time each frame took, clamped so a tab that
+stops receiving frames resumes as though the game paused for the gap.
+
+```ts
+const engine = createEngine({
+  canvas,
+  width: 640,
+  height: 360,
+  game,
+  clock: new PacedClock(60),
+});
+```
+
+A `PacedClock` holds a cadence: it declines the ticks that arrive between grid
+slots and reports one fixed interval on the ticks it accepts. Choose it for a
+game whose feel depends on a steady rate, and for a build whose simulated time
+should match the rate it targets.
+
+`engine.setClock` replaces the clock in place, and the frame counter and
+accumulated time carry over. The scripted clocks are what a validator installs
+to step a scenario reproducibly.
+
 ## Tearing down
 
-A game that runs for the life of the page never needs to stop. When a build
-mounts the game into a view that goes away, `engine.destroy()` stops the loop
-and removes every listener the engine installed.
+A game that runs for the life of the page never needs to be torn down. Two
+separate acts stop it when a build mounts the game into a view that goes away.
+
+An `AbortSignal` passed to `run` halts the loop and leaves the engine usable, so
+the same teardown path that cancels everything else cancels the loop with it.
+
+```ts
+const controller = new AbortController();
+await engine.run({ signal: controller.signal });
+```
+
+`engine.destroy()` halts the loop, detaches every listener, and removes the host
+interface handle. It is idempotent, and it resolves any promise `run` returned.
 
 ```ts
 engine.destroy();

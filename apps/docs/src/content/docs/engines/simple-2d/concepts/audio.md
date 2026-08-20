@@ -2,80 +2,101 @@
 title: Audio
 ---
 
-The engine owns sound. A game declares a cue under a name during setup and plays
-it by that name from its simulation; the audio graph, the mute state, and the
-first-interaction unlock a browser requires all sit below the name and belong to
-the engine.
+The engine owns sound. A game declares a cue under a name while it initializes
+and plays it by that name from its update; the audio graph, the mute state, and
+the first-gesture unlock a browser requires sit below the name and belong to the
+engine.
 
-Cues are synthesized rather than sampled. A produced 2D game gets its sound
-without shipping audio files and without a build spending any of its effort on
-oscillators, gain envelopes, or the autoplay policy.
+A cue is either synthesized from a description or backed by a produced audio
+file. Both are declared during initialization and both are played by name, so
+the simulation reads the same either way.
 
-## The synthesis model
+## Synthesized cues
 
-A cue is one oscillator through one gain node. The waveform is chosen per cue,
-the frequency sweeps linearly from a starting value to an ending value across
-the cue's duration, the gain decays from a peak to silence over that same span,
-and both nodes stop when the duration ends.
+A synthesized cue is one oscillator through one gain node. The waveform is
+chosen per cue, the frequency sweeps linearly from a starting value to an ending
+value across the cue's duration, the gain decays from a peak to silence over that
+same span, and both nodes stop when the duration ends.
 
-That is the entire model. Five numbers describe a bleep, a rising chime, or a
-falling thud, which is the vocabulary a 2D game needs. Richer timbre is out of
-scope.
+That is the entire synthesis model. Five numbers describe a bleep, a rising
+chime, or a falling thud, which is the vocabulary a 2D game needs. A produced
+game gets its sound without shipping a file and without spending any of its build
+effort on oscillators, gain envelopes, or the autoplay policy.
 
-Declaring a name that already holds a cue replaces its description, so a sound
-can be retuned mid-run without the bus being rebuilt.
+## File-backed cues
+
+A cue may instead name an audio file, resolved under the
+[asset root](/engines/simple-2d/concepts/assets/) and decoded once during
+initialization. This is how a game plays sound the asset-generation tools
+produced: a case that generates its own effects or music binds each produced file
+to a cue name, and the simulation plays that name exactly as it plays a
+synthesized one.
+
+Both kinds share one namespace, so replacing a placeholder bleep with a produced
+file changes the declaration and leaves every play site alone. Declaring a name
+that already holds a cue replaces it, which is what lets a sound be retuned
+mid-run.
 
 ## Muted and unlocked
 
-The bus carries two observable bits, because a silent game is silent for one of
-two very different reasons.
+The bus carries two bits, because a silent game is silent for one of two very
+different reasons.
 
 Muted is a decision the game or the player made. Unlocked records that a user
 gesture reached the engine, which is what a browser demands before it will start
-an audio context at all. The engine listens for the first pointer or key event
-on the document and opens the context there, once, so a build supplies no
-gesture handler and no enable-sound screen of its own.
+an audio context at all. The engine listens for the first pointer or key event on
+its surface and opens the context there, once, so a build supplies no gesture
+handler and no enable-sound screen of its own.
 
 Keeping the two bits apart is what lets a silent build be diagnosed. A muted bus
 is the build behaving as asked. A locked bus is an environment nothing has
-clicked yet, which says nothing about the build. A single bit covering both
-would read the same for a working game and a broken one.
+clicked yet, which says nothing about the build. A single bit covering both would
+read the same for a working game and a broken one, so the unlock is also
+announced as the `audio:unlocked` event and a caller watching a build come up
+sees the moment the context opened.
 
 ## Audio never fails a frame
 
 A browser that refuses a context, or one whose context dies partway through a
-run, degrades the bus to a log-only bus. Cues continue to be accepted and
-recorded, and the frame callback is unaffected.
+run, degrades the bus to one that accepts cues, announces them, and sounds
+nothing. The frame proceeds unchanged.
 
-The one condition that raises an error is playing a cue that was never defined.
-Silence is the expected outcome of a muted or still-locked bus, so a mistyped
-name would otherwise be indistinguishable from a cue that played inaudibly, and
-the mistake would survive to the end of the run unnoticed.
+Playing a cue that was never declared raises an error. Silence is the expected
+outcome of a muted or still-locked bus, so a mistyped name would otherwise be
+indistinguishable from a cue that played inaudibly, and the mistake would survive
+to the end of the run unnoticed.
 
-## The cue log
+## Cues are observed as they play
 
-Every play appends an entry to a cue log: the name that was played, the time it
-played at, and the gain it played at. The record is semantic. It states that a
-named cue happened, not anything about samples or the audio graph.
+Each play emits a `cue:played` [event](/engines/simple-2d/apis/game/) carrying
+the name, the time it played at, and the gain it played at. The payload is
+semantic: it states that a named cue happened, so it reads identically under a
+muted engine, a still-locked bus, and a browser with no audio at all. A muted
+play is announced at a gain of zero, which keeps the mute visible and keeps a
+game that reacted to an event while muted distinguishable from one that never
+reacted.
 
-The log is what makes audio checkable. A headless browser produces no audible
-output, so a play must leave a record behind. Because the record is a name
-rather than a sound, the log reads identically under a muted engine, a
-still-locked bus, and a browser with no audio support.
+Delivery is synchronous, inside the play. A subscriber therefore runs while the
+frame that played the cue is still running, and can attribute the cue to that
+frame's counter, respond to it, or count it against a frame it holds.
 
-A muted play is recorded at a gain of zero rather than omitted. The mute stays
-visible in the log, and a game that reacted to an event while muted stays
-distinguishable from one that never reacted.
+A subscription is what audio observation needs, in place of a record the engine
+accumulates. An engine-owned log would have to keep every cue of every run
+against the chance that something reads it, which grows for as long as the game
+plays. A subscription keeps the engine's memory flat and puts the shape of the
+record with the code that wants one, so a check that needs the last few cues
+keeps a fixed-capacity buffer of its own and a check that needs a count keeps an
+integer.
 
 ## Cue time is frame time
 
-A cue's timestamp comes from the frame loop's clock, not the wall clock. It is
-the loop's accumulated simulated time, so it lines up with the frame counter and
-the simulated time a driver is already asserting against.
+A cue's timestamp is the loop's accumulated simulated time, so it lines up with
+the frame counter and with the simulated time everything else is expressed in.
 
-This is what keeps the log meaningful under a manual clock. A manual advance
-runs its frames synchronously and no real time passes, so wall-clock stamps
+That is what keeps the timestamp meaningful under a scripted
+[clock](/engines/simple-2d/apis/clocks/). Frames stepped through
+`engine.advance` run back to back and no real time passes, so wall-clock stamps
 would put every cue of a several-hundred-frame advance at the same instant. Read
 against the frame clock, a cue's time says which frame of the simulation it
 belongs to, and an ordering assertion over cues becomes an assertion about the
-game's behaviour over its own timeline.
+game's behavior over its own timeline.

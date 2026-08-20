@@ -2,26 +2,34 @@
 title: Overview
 ---
 
-This section states how a validation script drives a build through the engine
-rather than through code the model wrote. Every example here is driver-side
-code: what a script calls, what it reads back, and how it sequences a check.
+A case's validators are vitest suites that run in the same process as the build
+they check. A suite imports the engine and the build's own game module, creates
+an engine over a canvas it owns and a clock it scripts, and steps the game with
+`engine.advance`. It asserts on the state the game returned, the pixels the
+canvas holds, the draw calls the context received, and the events the engine
+broadcast.
 
-The host interface is engine code, installed by `createEngine`, so a build that
-runs at all is a build that is driveable and the operations mean the same thing
-for every case that selects the engine. A script replaces the clock, drives
-actions, and reads the frame, cue, asset, and diagnostic state without the build
-exposing instrumentation of its own.
+Running in process is what makes a check exact. A suite asks for a number of
+frames and gets that number, at the deltas its clock supplied, and a failure
+arrives as an ordinary stack trace through the game's own code.
 
-A case still declares the control operations its own checks need, because
-arranging a scenario in the game's world remains the game's. A driver sets up
-through those operations, runs the real systems forward on the engine clock, and
-reads the outcome back through the host interface.
+## Engine-specific by construction
+
+A suite imports `@test-cabinet/simple-2d` by name and builds a
+[`Game<S>`](/engines/simple-2d/apis/game/) against this engine's API, so it is
+written for this engine alone. A case that supports more than one engine ships a
+set of validators for each, and each set is free to use everything its engine
+provides.
+
+The scenario a check arranges runs through the game's own state, because posing
+a situation in the game's world belongs to the game. A suite arranges the
+scenario, advances the real systems forward, and reads the outcome back.
 
 ## Pages
 
 | Page | Covers |
 | --- | --- |
-| [The Host](/engines/simple-2d/validators/the-host/) | Finding the handle, checking the version, and the shape of every value returned. |
-| [Clock](/engines/simple-2d/validators/clock/) | Taking the clock manually, installing a schedule, and advancing an exact number of frames. |
-| [Input](/engines/simple-2d/validators/input/) | Reading the registered actions, holding an action at a magnitude, and arming an edge. |
-| [Observations](/engines/simple-2d/validators/observations/) | Asserting on the frame counter, the cue log, the asset log, and the diagnostic sources. |
+| [The Suite](/engines/simple-2d/validators/the-suite/) | Where the files live, the vitest project that runs them, the headless harness, and the module contract a case fixes. |
+| [Simulation](/engines/simple-2d/validators/simulation/) | Stepping with a scripted clock, reading the state back, and asserting on outcomes that survive a change in step size. |
+| [Rendering](/engines/simple-2d/validators/rendering/) | Pixel readback through `getImageData` and the recording proxy over the 2D context. |
+| [Input and Audio](/engines/simple-2d/validators/input-and-audio/) | Driving named actions and asserting on the cues a build played. |

@@ -13,8 +13,8 @@ the run. A case declares which engines it supports, and a run of that case is
 limited to that set.
 
 This section is the catalogue of the engines. For the contract they implement,
-covering the host interface, the frame, input actions, audio, assets, and how an
-engine is delivered and recorded, see [Engines](/components/core/engines/).
+covering how an engine is declared, delivered, versioned, and recorded, see
+[Engines](/components/core/engines/).
 
 ## The catalogue
 
@@ -45,9 +45,9 @@ and the touch layouts all differ between them, so a game targets one or the
 other from the start and a case supports whichever suits it.
 
 Each engine documents itself in full, so the section for one engine states its
-whole contract rather than deferring to a sibling. An engine's pages are split
-four ways: the APIs it must expose, the concepts behind its internals, how a
-build uses it, and how a validator drives it.
+whole contract rather than deferring to a sibling. An engine's pages cover the
+APIs it exposes, the concepts behind its internals, how a build uses it, and how
+a case validates a build against it.
 
 ## Selecting an engine
 
@@ -55,3 +55,15 @@ An engine is selected per run and defaults to `none`. Support is declared per
 case version with the manifest's `engines` key. A version supports the engines
 its specification was written for, so a case gains support for an additional
 engine by adding a version.
+
+Support is declared against engine versions, not against a slug alone. For each
+engine it supports, a case version declares the minimum engine version it is
+compatible with, and optionally a maximum. The maximum is unbounded by default,
+so a case that expects to keep working against later releases states only its
+floor.
+
+A run resolves the engine package's version at seed time and refuses a selection
+whose version falls outside the declared range. A case's validators are written
+against a particular engine API, so the range is what keeps a run from pairing
+them with an engine they cannot check. The manifest grammar for the range is
+part of the [engine contract](/components/core/engines/).

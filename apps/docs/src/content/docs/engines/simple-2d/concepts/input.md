@@ -2,16 +2,16 @@
 title: Input
 ---
 
-The engine owns the keyboard. A game declares named actions and the keys that
-drive them, then asks the registry what each action is doing; keyboard events
-stay inside the engine.
+The engine owns the keyboard. A game declares its named actions and the keys
+that drive them while it initializes, then asks by name what each action is
+doing while it updates. Key events are handled inside the engine.
 
-Named actions have three consequences. An action can be driven from a key, from
-a touch control, or from the host interface, and the game cannot tell which, so
-a build is checkable without synthesized events. The bindings become data, which
-a driver reads back as a static fact rather than inferring from behaviour. And
-edge detection happens once, in the engine, instead of being re-derived in every
-game.
+Named actions have three consequences. An action is driven by a key or by a
+touch control and the game reads one number either way, so a build is
+examinable by delivering input at the same seam a player uses. The bindings are
+data the engine holds rather than logic spread through event handlers, so one
+place resolves what a build bound. And edge detection happens once, in the
+engine, in place of being re-derived in every game.
 
 ## Named actions
 
@@ -23,17 +23,22 @@ The names belong to the game. A touch layout brings a vocabulary the engine
 recognizes, and a registration under any other name is equally ordinary, which
 is what lets a design name the actions it actually has.
 
-Registering a name a second time replaces its binding wholesale and returns the
-action to rest, while keeping its position in the reported order. Held state
-ends at a rebind because the key that was down is no longer one of the action's
-keys, so no release could ever lower the action again.
+Registering happens during initialization, so the vocabulary is complete before
+the first frame reads it. Registering a name a second time replaces its binding
+wholesale and returns the action to rest, keeping its position in the
+registration order.
 
 ## Bindings name physical keys
 
 A binding names `KeyboardEvent.code` values rather than `key` values, so it is
 independent of the keyboard layout the player types on. `KeyW` is the same
-physical key on QWERTY and on AZERTY, so the WASD cluster sits in the same
-place for every player.
+physical key on QWERTY and on AZERTY, so the WASD cluster sits in the same place
+for every player.
+
+The engine listens for those events on the event target its surface supplies,
+which is the canvas's owning document in a browser. A caller that dispatches key
+events into a target of its own therefore reaches the actions by the path a
+player's keystrokes take.
 
 Several keys may drive one action, and one key may drive several actions. An
 action bound to several keys stays held until the last of them is released, and
@@ -45,29 +50,29 @@ The kind an action is registered with is a promise about how the game reads it.
 A digital action reports a plain on or off, and any magnitude reaching it is
 quantized to full deflection. An analog action reports a continuous magnitude,
 which is what a touch slider or a steering axis produces; a held key gives an
-analog action full deflection, since a key has no partial position.
+analog action full deflection, since a key has one position.
 
 Declaring the kind up front is what lets the engine decide what a keyboard
-binding means for a given action, so a game reads one number either way and a
-driver can push a partial magnitude at exactly the actions written to receive
+binding means for a given action, so the game reads one number whichever source
+moved it and a partial magnitude lands only on the actions written to receive
 one.
 
 ## Edges last one frame
 
 A press is the moment an action's resolved value crosses from rest into motion,
 whichever source moved it. Because every source funnels through one place, a
-press means one thing: an OS auto-repeat is not a new press, and pressing a
-second key bound to an already-held action is not a new press either.
+press means one thing: an OS auto-repeat is a continuation of the hold, and
+pressing a second key bound to an already-held action leaves the action held.
 
 An armed edge is consumed by the first read that sees it. Consumption on read is
 what makes an edge safe to poll from more than one place, since a menu layer and
-a gameplay layer asking about the same action in one frame must not both act on
-a single press.
+a gameplay layer asking about the same action in one frame share the one press
+between them.
 
 The frame loop closes the input frame after the game has rendered, discarding
 every edge nothing consumed. A press is news for exactly one frame, so an edge
-armed during a frame the game did not poll cannot surface later, out of order
-with the input that caused it.
+armed during a frame the game did not poll stays in that frame rather than
+surfacing later, out of order with the input that caused it.
 
 ## Touch layouts
 
@@ -77,17 +82,16 @@ the actions in play are the four the scheme drives. Selection is declarative: it
 draws nothing and registers nothing, and the game still registers each action
 with its own binding.
 
-What selection does is tag provenance. An action registered while a layout is
-selected, whose name is in that layout's vocabulary, is recorded as belonging to
-it; every other action is recorded as the game's own. Only a layout selected
-before a registration claims it, so a later selection leaves already-bound
-actions attributed to where they came from.
+A layout is selected when the engine is created, so every registration the game
+makes happens under it. An action whose name is in the selected layout's
+vocabulary is recorded as belonging to that layout, and every other action is
+recorded as the game's own.
 
-The catalogue is closed. A name outside it fails at selection time rather than
-falling back to a default, because a silent fallback would let a run be
-configured for one control scheme and executed under another, leaving the run
-record describing a run that never happened. Adding a layout is a deliberate
-change to the engine and a new engine version.
+The catalogue is closed. A name outside it fails at construction, because a
+silent fallback to a default would let a run be configured for one control
+scheme and executed under another, leaving the run record describing a run that
+never happened. Adding a layout is a deliberate change to the engine and a new
+engine version.
 
 ## The menu vocabulary
 
@@ -100,9 +104,8 @@ Holding them in one place keeps the two halves of a vocabulary apart: the
 catalogue entry describes the control scheme, and the menu vocabulary describes
 the shell that surrounds it.
 
-## Engine chrome stays out of the registry
+## Engine chrome stays out of the actions
 
 The key that toggles the debug overlay is handled by a listener the engine owns,
-outside the action registry. The registered actions are the read a driver uses
-to confirm that a build bound everything its case asked for, and that read is
-the game's vocabulary exactly because the engine keeps its own chrome out of it.
+outside the registered actions. The actions are the game's vocabulary exactly,
+and the overlay toggle reaches the engine whatever the game bound.
