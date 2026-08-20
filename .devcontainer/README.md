@@ -96,11 +96,17 @@ cp .env.ubuntu .env
 .devcontainer/setup-host.sh --print         # say what it would do and stop
 ```
 
-On three of the four rows that script is a convenience and the two `cp`s are
-equally correct. On the **macOS + Podman** row it is not, and the reason is worth
-knowing before you skip it: that row's `DOCKER_SOCKET` contains a UID belonging
-to the podman machine rather than to you, so a committed template can only guess
-it — and a wrong guess there is not a diagnosable failure. Read on.
+The script is a convenience on every row; the copies are equally correct. What it
+adds on the **macOS + Podman** row is a check a copy cannot do — that the podman
+machine is big enough to build this workspace in, and that the checkout is
+somewhere the machine can actually share into the VM.
+
+**Re-run it after a pull that changes these templates.** Your two files are
+copies, so they do not follow the repository. A stale `docker-compose.local.yml`
+silently drops whatever the committed one has gained — the host runtime socket
+moved into these files in the same change that added the Podman row, so a copy
+older than that loses the local service stack without saying anything.
+`setup-host.sh --force` replaces both.
 
 Then run **Dev Containers: Reopen in Container** in VS Code.
 
@@ -142,9 +148,13 @@ Then run **Dev Containers: Reopen in Container** in VS Code.
 
 Podman on macOS *is* `podman machine`: a Linux VM you own and configure, rather
 than one a runtime hides from you. Everything that makes this row different from
-the Docker row above follows from that, so it is worth stating plainly —
-**the `podman` CLI runs on the Mac, but every path the runtime is given is
-resolved inside the VM.**
+the Docker row above follows from that, and from one rule worth stating plainly —
+**a bind mount's source is a path on your Mac, which the VM sees only because the
+machine shares it.** Not a path in the VM, and not merely a suggestion: podman
+checks, and a source it cannot see ends the whole `up` with
+`Error: statfs <path>: no such file or directory` before any container exists.
+That rule is why the checkout has to live under `$HOME` and why this row has no
+host runtime socket.
 
 **Install both halves.** VS Code drives the devcontainer through compose, and
 Podman's compose is a separate binary:
@@ -178,31 +188,33 @@ podman machine start
 `setup-host.sh` warns when the machine it finds is smaller than roughly that.
 
 **Keep the checkout inside what the machine shares.** `podman machine` mounts your
-home directory into the VM. A clone outside it is invisible to the runtime, and a
-bind mount whose source does not exist is not refused — an empty directory is
-created at it and mounted over your workspace. Either keep the repository under
-`$HOME`, or hand the machine the path when you create it:
-`podman machine init -v /path:/path`.
+home directory into the VM, and a bind mount is resolved against the Mac. A clone
+outside that fails the same way the socket does — `statfs …: no such file or
+directory`, and no container. Either keep the repository under `$HOME`, or hand
+the machine the path when you create it: `podman machine init -v /path:/path`.
+`setup-host.sh` warns when it sees a checkout outside `$HOME`.
 
-**`DOCKER_SOCKET` is a path inside the VM.** Compose passes bind-mount sources to
-the runtime, which resolves them where *it* runs — so neither the Mac-side socket
-that `podman machine inspect` prints nor the rootful `/run/podman/podman.sock` is
-the right value. It has to be the **rootless** socket of the same machine user VS
-Code created the container as, or `deployments/local`'s Makefile cannot even
-`docker inspect` this container to find where the workspace came from:
+**There is no host runtime socket on this row, and that is a real limitation.**
+The other three rows bind the host's container-runtime socket into the container
+so the [local service stack](#host-docker-access-the-local-service-stack) can
+drive the host daemon. This one binds none, and cannot: a bind mount's source is
+resolved on the machine running the `podman` CLI — your Mac — and shared into the
+VM by the machine's own mounts. Podman's socket is at
+`/run/user/<uid>/podman/podman.sock` *inside* the VM, so naming it does not
+degrade gracefully; podman refuses the whole `up` before any container exists:
 
-```sh
-podman machine ssh 'echo /run/user/$(id -u)/podman/podman.sock'
+```text
+Error: statfs /private/var/run/user/501/podman/podman.sock: no such file or directory
 ```
 
-That is the line `setup-host.sh` runs for you. Getting it wrong is quiet — the
-container builds and works, and only its `docker` cannot reach a daemon — so
-[`tools/docker-socket-access.sh`](tools/docker-socket-access.sh) now says so at
-container start rather than exiting silently. The
-[local service stack](#host-docker-access-the-local-service-stack) is the part of
-this row that leans on the socket hardest, and `k3d` over Podman's Docker-compatible
-API is the least exercised thing here; if it gives you trouble, the devcontainer
-itself is unaffected.
+Nor is the Mac-side socket that `podman machine inspect` prints a substitute: it
+is a live endpoint rather than a file, and sharing its inode over virtiofs shares
+nothing the guest can connect to. So `make -C deployments/local local-up` is not
+available from inside the container on this row. **The devcontainer itself does
+not depend on it** — building, testing, linting and the pre-commit hooks all work
+— and [`tools/docker-socket-access.sh`](tools/docker-socket-access.sh) stays
+quiet about the absence here, because this variant tells it the absence is
+intended.
 
 **SSH agent forwarding does not go through a bind mount on this row** — see
 [SSH agent forwarding](#ssh-agent-forwarding).
@@ -218,8 +230,11 @@ in [`devcontainer.json`](devcontainer.json), which must stay false.
 
 The local service stack (`make -C deployments/local local-up`) runs `k3d` and
 builds the service images against the **host's** Docker daemon —
-Docker-outside-of-Docker. The compose file bind-mounts the host runtime socket to
-`/var/run/docker.sock` inside the container, and the image ships the `docker`
+Docker-outside-of-Docker. The **host override** bind-mounts the host runtime
+socket to `/var/run/docker.sock` inside the container — it lives there rather than
+in `docker-compose.yml` because whether a host has such a socket to bind is a
+property of the host, and the [macOS + Podman row](#podman-on-macos) has none —
+and the image ships the `docker`
 client (plus the `buildx` plugin) the Makefile shells out to (build/save the
 images, and inspect this devcontainer to resolve the host path of the repo it
 mounts into the k3d node so the backend can ingest the catalog); `k3d` talks to
@@ -232,13 +247,18 @@ cluster's API server is published on a host port, which `kubectl` in here reache
 at `host.docker.internal` (mapped via the compose file's `extra_hosts`); the
 Makefile's `cluster`/`kubeconfig` targets repoint the kubeconfig there.
 
-This works out of the box on a standard setup. Two knobs cover the rest:
+This works out of the box on a standard setup. Three notes cover the rest:
 
 - **Non-default socket path** (e.g. rootless Podman at
   `/run/user/1000/podman/podman.sock`): set `DOCKER_SOCKET` in `.env` to the
-  host path before opening the container. On macOS + Podman that host is the
-  podman machine VM rather than your Mac, and the path has to be the machine
-  user's *rootless* socket — see [Podman on macOS](#podman-on-macos).
+  host path before opening the container. It is a path on the host that runs the
+  runtime, and podman rejects one it cannot see — on macOS that means the Mac,
+  under a directory `podman machine` shares, which is why the
+  [macOS + Podman row](#podman-on-macos) has no socket at all.
+- **Nothing mounted**: `tools/docker-socket-access.sh` says so at container start.
+  Either you are on the macOS + Podman row, or your `docker-compose.local.yml` is
+  a copy made before this mount moved into the host overrides — refresh it with
+  `.devcontainer/setup-host.sh --force`.
 - **Socket permissions** are aligned automatically at container start by
   `tools/docker-socket-access.sh` (run from `postStartCommand`), regardless of
   the host socket's owning group — so you do not need to match `DOCKER_GID` by

@@ -12,22 +12,29 @@ set -euo pipefail
 
 SOCK="${DOCKER_SOCKET_PATH:-/var/run/docker.sock}"
 
-# Nothing mounted (e.g. a host that doesn't run the local stack): nothing to do.
+# Nothing mounted. On the macOS + Podman row that is the normal state — that host
+# has no runtime socket a container can bind (see docker-compose.macos-podman.yml,
+# which sets the variable below to say so) — and elsewhere it usually means a
+# docker-compose.local.yml copied before the socket mount moved into the host
+# overrides. Worth one line either way rather than silence, since what is missing
+# is a whole optional workflow.
 if [ ! -e "$SOCK" ]; then
+	if [ -z "${TCAB_NO_HOST_RUNTIME_SOCKET:-}" ]; then
+		echo "note: no host container-runtime socket at $SOCK, so 'make -C deployments/local local-up' will not work." >&2
+		echo "      If your .devcontainer/docker-compose.local.yml predates the move of that mount into" >&2
+		echo "      the host overrides, refresh it: .devcontainer/setup-host.sh --force" >&2
+	fi
 	exit 0
 fi
 
 # The mount point exists but is not a socket. This is worth a word rather than a
 # silent exit, because it has exactly one cause and it is not obvious: compose was
 # given a DOCKER_SOCKET that does not exist ON THE HOST, and the runtime created an
-# empty directory at the source rather than refusing. The path is resolved wherever
-# the runtime runs, which on macOS + Podman is inside the podman machine VM and not
-# on the Mac — see .devcontainer/.env.macos-podman.
+# empty directory at the source rather than refusing.
 if [ ! -S "$SOCK" ]; then
 	echo "warning: $SOCK is not a socket, so the host container runtime is unreachable." >&2
-	echo "         Check DOCKER_SOCKET in .devcontainer/.env — it must name the socket's" >&2
-	echo "         path on the host that runs the runtime (for podman machine, a path" >&2
-	echo "         inside the VM: podman machine ssh 'echo /run/user/\$(id -u)/podman/podman.sock')." >&2
+	echo "         Check DOCKER_SOCKET in .devcontainer/.env — the runtime created an empty" >&2
+	echo "         directory because the path it names does not exist on the host." >&2
 	exit 0
 fi
 

@@ -22,3 +22,18 @@ services:
       - type: bind
         source: ${SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}
         target: /tmp/ssh-agent.sock
+      # Docker-outside-of-Docker: bind the host's container-runtime socket in so
+      # the local service stack (`make -C deployments/local local-up`) drives the
+      # HOST daemon. That is what lets `k3d` create its cluster — its node
+      # containers are siblings on that same daemon — and what lets the Makefile's
+      # `docker` calls build/save the service images and inspect this devcontainer
+      # to resolve the HOST path of the workspace it mounts into the k3d node.
+      #
+      # It lives in the host overrides rather than in docker-compose.yml because
+      # whether a host has such a socket at all is a property of the host: the
+      # macOS + Podman row has none, and naming one there stopped the container
+      # from starting. Access is granted at container start by
+      # tools/docker-socket-access.sh, whatever group owns the socket.
+      #
+      # Set DOCKER_SOCKET in .env for a non-default path.
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock

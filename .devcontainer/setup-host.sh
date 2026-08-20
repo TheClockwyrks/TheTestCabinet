@@ -4,17 +4,15 @@
 #
 # Both files are deliberately uncommitted (see .gitignore beside this script) so
 # that a host choice stays local, which means every clone has to make them once.
-# Doing it by hand is two `cp`s and is documented in README.md; this script exists
-# for the one variant where a `cp` is not enough. On macOS + Podman the runtime
-# socket to bind in is `/run/user/<uid>/podman/podman.sock` *inside the podman
-# machine VM*, and that UID is a property of the machine rather than a constant —
-# so the committed template can only guess it, and a wrong guess is not a
-# diagnosable failure. It is a socket that silently isn't there, discovered much
-# later as `make -C deployments/local local-up` failing to reach a daemon.
+# Doing it by hand is two `cp`s and is documented in README.md; this script picks
+# the right pair for you, and on macOS + Podman it also checks the one thing a
+# copy cannot: that the podman machine is big enough to build this workspace in.
 #
 # Idempotent in the sense that re-running with --force regenerates both files; it
 # refuses to overwrite by default, because your copies are the ones you may have
-# edited.
+# edited. RE-RUN IT AFTER A PULL that changes these templates — your copies do not
+# update themselves, and a stale docker-compose.local.yml silently drops whatever
+# the new one adds.
 #
 #   ./setup-host.sh                  # detect this host, write both files
 #   ./setup-host.sh macos-podman     # pick a variant explicitly
@@ -156,31 +154,16 @@ fi
 cp "$COMPOSE_SRC" docker-compose.local.yml
 cp "$ENV_SRC" .env
 
-# The one thing a copy cannot get right (see the header). Ask the machine for its
-# own runtime socket rather than keeping the template's guess at the UID.
+# The machine-size check (see the header). Nothing else here is macOS-specific:
+# there is no socket path to resolve, because this row has no host runtime socket
+# to bind — see .env.macos-podman.
 if [ "$VARIANT" = "macos-podman" ]; then
 	if ! command -v podman >/dev/null 2>&1; then
-		echo "warning: podman is not on PATH, so DOCKER_SOCKET keeps the template's guess." >&2
+		echo "warning: podman is not on PATH, so the machine's size was not checked." >&2
 	elif [ "$(podman machine inspect --format '{{.State}}' 2>/dev/null || true)" != "running" ]; then
-		echo "warning: no running podman machine, so DOCKER_SOCKET keeps the template's guess." >&2
+		echo "warning: no running podman machine, so its size was not checked." >&2
 		echo "         Start one and re-run with --force:  podman machine start" >&2
 	else
-		# `podman machine ssh` runs a non-login shell in the VM, where
-		# XDG_RUNTIME_DIR may be unset — so derive the path from `id -u` rather
-		# than reading the variable.
-		sock="$(podman machine ssh 'echo /run/user/$(id -u)/podman/podman.sock' 2>/dev/null | tr -d '\r' | tail -n 1)"
-
-		if [ -n "$sock" ]; then
-			{
-				grep -v '^DOCKER_SOCKET=' .env
-				echo "DOCKER_SOCKET=$sock"
-			} >.env.tmp
-			mv .env.tmp .env
-			echo "  DOCKER_SOCKET             ->  $sock  (read from the podman machine)"
-		else
-			echo "warning: could not read the machine's socket path; keeping the template's guess." >&2
-		fi
-
 		# The image alone is ~1.9 GB of gg toolchains on top of a Rust/Node
 		# toolchain, and what runs in it is `cargo build --workspace`. A stock
 		# machine is 2 CPUs / 2 GB, which does not fail with a message about
@@ -208,6 +191,24 @@ if [ "$VARIANT" = "macos-podman" ]; then
 			echo "           podman machine set --cpus 8 --memory 16384 --disk-size 200"
 			echo "           podman machine start"
 		fi
+
+		# The workspace must be somewhere the machine shares into the VM, because
+		# a bind mount's source is resolved on the Mac. `podman machine` shares
+		# $HOME by default; a clone outside it needs `podman machine init -v`.
+		repo_root="$(cd .. && pwd)"
+
+		case "$repo_root" in
+		"$HOME"/*) ;;
+		*)
+			echo
+			echo "warning: this checkout ($repo_root) is not under \$HOME, which is what"
+			echo "         'podman machine' shares into the VM by default. A bind mount whose"
+			echo "         source the machine cannot see fails the whole 'up'. Recreate the"
+			echo "         machine with the path, or move the checkout under \$HOME:"
+			echo
+			echo "           podman machine init -v $repo_root:$repo_root"
+			;;
+		esac
 	fi
 fi
 

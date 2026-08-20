@@ -55,24 +55,24 @@ services:
       - ..:/workspaces/the-test-cabinet:rw
       # Off-virtiofs cargo target dir (see CARGO_TARGET_DIR above).
       - cargo-target:/cargo-target
-      # Docker-outside-of-Docker: bind the host's container-runtime socket in so
-      # the local service stack drives the HOST daemon. This is what lets `k3d`
-      # create its cluster (its node containers are siblings on that same daemon),
-      # and the deployments/local Makefile's `docker` calls reach a daemon at all:
-      # building/saving the service images, and inspecting this devcontainer to
-      # resolve the HOST path of the workspace it mounts into the k3d node (so the
-      # backend can ingest the catalog from a read-only /repo). Override the source
-      # for a non-default socket (e.g. rootless Podman at
-      # /run/user/1000/podman/podman.sock) with DOCKER_SOCKET in .env. Access is
-      # granted at container start by tools/docker-socket-access.sh.
+      # DOCKER-OUTSIDE-OF-DOCKER — the host runtime socket — IS NOT MOUNTED HERE.
+      # It is added by each host override (docker-compose.ubuntu.yml,
+      # .nixos.yml, .macos-docker.yml), because whether a host HAS such a socket to
+      # bind is a property of the host and not of this file.
       #
-      # The source is resolved by whatever runs the RUNTIME, which is not always
-      # this machine: with `podman machine` on macOS it is a path inside the VM,
-      # and a path that exists only on the Mac gets an empty directory created at
-      # it rather than an error. .env.macos-podman explains how to read the right
-      # one out of the machine; docker-socket-access.sh says so at container start
-      # if it went wrong anyway.
-      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      # It used to live here, on the assumption that every host has one. macOS +
+      # Podman is the host that does not, and it does not fail softly: a bind
+      # mount's source is resolved on the machine running the `podman` CLI — your
+      # Mac — and shared into the VM by the machine's own mounts, so the VM path
+      # where podman's socket actually lives (/run/user/<uid>/podman/podman.sock)
+      # is not addressable from here at all. Podman refuses the whole `up` over it:
+      #
+      #   Error: statfs /private/var/run/user/501/podman/podman.sock:
+      #   no such file or directory
+      #
+      # Which is to say the container could not START because of a mount that only
+      # the optional local service stack ever uses. Hence the move: a row that has
+      # no socket now simply does not name one. See .devcontainer/README.md.
 
 volumes:
   # Cargo build artifacts, kept off the host-mounted workspace; survives

@@ -2,12 +2,25 @@
 # docker-compose.local.yml (see README.md), paired with `.env.macos-podman`.
 #
 # Everything that differs from the other macOS variant
-# (docker-compose.macos-docker.yml) follows from one fact: with Podman there is a Linux
-# VM in the middle that you own, rather than a runtime that hides one. The
-# `podman` CLI runs on the Mac, but the daemon-side of every setting below — bind
-# mount sources, the runtime socket, `host-gateway`, UIDs — is resolved INSIDE
-# that VM. A path that exists on the Mac and not in the VM is not an error you
-# get told about; it is an empty directory bind-mounted over your workspace.
+# (docker-compose.macos-docker.yml) follows from one fact: with Podman there is a
+# Linux VM in the middle that you own, rather than a runtime that hides one.
+#
+# WHERE A PATH IS RESOLVED. A bind mount's source is a path on the machine running
+# the `podman` CLI — your Mac — which the VM sees because `podman machine` shares
+# it (your home directory, by default). It is NOT a path in the VM, and podman
+# checks: name one and the whole `up` dies before any container exists, with
+# `Error: statfs <path>: no such file or directory`. Two consequences below, and
+# they are the ones that make this file more than a copy of the Docker row:
+#
+#   1. The checkout has to be somewhere the machine shares. A clone outside
+#      that is either refused like the above or, if the path happens to exist on
+#      the Mac, mounted as the wrong directory.
+#   2. There is NO HOST RUNTIME SOCKET to bind. Podman's socket lives at
+#      /run/user/<uid>/podman/podman.sock inside the VM, which by the rule above
+#      is unreachable from here; and the Mac-side socket `podman machine inspect`
+#      prints is a live endpoint rather than a file, so sharing its inode over
+#      virtiofs shares nothing you can connect to. So this file mounts none —
+#      see the volumes the other three host overrides carry and this one does not.
 x-podman:
   # podman-compose otherwise places the project's containers in a pod. The Dev
   # Containers extension drives the container it created directly (`podman
@@ -52,8 +65,14 @@ services:
       # `make -C deployments/local local-up` reports a daemon it cannot talk to.
       - label=disable
 
+    environment:
+      # Tells tools/docker-socket-access.sh that the missing host runtime socket
+      # is this row's normal state and not a stale docker-compose.local.yml, so it
+      # stays quiet instead of printing the hint it owes every other host.
+      - TCAB_NO_HOST_RUNTIME_SOCKET=1
+
     # NO SSH AGENT SOCKET IS BOUND IN, unlike the two variants that do bind one
-    # (docker-compose.nixos.yml and docker-compose.macos.yml).
+    # (docker-compose.nixos.yml and docker-compose.macos-docker.yml).
     # Forwarding one means bind-mounting a *host* unix socket, and on macOS the
     # Mac's agent socket (under /private/tmp/com.apple.launchd.*/Listeners) is on
     # the far side of virtiofs, which passes files rather than live socket
