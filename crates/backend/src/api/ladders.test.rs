@@ -51,6 +51,46 @@ fn steering(key: &str, priority: i32, focused: bool) -> StoredLadderClimber {
     }
 }
 
+/// A three-rung ladder to resolve cell sets against.
+fn climb_of(slugs: &[&str]) -> StoredLadder {
+    ladder_from_input(
+        "l1".to_string(),
+        input(slugs.iter().map(|slug| rung_input(slug)).collect()),
+        "2026-08-15T00:00:00Z",
+    )
+    .expect("a valid climb")
+}
+
+/// One climber's standing: the rung it stands on (if any), and everywhere it reached.
+fn standing<'a>(
+    combo: &'a ReviewPlanCombo,
+    status: ClimberStatus,
+    current: Option<usize>,
+    reached: &'a [usize],
+) -> ClimberStanding<'a> {
+    ClimberStanding {
+        combo,
+        status,
+        current,
+        reached,
+    }
+}
+
+/// The `(model, rung position)` pairs a cell set names, for comparing sets by eye.
+fn placed(cells: &[RungCell], ladder: &StoredLadder) -> Vec<(String, usize)> {
+    cells
+        .iter()
+        .map(|cell| {
+            let position = ladder
+                .rungs
+                .iter()
+                .position(|rung| rung.id == cell.rung_id)
+                .expect("a cell names one of the ladder's rungs");
+            (cell.combo.model.clone(), position)
+        })
+        .collect()
+}
+
 /// A run the requester rated, that loaded.
 fn rated(rating: Rating) -> RungRun {
     RungRun {
@@ -474,4 +514,152 @@ fn a_performance_case_can_never_be_a_rung() {
     assert!(RUNG_INELIGIBLE_TEST_TYPES.contains(&TestType::Performance));
     assert!(RUNG_INELIGIBLE_TEST_TYPES.contains(&TestType::GameJam));
     assert!(!RUNG_INELIGIBLE_TEST_TYPES.contains(&TestType::EndToEnd));
+}
+
+#[test]
+fn a_decided_rungs_unreviewed_runs_stay_reviewable_after_the_climber_moves_on() {
+    // The bug this exists to prevent: under the default gate one review of a five-run
+    // rung is enough to advance, and a queue drawn from the current rung alone would
+    // drop the four runs nobody had looked at the instant the first was judged — while
+    // they went on occupying the review buffer they had disappeared from.
+    let ladder = climb_of(&["carom", "pong", "breakout"]);
+    let model = combo("claude-opus-5");
+    let (active, reviewable) = cell_sets(
+        &ladder,
+        LadderAxis::Rung,
+        &[standing(
+            &model,
+            ClimberStatus::Climbing,
+            Some(2),
+            &[0, 1, 2],
+        )],
+    );
+
+    // Only the rung it is working is fed: launching the ones it has already cleared
+    // would be paying twice for a question the ladder has answered.
+    assert_eq!(placed(&active, &ladder), vec![("claude-opus-5".into(), 2)]);
+    // Everywhere it has been is still the reviewer's to judge.
+    assert_eq!(
+        placed(&reviewable, &ladder),
+        vec![
+            ("claude-opus-5".into(), 0),
+            ("claude-opus-5".into(), 1),
+            ("claude-opus-5".into(), 2),
+        ],
+    );
+}
+
+#[test]
+fn a_climber_that_is_not_fed_is_still_reviewed() {
+    // Walled, held, and topped-out climbers are all stopped for different reasons, and
+    // none of them is a reason to hide runs that have already been paid for: a walled
+    // climber's runs are the very ones a re-review would unwall it with, and a hold
+    // stops spending rather than reviewing.
+    let ladder = climb_of(&["carom", "pong", "breakout"]);
+    let walled = combo("walled-model");
+    let held = combo("held-model");
+    let topped = combo("topped-model");
+    let (active, reviewable) = cell_sets(
+        &ladder,
+        LadderAxis::Combination,
+        &[
+            standing(&walled, ClimberStatus::Walled, Some(1), &[0, 1]),
+            standing(&held, ClimberStatus::Held, Some(0), &[0]),
+            standing(&topped, ClimberStatus::ToppedOut, None, &[0, 1, 2]),
+        ],
+    );
+
+    assert!(
+        active.is_empty(),
+        "none of these three is worth spending on"
+    );
+    assert_eq!(
+        placed(&reviewable, &ladder),
+        vec![
+            ("walled-model".into(), 0),
+            ("walled-model".into(), 1),
+            ("held-model".into(), 0),
+            ("topped-model".into(), 0),
+            ("topped-model".into(), 1),
+            ("topped-model".into(), 2),
+        ],
+    );
+}
+
+#[test]
+fn awaiting_review_is_fed_because_the_review_is_what_it_is_waiting_on() {
+    // `awaitingReview` is a rung that has run everything it was going to, so it feeds
+    // nothing new — but it stays in the fed set, because the moment the review lands
+    // the climber moves and the next rung is launched from exactly here.
+    let ladder = climb_of(&["carom", "pong"]);
+    let model = combo("claude-opus-5");
+    let (active, reviewable) = cell_sets(
+        &ladder,
+        LadderAxis::Rung,
+        &[standing(
+            &model,
+            ClimberStatus::AwaitingReview,
+            Some(1),
+            &[0, 1],
+        )],
+    );
+    assert_eq!(placed(&active, &ladder), vec![("claude-opus-5".into(), 1)]);
+    assert_eq!(reviewable.len(), 2);
+}
+
+#[test]
+fn both_cell_sets_come_out_in_the_ladders_own_order() {
+    let ladder = climb_of(&["carom", "pong", "breakout"]);
+    let ahead = combo("ahead-model");
+    let behind = combo("behind-model");
+    let standings = [
+        standing(&ahead, ClimberStatus::Climbing, Some(2), &[0, 1, 2]),
+        standing(&behind, ClimberStatus::Climbing, Some(1), &[0, 1]),
+    ];
+
+    // Rung-major: the whole board is offered a rung at a time, so the two climbers'
+    // runs on rung 0 are reviewed against each other before rung 1 is looked at.
+    let (_, by_rung) = cell_sets(&ladder, LadderAxis::Rung, &standings);
+    assert_eq!(
+        placed(&by_rung, &ladder),
+        vec![
+            ("ahead-model".into(), 0),
+            ("behind-model".into(), 0),
+            ("ahead-model".into(), 1),
+            ("behind-model".into(), 1),
+            ("ahead-model".into(), 2),
+        ],
+    );
+
+    // Combination-major: one climber's whole climb, then the next — the steering order
+    // the caller passed, untouched.
+    let (_, by_combo) = cell_sets(&ladder, LadderAxis::Combination, &standings);
+    assert_eq!(
+        placed(&by_combo, &ladder),
+        vec![
+            ("ahead-model".into(), 0),
+            ("ahead-model".into(), 1),
+            ("ahead-model".into(), 2),
+            ("behind-model".into(), 0),
+            ("behind-model".into(), 1),
+        ],
+    );
+}
+
+#[test]
+fn one_case_pinned_on_two_rungs_is_one_cell() {
+    // Rungs are distinct, but the runs underneath them are keyed by the case and the
+    // combination: counting the cell twice would inflate the review buffer, and
+    // offering it twice would ask for the same run to be judged under two headings.
+    let ladder = climb_of(&["carom", "carom"]);
+    let model = combo("claude-opus-5");
+    let (_, reviewable) = cell_sets(
+        &ladder,
+        LadderAxis::Rung,
+        &[standing(&model, ClimberStatus::Climbing, Some(1), &[0, 1])],
+    );
+    assert_eq!(
+        placed(&reviewable, &ladder),
+        vec![("claude-opus-5".into(), 0)]
+    );
 }

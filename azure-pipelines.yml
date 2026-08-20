@@ -1,15 +1,12 @@
 # Azure DevOps CI pipeline for The Test Cabinet — the primary CI system.
 #
-# Validates the project's headless components: every Rust crate except the Tauri
-# desktop shell (the `tcab` CLI, the `tcab-backend` server, the
-# `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` services, and the libraries they
-# share) plus the TypeScript front ends (the gallery, the
-# operator web console, and these docs). The Tauri desktop app is deliberately not
-# built in this per-change CI, so runners need no GUI system libraries; it is
-# built and bundled for every platform in the GitHub Release workflow
-# (.github/workflows/release.yml) instead. Every job delegates to a shared script
-# under scripts/ci/, so the GitHub workflows run exactly the same checks (see
-# scripts/ci/README.md).
+# Validates every component the project ships: the Rust crates (the `tcab` CLI,
+# the `tcab-backend` server, the `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts`
+# services, and the libraries they share), the TypeScript front ends (the
+# gallery, the operator web console, and these docs), and the Tauri desktop app —
+# both its React UI (`apps/desktop`) and its Rust shell (`crates/desktop`). Every
+# job delegates to a shared script under scripts/ci/, so the GitHub workflows run
+# exactly the same checks (see scripts/ci/README.md).
 #
 # Azure is the primary CI and covers Linux and Windows; macOS validation lives in
 # GitHub because Azure has no macOS agents. The `binary` job release-builds and
@@ -17,6 +14,12 @@
 # never publish a binary that is flat-out broken; macOS gets the same check on
 # GitHub, on demand (its `binary-macos.yml` workflow), since those runners are
 # costly and only needed at release time.
+#
+# The `desktop` job exists because the desktop app used to be validated ONLY by
+# the GitHub Release workflow, and a release duly failed on all three platforms
+# in a typecheck that nothing here had ever run. Nothing this pipeline can build
+# is left for a release to discover any more: the one remaining gap is macOS,
+# which no Azure agent can cover.
 #
 # The YAML's only responsibilities are provisioning toolchains (Rust ships with
 # the Microsoft-hosted Ubuntu and Windows images; Node is installed via UseNode),
@@ -186,6 +189,86 @@ jobs:
           path: $(HOME)/.npm
       - script: ./scripts/ci/web-test.sh
         displayName: Test front ends
+
+  # The Tauri desktop app, both halves — the React UI (apps/desktop) and the Rust
+  # shell (crates/desktop). It is its own job because it is the only one that
+  # needs BOTH toolchains plus the Linux GUI system libraries, and because it owns
+  # the crate `rust-lint.sh`/`rust-test.sh` exclude (so those runners stay free of
+  # that dependency): this is the only place `test-cabinet-desktop`'s clippy pass
+  # and unit tests run at all.
+  #
+  # It runs on the same two platforms as the `binary` job, for the same reason —
+  # they are the platforms Azure has agents for. macOS is validated when the
+  # Release workflow bundles the app, which is the project's one accepted CI gap.
+  - job: desktop
+    displayName: "Desktop app: build & test (UI + Tauri shell)"
+    strategy:
+      matrix:
+        linux:
+          imageName: ubuntu-24.04
+        windows:
+          imageName: windows-2022
+    pool:
+      vmImage: $(imageName)
+    variables:
+      # Pin per-agent tool caches so one cache path works on both Linux and
+      # Windows: the predefined $(HOME) is not set on Windows agents, and npm
+      # reads its cache location from `npm_config_cache` on every platform.
+      CARGO_HOME: $(Pipeline.Workspace)/.cargo
+      npm_config_cache: $(Pipeline.Workspace)/.npm
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      # Linux only: reclaim the near-full hosted Ubuntu disk before the GUI
+      # libraries and the cargo target/ build land on it. The Windows agent's disk
+      # is not affected and the paths are Ubuntu-image specific, so it skips this.
+      - bash: ./scripts/ci/free-disk-linux.sh
+        displayName: Reclaim agent disk
+        condition: eq(variables['Agent.OS'], 'Linux')
+      # Tauri v2's Linux backend compiles against the system WebKitGTK/GTK/tray
+      # libraries. The devcontainer already curates exactly this package set (and
+      # the Release workflow reuses the same script), so install from there rather
+      # than duplicating the list. Windows ships its web view with the OS.
+      - bash: ./.devcontainer/languages/rust/tauri.sh
+        displayName: Install Linux GUI libraries
+        condition: eq(variables['Agent.OS'], 'Linux')
+      - task: UseNode@1
+        displayName: Use Node 22
+        inputs:
+          version: 22.23.1
+      - task: Cache@2
+        displayName: Cache npm
+        inputs:
+          key: 'npm | "$(Agent.OS)" | package-lock.json'
+          restoreKeys: |
+            npm | "$(Agent.OS)"
+          path: $(npm_config_cache)
+      - task: Cache@2
+        displayName: Cache cargo home
+        inputs:
+          key: 'cargo-home-desktop | "$(Agent.OS)" | Cargo.lock'
+          restoreKeys: |
+            cargo-home-desktop | "$(Agent.OS)"
+          path: $(CARGO_HOME)
+      - task: Cache@2
+        displayName: Cache cargo target
+        inputs:
+          # Keyed on the debug level for the same reason as the `rust` job: a
+          # cache saved at a different `debug` setting is rebuilt but never
+          # evicted, so both copies would pile up in target/. Namespaced away from
+          # that job's cache because this one builds a different crate set.
+          key: 'cargo-target-desktop | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
+          restoreKeys: |
+            cargo-target-desktop | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
+          path: target
+      - script: rustup show
+        displayName: Show Rust toolchain
+      # `bash` runs Git Bash on the Windows agent, so the one script drives both
+      # platforms identically — including the cross-platform nextest install.
+      - bash: ./scripts/ci/install-nextest.sh
+        displayName: Install cargo-nextest
+      - bash: ./scripts/ci/desktop-build.sh
+        displayName: Build & test the desktop app
 
   - job: specs
     displayName: "Specs: markdown & spelling"

@@ -282,15 +282,41 @@ order mechanism a plan uses:
   The board advances as a column, and answers "how far does *this* model get?"
   soonest. The console calls it **"Model by model"**.
 
-Everything else is shared: whole cells, the account-wide buffer target with a
+Everything else is shared: whole cells, the
+[harness-parallelism preference](/components/backend/coverage/#harness-parallelism-comes-first)
+that keeps one throttled harness from spending the whole buffer while a climber on
+another sits idle, the account-wide buffer target with a
 per-ladder override, the per-ladder claim that serializes concurrent top-ups,
 `autoTopUp` firing on review submit (see [above](#a-ladder-starts-disabled) for what
 differs — when it is on by default, and what it cannot start), and
-`GET /ladders/{id}/queue` returning the
-unreviewed-by-you runs on the climbers' current rungs **in the ladder's own order**.
-On a ladder that last one matters more than it does on a plan: the review *is* the
-verdict, so reviewing in the order the buffer was filled is what decides climbers in
-the order the ladder meant to decide them.
+`GET /ladders/{id}/queue` returning the unreviewed-by-you runs **in the ladder's own
+order**. On a ladder that last one matters more than it does on a plan: the review
+*is* the verdict, so reviewing in the order the buffer was filled is what decides
+climbers in the order the ladder meant to decide them.
+
+### Feeding and reviewing are different sets of rungs
+
+The restriction above is on **launching**, and only on launching. What the ladder
+offers for review — and what occupies the review buffer — is every rung each climber
+has **reached**: the ones it advanced past, the one it stands on, and the one it
+walled at.
+
+The two sets have to differ, because the gate decides a rung as soon as the runs in
+hand settle it. Under the default gate that is one review of a five-run rung, so a
+queue drawn from the current rung alone would delete four paid-for runs from the
+board the instant the reviewer judged the first — a list of a dozen runs that
+collapses to nothing after two reviews, while the buffer it was still occupying
+reported itself full. The same holds in the other direction: a walled climber's runs
+are the very ones a re-review would unwall it with, and a **hold** stops spending
+rather than reviewing.
+
+So the buffer counts every reached rung's unreviewed runs, and that is deliberate
+backpressure rather than an accounting detail. A ladder whose reviewer has fallen
+behind stops launching until they catch up, which is the one thing the buffer exists
+to do; the alternative is a climb that races ahead spending on runs nobody will ever
+look at. The dashboard's **buffered** and **to review** figures and the queue
+underneath it are all drawn from that one set, so they can never disagree about which
+runs are waiting.
 
 Deleting a ladder deliberately leaves the jobs it launched alone. They record the
 ladder only as their origin, and deleting the ladder you launched from is not a
