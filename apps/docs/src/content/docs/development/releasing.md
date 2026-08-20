@@ -78,8 +78,20 @@ The per-platform `tcab` smoke check is the same `scripts/ci/smoke-binary.sh` the
 CI binary job runs, so the CLI is validated both continuously (Azure, on Linux
 and Windows) and again on the shipped artifact (the Release workflow, on every
 platform). The worker and backend are servers and the desktop app is graphical,
-so for those the build itself is the gate and they are exercised by hand from the
-prerelease.
+so for those the build itself is the gate and their behaviour is exercised by
+hand from the prerelease.
+
+That build gate is not the release's alone, though — the desktop app is built and
+tested on every change by `scripts/ci/desktop-build.sh` (Azure on Linux and
+Windows; GitHub on the same `ubuntu-22.04` image this workflow bundles on), both
+its React UI and its Rust shell. **A release should never be the first thing to
+discover a break**, and it once was: `release.yml` built the desktop UI against a
+hand-written list of workspace packages that had gone one entry stale, so all
+three platforms failed in `tsc -b` on code no CI job had ever compiled. The
+workflow now defers to the root `build:packages` script — the single source of
+truth for that list — and CI compiles the app continuously. The only thing a
+release is still first to build is the **macOS** desktop app, because no Azure
+agent can build it.
 
 ## Static-site topology
 
