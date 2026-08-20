@@ -105,9 +105,34 @@ Deciding the run's points means running that project:
   measures the code the model wrote has already measured it.
 - Run vitest over that project from the implementation's repository root, naming
   the project's config explicitly so the build's own config is never the one that
-  runs, and reading the outcome from the JSON reporter written to a file.
+  runs, naming **the suites this run's variant declares** as vitest's file filters,
+  and reading the outcome from the JSON reporter written to a file.
 - Reuse the dependency install the tree already carries, and install only a tree
   nothing prepared.
+
+### Only the run's own variant's suites are run
+
+A case ships one validator directory per engine, holding the suites of every
+variant, because the variants share nearly all of them. That directory is a
+superset of what any single run is rated on: a suite belonging to another variant
+would fail against a build that was never asked to satisfy it — Carom's `gyre`
+suites reach for a debug operation only `gyre`'s workspace seeds, so they fail
+every `base` build for a reason that is not the build's.
+
+The run is therefore scoped by the **checklist**, not by the directory. The
+resolved variant's review items already name exactly the suites that decide its
+points, and those staged paths are handed to vitest as its file filters, so a
+suite no item of this variant names is never loaded — it costs nothing and reports
+nothing. Nothing is asked of the case for this: the manifest's per-variant
+checklist is the single declaration of which validators apply, and a
+variant-specific suite is skipped by not appearing there. The same scoping applies
+whether the validators are deciding a run's points or being run against a
+reference implementation with `tcab validate --variant`.
+
+If a variant is left with nothing to point vitest at, the run is refused outright
+rather than run unfiltered — an unfiltered run is precisely the whole-directory
+collection the filters exist to prevent — and every point is reported as not
+having run.
 
 Each test file maps back to the review point whose `validation` path declared it,
 by the path the file was staged to. A file whose checks all passed earns its point

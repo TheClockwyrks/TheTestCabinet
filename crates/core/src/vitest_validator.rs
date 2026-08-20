@@ -20,6 +20,25 @@
 //! own location, so a suite resolves the build's modules by the same relative paths
 //! the build itself uses.
 //!
+//! # The whole directory is staged; only the run's own suites are run
+//!
+//! A case ships ONE validator directory per engine, holding the suites of every
+//! variant, because the variants share nearly all of them. The staged directory is
+//! therefore not the suite list: it is a superset of what this run's variant is
+//! rated on, and a suite belonging to some OTHER variant would fail against a build
+//! that was never asked to satisfy it — Carom's `gyre` suites reach for a debug
+//! operation only `gyre`'s workspace seeds, so they fail every `base` build for a
+//! reason that is not the build's.
+//!
+//! So the run is scoped by the CHECKLIST rather than by the directory. The resolved
+//! variant's review items already name exactly the suites that decide its points
+//! (the `drive_units` of the checklist), and those paths are handed to vitest as
+//! its file filters. A
+//! suite no item of this variant names is never loaded, so it costs nothing and
+//! reports nothing. This needs no cooperation from the case: the manifest's
+//! per-variant checklist is the single declaration of which validators apply, and a
+//! variant-specific suite is skipped by not being named there.
+//!
 //! # Bounded by construction
 //!
 //! The whole suite run is capped at [`VITEST_TIMEOUT`] of wall clock and the output
@@ -111,8 +130,9 @@ pub(crate) fn run_vitest_suites(
         return Vec::new();
     }
     let suites: Vec<Suite> = units.iter().map(|unit| Suite::of(unit, engine)).collect();
+    let filters = suite_filters(&suites);
 
-    let results = match execute(test_case, engine, artifacts, install_command) {
+    let results = match execute(test_case, engine, artifacts, install_command, &filters) {
         Ok(reports) => suites
             .iter()
             .map(|suite| {
@@ -149,6 +169,23 @@ pub(crate) fn run_vitest_suites(
     results
 }
 
+/// The staged paths of the suites this variant's checklist names, in declared order.
+///
+/// These become vitest's file filters, which is what keeps a run to its own
+/// variant's suites (see the module docs). No deduplication: a script drives exactly
+/// one review item — a case naming the same one twice is refused when the manifest
+/// is resolved — so the list is already distinct by construction.
+///
+/// A suite whose [`file`](Suite::file) is `None` names a validator of some other
+/// engine and contributes no filter: there is no file for vitest to be pointed at,
+/// and the suite is already reported as not having run.
+fn suite_filters(suites: &[Suite]) -> Vec<String> {
+    suites
+        .iter()
+        .filter_map(|suite| suite.file.clone())
+        .collect()
+}
+
 /// The directory holding `engine`'s validator project inside the case's version
 /// folder. A case declares its validators per engine, and this is where it puts
 /// them.
@@ -178,6 +215,7 @@ fn execute(
     engine: &str,
     artifacts: &ArtifactCollection,
     install_command: &str,
+    filters: &[String],
 ) -> Result<Vec<SuiteReport>, String> {
     let repo = &artifacts.repo_path;
     let project = project_dir(test_case, engine);
@@ -185,6 +223,16 @@ fn execute(
         return Err(format!(
             "the case declares no `{VALIDATION_SCRIPT_DIR}/{engine}/{VITEST_CONFIG_FILE}` \
              validator project",
+        ));
+    }
+    // Nothing to point vitest at. Running it unfiltered would collect the whole
+    // staged directory — every other variant's suites included — which is the one
+    // thing the filters exist to prevent, so the run is refused instead and every
+    // point is left for the reviewer.
+    if filters.is_empty() {
+        return Err(format!(
+            "every validator this variant declares names a suite of some engine other than \
+             `{engine}`, so there was nothing for the runner to run",
         ));
     }
     stage_project(&project, &repo.join(VALIDATION_SCRIPT_DIR))?;
@@ -200,7 +248,7 @@ fn execute(
         .tempdir()
         .map_err(|err| format!("could not create a scratch directory: {err}"))?;
     let report_path = scratch.path().join("report.json");
-    let command = vitest_command(&report_path);
+    let command = vitest_command(&report_path, filters);
     let ran = run_bounded(repo, &command, VITEST_TIMEOUT, scratch.path(), "vitest")?;
 
     let json = std::fs::read_to_string(&report_path).map_err(|_| {
@@ -219,12 +267,28 @@ fn execute(
 /// prints on its own cannot corrupt the report, and the config is named explicitly
 /// because the build's own `vitest.config.ts` at the workspace root is a different
 /// project entirely.
-fn vitest_command(report_path: &Path) -> String {
-    format!(
+///
+/// `filters` are vitest's positional file filters — the staged path of every suite
+/// this variant's checklist names. They are what keeps a run to its own variant's
+/// suites.
+///
+/// Vitest's rule is a case-insensitive SUBSTRING test against the file's
+/// project-relative path, not an exact match, so a filter is only as precise as the
+/// path it is given. These are precise: a staged path is rooted at
+/// [`VALIDATION_SCRIPT_DIR`] and carries the suite's own `.test.ts` name, so
+/// containing it means being it — short of a validator project nesting a second
+/// `validation/` directory, or shipping two suites whose paths differ only in case.
+fn vitest_command(report_path: &Path, filters: &[String]) -> String {
+    let mut command = format!(
         "npx vitest run --config {} --reporter=json --outputFile={}",
         quote(&format!("{VALIDATION_SCRIPT_DIR}/{VITEST_CONFIG_FILE}")),
         quote(&report_path.to_string_lossy()),
-    )
+    );
+    for filter in filters {
+        command.push(' ');
+        command.push_str(&quote(filter));
+    }
+    command
 }
 
 /// Single-quote `value` for `sh`.

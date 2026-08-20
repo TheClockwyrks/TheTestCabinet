@@ -142,6 +142,19 @@ fn suite_for(items: &[ReviewItem]) -> Suite {
     Suite::of(&units[0], "simple-2d")
 }
 
+/// The `simple-2d` suites for a checklist of `(point id, declared script)` pairs, in
+/// declared order — the shape `run_vitest_suites` builds its filters from.
+fn suites_for(points: &[(&str, &str)]) -> Vec<Suite> {
+    let items: Vec<ReviewItem> = points
+        .iter()
+        .map(|(id, script_rel)| item(id, script_rel))
+        .collect();
+    drive_units(&items)
+        .iter()
+        .map(|unit| Suite::of(unit, "simple-2d"))
+        .collect()
+}
+
 /// A realistic vitest JSON reporter document over three files: one whose checks all
 /// passed, one with a failing check beside a passing one, and one whose single check
 /// was skipped.
@@ -492,6 +505,48 @@ fn a_case_with_no_validator_project_for_the_engine_reports_every_point_as_not_ru
 }
 
 #[test]
+fn a_variant_whose_every_validator_belongs_to_another_engine_runs_nothing() {
+    // The project for the run's engine is present, so the runner gets as far as
+    // choosing what to run — and finds that nothing this variant declares names a
+    // suite of this engine. Running vitest now would collect the WHOLE staged
+    // directory, which is the one thing the filters exist to prevent, so the run is
+    // refused and every point is left for the reviewer.
+    let root = tempfile::tempdir().expect("a scratch case root");
+    let project = root
+        .path()
+        .join(crate::validator::VALIDATION_SCRIPT_DIR)
+        .join("simple-2d");
+    std::fs::create_dir_all(&project).expect("a scratch validator project");
+    std::fs::write(project.join(VITEST_CONFIG_FILE), "export default {};")
+        .expect("the project's config");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let items = vec![item("ball-color", "validation/none/color/ball.test.ts")];
+    let test_case = version(root.path().to_path_buf(), items);
+    let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
+
+    let results = run_vitest_suites(
+        &test_case,
+        &variant(),
+        engine().slug(),
+        &artifacts,
+        "npm ci",
+    );
+
+    assert_eq!(results.len(), 1, "the declared point is still reported");
+    assert!(!results[0].ran);
+    assert!(results[0].verdicts.is_empty());
+    assert!(
+        results[0]
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("nothing for the runner to run"),
+        "the reason is the empty filter list, not a failure the build earned: {:?}",
+        results[0].detail,
+    );
+}
+
+#[test]
 fn a_case_declaring_no_validators_reports_nothing() {
     let root = tempfile::tempdir().expect("a scratch case root");
     let repo = tempfile::tempdir().expect("a scratch tree");
@@ -612,7 +667,10 @@ fn a_short_excerpt_is_left_alone() {
 
 #[test]
 fn vitest_is_run_over_the_cases_project_with_the_json_reporter() {
-    let command = vitest_command(Path::new("/tmp/tcab-vitest/report.json"));
+    let command = vitest_command(
+        Path::new("/tmp/tcab-vitest/report.json"),
+        &["validation/color/ball.test.ts".to_string()],
+    );
     assert!(
         command.contains("--config 'validation/vitest.config.ts'"),
         "the case's project is named, not the build's own: {command}",
@@ -624,6 +682,82 @@ fn vitest_is_run_over_the_cases_project_with_the_json_reporter() {
     assert!(
         command.contains("--outputFile='/tmp/tcab-vitest/report.json'"),
         "the report is written where the runner reads it: {command}",
+    );
+}
+
+#[test]
+fn the_declared_suites_are_named_to_vitest_after_its_options() {
+    let command = vitest_command(
+        Path::new("/tmp/tcab-vitest/report.json"),
+        &[
+            "validation/color/ball.test.ts".to_string(),
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+        ],
+    );
+    assert!(
+        command.ends_with(
+            "'validation/color/ball.test.ts' 'validation/gameplay/serve-initial.test.ts'",
+        ),
+        "each filter is quoted and follows the options: {command}",
+    );
+}
+
+#[test]
+fn a_variant_is_filtered_to_its_own_suites_and_the_common_ones() {
+    // The shape Carom has: a checklist every variant shares, plus a point only the
+    // `gyre` variant declares, whose suite the staged directory carries either way.
+    // The run is scoped by the checklist, so `base` must never name that suite.
+    let common = vec![
+        item("serve-initial", "gameplay/serve-initial.test.ts"),
+        item("ball-color", "color/ball.test.ts"),
+    ];
+    let test_case = version(PathBuf::new(), common);
+
+    let mut gyre = variant();
+    gyre.slug = "gyre".to_string();
+    gyre.review_items = vec![item("obstacles-sway", "gyre/obstacles-sway.test.ts")];
+
+    let filters_for = |variant: &Variant| {
+        let items = test_case.review_items_for(variant);
+        let units = drive_units(&items);
+        let suites: Vec<Suite> = units
+            .iter()
+            .map(|unit| Suite::of(unit, "simple-2d"))
+            .collect();
+        suite_filters(&suites)
+    };
+
+    assert_eq!(
+        filters_for(&variant()),
+        vec![
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+            "validation/color/ball.test.ts".to_string(),
+        ],
+        "`base` names the common suites and nothing the staged directory holds for `gyre`",
+    );
+    assert_eq!(
+        filters_for(&gyre),
+        vec![
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+            "validation/color/ball.test.ts".to_string(),
+            "validation/gyre/obstacles-sway.test.ts".to_string(),
+        ],
+        "`gyre` names its own suite as well as the common ones",
+    );
+}
+
+#[test]
+fn a_suite_of_another_engine_contributes_no_filter() {
+    // A declared path naming ANOTHER engine's validator leaves `Suite::file` unset:
+    // there is nothing to point vitest at, and the suite is already reported as not
+    // having run, so it must not widen the run to the whole staged directory either.
+    let filters = suite_filters(&suites_for(&[(
+        "ball-color",
+        "validation/none/color/ball.test.ts",
+    )]));
+    assert!(
+        filters.is_empty(),
+        "a validator of another engine names no file in this run's tree: {filters:?}",
     );
 }
 
