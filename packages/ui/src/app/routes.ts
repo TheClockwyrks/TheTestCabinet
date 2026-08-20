@@ -129,8 +129,8 @@ export const routes = {
   accountGroupNew: (): string => "/account/groups/new",
   accountGroupEdit: (groupId: string): string =>
     `/account/groups/${groupId}/edit`,
-  // The account section's gg tab: the operator's registered gg configurations
-  // (named capability sets) and their create/edit pages. A configuration is what the
+  // The account section's gg Configs tab: the operator's registered gg
+  // configurations (named capability sets) and their create/edit pages. A configuration is what the
   // new-run form launches once `gg` is picked as the orchestrator. `new` is a static
   // segment so it ranks above `:configId`; the create page optionally seeds itself
   // from an existing configuration (`?from=saved:<id>`) so one can be duplicated.
@@ -141,10 +141,11 @@ export const routes = {
       : "/account/gg/new",
   accountGgConfigEdit: (configId: string): string =>
     `/account/gg/${configId}/edit`,
-  // The other half of that tab: the operator's saved gg agents, agent profiles
-  // authored on their own for configurations to import. `agents` is a static segment
-  // under `/account/gg`, so it ranks above `:configId` the same way `new` does, and
-  // its own pages sit under it.
+  // The account section's gg Agents tab: the operator's saved gg agents, agent
+  // profiles authored on their own for configurations to import. Its own section
+  // tab, but still pathed under `/account/gg` — `agents` is a static segment there,
+  // so it ranks above `:configId` the same way `new` does, and its own pages sit
+  // under it.
   accountGgAgents: (): string => "/account/gg/agents",
   accountGgAgentNew: (from?: string): string =>
     from
@@ -401,8 +402,9 @@ export const routePatterns = {
   accountGgConfigs: "/account/gg",
   accountGgConfigNew: "/account/gg/new",
   accountGgConfigEdit: "/account/gg/:configId/edit",
-  // The saved gg agents, under the same tab. `agents` is static, so it and its
-  // children outrank the dynamic `:configId`.
+  // The saved gg agents — their own section tab, sharing the `/account/gg`
+  // prefix. `agents` is static, so it and its children outrank the dynamic
+  // `:configId`.
   accountGgAgents: "/account/gg/agents",
   accountGgAgentNew: "/account/gg/agents/new",
   accountGgAgentEdit: "/account/gg/agents/:agentId/edit",

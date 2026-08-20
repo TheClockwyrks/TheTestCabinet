@@ -142,8 +142,8 @@ export function NewRunPage() {
   // submitter's local orchestrator directory.
   const [orchestrator, setOrchestrator] = useState(DEFAULT_ORCHESTRATOR_SLUG);
   // The gg configurations this operator can launch: the shared read-only built-ins
-  // plus the ones registered on their account (the account section's gg tab). Only
-  // consulted when gg is the chosen run mode.
+  // plus the ones registered on their account (the account section's gg Configs
+  // tab). Only consulted when gg is the chosen run mode.
   const { options: ggOptions } = useGgConfigs();
   const isGg = isGgOrchestrator(orchestrator);
   const [maxRuntime, setMaxRuntime] = useState("");

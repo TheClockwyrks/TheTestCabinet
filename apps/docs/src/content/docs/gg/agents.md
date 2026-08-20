@@ -15,7 +15,7 @@ a run is launched from.
 
 ## Registering one
 
-Account → gg → Agents lists the saved agents on the signed-in account. Creating
+Account → gg Agents lists the saved agents on the signed-in account. Creating
 or editing one opens the same per-agent view a configuration opens, alongside:
 
 - a one-line note saying what the agent is for, shown wherever the library is

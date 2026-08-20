@@ -14,9 +14,9 @@ account-scoped tooling, rather than being reassembled inside every launch form.
 
 ## Registering one
 
-Account → gg lists the configurations on the signed-in account, in a tab beside
-the account's saved agents. Every configuration an operator can pick is one that
-account wrote.
+Account → gg Configs lists the configurations on the signed-in account, in a tab
+beside gg Agents. Every configuration an operator can pick is one that account
+wrote.
 
 Creating or editing one opens the capability-set editor, which is organized into
 three tabs:
