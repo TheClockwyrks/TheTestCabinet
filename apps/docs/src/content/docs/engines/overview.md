@@ -27,17 +27,28 @@ A run selects one of these engines.
 
 The remaining engines are designed and awaiting implementation, so they document
 their intent and stay outside the set a run selects from: [Simple
-3D](/engines/simple-3d/overview/), [Decoupled
+3D](/engines/simple-3d/overview/), [Structured
+2D](/engines/structured-2d/overview/), [Structured
+3D](/engines/structured-3d/overview/), [Decoupled
 2D](/engines/decoupled-2d/overview/), and [Decoupled
 3D](/engines/decoupled-3d/overview/).
 
 ## Families and dimensionality
 
 Each engine belongs to a family, which fixes how much of a game the runtime
-owns. The Simple family provides the services a game needs around its own code
-and leaves the simulation and the drawing to the game. The Decoupled family
-provides a gameplay framework the game is written inside, separates simulation
-from rendering, and owns the rendering itself.
+owns.
+
+| Family | Gameplay framework | Simulation and rendering |
+| --- | --- | --- |
+| Simple | None | The game writes both, in TypeScript |
+| Structured | Worlds, levels, game modes, actors, pawns, controllers | The engine renders; the game's simulation is TypeScript beside it |
+| Decoupled | The same framework | The simulation is Rust compiled to WebAssembly; the engine's TypeScript renderer draws it |
+
+The Simple family provides the services a game needs around its own code and
+leaves the simulation and the drawing to the game. The Structured family provides
+a gameplay framework the game is written inside and owns the rendering, with the
+whole game in TypeScript. The Decoupled family provides the same framework and
+separates the simulation from the rendering across a language boundary.
 
 A family covers 2D and 3D as separate selectable engines rather than as one
 engine with a mode. The spatial model, the rendering pipeline, the asset kinds,
