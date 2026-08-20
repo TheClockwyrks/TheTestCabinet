@@ -13,7 +13,7 @@
 // covered, which says the SIMULATION ran rather than a counter ticking up.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { WallClock } from "@test-cabinet/simple-2d";
+import { WallClock } from "../../src/host";
 import { SERVE_SPEED } from "../../src/constants";
 import { createHarness, type Harness } from "../harness";
 

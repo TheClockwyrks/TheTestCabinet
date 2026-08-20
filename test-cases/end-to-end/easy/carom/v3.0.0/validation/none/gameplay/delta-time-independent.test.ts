@@ -30,7 +30,7 @@ import {
   JitterClock,
   SequenceClock,
   type Clock,
-} from "@test-cabinet/simple-2d";
+} from "../../src/host";
 import { FIELD_CY, FIELD_H } from "../../src/constants";
 import type { CaromSnapshot } from "../../src/debug";
 import {

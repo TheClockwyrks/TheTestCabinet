@@ -19,7 +19,7 @@
 // integrates once per frame puts the ball out the far side.
 
 import { afterEach, expect, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "../../src/host";
 import {
   BALL_R,
   FIELD_CX,

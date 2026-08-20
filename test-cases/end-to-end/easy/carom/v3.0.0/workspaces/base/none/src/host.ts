@@ -127,6 +127,90 @@ export class SequenceClock implements Clock {
   }
 }
 
+/**
+ * A 32-bit integer hash of `(seed, index)`.
+ *
+ * A hash rather than a stateful pseudo-random generator because the draw is
+ * *indexed*, not streamed: frame 900's delta must be the same whether it was
+ * reached by running 900 frames or asked for directly, and it must survive a
+ * frame being run twice or skipped without the whole tail of the sequence
+ * shifting. A stream position is one more piece of state that can drift out of
+ * step with the frame counter; an index cannot.
+ *
+ * The avalanche steps — the shift-xor / multiply rounds, in the murmur3 finalizer
+ * family — are what stop neighbouring indices, which is all a frame counter ever
+ * produces, from yielding neighbouring outputs. Without them the "jitter" is a
+ * slow ramp: every frame slightly longer than the last, which is not what a real
+ * frame trace looks like and is not the thing a check means to test against.
+ */
+function hash32(seed: number, index: number): number {
+  let h =
+    (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(index | 0, 0x85ebca6b)) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  h = Math.imul(h, 0x21f0aaad) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  h = Math.imul(h, 0x735a2d97) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  return h >>> 0;
+}
+
+/** The hash as a uniform `[0, 1)` float. */
+function unit(seed: number, index: number): number {
+  return hash32(seed, index) / 0x1_0000_0000;
+}
+
+/**
+ * A seeded draw from a range, indexed by frame.
+ *
+ * The clock that stands in for a real machine under load, and the seed is
+ * mandatory rather than optional on purpose. A claim that a build is delta-time
+ * independent is worth making only when the failing case replays exactly: an
+ * unseeded jitter that fails once in forty runs is indistinguishable from a
+ * flaky check, and nobody can act on it. With a seed, the failure is a value to
+ * paste into an issue.
+ *
+ * Equal bounds are allowed and degenerate to a constant, which keeps a
+ * parameterized check that sweeps a range down to zero from needing a special
+ * case.
+ */
+export class JitterClock implements Clock {
+  private readonly minMs: number;
+  private readonly spanMs: number;
+  private readonly seed: number;
+
+  /** How many deltas have been drawn — the index the hash is taken over. */
+  private index = 0;
+
+  constructor(minMs: number, maxMs: number, seed: number) {
+    if (
+      !(Number.isFinite(minMs) && minMs > 0) ||
+      !(Number.isFinite(maxMs) && maxMs > 0)
+    ) {
+      throw new RangeError(
+        `JitterClock needs positive bounds, got minMs ${minMs} and maxMs ${maxMs}`,
+      );
+    }
+    if (maxMs < minMs) {
+      throw new RangeError(
+        `JitterClock needs maxMs >= minMs, got minMs ${minMs} and maxMs ${maxMs}`,
+      );
+    }
+    if (!Number.isFinite(seed)) {
+      throw new RangeError(`JitterClock needs a finite seed, got ${seed}`);
+    }
+    this.minMs = minMs;
+    this.spanMs = maxMs - minMs;
+    this.seed = seed;
+  }
+
+  /** A draw from `[minMs, maxMs]`. The host timestamp is not consulted. */
+  delta(): number {
+    const index = this.index;
+    this.index = index + 1;
+    return this.minMs + unit(this.seed, index) * this.spanMs;
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* The frame                                                                  */
 /* -------------------------------------------------------------------------- */
