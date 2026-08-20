@@ -219,16 +219,19 @@ jobs:
       - name: Install npm workspace
         run: npm ci
       # The desktop UI (via @test-cabinet/ui) imports the compiled types of the
-      # run-record, voxel-runtime, and particle-runtime packages, so build each
-      # before the Tauri build runs the UI's own `tsc -b && vite build` (its
-      # beforeBuildCommand) — otherwise those imports resolve to `any` and the
-      # UI's typecheck fails.
+      # workspace runtime packages, so they have to be built before the Tauri
+      # build runs the UI's own `tsc -b && vite build` (its beforeBuildCommand) —
+      # otherwise those imports resolve to nothing and the UI's typecheck fails.
+      #
+      # Which packages, and in what order, is the root `build:packages` script's
+      # to know — the same one `scripts/ci/web-build.sh` and `web-test.sh` defer
+      # to. This step used to inline the list, and that is precisely how it broke:
+      # `run-stats` was added to the root script and not to this copy, so the
+      # release built the desktop app against a package it had never built and all
+      # three platforms failed in `tsc -b` with ~100 unresolved-import errors.
+      # Never inline the list again.
       - name: Build workspace type packages
-        run: >-
-          npm run build
-          -w @test-cabinet/run-record
-          -w @test-cabinet/voxel-runtime
-          -w @test-cabinet/particle-runtime
+        run: npm run build:packages
       # The shipped app stands up its own k3d cluster, so it bundles the k3d and
       # kubectl CLIs as externalBin sidecars. Fetch the host-triple build of each
       # into crates/desktop/binaries/ before the bundle runs (the committed config
