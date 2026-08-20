@@ -191,6 +191,9 @@ describe("ComparisonEditPage", () => {
       version: "v1.0.0",
       variant: "base",
       orchestratorSlug: "one-shot",
+      // The engine is a held-constant control: runs of one case under different
+      // engines measure different work, so an arm may not vary it.
+      engineSlug: "none",
     });
     expect(input.config.arms).toHaveLength(2);
     const [harnessArm, ggArm] = input.config.arms;

@@ -7,6 +7,7 @@
 //! kind — can be malformed without a test failing:
 //!
 //!   - orchestrators (`orchestrators/<slug>/…`)      via [`OrchestratorCatalog`]
+//!   - engines       (`engines/<slug>/engine.toml`)   via [`EngineCatalog`]
 //!   - harnesses     (`harnesses/<slug>/harness.toml`) via [`DefaultHarnessRegistry`]
 //!
 //! (Model configs no longer live on disk — they are seeded into and edited in the
@@ -19,6 +20,9 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use test_cabinet_core::engine::{
+    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineSelection,
+};
 use test_cabinet_core::{
     BUILT_IN_SLUGS, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug, OrchestratorCatalog,
     OrchestratorSelection,
@@ -67,6 +71,44 @@ fn every_orchestrator_manifest_loads() {
         catalog
             .resolve(&OrchestratorSelection::builtin(*slug))
             .unwrap_or_else(|err| panic!("resolve built-in orchestrator {slug}: {err:?}"));
+    }
+}
+
+/// Every committed engine directory must be a built-in the catalogue knows, and
+/// every built-in slug must resolve.
+///
+/// The engine catalogue is **closed** — there is no external-directory arm, and
+/// the manifests are embedded at build time — so unlike the orchestrator test
+/// this cannot discover a new directory and load it from disk. What it can do is
+/// insist the two halves agree: an `engines/<slug>/` added on disk without being
+/// wired into `BUILT_IN_SLUGS` (and so never compiled in, never resolvable, and
+/// never validated) is caught here rather than at launch.
+#[test]
+fn every_engine_manifest_loads() {
+    let catalog = EngineCatalog::new();
+
+    let on_disk: BTreeSet<String> = subdirs(&repo_root().join("engines"))
+        .iter()
+        .filter_map(|path| path.file_name()?.to_str().map(str::to_owned))
+        .collect();
+    assert!(!on_disk.is_empty(), "no engine directories found");
+    let known: BTreeSet<String> = BUILT_IN_ENGINE_SLUGS
+        .iter()
+        .map(|slug| (*slug).to_owned())
+        .collect();
+    assert_eq!(
+        on_disk, known,
+        "engines/ directories must match engine::BUILT_IN_SLUGS exactly"
+    );
+
+    // Resolving parses and validates the embedded manifest, so a malformed one
+    // panics here (it is an authoring bug, not a runtime condition) and an
+    // unknown slug returns an error.
+    for slug in BUILT_IN_ENGINE_SLUGS {
+        let engine = catalog
+            .resolve(&EngineSelection::new(*slug))
+            .unwrap_or_else(|err| panic!("resolve built-in engine {slug}: {err:?}"));
+        assert_eq!(engine.slug(), *slug);
     }
 }
 

@@ -1,0 +1,74 @@
+// Carom — pause/ball-continues: after unpausing, the ball carries on from exactly
+// where it was suspended.
+//
+// The fault this catches is a build that treats resuming as a fresh start: a
+// re-serve, or a jump back to the centre. So the ball is posed in mid-flight,
+// frozen, confirmed still, and then resumed — and where it ends up a known number
+// of frames later is compared against where its own preserved velocity would have
+// carried it from the paused position.
+//
+// The window is one frame wide, deliberately. Resuming is itself a frame, and
+// whether a build simulates the frame that consumed the resume or starts from the
+// next one is not something the specification fixes; either is a continuation. A
+// teleport is a hundred pixels out and misses the window by any measure.
+
+import { afterEach, beforeEach, expect, it } from "vitest";
+import {
+  TICK_HZ,
+  arrangeLiveBall,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/** Frames run after the resume key, the resuming frame included. */
+const RESUMED_TICKS = 24;
+
+/** Float slop, in logical px. The window itself is a whole frame of travel. */
+const SLOP = 0.5;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("resumes the ball from its paused position at its preserved velocity", async () => {
+  await arrangeLiveBall(h, { x: 500, y: 360, vx: 400, vy: -120 });
+
+  await h.advance(30); // 0.25 s of visible flight
+  await h.tap("Escape");
+  const paused = h.snapshot();
+  expect(paused.screen).toBe("paused");
+
+  await h.advance(120); // 1 s frozen
+  const held = h.snapshot();
+  expect(held.ball.x).toBeCloseTo(paused.ball.x, 1);
+  expect(held.ball.y).toBeCloseTo(paused.ball.y, 1);
+
+  await h.tap("Escape"); // resume, which is itself one frame
+  await h.advance(RESUMED_TICKS - 1);
+  const resumed = h.snapshot();
+
+  expect(resumed.screen).toBe("playing");
+
+  // Where the paused velocity carries the paused position over the resumed span.
+  // The window is one frame wide because the frame that consumed the resume may
+  // or may not have been simulated, and either reading is a continuation.
+  const travel = (from: number, v: number): [number, number] => {
+    const a = from + (v * (RESUMED_TICKS - 1)) / TICK_HZ;
+    const b = from + (v * RESUMED_TICKS) / TICK_HZ;
+    return [Math.min(a, b) - SLOP, Math.max(a, b) + SLOP];
+  };
+  const [xLow, xHigh] = travel(paused.ball.x, paused.ball.vx);
+  const [yLow, yHigh] = travel(paused.ball.y, paused.ball.vy);
+
+  expect(resumed.ball.x).toBeGreaterThanOrEqual(xLow);
+  expect(resumed.ball.x).toBeLessThanOrEqual(xHigh);
+  expect(resumed.ball.y).toBeGreaterThanOrEqual(yLow);
+  expect(resumed.ball.y).toBeLessThanOrEqual(yHigh);
+  expect(resumed.ball.speed).toBeCloseTo(paused.ball.speed, 1);
+});

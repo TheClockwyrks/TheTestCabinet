@@ -88,8 +88,6 @@ start; they cross-reference each other by name and form one specification.
   build.
 - `specs/instrumentation.md`: the `window.__valence` debugging and automation
   API, the debug overlay, and the deterministic, steppable core they rest on.
-- `specs/proof.md`: the proof-of-implementation captures the finished build must
-  write.
 
 ## Goal of this build
 
@@ -253,20 +251,3 @@ break the matter apart. The canonical palette and type are below; match them.
   containment-failed screen) are described in full under Game states in
   `specs/ui.md`, along with the victory screen. Implement each as
   described, in this palette and type.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look:
-
-- `reference/title.png`, the title screen and main menu.
-- `reference/gameplay.png`, a representative live-board frame, mid-round.
-- `reference/game-over.png`, the containment-failed screen.
-
-Treat them as illustrative examples, not targets to reproduce: they show one way
-the screens can look, but design your own menus, board geometry, and layout
-rather than copy them. The only firm requirement is that every menu and
-navigation path this specification mandates is present, rendered in the palette
-and type the spec defines. They are images only, and the exact path shapes,
-tower placement, tower mix, and matter positions they show are just one example
-moment. Build the screens from this specification, and design your own
-conforming maps.

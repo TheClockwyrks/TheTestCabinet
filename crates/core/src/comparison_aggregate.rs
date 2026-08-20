@@ -169,6 +169,22 @@ fn detect_confounds(
         out.push(c);
     }
 
+    // The engine, checked against the control exactly as the orchestrator is — and
+    // for a blunter reason. An A/B that varies the engine is not measuring what it
+    // claims to: runs of one case under different engines measure *different work*,
+    // because the engine hands the model the frame loop, input, audio, assets, and
+    // diagnostics the engineless build has to write for itself, and the case's
+    // available checklist points differ with it. The resulting gap in cost, tokens,
+    // and score belongs to the runtime rather than to the configurations under test,
+    // so it is reported rather than folded in.
+    let engines: Vec<String> = arm_runs
+        .iter()
+        .map(|r| r.subject.engine_slug.clone())
+        .collect();
+    if let Some(c) = confound_for("engine", Some(&controls.engine_slug), &engines) {
+        out.push(c);
+    }
+
     let harnesses: Vec<String> = arm_runs
         .iter()
         .map(|r| r.subject.harness_slug.as_str().to_string())

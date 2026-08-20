@@ -5,10 +5,11 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use super::{
-    Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
-    MAX_GAME_JAM_README_BYTES, OrchestratorSelection, OutputStream, RawOutputLine, RunRequest,
+    EngineCatalog, EngineSelection, EngineSupport, Error, EventFormat, EventKind, EventParser,
+    HarnessEvent, HarnessOutcome, HarnessSlug, MAX_GAME_JAM_README_BYTES, NONE_SLUG,
+    OrchestratorSelection, OutputStream, RawOutputLine, ResolvedEngine, Result, RunRequest,
     RunState, TestCaseVersion, TestType, Usage, build_failed_record, completed_state, copy_tree,
-    init_failure_detail, read_game_jam_readme, with_runtime_cap, write_run_streams,
+    init_failure_detail, read_game_jam_readme, resolve_engine, with_runtime_cap, write_run_streams,
 };
 use crate::execution::ExecOutput;
 use crate::validation::{DebugScriptResult, ValidationSummary};
@@ -277,6 +278,7 @@ fn copy_tree_copies_nested_files() {
 /// irrelevant to the cap and left empty.
 fn version_with_cap(seconds: u64) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
@@ -317,6 +319,9 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        // The engineless run, which is what a version declaring no `engines` at all
+        // resolves to. The engine-supporting fixture below widens it.
+        engines: vec![EngineSupport::unbounded(NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -337,6 +342,7 @@ fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
         harness: HarnessSlug::Claude,
         model_id: "some-model".to_string(),
         orchestrator: OrchestratorSelection::default(),
+        engine: EngineSelection::default(),
         max_runtime_override,
         container_image: None,
         gg_capability_set: None,
@@ -460,6 +466,202 @@ fn a_capability_set_on_a_non_gg_run_is_a_configuration_error() {
     );
 }
 
+/// The pong fixture widened to declare the `simple-2d` engine alongside the
+/// engineless run, as a case whose specs and validation are written for it does.
+fn version_supporting_simple_2d() -> TestCaseVersion {
+    TestCaseVersion {
+        engines: vec![
+            EngineSupport::unbounded(NONE_SLUG),
+            EngineSupport::unbounded("simple-2d"),
+        ],
+        ..version_with_cap(1800)
+    }
+}
+
+/// A run request for the pong case naming `slug` as its engine.
+fn request_with_engine(slug: &str) -> RunRequest {
+    RunRequest {
+        engine: EngineSelection::new(slug),
+        ..request_with_override(None)
+    }
+}
+
+/// A request that names no engine resolves the engineless one, and a run recorded
+/// from it carries `none` with no version — which is the truth about it, since
+/// there is no package to have a version.
+#[test]
+fn a_request_naming_no_engine_resolves_and_records_the_engineless_run() {
+    let case = version_with_cap(1800);
+    let request = request_with_override(None);
+    assert_eq!(
+        request.engine,
+        EngineSelection::none(),
+        "an unspecified engine is the engineless run, not an empty selection",
+    );
+
+    let engine = resolve_engine(&EngineCatalog::new(), &request, &case)
+        .expect("every case supports the engineless run");
+    assert_eq!(engine.slug(), NONE_SLUG);
+    assert!(
+        !engine.provides_runtime(),
+        "the engineless engine vendors nothing into the repository",
+    );
+
+    let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("now");
+    let record = build_failed_record(
+        "job-none",
+        &request,
+        Some(&case),
+        now,
+        now,
+        RunState::Infrastructure,
+        "locating a container runtime: none found",
+    );
+    assert_eq!(record.subject.engine_slug, NONE_SLUG);
+    assert!(
+        record.subject.engine_version.is_none(),
+        "an engine that vendors no runtime has no version to record",
+    );
+}
+
+/// A request naming an engine the case declares resolves to that engine's
+/// manifest — the runtime half included, since that is what the seeder vendors.
+#[test]
+fn a_request_naming_a_supported_engine_resolves_it() {
+    let engine = resolve_engine(
+        &EngineCatalog::new(),
+        &request_with_engine("simple-2d"),
+        &version_supporting_simple_2d(),
+    )
+    .expect("the case declares simple-2d");
+
+    assert_eq!(engine.slug(), "simple-2d");
+    assert!(
+        engine.provides_runtime() && engine.package().is_some(),
+        "a declared engine carries the package the seeder vendors",
+    );
+}
+
+/// A request naming an engine the case does **not** declare is refused, and it is
+/// refused here — by a check that takes only the request and the resolved case, so
+/// nothing has been rendered, seeded, pulled, or started when it fires. The message
+/// names the engines the case does support, so the fix is one step.
+#[test]
+fn an_engine_the_case_does_not_support_is_refused_before_any_container_work() {
+    let case = version_with_cap(1800);
+    let err = resolve_engine(
+        &EngineCatalog::new(),
+        &request_with_engine("simple-2d"),
+        &case,
+    )
+    .expect_err("the fixture declares only the engineless run");
+
+    match &err {
+        Error::EngineUnsupportedForCase {
+            slug,
+            test_case,
+            version,
+            supported,
+        } => {
+            assert_eq!(slug, "simple-2d");
+            assert_eq!(test_case, "pong");
+            assert_eq!(version, "v1.0.0");
+            assert_eq!(supported, &vec![NONE_SLUG.to_string()]);
+        }
+        other => panic!("expected EngineUnsupportedForCase, got {other:?}"),
+    }
+    assert!(
+        err.to_string().contains(NONE_SLUG),
+        "the message names what the case does support: {err}",
+    );
+}
+
+/// The engineless run is held to the case's declared set like any other engine.
+///
+/// A version built against a runtime does not support it: its workspace
+/// `package.json` depends on the engine package, which only an engine run vendors
+/// in, so an engineless run would seed a tree whose install cannot succeed. The
+/// gate has to say so here — before anything is rendered, seeded, pulled, or
+/// started — rather than let the run reach a failing `npm ci` in a container.
+#[test]
+fn the_engineless_run_is_refused_by_a_case_built_against_an_engine() {
+    let case = TestCaseVersion {
+        engines: vec![EngineSupport::unbounded("simple-2d")],
+        ..version_with_cap(1800)
+    };
+    // `EngineSelection::default()` is the engineless run, which is what a request
+    // naming no engine resolves to.
+    let err = resolve_engine(&EngineCatalog::new(), &request_with_override(None), &case)
+        .expect_err("the case declares simple-2d alone");
+
+    match &err {
+        Error::EngineUnsupportedForCase {
+            slug, supported, ..
+        } => {
+            assert_eq!(slug, NONE_SLUG);
+            assert_eq!(supported, &vec!["simple-2d".to_string()]);
+        }
+        other => panic!("expected EngineUnsupportedForCase, got {other:?}"),
+    }
+}
+
+/// A version that declares `none` alongside an engine still admits the engineless
+/// run, so declaring both is how a case that genuinely builds either way says so.
+#[test]
+fn the_engineless_run_is_admitted_by_a_case_that_declares_it_alongside_an_engine() {
+    let engine = resolve_engine(
+        &EngineCatalog::new(),
+        &request_with_override(None),
+        &version_supporting_simple_2d(),
+    )
+    .expect("the case declares the engineless run alongside simple-2d");
+    assert_eq!(engine.slug(), NONE_SLUG);
+}
+
+/// A slug no build carries is reported as the unknown engine it is — naming the
+/// engines that would have worked — rather than as one this case happens not to
+/// support, because the catalogue is consulted before the case's gate.
+#[test]
+fn an_unknown_engine_slug_does_not_resolve() {
+    let err = resolve_engine(
+        &EngineCatalog::new(),
+        &request_with_engine("simpel-2d"),
+        &version_supporting_simple_2d(),
+    )
+    .expect_err("no built-in engine is spelled that way");
+
+    match &err {
+        Error::Engine(detail) => {
+            assert!(detail.contains("simpel-2d"), "{detail}");
+            assert!(detail.contains("simple-2d"), "{detail}");
+        }
+        other => panic!("expected Engine, got {other:?}"),
+    }
+}
+
+/// A run that failed before producing an implementation still records the engine it
+/// was launched with, so even a failed attempt is attributable to the runtime it was
+/// meant to be built on. The version stays absent: it is read out of the staged
+/// package while seeding, and this run never got that far.
+#[test]
+fn a_failed_run_records_the_engine_it_was_launched_with() {
+    let case = version_supporting_simple_2d();
+    let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("now");
+
+    let record = build_failed_record(
+        "job-engine",
+        &request_with_engine("simple-2d"),
+        Some(&case),
+        now,
+        now,
+        RunState::Infrastructure,
+        "the sandbox pod never became ready",
+    );
+
+    assert_eq!(record.subject.engine_slug, "simple-2d");
+    assert!(record.subject.engine_version.is_none());
+}
+
 /// A minimal successful outcome for exercising the cap without a real harness.
 fn ready_outcome() -> HarnessOutcome {
     HarnessOutcome {
@@ -567,4 +769,158 @@ fn failed_record_falls_back_to_the_request_when_unresolved() {
         record.subject.test_type,
         crate::test_case::TestType::default()
     );
+}
+
+// --- the engine version gate ------------------------------------------------
+
+/// The pong fixture pinned to engine versions `[min, max)` for `simple-2d`.
+fn version_pinning_simple_2d(min: &str, max: Option<&str>) -> TestCaseVersion {
+    TestCaseVersion {
+        engines: vec![
+            EngineSupport::unbounded(NONE_SLUG),
+            EngineSupport {
+                slug: "simple-2d".to_string(),
+                min_version: Some(semver::Version::parse(min).expect("min")),
+                max_version: max.map(|raw| semver::Version::parse(raw).expect("max")),
+            },
+        ],
+        ..version_with_cap(1800)
+    }
+}
+
+/// A catalog whose package store stages `simple-2d` at `version`, so the gate
+/// compares against the version a run of it would actually be seeded with.
+fn catalog_staging_simple_2d(version: &str) -> (tempfile::TempDir, EngineCatalog) {
+    let store = tempfile::tempdir().expect("temp store");
+    let dir = store.path().join("@test-cabinet/simple-2d");
+    std::fs::create_dir_all(&dir).expect("staged package dir");
+    std::fs::write(
+        dir.join("package.json"),
+        format!("{{\"name\":\"@test-cabinet/simple-2d\",\"version\":\"{version}\"}}"),
+    )
+    .expect("write staged package.json");
+    let catalog = EngineCatalog::with_package_store(store.path());
+    (store, catalog)
+}
+
+/// Resolve `simple-2d` for a case pinned to `[min, max)` against a store holding
+/// `staged`.
+fn gate(staged: &str, min: &str, max: Option<&str>) -> Result<ResolvedEngine> {
+    let (_store, catalog) = catalog_staging_simple_2d(staged);
+    resolve_engine(
+        &catalog,
+        &request_with_engine("simple-2d"),
+        &version_pinning_simple_2d(min, max),
+    )
+}
+
+#[test]
+fn the_declared_minimum_is_inclusive_at_the_gate() {
+    // Exactly the floor is supported: the minimum is the earliest contract the
+    // case's specs were written against, which the case *does* support.
+    let engine = gate("1.2.0", "1.2.0", Some("2.0.0")).expect("the floor is inside the range");
+    assert_eq!(engine.slug(), "simple-2d");
+}
+
+#[test]
+fn a_version_below_the_declared_minimum_is_refused_before_any_container_work() {
+    // The check takes only the resolved case and the resolved engine, so nothing
+    // has been rendered, seeded, pulled, or started when it fires.
+    let err = gate("1.1.9", "1.2.0", Some("2.0.0")).expect_err("below the floor");
+
+    match &err {
+        Error::EngineVersionUnsupportedForCase {
+            slug,
+            engine_version,
+            test_case,
+            version,
+            range,
+        } => {
+            assert_eq!(slug, "simple-2d");
+            assert_eq!(engine_version, "1.1.9");
+            assert_eq!(test_case, "pong");
+            assert_eq!(version, "v1.0.0");
+            assert_eq!(range, ">= 1.2.0, < 2.0.0");
+        }
+        other => panic!("expected EngineVersionUnsupportedForCase, got {other:?}"),
+    }
+    // The message must name the case, the engine, the version, and the range, so
+    // the fix — restage, or run a case version that accepts it — is one step.
+    let message = err.to_string();
+    for expected in ["pong", "simple-2d", "1.1.9", ">= 1.2.0, < 2.0.0"] {
+        assert!(
+            message.contains(expected),
+            "expected `{expected}` in: {message}"
+        );
+    }
+}
+
+#[test]
+fn the_declared_maximum_is_exclusive_at_the_gate() {
+    // Immediately below the ceiling is supported; exactly the ceiling is not —
+    // that is the version whose behaviour changed a check the case depends on.
+    assert!(gate("1.999.999", "1.0.0", Some("2.0.0")).is_ok());
+    let err = gate("2.0.0", "1.0.0", Some("2.0.0")).expect_err("the ceiling is exclusive");
+    assert!(
+        matches!(err, Error::EngineVersionUnsupportedForCase { .. }),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn an_unbounded_ceiling_accepts_every_later_engine_version() {
+    assert!(gate("14.3.1", "1.0.0", None).is_ok());
+    let err = gate("0.9.0", "1.0.0", None).expect_err("still below the floor");
+    match &err {
+        Error::EngineVersionUnsupportedForCase { range, .. } => assert_eq!(range, ">= 1.0.0"),
+        other => panic!("expected EngineVersionUnsupportedForCase, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_declared_range_that_cannot_be_checked_refuses_the_run() {
+    // The engine resolved and the case supports it; the only missing thing is the
+    // version of its package in the host store. A declared range is a claim that
+    // only *some* versions are safe, so an unverifiable pairing is refused rather
+    // than admitted.
+    let store = tempfile::tempdir().expect("temp store");
+    let err = resolve_engine(
+        &EngineCatalog::with_package_store(store.path()),
+        &request_with_engine("simple-2d"),
+        &version_pinning_simple_2d("1.0.0", None),
+    )
+    .expect_err("nothing is staged, so the range cannot be checked");
+
+    match &err {
+        Error::EngineVersionUnknown {
+            slug,
+            test_case,
+            version,
+            range,
+        } => {
+            assert_eq!(slug, "simple-2d");
+            assert_eq!(test_case, "pong");
+            assert_eq!(version, "v1.0.0");
+            assert_eq!(range, ">= 1.0.0");
+        }
+        other => panic!("expected EngineVersionUnknown, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_case_declaring_no_range_never_consults_the_package_store() {
+    // The bare `engines` list is support at any version, which is what every
+    // frozen case declares. A store the host cannot read a version out of must
+    // cost such a case nothing — otherwise landing version ranges would have
+    // broken every shipped case version.
+    let store = tempfile::tempdir().expect("temp store");
+    let engine = resolve_engine(
+        &EngineCatalog::with_package_store(store.path()),
+        &request_with_engine("simple-2d"),
+        &version_supporting_simple_2d(),
+    )
+    .expect("an unbounded declaration constrains nothing");
+
+    assert_eq!(engine.slug(), "simple-2d");
+    assert_eq!(engine.version(), None);
 }

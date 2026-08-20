@@ -23,6 +23,8 @@ fn record(id: &str) -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "m".to_string(),
             gg_capability_set: None,
             gg_summary: None,
@@ -46,6 +48,7 @@ fn record(id: &str) -> RunRecord {
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
         code_analysis: None,
+        toolchain: None,
     }
 }
 

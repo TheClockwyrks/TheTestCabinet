@@ -541,3 +541,21 @@ misattributed
 # Canvas 2D's storage model, in the Shatter v2.0.1 changelog: `getImageData`
 # returns color with the alpha divided back out of the premultiplied store.
 unpremultiplied
+
+# Simple 2D engine docs: DOM event names and key codes, the @napi-rs/canvas
+# bindings the vitest validators draw on, and rendering/pacing terms of art.
+keyup
+pointerdown
+pagehide
+Backquote
+AZERTY
+napi
+SKRS
+readback
+letterboxing
+resynced
+hypot
+
+# Carom v3.0.0 manifest prose: the vitest runner the case's in-process validators
+# are written for.
+vitest

@@ -63,6 +63,17 @@
 //! program run in a test process, whose budget the ~1 s component compile had already spent — they
 //! measured the compile, not the sleep.)
 //!
+//! The long-park half is pinned on the program's **own witness that it reached the park**, and that
+//! is worth stating here because the obvious pinning is wrong in a way that looks right. Asserting
+//! only that the elapsed figure overran the budget makes a claim about the machine: the budget is
+//! armed when the store is built, so a container slow enough to spend it instantiating the 25 MB
+//! guest stops the program before its sleep begins, and the reading is then of an instantiation
+//! rather than of a park. That is not a hypothetical — it was measured under `cargo nextest run
+//! --workspace` at 1.054 s against a 1 s budget, on a sandbox with nothing whatever wrong with it.
+//! So the program logs a line before it sleeps, the test insists on seeing that line before it reads
+//! the clock at all, and a budget that did not get the guest that far is doubled rather than
+//! reported.
+//!
 //! # The decision, settled with the first arm that can reach it
 //!
 //! **gg does not extend the timeout to a parked WASI call. The bound on a parked turn is the

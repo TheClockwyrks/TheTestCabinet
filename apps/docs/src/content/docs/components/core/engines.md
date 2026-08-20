@@ -1,0 +1,236 @@
+---
+title: Engines
+---
+
+## Overview
+
+An engine is the runtime a produced game is built on. It owns the frame loop and
+the delta time it hands the game, the input actions a player drives the game
+with, the audio bus, the asset loader, and the on-screen diagnostics. Some
+engines also own rendering and a gameplay framework of their own.
+
+An engine is selected per run alongside the test case, variant, harness, and
+model, and is recorded on the run. Selecting `none` gives the model no runtime at
+all, which is the baseline every case supports.
+
+Engines serve two purposes. They move the surfaces validation drives off code the
+model writes and onto code the engine provides, which makes those checks
+trustworthy. They also give a case a substantial existing codebase to build
+against, so a run measures how well a model integrates with unfamiliar code
+rather than only how well it starts from nothing.
+
+## Engine independence
+
+An engine is independent of the test case. A case's specification describes the
+game to build. An engine's documentation describes the engine and ships with the
+engine, so a case never restates it. What a case states about the engine is
+limited to the requirements that are genuinely specific to that game, such as
+which touch layout to use and which actions to register beyond the layout's own.
+
+Independence is what keeps engines clear of
+[frozen versions](/development/frozen-versions/). A case version makes no claim
+about the engine, so publishing a new engine version leaves every run recorded
+against that case version intact. The engine is an input that varies between runs
+of one case version, exactly as the harness version does, and it is recorded the
+same way.
+
+A case declares which engines it supports and which versions of each, and a run
+of that case is limited to that set. This is a compatibility gate rather than a
+description of the engine.
+
+## The engine catalogue
+
+An engine is a directory under `engines/<slug>/` containing one manifest,
+`engine.toml`, which declares:
+
+- `slug`, the stable identifier, matching the directory name;
+- `name` and `description`, shown wherever the catalogue is listed;
+- `package`, the npm package providing the runtime;
+- `handle`, the `window` property the host interface is installed on;
+- `docs`, the directory inside the package holding the engine's documentation.
+
+The last three are declared by an engine that provides a runtime. An engine
+without them supplies no runtime, which is what `none` is.
+
+The built-in engines live under `engines/` in the repo, embedded into
+`crates/core` at build time so a backend-driven worker with no checkout resolves
+them the same way the CLI does. They are catalogued under
+[Engines](/engines/overview/). The catalogue is closed: a run naming a slug
+outside it is refused rather than resolved from disk, because an engine is a
+staged package, a seeded documentation tree, and a host interface a driver binds
+to.
+
+An engine that carries a simulation core compiled to WebAssembly ships that
+module prebuilt inside its package, so staging and seeding copy an engine's
+artifacts rather than build them.
+
+## Engine versions
+
+An engine's version is the version of its staged npm package in the host package
+store, read at seed time and recorded on the run. A change to an engine's
+contract is published as a new package version, so the version recorded on a run
+continues to identify exactly what that run was given. `none` supplies no runtime
+and therefore carries no version.
+
+A case declares a version range for each engine it supports: a required minimum,
+and a maximum where it needs one. A range is unbounded above by default, so a
+case stating only a minimum accepts every later version the catalogue offers.
+
+The minimum is the earliest engine version the case's specification and its
+validators were written against, which is what a case states when it depends on
+a capability an engine gained in a known version. The maximum pins a case to the
+versions it was verified under, which is what a case states once a later engine
+version changes behavior its checks depend on.
+
+Both ends are enforced before work is spent. Resolving a case rejects a range it
+could never admit an engine under, so a malformed range fails at resolution.
+Selecting an engine for a run compares the version the host would stage against
+the case's range and refuses a run outside it before any container work begins.
+A case that declares a range the host has no staged version to check against is
+refused the same way, because a range is a statement that only some versions are
+safe.
+
+Resolution does not consult the host package store, so a case resolves on a host
+that stages nothing. That is what lets a case be listed, prompted and reviewed
+away from the machines that run it, and it keeps a case pinned below the version
+the store now holds resolvable rather than unreadable.
+
+## Delivery
+
+An engine is staged into the same host package store as a case's
+[packages](/testing/end-to-end/overview/#packages) and vendored at seed time into
+`.tcab/engine/` inside the run repository, committed with the initial seed. The
+seeded `package.json` has the dependency on that vendored copy written into it,
+so the build imports the engine by its bare name as an ordinary installed
+dependency. This is where an engine differs from a case's packages, which the
+case declares in its own `package.json` and the harness never rewrites.
+
+## Documentation delivery
+
+The engine's documentation directory is seeded into the run workspace at
+`engine/`, so it is versioned with the engine and identical for every case. The
+rendered prompt names the engine and points the build at that directory.
+
+Reading that documentation is part of the work a run measures. An engine
+documents its own contract in the depth a model needs to build against it without
+seeing its source.
+
+## The host interface
+
+An engine installs a host interface on the `window` handle its manifest names
+when the game creates the engine. It is engine code, so every build carries it.
+Each engine's own page documents the exact surface it provides.
+
+The interface has two readers. A post-run build check loads the built page and
+looks for the handle, which establishes that the page came up and the engine
+started. A person opening a build reads the same handle to inspect the running
+game by hand.
+
+## The frame
+
+The engine owns the frame loop and decides what each frame's delta time is worth.
+The engine mandates no fixed timestep; what a game does with the delta time it is
+given is the game's own business.
+
+A clock is the object that answers what a frame is worth, supplied when the
+engine is built and replaceable afterwards. Play installs a clock that reports
+real elapsed time, and a check installs one that supplies a scripted sequence of
+deltas. Running an exact number of frames is an engine operation, so a scripted
+scenario runs synchronously and reaches the same states a reviewer watching the
+build would.
+
+Driving one scenario under several clocks and comparing the outcomes establishes
+directly that a build integrates against the delta time it is given rather than
+against a frame count. Those comparisons assert on outcomes that survive a
+legitimate change in step size, such as whether an event occurred and what the
+resulting state was, rather than on exact positions. Numerical integration of a
+nonlinear system diverges across step sizes even when the integration is correct.
+
+## Input actions
+
+A game registers named actions with the engine and binds them to inputs. The
+engine owns the binding table, the key and pointer handling behind it, and the
+on-screen controls a touchscreen needs.
+
+A check drives a game by dispatching key events at the surface the engine
+listens on, which reaches the binding table exactly as a player's keyboard does.
+The engine resolves each action to a magnitude, so a check states what the player
+did rather than which key produced it.
+
+An engine defines a catalogue of named touch layouts, each carrying the action
+vocabulary it lays out. A case names the layout its game uses, which in one
+statement fixes both the on-screen controls and the set of actions a build is
+expected to register. A game that needs actions beyond its layout's vocabulary
+has those named by the case.
+
+## Audio
+
+A game plays audio through the engine's bus. The engine owns synthesis and
+playback, mixing, mute, and the first-interaction unlock a browser requires
+before audio may start.
+
+The bus emits a semantic event for every cue a game plays. Subscribing to those
+events establishes that a build played a cue in response to something that
+happened, which requires no knowledge of how the sound was produced.
+
+## Assets
+
+A game loads assets through the engine, giving it a path under a fixed asset root.
+The engine resolves the path, loads the asset, and emits the outcome as an event.
+
+Subscribing to those events establishes which assets a build requested and which
+resolved. Because the root is fixed and the loader belongs to the engine, an
+asset browser outside the running game reads the same tree.
+
+## Diagnostics
+
+The engine draws the debug overlay. A game registers the state it wants shown, and
+the engine renders it, owns the toggle, and keeps it read-only.
+
+## Rendering
+
+An engine that owns rendering exposes it declaratively. A game configures what to
+draw by attaching render components to its objects, and the engine's pipeline
+draws them. Render modes such as wireframe, unlit, and normals are properties of
+that pipeline, so they are available to every game an engine renders without the
+game implementing them.
+
+An engine that owns rendering also provides a path for a game to draw directly,
+for cases where producing the rendering is part of what the case measures. A game
+on that path implements the drawing itself and the engine calls it as part of the
+frame. Render modes belong to the declarative pipeline, so a game that draws
+directly supplies its own.
+
+## Declaring supported engines
+
+A test case version declares the engines it supports, each with the range of
+engine versions it supports, in its manifest. A case that declares nothing
+supports `none` alone. The
+[manifest format](/testing/end-to-end/manifests/) carries the grammar.
+
+Every entry names a slug the engine catalogue knows and a well-formed version
+range, both checked when the case resolves, before a run is spent. `none` is
+what a version that declares nothing supports; once a version declares any
+engine, its supported set is exactly what it declares, so a case built against a
+runtime may leave `none` out and a case that builds both ways lists it alongside.
+A case declaring an engine that provides a runtime ships a workspace
+`package.json`, because the engine dependency is written into that file at seed
+time.
+
+Support is declared per version. A case version gains engine support by adding a
+new version, because its specification carries the statements that are specific to
+running under an engine.
+
+## Selecting an engine
+
+An engine is selected per run with `--engine` and defaults to `none`. The engine
+must resolve in the catalogue, must be one the case supports, and its catalogued
+version must fall inside the range the case declared for it; a run failing any of
+those is rejected before any container work begins. Both the engine slug and the
+exact engine version are recorded on the run, the version taken at seed time from
+the package store.
+
+A run's engine is part of what makes its result comparable. Runs of one case
+under different engines measure different work and carry different available
+points, so a comparison holds the engine constant and reports it as a confound
+when it differs.

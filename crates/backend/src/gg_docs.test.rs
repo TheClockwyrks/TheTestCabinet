@@ -33,6 +33,8 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
             harness_slug: HarnessSlug::Gg,
             harness_version: Some("0.7.0".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: model.to_string(),
             gg_capability_set: Some(GgCapabilitySet::minimal(model)),
             gg_summary: Some(GgSessionSummary {
@@ -84,6 +86,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
         code_analysis: None,
+        toolchain: None,
     }
 }
 
@@ -143,6 +146,7 @@ fn item(id: &str, weight: u32) -> StoredReviewItem {
 /// a count of ticks.
 fn manifest() -> StoredManifest {
     StoredManifest {
+        toolchain: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         name: "Carom".to_string(),

@@ -15,6 +15,7 @@ import { BackChevron } from "../../components/BackChevron";
 import { ModelCombobox } from "../../components/ModelCombobox";
 import { harnesses } from "../../data/harnesses";
 import { familyOf } from "../../data/families";
+import { DEFAULT_ENGINE_SLUG } from "../../data/engines";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import {
   CATALOG_CATEGORIES,
@@ -284,6 +285,7 @@ export function ComparisonEditPage() {
           version: sel.version,
           variant: sel.variant,
           orchestratorSlug: DEFAULT_ORCHESTRATOR_SLUG,
+          engineSlug: DEFAULT_ENGINE_SLUG,
         },
         arms: arms.map((arm) => armFromDraft(arm, derivedLabel(arm))),
         n,

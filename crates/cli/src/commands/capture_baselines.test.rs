@@ -6,7 +6,9 @@
 //! selection logic both commands route through — version resolution and variant
 //! targeting — leaving the clap surface to `cli.test.rs`.
 
-use test_cabinet_core::{AssetKind, TestType};
+use std::collections::BTreeMap;
+
+use test_cabinet_core::{AssetKind, EngineSupport, NONE_SLUG, TestType};
 
 use super::*;
 
@@ -17,6 +19,7 @@ use super::*;
 /// validator tests use).
 fn test_case(variants: &[(&str, bool)]) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         slug: "carom".to_string(),
         version: "v1.0.0".to_string(),
         name: "Carom".to_string(),
@@ -53,6 +56,10 @@ fn test_case(variants: &[(&str, bool)]) -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        // The engineless run every case supports, which is what resolution puts
+        // here for a manifest that declares no `engines`; baseline selection does
+        // not read it.
+        engines: vec![EngineSupport::unbounded(NONE_SLUG)],
         variants: variants.iter().map(|v| variant(v.0, v.1)).collect(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -78,7 +85,17 @@ fn variant(slug: &str, has_reference: bool) -> Variant {
         review_items: Vec::new(),
         domains: Vec::new(),
         voxel: None,
-        reference_impl: has_reference.then(|| PathBuf::from(format!("reference-impl/{slug}"))),
+        // Keyed by engine, as resolution produces it. This fixture case supports only
+        // the engineless `none`, which is the engine both baseline capture and
+        // reference publishing address.
+        reference_impls: if has_reference {
+            BTreeMap::from([(
+                NONE_SLUG.to_string(),
+                PathBuf::from(format!("reference-impl/{slug}")),
+            )])
+        } else {
+            BTreeMap::new()
+        },
     }
 }
 

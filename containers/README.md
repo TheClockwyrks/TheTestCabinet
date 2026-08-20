@@ -329,13 +329,22 @@ validation host, or a clone of the published repo — with no absolute path to b
 The model imports the library like any other dependency (see
 [Packages](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)).
 
+**Engine runtimes share the store.** An [engine](../engines/README.md) is the
+runtime a produced game is built on, and its package is staged into the same store
+by the same script. An engine is selected per run rather than declared by a case,
+so seeding vendors the selected engine into `.tcab/engine/` and writes its `file:`
+dependency into the seeded workspace's `package.json`. The version of the staged
+engine package is read at seed time and recorded on the run.
+
 **The lockstep rule** is the same one the baked binaries carry: the staged
 package format must match what `crates/core` and the review UI expect, so **build
-the base image from the same commit as the orchestrator**. The set of names a case
-may declare is validated in `crates/core` (the `SHIPPABLE_PACKAGES` allowlist in
-[`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs)) and must stay in
-lockstep with the script's shippable list — a name in one but not the other either
-fails resolution (a case names a package the image lacks) or bakes an unused package.
+the base image from the same commit as the orchestrator**. The two lists differ by
+design: the script's shippable list is everything staged into the store, while the
+`SHIPPABLE_PACKAGES` allowlist in
+[`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) is the smaller
+set a case may declare with `packages`. An engine package appears in the staging
+list alone, because a run selects it. Every name in the allowlist must appear in
+the staging list, so a case only ever names a package the image carries.
 
 ### Adding a package to the shippable set
 

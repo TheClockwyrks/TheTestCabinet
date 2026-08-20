@@ -21,6 +21,7 @@ pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
 pub mod container;
+pub mod engine;
 pub mod error;
 pub mod event;
 pub mod exec_stream;
@@ -57,8 +58,11 @@ pub mod run_record;
 pub mod salvage;
 pub mod seeding;
 pub mod test_case;
+pub mod toolchain;
+pub mod toolchain_stage;
 pub mod validation;
 pub mod validator;
+pub mod vitest_validator;
 
 #[cfg(test)]
 #[path = "lib.test.rs"]
@@ -106,6 +110,10 @@ pub use code_analysis::{
     CodeTestSummary, CodeTreeBasis, CodeTruncationCap, CodeTypeScriptSummary,
 };
 pub use container::{CliArtifactCollector, CliContainerRuntime};
+pub use engine::{
+    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineManifest, EngineSelection,
+    NONE_SLUG, ResolvedEngine,
+};
 pub use error::{Error, Result};
 pub use event::{
     EventFormat, EventKind, EventParser, EventSink, HarnessEvent, NoopEventSink,
@@ -113,8 +121,8 @@ pub use event::{
 };
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream, RawOutputLine, RepoSeeder,
-    SeedRequest, SeededRepo, WORKSPACE_DIR,
+    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream, PreparedInstall,
+    RawOutputLine, RepoSeeder, SeedRequest, SeededRepo, WORKSPACE_DIR,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
@@ -159,12 +167,18 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, Instrumentation, MatchSpec,
-    MediaKind, ModelSpec, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec,
-    ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSequence, SheetSpec,
-    SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseCatalog, TestCaseVersion,
-    TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile, shippable_package_description,
+    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
+    Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile, ReferenceKind,
+    ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec,
+    SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase,
+    TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile,
+    shippable_package_description,
 };
+pub use toolchain::{
+    TOOLCHAIN_OUTPUT_LIMIT, ToolchainCommandResult, ToolchainCommands, ToolchainSmokeResult,
+    ToolchainSummary, ToolchainTestRun,
+};
+pub use toolchain_stage::ToolchainStage;
 pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
     CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
@@ -210,6 +224,21 @@ pub struct RunRequest {
     /// test type rejects a non-default orchestrator. The resolved slug is recorded
     /// on the run as [`RunSubject::orchestrator_slug`](crate::RunSubject).
     pub orchestrator: OrchestratorSelection,
+    /// Which [`engine`] the produced build is written against — the
+    /// runtime that supplies the frame loop and its delta time, the input
+    /// actions, the audio bus, the asset loader, and the diagnostics overlay.
+    /// Defaults to [`NONE_SLUG`]: nothing is vendored and the build supplies all
+    /// of that itself, which is exactly what every run looked like before engines
+    /// existed.
+    ///
+    /// Unlike [`Self::orchestrator`], which is gated by *test type*, this is gated
+    /// by the **case**: a version declares the engines it supports, and a run
+    /// naming one it does not is refused before any container is started (see
+    /// [`TestCaseVersion::supports_engine`]). The resolved slug is recorded on the
+    /// run as [`RunSubject::engine_slug`](crate::RunSubject), beside the version
+    /// of the runtime that was actually vendored — the engine is a run dimension,
+    /// so a result is only comparable with another result on the same engine.
+    pub engine: EngineSelection,
     /// Optional override for the maximum harness runtime, in seconds. `None`
     /// uses the resolved test case's `max_runtime_seconds` default; `Some`
     /// replaces it for this run (for example `tcab run --max-runtime`). Either
@@ -345,6 +374,81 @@ impl RunRequest {
     }
 }
 
+/// Resolve the [engine] a run selected, and refuse a case that
+/// does not support it.
+///
+/// The two halves are one step because both belong at the same place: the very
+/// top of a run, before anything is rendered, seeded, pulled, or started. An
+/// engine is a run dimension the (frozen) case cannot name for itself, so this
+/// check is the only thing standing between a build written against a runtime the
+/// case's specs and validation never contemplated and a spent harness session —
+/// and a run refused after the container is up has already cost the money the
+/// check exists to save.
+///
+/// The order within it matters too. The selection resolves against the catalogue
+/// *first*, so a typo on `--engine` is reported as the unknown engine it is —
+/// naming every engine that would have worked — rather than as an engine this
+/// particular case happens not to support. [`NONE_SLUG`] then skips the support
+/// check outright: every case supports the engineless run, whether or not its
+/// manifest ever said so.
+fn resolve_engine(
+    engines: &EngineCatalog,
+    request: &RunRequest,
+    test_case: &TestCaseVersion,
+) -> Result<ResolvedEngine> {
+    let engine = engines.resolve(&request.engine)?;
+    ensure_engine_supported(test_case, &engine)?;
+    Ok(engine)
+}
+
+/// Hold an already-resolved engine against what `test_case` declares: first that
+/// the case supports the engine at all, then that the version the host would stage
+/// falls inside the range the case declared for it.
+///
+/// Split out of the run gate so the local commands (`tcab seed`,
+/// `tcab validate`, `tcab prompt`), which resolve an engine for a case without a
+/// [`RunRequest`], apply the *same* gate rather than a re-stated approximation of
+/// it — a second copy is how the two drift and how a `tcab seed` starts producing
+/// a tree a run would have refused.
+///
+/// [`NONE_SLUG`] is held to the case's declared set like any other slug — a
+/// version built against a runtime does not support the engineless run, because
+/// its workspace `package.json` depends on a package an engineless run vendors
+/// nothing into, so admitting it would seed a tree whose install cannot succeed.
+/// Only the VERSION half short-circuits for it: `none` supplies no package, so
+/// there is nothing to compare. An engine declared with no range short-circuits
+/// that half too — the case asked for no constraint, so an unreadable package
+/// store costs it nothing.
+pub fn ensure_engine_supported(test_case: &TestCaseVersion, engine: &ResolvedEngine) -> Result<()> {
+    let Some(support) = test_case.engine_support(engine.slug()) else {
+        return Err(Error::EngineUnsupportedForCase {
+            slug: engine.slug().to_string(),
+            test_case: test_case.slug.clone(),
+            version: test_case.version.clone(),
+            supported: test_case.engine_slugs(),
+        });
+    };
+    if engine.slug() == NONE_SLUG || !support.is_bounded() {
+        return Ok(());
+    }
+    match engine.version() {
+        Some(version) if support.accepts(version) => Ok(()),
+        Some(version) => Err(Error::EngineVersionUnsupportedForCase {
+            slug: engine.slug().to_string(),
+            engine_version: version.to_string(),
+            test_case: test_case.slug.clone(),
+            version: test_case.version.clone(),
+            range: support.range_display(),
+        }),
+        None => Err(Error::EngineVersionUnknown {
+            slug: engine.slug().to_string(),
+            test_case: test_case.slug.clone(),
+            version: test_case.version.clone(),
+            range: support.range_display(),
+        }),
+    }
+}
+
 /// Convert a runtime cap expressed in **hours** — the unit test-case manifests
 /// (`max_runtime_hours`) and the `--max-runtime` CLI flag are authored in — into
 /// whole seconds, the unit the run pipeline (job API, backend, timeouts) carries
@@ -382,6 +486,11 @@ where
     /// Resolves the orchestrator that drives the run's harness sessions. The
     /// built-in orchestrators are embedded, so this is stateless.
     pub orchestrators: OrchestratorCatalog,
+    /// Resolves the [`engine`] the produced build is written
+    /// against. The built-in engines are embedded — the catalogue is closed, with
+    /// no external-directory arm — so this is stateless, and a backend-driven
+    /// driver with no checkout resolves exactly what the CLI does.
+    pub engines: EngineCatalog,
     /// Renders reference mockups to screenshots for seeding and validation.
     pub renderer: Box<dyn ReferenceRenderer>,
     /// Assembles a **gg** run's streamed capture journal into the run's session
@@ -400,6 +509,17 @@ where
     /// because keeping it out of core keeps its parser dependencies out of every
     /// binary that links core. `None` runs no analysis.
     pub analyzer: Option<Box<dyn PostRunStage>>,
+    /// Runs the case's [`[toolchain]`](crate::toolchain) commands over the produced
+    /// implementation and smoke-checks the site they build, at the [post-run stage
+    /// seam](crate::post_run) — **last**, after the analyzer, because it is the one
+    /// stage that writes to the tree the others read (it installs dependencies and
+    /// runs a build).
+    ///
+    /// Injected rather than always-on so that a host with no Node toolchain, and
+    /// every test that does not care, simply runs none — a case's toolchain then
+    /// goes unchecked, which the record's absent `toolchain` block reports honestly
+    /// and which gates nothing.
+    pub toolchain: Option<Box<dyn PostRunStage>>,
     /// Runs the validation pass.
     pub validator: V,
     /// Looks up model prices for the comparable cost.
@@ -469,6 +589,15 @@ where
     /// screenshots. Obtain `specs` from [`TestCaseVersion::seeded_specs`] and
     /// `workspace` from [`TestCaseVersion::workspace_for`] for the chosen
     /// `variant`, which is also the context for rendering any `.hbs` spec.
+    ///
+    /// `engine` is the [engine](crate::engine) the run resolved, and seeding is
+    /// where it becomes real: its runtime package is vendored into the repository,
+    /// its own documentation is copied in beside the specs, and the seeded
+    /// workspace `package.json` gains the matching `file:` dependency. It is also
+    /// the context every `.hbs` spec is rendered against, so a spec can state what
+    /// this case requires under the selected engine. The engineless engine seeds
+    /// none of that, leaving the tree byte-for-byte what it was before engines
+    /// existed.
     #[instrument(
         name = "seed",
         skip_all,
@@ -476,9 +605,11 @@ where
             test_case.slug = %test_case.slug,
             test_case.version = %test_case.version,
             variant = %variant.slug,
+            engine = %engine.slug(),
         ),
         err,
     )]
+    #[allow(clippy::too_many_arguments)]
     pub fn seed(
         &self,
         test_case: &TestCaseVersion,
@@ -487,6 +618,7 @@ where
         workspace: &[WorkspaceFile],
         references: &[RenderedReference],
         live_preview: Option<&LivePreviewEndpoint>,
+        engine: &ResolvedEngine,
     ) -> Result<SeededRepo> {
         self.seeder.seed(&SeedRequest {
             test_case,
@@ -496,6 +628,7 @@ where
             references,
             live_preview,
             prior_game_jam_entries: &self.prior_game_jam_entries,
+            engine: Some(engine),
         })
     }
 
@@ -515,6 +648,7 @@ where
             variant = %variant.slug,
             harness = %request.harness.as_str(),
             model = %request.model_id,
+            engine = %engine.slug(),
             // Recorded once the run's image is resolved (per-run override or the
             // resolved base image). Never carries a secret.
             container.image = tracing::field::Empty,
@@ -530,6 +664,7 @@ where
         provided_files: &[PathBuf],
         request: &RunRequest,
         orchestrator: &Orchestrator,
+        engine: &ResolvedEngine,
         events: &mut dyn EventSink,
         host_gateway: bool,
         run_id: &str,
@@ -885,7 +1020,17 @@ where
         // harness sessions was resolved by the caller and passed in. The runner is
         // handed the base prompt as `TCAB_PROMPT` and wraps it with its own
         // protocol before each session.
-        let base_prompt = render_prompt(test_case, variant, &self.prior_game_jam_entries)?;
+        //
+        // The resolved engine goes in too: the prompt's engine section names the
+        // runtime the build is written against and points at the documentation
+        // seeded from its package, and a template branches on the slug — so the
+        // engineless run renders the prompt it always did.
+        let base_prompt = render_prompt(
+            test_case,
+            variant,
+            &self.prior_game_jam_entries,
+            Some(engine),
+        )?;
 
         // The deadline a multi-session runner checks to stop gracefully: epoch
         // seconds after which the run's maximum runtime is exhausted (run start +
@@ -1027,9 +1172,7 @@ where
             );
             return;
         }
-        let artifacts = ArtifactCollection {
-            repo_path: scratch.path().to_path_buf(),
-        };
+        let artifacts = ArtifactCollection::new(scratch.path().to_path_buf());
         let report = post_run::run_stages(
             std::iter::once(stage),
             &post_run::PostRunContext {
@@ -1283,6 +1426,16 @@ where
         // also surfaces an unknown slug or unreadable directory before any setup.
         let orchestrator = self.orchestrators.resolve(&request.orchestrator)?;
 
+        // The engine gate, beside the orchestrator's and for the same reason: the
+        // selection must resolve, and the case must support what it names, before a
+        // single container second is spent. Unlike the orchestrator the gate is the
+        // *case's* — a version declares the engines its specs are written for and
+        // its validation drives, so running it under any other would score the build
+        // against checks meant for a different runtime. Resolving here also gives
+        // the rest of the run the manifest itself, which the seeder vendors from,
+        // the prompt and specs render against, and the record is attributed to.
+        let engine = resolve_engine(&self.engines, request, test_case)?;
+
         // Select the variant up front so its specs are what gets seeded and its
         // slug is what the run record attributes the run to.
         let variant = test_case.variant(&request.variant)?.clone();
@@ -1344,6 +1497,7 @@ where
             &workspace,
             &references,
             live.as_ref().map(LivePreview::endpoint),
+            &engine,
         )?;
         // The workspace-relative paths of everything the test case provided — its specs
         // (in seeded order) then its rendered reference images (under `reference/`, the
@@ -1369,6 +1523,7 @@ where
                 &provided_files,
                 request,
                 &orchestrator,
+                &engine,
                 events,
                 live.is_some(),
                 run_id,
@@ -1389,7 +1544,7 @@ where
             SystemStage::Teardown,
             SystemStatus::Completed,
         ));
-        let artifacts = artifacts?;
+        let mut artifacts = artifacts?;
 
         // The measured run duration excludes any time the run pod spent queued
         // for cluster capacity before it started: that is wall-clock the run was
@@ -1446,9 +1601,17 @@ where
         let run_dir = self.output_dir.join(run_id);
         std::fs::create_dir_all(&run_dir)?;
         let post_run = post_run::run_stages(
-            [self.session_assembler.as_deref(), self.analyzer.as_deref()]
-                .into_iter()
-                .flatten(),
+            [
+                self.session_assembler.as_deref(),
+                self.analyzer.as_deref(),
+                // Last, and the ordering is load-bearing: this stage installs
+                // dependencies and runs a build *in* the collected tree, so anything
+                // that measures "the code the model wrote" must have measured it
+                // already.
+                self.toolchain.as_deref(),
+            ]
+            .into_iter()
+            .flatten(),
             &post_run::PostRunContext {
                 run_id,
                 run_dir: &run_dir,
@@ -1467,6 +1630,22 @@ where
                 "post-run analysis wrote the run's artifacts",
             );
         }
+
+        // A stage that ran the case's install over this very tree says so here, and
+        // the tree's description carries it into validation, which runs the same
+        // install. A lockfile install clears `node_modules` and rebuilds it from the
+        // lockfile, so a second one only reproduces the state the first left; the
+        // recorded step is reported instead. The stamp is made here, on the value
+        // about to be validated, so it can only ever describe the tree in hand.
+        artifacts.prepared_install = post_run.prepared_install.clone();
+
+        // …and the engine the tree was built on, stamped on the same value for the
+        // same reason. The engine is vendored into the seeded tree, so which runtime a
+        // build was written against is a property of the tree rather than of the call
+        // that validates it, and validation reads it from here to decide whether the
+        // case's validators run as a vitest project or its instrumentation is driven
+        // in a browser.
+        artifacts.engine = Some(engine.clone());
 
         // The proof-of-implementation artifacts requested for this variant; the
         // validator records whether each turned up in the produced tree.
@@ -1507,6 +1686,15 @@ where
                 harness_slug: request.harness,
                 harness_version: outcome.harness_version.clone(),
                 orchestrator_slug: orchestrator.manifest.slug.clone(),
+                // The *resolved* manifest's slug, exactly as the orchestrator's is:
+                // what the run was actually built on, not what the request happened
+                // to spell. `none` for a run that vendored no runtime.
+                engine_slug: engine.slug().to_string(),
+                // …and the version of the runtime that was actually vendored, read
+                // out of the staged package while seeding. `None` when the engine
+                // vendors none, which is the only honest answer — there is no
+                // package to have a version.
+                engine_version: seeded.engine_version.clone(),
                 model_id: request.model_id.clone(),
                 // Record the gg run's exact configuration on the run so a result is
                 // traceable to it and result aggregation can slice by capability set.
@@ -1554,6 +1742,12 @@ where
             // field off the record entirely, which is the honest encoding of "this run
             // was never analysed" as distinct from "this run measured nothing".
             code_analysis: post_run.code_analysis,
+            // What the case's `[toolchain]` commands did, when it declares any. This
+            // is the one post-run block a run's rating depends on: a `typecheck` that
+            // ran and failed gates the run (see `RunRecord::gated_broken`). It is
+            // still only *recorded* here — the engine renders no verdict from it, and
+            // the terminal state below is decided exactly as it was before.
+            toolchain: post_run.toolchain,
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1724,6 +1918,15 @@ fn build_failed_record(
     } else {
         request.orchestrator.slug.clone()
     };
+    // The engine the run was *launched* with, since a failure record is built from
+    // the request alone — there is no resolved manifest here, and the failure may
+    // well be that the engine would not resolve at all. An empty slug means the
+    // request never named one, which is the engineless run.
+    let engine_slug = if request.engine.slug.is_empty() {
+        NONE_SLUG.to_string()
+    } else {
+        request.engine.slug.clone()
+    };
     RunRecord {
         id: id.to_string(),
         started_at: started_at.format(&Rfc3339).unwrap_or_default(),
@@ -1746,6 +1949,12 @@ fn build_failed_record(
             harness_slug: request.harness,
             harness_version: None,
             orchestrator_slug,
+            engine_slug,
+            // A run that failed before (or while) seeding vendored no runtime, and
+            // the version is read out of the staged package at seed time — so there
+            // is nothing to record. Absent, never a guess from the slug: the slug is
+            // stable while the runtime behind it moves.
+            engine_version: None,
             model_id: request.model_id.clone(),
             // A gg run that failed before producing a record still records the
             // configuration it was launched with, so even a failed gg attempt is
@@ -1787,6 +1996,7 @@ fn build_failed_record(
         // post-run seam it would have been analysed at is downstream of the failure.
         // Absent, never an empty measurement.
         code_analysis: None,
+        toolchain: None,
     }
 }
 

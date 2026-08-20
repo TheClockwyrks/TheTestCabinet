@@ -22,15 +22,13 @@ engine and the per-power packages.
 
 ## Layout
 
-- `test-case.toml` — the manifest: seeded specs, references, proofs, checks, scoring
-  domains, and the reviewer checklist.
+- `test-case.toml` — the manifest: seeded specs, scoring domains, and the reviewer
+  checklist.
 - `specs/` — the **seeded** specification, decomposed by concern (`overview`,
   `world`, `factions`, `units`, `command`, `combat`, `recon`, `battle`, `flow`,
-  `assets`, `proof`, and `mode`).
+  `assets`, and `mode`).
 - `variants/base.toml` — the single **Open Battle** variant (the default).
 - `prompt.hbs` — the instruction rendered per run (not seeded).
-- `reference/` — the mockup **source** (theme + views), rendered to screenshots as
-  visual targets; the source is never seeded.
 - `assets/` — the **provided unit models** the build loads (added when authored; see
   `assets/README.md`).
 - `workspaces/base/` — starter files seeded into the run root (a `package.json`

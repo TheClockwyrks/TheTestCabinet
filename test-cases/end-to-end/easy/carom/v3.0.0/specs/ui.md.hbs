@@ -1,0 +1,91 @@
+# Carom — Menus, screens, and navigation
+
+This file defines the game's screens, the menus, how a player moves between them,
+the scoring and match flow that drives those transitions, and audio. The
+moment-to-moment play once a match is running — the paddle controls, the HUD, and
+(in Solo) the AI opponent — is defined per way to play in
+`specs/modes/single-player.md` and `specs/modes/versus.md`. The field geometry is
+in `specs/playfield.md`, and the ball physics and spin mechanic in
+`specs/balls.md`. Every figure and every piece of screen copy below is exported
+from `src/constants.ts` under the name it is given here.
+
+## Scoring and match flow
+
+- A point is scored when a ball fully passes a goal edge (`x < 0` or
+  `x > FIELD_W`). The point goes to the player on the opposite side and increments
+  their score.
+- How a ball is served, at match start and after a point, is defined in
+  `specs/balls.md`.
+- First to `WIN_SCORE` (`11`) points wins, and the winner must lead by at least
+  `WIN_LEAD` (`2`). If the score reaches `10-10`, play continues until one player
+  is two points ahead. `state.winner` holds the winning side once a match is over,
+  and is `null` until then.
+
+## Screens and navigation
+
+The game is a small state machine, and `state.screen` names the state it is in.
+Each state has a clear screen, and the player moves between them as below.
+
+1. `title` — the main menu. It shows the title `TITLE_TEXT` (`CAROM`), the tagline
+   `TAGLINE_TEXT` (`NEON PADDLE DUEL`), and a vertical menu of `TITLE_ITEMS`
+   (`SOLO`, `VERSUS`, `HOW TO PLAY`) in that order. The item at `state.menuIndex`
+   is highlighted, drawn distinctly from the others. The field furniture (paddles,
+   ball, obstacles, net) may show dimmed behind the menu. `SOLO` starts a
+   single-player match (`specs/modes/single-player.md`); `VERSUS` starts a
+   two-player match (`specs/modes/versus.md`); `HOW TO PLAY` opens the how-to-play
+   screen.
+2. `howto` — how to play. It names the controls from
+   `specs/modes/single-player.md` and `specs/modes/versus.md` and describes the
+   spin and obstacle mechanics. `back` returns to the title.
+3. `playing` — the live game: both paddles, the ball with its trail, both
+   obstacles, the net, the two scores near the top, and a small mode label. What
+   the player does here, and the HUD, are defined per way to play in
+   `specs/modes/single-player.md` and `specs/modes/versus.md`.
+4. `countdown` — the pre-serve hold before a ball is launched, rendered over the
+   live field with the same furniture. When it applies is defined in
+   `specs/balls.md`. It becomes `playing` when the ball launches.
+5. `paused` — reachable from `countdown` or `playing`. It offers `PAUSE_ITEMS`
+   (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order. The field is visible but
+   frozen behind the pause menu: no ball, paddle, or timer advances. `RESUME`
+   returns to `state.resumeScreen`, the screen the pause interrupted; `RESTART`
+   starts the same mode over; `QUIT TO MENU` returns to `title`.
+6. `matchover` — shown when a player wins. It displays the winning side and the
+   final score, and offers `MATCHOVER_ITEMS` (`PLAY AGAIN`, `MENU`) in that order.
+
+## Menu navigation
+
+Keyboard only, through the same registered engine actions a match uses. On the
+title, the how-to-play screen, the pause menu, and the match-over screen: either
+side's up and down actions (`p1-up`/`p1-down` or `p2-up`/`p2-down`) move
+`state.menuIndex`, `confirm` accepts the highlighted item, and `back` goes back.
+Those actions, and the keys bound to them, are held in `ACTIONS` and `BINDINGS`
+and defined per way to play in `specs/modes/single-player.md` and
+`specs/modes/versus.md`, alongside the controls for playing a match.
+
+## Audio
+
+Audio plays through the engine's cue bus. Define and play exactly the four cues
+in `CUES`, under exactly these names, one per event:
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `paddle-hit` | `CUES.paddleHit` | A ball strikes a paddle. |
+| `wall-bounce` | `CUES.wallBounce` | A ball reflects off the top or bottom wall. |
+| `obstacle-bounce` | `CUES.obstacleBounce` | A ball bounces off an obstacle. |
+| `score` | `CUES.score` | A point is scored. |
+
+Each is a distinct short blip, so the four events are told apart by ear. Each is
+played on the frame its event happens, from `update`.
+
+Muting and the first-interaction unlock are the engine's, so the game implements
+neither: it binds the `mute` action (`specs/modes/single-player.md` and
+`specs/modes/versus.md`) to the engine's mute bit and toggles it from any screen,
+then mirrors that bit into `state.muted` every frame. The game stays fully
+playable with sound muted.
+
+## Out of scope
+
+- Network or online multiplayer.
+- Touch or gamepad input. This version is keyboard only.
+- Destructible obstacles. The obstacles are never destroyed, removed, or broken.
+- Persistence of scores or settings between sessions.

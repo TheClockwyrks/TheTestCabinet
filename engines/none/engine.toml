@@ -1,0 +1,26 @@
+# The "none" engine definition — the baseline every test case supports.
+#
+# An engine is the runtime a produced game is built on: the frame loop and the
+# delta time it hands the game, the input actions, the audio bus, the asset
+# loader, and the on-screen diagnostics. It is a *run dimension*, selected per
+# run alongside the test case, variant, harness, and model — a case declares only
+# which engines it supports.
+#
+# This engine vendors nothing. Selecting it leaves the build supplying every one
+# of those surfaces itself. It is the default, and every case supports it whether
+# the case declares it or not, so it omits `package`, `handle`, and `docs` — the
+# three fields only an engine with a runtime to deliver can answer.
+#
+# See `engines/README.md` and the design doc at
+# `apps/docs/src/content/docs/components/core/engines.md`.
+
+# Stable slug, used throughout run records and the site. Must match the folder
+# name.
+slug = "none"
+
+# Human-readable name, shown by `tcab engines`.
+name = "None"
+
+# What the engine provides, for display. For this one, nothing — which is the
+# point.
+description = "No runtime. The build supplies its own frame loop, input, audio, assets, and diagnostics."

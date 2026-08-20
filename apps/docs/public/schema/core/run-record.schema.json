@@ -578,7 +578,7 @@
       "type": "object"
     },
     "DebugScriptResult": {
-      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nA script that could be run but did not complete against a conformant build (a\nmissing handle, a thrown call, a malformed return, or a declared output the build\nnever produced) is recorded with [`ran`](Self::ran) `false`. That **fails the\nchecklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry\nis synthesized for it, pre-filled into the review like any auto verdict and\noverridable by the reviewer — rather than failing the whole run: a build with a\nbroken debug API is still reviewed, and is scored down by exactly the points its\nchecks could not answer. A script the host could not run *at all* (no browser) is\nnot recorded here — that degrades like a [check](CheckResult).",
+      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nA script that could be run but did not complete against a conformant build (a\nmissing handle, a thrown call, a malformed return, or a declared output the build\nnever produced) is recorded with [`ran`](Self::ran) `false`. That **fails the\nchecklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry\nis synthesized for it, pre-filled into the review like any auto verdict and\noverridable by the reviewer — rather than failing the whole run: a build with a\nbroken debug API is still reviewed, and is scored down by exactly the points its\nchecks could not answer. A check the host could not run *at all* decided nothing\nabout the build and is held apart by\n[`precondition_unmet`](Self::precondition_unmet).",
       "properties": {
         "categoryTitle": {
           "default": "",
@@ -609,7 +609,7 @@
         },
         "preconditionUnmet": {
           "default": false,
-          "description": "Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than\na debug-API contract failure.\n\nA script's `arrange` often searches the model's own world for a spot to pose\nits scenario — a blind corner in an invented maze, a legal build tile. That\nsearch can come up empty against a fully conformant build: every call was\nanswered correctly, there was simply no such spot. That is INCONCLUSIVE about\nthe model, so it is held apart from a genuine contract failure: no failed\nverdict is synthesized for it and the point is left for the reviewer to decide\nby hand. Only ever `true` alongside `ran == false`.",
+          "description": "Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather\nthan a contract failure the build earned.\n\nTwo outcomes set it, and both leave the point unanswered: no failed verdict is\nsynthesized, [scoring](crate::comparison::automated_only_score) skips the point\nentirely, and the reviewer decides it by hand.\n\nThe first is an UNMET PRECONDITION. A check often searches the model's own\nworld for a spot to pose its scenario — a blind corner in an invented maze, a\nlegal build tile. That search can come up empty against a fully conformant\nbuild: every call was answered correctly, there was simply no such spot. A\n[vitest validator](crate::vitest_validator) says the same thing by skipping\nevery check in its suite.\n\nThe second is a check the host could not execute at all, such as a validator\nproject with no vitest to run it or a suite run that exceeded its cap. The\n[`detail`](Self::detail) names the reason. Only ever `true` alongside\n`ran == false`.",
           "type": "boolean"
         },
         "ran": {
@@ -1526,6 +1526,15 @@
     "RunSubject": {
       "description": "The subject of a run: what was run, with what, against which model.",
       "properties": {
+        "engineSlug": {
+          "default": "none",
+          "description": "The slug of the [engine](crate::engine) the produced build was written\nagainst (for example `simple-2d`), or `none` when the build supplied its\nown frame loop, input, audio, assets, and diagnostics.\n\nThe engine is a **run dimension**, not a property of the case: the same\ncase version can be run on several engines, and a result is only\ncomparable with another result on the same engine, so the selection is\nrecorded here beside the harness and the orchestrator rather than being\ninferred from the case. Defaults to `none` so records written before\nengine selection existed — and hand-written fixtures — still deserialize,\nwhich is also the truth about them: they had no runtime.",
+          "type": "string"
+        },
+        "engineVersion": {
+          "description": "The version of the engine runtime that was vendored into the run\nrepository, read out of the staged package at seed time.\n\nSeparate from [`Self::engine_slug`] because an engine's contract moves\nunder a stable slug: two `simple-2d` runs a release apart were given\ndifferent frame, input, or host behaviour, and only the version\ndistinguishes them. `None` for a run whose engine vendors no runtime\n(`none` has no package, so there is no version to read) and for records\nwritten before engine selection existed.",
+          "type": ["string", "null"]
+        },
         "ggCapabilitySet": {
           "anyOf": [
             {
@@ -1835,6 +1844,165 @@
       },
       "type": "object"
     },
+    "ToolchainCommandResult": {
+      "description": "What one toolchain command did.\n\n[`ran`](Self::ran) distinguishes *the command exited non-zero* from *the command\nwas never started* — a declared command whose prerequisite install failed did not\nfail the check, it never got the chance, and reporting that as a failure would be\na fabricated verdict. Only a command that ran and exited non-zero can gate.",
+      "properties": {
+        "command": {
+          "description": "The command as the manifest declared it, run verbatim through `sh -c`.",
+          "type": "string"
+        },
+        "detail": {
+          "description": "Why the command did not run, when it did not. `None` for a command that ran,\nwhatever it exited with.",
+          "type": ["string", "null"]
+        },
+        "exitCode": {
+          "description": "The process exit status, or `None` when the command never ran (or was killed\nby a signal, which leaves no code).",
+          "format": "int32",
+          "type": ["integer", "null"]
+        },
+        "output": {
+          "description": "A bounded excerpt of the command's combined output, capped at\n[`TOOLCHAIN_OUTPUT_LIMIT`] bytes. Empty when the command produced none.",
+          "type": "string"
+        },
+        "ran": {
+          "description": "Whether the command was started at all. `false` when a prerequisite step\nfailed, when no shell could be spawned, or when the stage ran out of time.",
+          "type": "boolean"
+        },
+        "succeeded": {
+          "description": "Whether the command ran and exited zero.",
+          "type": "boolean"
+        },
+        "truncated": {
+          "description": "Whether [`output`](Self::output) is an excerpt rather than the whole of what\nthe command printed.",
+          "type": "boolean"
+        }
+      },
+      "required": ["command", "ran", "succeeded", "output", "truncated"],
+      "type": "object"
+    },
+    "ToolchainSmokeResult": {
+      "description": "The build smoke check: does the site the build produced actually boot?\n\nDistinct from — and weaker than — validation's load check, which decides review\npoints. This one answers a single question at the moment the toolchain ran: the\nbuilt site was served, opened in headless Chromium, and either painted a first\nframe with a clean console or it did not.",
+      "properties": {
+        "booted": {
+          "description": "Whether the page loaded and its scripts got as far as a first animation\nframe.",
+          "type": "boolean"
+        },
+        "consoleErrors": {
+          "description": "Console errors and uncaught page errors observed while the page booted, each\ntruncated to a readable length and capped in number. Empty is the clean case.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "detail": {
+          "description": "Why the check could not run, or what went wrong while it did.",
+          "type": ["string", "null"]
+        },
+        "painted": {
+          "description": "Whether that first frame drew anything — a canvas with more than one distinct\npixel, or a laid-out DOM.",
+          "type": "boolean"
+        },
+        "ran": {
+          "description": "Whether the check could be performed at all: the build produced an output\ndirectory and a browser was available to open it. `false` degrades — a host\nwith no Node, Playwright or Chromium reports *not checked*, never *failed*.",
+          "type": "boolean"
+        }
+      },
+      "required": ["ran", "booted", "painted"],
+      "type": "object"
+    },
+    "ToolchainSummary": {
+      "description": "Everything the [toolchain stage](crate::toolchain_stage) recorded for a run,\ndestined for [`RunRecord::toolchain`](crate::run_record::RunRecord::toolchain).\n\nAbsent from a run whose case declares no `[toolchain]` table, and from a run\nwhose tree never reached the host — absence means *not checked*, which the\nrecord's `Option` is what encodes.",
+      "properties": {
+        "format": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainCommandResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional format check's result, when the case declared one."
+        },
+        "install": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The dependency install the stage ran before the commands, so that each\ncommand had the dependencies it needs. Reported in its own right because a\nfailed install is why every command below it reports `ran: false`."
+        },
+        "lint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainCommandResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional lint command's result, when the case declared one."
+        },
+        "smoke": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainSmokeResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The build the smoke check served, and the check itself. `None` when the stage\ndid not get as far as building."
+        },
+        "test": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainTestRun"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional test command's result and figures, when the case declared one."
+        },
+        "typecheck": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The gating typecheck. Always present when the case declares a toolchain,\neven when it never ran — *why* it did not run is the whole point of\n[`ToolchainCommandResult::ran`]."
+        }
+      },
+      "required": ["install", "typecheck"],
+      "type": "object"
+    },
+    "ToolchainTestRun": {
+      "description": "The optional `test` command's result, plus the figures its output reported.\n\nThe counts and the coverage are parsed **defensively** out of whatever the\ncommand printed: a runner that reports neither is not a failure, it is a runner\nthat reports neither, and every figure here is therefore an `Option` whose\nabsence means *not reported* rather than *zero*. A zero here is only ever a zero\nthe tool actually printed.",
+      "properties": {
+        "coveragePercent": {
+          "description": "Line coverage as a percentage (`0.0..=100.0`), read from the coverage\nsummary table's `All files` row, when the command printed one.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "result": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The command, its exit status and its bounded output."
+        },
+        "testsFailed": {
+          "description": "How many failed, when the output said.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "testsPassed": {
+          "description": "How many passed, when the output said.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "testsTotal": {
+          "description": "How many tests ran in total, when the output said.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["result"],
+      "type": "object"
+    },
     "UiElementResult": {
       "description": "The validation result for one element of a `ui` run: its emitted flattened PNG,\nits decoded dimensions, and any authored nine-slice.",
       "properties": {
@@ -2066,6 +2234,17 @@
       },
       "description": "How many times each tool the harness's agent invoked was called over the\nrun, keyed by lowercased raw tool name — **including** tools recognized and\nconsumed without emitting an event (the todo tools). Lifted from\n[`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so\na harness comparison can diagnose tool-call behavior (a re-reading or\nover-shelling harness shows here) that a count derived from the event stream\nalone would miss. Defaulted and omitted when\nempty so records written before the field existed still deserialize, and a\ngg run — whose per-tool detail comes from its own telemetry — carries none.",
       "type": "object"
+    },
+    "toolchain": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolchainSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the case's [`[toolchain]`](crate::toolchain) commands did when they were\nrun over the produced implementation at the\n[post-run seam](crate::post_run), together with the build smoke check.\n\n**This is the one analysis block that can influence a run's rating**, and it\ndoes so through exactly one field: a `typecheck` that ran and exited non-zero\n[gates](crate::toolchain::ToolchainSummary::gates) the run, which rates it\n`broken` and scores it zero, because code that does not compile is not\nreviewable. The lint, format and test results are recorded and gate nothing.\nThe gate is applied where the aggregate rating and score are computed\n([`crate::review::gated_rating`]), never by rewriting a reviewer's marks.\n\nAbsent for a run whose case declares no `[toolchain]` table, for a canceled\nrun, for a run whose tree never reached the host, and for every record written\nbefore the field existed. Absence is *not checked*, and it never gates — the\ndistinction the `Option` exists to keep."
     },
     "tooling": {
       "$ref": "#/$defs/RunTooling",

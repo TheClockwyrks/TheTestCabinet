@@ -25,6 +25,16 @@ the schema they are declared in see
 automated and human signals see
 [Evaluation](/testing/end-to-end/evaluation/).
 
+## Scope
+
+This contract governs a run with no [engine](/components/core/engines/) selected,
+which is every case's baseline. The build supplies the whole instrumentation
+surface, so the reliability rules below apply in full.
+
+An engine supplies the same control and inspection from its own host interface.
+A run under an engine is driven through that interface, and the case declares only
+the scenario setup that is specific to its game.
+
 ## The reliability principle
 
 Instrumentation is code the model under test writes, and anything the model
@@ -97,6 +107,15 @@ lifecycle is uniform across the catalog.
   per-entity state of every live object, and whatever else a check asserts on.
   It is the same ground truth the [debug overlay](#the-debug-overlay) shows a
   human, and it is a pure read.
+
+A case whose review items declare validation scripts exposes one more, because the
+runtime driving those scripts holds the clock to decide a verdict and hands it back
+to record the media at the speed the game runs.
+
+- `setAutoStep(auto)` chooses which clock drives the game. `setAutoStep(false)`
+  holds the simulation still, so `step()` is the only thing that advances it, and
+  `setAutoStep(true)` returns the game to its own frame loop. It changes no game
+  state.
 
 ### Control operations
 

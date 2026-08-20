@@ -83,20 +83,21 @@ For Gyre this meant widening the static-obstacle statements in the playfield,
 physics, and flow specs so the gyre branch can carry the moving, rotating
 obstacle rules.
 
-### 4. Add the per-variant `title` reference
+### 4. Give the variant a workspace, if its state differs
 
-The main menu usually differs per variant, so the `title` view is
-variant-specific. A reference declares exactly one of:
+A variant may declare its own `workspace`, which REPLACES the common one rather
+than layering on it — so a variant workspace is the whole seeded project, not a
+patch over the case's. Declare one only when the variant genuinely changes what
+the starter project must hold, and build it from the common workspace so the two
+stay identical everywhere they are not deliberately different.
 
-- `media`, a static file seeded and served unchanged, captured from this
-  variant's own reference implementation. This is what `carom` uses:
-  `reference = [{ view = "title", media = "reference/screenshots/gyre/title.png" }]`.
-- `path`, an HTML mockup rendered to a PNG. The harness seeds the screenshot and
-  never the HTML source.
+Gyre needs one: its state carries the obstacle clock and both obstacles' live
+poses, and its debug API adds a `setObstacleClock` operation, so
+`workspaces/gyre/` is `workspaces/base/` plus those three additions and the
+constants naming the sway and spin figures.
 
-A view slug must not be declared both commonly and by a variant. Any view a
-`[[check]]` baselines against must be supplied by every variant, which for
-`carom` is the `title` view.
+A variant that changes only the rules, and not the shape of the state or the
+debug surface, declares no `workspace` and seeds the common one.
 
 ### 5. Create the variant file and list it
 
@@ -111,8 +112,13 @@ trailing `.hbs` stripped.
 slug = "gyre"
 name = "Gyre"
 description = "The obstacles sway and rotate, so the ball bounces off tilted faces."
-reference = [{ view = "title", media = "reference/screenshots/gyre/title.png" }]
-reference_implementation = "reference-impl/gyre"
+workspace = "workspaces/gyre"
+
+# Keyed by engine slug, because the build a reference demonstrates differs under
+# each. The table must name every engine the case supports and nothing else, so
+# with one supported engine, naming it alone IS the complete table.
+[reference_implementation]
+simple-2d = "reference-impl-simple-2d/gyre"
 
 # A category of graded points that only this variant's mode introduces. The case
 # manifest declares `[review] format = 2`; a variant inherits it and must not
@@ -125,7 +131,7 @@ title = "Gyre"
 id = "oriented-bounce"
 title = "Oriented bounces"
 description = "The ball bounces off the obstacles' tilted faces at oriented angles."
-validation = { script = "validation/gyre/oriented-bounce.mjs", outputs = [
+validation = { script = "validation/simple-2d/gyre/oriented-bounce.test.ts", outputs = [
   { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "video" },
 ] }
 ```
@@ -134,11 +140,16 @@ validation = { script = "validation/gyre/oriented-bounce.mjs", outputs = [
 # test-case.toml: add the new file to the ordered list
 variants = [
   "variants/base.toml",
-  "variants/frenzy.toml",
-  "variants/multi.toml",
   "variants/gyre.toml",
 ]
 ```
+
+A `script` path on an engine-backed case must carry the engine segment —
+`validation/<engine>/…` — because the runner stages the directory for the run's
+engine into the built workspace at `validation/` and reaches a suite by dropping
+exactly that segment. A path that omits it names no suite of the run's engine, so
+the point is reported as undecided and left to the reviewer rather than failed.
+See [The Suite](/engines/simple-2d/validators/the-suite/).
 
 Rules enforced at resolution:
 
@@ -170,8 +181,19 @@ tcab prompt --test-case <slug> --version <version> --variant <new-variant>
 ```
 
 Read the seeded output to confirm the new variant's set is self-contained, then
-lint the specs with `npm run lint:specs`. The backend's definition store is
-immutable per case version, so force a re-ingest before running:
+lint the specs with `npm run lint:specs`.
+
+Every objective point the variant adds names a
+[validator](/components/core/validation/#validators), and a validator is only
+worth having once it has been run against the variant's own reference
+implementation: a validator that fails there is a broken validator, not a failing
+build. Author the variant's reference implementation alongside its validators,
+run the suite against it, and then check each validator actually discriminates by
+breaking the rule it covers in a scratch copy of that build and confirming that
+exactly the expected check fails.
+
+The backend's definition store is immutable per case version, so force a
+re-ingest before running:
 
 ```sh
 scripts/reingest.sh --force <slug>

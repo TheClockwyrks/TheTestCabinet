@@ -148,6 +148,7 @@ describe("withArmRunIds", () => {
       version: "v1.0.0",
       variant: "base",
       orchestratorSlug: "one-shot",
+      engineSlug: "none",
     },
     arms: [
       {

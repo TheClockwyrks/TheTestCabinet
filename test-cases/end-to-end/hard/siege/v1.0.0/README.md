@@ -31,19 +31,14 @@ largest build.
 
 ## Layout
 
-- `test-case.toml` — the manifest (metadata, `[build]`, common specs, references,
-  proofs, the deploy-screen check, scoring domains, and the reviewer checklist).
+- `test-case.toml` — the manifest (metadata, `[build]`, common specs, scoring
+  domains, and the reviewer checklist).
 - `specs/` — the seeded specification, decomposed by concern: `overview`,
   `world` (arena + terrain + redoubts), `phases` (survival loop + escalation),
   `combat` (classes + weapons + Scourge roster/tiers), `ai` (pathfinding + enemy +
-  squad), `flow` (states, controls, HUD), `proof`, and `standard` (the
-  Last Stand mode).
+  squad), `flow` (states, controls, HUD), and `standard` (the Last Stand mode).
 - `variants/base.toml` — the single default variant (Last Stand).
 - `prompt.hbs` — the rendered build instruction (not seeded).
-- `reference/` — mockup **source** for the `title`, gameplay, and game-over views
-  and the shared `theme.css`; rendered to screenshots by the harness, never seeded
-  directly. The mockups do not fake the 3D view — the gameplay mockup is HUD-only —
-  and exist to pin the palette, HUD, and type.
 - `workspaces/base/` — the seeded starter project (a `package.json` pinning
   Playwright, plus a `.gitignore`).
 - `description.md`, `README.md` — site/human prose (not seeded).

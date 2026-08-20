@@ -1,0 +1,107 @@
+# Carom — Balls, serving, and physics
+
+This file defines how many balls are in play and how they are served, and how a
+ball moves and interacts with the field: the physics loop, collision, and the
+paddle bounce and spin mechanic. It builds on the geometry in
+`specs/playfield.md` and the coordinate system in `specs/overview.md`. Every
+figure below is exported from `src/constants.ts` under the name it is given here.
+
+## The ball
+
+One ball is in play, the ball from `specs/playfield.md`: radius `BALL_R`, serve
+speed `SERVE_SPEED`, a `SPEED_MULT` multiplier per paddle hit up to the
+`SPEED_CAP` cap, and the spin mechanic below.
+
+## Physics
+
+The engine hands the game the real elapsed time for each frame and imposes no
+timestep of its own. Every rate in this specification — the speeds in px/s, the
+spin acceleration in px/s^2, the spin decay per second, and the countdown in
+seconds — is therefore integrated against the delta time the game is given, and
+never against a count of frames. The outcome of a scenario does not depend on how
+that elapsed time was divided into frames: the same interval delivered as one long
+step, as many short ones, or as an uneven mixture reaches the same state. The core
+is render-free: state advances purely from the elapsed time it is handed, with no
+dependence on the canvas, on wall-clock time, or on the renderer. Any randomness
+runs off the generator seeded from `state.rngState`. These properties let the game
+be driven and reproduced from code, which `specs/instrumentation.md` relies on to
+drive and inspect it.
+
+Each frame, for the ball:
+
+1. Apply the spin acceleration (below) to the velocity.
+2. Advance position by `velocity * dt`.
+3. Resolve collisions with walls, paddles, and obstacles.
+
+## Collision
+
+Resolve the ball against the top and bottom walls, the two paddles, and the two
+obstacles. Treat the ball as a circle of radius `BALL_R` and each paddle as an
+axis-aligned rectangle `PADDLE_W` by `PADDLE_H`.
+
+- Top and bottom wall: reflect the vertical velocity (`vy -> -vy`) and push the
+  ball back inside the field. Speed is unchanged.
+- Obstacle: resolve the ball against the two obstacles as `specs/playfield.md`
+  defines. An obstacle bounce leaves speed unchanged and preserves spin, so the
+  spin keeps curving the ball after the bounce.
+- Paddle: see the next section. A paddle hit is the only collision that changes
+  speed and imparts spin.
+
+The ball never passes through a paddle, wall, or obstacle, even at `SPEED_CAP`.
+
+## Paddle bounce and spin
+
+When the ball strikes a paddle:
+
+1. Reflection angle from contact point. Let
+   `offset = (ballCenterY - paddleCenterY) / PADDLE_HALF`, clamped to `[-1, 1]`.
+   The outgoing angle from horizontal is `theta = offset * MAX_BOUNCE_ANGLE`
+   (`55deg`). Hitting the paddle center sends the ball straight across; hitting
+   the top or bottom edge sends it off at `MAX_BOUNCE_ANGLE`.
+
+2. Speed. `speed = min(speed * SPEED_MULT, SPEED_CAP)`. The horizontal direction
+   flips to point toward the opposing goal, giving new velocity
+   `vx = +/- speed * cos(theta)` (sign toward the opponent) and
+   `vy = speed * sin(theta)`.
+
+3. Spin from paddle motion. The paddle's vertical velocity at contact adds spin:
+   `spin += paddleVy * SPIN_FROM_PADDLE` (`0.85`), then clamp `spin` to
+   `[-SPIN_CLAMP, SPIN_CLAMP]` (`+/-900`). A paddle moving downward as it strikes
+   curves the ball one way, a paddle moving upward curves it the other, and a
+   stationary paddle imparts no new spin.
+
+Spin is a signed scalar carried by the ball, `state.ball.spin`. Each frame it
+applies a lateral acceleration perpendicular to the ball's direction of travel, of
+magnitude `|spin|` (in px/s^2), curving the path toward the side determined by the
+sign of `spin`. Spin decays toward zero exponentially, losing half its magnitude
+every `SPIN_HALFLIFE` (`0.8`) seconds (`spin *= 0.5 ^ (dt / SPIN_HALFLIFE)` per
+frame). It persists across wall and obstacle bounces and changes only through
+paddle hits and decay.
+
+A paddle swiped at the moment of contact bends the ball's flight, letting a
+player curve shots around the obstacles or wrong-foot the opponent.
+
+## Serving
+
+At the start of the match and after each point, the ball spawns at the field
+center `(FIELD_CX, FIELD_CY)` and holds there while `state.holdTimer` counts down
+from `HOLD_TIME` (`1.0` second) to `0` — the Countdown screen in `specs/ui.md`,
+rendered over the field. On the first frame the timer reaches `0`, the ball is
+served at `SERVE_SPEED`:
+
+- The serve travels toward `state.receiver`, the player who was just scored on.
+  The first serve of a match always travels toward player one (`"left"`), so the
+  match opens consistently.
+- The serve leaves at `SERVE_ANGLE` (`12deg`) from horizontal, so the volley is
+  never perfectly flat. Whether that angle points up or down the field is yours;
+  either way the serve is within `SERVE_MAX_ANGLE` (`30deg`) of horizontal.
+
+Nothing else launches the ball. `specs/instrumentation.md` ends the hold early by
+setting `holdTimer` to `0`, and the serve that follows is this one.
+
+## After a point
+
+When a point is scored (a ball crosses a goal edge, per `specs/ui.md`), the rally
+ends. The field holds through the countdown at the center, then the ball is
+re-served toward the player who was just scored on.
+

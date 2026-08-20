@@ -813,7 +813,7 @@ impl ArtifactCollector for KubernetesArtifactCollector {
                     let unpack = unpack_archive_file(&archive_path, &dest);
                     let _ = std::fs::remove_file(&archive_path);
                     unpack?;
-                    return Ok(ArtifactCollection { repo_path: dest });
+                    return Ok(ArtifactCollection::new(dest));
                 }
                 Ok((exit_code, stderr)) => Error::ArtifactCollection(format!(
                     "collecting `{WORK_DIR}` from run pod `{}` failed (tar exit {exit_code}): {}",

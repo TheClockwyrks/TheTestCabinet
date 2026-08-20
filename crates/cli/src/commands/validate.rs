@@ -9,6 +9,7 @@ use test_cabinet_core::{
 };
 
 use crate::cli::ValidateArgs;
+use crate::commands::engines;
 
 /// Run the core validation pass (load check plus any declared checks) over an
 /// already-produced implementation, summarizing the result.
@@ -32,6 +33,15 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         .variant(&args.variant)
         .with_context(|| format!("selecting variant `{}`", args.variant))?;
 
+    // Resolving the engine is the gate: a build written against an engine is driven
+    // through that engine's host interface, so validating it as though it were on a
+    // different engine measures it against a contract it was never given. The check
+    // is the case's declared support, and it happens before anything is built,
+    // because a mismatch is a mistake in the invocation rather than a result.
+    let engine = engines::resolve_for_case(&args.engine, &test_case)
+        .with_context(|| format!("selecting engine `{}`", args.engine))?;
+    println!("  engine: {}", engine.slug());
+
     // Render the selected variant's reference baselines the declared checks
     // compare against. A check's baseline may be a common reference or one the
     // variant declares, so the baselines are variant-specific.
@@ -43,9 +53,10 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     // validator records whether each is present in the produced tree.
     let proofs = test_case.proofs_for(variant);
 
-    let artifacts = ArtifactCollection {
-        repo_path: args.implementation,
-    };
+    // The tree is described by the engine it was built on, which is what decides
+    // whether the case's validators run as a vitest project or its instrumentation is
+    // driven in a browser. Nothing has installed this tree, so validation installs it.
+    let artifacts = ArtifactCollection::new(args.implementation).built_on(Some(engine.clone()));
     // Validation runs entirely on the host against an existing implementation
     // directory (nothing is bind-mounted into a runtime VM), so the screenshot
     // scratch can live in the system temp directory.

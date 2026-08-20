@@ -334,7 +334,9 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
         .expect("resolve tolerates the key");
     // Resolution recognized and resolved the key onto the variant.
     assert!(
-        resolved.variants[0].reference_impl.is_some(),
+        resolved
+            .reference_impl_for(&resolved.variants[0], test_cabinet_core::NONE_SLUG)
+            .is_some(),
         "resolution resolves the reference implementation onto the variant",
     );
 

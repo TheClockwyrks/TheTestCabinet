@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::code_analysis::CodeAnalysisSummary;
 use crate::gg::{GgCapabilitySet, GgSessionSummary};
 use crate::metrics::RunMetrics;
+use crate::toolchain::ToolchainSummary;
 use crate::validation::ValidationSummary;
 
 /// A stable slug identifying an agent harness — a run's subject.
@@ -257,6 +258,31 @@ pub struct RunSubject {
     /// [orchestrators](crate::OrchestratorCatalog).
     #[serde(default = "default_orchestrator_slug")]
     pub orchestrator_slug: String,
+    /// The slug of the [engine](crate::engine) the produced build was written
+    /// against (for example `simple-2d`), or `none` when the build supplied its
+    /// own frame loop, input, audio, assets, and diagnostics.
+    ///
+    /// The engine is a **run dimension**, not a property of the case: the same
+    /// case version can be run on several engines, and a result is only
+    /// comparable with another result on the same engine, so the selection is
+    /// recorded here beside the harness and the orchestrator rather than being
+    /// inferred from the case. Defaults to `none` so records written before
+    /// engine selection existed — and hand-written fixtures — still deserialize,
+    /// which is also the truth about them: they had no runtime.
+    #[serde(default = "default_engine_slug")]
+    pub engine_slug: String,
+    /// The version of the engine runtime that was vendored into the run
+    /// repository, read out of the staged package at seed time.
+    ///
+    /// Separate from [`Self::engine_slug`] because an engine's contract moves
+    /// under a stable slug: two `simple-2d` runs a release apart were given
+    /// different frame, input, or host behaviour, and only the version
+    /// distinguishes them. `None` for a run whose engine vendors no runtime
+    /// (`none` has no package, so there is no version to read) and for records
+    /// written before engine selection existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub engine_version: Option<String>,
     /// The model ID passed to the harness, treated as an opaque string. For a gg
     /// run there is no single harness model (a run binds models to slots via
     /// [`Self::gg_capability_set`]); this carries the run's primary-slot model so a
@@ -295,6 +321,13 @@ pub struct RunSubject {
 /// every such run was a single, one-shot harness session.
 fn default_orchestrator_slug() -> String {
     crate::orchestrator::ONE_SHOT_SLUG.to_string()
+}
+
+/// The default engine slug for records that predate engine selection: every such
+/// run built against no runtime at all, which is exactly what
+/// [`NONE_SLUG`](crate::engine::NONE_SLUG) names.
+fn default_engine_slug() -> String {
+    crate::engine::NONE_SLUG.to_string()
 }
 
 /// Provenance for the Test Cabinet build that orchestrated a run.
@@ -717,6 +750,38 @@ pub struct RunRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub code_analysis: Option<CodeAnalysisSummary>,
+    /// What the case's [`[toolchain]`](crate::toolchain) commands did when they were
+    /// run over the produced implementation at the
+    /// [post-run seam](crate::post_run), together with the build smoke check.
+    ///
+    /// **This is the one analysis block that can influence a run's rating**, and it
+    /// does so through exactly one field: a `typecheck` that ran and exited non-zero
+    /// [gates](crate::toolchain::ToolchainSummary::gates) the run, which rates it
+    /// `broken` and scores it zero, because code that does not compile is not
+    /// reviewable. The lint, format and test results are recorded and gate nothing.
+    /// The gate is applied where the aggregate rating and score are computed
+    /// ([`crate::review::gated_rating`]), never by rewriting a reviewer's marks.
+    ///
+    /// Absent for a run whose case declares no `[toolchain]` table, for a canceled
+    /// run, for a run whose tree never reached the host, and for every record written
+    /// before the field existed. Absence is *not checked*, and it never gates — the
+    /// distinction the `Option` exists to keep.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub toolchain: Option<ToolchainSummary>,
+}
+
+impl RunRecord {
+    /// **The gate predicate for a whole run.** Whether an automated check
+    /// disqualified this run from being rated by its reviews.
+    ///
+    /// Today there is exactly one such check — the case's gating `typecheck` — and
+    /// this is the single place the rest of the system asks about it, so a second
+    /// one lands here rather than in every consumer. A record with no toolchain
+    /// block never gates.
+    pub fn gated_broken(&self) -> bool {
+        self.toolchain.as_ref().is_some_and(ToolchainSummary::gates)
+    }
 }
 
 /// One earlier game-jam run's gameplay README, as served back to a new run of the

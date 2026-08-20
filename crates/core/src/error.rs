@@ -286,6 +286,95 @@ pub enum Error {
         test_type: crate::test_case::TestType,
     },
 
+    /// An [engine](crate::engine) could not be resolved: the requested slug is
+    /// not one this build carries. The detail names the slug and every built-in,
+    /// so a typo on `--engine` is fixable from the message alone.
+    #[error("engine error: {0}")]
+    Engine(String),
+
+    /// An engine was requested that the test case version does not support.
+    ///
+    /// A case declares the engines it supports as a **compatibility gate**: its
+    /// specs carry the statements specific to building under those engines, and
+    /// its validation drives their host interfaces. Running it under an engine it
+    /// never declared would score a build against checks written for a different
+    /// runtime, so the run is refused before any container is started. The
+    /// message names the engines the case *does* support, so the fix is one step.
+    #[error(
+        "engine `{slug}` is not supported by test case `{test_case}` {version} \
+         (supported engines: {supported_list})",
+        supported_list = supported.join(", ")
+    )]
+    EngineUnsupportedForCase {
+        /// The requested engine slug.
+        slug: String,
+        /// The test case that does not support it.
+        test_case: String,
+        /// The case version whose manifest declares the supported set.
+        version: String,
+        /// The engines that version does declare, in manifest order.
+        supported: Vec<String>,
+    },
+
+    /// The selected engine *is* one the test case version supports, but the
+    /// version of it the host would stage falls outside the range that version
+    /// declared for it.
+    ///
+    /// The second half of the same compatibility gate as
+    /// [`Self::EngineUnsupportedForCase`], and refused in the same place: before
+    /// any container is started. A case pins a range because its specification and
+    /// its validators were written against a particular engine contract — the
+    /// minimum is the earliest contract they were written against, the maximum the
+    /// version whose behaviour broke a check they depend on — so a run outside it
+    /// would be scored against checks written for a different runtime just as
+    /// surely as a run on an engine the case never declared. The message names the
+    /// version that would have been staged *and* the range, because the fix is
+    /// either restaging the engine or running a case version that accepts it.
+    #[error(
+        "engine `{slug}` version {engine_version} is outside the versions test case \
+         `{test_case}` {version} supports ({range})"
+    )]
+    EngineVersionUnsupportedForCase {
+        /// The requested engine slug.
+        slug: String,
+        /// The version of that engine in the host package store.
+        engine_version: String,
+        /// The test case whose declared range excludes it.
+        test_case: String,
+        /// The case version whose manifest declares the range.
+        version: String,
+        /// The declared range, rendered for a person to act on.
+        range: String,
+    },
+
+    /// The test case version declares a version range for the selected engine, but
+    /// the host has no readable version for that engine to check against it.
+    ///
+    /// A staging fault, not a selection mistake: the engine resolved, the case
+    /// supports it, and the only missing thing is the `version` of its package in
+    /// the host package store. The run is refused rather than admitted because a
+    /// declared range is a claim that only *some* engine versions are safe for this
+    /// case, and running without checking it would spend a harness session on a
+    /// pairing nobody verified. An engine the case declared with no range is
+    /// unaffected — there is nothing to check — and the seeder refuses the same
+    /// store with the restaging instructions once a run gets that far.
+    #[error(
+        "engine `{slug}` has no staged version in the host package store, so it cannot be \
+         checked against the range test case `{test_case}` {version} declares for it \
+         ({range}); rebuild the packages (`npm run build:packages`) and restage them \
+         (`node scripts/stage-tcab-packages.mjs`)"
+    )]
+    EngineVersionUnknown {
+        /// The requested engine slug.
+        slug: String,
+        /// The test case whose declared range could not be checked.
+        test_case: String,
+        /// The case version whose manifest declares the range.
+        version: String,
+        /// The declared range, rendered for a person to act on.
+        range: String,
+    },
+
     /// A **gg** run was misconfigured: the gg configuration invariant does not
     /// hold. A gg run (harness [`Gg`](crate::run_record::HarnessSlug::Gg)) must
     /// carry a [capability set](crate::gg::GgCapabilitySet), and a non-gg run must

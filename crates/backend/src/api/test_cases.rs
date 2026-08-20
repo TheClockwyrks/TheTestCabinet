@@ -541,6 +541,12 @@ fn version_response(
             build: build.build.clone(),
             module: build.module.clone(),
         }),
+        toolchain: manifest.toolchain.as_ref().map(|toolchain| ToolchainOut {
+            typecheck: toolchain.typecheck.clone(),
+            lint: toolchain.lint.clone(),
+            format: toolchain.format.clone(),
+            test: toolchain.test.clone(),
+        }),
         canvas: manifest.canvas.as_ref().map(|canvas| CanvasOut {
             width: canvas.width,
             height: canvas.height,
@@ -659,6 +665,9 @@ fn render_variant_prompt(
         // The gallery preview shows the standing prompt, with no prior game-jam
         // entries in play, so it never carries the distinctness section.
         0,
+        // The gallery renders a case, not a run, and a run is what selects an
+        // engine — so the preview is the engineless form.
+        None,
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }
@@ -989,6 +998,11 @@ pub struct VersionResponse {
     test_type: TestType,
     #[serde(skip_serializing_if = "Option::is_none")]
     build: Option<BuildOut>,
+    /// The case's TypeScript toolchain commands, when it declares a `[toolchain]`
+    /// table. Absent for every version that predates it, which is what leaves those
+    /// versions unchecked and ungated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    toolchain: Option<ToolchainOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     canvas: Option<CanvasOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1060,6 +1074,20 @@ struct BuildOut {
     build: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     module: Option<String>,
+}
+
+/// The case's declared TypeScript toolchain, served so a backend-driven run can run
+/// it: the gating `typecheck` and the recorded `lint`/`format`/`test`.
+#[derive(Serialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ToolchainOut {
+    typecheck: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    test: Option<String>,
 }
 
 #[derive(Serialize)]

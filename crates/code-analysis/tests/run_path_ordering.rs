@@ -52,12 +52,12 @@ use test_cabinet_code_analysis::StaticCodeAnalyzer;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, CODE_ANALYSIS_TREE_ARTIFACT,
     CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, EventFormat, EventSink, ExecOutput, FsRepoSeeder,
-    HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, MediaKind, NoopEventSink,
-    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
-    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
-    RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage,
-    ValidationSummary, Validator, Variant,
+    ContainerSpec, ContainerStart, EngineCatalog, EngineSelection, EventFormat, EventSink,
+    ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug,
+    MediaKind, NoopEventSink, OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection,
+    OutputSink, OutputStream, PrerenderedReferenceRenderer, ProofFile, RenderedReference,
+    Result as CoreResult, RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion,
+    TokenCounts, Usage, ValidationSummary, Validator, Variant,
 };
 
 /// The repository's `test-cases/` directory — the real catalog, so the run is seeded from
@@ -259,7 +259,7 @@ impl ArtifactCollector for FakeCollector {
             std::fs::write(full, contents).expect("the model's file");
         }
         *self.collected.lock().expect("collected") = Some(repo_path.clone());
-        Ok(ArtifactCollection { repo_path })
+        Ok(ArtifactCollection::new(repo_path))
     }
 }
 
@@ -353,7 +353,12 @@ async fn drive(cancel: &RunCancellation) -> Ran {
 
     let catalog = TestCaseCatalog::new(catalog_root());
     let test_case = catalog
-        .resolve_latest("carom")
+        // Pinned to a FROZEN version rather than `resolve_latest`, so this test's
+        // fixture cannot drift as the case is revised. It also has to be a version
+        // that supports the engineless run, which is what these fakes drive: a
+        // version built against an engine refuses `EngineSelection::default()`
+        // before any of the ordering below happens.
+        .resolve("carom", "v2.1.0")
         .expect("resolve the bundled carom case");
     let variant = test_case.variant("base").expect("carom's base variant");
 
@@ -375,12 +380,14 @@ async fn drive(cancel: &RunCancellation) -> Ran {
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
+        engines: EngineCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),
         session_assembler: None,
         // The subject of this test: the real analyzer, wired exactly as a host wires it.
         analyzer: Some(Box::new(StaticCodeAnalyzer)),
+        toolchain: None,
         validator: FakeValidator {
             steps: Arc::clone(&steps),
             collected: Arc::clone(&collected),
@@ -398,6 +405,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
         harness: HarnessSlug::Claude,
         model_id: "fake-model".to_string(),
         orchestrator: OrchestratorSelection::default(),
+        engine: EngineSelection::default(),
         max_runtime_override: None,
         container_image: None,
         gg_capability_set: None,

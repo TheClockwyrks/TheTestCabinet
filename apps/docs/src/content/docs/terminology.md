@@ -107,6 +107,19 @@ runs exactly one test case. It resolves the definition from the
 progress back to the backend, uploads the produced tree to the [artifact
 service](#artifact-service), and exits.
 
+## Engine
+
+In the context of The Test Cabinet, "engine" refers to two elements:
+
+1. The [runtime a produced game is built on](/components/core/engines/), selected
+   per run and recorded on it
+2. The WebAssembly module a model submits for a
+   [performance](/testing/performance/overview/) test case
+
+The first is provided to a run and the second is the deliverable of one. A
+performance case's engine is the artifact under test, so it is never selected and
+a performance case supports no engine in the first sense.
+
 ## Harness
 
 In the context of The Test Cabinet, "harness" refers to two elements:

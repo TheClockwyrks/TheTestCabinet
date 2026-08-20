@@ -756,15 +756,14 @@ impl SnapshotBuilder {
             .unwrap_or_else(|| record.subject.test_case_slug.clone());
         // Score from the same catalog entry that names the case; both are absent
         // for a run whose case isn't in the ingested set.
-        let score =
-            manifest.and_then(|m| run_summary_score(m, &record.subject.variant, &run.reviews));
+        let score = manifest.and_then(|m| run_summary_score(m, record, &run.reviews));
 
         RunSummary {
             case_name,
             // The per-domain rating, or `None` for a game jam (it carries no
             // domains — its badge is `score.overallGrade` instead). A domain-scored
             // published run always has one.
-            rating: aggregate_rating_inner(&run.reviews),
+            rating: aggregate_rating_inner(record, &run.reviews),
             score,
             document_key: Some(document_key.to_string()),
             ..RunSummary::from_stored(run)
@@ -1993,7 +1992,7 @@ impl RunSummary {
             metrics: record.metrics,
             validation_loaded: record.validation.loaded,
             state: record.status.state,
-            rating: aggregate_rating_inner(&run.reviews),
+            rating: aggregate_rating_inner(record, &run.reviews),
             review_count: run.reviews.len(),
             // Catalog-free: the checklist weights live only in the case catalog,
             // so a caller that holds it enriches this (see [`run_summary_score`]).
@@ -2619,6 +2618,9 @@ fn case_metadata(
                 // The gallery snapshot shows the standing prompt only — no prior
                 // game-jam entries, so no distinctness section.
                 0,
+                // A snapshot is baked per case version, not per run, and the
+                // engine is a run dimension — so the engineless form.
+                None,
             )
             .map_err(|e| {
                 BackendError::Snapshot(format!(
@@ -2758,9 +2760,10 @@ fn links_out(links: &test_cabinet_core::RunLinks) -> LinksOut {
 /// [`crate::db::aggregate_review_rating`] — the single source of truth shared with
 /// the lifted `run.rating` column.
 fn aggregate_rating_inner(
+    record: &test_cabinet_core::RunRecord,
     reviews: &[crate::db::StoredReview],
 ) -> Option<test_cabinet_core::review::Rating> {
-    crate::db::aggregate_review_rating(reviews)
+    crate::db::aggregate_review_rating(record, reviews)
 }
 
 /// The aggregate reviewer score for a run of `manifest`'s `variant`: the case's
@@ -2776,18 +2779,29 @@ fn aggregate_rating_inner(
 /// [`RunSummary::from_stored`] enriching `case_name`.
 pub(crate) fn run_summary_score(
     manifest: &StoredManifest,
-    variant: &str,
+    record: &test_cabinet_core::RunRecord,
     reviews: &[crate::db::StoredReview],
 ) -> Option<RunScoreOut> {
-    let items = review_items_for(manifest, variant);
+    let items = review_items_for(manifest, &record.subject.variant);
     let scores: Vec<_> = reviews
         .iter()
         .map(|review| test_cabinet_core::review::score_checklist(&items, &review.checklist))
         .collect();
-    let overall_grade = test_cabinet_core::review::aggregate_overall_grade(
-        reviews.iter().map(|review| review.checklist.as_slice()),
+    // A run disqualified by its case's gating typecheck scores zero and, for a jam,
+    // grades `broken` — over the top of whatever its reviewers concluded, and without
+    // touching what they wrote. See `test_cabinet_core::review::gated_score`.
+    let gated = record.gated_broken();
+    let overall_grade = test_cabinet_core::review::gated_overall_grade(
+        gated,
+        test_cabinet_core::review::aggregate_overall_grade(
+            reviews.iter().map(|review| review.checklist.as_slice()),
+        ),
     );
-    test_cabinet_core::review::aggregate_score(&scores).map(|score| RunScoreOut {
+    test_cabinet_core::review::gated_score(
+        gated,
+        test_cabinet_core::review::aggregate_score(&scores),
+    )
+    .map(|score| RunScoreOut {
         earned: score.earned,
         total: score.total,
         reviews: score.reviews,

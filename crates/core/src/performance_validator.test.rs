@@ -37,7 +37,7 @@ fn base_variant() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
-        reference_impl: None,
+        reference_impls: Default::default(),
     }
 }
 
@@ -109,6 +109,7 @@ fn performance_version_with_pass_limit(
     pass_limit: u64,
 ) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "performance-factorio".to_string(),
         version: "v1.0.0".to_string(),
@@ -159,6 +160,7 @@ fn performance_version_with_pass_limit(
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -266,7 +268,7 @@ fn passing_smoke_tests_let_the_stress_scenarios_run() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -316,9 +318,7 @@ fn a_failed_smoke_test_skips_the_stress_scenarios() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -382,9 +382,7 @@ fn a_correct_engine_scores_correct_with_a_fuel_number() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -443,9 +441,7 @@ fn a_passing_case_republishes_its_scenario_for_playback() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -496,9 +492,7 @@ fn a_correct_engine_over_the_ceiling_records_its_overshoot_and_plays_back() {
         .validate(
             &performance_version(root.clone(), module_rel, case.clone()),
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -518,9 +512,7 @@ fn a_correct_engine_over_the_ceiling_records_its_overshoot_and_plays_back() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -578,9 +570,7 @@ fn an_engine_that_exhausts_even_its_runway_records_no_fuel() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -623,9 +613,7 @@ fn a_failing_case_records_no_scenario() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -699,7 +687,7 @@ fn a_wrong_answer_engine_fails_the_correctness_gate() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -751,7 +739,7 @@ fn a_missing_engine_module_scores_incorrect() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )

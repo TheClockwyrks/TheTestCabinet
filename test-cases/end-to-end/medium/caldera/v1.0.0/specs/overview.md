@@ -251,24 +251,3 @@ PLAY, the **in-game** state (build and defend), a **paused** overlay, and two en
 screens — **held** (victory) and **overrun** (defeat). Every state must be
 reachable and behave as `specs/flow.md` describes. The title screen is what the
 game shows on load.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look. The
-gameplay reference is **HUD-only** — a flat mockup cannot fake the 3D world
-convincingly, so the in-game reference shows only the HUD overlay (its layout,
-palette, and type) over a neutral viewport; you render the 3D caldera itself from
-this specification.
-
-- `reference/title.png` — the **title** screen shown on load: the `CALDERA` title
-  and the **PLAY** and **HOW TO PLAY** options.
-- `reference/gameplay.png` — the in-game **HUD** over a neutral viewport: funds and
-  income, the Core health, the wave counter and countdown, the steam supply
-  readout, the build palette, and a selection panel.
-- `reference/game-over.png` — an end screen with the run's result and stats.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — build the screens from this specification.

@@ -4,8 +4,8 @@
 //! easy to test in isolation (see `cli.test.rs`).
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use test_cabinet_core::CodeTreeBasis;
 use test_cabinet_core::run_record::HarnessSlug;
+use test_cabinet_core::{CodeTreeBasis, NONE_SLUG};
 
 /// The Test Cabinet command line interface.
 ///
@@ -54,6 +54,9 @@ pub enum Command {
 
     /// List the built-in orchestrators and what each one does.
     Orchestrators(OrchestratorsArgs),
+
+    /// List the built-in engines — the runtimes a produced game can be built on.
+    Engines(EnginesArgs),
 
     /// Seed a test case version into a folder to inspect what a run's harness
     /// receives as input, without launching a container.
@@ -165,6 +168,14 @@ pub struct RunArgs {
     #[arg(long, value_name = "SLUG", default_value = "one-shot")]
     pub orchestrator: String,
 
+    /// The runtime the produced game is built on — its frame loop and delta time,
+    /// input actions, audio, assets, and diagnostics. Defaults to `none`: no
+    /// runtime, with the build supplying all of that itself. The test case version
+    /// must declare the engine among the ones it supports, or the run is refused
+    /// before any container starts. See `tcab engines`.
+    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
+    pub engine: String,
+
     /// Harness authentication mode for this run: `auto`, `subscription`, or
     /// `api-key`. Omit to keep the default (API-key, preferring a subscription only
     /// when its credentials are available). Forwarded to the backend, which the
@@ -210,6 +221,14 @@ pub struct ValidateArgs {
     /// variant may declare its own variant-specific references.
     #[arg(long, value_name = "VARIANT")]
     pub variant: String,
+
+    /// The engine the implementation was built on, defaulting to `none`. A build
+    /// written against an engine is driven through that engine's host interface,
+    /// so naming the wrong one validates against expectations the build was never
+    /// given; the slug is checked against the engines the case supports before
+    /// anything is built. See `tcab engines`.
+    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
+    pub engine: String,
 }
 
 /// Arguments for `tcab register`.
@@ -285,6 +304,14 @@ pub struct OrchestratorsArgs {
     pub json: bool,
 }
 
+/// Arguments for `tcab engines`.
+#[derive(Debug, Args)]
+pub struct EnginesArgs {
+    /// Emit the listing as JSON instead of a human-readable table.
+    #[arg(long)]
+    pub json: bool,
+}
+
 /// Arguments for `tcab seed`.
 ///
 /// `disable_version_flag` frees `--version` to mean the *test case* version
@@ -304,6 +331,15 @@ pub struct SeedArgs {
     /// specs are seeded.
     #[arg(long, value_name = "VARIANT")]
     pub variant: String,
+
+    /// Engine to seed the run against, defaulting to `none` (nothing is
+    /// vendored, and the seeded tree is exactly what the case ships). Naming an
+    /// engine with a runtime vendors that runtime out of the
+    /// host package store into the seeded repository and writes its dependency
+    /// into the workspace `package.json`, so this is how to inspect what a build
+    /// on that engine is handed. See `tcab engines`.
+    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
+    pub engine: String,
 
     /// Directory the seeded repository is created under. Defaults to a `tmp/`
     /// subfolder of the working directory.
@@ -329,6 +365,13 @@ pub struct PromptArgs {
     /// Variant of the test case to render the prompt for (for example, `base`).
     #[arg(long, value_name = "VARIANT")]
     pub variant: String,
+
+    /// Engine to render the prompt for, defaulting to `none`. A prompt template
+    /// branches on the selected engine — naming one is the only way to see the
+    /// engine section a run on that engine would actually hand the harness. See
+    /// `tcab engines`.
+    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
+    pub engine: String,
 }
 
 /// Arguments for `tcab publish-reference`.

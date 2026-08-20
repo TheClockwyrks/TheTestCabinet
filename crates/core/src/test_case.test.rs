@@ -1,6 +1,7 @@
 //! Tests for manifest resolution, focused on the `[build]` command table.
 
 use std::fs;
+use std::path::Path;
 
 use super::{
     AssetKind, BuildCommands, ErratumSeverity, MediaKind, SpecKind, TestCaseCatalog, TestType,
@@ -138,7 +139,7 @@ fn only_asset_generation_releases_no_source_repo() {
 
 /// A complete, valid asset-generation manifest. Tests clone this and mutate one
 /// thing to exercise a single validation rule.
-const VALID_ASSET_MANIFEST: &str = "\
+pub(super) const VALID_ASSET_MANIFEST: &str = "\
 slug = \"sprite\"\n\
 name = \"Sprite\"\n\
 difficulty = \"medium\"\n\
@@ -158,7 +159,7 @@ variants = [\"variants/base.toml\"]\n\
 /// return the catalog. An asset-generation case has no target image, so none is
 /// written. No operations schema is written either — the binary's `--help` is the
 /// contract.
-fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("asset-generation/medium/sprite/v1.0.0");
     fs::create_dir_all(version.join("specs")).expect("specs dir");
@@ -1518,7 +1519,7 @@ fn every_shippable_package_carries_a_ui_description() {
 /// the whole manifest, so it can place top-level keys (`workspace`, `init`)
 /// before the `[build]` table, and can seed the workspace directory the manifest
 /// points at.
-fn catalog_with_files(
+pub(super) fn catalog_with_files(
     manifest: &str,
     files: &[(&str, &str)],
 ) -> (tempfile::TempDir, TestCaseCatalog) {
@@ -1553,7 +1554,7 @@ fn catalog_with_files(
 /// keys and tables) spliced in between so a test can declare `workspace`/`init`
 /// before the build table and append specs/tables after it. A test needing more
 /// than the one `base` variant builds its manifest directly instead.
-fn manifest_with(body: &str, after_build: &str) -> String {
+pub(super) fn manifest_with(body: &str, after_build: &str) -> String {
     format!(
         "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          changelog = \"changelog.md\"\n\
@@ -1703,6 +1704,181 @@ fn packages_are_end_to_end_only() {
         format!("{err}").contains("only valid for an end-to-end, full-stack, or game-jam case"),
         "got: {err}"
     );
+}
+
+/// A workspace shipping only the `package.json` an engine's dependency is written
+/// into at seed time. Its contents are irrelevant to the engine checks — unlike
+/// `packages`, the case does not declare the engine dependency itself — so it is
+/// the emptiest object that parses.
+pub(super) const ENGINE_WORKSPACE_FILES: &[(&str, &str)] =
+    &[("workspaces/base/package.json", "{}")];
+
+#[test]
+fn engines_default_to_the_engineless_run() {
+    // A case that declares nothing still supports `none`: that is the run every
+    // case had before engines existed, so the resolved set is never empty.
+    let manifest = manifest_with("", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.engine_slugs(), vec!["none".to_string()]);
+}
+
+#[test]
+fn engines_resolve_with_none_first_when_it_is_declared() {
+    // The readable form: `none` spelled out alongside the engine. It leads the
+    // resolved set, and declaring it is not a duplicate of the implicit entry.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"none\", \"simple-2d\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(
+        version.engine_slugs(),
+        vec!["none".to_string(), "simple-2d".to_string()]
+    );
+}
+
+#[test]
+fn a_version_declaring_an_engine_supports_exactly_what_it_declares() {
+    // Once a version declares ANY engine, its supported set is exactly what it
+    // declares — `none` is not folded back in. A case whose workspace is written
+    // against a runtime (its `package.json` depending on the vendored engine)
+    // could not build engineless at all, so being held to offering that run would
+    // be a promise the case cannot keep. A case that genuinely builds both ways
+    // lists `none` alongside, which is
+    // `engines_resolve_with_none_first_when_it_is_declared` above.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"simple-2d\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.engine_slugs(), vec!["simple-2d".to_string()]);
+}
+
+#[test]
+fn engines_reject_an_unknown_slug() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"not-an-engine\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unknown engine slug is rejected");
+    let msg = format!("{err}");
+    assert!(msg.contains("not a known engine"), "got: {err}");
+    // The message names the slugs that would have worked, so a typo is fixable
+    // from the error alone.
+    for slug in crate::engine::BUILT_IN_SLUGS {
+        assert!(msg.contains(*slug), "expected `{slug}` in: {err}");
+    }
+}
+
+#[test]
+fn engines_reject_a_duplicate() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"simple-2d\", \"simple-2d\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a repeated engine is rejected");
+    assert!(
+        format!("{err}").contains("declared more than once"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn engines_reject_none_declared_twice() {
+    // `none` is exempt from being a duplicate of the *implicit* entry, not from
+    // being declared twice itself.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"none\", \"none\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a repeated `none` is rejected");
+    assert!(
+        format!("{err}").contains("declared more than once"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn engines_with_a_runtime_require_a_workspace_package_json() {
+    // The engine's `file:` dependency is written into the workspace `package.json`
+    // at seed time, so a case supporting an engine that vendors a runtime must ship
+    // one for the seeder to edit.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"none\", \"simple-2d\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/README.md", "hi")]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an engine-declaring case without a package.json is rejected");
+    assert!(format!("{err}").contains("package.json"), "got: {err}");
+}
+
+#[test]
+fn engines_declaring_only_none_need_no_workspace_at_all() {
+    // `none` vendors no runtime, so there is no dependency to write and nothing to
+    // write it into — a case may declare it while shipping no workspace.
+    let manifest = manifest_with("engines = [\"none\"]\n", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.engine_slugs(), vec!["none".to_string()]);
+}
+
+#[test]
+fn engines_are_end_to_end_only() {
+    // `engines` is a root key, so it must precede the first table; prepend it.
+    let manifest = format!("engines = [\"simple-2d\"]\n{VALID_ASSET_MANIFEST}");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("`engines` on an asset-generation case is rejected");
+    assert!(
+        format!("{err}").contains("only valid for an end-to-end, full-stack, or game-jam case"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn supports_engine_agrees_with_the_resolved_set() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"none\", \"simple-2d\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.supports_engine("simple-2d"));
+    assert!(version.supports_engine("none"));
+    assert!(!version.supports_engine("not-an-engine"));
+    for slug in version.engine_slugs() {
+        assert!(version.supports_engine(&slug), "should support `{slug}`");
+    }
+}
+
+#[test]
+fn supports_engine_refuses_the_engineless_run_a_version_left_out() {
+    // The gate a run applies reads the same resolved set, so a version built
+    // against a runtime refuses `--engine none` rather than seeding a workspace
+    // whose `package.json` names a package nothing would vendor.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"simple-2d\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.supports_engine("simple-2d"));
+    assert!(!version.supports_engine("none"));
 }
 
 #[test]
@@ -2312,7 +2488,7 @@ fn variant_reference_implementation_round_trips_to_a_resolved_host_path() {
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     let base = version.variant("base").expect("base variant");
     assert_eq!(
-        base.reference_impl.as_deref(),
+        version.reference_impl_for(base, crate::engine::NONE_SLUG),
         Some(version_dir.join("reference-impl/base").as_path()),
         "the reference implementation resolves to an absolute path inside the version folder",
     );
@@ -2324,8 +2500,131 @@ fn variant_reference_implementation_round_trips_to_a_resolved_host_path() {
     let bare_version = bare_catalog.resolve("demo", "v1.0.0").expect("resolve");
     let bare = bare_version.variant("base").expect("base variant");
     assert!(
-        bare.reference_impl.is_none(),
+        bare_version
+            .reference_impl_for(bare, crate::engine::NONE_SLUG)
+            .is_none(),
         "a variant that declares no reference_implementation has none",
+    );
+}
+
+/// A case supporting two engines, its `base` variant declaring `variant_extra`.
+///
+/// A case that declares an engine vendoring a runtime must ship a workspace
+/// `package.json` (the file the engine's `file:` dependency is written into when
+/// the run is seeded), so the fixture ships one. Both reference-implementation
+/// directories exist, so a rejection in these tests is about the *keying* and
+/// never about a missing directory.
+fn two_engine_catalog(variant_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+    let (dir, catalog) = catalog_with_manifest(
+        "engines = [\"none\", \"simple-2d\"]\nworkspace = \"workspace\"\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"",
+    );
+    let version_dir = dir.path().join("end-to-end/easy/demo/v1.0.0");
+    fs::create_dir_all(version_dir.join("workspace")).expect("create workspace dir");
+    fs::write(
+        version_dir.join("workspace/package.json"),
+        "{\"name\":\"demo\"}",
+    )
+    .expect("write workspace package.json");
+    for rel in ["reference-impl/base", "reference-impl-simple-2d/base"] {
+        fs::create_dir_all(version_dir.join(rel)).expect("create reference impl dir");
+        fs::write(
+            version_dir.join(rel).join("index.html"),
+            "<!doctype html><title>correct</title>",
+        )
+        .expect("write reference impl file");
+    }
+    fs::write(
+        version_dir.join("variants/base.toml"),
+        format!("slug = \"base\"\n{variant_extra}"),
+    )
+    .expect("write base variant");
+    (dir, catalog)
+}
+
+#[test]
+fn a_reference_implementation_is_keyed_by_engine() {
+    // The engine is a run dimension and the build a reference demonstrates differs
+    // under each — the engineless build writes its own frame loop, input, audio and
+    // diagnostics, the engine build hands all four to the runtime — so a case
+    // supporting two engines names one directory per engine, and each resolves to
+    // its own path.
+    let (dir, catalog) = two_engine_catalog(
+        "[reference_implementation]\nnone = \"reference-impl/base\"\n\
+         simple-2d = \"reference-impl-simple-2d/base\"\n",
+    );
+    let version_dir = dir.path().join("end-to-end/easy/demo/v1.0.0");
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    assert_eq!(
+        version.reference_impl_for(base, "none"),
+        Some(version_dir.join("reference-impl/base").as_path()),
+        "the `none` engine gets the engineless build",
+    );
+    assert_eq!(
+        version.reference_impl_for(base, "simple-2d"),
+        Some(version_dir.join("reference-impl-simple-2d/base").as_path()),
+        "the `simple-2d` engine gets the build written against the engine",
+    );
+    assert!(
+        version.reference_impl_for(base, "no-such-engine").is_none(),
+        "an engine the case does not support has no reference implementation",
+    );
+}
+
+#[test]
+fn a_bare_reference_implementation_stands_for_every_supported_engine() {
+    // The string form is the readable spelling for a case whose one implementation
+    // is the answer whatever engine is selected, so it resolves for every supported
+    // engine rather than only for `none`.
+    let (dir, catalog) = two_engine_catalog("reference_implementation = \"reference-impl/base\"\n");
+    let version_dir = dir.path().join("end-to-end/easy/demo/v1.0.0");
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    let expected = Some(version_dir.join("reference-impl/base"));
+    for engine in &version.engine_slugs() {
+        assert_eq!(
+            version
+                .reference_impl_for(base, engine)
+                .map(Path::to_path_buf),
+            expected,
+            "the bare form stands for engine `{engine}`",
+        );
+    }
+}
+
+#[test]
+fn a_per_engine_reference_implementation_must_cover_every_supported_engine() {
+    // A table that omits a supported engine would leave a run on that engine with no
+    // authored answer to show, so it is rejected at resolution rather than surfacing
+    // as an empty "Reference" tab.
+    let (_dir, catalog) =
+        two_engine_catalog("[reference_implementation]\nnone = \"reference-impl/base\"\n");
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a per-engine table omitting a supported engine is rejected");
+    assert!(
+        format!("{err}").contains("names none for `simple-2d`"),
+        "unexpected error: {err}",
+    );
+}
+
+#[test]
+fn a_per_engine_reference_implementation_may_not_name_an_unsupported_engine() {
+    // Naming an engine the case does not support is a typo — the directory would
+    // never be built or deployed — so it fails the manifest rather than being
+    // ignored.
+    let (_dir, catalog) = two_engine_catalog(
+        "[reference_implementation]\nnone = \"reference-impl/base\"\n\
+         simple-2d = \"reference-impl-simple-2d/base\"\n\
+         no-such-engine = \"reference-impl/base\"\n",
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a per-engine table naming an unsupported engine is rejected");
+    assert!(
+        format!("{err}").contains("which this case does not support"),
+        "unexpected error: {err}",
     );
 }
 
@@ -2394,7 +2693,12 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
         !version.common_workspace.is_empty(),
         "the declared workspace is seeded",
     );
-    assert!(base.reference_impl.is_some(), "the reference impl resolved");
+    assert!(
+        version
+            .reference_impl_for(base, crate::engine::NONE_SLUG)
+            .is_some(),
+        "the reference impl resolved",
+    );
 
     // Every seeded source — common and variant specs, common and variant
     // workspace files — must live outside the reference-impl directory.
@@ -2484,7 +2788,9 @@ fn game_jam_surfaces_the_time_limit_in_its_prompt() {
     let (_dir, catalog) = catalog_with_jam(MINIMAL_JAM);
     let version = catalog.resolve("trains", "v1.0.0").expect("resolve jam");
     let variant = version.variants.first().expect("one variant");
-    let prompt = crate::render_prompt(&version, variant, &[]).expect("render prompt");
+    // No engine: a jam's time-limit line is engine-independent, and `None` is the
+    // engineless run every case supports.
+    let prompt = crate::render_prompt(&version, variant, &[], None).expect("render prompt");
     // `{{time_limit_hours}}` renders the case's max_runtime_hours (8) for the model.
     assert!(
         prompt.contains("You have 8 hours."),

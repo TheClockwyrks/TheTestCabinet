@@ -455,6 +455,8 @@ fn gg_record() -> RunRecord {
             harness_slug: HarnessSlug::Gg,
             harness_version: Some("0.7.0".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "simple-2d".to_string(),
+            engine_version: Some("1.0.0".to_string()),
             model_id: "anthropic/claude-a".to_string(),
             gg_capability_set: Some(capability_set()),
             gg_summary: Some(session_summary()),
@@ -492,7 +494,76 @@ fn gg_record() -> RunRecord {
         game_jam_prior_entries: Vec::new(),
         seed_commit: Some("abc123".to_string()),
         code_analysis: None,
+        toolchain: None,
     }
+}
+
+/// The [engine](crate::engine) reaches the document as `engine`, for every run,
+/// and is therefore filterable and groupable.
+///
+/// It belongs with `model` and `orchestrator` rather than with `case` and `variant`:
+/// the engine is selected per run, so two runs of one case version can differ on it,
+/// and the runtime a build was written against is one of the first things an analysis
+/// slices by. Written unconditionally, so an engineless run reports the honest `none`
+/// instead of an absence — otherwise `count() by engine` would drop exactly the runs
+/// that had no runtime, which is the population every engine is measured against.
+#[test]
+fn the_engine_reaches_the_document_and_is_filterable() {
+    let on_engine = build_run_doc(&gg_record(), &GgDocLifecycle::default());
+    assert_eq!(
+        on_engine.get("engine"),
+        Some(&GgValue::String("simple-2d".to_string()))
+    );
+
+    let mut record = gg_record();
+    record.id = "run-2".to_string();
+    record.subject.engine_slug = crate::engine::NONE_SLUG.to_string();
+    record.subject.engine_version = None;
+    let engineless = build_run_doc(&record, &GgDocLifecycle::default());
+    assert_eq!(
+        engineless.get("engine"),
+        Some(&GgValue::String("none".to_string())),
+        "an engineless run states it, so the field is total over the corpus"
+    );
+
+    let docs = vec![on_engine, engineless];
+    let matching = evaluate(
+        &docs,
+        &GgQuery {
+            filter: Some(GgFilter::Compare {
+                field: "engine".to_string(),
+                op: GgCompareOp::Eq,
+                value: GgValue::String("simple-2d".to_string()),
+            }),
+            ..GgQuery::default()
+        },
+    );
+    assert_eq!(matching.total_runs, 1);
+    assert_eq!(
+        matching.documents[0].get("id"),
+        Some(&GgValue::String("run-1".to_string()))
+    );
+
+    // And the whole corpus is accounted for when grouping by it, which is what
+    // "total" buys: two buckets of one, no run left out.
+    let grouped = evaluate(
+        &docs,
+        &GgQuery {
+            stats: Some(GgStatsStage {
+                aggs: vec![GgAgg {
+                    func: GgAggFunc::Count,
+                    field: None,
+                    alias: None,
+                }],
+                group_by: vec![GgGroupKey::Field {
+                    field: "engine".to_string(),
+                }],
+            }),
+            ..GgQuery::default()
+        },
+    );
+    assert_eq!(grouped.buckets.len(), 2);
+    assert_eq!(grouped.total_runs, 2);
 }
 
 #[test]

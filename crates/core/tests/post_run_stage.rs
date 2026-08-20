@@ -25,13 +25,14 @@ use std::time::{Duration, Instant};
 
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
-    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EventFormat, EventSink,
-    ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug,
-    MapCreds, MediaKind, NoopEventSink, OpenRouterPrices, OrchestratorCatalog,
-    OrchestratorSelection, OutputSink, OutputStream, PostRunContext, PostRunReport, PostRunStage,
-    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
-    RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
-    TokenCounts, Usage, ValidationSummary, Validator, Variant,
+    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
+    EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation,
+    HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink,
+    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
+    PostRunContext, PostRunReport, PostRunStage, PrerenderedReferenceRenderer, ProofFile,
+    RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
+    SubscriptionSpec, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary,
+    Validator, Variant,
 };
 
 /// The repository's `test-cases/` directory — the real catalog, so the run is
@@ -241,9 +242,7 @@ struct FakeCollector {
 impl ArtifactCollector for FakeCollector {
     async fn collect(&self, _container: &ContainerHandle) -> CoreResult<ArtifactCollection> {
         self.steps.lock().expect("steps").push("collect");
-        Ok(ArtifactCollection {
-            repo_path: self.repo_path.clone(),
-        })
+        Ok(ArtifactCollection::new(self.repo_path.clone()))
     }
 }
 
@@ -288,7 +287,12 @@ fn references(test_case: &TestCaseVersion, variant: &Variant) -> Vec<RenderedRef
 async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_the_runtime_cap() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let test_case = catalog
-        .resolve_latest("carom")
+        // Pinned to a FROZEN version rather than `resolve_latest`, so this test's
+        // fixture cannot drift as the case is revised. It also has to be a version
+        // that supports the engineless run, which is what these fakes drive: a
+        // version built against an engine refuses `EngineSelection::default()`
+        // before any of the ordering below happens.
+        .resolve("carom", "v2.1.0")
         .expect("resolve the bundled carom case");
     let variant = test_case.variant("base").expect("carom's base variant");
 
@@ -315,6 +319,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
+        engines: EngineCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),
@@ -323,6 +328,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
             observed: Arc::clone(&observed),
         })),
         analyzer: None,
+        toolchain: None,
         validator: FakeValidator {
             steps: Arc::clone(&steps),
         },
@@ -346,6 +352,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         harness: HarnessSlug::Claude,
         model_id: "fake-model".to_string(),
         orchestrator: OrchestratorSelection::default(),
+        engine: EngineSelection::default(),
         // One second for the entire run — the session, and anything the cap wraps.
         max_runtime_override: Some(RUNTIME_CAP),
         container_image: None,

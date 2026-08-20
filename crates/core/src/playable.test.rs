@@ -463,6 +463,8 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "anthropic/claude-opus-4".to_string(),
             gg_capability_set: None,
             gg_summary: None,
@@ -503,6 +505,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
         code_analysis: None,
+        toolchain: None,
     };
     fs::write(
         dir.path().join("run-record.json"),

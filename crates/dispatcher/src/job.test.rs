@@ -28,6 +28,7 @@ fn claim() -> ClaimedJob {
             harness: HarnessSlug::Claude,
             model: "anthropic/claude".to_string(),
             orchestrator: Some("one-shot".to_string()),
+            engine: None,
             max_runtime_seconds: Some(600),
             auth_mode: None,
             retry_count: None,

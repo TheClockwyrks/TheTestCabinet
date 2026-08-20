@@ -1,4 +1,10 @@
-use super::{init_repo, reserve_unique_dir, run_timestamp, seed_prior_game_jam_entries};
+use std::path::Path;
+
+use super::{
+    FsRepoSeeder, JsonNode, init_repo, reserve_unique_dir, run_timestamp,
+    seed_prior_game_jam_entries,
+};
+use crate::engine::{EngineCatalog, EngineSelection, ResolvedEngine};
 use crate::run_record::PriorGameJamEntry;
 
 /// The run timestamp is a fixed-width `YYYYMMDD-HHMMSS` stamp: eight digits, a
@@ -177,8 +183,383 @@ fn the_replay_journal_lives_under_the_excluded_dotdir() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Engine seeding
+// ---------------------------------------------------------------------------
+
+/// A fake host package store holding the `simple-2d` engine package and the
+/// `@test-cabinet` sibling it depends on, laid out exactly as
+/// `scripts/stage-tcab-packages.mjs` stages them: each package under its scoped
+/// name, siblings referenced by a relative `file:` path, build output in `dist/`.
+///
+/// `version` is what the engine package declares, since that is the value a run
+/// records; `docs` controls whether the package carries the documentation
+/// directory its manifest promises, so the missing-docs failure can be exercised.
+fn fake_engine_store(version: &str, docs: bool) -> tempfile::TempDir {
+    let store = tempfile::tempdir().expect("store dir");
+    let engine = store.path().join("@test-cabinet/simple-2d");
+    let dep = store.path().join("@test-cabinet/run-record");
+    std::fs::create_dir_all(engine.join("dist")).expect("engine dist");
+    std::fs::create_dir_all(dep.join("dist")).expect("dep dist");
+    std::fs::write(
+        engine.join("package.json"),
+        format!(
+            r#"{{
+  "name": "@test-cabinet/simple-2d",
+  "version": "{version}",
+  "dependencies": {{ "@test-cabinet/run-record": "file:../run-record" }}
+}}
+"#
+        ),
+    )
+    .expect("engine manifest");
+    std::fs::write(engine.join("dist/index.js"), "// engine").expect("engine dist file");
+    if docs {
+        std::fs::create_dir_all(engine.join("docs")).expect("engine docs");
+        std::fs::write(engine.join("docs/frame.md"), "# Frame\n").expect("engine docs file");
+    }
+    std::fs::write(
+        dep.join("package.json"),
+        r#"{"name":"@test-cabinet/run-record","version":"0.0.0"}"#,
+    )
+    .expect("dep manifest");
+    std::fs::write(dep.join("dist/index.js"), "// types").expect("dep dist file");
+    store
+}
+
+/// The `simple-2d` engine, resolved from the real embedded catalogue rather than
+/// hand-built, so these tests fail if the shipped manifest stops naming a package
+/// or a docs directory.
+fn simple_2d() -> ResolvedEngine {
+    EngineCatalog::new()
+        .resolve(&EngineSelection::new("simple-2d"))
+        .expect("simple-2d is a built-in engine")
+}
+
+/// A seeder that vendors out of `store`. The base directory is irrelevant to
+/// vendoring — these tests drive it against a repository they created themselves,
+/// rather than one `seed` reserved.
+fn seeder_for(store: &tempfile::TempDir) -> (tempfile::TempDir, FsRepoSeeder) {
+    let base = tempfile::tempdir().expect("seed base");
+    let seeder = FsRepoSeeder::with_package_store(base.path(), store.path());
+    (base, seeder)
+}
+
+/// The workspace `package.json` a case ships. Its keys are deliberately not in
+/// alphabetical order, so a rewrite that re-sorted them would be impossible to
+/// miss in the assertion below.
+const SHIPPED_PACKAGE_JSON: &str = r#"{
+  "name": "carom",
+  "private": true,
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "vite": "^5.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
+"#;
+
+/// The same file after the engine is vendored: exactly one line more, inside the
+/// object it belongs to, with everything else where the author left it.
+const SEEDED_PACKAGE_JSON: &str = r#"{
+  "name": "carom",
+  "private": true,
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "vite": "^5.0.0",
+    "@test-cabinet/simple-2d": "file:./.tcab/engine/@test-cabinet/simple-2d"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
+"#;
+
+/// A run repository holding the workspace `package.json` a case ships.
+fn workspace_with_package_json(contents: &str) -> tempfile::TempDir {
+    let repo = tempfile::tempdir().expect("repo dir");
+    std::fs::write(repo.path().join("package.json"), contents).expect("write package.json");
+    repo
+}
+
+/// The whole engine delivery in one pass: the package *and its transitive
+/// `@test-cabinet` closure* land under `.tcab/engine/`, the engine's own
+/// documentation lands at `engine/`, the staged version comes back to be recorded
+/// on the run, and the workspace `package.json` gains the `file:` dependency —
+/// with every key the case authored still in the position it authored it in, at
+/// two-space indentation with a trailing newline.
+///
+/// The exact-text assertion is the point: this file is read by the model and
+/// diffed by everything downstream, so "the dependency is there" is not enough —
+/// re-emitting it in a different shape would turn a one-line addition into a
+/// whole-file change.
+#[test]
+fn vendor_engine_vendors_the_closure_the_docs_and_the_dependency() {
+    let store = fake_engine_store("1.4.2", true);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json(SHIPPED_PACKAGE_JSON);
+
+    let version = seeder
+        .vendor_engine(repo.path(), &simple_2d())
+        .expect("vendor the engine");
+
+    assert_eq!(
+        version.as_deref(),
+        Some("1.4.2"),
+        "the recorded version is the one the staged package declares"
+    );
+    let vendored = repo.path().join(".tcab/engine/@test-cabinet");
+    assert!(
+        vendored.join("simple-2d/dist/index.js").is_file(),
+        "the engine package is vendored, build output included"
+    );
+    assert!(
+        vendored.join("run-record/package.json").is_file(),
+        "the transitive @test-cabinet dependency is vendored too, so the staged \
+         package's relative `file:` link still resolves"
+    );
+    assert!(
+        !repo.path().join(".tcab/packages").exists(),
+        "the engine never lands in the case's own vendor tree"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("engine/frame.md")).expect("seeded engine docs"),
+        "# Frame\n",
+        "the engine's documentation is seeded where the prompt points the build"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("package.json")).expect("read package.json"),
+        SEEDED_PACKAGE_JSON,
+        "only the dependency is added; every other key keeps its place and shape"
+    );
+}
+
+/// A workspace that declares no `dependencies` at all still gets the engine: the
+/// object is created (appended, so nothing the author wrote moves) rather than the
+/// engine being silently dropped.
+#[test]
+fn vendor_engine_creates_a_missing_dependencies_object() {
+    let store = fake_engine_store("1.0.0", true);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+
+    seeder
+        .vendor_engine(repo.path(), &simple_2d())
+        .expect("vendor the engine");
+
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("package.json")).expect("read package.json"),
+        r#"{
+  "name": "carom",
+  "dependencies": {
+    "@test-cabinet/simple-2d": "file:./.tcab/engine/@test-cabinet/simple-2d"
+  }
+}
+"#,
+    );
+}
+
+/// Both vendored trees carry `dist/` subtrees, and a case's own `.gitignore`
+/// ignores `dist/` for its build output. `init_repo` force-adds each so the seed
+/// commit captures them: without it the published repository would install a
+/// dependency whose code is not there — the case's packages and the run's engine
+/// alike.
+#[test]
+fn init_repo_commits_both_the_vendored_packages_and_the_vendored_engine() {
+    let store = fake_engine_store("1.0.0", true);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+    std::fs::write(repo.path().join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
+    seeder
+        .vendor_packages(repo.path(), &["@test-cabinet/run-record".to_string()])
+        .expect("vendor the case's packages");
+    seeder
+        .vendor_engine(repo.path(), &simple_2d())
+        .expect("vendor the engine");
+
+    init_repo(repo.path()).expect("init repo");
+
+    let tracked = git_stdout(repo.path(), &["ls-files"]);
+    assert!(
+        tracked.contains(".tcab/packages/@test-cabinet/run-record/dist/index.js"),
+        "the case's vendored packages are committed despite `dist/`: {tracked}"
+    );
+    assert!(
+        tracked.contains(".tcab/engine/@test-cabinet/simple-2d/dist/index.js"),
+        "the run's vendored engine is committed despite `dist/`: {tracked}"
+    );
+    assert!(
+        tracked.contains("engine/frame.md"),
+        "the seeded engine documentation is committed: {tracked}"
+    );
+}
+
+/// The `none` engine is the whole point of the gate: it vendors nothing, seeds no
+/// documentation, records no version, and leaves the workspace `package.json`
+/// byte-for-byte as the case shipped it. A run under it is indistinguishable from
+/// a run seeded before engines existed.
+#[test]
+fn vendor_engine_writes_nothing_for_an_engine_with_no_runtime() {
+    let store = fake_engine_store("1.0.0", true);
+    let (_base, seeder) = seeder_for(&store);
+    let original = "{\n  \"name\": \"carom\",\n  \"dependencies\": {}\n}\n";
+    let repo = workspace_with_package_json(original);
+    let none = EngineCatalog::new()
+        .resolve(&EngineSelection::none())
+        .expect("`none` is a built-in engine");
+
+    let version = seeder
+        .vendor_engine(repo.path(), &none)
+        .expect("vendoring nothing succeeds");
+
+    assert_eq!(
+        version, None,
+        "an engine with no runtime records no version"
+    );
+    assert!(!repo.path().join(".tcab").exists(), "nothing is vendored");
+    assert!(!repo.path().join("engine").exists(), "no docs are seeded");
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("package.json")).expect("read package.json"),
+        original,
+        "the shipped `package.json` is not even rewritten in place"
+    );
+}
+
+/// An engine package that is not in the host store is an operator-facing failure,
+/// not a run that quietly builds without its runtime. The message has to name the
+/// staging script and the `TCAB_PACKAGE_STORE` override, because those are the two
+/// ways to fix it.
+#[test]
+fn vendor_engine_errors_when_the_package_is_missing_from_the_store() {
+    let store = tempfile::tempdir().expect("empty store");
+    let base = tempfile::tempdir().expect("seed base");
+    let seeder = FsRepoSeeder::with_package_store(base.path(), store.path());
+    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+
+    let err = seeder
+        .vendor_engine(repo.path(), &simple_2d())
+        .expect_err("a missing engine package is an error");
+
+    let message = err.to_string();
+    assert!(message.contains("@test-cabinet/simple-2d"), "{message}");
+    assert!(message.contains("stage-tcab-packages.mjs"), "{message}");
+    assert!(message.contains("TCAB_PACKAGE_STORE"), "{message}");
+}
+
+/// The engine version is recorded on the run and compared across months of runs,
+/// so a staged package with no real `version` is refused rather than recorded as
+/// something that is not true. The message names the package.
+#[test]
+fn vendor_engine_errors_when_the_staged_package_declares_no_version() {
+    let store = fake_engine_store("1.0.0", true);
+    std::fs::write(
+        store.path().join("@test-cabinet/simple-2d/package.json"),
+        r#"{"name":"@test-cabinet/simple-2d"}"#,
+    )
+    .expect("rewrite the engine manifest");
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+
+    let err = seeder
+        .vendor_engine(repo.path(), &simple_2d())
+        .expect_err("a versionless engine package is an error");
+
+    let message = err.to_string();
+    assert!(message.contains("@test-cabinet/simple-2d"), "{message}");
+    assert!(message.contains("version"), "{message}");
+}
+
+/// A docs directory the manifest promises but the package does not carry is an
+/// error, because the rendered prompt points the build at `/work/engine`: seeding
+/// past it would send the model to read documentation that is not there.
+#[test]
+fn vendor_engine_errors_when_the_declared_docs_are_missing() {
+    let store = fake_engine_store("1.0.0", false);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+
+    let err = seeder
+        .vendor_engine(repo.path(), &simple_2d())
+        .expect_err("a missing docs directory is an error");
+
+    let message = err.to_string();
+    assert!(message.contains("simple-2d"), "{message}");
+    assert!(message.contains("docs"), "{message}");
+}
+
+/// A case that supports an engine must ship a workspace `package.json`, because
+/// that is the file the dependency is written into. Reaching seeding without one
+/// means the case and the run disagree, so it fails loudly rather than inventing a
+/// manifest the case's specs never described.
+#[test]
+fn vendor_engine_errors_when_the_workspace_has_no_package_json() {
+    let store = fake_engine_store("1.0.0", true);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = tempfile::tempdir().expect("repo dir");
+
+    let err = seeder
+        .vendor_engine(repo.path(), &simple_2d())
+        .expect_err("a workspace with no package.json is an error");
+
+    let message = err.to_string();
+    assert!(message.contains("package.json"), "{message}");
+    assert!(
+        message.contains(crate::engine::NONE_SLUG),
+        "the message says which cases are exempt: {message}"
+    );
+}
+
+/// The order-preserving JSON model is what keeps the rewrite above to one line.
+/// A round trip must return every object's keys in their authored order — not
+/// `serde_json::Value`'s alphabetical one — and re-emit every value shape
+/// (nested objects, arrays, numbers, booleans, null, and the empty forms of both
+/// containers) at two-space indentation.
+#[test]
+fn json_node_round_trips_a_document_in_its_authored_order() {
+    let source = r#"{"zeta":1,"alpha":[1,2.5,true,null,"s"],"nested":{"b":{},"a":[]}}"#;
+
+    let document: JsonNode = serde_json::from_str(source).expect("parse");
+    let rendered = serde_json::to_string_pretty(&document).expect("render");
+
+    assert_eq!(
+        rendered,
+        r#"{
+  "zeta": 1,
+  "alpha": [
+    1,
+    2.5,
+    true,
+    null,
+    "s"
+  ],
+  "nested": {
+    "b": {},
+    "a": []
+  }
+}"#,
+    );
+}
+
+/// A duplicate key is malformed JSON that parsers accept. The last value wins —
+/// what every JSON reader resolves to — while the first key keeps its position,
+/// which is what a human reading the file sees.
+#[test]
+fn json_node_resolves_a_duplicate_key_in_place() {
+    let document: JsonNode = serde_json::from_str(r#"{"a":1,"b":2,"a":3}"#).expect("parse");
+
+    let rendered = serde_json::to_string_pretty(&document).expect("render");
+
+    assert_eq!(rendered, "{\n  \"a\": 3,\n  \"b\": 2\n}");
+}
+
 /// Run a git command in `repo` and return its stdout, failing the test if git does.
-fn git_stdout(repo: &std::path::Path, args: &[&str]) -> String {
+fn git_stdout(repo: &Path, args: &[&str]) -> String {
     let output = std::process::Command::new("git")
         .args(args)
         .current_dir(repo)

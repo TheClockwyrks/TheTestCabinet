@@ -27,6 +27,7 @@ impl BackendClient for StubBackend {
     }
     async fn resolve_version(&self, slug: &str, version: &str) -> Result<TestCaseVersion> {
         Ok(TestCaseVersion {
+            toolchain: None,
             // The debug-API handle plus a common item with an auto-validation driver
             // exercise the reporter-side validation path through materialization: the
             // handle is carried and the script is fetched, written beside the version,
@@ -81,6 +82,7 @@ impl BackendClient for StubBackend {
             init: Some("npm install".to_string()),
             asset_paths: vec![std::path::PathBuf::from("assets/ball.png")],
             packages: Vec::new(),
+            engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
             variants: vec![Variant {
                 slug: "base".to_string(),
                 name: "Base".to_string(),
@@ -92,7 +94,7 @@ impl BackendClient for StubBackend {
                 review_items: vec![],
                 domains: vec![],
                 voxel: None,
-                reference_impl: None,
+                reference_impls: Default::default(),
             }],
             common_references: vec![ReferenceView {
                 view: "title".to_string(),
@@ -428,6 +430,8 @@ fn sample_record(id: &str) -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "anthropic/claude-opus-4".to_string(),
             gg_capability_set: None,
             gg_summary: None,
@@ -481,6 +485,7 @@ fn sample_record(id: &str) -> RunRecord {
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
         code_analysis: None,
+        toolchain: None,
     }
 }
 

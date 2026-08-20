@@ -395,11 +395,14 @@ jobs:
       # run-record, voxel-runtime, and particle-runtime packages, so build each
       # before the Tauri build runs the UI's own `tsc -b && vite build` (its
       # beforeBuildCommand) — otherwise those imports resolve to `any` and the
-      # UI's typecheck fails.
+      # UI's typecheck fails. @test-cabinet/simple-2d is not one of those imports —
+      # it is the engine runtime, built here so this job compiles the same set
+      # `npm run build:packages` does rather than a subset of it.
       - name: Build workspace type packages
         run: >-
           npm run build
           -w @test-cabinet/run-record
+          -w @test-cabinet/simple-2d
           -w @test-cabinet/voxel-runtime
           -w @test-cabinet/particle-runtime
       # The shipped app stands up its own k3d cluster, so it bundles the k3d and

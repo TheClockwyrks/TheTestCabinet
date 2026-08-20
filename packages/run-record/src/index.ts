@@ -238,6 +238,32 @@ export type RunSubject = {
    */
   orchestratorSlug: string;
   /**
+   * The slug of the [engine](crate::engine) the produced build was written
+   * against (for example `simple-2d`), or `none` when the build supplied its
+   * own frame loop, input, audio, assets, and diagnostics.
+   *
+   * The engine is a **run dimension**, not a property of the case: the same
+   * case version can be run on several engines, and a result is only
+   * comparable with another result on the same engine, so the selection is
+   * recorded here beside the harness and the orchestrator rather than being
+   * inferred from the case. Defaults to `none` so records written before
+   * engine selection existed — and hand-written fixtures — still deserialize,
+   * which is also the truth about them: they had no runtime.
+   */
+  engineSlug: string;
+  /**
+   * The version of the engine runtime that was vendored into the run
+   * repository, read out of the staged package at seed time.
+   *
+   * Separate from [`Self::engine_slug`] because an engine's contract moves
+   * under a stable slug: two `simple-2d` runs a release apart were given
+   * different frame, input, or host behaviour, and only the version
+   * distinguishes them. `None` for a run whose engine vendors no runtime
+   * (`none` has no package, so there is no version to read) and for records
+   * written before engine selection existed.
+   */
+  engineVersion?: string;
+  /**
    * The model ID passed to the harness, treated as an opaque string. For a gg
    * run there is no single harness model (a run binds models to slots via
    * [`Self::gg_capability_set`]); this carries the run's primary-slot model so a
@@ -477,8 +503,9 @@ export type StepResult = {
  * is synthesized for it, pre-filled into the review like any auto verdict and
  * overridable by the reviewer — rather than failing the whole run: a build with a
  * broken debug API is still reviewed, and is scored down by exactly the points its
- * checks could not answer. A script the host could not run *at all* (no browser) is
- * not recorded here — that degrades like a [check](CheckResult).
+ * checks could not answer. A check the host could not run *at all* decided nothing
+ * about the build and is held apart by
+ * [`precondition_unmet`](Self::precondition_unmet).
  */
 export type DebugScriptResult = {
   /**
@@ -528,16 +555,24 @@ export type DebugScriptResult = {
    */
   ran: boolean;
   /**
-   * Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than
-   * a debug-API contract failure.
+   * Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather
+   * than a contract failure the build earned.
    *
-   * A script's `arrange` often searches the model's own world for a spot to pose
-   * its scenario — a blind corner in an invented maze, a legal build tile. That
-   * search can come up empty against a fully conformant build: every call was
-   * answered correctly, there was simply no such spot. That is INCONCLUSIVE about
-   * the model, so it is held apart from a genuine contract failure: no failed
-   * verdict is synthesized for it and the point is left for the reviewer to decide
-   * by hand. Only ever `true` alongside `ran == false`.
+   * Two outcomes set it, and both leave the point unanswered: no failed verdict is
+   * synthesized, [scoring](crate::comparison::automated_only_score) skips the point
+   * entirely, and the reviewer decides it by hand.
+   *
+   * The first is an UNMET PRECONDITION. A check often searches the model's own
+   * world for a spot to pose its scenario — a blind corner in an invented maze, a
+   * legal build tile. That search can come up empty against a fully conformant
+   * build: every call was answered correctly, there was simply no such spot. A
+   * [vitest validator](crate::vitest_validator) says the same thing by skipping
+   * every check in its suite.
+   *
+   * The second is a check the host could not execute at all, such as a validator
+   * project with no vitest to run it or a suite run that exceeded its cap. The
+   * [`detail`](Self::detail) names the reason. Only ever `true` alongside
+   * `ran == false`.
    */
   preconditionUnmet: boolean;
   /**
@@ -1890,6 +1925,159 @@ export type RunValidation = {
 };
 
 /**
+ * What one toolchain command did.
+ *
+ * [`ran`](Self::ran) distinguishes *the command exited non-zero* from *the command
+ * was never started* — a declared command whose prerequisite install failed did not
+ * fail the check, it never got the chance, and reporting that as a failure would be
+ * a fabricated verdict. Only a command that ran and exited non-zero can gate.
+ */
+export type ToolchainCommandResult = {
+  /**
+   * The command as the manifest declared it, run verbatim through `sh -c`.
+   */
+  command: string;
+  /**
+   * Whether the command was started at all. `false` when a prerequisite step
+   * failed, when no shell could be spawned, or when the stage ran out of time.
+   */
+  ran: boolean;
+  /**
+   * The process exit status, or `None` when the command never ran (or was killed
+   * by a signal, which leaves no code).
+   */
+  exitCode?: number;
+  /**
+   * Whether the command ran and exited zero.
+   */
+  succeeded: boolean;
+  /**
+   * A bounded excerpt of the command's combined output, capped at
+   * [`TOOLCHAIN_OUTPUT_LIMIT`] bytes. Empty when the command produced none.
+   */
+  output: string;
+  /**
+   * Whether [`output`](Self::output) is an excerpt rather than the whole of what
+   * the command printed.
+   */
+  truncated: boolean;
+  /**
+   * Why the command did not run, when it did not. `None` for a command that ran,
+   * whatever it exited with.
+   */
+  detail?: string;
+};
+
+/**
+ * The optional `test` command's result, plus the figures its output reported.
+ *
+ * The counts and the coverage are parsed **defensively** out of whatever the
+ * command printed: a runner that reports neither is not a failure, it is a runner
+ * that reports neither, and every figure here is therefore an `Option` whose
+ * absence means *not reported* rather than *zero*. A zero here is only ever a zero
+ * the tool actually printed.
+ */
+export type ToolchainTestRun = {
+  /**
+   * The command, its exit status and its bounded output.
+   */
+  result: ToolchainCommandResult;
+  /**
+   * How many tests ran in total, when the output said.
+   */
+  testsTotal?: number;
+  /**
+   * How many passed, when the output said.
+   */
+  testsPassed?: number;
+  /**
+   * How many failed, when the output said.
+   */
+  testsFailed?: number;
+  /**
+   * Line coverage as a percentage (`0.0..=100.0`), read from the coverage
+   * summary table's `All files` row, when the command printed one.
+   */
+  coveragePercent?: number;
+};
+
+/**
+ * The build smoke check: does the site the build produced actually boot?
+ *
+ * Distinct from — and weaker than — validation's load check, which decides review
+ * points. This one answers a single question at the moment the toolchain ran: the
+ * built site was served, opened in headless Chromium, and either painted a first
+ * frame with a clean console or it did not.
+ */
+export type ToolchainSmokeResult = {
+  /**
+   * Whether the check could be performed at all: the build produced an output
+   * directory and a browser was available to open it. `false` degrades — a host
+   * with no Node, Playwright or Chromium reports *not checked*, never *failed*.
+   */
+  ran: boolean;
+  /**
+   * Whether the page loaded and its scripts got as far as a first animation
+   * frame.
+   */
+  booted: boolean;
+  /**
+   * Whether that first frame drew anything — a canvas with more than one distinct
+   * pixel, or a laid-out DOM.
+   */
+  painted: boolean;
+  /**
+   * Console errors and uncaught page errors observed while the page booted, each
+   * truncated to a readable length and capped in number. Empty is the clean case.
+   */
+  consoleErrors?: Array<string>;
+  /**
+   * Why the check could not run, or what went wrong while it did.
+   */
+  detail?: string;
+};
+
+/**
+ * Everything the [toolchain stage](crate::toolchain_stage) recorded for a run,
+ * destined for [`RunRecord::toolchain`](crate::run_record::RunRecord::toolchain).
+ *
+ * Absent from a run whose case declares no `[toolchain]` table, and from a run
+ * whose tree never reached the host — absence means *not checked*, which the
+ * record's `Option` is what encodes.
+ */
+export type ToolchainSummary = {
+  /**
+   * The dependency install the stage ran before the commands, so that each
+   * command had the dependencies it needs. Reported in its own right because a
+   * failed install is why every command below it reports `ran: false`.
+   */
+  install: ToolchainCommandResult;
+  /**
+   * The gating typecheck. Always present when the case declares a toolchain,
+   * even when it never ran — *why* it did not run is the whole point of
+   * [`ToolchainCommandResult::ran`].
+   */
+  typecheck: ToolchainCommandResult;
+  /**
+   * The optional lint command's result, when the case declared one.
+   */
+  lint?: ToolchainCommandResult;
+  /**
+   * The optional format check's result, when the case declared one.
+   */
+  format?: ToolchainCommandResult;
+  /**
+   * The optional test command's result and figures, when the case declared one.
+   */
+  test?: ToolchainTestRun;
+  /**
+   * The build the smoke check served, and the check itself. `None` when the stage
+   * did not get as far as building.
+   */
+  smoke?: ToolchainSmokeResult;
+};
+
+/**
  * Links to a run's published outputs.
  */
 export type RunLinks = {
@@ -2088,4 +2276,23 @@ export type RunRecord = {
    * honest.
    */
   codeAnalysis?: CodeAnalysisSummary;
+  /**
+   * What the case's [`[toolchain]`](crate::toolchain) commands did when they were
+   * run over the produced implementation at the
+   * [post-run seam](crate::post_run), together with the build smoke check.
+   *
+   * **This is the one analysis block that can influence a run's rating**, and it
+   * does so through exactly one field: a `typecheck` that ran and exited non-zero
+   * [gates](crate::toolchain::ToolchainSummary::gates) the run, which rates it
+   * `broken` and scores it zero, because code that does not compile is not
+   * reviewable. The lint, format and test results are recorded and gate nothing.
+   * The gate is applied where the aggregate rating and score are computed
+   * ([`crate::review::gated_rating`]), never by rewriting a reviewer's marks.
+   *
+   * Absent for a run whose case declares no `[toolchain]` table, for a canceled
+   * run, for a run whose tree never reached the host, and for every record written
+   * before the field existed. Absence is *not checked*, and it never gates — the
+   * distinction the `Option` exists to keep.
+   */
+  toolchain?: ToolchainSummary;
 };

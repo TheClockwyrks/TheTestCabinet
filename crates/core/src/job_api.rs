@@ -54,6 +54,20 @@ pub struct LaunchBody {
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub orchestrator: Option<String>,
+    /// Built-in [engine](crate::engine) slug the produced build is written
+    /// against (e.g. `simple-2d`) — the runtime supplying its frame loop, input,
+    /// audio, assets, and diagnostics. Omit for the `none` default, exactly as
+    /// `orchestrator` is omitted for `one-shot`: an absent key means the launch
+    /// wants what a run looked like before the dimension existed, so every
+    /// launcher that predates engines keeps working untouched.
+    ///
+    /// The slug must be one the engine catalogue knows *and* one the requested
+    /// case version declares support for; both are checked when the run
+    /// executes, not here, so a bad selection fails the run rather than being
+    /// silently downgraded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub engine: Option<String>,
     /// Optional override for the maximum harness runtime, in seconds.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]

@@ -2,10 +2,9 @@ slug = "thunderhead"
 experimental = true
 # The Test Cabinet test case manifest.
 #
-# Declares, for this exact version, which files are seeded into a run, which
-# reference views are rendered and seeded as visual targets, which proofs the build
-# must submit, and which validation checks run. The harness reads this file to
-# resolve a `TestCaseVersion`.
+# Declares, for this exact version, which files are seeded into a run and which
+# validation checks run. The harness reads this file to resolve a
+# `TestCaseVersion`.
 
 # Human-readable display name for this test case.
 name = "Thunderhead"
@@ -75,8 +74,7 @@ init = "npm install && npx playwright install chromium"
 # so the model files and their manifest seed into the run root.
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# This version offers a single `base` variant — the standard Open Battle. It supplies
-# the `title` view's mockup; `tactical`, `control`, and `game-over` are common. This
+# This version offers a single `base` variant — the standard Open Battle. This
 # list is a root key, so it must precede the first table header (`[build]`).
 variants = ["variants/base.toml"]
 
@@ -124,71 +122,6 @@ source = "specs/assets.md"
 [[spec]]
 source = "specs/mode.md"
 
-# Proof of implementation: instructs the build to capture evidence at the exact paths
-# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
-# entries must match.
-[[spec]]
-source = "specs/proof.md"
-
-# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
-# mockup the harness renders to a screenshot and seeds as a visual target. The `title`
-# view is variant-specific (declared per variant); `tactical`, `control` (both
-# HUD-only), and `game-over` look the same in every variant.
-[[reference]]
-view = "tactical"
-path = "reference/tactical.html"
-
-[[reference]]
-view = "control"
-path = "reference/control.html"
-
-[[reference]]
-view = "game-over"
-path = "reference/game-over.html"
-
-# Proof of implementation, requested for every variant. Each declares a `dest`
-# path (relative to the run workspace root) the build must write a screenshot
-# or `.webm` clip to; `specs/proof.md` instructs the build to produce them at
-# exactly these paths. Validation records whether each turned up (informational).
-# The media kind is inferred from the extension: `.png` is an image, `.webm` a
-# video (the format Playwright records natively; the public gallery transcodes
-# it to mp4).
-[[proof]]
-id = "title"
-name = "Title screen"
-dest = "proof/title.png"
-
-[[proof]]
-id = "world"
-name = "Generated world"
-dest = "proof/world.png"
-
-[[proof]]
-id = "tactical"
-name = "Tactical HUD"
-dest = "proof/tactical.png"
-
-[[proof]]
-id = "control"
-name = "Direct-control gunnery"
-dest = "proof/control.png"
-
-[[proof]]
-id = "wireframe"
-name = "Wireframe frame"
-dest = "proof/wireframe.png"
-
-[[proof]]
-id = "engagement"
-name = "Engagement clip"
-dest = "proof/engagement.webm"
-
-# Reference-similarity checks (opt-in) are intentionally not declared. The
-# reference screenshots are seeded as illustrative examples of the screens, not
-# layouts to reproduce, so menus and screens are left to the model's design and
-# are reviewed by a human rather than scored against a baseline. The automated
-# load check still runs.
-
 # Scoring domains. A reviewer rates each independently while playing the build, and
 # the run's overall rating is the WORST across them — a polished world cannot mask a
 # broken gunnery model or an AI that does not fight. Every case declares at least one.
@@ -234,7 +167,6 @@ title = "Archipelago & cloud sea"
 text = "Each match procedurally generates a coherent world of mountainous islands and ridges separated by murk-filled straits — peaks breaking ABOVE the cloud line as islands, low terrain drowned in the murk below it — with an ANIMATED cloud-sea surface that visibly moves, and at least a few FLOATING islands hanging in the sky or murk as vertical cover. Landmasses are watertight; it reads as a coherent world, not a flat plane or random noise."
 weight = 3
 domain = "worldgen"
-proof = "world"
 
 [[review_item]]
 id = "worldgen-guarantees"
@@ -242,7 +174,6 @@ title = "Fair, varied generation"
 text = "The terrain surface is varied by PROCEDURAL NOISE (grass, rock, scree, snow on high peaks), not flat fills. Two opposed deployment zones are clear, connected by cloud-top routes, and not materially unequal, with room to fight in all three bands (open sky, cloud-top lanes, and deep murk). Degenerate maps (fleets walled apart, a domain denied) are regenerated rather than shipped."
 weight = 2
 domain = "worldgen"
-proof = "world"
 
 [[review_item]]
 id = "tactical-camera"
@@ -250,7 +181,6 @@ title = "Tilted 3D tactical camera"
 text = "The tactical view is a TILTED, orbiting overhead camera (never straight top-down) that pans, rotates, and zooms and keeps the relief of the islands and the depth of the cloud sea legible — the world clearly reads as 3D, not a flat map."
 weight = 2
 domain = "worldgen"
-proof = "tactical"
 
 [[review_item]]
 id = "renderer-perf"
@@ -258,7 +188,6 @@ title = "Real-time 3D & performance"
 text = "The world renders in real-time 3D (WebGL/WebGPU) and sustains a playable frame rate (target 30+ FPS) during a large engagement with both fleets, aircraft, and effects on screen, with the performance overlay showing live FPS. The wireframe toggle reveals BOTH the generated terrain and the provided unit models as wireframe."
 weight = 2
 domain = "worldgen"
-proof = "wireframe"
 
 [[review_item]]
 id = "provided-models"
@@ -266,7 +195,6 @@ title = "Provided models, articulated"
 text = "The game LOADS and uses the provided rigid unit models (not primitives of its own) and DRIVES THEIR JOINTS from the simulation: turrets traverse and elevate to aim, gun barrels move, rotors and propellers spin, and a destroyed turret reads wrecked. Units are colored per power and carry an allied/hostile allegiance marker."
 weight = 2
 domain = "worldgen"
-proof = "control"
 
 [[review_item]]
 id = "possession-two-scales"
@@ -274,7 +202,6 @@ title = "Two-scale command & possession"
 text = "The player commands the fleet from the tactical view AND can drop into direct control of any owned unit and any station aboard it, then release back to command. Both granularities work: switching WHICH UNIT is inhabited and WHICH STATION is manned aboard it, with the rest of the fleet fighting on under orders while the player is away."
 weight = 3
 domain = "command"
-proof = "engagement"
 
 [[review_item]]
 id = "ambient-steering"
@@ -296,7 +223,6 @@ title = "Fleet orders"
 text = "Selection (single, box, and control groups) and the order set all work and are carried out: Move, Attack, Escort, Hold, Patrol, Stance (aggressive/defensive/hold-fire), Altitude (dive/surface for capable units), and carrier Air operations. Ordered units path to their goal around the terrain rather than through it."
 weight = 2
 domain = "command"
-proof = "tactical"
 
 [[review_item]]
 id = "gunnery-classes"
@@ -304,7 +230,6 @@ title = "Class-based ship gunnery"
 text = "A warship's guns are controlled by CLASS through a single crosshair — surface guns, anti-air, torpedoes — not one turret at a time. The SURFACE-GUNS class holds both the long-ranged MAIN turrets and the short-ranged SECONDARY guns, so a DISTANT aim point fires only the main guns while a close one brings both to bear; every intact, bearing, in-range, loaded turret of the manned class fires at the crosshair."
 weight = 3
 domain = "combat"
-proof = "control"
 
 [[review_item]]
 id = "gunnery-readout"
@@ -312,7 +237,6 @@ title = "Per-turret status read-out"
 text = "While a gun class is manned, a ring of small, unlabeled dots around the crosshair shows one indicator PER TURRET (main guns arcing above, secondary below): GREEN ready (intact, bearing, in range, loaded), AMBER reloading with a CLOCK-LIKE radial sweep (not a linear bar), and RED unavailable (destroyed, OUT OF ARC, or OUT OF RANGE). The read-out stays unobtrusive, not a panel that blocks the view. Each BARREL within a turret reloads on its own clock, and both salvo and ripple fire modes work."
 weight = 3
 domain = "combat"
-proof = "control"
 
 [[review_item]]
 id = "bomber-fighter"
@@ -320,7 +244,6 @@ title = "Bomber turrets & fighters"
 text = "A bomber's defensive gun turrets are manned ONE AT A TIME, the player switching between them — the deliberate exception to a ship's class control. A fighter is a single fly-and-fire unit with no station to switch. Bombers deliver ordnance from the bombardier: bombs on a gravity arc and/or aerial torpedoes that run straight."
 weight = 2
 domain = "combat"
-proof = "engagement"
 
 [[review_item]]
 id = "damage-model"
@@ -328,7 +251,6 @@ title = "Armor, shields, resonance & battle damage"
 text = "The three defense paradigms behave distinctly: Ironbound ARMOR deflects light hits and yields to armor-piercing artillery and torpedoes; Meridian SHIELDS absorb until they collapse, then regenerate after time out of fire over a thin hull; Geode hulls REGENERATE while inside the resonance web. Battle damage is localized — turrets knocked out, fires that spread, breaches that cut speed — and recovered per paradigm (Ironbound crews, Meridian shields, Geode regeneration)."
 weight = 2
 domain = "combat"
-proof = "engagement"
 
 [[review_item]]
 id = "ordnance-aa"
@@ -343,7 +265,6 @@ title = "Three asymmetric powers"
 text = "The Ironbound, Meridian, and Geode are genuinely asymmetric — distinct in material and color, weapons, defense, mobility, AND roster (Ironbound have no destroyer and only a heavy bomber; Meridian have no battleship and only a light bomber; Geode field the fullest roster with a medium bomber). All three are player-selectable and AI-commanded, and every matchup — INCLUDING a mirror of the same power — is playable."
 weight = 3
 domain = "factions"
-proof = "tactical"
 
 [[review_item]]
 id = "weapon-families"
@@ -358,7 +279,6 @@ title = "Signature mechanics"
 text = "Each power's signature works: Ironbound DAMAGE-CONTROL crews are directed to fight fires, patch breaches, and restore knocked-out stations; Meridian SHIELDS regenerate out of fire and only AIRCRAFT blink (fighters charge quick, bombers slow with a visible wind-up; ships and submarines never blink); the Geode RESONANCE WEB is projected by lodestar support ships, heals and overcharges units inside it, and COLLAPSES when the lodestars are destroyed."
 weight = 3
 domain = "factions"
-proof = "control"
 
 [[review_item]]
 id = "fog-of-war"
@@ -366,7 +286,6 @@ title = "Fog of war & detection"
 text = "A fleet sees only what it detects: undetected enemies are hidden, and a detected one shows as a contact that FADES to a last-known mark when lost. Sight and sensors are BLOCKED by terrain and EXTENDED by height, so ridges and islands hide units and a high vantage or a scout reveals the enemy fleet."
 weight = 2
 domain = "recon"
-proof = "tactical"
 
 [[review_item]]
 id = "murk-stealth"
@@ -388,7 +307,6 @@ title = "Flagship victory & defeat"
 text = "The battle is WON by destroying the enemy flagship and LOST by losing your own; the flagship is a tougher command capital that must be screened and reached through its fleet. Symmetric escalation drives the battle to a decision rather than a stalemate, and the end screen reports the outcome and the run's stats."
 weight = 2
 domain = "battle"
-reference = "game-over"
 
 [[review_item]]
 id = "enemy-ai"
@@ -402,20 +320,15 @@ id = "states-controls"
 title = "States & controls"
 text = "Every state is reachable and behaves: the title (THUNDERHEAD with just PLAY and HOW TO PLAY), the DEPLOY screen (choose your power and the opponent), the in-battle state, a paused overlay that FREEZES the simulation, and the two end screens (victory and defeat). The tactical controls (camera, selection, orders, possess) and the possession controls all work."
 weight = 1
-reference = "title"
-proof = "title"
 
 [[review_item]]
 id = "hud-complete"
 title = "HUD"
 text = "The tactical HUD shows the fleet roster, BOTH flagship health bars, requisition with income and the reinforcement call, the selection/order panel, and the minimap/contacts; the direct-control HUD shows the possessed unit and manned station with the station-switch indicator, the gunnery read-out, movement (speed, heading, altitude/depth), the unit's condition (health, shield, resonance, or damage-control), and a Meridian aircraft's blink charge. The performance overlay and wireframe toggle are present."
 weight = 1
-reference = "tactical"
-proof = "tactical"
 
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
 text = "The 3D view fills the window and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on the title screen at load before any input."
 weight = 1
-reference = "tactical"

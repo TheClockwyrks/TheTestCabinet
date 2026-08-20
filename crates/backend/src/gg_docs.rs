@@ -384,7 +384,7 @@ pub async fn public_documents(db: &Db, store: &DefinitionStore) -> Result<Vec<Gg
 fn lifecycle_of(run: &StoredRun, score: Option<f64>) -> GgDocLifecycle {
     GgDocLifecycle {
         published: run.published,
-        rating: crate::db::aggregate_review_rating(&run.reviews),
+        rating: crate::db::aggregate_review_rating(&run.record, &run.reviews),
         score,
         review_count: run.reviews.len() as u64,
     }
@@ -428,9 +428,8 @@ impl<'a> CatalogScores<'a> {
     /// [rule 1](test_cabinet_core::gg_query#the-seven-semantic-rules), which a
     /// stored `0` would violate by dragging every average down).
     pub fn score(&mut self, run: &StoredRun) -> Option<f64> {
-        let subject = &run.record.subject;
         let manifest = self.manifest(run)?;
-        run_summary_score(manifest, &subject.variant, &run.reviews)
+        run_summary_score(manifest, &run.record, &run.reviews)
             .filter(|score| score.total > 0)
             .map(|score| score.earned / score.total as f64)
     }

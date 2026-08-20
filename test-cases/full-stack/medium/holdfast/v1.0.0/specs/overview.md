@@ -185,19 +185,3 @@ the dark edges in hostile red. The canonical palette and type are below; match t
 - The three canonical screens — the title screen, the in-colony view, and the
   colony-lost screen — are described in full under Game states in `specs/flow.md`.
   Implement each as described, in this palette and type.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look:
-
-- `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — a representative in-colony frame, mid-play.
-- `reference/game-over.png` — the colony-lost screen.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — and the exact map layout, structures, and
-settler positions they show are just **one example moment**. Build the screens
-from this specification, and design your own conforming colony.
