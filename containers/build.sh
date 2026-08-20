@@ -169,6 +169,13 @@ readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 # registry stores the layers once however many variants carry them, so the push itself
 # costs close to nothing on top of the variants already going up.
 #
+# THAT LAST SENTENCE IS TRUE ONLY BECAUSE `containers/gg/Dockerfile` COPIES THE TREE WITH
+# `--link`. Identical content is not enough: a plain `COPY` is diffed against each
+# variant's own parent, which gave the twenty-six variants twenty-six DIFFERENT digests for
+# the same bytes and defeated every layer of sharing there is — registry storage, node
+# pulls, and the `docker save` a local import feeds on. Read the comment on that `COPY`
+# before touching it; it is the line this paragraph depends on.
+#
 # Because it is not in image-names.sh, the `manifest` job in build-containers.yml — which
 # is driven by that list — fuses this one by name, immediately after its loop. See there.
 readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"

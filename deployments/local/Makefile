@@ -300,6 +300,49 @@ kubeconfig:
 	kubectl config set 'clusters.$(KUBE_CTX).tls-server-name' localhost >/dev/null; \
 	echo "kubeconfig: '$(KUBE_CTX)' server → https://host.docker.internal:$$port (tls-server-name=localhost)."
 
+# Save a set of already-built images and import them into the k3d cluster. $(1) is the
+# space-separated list of fully-qualified refs. Both the service-image target and every
+# run-image target go through this, so the two paths cannot drift.
+#
+# ONE ARCHIVE, NOT ONE PER IMAGE. `$(CONTAINER_TOOL) save a b c` writes each distinct blob
+# ONCE however many of the images share it; a tar per image cannot share anything, so every
+# image re-writes the whole base it inherits. That is not a rounding error on this image
+# set: the twenty-six non-gg run images are 8.5 GB as separate tars and 1.23 GB as one, and
+# all fifty-two together are 23.2 GB as one archive — the entire non-gg set rides along for
+# free once the gg set is in it. Every byte saved here is paid three times over, because it
+# is written to disk, streamed into the node, and unpacked into the node's snapshotter.
+#
+# Sharing only works if the images genuinely share layer DIGESTS, which for the `-gg`
+# variants is what `--link` in containers/gg/Dockerfile buys; see the comment there.
+#
+# Images are imported as a saved archive rather than by name: `k3d image import` does its
+# own `save` from a name through the runtime, which fails on podman (the name resolves under
+# a `localhost/` prefix). Saving ourselves and importing the archive sidesteps that entirely
+# and works on both docker and podman.
+#
+# `-m direct` streams the archive straight into each node's containerd. The default
+# (`tools-node`) instead starts a helper container and copies the archive into a shared
+# volume first — a full extra write of every byte, which on the gg set was minutes of the
+# import all by itself. Direct mode is not the riskier choice: the one archive shape that
+# breaks it, a MULTI-PLATFORM image whose other platforms' blobs are not in the local store,
+# fails identically under `tools-node` (`ctr: content digest …: not found`). Everything this
+# Makefile imports is built locally for one platform, so neither mode ever sees that shape.
+#
+# THE GREP IS A REAL GATE, NOT BELT AND BRACES. `k3d image import` prints a per-node
+# `failed to import images in node` on ERRO and then exits 0 with "Successfully imported
+# image(s)" anyway. Without this check a failed import is indistinguishable from a good one
+# here, and the first symptom is a run pod in ImagePullBackOff minutes later.
+define save_and_import
+	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
+	  echo "Saving $(words $(1)) image(s) to one archive …"; \
+	  $(CONTAINER_TOOL) save -o "$$tmp/images.tar" $(1); \
+	  k3d image import "$$tmp/images.tar" -c '$(CLUSTER)' -m direct 2>&1 | tee "$$tmp/import.log"; \
+	  if grep -q 'failed to import images in node' "$$tmp/import.log"; then \
+	    echo "ERROR: k3d reported a per-node import failure above (it still exits 0 — see the comment on save_and_import)." >&2; \
+	    exit 1; \
+	  fi
+endef
+
 # Build the service images from the same Dockerfile the cluster uses, then load
 # them into the cluster's nodes (no registry needed for local development).
 #
@@ -317,11 +360,8 @@ kubeconfig:
 # from its docker install. DOCKER_CONFIG is pinned to a credsStore-free config dir
 # for the builds (see BUILD_DOCKER_CONFIG above for why).
 #
-# Images are imported as saved tarballs rather than by name: `k3d image import`
-# does its own `save` from a name through the runtime, which fails on podman (the
-# name resolves under a `localhost/` prefix). Saving with $(CONTAINER_TOOL)
-# ourselves and importing the tar sidesteps that entirely and works on both docker
-# and podman.
+# Saving and importing is `save_and_import` above — one archive for the whole set, not one
+# per image, imported in k3d's direct mode. The reasons are written down there.
 #
 # THE BACKEND AND DRIVER LINES ARE THE SLOW ONES, AND THE FIRST RUN IS MUCH THE
 # SLOWEST. Both depend on the gg stage: the driver bakes the `gg` binary itself, and the
@@ -346,15 +386,7 @@ images:
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target driver     -t '$(DRIVER_IMG)'     -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target artifacts  -t '$(ARTIFACTS_IMG)'  -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target arena      -t '$(ARENA_IMG)'      -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
-	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
-	  i=0; tars=""; \
-	  for img in $(ALL_IMGS); do \
-	    i=$$((i+1)); \
-	    echo "Saving $$img …"; \
-	    $(CONTAINER_TOOL) save -o "$$tmp/img-$$i.tar" "$$img"; \
-	    tars="$$tars $$tmp/img-$$i.tar"; \
-	  done; \
-	  k3d image import $$tars -c '$(CLUSTER)'
+	$(call save_and_import,$(ALL_IMGS))
 
 # Build the run-container images (the base + per-asset-kind images with their
 # baked-in modeling tool compiled from `crates/`) and import them into the cluster,
@@ -398,27 +430,19 @@ images:
 # (these Dockerfiles also pull only public base images).
 #
 # `build_import_run_images` is the shared body every run-image target uses: build the
-# named images with build.sh (which (re)builds the FROM base as needed), then save
-# each and import it into the k3d cluster. $(1) is the space-separated list of image
-# NAMES to pass to build.sh; $(2) is the matching list of fully-qualified refs to
-# save + import (normally `$(call run_image_refs,$(1))`). Since an asset/adversarial/
-# performance image bakes its base's layers in, importing just those refs is enough
-# for their run pods — the plain `base` image is never imported on its own (it is not
+# named images with build.sh (which (re)builds the FROM base as needed), then hand them
+# to `save_and_import` above, which saves the whole selection into ONE archive and imports
+# it. $(1) is the space-separated list of image NAMES to pass to build.sh; $(2) is the
+# matching list of fully-qualified refs to save + import (normally
+# `$(call run_image_refs,$(1))`). Since an asset/adversarial/performance image bakes its
+# base's layers in, importing just those refs is enough for their run pods — the plain `base` image is never imported on its own (it is not
 # a run image); end-to-end runs schedule against `base-wasm`, imported via the
 # `run-images-e2e` group and the full `run-images`.
 define build_import_run_images
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
 	  bash '$(REPO)/containers/build.sh' $(1)
-	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
-	  i=0; tars=""; \
-	  for img in $(2); do \
-	    i=$$((i+1)); \
-	    echo "Saving $$img …"; \
-	    $(CONTAINER_TOOL) save -o "$$tmp/run-$$i.tar" "$$img"; \
-	    tars="$$tars $$tmp/run-$$i.tar"; \
-	  done; \
-	  k3d image import $$tars -c '$(CLUSTER)'
+	$(call save_and_import,$(2))
 endef
 
 # Rebuild + import EVERY run image (what `local-up` runs). The heavy path — prefer a
@@ -584,10 +608,10 @@ sts-reconcile:
 
 # How long `rollout-wait` gives EACH workload before it gives up. Deliberately
 # generous, because of what runs immediately before it: a rebuild's last act prior
-# to restarting the services is `k3d image import`, which pushes several gigabytes
-# of saved tarballs into the node's containerd content store, and the node can still
-# be digesting that when the restart lands. A container runtime stalled that way has
-# been observed to take many minutes to reap the OUTGOING pods — far past their 30s
+# to restarting the services is `k3d image import`, which pushes gigabytes of saved
+# images out of one archive into the node's containerd content store, and the node can
+# still be digesting that when the restart lands. A container runtime stalled that way
+# has been observed to take many minutes to reap the OUTGOING pods — far past their 30s
 # termination grace period, SIGKILL notwithstanding — and until those die their
 # replacements cannot start. So the wait is on the node settling, not on anything
 # the build produced. Lower it to fail faster when you suspect a genuinely broken
