@@ -1076,6 +1076,38 @@ impl<T> CompilerPool<T> {
         }
     }
 
+    /// **How many instances exist** — idle plus checked out — which is what a pool having been
+    /// *reused* rather than merely fast looks like from outside it.
+    ///
+    /// Test-only, and it is a counter rather than a clock on purpose: whether four compilations went
+    /// through one instance or four is a fact, where how much that saved is a measurement of the
+    /// machine as much as of the pool.
+    #[cfg(test)]
+    pub fn live(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .live
+    }
+
+    /// **Throw every idle instance away**, so the next checkout starts a fresh one.
+    ///
+    /// Test-only, and it exists so a COLD reading can be taken at a chosen moment rather than only
+    /// at the start of a process: what a pool saves is the difference between a first compilation in
+    /// a new instance and a later one in the same instance, and comparing two readings taken far
+    /// apart on a machine that changes speed between them compares two machines. Checked-out
+    /// instances are untouched — this drops what the pool is holding, and a compilation in flight
+    /// still owns its own.
+    #[cfg(test)]
+    pub fn evict_idle(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.live -= state.idle.len();
+        state.idle.clear();
+    }
+
     /// Give a reservation back: the instance if it survived its compilation, nothing if it did not.
     fn release(&self, instance: Option<T>) {
         let mut state = self

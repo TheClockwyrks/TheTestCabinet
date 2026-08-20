@@ -219,9 +219,10 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # The Java arm's warm-JVM measurement, for the same reason as the Ruby arm's per-turn reading above
 # and with the same remedy: it asserts that a second build through the pool is meaningfully cheaper
 # than the first, and the only way to observe that is a wall-clock reading of two real builds. Under
-# contention the cold build and the warm ones inflate differently — the cold one is dominated by a
-# JVM start that the scheduler can stretch — so giving it every slot is what makes the reading a
-# reading of the pool rather than of the load average.
+# contention the cold build and the warm ones inflate differently, so giving it every slot is what
+# makes the reading a reading of the pool rather than of the load average. It is shaped like the
+# Kotlin arm's copy below, whose note carries the argument for taking the cold reading beside the
+# warm ones rather than a load average earlier.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::java::substrate::a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one)'
 threads-required = "num-test-threads"
@@ -235,12 +236,18 @@ threads-required = "num-test-threads"
 # termination and neither would have been helped by moving that ceiling. It was this assertion, and
 # the retry that then passed at 60.3 s was 0.3 s from failing too.
 #
-# The assertion is now the ratio the test's name claims — a JVM start plus the first build in it
-# against the cheapest of three that follow — which is the reading that survives a loaded machine,
-# because a cold build and a warm one inflate together. This override is what makes it a reading of
-# the pool rather than of the load average all the same: measured cold-against-warm at 6.06 s / 1.52 s
-# alone, 21.3 s / 4.67 s beside those six arms, and 72.9 s / 11.6 s on a busier reading of that same
-# group. The spread of a single reading here is the whole argument for taking the runner.
+# The assertion became the ratio the test's name claims — a cold build against the cheapest of three
+# warm ones — on the reasoning that a cold build and a warm one inflate together. They do, but only
+# while they are readings of the SAME machine, and taken tens of seconds apart they are not: on a
+# thermally throttled laptop under a full workspace run the cold half read 4.7 s against warm builds
+# of 9.63 s, 8.29 s and 6.25 s. That is an inversion, so no ratio and no tolerance would have saved
+# it. The test now takes its cold reading in the middle, by evicting the pool's JVM after the warm
+# builds and paying for a new one there, with a further warm build after it — and asserts the reuse
+# itself off the pool's live count, which is not a clock at all. This override still applies, because
+# a ratio of two adjacent readings is cheaper to keep honest with the runner to itself: measured
+# cold-against-warm at 6.06 s / 1.52 s alone, 21.3 s / 4.67 s beside those six arms, and
+# 72.9 s / 11.6 s on a busier reading of that same group. The spread of a single reading here is the
+# whole argument for taking the runner.
 #
 # What it costs is head-of-line blocking, and that is reported rather than waved past: nextest cannot
 # start a test wanting every slot until every other test has finished, so a full run drains to one
