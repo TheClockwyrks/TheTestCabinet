@@ -469,13 +469,13 @@
       "type": "integer"
     },
     "runsOutstanding": {
-      "description": "The review-buffer occupancy: in-flight jobs plus unreviewed runs. When this has\nreached `bufferTarget`, a top-up deliberately enqueues nothing — which is the\ndifference between a finished ladder and a full one.",
+      "description": "The review-buffer occupancy: in-flight jobs plus unreviewed runs, over the same\nreached rungs [`Self::runs_unreviewed`] counts. When this has reached\n`bufferTarget`, a top-up deliberately enqueues nothing — which is the difference\nbetween a finished ladder and a full one.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
     },
     "runsUnreviewed": {
-      "description": "The completed runs across those rungs the requester has not reviewed.",
+      "description": "The completed runs the requester has not reviewed, across every rung every\nclimber has **reached** — not just the current ones. A rung the gate has already\ndecided keeps the runs nobody looked at, and they are exactly what\n`GET /ladders/{id}/queue` offers, so the two always describe the same runs.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

@@ -49,6 +49,14 @@ CI binary job runs, so the CLI is validated continuously and again on the shippe
 artifact. The services and the desktop app are exercised by hand from the
 prerelease.
 
+Both halves of the desktop app are compiled and tested on every change by
+`scripts/ci/desktop-build.sh`, on Linux and Windows in Azure and on the same
+`ubuntu-22.04` image `release.yml` bundles on in GitHub. `release.yml` builds the
+desktop UI through the root `build:packages` script, which is the single source
+of truth for which workspace packages the UI's typecheck resolves its imports
+against. The macOS desktop app is the one artifact a release is first to build,
+because no Azure agent can build it.
+
 ### Releasing `gg`
 
 [`gg`](/gg/overview/) is fetched by a running deployment into a run container

@@ -1106,7 +1106,7 @@ export function LadderPage() {
             </span>
             <span
               className={styles.summaryStat}
-              title="Completed runs of this ladder you have not reviewed. On a ladder these are also the undecided rungs — your review is the verdict."
+              title="Completed runs of this ladder you have not reviewed, on every rung its climbers have reached — a rung the gate has already decided keeps the runs nobody looked at. On a ladder your review is the verdict, so these are also what decides the undecided rungs."
             >
               <strong>{progress.runsUnreviewed}</strong> to review
             </span>

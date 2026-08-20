@@ -664,13 +664,17 @@ export type LadderProgress = {
    */
   runsMissing: number;
   /**
-   * The completed runs across those rungs the requester has not reviewed.
+   * The completed runs the requester has not reviewed, across every rung every
+   * climber has **reached** — not just the current ones. A rung the gate has already
+   * decided keeps the runs nobody looked at, and they are exactly what
+   * `GET /ladders/{id}/queue` offers, so the two always describe the same runs.
    */
   runsUnreviewed: number;
   /**
-   * The review-buffer occupancy: in-flight jobs plus unreviewed runs. When this has
-   * reached `bufferTarget`, a top-up deliberately enqueues nothing — which is the
-   * difference between a finished ladder and a full one.
+   * The review-buffer occupancy: in-flight jobs plus unreviewed runs, over the same
+   * reached rungs [`Self::runs_unreviewed`] counts. When this has reached
+   * `bufferTarget`, a top-up deliberately enqueues nothing — which is the difference
+   * between a finished ladder and a full one.
    */
   runsOutstanding: number;
   /**
