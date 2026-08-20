@@ -205,7 +205,9 @@ pub(crate) struct MembraneState<A: OperationApi> {
     /// deadline at all.
     deadline: Option<Instant>,
     /// When this program began, so [`guest_elapsed`](Self::guest_elapsed) and the store's
-    /// epoch-deadline callback can measure how long the guest has been executing.
+    /// epoch-deadline callback can measure how long the guest has been executing. Set here so a
+    /// state that never reaches a call still has a sane clock, and moved to the call itself by
+    /// [`start_program`](Self::start_program).
     program_started: Instant,
     /// Total wall-clock time the program has spent **parked in bridged tool calls** — dispatch, the
     /// tool's own work, a `shell` build. Excluded from the guest's execution time so that time
@@ -583,15 +585,18 @@ impl<A: OperationApi> WasiView for MembraneState<A> {
 /// read it simply has gg's epoch deadline as its only ceiling, which is what every arm had before it.
 pub(crate) const GUEST_DEADLINE: &str = "GG_SANDBOX_DEADLINE_MS";
 
-/// The budget a guest that can stop itself is given: gg's execution ceiling, less one epoch tick.
+/// The budget a guest that can stop itself is given: gg's execution ceiling, less the guest's
+/// [head start](super::engine::GUEST_HEAD_START).
 ///
-/// Never zero and never longer than gg's own — `saturating_sub` on a ceiling shorter than a tick
-/// leaves nothing, and a budget of nothing would interrupt a program before its first statement, so
-/// the floor is half the ceiling.
+/// Never zero and never longer than gg's own — `saturating_sub` on a ceiling shorter than the head
+/// start leaves nothing, and a budget of nothing would interrupt a program before its first
+/// statement, so the floor is half the ceiling. A run configured with a ceiling that short has a
+/// proportionally thinner margin than the head start asks for, and that is the honest answer: the
+/// alternative is a guest told it has more time than gg will give it.
 pub(crate) fn guest_deadline(limits: SandboxLimits) -> Duration {
     limits
         .timeout
-        .saturating_sub(super::engine::EPOCH_TICK)
+        .saturating_sub(super::engine::GUEST_HEAD_START)
         .max(limits.timeout / 2)
 }
 
@@ -853,6 +858,29 @@ impl<A: OperationApi> MembraneState<A> {
         self.program_started
             .elapsed()
             .saturating_sub(self.host_call_time)
+    }
+
+    /// **Start the program's clock**, called immediately before the guest's `run` export is invoked.
+    ///
+    /// Everything between this state being built and that call is gg's own work — building the
+    /// store, and instantiating the component, which for the ECMAScript guest is where its ~10 MiB
+    /// engine heap is allocated. Charging that to the program is wrong twice over. It inflates the
+    /// [cost](super::SandboxOutcome::elapsed) a turn reports for a program that had not run a statement,
+    /// and — the reason this exists — it is subtracted from the
+    /// [head start](super::engine::GUEST_HEAD_START) that lets a guest which can stop itself answer
+    /// a runaway loop before gg's ceiling does. An instantiate that stretched under load used to eat
+    /// that whole margin, and the model read an epoch trap naming nothing instead of its own
+    /// engine's `InternalError: interrupted`.
+    ///
+    /// Nothing unbounded escapes the ceiling by moving it: instantiation is fixed work on gg's own
+    /// artifact, the memory cap is armed on the store before it and still denies a guest its heap
+    /// there, and the run's own wall-clock [deadline](Self::deadline) bounds the whole turn either
+    /// way.
+    ///
+    /// **A caller that builds a store by hand must call this too** — every test helper that copies
+    /// [`evaluate`](super::evaluate) does, for the same reason production does.
+    pub(crate) fn start_program(&mut self) {
+        self.program_started = Instant::now();
     }
 
     /// Record that a bridged call parked the guest for `elapsed`, so that time is excluded from

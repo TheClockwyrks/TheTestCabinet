@@ -163,6 +163,33 @@ fn engine() -> &'static Engine {
 /// coarse enough that the ticker's own cost — one atomic increment — is utterly negligible.
 pub(crate) const EPOCH_TICK: Duration = Duration::from_millis(100);
 
+/// **How far ahead of gg's own ceiling a guest that can stop itself is told its budget ends** — the
+/// head start that decides which of the two answers a runaway loop, and therefore whether the model
+/// reads `InternalError: interrupted` with its own frames or an epoch trap that names nothing.
+///
+/// It has to cover everything that happens between the moment gg's clock starts and the moment the
+/// guest has finished writing its report: the guest engine's own start-up inside the call, the
+/// interrupt handler's check interval, rendering the error, and the flush to standard error. All of
+/// that measures a few milliseconds on an idle machine — and it is wall clock, so on a machine that
+/// is loaded, thermally throttled, or paging it stretches by whatever factor the scheduler applies.
+///
+/// **It used to be one [`EPOCH_TICK`], and one tick was not enough.** A full workspace run on a
+/// throttled laptop stretched a ~5 ms path past 100 ms and gg's ceiling answered first: the ECMAScript
+/// arm's `a_runaway_loop_is_stopped_by_the_engine_rather_than_by_an_epoch_trap` came back with an
+/// empty standard error and `Timeout { limit: 400ms }`, which is exactly the opaque stop the guest's
+/// self-interrupt exists to replace. Half a second is a hundred times the idle cost of that path,
+/// and it is charged against a budget sized in tens of seconds: the default 30 s ceiling becomes
+/// 29.5 s of program, which no honest program is anywhere near — the heaviest one measured spends
+/// about 1.8 s. The other half of that fix is [`MembraneState::start_program`](super::membrane::MembraneState::start_program),
+/// which keeps gg's own instantiation from being charged against this head start before the program
+/// has run a statement.
+///
+/// A flat duration rather than a fraction of the timeout, because what it covers is a fixed amount
+/// of work rather than a share of the program's budget: a run configured with a two-second ceiling
+/// needs the same milliseconds a thirty-second one does. [`guest_deadline`](super::membrane::guest_deadline)
+/// keeps its own floor for the case where that flat duration is most of the budget.
+pub(crate) const GUEST_HEAD_START: Duration = Duration::from_millis(500);
+
 /// The number of [epoch ticks](EPOCH_TICK) that span `budget`, for
 /// [`Store::set_epoch_deadline`](wasmtime::Store::set_epoch_deadline) and the deadline callback's
 /// re-arming. Rounded up, and never zero, so a deadline is always strictly in the future; saturated

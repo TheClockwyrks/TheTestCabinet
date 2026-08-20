@@ -127,9 +127,11 @@ pub use test_cabinet_core::gg::{PARAM_MAX_MEMORY_BYTES, PARAM_TIMEOUT_SECS};
 /// The sandbox limits one program runs under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SandboxLimits {
-    /// The wall-clock ceiling on **one program's** guest-CPU execution: the guest's setup, the
-    /// program itself, and every value marshalled across the membrane, but **not** time parked in a
-    /// bridged tool call. Armed once before the program runs and re-armed for the next turn, because
+    /// The wall-clock ceiling on **one program's** guest-CPU execution, measured from the call into
+    /// the guest: the guest engine's own start-up, the program itself, and every value marshalled
+    /// across the membrane, but **not** time parked in a bridged tool call, and not gg's own
+    /// instantiation of the component — see
+    /// [`MembraneState::start_program`](super::membrane::MembraneState::start_program). Armed once before the program runs and re-armed for the next turn, because
     /// it bounds a `Store` and every turn gets a fresh one, so a program that would loop forever is
     /// stopped by it while one that merely does a lot of honest work never approaches it.
     pub timeout: Duration,

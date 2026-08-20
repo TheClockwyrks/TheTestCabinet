@@ -136,10 +136,10 @@ pub struct SandboxOutcome {
     /// Whether a hand-over was revoked because the program then failed. `false` on every path that
     /// had nothing to revoke.
     pub revoked_rerun: bool,
-    /// The wall-clock time the program's **own execution** took — the guest's setup, the program,
-    /// and every value marshalled across the membrane, but **not** time parked in a bridged tool
-    /// call, so it is the same guest-only cost the [timeout](SandboxError::Timeout) is measured
-    /// against. Reported on every path that reached the engine, including a trap or a timeout (where
+    /// The wall-clock time the program's **own execution** took, from the call into the guest — the
+    /// guest engine's own start-up, the program, and every value marshalled across the membrane, but
+    /// **not** time parked in a bridged tool call, so it is the same guest-only cost the
+    /// [timeout](SandboxError::Timeout) is measured against. Reported on every path that reached the engine, including a trap or a timeout (where
     /// it is the time burned up to the stop). The efficiency signal that replaces the fuel figure
     /// the fuel-metered sandbox used to report.
     pub elapsed: Duration,

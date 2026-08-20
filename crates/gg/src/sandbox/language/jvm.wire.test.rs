@@ -524,6 +524,10 @@ fn run_against_the_membrane(
     let bound_operations = bound
         .call_bound_operations(&mut store)
         .expect("the `bound-operations` export answers");
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     let returned = bound
         .call_run(&mut store, "", &[], &granted, RunEnding::None.into(), false)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));

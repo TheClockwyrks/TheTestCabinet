@@ -109,7 +109,7 @@ engine reports the overflow itself.
 
 gg's [execution timeout](/gg/execution-limits/) is enforced by the host's epoch
 deadline and remains the ceiling. gg also states the budget to the guest in
-`GG_SANDBOX_DEADLINE_MS`, one epoch tick short of its own, so that a guest whose
+`GG_SANDBOX_DEADLINE_MS`, half a second short of its own, so that a guest whose
 engine can stop a runaway loop itself answers first and in the model's language.
 The guest subtracts the time it spent inside membrane calls before deciding, so
 a program parked in a long shell command reads as parked rather than as looping.
