@@ -165,6 +165,10 @@ fn evaluate(
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     let returned = bound
         .call_run(
             &mut store,
@@ -1198,6 +1202,10 @@ puts "#{page.class} #{page.total} #{page.offset} #{page.hits.inspect}"
 puts "#{GG::Docs.close("GG::Files.read_file")} #{GG::Docs.close_all}"
 "##,
     );
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     bound
         .call_run(
             &mut store,
@@ -1527,6 +1535,10 @@ end
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     let returned = bound
         .call_run(
             &mut store,

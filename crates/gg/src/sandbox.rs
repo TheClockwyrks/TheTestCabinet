@@ -489,6 +489,11 @@ fn evaluate<A: OperationApi>(
         }
     };
 
+    // The program's clock starts HERE, not when the state was built: instantiating the component
+    // above is gg's work, and charging it to the program both inflates the cost the turn reports and
+    // eats the head start a self-stopping guest needs to answer a runaway loop first. See
+    // `MembraneState::start_program`.
+    store.data_mut().start_program();
     let returned = bound
         .call_run(
             &mut store,

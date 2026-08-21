@@ -22,6 +22,7 @@ import { topUpAfterReview } from "../../account/CoveragePlanPage";
 import { topUpLaddersAfterReview } from "../../account/LadderPage";
 import { MediaView } from "../../../components/MediaView";
 import { ReviewItemAssets } from "./AssetResultSection";
+import { ValidationReplayPair } from "./ValidationReplayPair";
 import { DebugScriptList } from "./DebugScriptList";
 import {
   GRADE_LEVELS,
@@ -595,9 +596,19 @@ export function RunReviewEditor({
     const assertions = assertionsByVerdict.get(verdictId) ?? [];
     return (
       <>
-        {media.map((m) => (
-          <ValidationMediaPair key={m.id} media={m} />
-        ))}
+        {/* An output captured as an engine replay is a different pairing from an
+            image or a clip — its two panes share one clock and one frame index —
+            so it is dispatched here rather than branched inside the pair. The keys
+            are prefixed by kind so an output id reused across items of different
+            kinds remounts the right component instead of reconciling one pair's
+            hooks onto the other's. */}
+        {media.map((m) =>
+          m.kind === "replay" ? (
+            <ValidationReplayPair key={`replay:${m.id}`} media={m} />
+          ) : (
+            <ValidationMediaPair key={`media:${m.id}`} media={m} />
+          ),
+        )}
         {assertions.length > 0 && (
           <ul className={styles.assertionList}>
             {assertions.map((a, i) => (
@@ -1698,6 +1709,11 @@ export function RunReviewEditor({
 // the run advance frame-for-frame), Pause stops both, and the clips loop so the
 // comparison keeps repeating. The two clips are muted so playing them together is not
 // a cacophony.
+//
+// This is the pairing for an image or a clip. An output captured as an engine
+// replay is paired by {@link ValidationReplayPair} instead: a recording has no
+// decoder and no clock of its own, so its two panes share one clock and land on the
+// same frame by construction rather than by two players staying roughly in step.
 function ValidationMediaPair({ media }: { media: ValidationMedia }) {
   const isVideo = media.kind === "video";
   const actualRef = useRef<HTMLVideoElement>(null);

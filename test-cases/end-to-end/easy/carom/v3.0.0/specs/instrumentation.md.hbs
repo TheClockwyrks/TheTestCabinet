@@ -2,36 +2,31 @@
 
 Carom carries a small debugging and automation surface, `window.__carom`, so the
 game can be driven and inspected from code without touching the keyboard or
-waiting on real time. It is what reproduces a specific rally, scripts a scenario,
-and puts the game into an exact state.
+waiting on real time.
 
 The surface is supplied. `src/debug.ts` holds it, already written, and
-`src/main.ts` installs it on `window.__carom` as soon as the engine has
-initialized. You neither write it nor install it, and both files are ones you must
-not edit.
+`src/main.ts` installs it on `window.__carom` as soon as the runtime has
+initialized. Both files are ones you must not edit.
 
-What this file asks of you is the other half: the game's state must hold what the
-surface reads, and the game must honor the state the surface poses. Every
-operation is a read or a write of `CaromState`. None of them fabricates an
-outcome; each arranges the world, and the game's own `update` — the real
-collision, the real serve, the real AI — is what runs from there on the next
-frame. Read `src/debug.ts` alongside this file: it is the exact behavior
+What this file asks of you is the other half: the game's state holds what the
+surface reads, and the game honors the state the surface poses. Every operation is
+a read or a write of `CaromState`. Each arranges the world, and the game's own
+`update` runs the real collision, the real serve, and the real AI from there on
+the next frame. Read `src/debug.ts` alongside this file: it is the exact behavior
 described here.
 
-Nothing here changes how a person plays. The surface is inert during normal play,
-doing nothing until something calls it.
+The surface is inert during normal play, doing nothing until something calls it.
 
 ## A deterministic core
 
-The surface rests on the simulation being deterministic, which the physics loop in
-`specs/balls.md` already requires: every rate integrated against the delta time
-the game is given, so an interval of game time reaches the same state however it
-was divided into frames. Two more properties make it driveable from code:
+The surface rests on the simulation being deterministic: every rate integrated
+against the delta time the game is given, so an interval of game time reaches the
+same state however it was divided into frames. Two more properties make it
+driveable from code:
 
-- Render-free core. Game state advances from the elapsed time the game is handed
-  and must not depend on a canvas, on `requestAnimationFrame`, or on wall-clock
-  time to make progress. The dependency runs one way: the simulation never reads
-  from, waits on, or is driven by the renderer.
+- Render-free core. Game state advances from the elapsed time the game is handed,
+  independent of a canvas, of the host's frame callback, and of wall-clock time.
+  The dependency runs one way: the simulation reads nothing from the renderer.
 - Seeded randomness. Any randomness the game uses runs off a generator seeded from
   `state.rngState`, and it keeps its whole generator state in that field, so
   reseeding and replaying the same calls reproduces the same result exactly. A
@@ -40,14 +35,19 @@ was divided into frames. Two more properties make it driveable from code:
 Given the same seed and the same sequence of calls and elapsed game time, the game
 reaches the same state every time.
 
-## What the engine provides instead
+## What the runtime provides instead
 
+{{#if (eq engine.slug "none")}}
+The clock, the keyboard, and the overlay belong to the runtime in `src/host.ts`.
+{{else}}
 The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
-which documents them at `{{engine.docs}}`. Carom defines none of them, and
-`window.__carom` carries no operation for any of them: the engine advances the
-game frame by frame and can take it off real time, the engine drives the actions
-the game registers, and the engine draws and toggles the debug overlay. What the
-overlay shows is Carom's, under [Diagnostics](#diagnostics) below.
+which documents them at `{{engine.docs}}`.
+{{/if}}
+Carom defines none of them, and `window.__carom` carries no operation for any of
+them: the runtime advances the game frame by frame and can take it off real time,
+the runtime drives the actions the game registers, and the runtime draws and
+toggles the debug overlay. What the overlay shows is Carom's, under
+[Diagnostics](#diagnostics) below.
 
 ## The driver
 
@@ -58,25 +58,25 @@ it is the one behavior the whole surface depends on.
   actions move the human paddles and, in Solo, the AI moves the right one.
 - Every operation except `snapshot` and `reset` sets `driver.paddles` to `true`.
   From then on both paddles move at the held velocities `driver.vy.left` and
-  `driver.vy.right`, in px/s, integrated against the frame's delta time and
-  clamped to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` exactly as a played paddle is.
-  Neither the input actions nor the AI move a paddle while it is `true`.
+  `driver.vy.right`, in units per second, integrated against the frame's delta
+  time and clamped to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` exactly as a played paddle
+  is. The input actions and the AI leave the paddles alone while it is `true`.
 - The exception is `driver.ai`. In Solo, while `driver.paddles` and `driver.ai`
-  are both `true`, the right paddle is driven by the real AI opponent from
-  `specs/modes/single-player.md` while the left paddle stays on its held velocity.
+  are both `true`, the right paddle is driven by the real AI opponent while the
+  left paddle stays on its held velocity.
 - `reset()` sets `driver.paddles` and `driver.ai` back to `false` and both held
   velocities to `0`, handing the paddles back.
 
-A paddle's `vy` field always reports its actual vertical velocity for the frame,
-whoever moved it, because that is what the spin mechanic in `specs/balls.md` reads
-at contact. A paddle pinned against a bound therefore reports `0` even while a
-movement action is held or a driver velocity is set.
+A paddle's `vy` field reports its actual vertical velocity for the frame, whoever
+moved it, because that is what the spin mechanic reads at contact. A paddle pinned
+against a bound therefore reports `0` while a movement action is held or a driver
+velocity is set.
 
 ## The operations
 
 `window.__carom` carries `version` (`CAROM_DEBUG_VERSION`, `1`) and the operations
 below. Values are plain numbers, strings, and booleans; coordinates and velocities
-are in the logical-pixel space of `specs/overview.md`.
+are in the field's logical units.
 
 ### `reset(options)`
 
@@ -87,24 +87,23 @@ motionless and spinless at `(FIELD_CX, FIELD_CY)`, an empty trail, `simTime` at
 `0`, and the driver cleared. `options.seed` seeds `rngState`, defaulting to
 `DEFAULT_SEED` (`1`).
 
-`muted` is deliberately untouched: muting is a player preference the engine owns.
+`muted` is deliberately untouched: muting is a player preference the runtime owns.
 
 Because it restores exactly the declared fields, any state of your own that a
-frame depends on must be derivable from them. Anything authoritative held only in
-a field of your own would survive a reset and stop a scenario replaying
-identically.
+frame depends on is derivable from them.
 
 ### `snapshot()`
 
 A pure read of the state, returned as the plain object under
-[Snapshot shape](#snapshot-shape). It never changes anything.
+[Snapshot shape](#snapshot-shape). It changes nothing.
 
 ### `startMatch(mode)`
 
 Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
 exactly as choosing it from the menu would: `screen` becomes `"countdown"`,
 `holdTimer` becomes `HOLD_TIME`, both scores `0`, `winner` `null`, `receiver`
-`"left"`, both paddles centered, and the ball parked. It does not reset `simTime`.
+`"left"`, both paddles centered, and the ball parked. It leaves `simTime` as it
+is.
 
 The game runs from there: the countdown ticks down against the delta time and the
 serve happens through the game's own code.
@@ -114,24 +113,23 @@ serve happens through the game's own code.
 Ends the pre-serve hold immediately instead of waiting it out, by setting
 `holdTimer` to `0`. From a live rally it re-parks the ball, clears the trail, and
 returns `screen` to `"countdown"` first, so a re-serve and a first serve behave
-identically. It does nothing on any screen other than `"countdown"` or
-`"playing"`.
+identically. It applies on the `"countdown"` and `"playing"` screens alone.
 
 The launch itself is yours: on the next frame the game advances, an elapsed
-`holdTimer` launches the ball at `SERVE_SPEED` toward `state.receiver`, exactly as
-`specs/balls.md` describes. Nothing else may launch it.
+`holdTimer` launches the ball at `SERVE_SPEED` toward `state.receiver`.
 
 ### `setScore(p1, p2)`
 
 Sets the two scores directly, as a precondition. The win and deuce rules still
-resolve through real play, so a match ends only when a real point is driven.
+resolve through real play, so a match ends when a real point is driven.
 
 ### `setPaddle(side, state)`
 
 Poses or moves a paddle. `side` is `"left"` or `"right"`; `state` may set `cy`
-(center y) and `vy` (vertical velocity in px/s). A `vy` set here is written to
-both the paddle and `driver.vy[side]`, so it persists across frames and the paddle
-is still moving when it strikes the ball, which is what drives the spin mechanic.
+(center y) and `vy` (vertical velocity in units per second). A `vy` set here is
+written to both the paddle and `driver.vy[side]`, so it persists across frames and
+the paddle is still moving when it strikes the ball, which is what drives the spin
+mechanic.
 
 ### `setBall(index, state)`
 
@@ -142,10 +140,8 @@ may set any of `x`, `y`, `vx`, `vy`, and `spin`.
 
 Sets `driver.ai`, handing the right paddle back to the computer opponent for the
 rest of the driven scenario, so advancing the game runs the real AI against the
-posed ball while the left paddle and the ball stay on their posed values. This is
-how a scenario exercises the opponent: pose the ball's approach and the AI
-paddle's start, enable it, advance the game, and read where the AI moved its
-paddle. It applies only in Solo; `false` is the default, and `reset()` clears it.
+posed ball while the left paddle and the ball stay on their posed values. It
+applies in Solo; `false` is the default, and `reset()` clears it.
 {{#if (eq variant.slug "gyre")}}
 
 ### `setObstacleClock(t)`
@@ -154,13 +150,13 @@ Poses the obstacles by setting the obstacle clock to `t` seconds and holding the
 there. `t = 0` is upright at the base centers; a larger `t` sways and rotates them
 exactly as normal play would at that moment. While `driver.paddles` is `true` the
 obstacle clock is held still rather than advancing with the frame, so a scenario
-faces a chosen, known obstacle orientation rather than obstacles sweeping through
-the shot. `reset()` returns to normal, moving obstacles.
+faces a chosen, known obstacle orientation. `reset()` returns to normal, moving
+obstacles.
 {{/if}}
 
 A typical scenario calls `startMatch("versus")`, then `setPaddle` and `setBall` to
-arrange the exact contact wanted, advances the game a handful of frames through
-the engine to run the real collision, and reads the result from `snapshot()`.
+arrange the exact contact wanted, advances the game a handful of frames to run the
+real collision, and reads the result from `snapshot()`.
 
 ## Snapshot shape
 
@@ -184,7 +180,7 @@ the engine to run the real collision, and reads the result from `snapshot()`.
           speed: <number>, spin: <number>, held: <boolean> },
 
 {{#if (eq variant.slug "gyre")}}
-  // Each obstacle's live pose: its center and its rotation (radians), the same
+  // Each obstacle's live pose: its center and its rotation in radians, the same
   // values that drive its oriented collision.
   obstacles: [
     { cx: <number>, cy: <number>, theta: <number> },
@@ -195,29 +191,28 @@ the engine to run the real collision, and reads the result from `snapshot()`.
 ```
 
 Every field is read straight off `CaromState`, so what the snapshot reports is
-exactly what the game holds. Two are derived rather than stored: `speed` is
+what the game holds. Two are derived rather than stored: `speed` is
 `hypot(vx, vy)`, and `held` is true while a ball's pre-serve countdown is still
 running, which stays true through a pause.
 
-Three fields therefore need the game to keep them honest every frame:
+Three fields need the game to keep them honest every frame:
 
-- `muted` mirrors the engine's mute bit. Refresh it from `api.audio.muted()` in
-  every `update`, since the engine owns muting and this is the game's readable
+- `muted` mirrors the runtime's mute bit. Refresh it from `api.audio.muted()` in
+  every `update`, since the runtime owns muting and this is the game's readable
   copy of it.
 - `simTime` accumulates the delta time of every frame the match simulation
   advances.
-
 - `holdTimer` counts down from `HOLD_TIME` to `0` and sits at `0` during a live
   rally.
 
 ## Diagnostics
 
-The engine's debug overlay shows the values the game registers with it as
+The runtime's debug overlay shows the values the game registers with it as
 diagnostic sources, from `InitApi.diagnostics`. Register at least the current
 `screen` and `mode`, both scores, each ball's position, velocity, speed, and spin,
 and each paddle's center and velocity, the same facts `snapshot()` reports. Keep
 each one short enough to read on a line, and keep every source a pure read, so
-watching the overlay never changes what the simulation does.
+watching the overlay leaves the simulation as it is.
 
 Registering those values is the whole of Carom's part. Drawing the panel, toggling
-it, and keeping it read-only are the engine's.
+it, and keeping it read-only are the runtime's.

@@ -31,11 +31,11 @@ use crate::review::Writeup;
 use crate::run_record::{PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
-    Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec,
-    ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
-    ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, SpecKind,
-    SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant, VoxelSpec,
-    WorkspaceFile,
+    EngineWorkspaces, Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec,
+    OutputSpec, ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec,
+    ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec, SpecFile,
+    SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant,
+    VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -545,12 +545,12 @@ pub async fn materialize_version(
     // Starter workspace files (common + each variant's override) are fetched by
     // their store-relative key the same way, then rewritten to host paths below.
     let mut workspace: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
-    for file in resolved.common_workspace.iter().chain(
+    for file in resolved.common_workspace.files().chain(
         resolved
             .variants
             .iter()
             .filter_map(|variant| variant.workspace.as_ref())
-            .flatten(),
+            .flat_map(EngineWorkspaces::files),
     ) {
         workspace.insert(file.source_path.clone());
     }
@@ -635,6 +635,7 @@ pub async fn materialize_version(
     // it with the named scripts so the drivers are always present even if a client
     // serves no directory listing. Dedup by key so a shared file is fetched once.
     let mut scripts: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+    let mut scripted = false;
     for item in resolved.common_review_items.iter().chain(
         resolved
             .variants
@@ -649,13 +650,21 @@ pub async fn materialize_version(
                 .iter()
                 .filter_map(|sub| sub.validation.as_ref()),
         ) {
-            scripts.insert(PathBuf::from(&validation.script_rel));
+            scripted = true;
+            // A per-engine validator's declared path is relative to a validator
+            // project, not to the version folder, so it is not an artifact key. Its
+            // project comes down whole in the directory listing below, which is the
+            // only way to fetch it and the reason the listing is asked for whenever
+            // the case has a scripted point at all.
+            if validation.script.is_some() {
+                scripts.insert(PathBuf::from(&validation.script_rel));
+            }
         }
     }
     // Only ask the backend for the directory listing when the case actually has scripted
     // items — a case with none has no `validation/` directory, and this avoids a
     // needless request (and a spurious empty-list round-trip) on every other run.
-    if !scripts.is_empty() {
+    if scripted {
         for key in client.validation_files(slug, version).await? {
             scripts.insert(key);
         }
@@ -676,7 +685,7 @@ pub async fn materialize_version(
         case.input = root.join(&case.input);
         case.expected = root.join(&case.expected);
     }
-    for file in &mut resolved.common_workspace {
+    for file in resolved.common_workspace.files_mut() {
         file.source_path = root.join(&file.source_path);
     }
     // Point each auto-validated unit's debug script at its materialized copy (its
@@ -688,7 +697,10 @@ pub async fn materialize_version(
                 .iter_mut()
                 .filter_map(|sub| sub.validation.as_mut()),
         ) {
-            validation.script = root.join(&validation.script_rel);
+            validation.script = validation
+                .script
+                .as_ref()
+                .map(|_| root.join(&validation.script_rel));
         }
     };
     for item in &mut resolved.common_review_items {
@@ -698,8 +710,8 @@ pub async fn materialize_version(
         for spec in &mut variant.specs {
             spec.source_path = root.join(&spec.source_path);
         }
-        if let Some(files) = &mut variant.workspace {
-            for file in files {
+        if let Some(workspaces) = &mut variant.workspace {
+            for file in workspaces.files_mut() {
                 file.source_path = root.join(&file.source_path);
             }
         }
@@ -1657,8 +1669,12 @@ struct VersionBody {
     audio: Option<AudioSpec>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
+    /// The starter workspace files, keyed by [engine](crate::engine) slug. A
+    /// definition stored before workspaces were keyed by engine carries a bare list
+    /// instead; that is a case supporting no engine, so the list is read as the
+    /// engineless project (see [`WorkspaceBody`]).
     #[serde(default)]
-    workspace: Vec<WorkspaceFileBody>,
+    workspace: WorkspaceBody,
     #[serde(default)]
     init: Option<String>,
     assets: Vec<AssetBody>,
@@ -1789,7 +1805,7 @@ impl VersionBody {
             particle: self.particle,
             audio: self.audio,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
-            common_workspace: self.workspace.iter().map(workspace_from).collect(),
+            common_workspace: self.workspace.resolve(),
             init: self.init,
             asset_paths: self
                 .assets
@@ -1805,9 +1821,7 @@ impl VersionBody {
                     name: variant.name,
                     description: variant.description,
                     specs: variant.specs.iter().map(spec_from).collect(),
-                    workspace: variant
-                        .workspace
-                        .map(|files| files.iter().map(workspace_from).collect()),
+                    workspace: variant.workspace.as_ref().map(WorkspaceBody::resolve),
                     references: variant.references.iter().map(reference_from).collect(),
                     proofs: variant.proofs.iter().map(proof_from).collect(),
                     review_items: variant
@@ -1929,8 +1943,10 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
 /// path and fetches the script file. Shared by the item-level and per-sub-item drivers.
 fn review_validation_from(validation: ReviewValidationBody) -> ReviewValidation {
     ReviewValidation {
-        // Store-relative key until `materialize_version` roots it on disk.
-        script: PathBuf::from(&validation.script),
+        // Store-relative key until `materialize_version` roots it on disk. A
+        // per-engine validator has no single host path — the run's engine decides
+        // which project's copy runs — so it carries none.
+        script: (!validation.per_engine).then(|| PathBuf::from(&validation.script)),
         script_rel: validation.script,
         outputs: validation
             .outputs
@@ -2134,10 +2150,10 @@ struct VariantBody {
     description: Option<String>,
     specs: Vec<SpecBody>,
     /// The variant's workspace override, when it declares one (it replaces the
-    /// common workspace for this variant). Absent when the variant inherits the
-    /// common workspace.
+    /// common workspace for this variant, per engine). Absent when the variant
+    /// inherits the common workspace.
     #[serde(default)]
-    workspace: Option<Vec<WorkspaceFileBody>>,
+    workspace: Option<WorkspaceBody>,
     references: Vec<ReferenceBody>,
     #[serde(default)]
     proofs: Vec<ProofBody>,
@@ -2164,6 +2180,47 @@ struct VariantBody {
 struct WorkspaceFileBody {
     source: String,
     dest: String,
+}
+
+/// A starter project on the wire, in either shape the definition store holds it.
+///
+/// A case ships one project per [engine](crate::engine), so the current shape is a
+/// map keyed by engine slug. A definition stored before that carries a bare list,
+/// and such a case supports no engine (nothing else could have been stored), so its
+/// list is read as the engineless project — which is exactly what resolving that
+/// manifest produces today.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WorkspaceBody {
+    ByEngine(std::collections::BTreeMap<String, Vec<WorkspaceFileBody>>),
+    Engineless(Vec<WorkspaceFileBody>),
+}
+
+impl Default for WorkspaceBody {
+    fn default() -> Self {
+        Self::ByEngine(std::collections::BTreeMap::new())
+    }
+}
+
+impl WorkspaceBody {
+    /// The resolved per-engine projects this body describes.
+    fn resolve(&self) -> EngineWorkspaces {
+        match self {
+            Self::ByEngine(by_engine) => by_engine
+                .iter()
+                .map(|(engine, files)| {
+                    (
+                        engine.clone(),
+                        files.iter().map(workspace_from).collect::<Vec<_>>(),
+                    )
+                })
+                .collect::<EngineWorkspaces>(),
+            Self::Engineless(files) => EngineWorkspaces::from_iter([(
+                crate::engine::NONE_SLUG.to_string(),
+                files.iter().map(workspace_from).collect::<Vec<_>>(),
+            )]),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -2214,7 +2271,11 @@ struct InstrumentationBody {
 #[serde(rename_all = "camelCase")]
 struct ReviewValidationBody {
     script: String,
+    /// Whether `script` names a suite inside each engine's validator project rather
+    /// than one file under the version folder. Absent for a definition stored before
+    /// validators were declared per engine, all of which name one file.
     #[serde(default)]
+    per_engine: bool,
     outputs: Vec<ReviewOutputBody>,
 }
 

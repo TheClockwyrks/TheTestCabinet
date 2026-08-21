@@ -228,6 +228,10 @@ fn evaluate_granting(
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     let returned = bound
         .call_run(&mut store, program, &[], &granted, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));

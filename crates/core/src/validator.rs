@@ -13,7 +13,6 @@ use std::process::Command;
 
 use crate::adversarial_validator::AdversarialValidator;
 use crate::browser::{self, ScriptOutputSpec, StaticServer};
-use crate::engine::ResolvedEngine;
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
@@ -21,7 +20,7 @@ use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
     JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
-    ReviewItem, ReviewValidation, TestCaseVersion, TestType, Variant,
+    ReviewItem, ReviewOutput, ReviewValidation, TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
     Assertion, AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult,
@@ -147,11 +146,11 @@ impl Validator for BuildValidator {
         // built on no runtime has its instrumentation driven in a browser. A script or
         // validator that could not be run against a conformant build fails the checklist
         // point it backs; neither affects the run's terminal state.
-        let debug_scripts = match scripted_validation(artifacts) {
+        let debug_scripts = match scripted_validation(test_case, artifacts) {
             ScriptedValidation::Vitest(engine) => crate::vitest_validator::run_vitest_suites(
                 test_case,
                 variant,
-                engine,
+                &engine,
                 artifacts,
                 &build_commands.install,
             ),
@@ -397,27 +396,40 @@ impl BuildValidator {
 }
 
 /// Which path decides a case's scripted review points for a given collected tree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ScriptedValidation<'a> {
-    /// The run was built on an [engine](crate::engine) that vendors a runtime. The
-    /// case's validators for that engine are a vitest project run in process against
-    /// the build's own modules (see [`crate::vitest_validator`]).
-    Vitest(&'a ResolvedEngine),
-    /// The run vendored no runtime. The build is served as a static site and its
-    /// [instrumentation](crate::test_case::Instrumentation) driven in a browser.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ScriptedValidation {
+    /// The case ships a validator project for the run's [engine](crate::engine): a
+    /// vitest project run in process against the build's own modules (see
+    /// [`crate::vitest_validator`]), carrying the engine slug whose project runs.
+    Vitest(String),
+    /// The case ships no validator project for the run's engine, so its points are
+    /// decided by driving the build's
+    /// [instrumentation](crate::test_case::Instrumentation) in a browser.
     Browser,
 }
 
-/// The scripted-validation path for `artifacts`.
+/// The scripted-validation path for `test_case` over `artifacts`.
 ///
-/// The selection is read off the tree's own description rather than passed in,
-/// because the tree is what the engine was vendored into. A tree that records no
-/// engine, and a tree whose engine vendors no runtime, are the same answer: drive the
-/// build in a browser, exactly as every case predating engines is validated.
-pub(crate) fn scripted_validation(artifacts: &ArtifactCollection) -> ScriptedValidation<'_> {
-    match artifacts.engine_runtime() {
-        Some(engine) => ScriptedValidation::Vitest(engine),
-        None => ScriptedValidation::Browser,
+/// The question is whether the case ships a validator project for the engine the
+/// run was built on, which is a fact about the case and the tree together: a case
+/// declares its validators per engine, and the tree records which engine it was
+/// seeded for. A case that ships one has its points decided in process, against the
+/// build's own modules, whether or not that engine vendors a runtime — an
+/// engineless project is TypeScript a suite can import exactly as an engine-backed
+/// one is. A case that ships none has its build driven in a browser, which is how
+/// every case predating validator projects is decided.
+pub(crate) fn scripted_validation(
+    test_case: &TestCaseVersion,
+    artifacts: &ArtifactCollection,
+) -> ScriptedValidation {
+    let slug = artifacts
+        .engine
+        .as_ref()
+        .map_or(crate::engine::NONE_SLUG, |engine| engine.slug());
+    if crate::vitest_validator::has_project(test_case, slug) {
+        ScriptedValidation::Vitest(slug.to_string())
+    } else {
+        ScriptedValidation::Browser
     }
 }
 
@@ -649,12 +661,19 @@ pub fn drive_scripted_items(
             })
             .collect();
 
+        // A per-engine validator names a suite inside a validator project, not one
+        // script a browser can drive, so it has no host path here. A case declaring
+        // them ships a project for every engine it supports, which is what this path
+        // is chosen over — so reaching this with one is a case whose project went
+        // missing, and the whole stage degrades rather than deciding the point.
+        let script = validation.script.as_deref()?;
+
         // Drive the build. An `Err` is an infra fault (no browser), which is
         // host-wide — degrade the entire stage rather than gate on the environment.
         let tmp = media_dir.join(format!(".drive-{}", unit.verdict_id));
         let drive = match browser::drive_script(
             url,
-            &validation.script,
+            script,
             handle,
             instrumentation.tick_hz,
             &tmp,
@@ -666,7 +685,7 @@ pub fn drive_scripted_items(
 
         // Relocate the captured media to their stable, addressable flat names (keyed by
         // the verdict id) and record whether each declared output was produced.
-        let outputs = relocate_outputs(validation, &unit.verdict_id, media_dir, &tmp);
+        let outputs = relocate_outputs(&validation.outputs, &unit.verdict_id, media_dir, &tmp);
         let _ = std::fs::remove_dir_all(&tmp);
 
         results.push(ScriptedItemDrive {
@@ -733,15 +752,28 @@ fn media_kind_tag(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "image",
         MediaKind::Video => "video",
+        MediaKind::Replay => "replay",
     }
 }
 
 /// The file extension a synthesized output is captured under, by kind: a still is a
-/// PNG, a clip is the `.webm` Playwright records natively.
+/// PNG, a clip is the `.webm` Playwright records natively, and a draw-command
+/// recording is the gzipped JSON document the engine's recorder hands back.
+///
+/// A recording is stored compressed because its format is deliberately repetitive.
+/// Every frame restates the drawing state it inherited so that any frame can be
+/// drawn without drawing the frames before it, and consecutive frames of a game
+/// issue very nearly the same operations as each other. That redundancy is what
+/// makes seeking and side-by-side scrubbing work at all, and it is also exactly
+/// what gzip removes: a real capture stores tens of times smaller, which is the
+/// difference between a run whose recordings are tens of megabytes and one whose
+/// recordings are a few. The name carries both extensions, so what the bytes
+/// are and how they are framed are each readable off the file.
 pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "png",
         MediaKind::Video => "webm",
+        MediaKind::Replay => "json.gz",
     }
 }
 
@@ -755,11 +787,14 @@ pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
 /// snapshot builder transcodes it to H.264 `.mp4` so the public gallery plays on every
 /// browser (webm/VP8 does not on iOS/Safari) — exactly as a video proof is published
 /// (see [`crate::proof_published_extension`]). A still publishes as its captured PNG
-/// unchanged.
+/// unchanged, and so does a recording: a `.json.gz` document is decompressed and
+/// drawn by the console's own player, so there is no format the gallery would need
+/// it converted into and no reason to publish it any larger than it is stored.
 pub fn validation_published_extension(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "png",
         MediaKind::Video => "mp4",
+        MediaKind::Replay => "json.gz",
     }
 }
 
@@ -782,16 +817,26 @@ pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind)
     format!("{verdict_id}__{output_id}.{ext}")
 }
 
-/// Move each declared output's captured file from a drive's temp directory to its
-/// stable flat name under `media_dir`, returning the per-output presence record.
-fn relocate_outputs(
-    validation: &ReviewValidation,
+/// Move each declared output's produced file from `tmp` to its stable flat name
+/// under `media_dir`, returning the per-output presence record.
+///
+/// `tmp` is wherever the producer was told to write, named by output id and
+/// nothing else: the temp directory a browser drive captures into, or the
+/// per-suite directory a [vitest validator](crate::vitest_validator) writes its
+/// recordings to. Both arrive here because the destination is the same in both
+/// cases — a name keyed by the verdict the media backs, flat enough to route
+/// through the one-segment media endpoints.
+///
+/// A file that is not there is recorded absent rather than treated as a failure.
+/// Media is the evidence beside a verdict, not the verdict: what decides the point
+/// is the drive's own outcome, or the suite's assertions.
+pub(crate) fn relocate_outputs(
+    outputs: &[ReviewOutput],
     verdict_id: &str,
     media_dir: &Path,
     tmp: &Path,
 ) -> Vec<ScriptedOutput> {
-    validation
-        .outputs
+    outputs
         .iter()
         .map(|output| {
             let ext = validation_output_extension(output.kind);

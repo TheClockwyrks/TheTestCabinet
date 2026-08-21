@@ -619,6 +619,26 @@ fn serves_synthesized_validation_media_from_the_collected_tree() {
 }
 
 #[test]
+fn a_served_recording_is_labelled_as_the_gzip_it_is() {
+    // A recording is stored and served compressed, so it is served as gzip rather
+    // than as JSON. The bytes travel exactly as they are stored — the response says
+    // what they are and never claims a content encoding, which would invite the
+    // browser to inflate the body before the player ever saw it — and the player
+    // decompresses what it fetched.
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[(
+            ".tcab/validation/no-tunnel__serve.json.gz",
+            &[0x1f, 0x8b, 0x08, 0x00],
+        )],
+    );
+    let served =
+        serve_validation_file(dir.path(), "no-tunnel__serve.json.gz").expect("recording served");
+    assert_eq!(served.content_type, "application/gzip");
+    assert_eq!(served.body, vec![0x1f, 0x8b, 0x08, 0x00]);
+}
+
+#[test]
 fn validation_media_requests_cannot_escape_the_dir() {
     let dir = run_dir_with_validation(ValidationSummary::default(), &[]);
     // A traversal or nested path is refused; a missing file is a plain miss.

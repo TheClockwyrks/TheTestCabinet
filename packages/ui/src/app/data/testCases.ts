@@ -1,4 +1,9 @@
-import type { AssetSheet, ModelSpec, TestType } from "@test-cabinet/run-record";
+import type {
+  AssetSheet,
+  MediaKind,
+  ModelSpec,
+  TestType,
+} from "@test-cabinet/run-record";
 import type { AssetKind, Erratum, ReferenceSheet } from "../../client";
 
 export type { Erratum, ErratumSeverity } from "../../client";
@@ -139,8 +144,12 @@ export interface ErrataEntry {
 export interface ReferenceScreenshot {
   /** The view the reference depicts (e.g. `title`, `game-over`). */
   view: string;
-  /** Whether the media is a still image or a video. */
-  kind: "image" | "video";
+  /** Whether the media is a still image, a video, or an engine replay — the kind
+   * decides how it is shown, and a replay is re-drawn onto a canvas rather than
+   * loaded as a media file. Carried as the contract's own {@link MediaKind} rather
+   * than a narrower copy of it, so a kind added there reaches the catalog instead
+   * of failing to assign into it. */
+  kind: MediaKind;
   /** Public URL of the reference media. */
   url: string;
 }
@@ -175,18 +184,24 @@ export interface VariantSummary {
    * reviewer rates each independently; a run's overall rating is the worst across
    * them. Empty when the host could not resolve them. */
   domains: DomainSummary[];
-  /** The absolute URL of this variant's **reference implementation** — the
-   * authored, in-repo, versioned static build that is the *correct* implementation
-   * of the variant, deployed out-of-band by `tcab publish-reference` exactly as a
-   * published run's playable build is. `null` when the variant declares no
-   * `reference_implementation`, which is the common case. It is never a seeded
-   * input and never produced by a run; it is the case-variant analogue of a run's
-   * `links.playableBuild`, and the case-detail Reference tab (shown only for an
-   * end-to-end case whose selected variant carries one) iframes it as-is — the
-   * build was already redacted at publish, so it is loaded inline with no caveat.
-   * Carried by every host: the backend catalog populates it from the
-   * `case_reference_build` table, the static snapshot from `CaseVariantOut.referenceBuild`. */
-  referenceBuild: string | null;
+  /** The absolute URLs of this variant's **reference implementations**, keyed by
+   * the engine each was built for — the authored, in-repo, versioned static builds
+   * that are the *correct* implementation of the variant, deployed out-of-band by
+   * `tcab publish-reference` exactly as a published run's playable build is. Empty
+   * when the variant declares no `reference_implementation`, which is the common
+   * case.
+   *
+   * Keyed by engine because the build a reference demonstrates genuinely differs
+   * under each: an engineless one carries its own runtime, an engine-backed one
+   * hands the same surfaces to the runtime it vendors. The case-detail Reference
+   * tab iframes one and offers a switch between the rest — the build was already
+   * redacted at publish, so it is loaded inline with no caveat.
+   *
+   * Never a seeded input and never produced by a run; it is the case-variant
+   * analogue of a run's `links.playableBuild`. Carried by every host: the backend
+   * catalog populates it from the `case_reference_build` table, the static snapshot
+   * from `CaseVariantOut.referenceBuilds`. */
+  referenceBuilds: Record<string, string>;
   /** The published **reference frames** of this variant of an asset-generation
    * case — the other shape a reference implementation takes. An asset case builds
    * no site, so its reference is data rather than a page: `tcab publish-reference`
@@ -196,7 +211,7 @@ export interface VariantSummary {
    * the deterministic keys defined in `crates/core/src/asset_reference.rs` and
    * resolved through the host's `referenceMediaUrl`. `null` when the variant has no
    * published asset reference, which is the common case — and always null for an
-   * end-to-end/full-stack variant, whose reference is a {@link referenceBuild}
+   * end-to-end/full-stack variant, whose reference is a {@link referenceBuilds}
    * instead. The two are mutually exclusive in practice: a case is one test type. */
   referenceSheet: ReferenceSheet | null;
 }

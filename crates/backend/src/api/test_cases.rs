@@ -480,7 +480,10 @@ pub async fn put_run_code_analysis(
 /// prompt the way a real run receives it.
 fn version_response(
     manifest: &StoredManifest,
-    reference_builds: &std::collections::HashMap<String, String>,
+    reference_builds: &std::collections::HashMap<
+        String,
+        std::collections::BTreeMap<String, String>,
+    >,
     reference_sheets: &std::collections::HashMap<String, Vec<u32>>,
 ) -> Result<VersionResponse, ApiError> {
     let reference_out = |scope: &str, r: &crate::store::StoredReference| ReferenceOut {
@@ -502,10 +505,7 @@ fn version_response(
                 description: v.description.clone(),
                 prompt: render_variant_prompt(manifest, v)?,
                 specs: v.specs.iter().map(spec_out).collect(),
-                workspace: v
-                    .workspace
-                    .as_ref()
-                    .map(|files| files.iter().map(workspace_out).collect()),
+                workspace: v.workspace.as_ref().map(workspaces_out),
                 references: v
                     .references
                     .iter()
@@ -515,7 +515,7 @@ fn version_response(
                 review_items: v.review_items.iter().map(review_item_out).collect(),
                 domains: v.domains.iter().map(domain_out).collect(),
                 voxel: v.voxel.clone(),
-                reference_build: reference_builds.get(&v.slug).cloned(),
+                reference_builds: reference_builds.get(&v.slug).cloned().unwrap_or_default(),
                 reference_sheet: reference_sheets
                     .get(&v.slug)
                     .map(|frames| ReferenceSheetOut {
@@ -589,7 +589,7 @@ fn version_response(
             .iter()
             .map(|name| package_out(name))
             .collect(),
-        workspace: manifest.workspace.iter().map(workspace_out).collect(),
+        workspace: workspaces_out(&manifest.workspace),
         init: manifest.init.clone(),
         assets: manifest
             .assets
@@ -708,6 +708,7 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
 fn review_validation_out(validation: &crate::store::StoredReviewValidation) -> ReviewValidationOut {
     ReviewValidationOut {
         script: validation.script.clone(),
+        per_engine: validation.per_engine,
         outputs: validation
             .outputs
             .iter()
@@ -783,6 +784,27 @@ fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
     WorkspaceOut {
         source: file.source.clone(),
         dest: file.dest.clone(),
+    }
+}
+
+/// Map a stored starter project to the wire shape: one file list per
+/// [engine](test_cabinet_core::engine) slug.
+///
+/// A manifest stored before the key was an engine map carries a flat list; such a
+/// case supported no engine, so it is served under that slug and a runner reads the
+/// same project it always did.
+fn workspaces_out(
+    workspace: &crate::store::StoredWorkspace,
+) -> std::collections::BTreeMap<String, Vec<WorkspaceOut>> {
+    match workspace {
+        crate::store::StoredWorkspace::ByEngine(by_engine) => by_engine
+            .iter()
+            .map(|(engine, files)| (engine.clone(), files.iter().map(workspace_out).collect()))
+            .collect(),
+        crate::store::StoredWorkspace::Engineless(files) => std::collections::BTreeMap::from([(
+            test_cabinet_core::engine::NONE_SLUG.to_string(),
+            files.iter().map(workspace_out).collect(),
+        )]),
     }
 }
 
@@ -919,6 +941,11 @@ fn content_type_for(path: &str) -> &'static str {
         "hbs" => "text/plain; charset=utf-8",
         "html" => "text/html; charset=utf-8",
         "json" => "application/json",
+        // A gzipped document served as it is stored — a validator's draw-command
+        // recording (`<name>.json.gz`). The body is not labelled with a content
+        // encoding, so nothing between the store and the player inflates it on the
+        // way past; the player decompresses what it fetched.
+        "gz" => "application/gzip",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
@@ -1046,7 +1073,7 @@ pub struct VersionResponse {
     /// a UI-only description. Shown on the console's Inputs tab; empty for a case
     /// that declares none.
     packages: Vec<PackageOut>,
-    workspace: Vec<WorkspaceOut>,
+    workspace: std::collections::BTreeMap<String, Vec<WorkspaceOut>>,
     init: Option<String>,
     assets: Vec<AssetOut>,
     variants: Vec<VariantOut>,
@@ -1211,7 +1238,7 @@ struct VariantOut {
     /// The variant's prompt, rendered as a real run receives it.
     prompt: String,
     specs: Vec<SpecOut>,
-    workspace: Option<Vec<WorkspaceOut>>,
+    workspace: Option<std::collections::BTreeMap<String, Vec<WorkspaceOut>>>,
     references: Vec<ReferenceOut>,
     proofs: Vec<ProofOut>,
     review_items: Vec<ReviewItemOut>,
@@ -1222,16 +1249,19 @@ struct VariantOut {
     /// (the size axis behind a case's half/base/double variants). `None` inherits
     /// the case's common [`VersionResponse::voxel`].
     voxel: Option<VoxelSpec>,
-    /// The absolute URL of this variant's authored **reference implementation** — the
-    /// correct, deployed static build (the case-variant analogue of a run's
-    /// `playableBuild`), served on the console's "Reference" tab. `None` when the
-    /// variant declares no `reference_implementation`, or has one but it has not been
-    /// deployed yet. Written out-of-band by `tcab publish-reference` and read from the
+    /// The absolute URLs of this variant's authored **reference implementations** —
+    /// the correct, deployed static builds (the case-variant analogue of a run's
+    /// `playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was
+    /// built for and served on the console's "Reference" tab, which lets a reader
+    /// switch between them. Empty when the variant declares no
+    /// `reference_implementation`, or has one that has not been deployed yet.
+    /// Written out-of-band by `tcab publish-reference` and read from the
     /// `case_reference_build` table — never resolved from the manifest and never
     /// seeded into a run.
-    reference_build: Option<String>,
+    #[serde(default)]
+    reference_builds: std::collections::BTreeMap<String, String>,
     /// This variant's published **reference sheet** — the asset-generation analogue of
-    /// [`Self::reference_build`]. An asset case's reference is a `draw.sh` script, not
+    /// [`Self::reference_builds`]. An asset case's reference is a `draw.sh` script, not
     /// a site, so what is recorded is which of its rendered frames were published to
     /// the public snapshot bucket. `None` when the variant declares no
     /// `reference_implementation`, or has one that has not been published yet.
@@ -1309,6 +1339,10 @@ struct InstrumentationOut {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct ReviewValidationOut {
     script: String,
+    /// Whether `script` names a suite inside each engine's validator project rather
+    /// than one file under the version folder.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    per_engine: bool,
     outputs: Vec<ReviewOutputOut>,
 }
 

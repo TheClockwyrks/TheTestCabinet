@@ -41,13 +41,15 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
         .variant(&args.variant)
         .with_context(|| format!("selecting variant `{}`", args.variant))?;
     let specs = test_case.seeded_specs(variant);
-    let workspace = test_case.workspace_for(variant);
 
     // Resolved (and checked against the case's supported set) before anything is
     // written, so an engine this case never declared fails on the flag rather than
-    // half-way through a copy that has already created the output directory.
+    // half-way through a copy that has already created the output directory. The
+    // starter project is read through it, because a case ships one project per
+    // engine.
     let engine = engines::resolve_for_case(&args.engine, &test_case)
         .with_context(|| format!("selecting engine `{}`", args.engine))?;
+    let workspace = test_case.workspace_for(variant, engine.slug());
 
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("creating output directory {}", args.out_dir.display()))?;

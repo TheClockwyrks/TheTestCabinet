@@ -196,10 +196,11 @@ async function toTestCaseDetail(
         name: d.name,
         description: d.description,
       })),
-      // The reference-implementation build URL the backend records for this
-      // variant, or null when it declares none. Drives whether the case-detail
-      // Reference tab appears for the selected variant.
-      referenceBuild: v.referenceBuild ?? null,
+      // The reference-implementation build URLs the backend records for this
+      // variant, one per engine, or empty when it declares none. Drives whether the
+      // case-detail Reference tab appears for the selected variant, and what its
+      // engine switch offers.
+      referenceBuilds: v.referenceBuilds ?? {},
       // An asset-generation variant's published reference frames (indices only —
       // the images and action logs live in the snapshot bucket). Null on a backend
       // that predates the field, so the tab simply never appears.

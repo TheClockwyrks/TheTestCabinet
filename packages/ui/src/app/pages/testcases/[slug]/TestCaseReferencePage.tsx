@@ -10,7 +10,9 @@ import { ReferenceSheetView } from "./ReferenceSheetView";
 //     it is embedded inline. It is the case-variant analogue of a run's Play tab —
 //     but where a run's build is unedited model code shown behind a caveat, a
 //     reference implementation is the correct build (already redacted at publish),
-//     so it loads inline with a fullscreen toggle and no caveat.
+//     so it loads inline with a fullscreen toggle and no caveat. A variant has one
+//     such build per engine, so the embed carries a switch when more than one is
+//     published.
 //   • An asset-generation variant's reference is *data*, not a page: the rendered
 //     frames plus the action log each was drawn from, published to the snapshot
 //     bucket. There is nothing to embed, so they are rendered natively — see
@@ -18,7 +20,7 @@ import { ReferenceSheetView } from "./ReferenceSheetView";
 //
 // A variant carries at most one of the two signals in practice (a case is a single
 // test type), so the branch is a genuine either/or rather than a precedence
-// decision; `referenceBuild` is checked first only because it is the older shape.
+// decision; `referenceBuilds` is checked first only because it is the older shape.
 //
 // The layout only surfaces this tab for a variant carrying one of them, so reaching
 // it normally means one is present. A hand-typed URL (or a variant switch to one
@@ -28,7 +30,8 @@ export function TestCaseReferencePage() {
   return (
     <TestCaseDetailLayout tab="reference">
       {({ testCase, variant }) =>
-        !variant.referenceBuild && variant.referenceSheet ? (
+        Object.keys(variant.referenceBuilds).length === 0 &&
+        variant.referenceSheet ? (
           <ReferenceSheetView
             testCase={testCase}
             variant={variant}
@@ -36,7 +39,7 @@ export function TestCaseReferencePage() {
           />
         ) : (
           <ReferencePlayable
-            referenceBuild={variant.referenceBuild}
+            referenceBuilds={variant.referenceBuilds}
             variantName={variant.name}
           />
         )

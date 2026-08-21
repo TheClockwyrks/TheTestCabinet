@@ -5,13 +5,21 @@ title: Publishing a Reference Implementation
 ## Overview
 
 A [reference implementation](/components/core/results/#reference-implementations)
-is the authored, in-repo, correct static build of a test-case variant. It is
-authored under the case's version folder (by convention
-`reference-impl/<variant>/`), declared by a variant's optional
-`reference_implementation` key, and shown on the case page's Reference tab. It is
-kept out of every run's seed, so it is deployed out-of-band by a person.
+is the authored, in-repo, correct static build of a test-case variant on one
+[engine](/components/core/engines/). It is authored under the case's version
+folder (by convention `references/<engine>/<variant>/`), declared by a variant's
+optional `reference_implementation` key, and shown on the case page's Reference
+tab. It is kept out of every run's seed, so it is deployed out-of-band by a
+person.
 
-`tcab publish-reference` builds each targeted variant's reference project with
+The unit both commands here work in is the variant-on-an-engine pair, because the
+build a reference demonstrates differs under each engine: an engineless one
+carries its own runtime, an engine-backed one hands the same surfaces to the
+runtime it vendors. A variant supporting two engines therefore has two reference
+builds, each deployed and recorded on its own, and the case page's Reference tab
+offers a switch between them.
+
+`tcab publish-reference` builds each targeted reference project with
 the case's own [`[build]` commands](/testing/end-to-end/manifests/), scrubs the
 output with the same
 [secret-redaction](/components/core/results/#secret-redaction) pass the run
@@ -92,32 +100,34 @@ both.
 
 ## Publish
 
-Resolve and print the plan first: the targeted variants, their reference-impl
-directories, the baseline directory each would rewrite, and the branch alias each
-would deploy under. `--dry-run` builds, deploys, and records nothing, and needs
-none of the credentials above:
+Resolve and print the plan first: the targeted variant/engine pairs, their
+reference-impl directories, the baseline directory each would rewrite, and the
+branch alias each would deploy under. `--dry-run` builds, deploys, and records
+nothing, and needs none of the credentials above:
 
 ```sh
 tcab publish-reference --env prod <slug> [<version>] --dry-run
 ```
 
-Then publish for real. With no variant selector it publishes every variant that
-declares a reference for the resolved version, and `<version>` defaults to the
+Then publish for real. With no selector it publishes every reference the resolved
+version declares, one per variant per engine, and `<version>` defaults to the
 case's newest version:
 
 ```sh
-tcab publish-reference --env prod carom                    # all variants, newest version
-tcab publish-reference --env prod carom v1.1.0             # all variants, that version
-tcab publish-reference --env prod carom v1.1.0 --variant base   # exactly one variant
-tcab publish-reference --env staging carom --all-variants  # explicit default, to staging
+tcab publish-reference --env prod carom                        # every reference, newest
+tcab publish-reference --env prod carom v3.0.0                 # every reference, that version
+tcab publish-reference --env prod carom v3.0.0 --variant base  # one variant, every engine
+tcab publish-reference --env prod carom v3.0.0 --engine none   # one engine, every variant
+tcab publish-reference --env staging carom --all-variants      # explicit default, to staging
 ```
 
 `--variant X` targets exactly one variant and errors when that variant declares
-no reference. Over a multi-variant sweep, one variant's failure is reported and
-counted while the rest proceed, and the command exits non-zero when any variant
-failed.
+no reference. `--engine Y` narrows to one engine and errors when the case does not
+support it, or when no targeted variant published for it. Over a sweep, one
+failure is reported and counted while the rest proceed, and the command exits
+non-zero when any failed.
 
-For each targeted variant the command:
+For each targeted reference the command:
 
 1. Runs the case's `[build]` install then build from the reference-impl
    directory, producing the static site in the same `dist/`, `build/`, or `out/`
@@ -127,11 +137,13 @@ For each targeted variant the command:
    [Baseline validation media](#baseline-validation-media).
 3. Scrubs the built tree with the run publisher's secret-redaction pass.
 4. Deploys it to the `--env` project under the branch alias
-   `<slug>-<version-with-dots-as-dashes>-<variant>` (for example
-   `carom-v1-1-0-base`) and reads the served URL back from `wrangler`.
+   `<slug>-<version-with-dots-as-dashes>-<variant>-<engine>` (for example
+   `carom-v3-0-0-base-simple-2d`) and reads the served URL back from `wrangler`.
+   The engine reaches the alias because a variant's two builds are two deploys.
 5. Writes that URL into `test-cases/reference-builds.lock.json` under the `--env`
-   key. Entries for other environments, cases, and versions are preserved, and a
-   re-deploy overwrites the variant's URL in place.
+   key, at `<slug>` → `<version>` → `<variant>` → `<engine>`. Entries for other
+   environments, cases, versions, and engines are preserved, and a re-deploy
+   overwrites that one URL in place.
 
 The lockfile write and the baseline media are the only side effects that outlive
 the command.
@@ -150,16 +162,20 @@ Capturing it is an authoring step rather than a publishing step. It needs no
 Cloudflare credentials and no deployment environment:
 
 ```sh
-tcab capture-baselines <slug> [<version>] [--variant base] [--dry-run]
+tcab capture-baselines <slug> [<version>] [--variant base] [--engine none] [--dry-run]
 ```
 
 Run it whenever you add or change a debug script, or change the reference
 implementation those scripts are driven against, and commit the result. Its case,
-version, and variant selection is identical to `publish-reference`'s. The whole
-`validation-baseline/<variant>/` directory is regenerated, so a renamed or
+version, variant, and engine selection is identical to `publish-reference`'s. The
+whole `validation-baseline/<variant>/` directory is regenerated, so a renamed or
 removed output never lingers as a stale committed file.
 
-`publish-reference` performs the same capture as part of each variant's build,
+A case that declares its validators per engine decides its points with in-process
+[vitest suites](/components/core/validation/) rather than browser scripts, and
+those capture no media, so there is no baseline for either command to write.
+
+`publish-reference` performs the same capture as part of each build,
 and does it before the deploy so a failed capture never leaves a deployed build
 paired with stale media. When the baselines are known to be current for this
 build, `--skip-baselines` deploys without re-capturing:
@@ -188,8 +204,8 @@ The re-ingest
 The backend then loads the lockfile, reads the entries for its own `TCAB_ENV`,
 and reconciles its `case_reference_build` table to match, upserting each URL and
 pruning any it no longer lists. The version's API response and the public
-snapshot then carry each variant's `referenceBuild` URL, and the case page shows
-the Reference tab.
+snapshot then carry each variant's `referenceBuilds`, keyed by engine, and the
+case page shows the Reference tab.
 
 A lockfile that is missing, or an environment absent from it, leaves the table
 untouched.

@@ -79,7 +79,10 @@ Observation has three channels:
 
 A validator is written against one engine's API and uses that engine's own
 vocabulary, so a case supporting several engines ships a validator per verdict
-unit per engine.
+unit per engine. A review item names its suite relative to the engine's validator
+project, and the case ships that suite under `validation/<engine>/` for every
+engine it supports. Resolution holds the declaration against each of them, so a
+point is decided the same way whichever engine ran.
 
 Each validator produces an auto verdict, decided from a list of assertions and
 passing only when every assertion passed.
@@ -87,7 +90,13 @@ passing only when every assertion passed.
 ### Running the validators
 
 The validators for the run's engine are a vitest project of the case's own,
-separate from the build's. Deciding the run's points means running that project:
+separate from the build's. A case that ships one for the run's engine has its
+points decided in process, and one that ships none has its build driven in a
+browser instead. Whether the engine vendors a runtime does not enter into it: an
+engineless project is TypeScript a suite imports exactly as an engine-backed one
+is.
+
+Deciding the run's points means running that project:
 
 - Stage the case's `validation/<engine>/` directory into the collected tree at
   `validation/`. The sibling layout is what the case's project requires, since its
@@ -96,9 +105,34 @@ separate from the build's. Deciding the run's points means running that project:
   measures the code the model wrote has already measured it.
 - Run vitest over that project from the implementation's repository root, naming
   the project's config explicitly so the build's own config is never the one that
-  runs, and reading the outcome from the JSON reporter written to a file.
+  runs, naming **the suites this run's variant declares** as vitest's file filters,
+  and reading the outcome from the JSON reporter written to a file.
 - Reuse the dependency install the tree already carries, and install only a tree
   nothing prepared.
+
+### Only the run's own variant's suites are run
+
+A case ships one validator directory per engine, holding the suites of every
+variant, because the variants share nearly all of them. That directory is a
+superset of what any single run is rated on: a suite belonging to another variant
+would fail against a build that was never asked to satisfy it — Carom's `gyre`
+suites reach for a debug operation only `gyre`'s workspace seeds, so they fail
+every `base` build for a reason that is not the build's.
+
+The run is therefore scoped by the **checklist**, not by the directory. The
+resolved variant's review items already name exactly the suites that decide its
+points, and those staged paths are handed to vitest as its file filters, so a
+suite no item of this variant names is never loaded — it costs nothing and reports
+nothing. Nothing is asked of the case for this: the manifest's per-variant
+checklist is the single declaration of which validators apply, and a
+variant-specific suite is skipped by not appearing there. The same scoping applies
+whether the validators are deciding a run's points or being run against a
+reference implementation with `tcab validate --variant`.
+
+If a variant is left with nothing to point vitest at, the run is refused outright
+rather than run unfiltered — an unfiltered run is precisely the whole-directory
+collection the filters exist to prevent — and every point is reported as not
+having run.
 
 Each test file maps back to the review point whose `validation` path declared it,
 by the path the file was staged to. A file whose checks all passed earns its point
@@ -109,8 +143,45 @@ The whole suite run is capped at wall-clock minutes and the output retained per
 suite at kilobytes, so a validator that never terminates costs the run the cap and
 nothing more.
 
-A validator captures no media. Its evidence is the assertions it recorded, so a
-result from an engine-backed run declares no outputs at all.
+### The media a validator produces
+
+A validator captures a recording for each `replay` output its verdict unit
+declares. It arms the engine's draw-command
+[recorder](/components/core/engines/#recording) once its scenario is posed,
+disarms it once the behavior under test has happened, and writes what came back.
+The evidence is therefore the operations the build itself issued over exactly
+the stretch of the scenario the check is about, which nothing outside the suite
+knows the bounds of.
+
+The runner creates the media directory before the suite run starts and names it
+to the suites in an environment variable. Each suite writes its outputs into a
+directory named by its own staged path, so two suites of the same name in
+different directories cannot collide. Once the run returns, the runner moves
+each declared output to the flat name every consumer of validation media
+addresses and records whether it was there.
+
+A recording is stored and served gzipped, as `<verdict>__<output>.json.gz`. The
+format is repetitive by design: every frame restates the drawing state it
+inherited so that any frame can be drawn on its own, which is what seeking and
+side-by-side scrubbing are built on. Compression is what makes that affordable,
+taking a real capture down to a small fraction of its size, so a run's whole set
+of recordings costs a few megabytes. The console decompresses what it fetched and
+reads the same document the recorder produced.
+
+An output that is not there is recorded absent rather than failing anything. The
+assertions decide the point and the media is the evidence beside the verdict, so
+a suite that passed every check while failing to write its recording still
+earns its point, and the reviewer sees that there is nothing to look at. A
+capture that closed no frames is one of these: the file is left unwritten and
+the output reported absent, which is the truthful reading of a section that drew
+nothing. A recording is kept whatever the verdict was: a suite that failed its
+checks is the one whose frames a reviewer most wants.
+
+The baseline half is the same suites driven against the variant's
+`reference_implementation` by
+[`tcab capture-baselines`](/components/cli/overview/#commands), captured once
+and served case-scoped. Every frame of a recording is drawable on its own, so
+the reviewer scrubs the build's recording and the reference's in step.
 
 ## Checks
 

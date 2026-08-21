@@ -107,11 +107,13 @@ export function VariantInputsView({
       body: <Markdown>{pkg.description}</Markdown>,
     })),
     // The reference media that are the variant's visual targets: rendered mockups
-    // and static images, plus any reference video clips. They are validation
-    // material, not seeded into a run. A video renders with native controls; an
-    // image renders inline.
+    // and static images, plus any reference video clips or engine replays. They are
+    // validation material, not seeded into a run. A video renders with native
+    // controls; an image renders inline; a replay is re-drawn onto a canvas with its
+    // own transport.
     ...variant.referenceScreenshots.map((shot) => {
-      const ext = shot.kind === "video" ? "mp4" : "png";
+      const ext =
+        shot.kind === "video" ? "mp4" : shot.kind === "replay" ? "json" : "png";
       return {
         path: `reference/${shot.view}.${ext}`,
         kind: INPUT_KIND_LABELS.reference,

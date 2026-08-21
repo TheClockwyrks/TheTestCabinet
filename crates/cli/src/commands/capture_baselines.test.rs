@@ -6,8 +6,6 @@
 //! selection logic both commands route through — version resolution and variant
 //! targeting — leaving the clap surface to `cli.test.rs`.
 
-use std::collections::BTreeMap;
-
 use test_cabinet_core::{AssetKind, EngineSupport, NONE_SLUG, TestType};
 
 use super::*;
@@ -17,7 +15,7 @@ use super::*;
 /// exercised without a fixture tree on disk. Everything the selection path does
 /// not read is left empty (the same minimal-literal fixture style `core`'s
 /// validator tests use).
-fn test_case(variants: &[(&str, bool)]) -> TestCaseVersion {
+fn test_case(variants: &[(&str, &[&str])]) -> TestCaseVersion {
     TestCaseVersion {
         toolchain: None,
         slug: "carom".to_string(),
@@ -52,14 +50,17 @@ fn test_case(variants: &[(&str, bool)]) -> TestCaseVersion {
         particle: None,
         audio: None,
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
-        // The engineless run every case supports, which is what resolution puts
-        // here for a manifest that declares no `engines`; baseline selection does
-        // not read it.
-        engines: vec![EngineSupport::unbounded(NONE_SLUG)],
+        // Both built-in engines, so a fixture variant can declare a reference for
+        // either — selection expands a variant across the engines it published for
+        // and holds `--engine` against this set.
+        engines: vec![
+            EngineSupport::unbounded(NONE_SLUG),
+            EngineSupport::unbounded("simple-2d"),
+        ],
         variants: variants.iter().map(|v| variant(v.0, v.1)).collect(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -71,9 +72,9 @@ fn test_case(variants: &[(&str, bool)]) -> TestCaseVersion {
     }
 }
 
-/// One variant of the fixture case, declaring a reference implementation or not —
-/// the single property variant selection turns on.
-fn variant(slug: &str, has_reference: bool) -> Variant {
+/// One variant of the fixture case, declaring a reference implementation for each
+/// engine in `engines` — the property selection turns on.
+fn variant(slug: &str, engines: &[&str]) -> Variant {
     Variant {
         slug: slug.to_string(),
         name: slug.to_string(),
@@ -85,49 +86,103 @@ fn variant(slug: &str, has_reference: bool) -> Variant {
         review_items: Vec::new(),
         domains: Vec::new(),
         voxel: None,
-        // Keyed by engine, as resolution produces it. This fixture case supports only
-        // the engineless `none`, which is the engine both baseline capture and
-        // reference publishing address.
-        reference_impls: if has_reference {
-            BTreeMap::from([(
-                NONE_SLUG.to_string(),
-                PathBuf::from(format!("reference-impl/{slug}")),
-            )])
-        } else {
-            BTreeMap::new()
-        },
+        // Keyed by engine, as resolution produces it: a variant has one reference
+        // build per engine, and both commands work in that pair.
+        reference_impls: engines
+            .iter()
+            .map(|engine| {
+                (
+                    (*engine).to_string(),
+                    PathBuf::from(format!("references/{engine}/{slug}")),
+                )
+            })
+            .collect(),
     }
 }
 
+/// The `variant@engine` label of every selected target, in selection order.
+fn labels(targets: &[Target<'_>]) -> Vec<String> {
+    targets.iter().map(Target::label).collect()
+}
+
 #[test]
-fn select_targets_defaults_to_every_variant_with_a_reference() {
+fn select_targets_defaults_to_every_variant_and_engine_with_a_reference() {
     // The default (and `--all-variants`) sweeps the case, skipping variants that
-    // declare no reference implementation rather than failing on them.
-    let case = test_case(&[("base", true), ("gyre", false), ("multi", true)]);
+    // declare no reference implementation rather than failing on them, and yielding
+    // one target per engine a variant did publish for.
+    let case = test_case(&[
+        ("base", &["none", "simple-2d"][..]),
+        ("gyre", &[][..]),
+        ("multi", &["none"][..]),
+    ]);
 
-    let targets = select_targets(&case, None, false).expect("the sweep should find two targets");
+    let targets = select_targets(&case, None, None, false).expect("the sweep should find three");
 
-    let slugs: Vec<&str> = targets.iter().map(|v| v.slug.as_str()).collect();
-    assert_eq!(slugs, ["base", "multi"]);
+    assert_eq!(
+        labels(&targets),
+        ["base@none", "base@simple-2d", "multi@none"]
+    );
 }
 
 #[test]
 fn select_targets_honors_an_explicit_variant() {
-    let case = test_case(&[("base", true), ("multi", true)]);
+    let case = test_case(&[("base", &["none"][..]), ("multi", &["none"][..])]);
 
-    let targets = select_targets(&case, Some("multi"), false).expect("an explicit target");
+    let targets = select_targets(&case, Some("multi"), None, false).expect("an explicit target");
 
-    let slugs: Vec<&str> = targets.iter().map(|v| v.slug.as_str()).collect();
-    assert_eq!(slugs, ["multi"]);
+    assert_eq!(labels(&targets), ["multi@none"]);
+}
+
+#[test]
+fn select_targets_honors_an_explicit_engine() {
+    // Narrowing to one engine publishes just that build, across every variant that
+    // has one — the flag that lets a re-deploy touch a single runtime.
+    let case = test_case(&[
+        ("base", &["none", "simple-2d"][..]),
+        ("gyre", &["none", "simple-2d"][..]),
+    ]);
+
+    let targets =
+        select_targets(&case, None, Some("simple-2d"), false).expect("one engine, both variants");
+
+    assert_eq!(labels(&targets), ["base@simple-2d", "gyre@simple-2d"]);
+}
+
+#[test]
+fn select_targets_rejects_an_engine_the_case_does_not_support() {
+    // A typo resolves to an empty sweep otherwise, which reads as "nothing to do"
+    // and hides the mistake.
+    let case = test_case(&[("base", &["none"][..])]);
+
+    let err = select_targets(&case, None, Some("unreal"), false)
+        .expect_err("an unsupported engine should be rejected");
+
+    assert!(
+        format!("{err:#}").contains("does not support engine `unreal`"),
+        "unexpected error: {err:#}"
+    );
+}
+
+#[test]
+fn select_targets_reports_an_engine_no_variant_published_for() {
+    let case = test_case(&[("base", &["none"][..])]);
+
+    let err = select_targets(&case, None, Some("simple-2d"), false)
+        .expect_err("no variant published for that engine");
+
+    assert!(
+        format!("{err:#}").contains("for engine `simple-2d`"),
+        "unexpected error: {err:#}"
+    );
 }
 
 #[test]
 fn select_targets_rejects_an_explicit_variant_without_a_reference() {
     // Explicitly naming a variant that has nothing to capture is a mistake the
     // operator wants surfaced, not silently skipped the way a sweep skips it.
-    let case = test_case(&[("base", true), ("gyre", false)]);
+    let case = test_case(&[("base", &["none"][..]), ("gyre", &[][..])]);
 
-    let err = select_targets(&case, Some("gyre"), false)
+    let err = select_targets(&case, Some("gyre"), None, false)
         .expect_err("a variant with no reference implementation should be rejected");
 
     assert!(
@@ -138,9 +193,9 @@ fn select_targets_rejects_an_explicit_variant_without_a_reference() {
 
 #[test]
 fn select_targets_rejects_a_case_with_no_references_at_all() {
-    let case = test_case(&[("base", false)]);
+    let case = test_case(&[("base", &[][..])]);
 
-    let err = select_targets(&case, None, false)
+    let err = select_targets(&case, None, None, false)
         .expect_err("a case with no reference implementations has nothing to do");
 
     assert!(
@@ -163,7 +218,7 @@ fn resolve_version_prefers_an_explicit_version() {
 
 #[test]
 fn baseline_dir_is_variant_scoped_under_the_version_folder() {
-    let mut case = test_case(&[("base", true)]);
+    let mut case = test_case(&[("base", &["none"][..])]);
     case.root = PathBuf::from("test-cases/end-to-end/easy/carom/v1.0.0");
 
     assert_eq!(

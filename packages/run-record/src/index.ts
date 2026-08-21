@@ -387,9 +387,10 @@ export type RunMetrics = {
 
 /**
  * The kind of a piece of media — used for both reference media and proof
- * artifacts so a UI knows whether to render an `<img>` or a `<video>`.
+ * artifacts so a UI knows whether to render an `<img>`, a `<video>`, or a
+ * player that redraws a recording.
  */
-export type MediaKind = "image" | "video";
+export type MediaKind = "image" | "video" | "replay";
 
 /**
  * The presence result for a single declared proof-of-implementation artifact.

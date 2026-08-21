@@ -103,6 +103,22 @@ similarity signal from each declared check, a proof result per declared
 proof-of-implementation artifact, and a debug-script result per validated
 verdict unit.
 
+Each validated verdict unit carries one entry per media output its checklist
+item declares, recording the output's id, its display name, its kind, and
+whether the build produced it. A kind is one of three:
+
+| Kind | Holds |
+| --- | --- |
+| `image` | A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`). |
+| `video` | A video clip, captured as `webm` and published as `mp4`. |
+| `replay` | A draw-command [recording](/components/core/engines/#recording), captured and published as `json`. |
+
+The same kinds label a declared proof, whose kind is inferred from the path the
+build wrote it to. A reference view is an image or a video, because a recording
+carries no picture of its own to commit as a mockup. A run that produced no
+media for a declared output records it absent, which is a fact about the
+evidence rather than about the verdict.
+
 A run of another test type carries that type's own result block in place of the
 end-to-end checks. An [asset-generation](/testing/asset-generation/overview/)
 run records the run-root-relative paths to its produced media, its recorded

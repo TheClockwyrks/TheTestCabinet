@@ -191,7 +191,7 @@ fn manifest() -> StoredManifest {
         audio: None,
         prompt_template: "build it".to_string(),
         common_specs: vec![],
-        workspace: vec![],
+        workspace: Default::default(),
         init: None,
         assets: vec![],
         packages: vec![],
@@ -1551,19 +1551,29 @@ async fn media_absent_from_the_bucket_is_still_uploaded_from_the_source() {
 }
 
 #[tokio::test]
-async fn a_variant_carries_its_reference_build_url_when_one_is_supplied() {
-    // The reference-implementation URL lives in the `case_reference_build` table
+async fn a_variant_carries_its_reference_build_urls_when_they_are_supplied() {
+    // The reference-implementation URLs live in the `case_reference_build` table
     // (written out-of-band by `tcab publish-reference`), not the manifest, so the
-    // caller hands the builder a `(slug, version)` → (variant → URL) map. It must
-    // land on the matching variant's `referenceBuild`, and a variant absent from the
-    // map (here there is none — the case has a single `base` variant) exports null.
+    // caller hands the builder a `(slug, version)` → (variant → engine → URL) map.
+    // A variant has one build per engine and they must land side by side, because
+    // the site's Reference tab is what lets a reader switch between them.
     let (_tmp, store) = empty_store();
     let mut builds = std::collections::HashMap::new();
     builds.insert(
         ("pong".to_string(), "v1.0.0".to_string()),
         std::collections::HashMap::from([(
             "base".to_string(),
-            "https://carom-v1-0-0-base.test-cabinet-references.pages.dev".to_string(),
+            std::collections::BTreeMap::from([
+                (
+                    "none".to_string(),
+                    "https://carom-v1-0-0-base-none.test-cabinet-references.pages.dev".to_string(),
+                ),
+                (
+                    "simple-2d".to_string(),
+                    "https://carom-v1-0-0-base-simple-2d.test-cabinet-references.pages.dev"
+                        .to_string(),
+                ),
+            ]),
         )]),
     );
 
@@ -1580,16 +1590,20 @@ async fn a_variant_carries_its_reference_build_url_when_one_is_supplied() {
         .unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     assert_eq!(
-        parsed["variants"][0]["referenceBuild"],
-        "https://carom-v1-0-0-base.test-cabinet-references.pages.dev"
+        parsed["variants"][0]["referenceBuilds"]["none"],
+        "https://carom-v1-0-0-base-none.test-cabinet-references.pages.dev"
+    );
+    assert_eq!(
+        parsed["variants"][0]["referenceBuilds"]["simple-2d"],
+        "https://carom-v1-0-0-base-simple-2d.test-cabinet-references.pages.dev"
     );
 }
 
 #[tokio::test]
-async fn a_variant_without_a_reference_build_exports_null() {
-    // No reference build supplied for this case → the variant's `referenceBuild` is
-    // serialized as JSON null (the default), never omitted, so the site can rely on
-    // the key's presence.
+async fn a_variant_without_a_reference_build_exports_an_empty_map() {
+    // No reference build supplied for this case → the variant's `referenceBuilds` is
+    // serialized as an empty object, never omitted, so the site can rely on the
+    // key's presence.
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
         .build(now())
@@ -1602,7 +1616,10 @@ async fn a_variant_without_a_reference_build_exports_null() {
         .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
         .unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
-    assert!(parsed["variants"][0]["referenceBuild"].is_null());
+    assert_eq!(
+        parsed["variants"][0]["referenceBuilds"],
+        serde_json::json!({})
+    );
 }
 
 #[tokio::test]

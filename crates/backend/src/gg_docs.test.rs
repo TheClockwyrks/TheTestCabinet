@@ -14,7 +14,8 @@ use test_cabinet_core::validation::ValidationSummary;
 
 use crate::db::{Db, Reviewer, StoredReview};
 use crate::store::{
-    StoredBuild, StoredReference, StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspaceFile,
+    StoredBuild, StoredReference, StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspace,
+    StoredWorkspaceFile,
 };
 
 /// A gg run record: the smallest record that the document builder produces a
@@ -187,10 +188,13 @@ fn manifest() -> StoredManifest {
             template: true,
             kind: Default::default(),
         }],
-        workspace: vec![StoredWorkspaceFile {
-            source: "workspaces/base/package.json".to_string(),
-            dest: "package.json".to_string(),
-        }],
+        workspace: StoredWorkspace::ByEngine(std::collections::BTreeMap::from([(
+            "none".to_string(),
+            vec![StoredWorkspaceFile {
+                source: "workspaces/base/package.json".to_string(),
+                dest: "package.json".to_string(),
+            }],
+        )])),
         init: None,
         assets: vec![],
         packages: vec![],

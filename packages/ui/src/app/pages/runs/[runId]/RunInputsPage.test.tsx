@@ -28,7 +28,7 @@ const RESOLVED: RunVariantState = {
     referenceScreenshots: [],
     reviewItems: [],
     domains: [],
-    referenceBuild: null,
+    referenceBuilds: {},
     referenceSheet: null,
   },
   status: "ready",

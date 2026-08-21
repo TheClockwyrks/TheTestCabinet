@@ -1,10 +1,10 @@
-// gameplay/advances-in-real-time — the game runs itself off the engine's own loop.
+// gameplay/advances-in-real-time — the game runs itself off the runtime's own loop.
 //
 // WHY THIS CHECK EXISTS. Every other check in this suite drives the simulation
 // itself, through `engine.advance`, which is blind to this claim: a build whose
 // game never advances unless something steps it would answer all of them
 // perfectly while a person who opened it saw a frozen court. So this one alone
-// never calls `advance` for the measured stretch. It hands the engine a
+// never calls `advance` for the measured stretch. It hands the runtime a
 // `WallClock` and starts `engine.run`, which pumps frames off the host's frame
 // callback in real time, and then reads what the build did with them.
 //
@@ -44,7 +44,7 @@ afterEach(() => {
   harness.dispose();
 });
 
-it("advances on the engine's frame loop with nothing stepping it", async () => {
+it("advances on the runtime's frame loop with nothing stepping it", async () => {
   const { debug } = harness;
   debug.startMatch("solo");
   debug.serve();

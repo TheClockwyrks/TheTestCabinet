@@ -277,7 +277,7 @@ fn stored_manifest_carries_instrumentation_and_item_validation() {
         .iter()
         .map(|spec| spec.source.as_str())
         .chain(manifest.assets.iter().map(|asset| asset.source.as_str()))
-        .chain(manifest.workspace.iter().map(|file| file.source.as_str()))
+        .chain(manifest.workspace.files().map(|file| file.source.as_str()))
         .chain(
             manifest
                 .variants

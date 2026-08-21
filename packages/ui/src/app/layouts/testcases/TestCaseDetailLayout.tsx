@@ -136,8 +136,8 @@ export function TestCaseDetailLayout({
   // reference implementation, in either of the two shapes one takes — so no
   // test-type check is needed here, and neither signal is a superset of the other:
   //
-  //   • `referenceBuild` — a deployed static site (end-to-end and full-stack cases),
-  //     which the tab iframes.
+  //   • `referenceBuilds` — the deployed static sites (end-to-end and full-stack
+  //     cases), one per engine, which the tab iframes behind an engine switch.
   //   • `referenceSheet`  — the published reference FRAMES (asset-generation cases),
   //     which have no page to embed and so are rendered natively from the snapshot
   //     bucket.
@@ -149,7 +149,7 @@ export function TestCaseDetailLayout({
   // per-variant, so switching variants adds or removes the tab; every host that
   // carries these fields (live catalog and static snapshot alike) can show it — no
   // console-only capability is required.
-  if (variant.referenceBuild || variant.referenceSheet) {
+  if (Object.keys(variant.referenceBuilds).length > 0 || variant.referenceSheet) {
     tabs.push({
       key: "reference",
       label: "Reference",

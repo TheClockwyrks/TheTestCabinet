@@ -448,9 +448,16 @@ pub struct PublishReferenceArgs {
     #[arg(long)]
     pub all_variants: bool,
 
-    /// Print the plan — the targeted variants, their resolved reference-impl
-    /// directories, and the deploy branch each would use — without building,
-    /// deploying, scrubbing, or recording anything.
+    /// Publish the reference for exactly this engine (for example, `none`). Omit to
+    /// publish every engine the targeted variant(s) declare a reference for; a
+    /// variant supporting two engines has one reference build per engine, each
+    /// deployed and recorded on its own.
+    #[arg(long, value_name = "ENGINE")]
+    pub engine: Option<String>,
+
+    /// Print the plan — the targeted variant/engine pairs, their resolved
+    /// reference-impl directories, and the deploy branch each would use — without
+    /// building, deploying, scrubbing, or recording anything.
     #[arg(long)]
     pub dry_run: bool,
 
@@ -499,9 +506,14 @@ pub struct CaptureBaselinesArgs {
     #[arg(long)]
     pub all_variants: bool,
 
-    /// Print the plan — the targeted variants, their resolved reference-impl
-    /// directories, and the baseline directory each would rewrite — without
-    /// building or writing anything.
+    /// Capture baselines for exactly this engine (for example, `none`). Omit to
+    /// cover every engine the targeted variant(s) declare a reference for.
+    #[arg(long, value_name = "ENGINE")]
+    pub engine: Option<String>,
+
+    /// Print the plan — the targeted variant/engine pairs, their resolved
+    /// reference-impl directories, and the baseline directory each would rewrite —
+    /// without building or writing anything.
     #[arg(long)]
     pub dry_run: bool,
 }

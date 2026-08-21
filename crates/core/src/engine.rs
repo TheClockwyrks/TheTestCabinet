@@ -83,11 +83,6 @@ pub struct EngineManifest {
     /// when the engine supplies no runtime.
     #[serde(default)]
     pub package: Option<String>,
-    /// The `window` property the engine installs its host interface on, which a
-    /// driver binds to in order to drive the clock and input and to read the
-    /// audio, asset, and diagnostic logs. Absent when there is no runtime.
-    #[serde(default)]
-    pub handle: Option<String>,
     /// The directory inside the package holding the engine's own documentation,
     /// seeded into the run workspace. Absent when there is no runtime.
     #[serde(default)]
@@ -186,12 +181,6 @@ impl ResolvedEngine {
     /// none.
     pub fn package(&self) -> Option<&str> {
         self.manifest.package.as_deref()
-    }
-
-    /// The `window` property the host interface is installed on, or `None` when
-    /// the engine vendors no runtime.
-    pub fn handle(&self) -> Option<&str> {
-        self.manifest.handle.as_deref()
     }
 
     /// The documentation directory inside the package, or `None` when the engine
@@ -342,16 +331,10 @@ fn validate(slug: &str, manifest: &EngineManifest) {
         !manifest.description.trim().is_empty(),
         "engine `{slug}` declares an empty description",
     );
-    // `handle` and `docs` describe a runtime: the `window` property the runtime
-    // installs its host interface on, and the documentation directory inside the
-    // runtime's package. Either one without a `package` names a thing that is
-    // never delivered, which would read as a working engine and seed nothing.
+    // `docs` describes a runtime: the documentation directory inside the runtime's
+    // package. Declaring it without a `package` names a thing that is never
+    // delivered, which would read as a working engine and seed nothing.
     if manifest.package.is_none() {
-        assert!(
-            manifest.handle.is_none(),
-            "engine `{slug}` declares a handle but no package; a host interface \
-             needs a runtime to install it",
-        );
         assert!(
             manifest.docs.is_none(),
             "engine `{slug}` declares a docs directory but no package; the docs \

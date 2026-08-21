@@ -250,9 +250,9 @@ site resolves those keys to absolute URLs.
 Each variant carries its own fully rendered `prompt` and its own `seededInputs`,
 the seeded spec bodies inlined in seed order, so the static site shows the same
 instruction and specs a run is seeded with. A variant also names its deployed
-reference implementation: a `referenceBuild` URL for a playable build, or a
-`referenceSheet` of published frame indices whose object keys the site derives
-itself. The file carries no mockup HTML and no host paths.
+reference implementations: a `referenceBuilds` map of engine slug to URL for
+playable builds, or a `referenceSheet` of published frame indices whose object
+keys the site derives itself. The file carries no mockup HTML and no host paths.
 
 Only a version that at least one published run built is emitted. The site keys
 lookups by `(slug, version)` from each run's subject, so it fetches exactly the

@@ -190,13 +190,16 @@ pub struct SnapshotBuilder {
     /// renders the Models section from the snapshot. Empty by default.
     models: Vec<ModelOut>,
     /// The reference-implementation URLs to fold onto each case's variants, keyed by
-    /// `(slug, version)` → (variant slug → served URL). Written out-of-band into the
-    /// `case_reference_build` table (via `tcab publish-reference`) and read from the
-    /// database, not the store — so they are supplied here rather than derived from a
-    /// manifest. Empty by default (a `(slug, version)` absent from the map, or a
-    /// variant absent from its inner map, simply exports `referenceBuild: null`).
-    reference_builds:
-        std::collections::HashMap<(String, String), std::collections::HashMap<String, String>>,
+    /// `(slug, version)` → (variant slug → engine slug → served URL). Written
+    /// out-of-band into the `case_reference_build` table (via
+    /// `tcab publish-reference`) and read from the database, not the store — so they
+    /// are supplied here rather than derived from a manifest. Empty by default (a
+    /// `(slug, version)` absent from the map, or a variant absent from its inner map,
+    /// simply exports an empty `referenceBuilds`).
+    reference_builds: std::collections::HashMap<
+        (String, String),
+        std::collections::HashMap<String, std::collections::BTreeMap<String, String>>,
+    >,
     /// The published asset-reference frame sets to fold onto each case's variants,
     /// keyed by `(slug, version)` → (variant slug → frame indices). The
     /// asset-generation counterpart of [`Self::reference_builds`], read from the
@@ -363,16 +366,17 @@ impl SnapshotBuilder {
     }
 
     /// Supply the reference-implementation URLs to fold onto each case's variants,
-    /// keyed by `(slug, version)` → (variant slug → served URL). These come from the
-    /// `case_reference_build` table (read by the caller from the database), not from
-    /// any manifest — the URL of a variant's authored, deployed correct build is
-    /// recorded out-of-band by `tcab publish-reference`. A `(slug, version)` or
-    /// variant absent from the map exports `referenceBuild: null`.
+    /// keyed by `(slug, version)` → (variant slug → engine slug → served URL). These
+    /// come from the `case_reference_build` table (read by the caller from the
+    /// database), not from any manifest — the URL of a variant's authored, deployed
+    /// correct build is recorded out-of-band by `tcab publish-reference`. A
+    /// `(slug, version)` or variant absent from the map exports an empty
+    /// `referenceBuilds`.
     pub fn with_reference_builds(
         mut self,
         reference_builds: std::collections::HashMap<
             (String, String),
-            std::collections::HashMap<String, String>,
+            std::collections::HashMap<String, std::collections::BTreeMap<String, String>>,
         >,
     ) -> Self {
         self.reference_builds = reference_builds;
@@ -1604,6 +1608,8 @@ fn media_content_type(extension: &str) -> &'static str {
         "webm" => "video/webm",
         "mp4" => "video/mp4",
         "json" => "application/json",
+        // A validator's draw-command recording, published gzipped as it is stored.
+        "gz" => "application/gzip",
         "glb" => "model/gltf-binary",
         "wav" => "audio/wav",
         "mid" | "midi" => "audio/midi",
@@ -2365,16 +2371,19 @@ pub struct CaseVariantOut {
     /// variant is selected. The site rates and scores a run against the common
     /// domains plus its variant's own.
     pub domains: Vec<CaseDomainOut>,
-    /// The absolute URL of this variant's authored **reference implementation** — the
-    /// correct, deployed static build (the case-variant analogue of a run's
-    /// `playableBuild`), shown on the static gallery's "Reference" tab. `null` when
-    /// the variant declares no `reference_implementation`, or has one that has not
-    /// been deployed yet. Written out-of-band by `tcab publish-reference` into the
-    /// `case_reference_build` table and folded in here at export — never resolved
-    /// from the manifest and never seeded into a run.
-    pub reference_build: Option<String>,
+    /// The absolute URLs of this variant's authored **reference implementations** —
+    /// the correct, deployed static builds (the case-variant analogue of a run's
+    /// `playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was
+    /// built for and shown on the static gallery's "Reference" tab, which lets a
+    /// reader switch between them. Empty when the variant declares no
+    /// `reference_implementation`, or has one that has not been deployed yet. Written
+    /// out-of-band by `tcab publish-reference` into the `case_reference_build` table
+    /// and folded in here at export — never resolved from the manifest and never
+    /// seeded into a run.
+    #[serde(default)]
+    pub reference_builds: std::collections::BTreeMap<String, String>,
     /// This variant's published **reference sheet** — the asset-generation analogue of
-    /// [`Self::reference_build`], shown on the static gallery's "Reference" tab.
+    /// [`Self::reference_builds`], shown on the static gallery's "Reference" tab.
     /// `null` when the variant declares no `reference_implementation`, or has one that
     /// has not been published yet.
     ///
@@ -2590,7 +2599,9 @@ fn case_metadata(
     manifest: &StoredManifest,
     references: Vec<CaseReferenceOut>,
     validation_baselines: Vec<CaseValidationBaselineOut>,
-    reference_builds: Option<&std::collections::HashMap<String, String>>,
+    reference_builds: Option<
+        &std::collections::HashMap<String, std::collections::BTreeMap<String, String>>,
+    >,
     reference_sheets: Option<&std::collections::HashMap<String, Vec<u32>>>,
 ) -> Result<CaseMetadata, BackendError> {
     let variants = manifest
@@ -2636,9 +2647,10 @@ fn case_metadata(
                 seeded_inputs: seeded_inputs(store, manifest, v),
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
                 domains: v.domains.iter().map(case_domain_out).collect(),
-                reference_build: reference_builds
+                reference_builds: reference_builds
                     .and_then(|builds| builds.get(&v.slug))
-                    .cloned(),
+                    .cloned()
+                    .unwrap_or_default(),
                 reference_sheet: reference_sheets.and_then(|sheets| sheets.get(&v.slug)).map(
                     |frames| CaseReferenceSheetOut {
                         frames: frames.clone(),
@@ -2905,7 +2917,7 @@ fn core_review_validation(
     validation: &crate::store::StoredReviewValidation,
 ) -> test_cabinet_core::ReviewValidation {
     test_cabinet_core::ReviewValidation {
-        script: std::path::PathBuf::from(&validation.script),
+        script: (!validation.per_engine).then(|| std::path::PathBuf::from(&validation.script)),
         script_rel: validation.script.clone(),
         outputs: validation
             .outputs

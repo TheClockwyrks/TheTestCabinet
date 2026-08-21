@@ -33,3 +33,4 @@ scenario, advances the real systems forward, and reads the outcome back.
 | [Simulation](/engines/simple-2d/validators/simulation/) | Stepping with a scripted clock, reading the state back, and asserting on outcomes that survive a change in step size. |
 | [Rendering](/engines/simple-2d/validators/rendering/) | Pixel readback through `getImageData` and the recording proxy over the 2D context. |
 | [Input and Audio](/engines/simple-2d/validators/input-and-audio/) | Driving named actions and asserting on the cues a build played. |
+| [Recording](/engines/simple-2d/validators/recording/) | Arming the engine's recorder around a scenario and emitting it as the review item's media. |
