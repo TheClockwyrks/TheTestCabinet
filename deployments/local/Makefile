@@ -233,9 +233,24 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg apply rollout-wait sts-reconcile
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg apply apply-overlay apply-wait rollout-wait sts-reconcile
 
-local-up: cluster images run-images apply local-ingest
+# The ingest sits BETWEEN applying the overlay and waiting for the services to become
+# ready, and that order is load-bearing rather than incidental. The backend's readiness
+# probe is `/readyz`, which stays 503 until its definition store holds versions (see
+# crates/backend/src/readiness.rs) — and locally NOTHING fills that store but the
+# `local-ingest` below: the overlay drops the base `tcab-ingest` CronJob and, unlike the
+# azure-staging/azure-prod overlays, ships no ingest sidecar, precisely because the
+# Makefile ingests from the mounted checkout instead. So on a cluster whose `state`
+# volume is cold — a freshly created one, or any `local-down` that took the PVCs with
+# it — waiting for tcab-backend to go Ready BEFORE ingesting waits for something only
+# the ingest can produce, and `local-up` burns $(ROLLOUT_TIMEOUT) and then fails with
+# `statefulset/tcab-backend` never ready. It is the same self-deadlock the in-pod ingest
+# sidecars call out (deployments/k8s/overlays/azure-*/patch-backend-ingest.yaml: "Wait on
+# /healthz (LIVENESS), never /readyz"), reached from the other side. `local-ingest` only
+# needs the backend LIVE, not ready, so it runs happily in the gap; `apply-wait` then
+# confirms the whole stack, backend readiness included.
+local-up: cluster images run-images apply-overlay local-ingest apply-wait
 	@echo ""
 	@echo "Stack is up in namespace '$(NS)' (services only — the web console runs from source, see below)."
 	@echo "Forward the data plane with:  make -C deployments/local local-forward"
@@ -619,6 +634,12 @@ sts-reconcile:
 #   make local-rebuild ROLLOUT_TIMEOUT=120s
 ROLLOUT_TIMEOUT ?= 600s
 
+# How long `local-ingest` waits (in SECONDS — this one is not a kubectl duration) for a
+# tcab-backend pod to reach Running before giving up. It covers scheduling and, on a
+# cluster that has just imported them, the kubelet unpacking the service images; it does
+# NOT cover readiness, which the ingest itself is what produces.
+INGEST_POD_TIMEOUT ?= 300
+
 # The workloads each caller waits on. `apply` covers everything the overlay owns,
 # including the observability stack. `local-rebuild` restarts only the services it
 # rebuilds, so it waits on exactly those — tcab-lgtm is neither rebuilt nor
@@ -668,8 +689,17 @@ rollout-wait:
 # created first (from the environment) so the pods find them on their first start,
 # and any StatefulSet whose immutable fields drifted is cleared out first (see
 # sts-reconcile) so the apply is not rejected.
-apply: secrets sts-reconcile
+#
+# Deliberately split into two halves that `apply` just re-joins, because `local-up`
+# has to slot the catalog ingest BETWEEN them — see the deadlock described there.
+# Callers that only ever run against an already-ingested cluster (`local-rebuild`)
+# keep using the joined `apply` and are unaffected.
+apply: apply-overlay apply-wait
+
+apply-overlay: secrets sts-reconcile
 	$(KUBECTL) apply -k '$(OVERLAY)'
+
+apply-wait:
 	@$(MAKE) --no-print-directory rollout-wait WAIT_WORKLOADS='$(APPLY_WORKLOADS)'
 
 # Ingest (force) the test-case catalog from the repo the backend has mounted.
@@ -678,14 +708,35 @@ apply: secrets sts-reconcile
 # feed and prints a line per case — so a minute-plus scan reports progress instead
 # of looking like a hang.
 #
-# Three guards turn the failure modes into immediate, legible errors instead of a
-# silent hang: a pre-flight check that host port 8787 is free (a devcontainer's
-# editor often auto-forwards it, squatting the port the port-forward needs to
-# bind, and connections to that squatter accept-then-stall forever); a watch that
-# the port-forward process stays alive (its bind error is no longer discarded); and
-# a bounded healthz poll (`--connect-timeout`/`--max-time`) so a stalled connection
-# can never block the loop indefinitely.
+# Four guards turn the failure modes into immediate, legible errors instead of a
+# silent hang: a bounded wait for a RUNNING backend pod (a port-forward started
+# before one exists dies instantly with a message about the Service, which says
+# nothing about the pod still being scheduled or pulling); a pre-flight check that
+# host port 8787 is free (a devcontainer's editor often auto-forwards it, squatting
+# the port the port-forward needs to bind, and connections to that squatter
+# accept-then-stall forever); a watch that the port-forward process stays alive (its
+# bind error is no longer discarded); and a bounded healthz poll
+# (`--connect-timeout`/`--max-time`) so a stalled connection can never block the
+# loop indefinitely.
+#
+# The pod wait is on Running, NOT on Ready, and it has to stay that way: `local-up`
+# calls this while the backend is deliberately unready (503 on /readyz) waiting for
+# the very ingest this target performs, so gating on readiness would deadlock. The
+# port-forward reaches a not-yet-ready pod because `kubectl port-forward svc/…`
+# selects a pod by the Service's selector rather than through its endpoints, which
+# readiness has emptied.
 local-ingest:
+	@echo "Waiting for a running tcab-backend pod (up to $(INGEST_POD_TIMEOUT)s)…"; \
+	  deadline=$$(( $$(date +%s) + $(INGEST_POD_TIMEOUT) )); \
+	  until [ -n "$$($(KUBECTL) -n '$(NS)' get pod -l app.kubernetes.io/name=tcab-backend \
+	                   -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' 2>/dev/null)" ]; do \
+	    if [ "$$(date +%s)" -ge "$$deadline" ]; then \
+	      echo "ERROR: no tcab-backend pod reached Running within $(INGEST_POD_TIMEOUT)s; cannot ingest." >&2; \
+	      $(KUBECTL) -n '$(NS)' get pods >&2 || true; \
+	      exit 1; \
+	    fi; \
+	    sleep 2; \
+	  done
 	@port=8787; \
 	  if command -v ss >/dev/null 2>&1; then \
 	    busy="$$(ss -ltnp "sport = :$$port" 2>/dev/null | grep -i listen || true)"; \
