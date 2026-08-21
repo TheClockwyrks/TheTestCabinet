@@ -286,15 +286,6 @@
   min-width: 0;
 }
 
-// The control carries a bottom margin for its original home, hanging under the
-// conventional monitor's page header. Here it is a flex item's child, so that margin
-// does not collapse away — it grows the item's box and, being centred, lifts the
-// button off the line the label sits on. Qualified by the host row so it outweighs
-// the component's own rule whichever order the two stylesheets land in.
-.cardHeader .statusAction > * {
-  margin-bottom: 0;
-}
-
 // A headline figure — the cost total, the agent count — big over its caption.
 .metricValue {
   font-size: t.$font-lg;

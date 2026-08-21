@@ -557,10 +557,11 @@
 // monitor, the gg activity panel, and the Appearance settings preview render it
 // identically.
 
-// The header row above the live feed: the "Live Event Feed" label stacked over
-// the run id on the left, and the Follow toggle pinned to the right. Aligns to
-// the bottom so the button sits on the run-id line, and wraps the button under
-// the heading on a narrow viewport.
+// The header row above a live feed: a section label on the leading edge and the
+// Follow toggle pinned to the trailing one. Aligns to the bottom so the button sits
+// on the label's line, and wraps the button under it on a narrow viewport. The run
+// monitor's own feed no longer has one — its Follow toggle rides the page header —
+// so gg's activity panel is what this now dresses.
 .feedHeader {
   display: flex;
   align-items: flex-end;
@@ -570,44 +571,10 @@
   margin: t.$space-lg 0 t.$space-sm;
 }
 
-.feedHeading {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  min-width: 0;
-}
-
-// Matches the section-label treatment elsewhere on the page.
-.feedTitle {
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: t.$color-text-muted;
-}
-
-.feedRunId {
-  color: t.$color-text-muted;
-  font-size: t.$font-sm;
-}
-
-// The trailing edge of the feed header: the kill control (when the run is still
-// in flight and cancellable) and the Follow toggle, on one row. The kill control
-// carries a bottom margin for the layout it was born in — hanging under the page
-// header — which would push Follow out of line here, so this host zeroes it.
-.feedActions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: t.$space-sm;
-
-  > * {
-    margin-bottom: 0;
-  }
-}
-
-// The Follow toggle. Reads as an outlined control when off; when auto-follow is
-// active (`data-active`) it fills with the accent and glows, so its state is
-// legible at a glance (and conveyed to AT via `aria-pressed`).
+// The Follow toggle, on the run monitor's page header and on gg's activity feed.
+// Reads as an outlined control when off; when auto-follow is active (`data-active`)
+// it fills with the accent and glows, so its state is legible at a glance (and
+// conveyed to AT via `aria-pressed`).
 .followButton {
   flex: 0 0 auto;
   font-family: var(--ttc-font);

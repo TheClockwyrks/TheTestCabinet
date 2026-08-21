@@ -148,9 +148,9 @@ describe("RunMonitorPage", () => {
     expect(subscribeToRun).toHaveBeenCalledTimes(1);
     // The completion notice is stable and the streamed events remain in the feed.
     expect(screen.getByText(/Run complete/i)).toBeInTheDocument();
-    // The feed is labelled, with the run id beneath it and a Follow toggle that
-    // defaults to active (auto-following).
-    expect(screen.getByText("Live Event Feed")).toBeInTheDocument();
+    // The feed is just the feed — no label strip of its own — and its Follow toggle
+    // rides the page header, where it defaults to active (auto-following).
+    expect(screen.queryByText("Live Event Feed")).not.toBeInTheDocument();
     const follow = screen.getByRole("button", { name: "Follow" });
     expect(follow).toHaveAttribute("aria-pressed", "true");
     // The type shows once, in its own column; the detail no longer repeats it.

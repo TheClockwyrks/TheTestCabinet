@@ -2,16 +2,15 @@
 @use "../styles/halo" as h;
 
 // Aligned to the trailing edge of whatever row hosts it, so the kill affordance reads
-// as the run-level negative action without crowding what it sits beside. The bottom
-// margin is for its original host — the conventional monitor, where it hangs under the
-// page header above the feed; a host that packs it into a row of its own (gg's Status
-// card) zeroes that margin out rather than inheriting spacing meant for another layout.
+// as the run-level negative action without crowding what it sits beside. It carries no
+// vertical margin of its own: every host packs it into a row of theirs — the monitor's
+// page-header comment line, gg's Status card header — where a margin only pushes the
+// button off the line its neighbours sit on.
 .killControl {
   display: flex;
   align-items: center;
   gap: t.$space-sm;
   margin-left: auto;
-  margin-bottom: t.$space-xs;
 }
 
 // A muted destructive button: it reads as the negative action without shouting,
