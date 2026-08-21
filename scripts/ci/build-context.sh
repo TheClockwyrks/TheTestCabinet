@@ -419,6 +419,131 @@ for package in "${guest_packages[@]}"; do
 	problems=$((problems + 1))
 done
 
+# --- what a COPY cannot tell you, part two: the trees baked in with include_str! ---
+
+# The gg guest packages are not the only build input no `COPY` names. `crates/core`
+# BAKES three directories into the binaries verbatim — the built-in orchestrators'
+# manifests and runner scripts, the harness manifests, and the engine manifests —
+# with `include_str!` paths that climb out of `crates/` with `../../../`. They ride
+# in on the same `COPY . .` the gg arms do, so the allowlist is the only thing that
+# decides whether the compiler can read them, and nothing above looks at them.
+#
+# That has now happened too, and it is the worst-behaved shape of the three. When
+# engines landed, `!/engines` was not added beside `!/orchestrators` and
+# `!/harnesses`, and the failure is not Docker's `failed to compute cache key` — the
+# COPY succeeds, having copied what it was allowed to — but a `cargo build` dying
+# minutes later on
+#
+#     error: couldn't read `crates/core/src/../../../engines/none/engine.toml`
+#
+# which reads as a broken checkout, and stopped `make local-up` from standing the
+# cluster up at all. Every service image compiles `test-cabinet-core`, so a tree
+# missing here takes all six of them down at once.
+#
+# So the rule is asserted from the SOURCE rather than from a list kept in step by
+# hand: every literal `include_str!`/`include_bytes!` path in a compiled Rust source
+# is resolved against the file that writes it, and must survive the root allowlist.
+# The next tree baked into a binary is then covered the day it is written, which is
+# the property the hand-kept list did not have.
+#
+# `concat!(env!("OUT_DIR"), …)` includes carry no literal path and are skipped by the
+# pattern: what they read is generated inside the image by a build script, so the
+# context has no answer to give about them.
+#
+# `*.test.rs` sources are skipped, and deliberately: they compile only under
+# `cfg(test)` and no image build runs tests, so demanding their includes survive would
+# push real trees into the `COPY . .` cache key on behalf of files no image compiles —
+# the exact cost the section below this one exists to keep out.
+#
+# Root allowlist only, for the reason the guest-package check gives: this is a
+# statement about the builds that COMPILE this workspace, every one of which reads the
+# root file. `.devcontainer/ubuntu.dockerfile` compiles none of it.
+
+# Resolve `.`/`..` textually, without touching the filesystem: the answer must be the
+# path AS THE ALLOWLIST WOULD SEE IT (repo-relative, no symlink resolution), which is
+# not what `realpath` returns, and which must be computable for a path that a broken
+# tree does not have on disk. Returns 1 for a path that climbs above the repository
+# root, which is a Rust source no build could compile either.
+normalize_path() {
+	local path="$1" segment
+	local -a out=()
+	local IFS='/'
+	# Unquoted on purpose: IFS='/' is what splits the path into segments.
+	# shellcheck disable=SC2086
+	for segment in $path; do
+		case "$segment" in
+		'' | '.') ;;
+		'..')
+			((${#out[@]} > 0)) || return 1
+			out=("${out[@]:0:${#out[@]} - 1}")
+			;;
+		*) out+=("$segment") ;;
+		esac
+	done
+	printf '%s\n' "${out[*]}"
+}
+
+# The same argument the matcher's self-test makes: a resolver nobody has watched
+# resolve is a resolver nobody knows works, and this one is what decides which path
+# the allowlist is asked about. The first case is the real one, verbatim.
+self_test_normalize() {
+	local failures=0 input expected got
+	while read -r input expected; do
+		[[ -n "$input" ]] || continue
+		if got="$(normalize_path "$input")"; then :; else got="<above-root>"; fi
+		if [[ "$got" != "$expected" ]]; then
+			echo "error: normalize_path self-test: '$input' resolved to '$got', expected '$expected'" >&2
+			failures=$((failures + 1))
+		fi
+	done <<'CASES'
+crates/core/src/../../../engines/none/engine.toml engines/none/engine.toml
+crates/gg/src/sandbox/language/../checkers/java.compiler.java crates/gg/src/sandbox/checkers/java.compiler.java
+crates/gg/src/./templates/board.hbs crates/gg/src/templates/board.hbs
+crates/core/src/../../../../escape.toml <above-root>
+CASES
+	((failures == 0)) || {
+		echo "error: the include_str! path resolver is wrong; its verdicts below cannot be trusted." >&2
+		exit 1
+	}
+}
+
+self_test_normalize
+
+load_dockerignore "$REPO_ROOT/.dockerignore"
+mapfile -t rust_sources < <(git ls-files 'crates/*.rs' | grep -v '\.test\.rs$')
+((${#rust_sources[@]} > 0)) || {
+	echo "error: no compiled Rust sources found under crates/; this check would pass vacuously." >&2
+	exit 1
+}
+baked_checked=0
+while IFS= read -r hit; do
+	[[ -n "$hit" ]] || continue
+	baked_file="${hit%%:*}"
+	baked_rest="${hit#*:}"
+	baked_line="${baked_rest%%:*}"
+	baked_text="${baked_rest#*:}"
+	baked_path="${baked_text#*\"}"
+	baked_path="${baked_path%\"}"
+	baked_checked=$((baked_checked + 1))
+	checked=$((checked + 1))
+	if ! baked_resolved="$(normalize_path "$(dirname "$baked_file")/$baked_path")"; then
+		echo "error: $baked_file:$baked_line includes '$baked_path', which climbs above the repository root." >&2
+		problems=$((problems + 1))
+		continue
+	fi
+	if [[ ! -e "$REPO_ROOT/$baked_resolved" ]]; then
+		echo "error: $baked_file:$baked_line bakes in '$baked_resolved', which does not exist in the repository." >&2
+		problems=$((problems + 1))
+		continue
+	fi
+	context_includes "$baked_resolved" && continue
+	echo "error: .dockerignore keeps '$baked_resolved' OUT of the build context, and $baked_file:$baked_line bakes it into the binary." >&2
+	echo "       No COPY names it — the service and tooling images copy the whole context and then" >&2
+	echo "       compile, so this fails minutes in as: error: couldn't read \`$(dirname "$baked_file")/$baked_path\`: No such file or directory." >&2
+	echo "       Fix: add '!/$baked_resolved' (or its directory) to the .dockerignore allowlist, with a comment saying what bakes it in." >&2
+	problems=$((problems + 1))
+done < <(grep -Hno 'include_\(str\|bytes\)! *( *"[^"]*"' -- "${rust_sources[@]}" || true)
+
 # --- what an allowlist lets in by accident -----------------------------------
 
 # Everything above asks "does the context still contain what a build READS". This asks
@@ -486,11 +611,11 @@ done
 
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages and ${#ignored_paths[@]} git-ignored paths." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes and ${#ignored_paths[@]} git-ignored paths." >&2
 	exit 1
 }
 
 # A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
 # allowlist has its sources checked against both, which is the point.
-echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles — all survive."
+echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles and the $baked_checked path(s) the workspace bakes in with include_str! — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."

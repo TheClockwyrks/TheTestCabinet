@@ -61,11 +61,16 @@
 !/rust-toolchain.toml
 !/.cargo
 !/crates
-# crates/core bakes these two trees into the binary verbatim via include_str!
-# (the built-in orchestrator runner scripts and the harness manifests), so they
-# must be present in the context even though they are not Rust sources.
+# crates/core bakes these three trees into the binary verbatim via include_str!
+# (the built-in orchestrator runner scripts, the harness manifests, and the
+# built-in engine manifests), so they must be present in the context even though
+# they are not Rust sources. A tree that is baked in but not re-included here does
+# not fail at COPY like a missing Dockerfile source does — it fails much later, as
+# `error: couldn't read ...: No such file or directory` from the compiler, which is
+# how engines/ was missed when engines landed.
 !/orchestrators
 !/harnesses
+!/engines
 
 # The backend service image (services.Dockerfile, `--target backend`) bakes the
 # Playwright browser-driver into its runtime to render references at ingest, so the

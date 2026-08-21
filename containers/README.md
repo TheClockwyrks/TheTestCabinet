@@ -468,6 +468,17 @@ Dockerfile against `.dockerignore` and fails on a source that is missing or
 excluded, so the mistake is caught at commit time rather than the next time
 someone needs a run container. Run it after adding a `COPY`.
 
+**And after baking a new tree into a binary with `include_str!`**, which is the same
+mistake with a different corpse. `crates/core` embeds the built-in orchestrators, the
+harness manifests and the engine manifests from directories its `include_str!` paths
+climb out of `crates/` to reach, and the whole-context `COPY` those builds do succeeds
+whatever the allowlist admits — so a tree that was never re-included fails minutes later
+as ``error: couldn't read `crates/core/src/../../../engines/none/engine.toml` ``, which
+reads as a broken checkout. That is how `!/engines` came to be missing when engines
+landed, taking every service image (all six compile `test-cabinet-core`) and `make
+local-up` with it. The gate reads those paths out of the Rust sources now, so the list
+cannot fall behind.
+
 **And after adding a `packages/gg-sandbox*` package**, which is the same mistake
 without a `COPY` to point at. The driver image's gg stage copies the whole context
 and then compiles those packages — the eleven signature catalogues and the eleven

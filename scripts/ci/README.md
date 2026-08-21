@@ -43,7 +43,7 @@ and can be run from anywhere, including locally:
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
-| `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package — survives every `.dockerignore` allowlist that can apply to it | yes |
+| `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package, and every tree the workspace bakes in with `include_str!` — survives every `.dockerignore` allowlist that can apply to it | yes |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
@@ -77,6 +77,20 @@ compiler saying "no such file or directory", blamed on the arm rather than on th
 context. That is the third defect of this shape to land (`packages/gg-sandbox-jvm`,
 the crossing the java and kotlin arms both compile, split out of the java arm), so
 the script now asserts every one of those directories survives the root allowlist.
+
+The same blind spot has a second shape, and it is the one that took `make local-up`
+down: `crates/core` **bakes** three directories into every service binary with
+`include_str!` paths that climb out of `crates/` — the built-in orchestrators, the
+harness manifests and the engine manifests. When engines landed, `!/engines` was not
+added beside `!/orchestrators` and `!/harnesses`, and the build died minutes in on
+``error: couldn't read `crates/core/src/../../../engines/none/engine.toml` `` — in all
+six service images at once, since every one of them compiles `test-cabinet-core`. So the
+script now resolves every literal `include_str!`/`include_bytes!` path in a compiled Rust
+source against the file that writes it and asserts it survives the root allowlist. Reading
+it out of the source rather than from a hand-kept list is the point: the next tree baked
+into a binary is covered the day it is written. (`*.test.rs` sources are skipped — they
+compile only under `cfg(test)`, and no image build runs tests — and
+`concat!(env!("OUT_DIR"), …)` includes carry no literal path to check.)
 
 `install-nextest.sh` is a provisioning helper rather than a validation check
 (hence no "Critical" mark): the Rust test scripts run the suite with
