@@ -26,24 +26,20 @@ export function ComparisonsIndexPage() {
           shape the Runs tab gives "+ New run". Creating a comparison is
           console-only (it is saved to an account); the read-only static site
           renders the published list without it. */}
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--runs/comparisons"
-          comment={
-            <>
-              // the same benchmark under several configurations, side by side
-            </>
-          }
-          actions={canStop ? <StopRunsControls /> : undefined}
-        />
-        {canExecute && token && (
-          <div className={exec.headerActions}>
+      <PromptHeader
+        command="--runs/comparisons"
+        comment={
+          <>// the same benchmark under several configurations, side by side</>
+        }
+        titleActions={
+          canExecute && token ? (
             <Link className={exec.primary} to={routes.comparisonNew()}>
               + New comparison
             </Link>
-          </div>
-        )}
-      </div>
+          ) : undefined
+        }
+        actions={canStop ? <StopRunsControls /> : undefined}
+      />
 
       <RunsTabs active="comparisons" />
 

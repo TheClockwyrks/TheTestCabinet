@@ -139,24 +139,24 @@ export function GgDashboardsPage() {
 
   return (
     <PageLayout chrome={GG_CHROME}>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--gg dashboards"
-          comment={<>// boards of saved questions, one range each</>}
-        />
-        {token && !draft && (
-          <button
-            type="button"
-            className={exec.primary}
-            onClick={() => {
-              setDraft(blankBoard());
-              setEditing(null);
-            }}
-          >
-            New dashboard
-          </button>
-        )}
-      </div>
+      <PromptHeader
+        command="--gg dashboards"
+        comment={<>// boards of saved questions, one range each</>}
+        titleActions={
+          token && !draft ? (
+            <button
+              type="button"
+              className={exec.primary}
+              onClick={() => {
+                setDraft(blankBoard());
+                setEditing(null);
+              }}
+            >
+              + New dashboard
+            </button>
+          ) : undefined
+        }
+      />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
@@ -175,7 +175,9 @@ export function GgDashboardsPage() {
             <input
               className={styles.input}
               value={draft.description}
-              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              onChange={(e) =>
+                setDraft({ ...draft, description: e.target.value })
+              }
             />
           </label>
           <label className={styles.field}>
@@ -194,7 +196,8 @@ export function GgDashboardsPage() {
           </label>
 
           <p className={styles.fieldLabel}>
-            Panels — a title, TCQ text, and how many of the twelve columns it spans.
+            Panels — a title, TCQ text, and how many of the twelve columns it
+            spans.
           </p>
           {draft.panels.map((panel, index) => (
             <div className={styles.panelRow} key={index}>
@@ -284,8 +287,8 @@ export function GgDashboardsPage() {
               {OVERVIEW_DASHBOARD.name}
             </Link>
             <span className={styles.rowSub}>
-              {OVERVIEW_DASHBOARD.description} · {OVERVIEW_DASHBOARD.panels.length}{" "}
-              panels
+              {OVERVIEW_DASHBOARD.description} ·{" "}
+              {OVERVIEW_DASHBOARD.panels.length} panels
             </span>
           </div>
           <span className={styles.rowActions}>
@@ -305,15 +308,16 @@ export function GgDashboardsPage() {
       <p className={exec.sectionLabel}>Your dashboards</p>
       {!token ? (
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to save your own dashboards — they are kept on your account. The
-          built-in board above queries the same deployment-wide corpus either way.
+          Sign in to save your own dashboards — they are kept on your account.
+          The built-in board above queries the same deployment-wide corpus
+          either way.
         </p>
       ) : loading ? (
         <p className={styles.empty}>Loading dashboards…</p>
       ) : boards.length === 0 ? (
         <p className={styles.empty}>
-          No dashboards yet. Duplicate the built-in overview to start from something
-          that already works.
+          No dashboards yet. Duplicate the built-in overview to start from
+          something that already works.
         </p>
       ) : (
         <div className={styles.list}>

@@ -15,6 +15,7 @@ import { ModelProviderMark } from "../../components/ModelProviderMark";
 import { formatCompact, formatUsd, perMillion } from "../../format";
 import { routes } from "../../routes";
 import styles from "./ModelsPage.module.scss";
+import exec from "../runs/RunExec.module.scss";
 
 // One column of the model catalog: its header and grid track, how it renders a
 // row, and — when sortable — the key it orders by. Every data column is optional
@@ -154,18 +155,18 @@ export function ModelsPage() {
   return (
     <PageLayout>
       <section className={styles.section}>
-        <div className={styles.header}>
-          <PromptHeader
-            command="--models"
-            blink
-            comment={<>// the models we put through the cabinet</>}
-          />
-          {config && (
-            <Link className={styles.addButton} to={routes.modelNew()}>
-              + Add model
-            </Link>
-          )}
-        </div>
+        <PromptHeader
+          command="--models"
+          blink
+          comment={<>// the models we put through the cabinet</>}
+          titleActions={
+            config ? (
+              <Link className={exec.primary} to={routes.modelNew()}>
+                + Add model
+              </Link>
+            ) : undefined
+          }
+        />
 
         {/* The three states are distinct and must read that way: a fetch in
             flight is a wait, an unreachable backend is a fault, and only a

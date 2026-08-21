@@ -9,7 +9,10 @@ import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GgQuery, GgRunDoc } from "@test-cabinet/run-record/gg-query";
-import { BackendProvider, type BackendContextValue } from "../../../client/context";
+import {
+  BackendProvider,
+  type BackendContextValue,
+} from "../../../client/context";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
@@ -20,7 +23,23 @@ import { GgDiscoverPage } from "./GgDiscoverPage";
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../components/PromptHeader", () => ({ PromptHeader: () => null }));
+vi.mock("../../components/PromptHeader", () => ({
+  // The header's chrome is not what these tests are about; its slots are, because a
+  // page's own actions live in them. Stub the chrome and pass the slots through, so a
+  // control that moves into the header does not silently vanish from the test.
+  PromptHeader: ({
+    titleActions,
+    actions,
+  }: {
+    titleActions?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <>
+      {titleActions}
+      {actions}
+    </>
+  ),
+}));
 vi.mock("../../../client/auth", () => ({ useAuth: () => ({ token: "t0" }) }));
 
 const runGgQuery = vi.fn();
@@ -59,7 +78,9 @@ function galleryValue(ggData?: GalleryDataInput["ggData"]): GalleryDataInput {
 /** Reports the current location, so a redirect can be asserted on. */
 function Where() {
   const location = useLocation();
-  return <output data-testid="where">{`${location.pathname}${location.search}`}</output>;
+  return (
+    <output data-testid="where">{`${location.pathname}${location.search}`}</output>
+  );
 }
 
 function renderAt(path: string) {
@@ -87,7 +108,11 @@ function doc(fields: Record<string, string | number | boolean>): GgRunDoc {
  * shipped in the gallery data, and every query answered by the mirrored evaluator in the
  * browser.
  */
-function renderStatic(path: string, documents: GgRunDoc[], generatedAt: string) {
+function renderStatic(
+  path: string,
+  documents: GgRunDoc[],
+  generatedAt: string,
+) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <GalleryDataProvider value={galleryValue({ generatedAt, documents })}>
@@ -112,12 +137,18 @@ describe("GgDiscoverPage", () => {
   beforeEach(() => {
     runGgQuery.mockReset();
     getGgFields.mockReset();
-    runGgQuery.mockResolvedValue({ totalRuns: 0, documents: [], truncated: false });
+    runGgQuery.mockResolvedValue({
+      totalRuns: 0,
+      documents: [],
+      truncated: false,
+    });
     getGgFields.mockResolvedValue({ documents: 0, fields: [] });
   });
 
   it("compiles the URL's text and sends the compiled form", async () => {
-    renderAt("/gg/query?q=" + encodeURIComponent("state:hung or state:timed_out"));
+    renderAt(
+      "/gg/query?q=" + encodeURIComponent("state:hung or state:timed_out"),
+    );
     await waitFor(() => expect(runGgQuery).toHaveBeenCalled());
     // The wire form is the tree, not the text — the server never parses.
     expect(lastQuery().filter).toEqual({
@@ -138,13 +169,21 @@ describe("GgDiscoverPage", () => {
     // Resolved to absolute milliseconds here, so the backend needs no clock of its own.
     expect(clauses[0]).toMatchObject({ kind: "range", field: "started" });
     expect(typeof (clauses[0] as { from?: number }).from).toBe("number");
-    expect(clauses[1]).toEqual({ kind: "compare", field: "state", op: "eq", value: "hung" });
+    expect(clauses[1]).toEqual({
+      kind: "compare",
+      field: "state",
+      op: "eq",
+      value: "hung",
+    });
   });
 
   it("sends the range alone when the query is empty", async () => {
     renderAt("/gg/query?range=7d");
     await waitFor(() => expect(runGgQuery).toHaveBeenCalled());
-    expect(lastQuery().filter).toMatchObject({ kind: "range", field: "started" });
+    expect(lastQuery().filter).toMatchObject({
+      kind: "range",
+      field: "started",
+    });
   });
 
   it("puts a submitted query in the URL, as text", async () => {
@@ -171,7 +210,9 @@ describe("GgDiscoverPage", () => {
     });
     renderAt("/gg/query?q=" + encodeURIComponent("| stats count() by preset"));
     await waitFor(() =>
-      expect(screen.getByRole("cell", { name: "planning" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("cell", { name: "planning" }),
+      ).toBeInTheDocument(),
     );
     // The matched-run count is the denominator every figure on the page is read against,
     // so it is stated whatever shape the result came back in.
@@ -225,7 +266,9 @@ describe("Discover on the public static site", () => {
     // a table of 404s.
     renderStatic("/gg/query", CORPUS, "2026-07-30T09:00:00Z");
     await waitFor(() => expect(screen.getByTitle("run-a")).toBeInTheDocument());
-    expect(screen.queryByRole("link", { name: /run-a/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /run-a/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("filters and aggregates locally with the same semantics", async () => {
@@ -267,7 +310,9 @@ describe("Discover on the public static site", () => {
   it("offers no save affordance, because there is no account to save under", async () => {
     renderStatic("/gg/query", CORPUS, "2026-07-30T09:00:00Z");
     await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: "Query" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("combobox", { name: "Query" }),
+      ).toBeInTheDocument(),
     );
     expect(
       screen.queryByRole("link", { name: "Save this query" }),

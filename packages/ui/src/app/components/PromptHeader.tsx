@@ -15,6 +15,16 @@ interface PromptHeaderProps {
    */
   arg?: string;
   /**
+   * The page's own actions, pinned to the trailing edge of the prompt line — a
+   * "+ New run" button and the links beside it.
+   *
+   * Given to the header rather than laid out beside it, because a header that is one
+   * column of somebody else's row is a header whose second line is that column wide.
+   * Both rows are the header's, so both run the full width of the page and the two
+   * trailing edges line up.
+   */
+  titleActions?: ReactNode;
+  /**
    * Controls pinned to the trailing edge of the comment line — the runs section's
    * global stop cluster is the one user of it.
    *
@@ -35,21 +45,30 @@ export function PromptHeader({
   comment,
   blink = false,
   arg,
+  titleActions,
   actions,
 }: PromptHeaderProps) {
-  return (
-    <header
-      className={actions ? `${styles.hero} ${styles.hasActions}` : styles.hero}
+  const prompt = (
+    <p
+      className={`${styles.prompt}${arg !== undefined ? ` ${styles.withArg}` : ""}`}
     >
-      <p
-        className={`${styles.prompt}${arg !== undefined ? ` ${styles.withArg}` : ""}`}
-      >
-        <span className={styles.caret}>&gt;</span> the-test-cabinet {command}
-        {arg !== undefined && (
-          <span className={styles.arg}>&quot;{arg}&quot;</span>
-        )}
-        {blink && <span className={styles.blink}>_</span>}
-      </p>
+      <span className={styles.caret}>&gt;</span> the-test-cabinet {command}
+      {arg !== undefined && (
+        <span className={styles.arg}>&quot;{arg}&quot;</span>
+      )}
+      {blink && <span className={styles.blink}>_</span>}
+    </p>
+  );
+  return (
+    <header className={styles.hero}>
+      {titleActions ? (
+        <div className={styles.titleRow}>
+          {prompt}
+          <div className={styles.titleActions}>{titleActions}</div>
+        </div>
+      ) : (
+        prompt
+      )}
       {actions ? (
         <div className={styles.commentRow}>
           <p className={styles.comment}>{comment}</p>

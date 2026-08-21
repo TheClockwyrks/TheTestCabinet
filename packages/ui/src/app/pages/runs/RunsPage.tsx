@@ -159,24 +159,27 @@ export function RunsPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--runs"
-          blink
-          comment={<>// every result the cabinet has produced</>}
-          actions={canStop ? <StopRunsControls /> : undefined}
-        />
-        {canExecute && (
-          <div className={exec.headerActions}>
-            <Link className={exec.secondary} to={routes.accountCoverage()}>
-              Coverage plans
-            </Link>
-            <Link className={exec.primary} to={routes.runNew()}>
-              + New run
-            </Link>
-          </div>
-        )}
-      </div>
+      {/* Both of the header's rows are the header's own, so both run the full width of
+          the page: the stop cluster's trailing edge lines up with the New-run button's
+          rather than stopping short of it. */}
+      <PromptHeader
+        command="--runs"
+        blink
+        comment={<>// every result the cabinet has produced</>}
+        titleActions={
+          canExecute ? (
+            <>
+              <Link className={exec.secondary} to={routes.accountCoverage()}>
+                Coverage plans
+              </Link>
+              <Link className={exec.primary} to={routes.runNew()}>
+                + New run
+              </Link>
+            </>
+          ) : undefined
+        }
+        actions={canStop ? <StopRunsControls /> : undefined}
+      />
 
       <div className={styles.controls}>
         <RunsTabs active="runs" />

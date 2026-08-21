@@ -166,12 +166,15 @@ export function LaddersPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader command="--ladders" comment={<>// your ladders</>} />
-        <Link className={exec.primary} to={routes.accountLadderNew()}>
-          New ladder
-        </Link>
-      </div>
+      <PromptHeader
+        command="--ladders"
+        comment={<>// your ladders</>}
+        titleActions={
+          <Link className={exec.primary} to={routes.accountLadderNew()}>
+            + New ladder
+          </Link>
+        }
+      />
       <AccountTabs active="ladders" />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}

@@ -19,7 +19,23 @@ import { GgSavedQueriesPage } from "./GgSavedQueriesPage";
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../components/PromptHeader", () => ({ PromptHeader: () => null }));
+vi.mock("../../components/PromptHeader", () => ({
+  // The header's chrome is not what these tests are about; its slots are, because a
+  // page's own actions live in them. Stub the chrome and pass the slots through, so a
+  // control that moves into the header does not silently vanish from the test.
+  PromptHeader: ({
+    titleActions,
+    actions,
+  }: {
+    titleActions?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <>
+      {titleActions}
+      {actions}
+    </>
+  ),
+}));
 vi.mock("../../../client/auth", () => ({ useAuth: () => ({ token: "t0" }) }));
 
 const listGgSavedQueries = vi.fn();
@@ -74,7 +90,7 @@ describe("GgSavedQueriesPage", () => {
   it("stores the query as source text and the range as a token", async () => {
     renderAt(
       "/gg/saved?new=1&range=30d&q=" +
-        encodeURIComponent("started >= now-30d and model:\"anthropic/*\""),
+        encodeURIComponent('started >= now-30d and model:"anthropic/*"'),
     );
     await waitFor(() =>
       expect(screen.getByDisplayValue(/now-30d/)).toBeInTheDocument(),

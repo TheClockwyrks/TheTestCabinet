@@ -111,17 +111,17 @@ export function GgConfigsPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--gg-configs"
-          comment={<>// named capability sets to run gg with</>}
-        />
-        {token && (
-          <Link className={exec.primary} to={routes.accountGgConfigNew()}>
-            New configuration
-          </Link>
-        )}
-      </div>
+      <PromptHeader
+        command="--gg-configs"
+        comment={<>// named capability sets to run gg with</>}
+        titleActions={
+          token ? (
+            <Link className={exec.primary} to={routes.accountGgConfigNew()}>
+              + New configuration
+            </Link>
+          ) : undefined
+        }
+      />
       <AccountTabs active="ggConfigs" />
 
       {(error || actionError) && (

@@ -94,17 +94,17 @@ export function GgAgentsPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--gg-agents"
-          comment={<>// agent profiles configurations import</>}
-        />
-        {token && (
-          <Link className={exec.primary} to={routes.accountGgAgentNew()}>
-            New agent
-          </Link>
-        )}
-      </div>
+      <PromptHeader
+        command="--gg-agents"
+        comment={<>// agent profiles configurations import</>}
+        titleActions={
+          token ? (
+            <Link className={exec.primary} to={routes.accountGgAgentNew()}>
+              + New agent
+            </Link>
+          ) : undefined
+        }
+      />
       <AccountTabs active="ggAgents" />
 
       {(error || actionError) && (

@@ -988,26 +988,10 @@
 // In-progress runs now render as spinner rows folded into the shared run log
 // (see `RunLog`), so their styling lives there beside the finished rows.
 
-// The Runs page header row: the prompt header on the left, the "+ New run"
-// action pinned to the right on the same row. Aligns to the prompt line at the
-// top (the header carries a second comment line below) and wraps the action
-// under the header on narrow viewports.
-.runsHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
-
-// Groups the header's actions (the Publish-failures link beside the New-run
-// button) so they sit together at the right, wrapping as one unit.
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
+// A page's header actions are `PromptHeader`'s own `titleActions` slot — the header
+// lays out both of its rows, so a page never wraps one in a row of its own. The two
+// containers that used to do that here are gone; what stays is the button treatment
+// below, which is what every header action wears.
 
 // --- Review flow: one question at a time, with a navigable item rail ---------
 

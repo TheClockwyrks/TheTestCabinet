@@ -5,16 +5,29 @@
   font-family: var(--ttc-font);
 }
 
-// A header carrying trailing controls fills the row it is a flex item of, so its
-// controls right-align against the row's own trailing edge rather than against the
-// header's intrinsic text width — which would leave them floating mid-row.
-.hero.hasActions {
-  flex: 1 1 24rem;
-  min-width: 0;
+// The prompt line when the page pins its own actions to it: the command keeps the
+// leading edge, the actions the trailing one. Aligned to the top rather than centred,
+// because the prompt is the taller of the two and its baseline is what the eye follows
+// down to the comment beneath.
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.titleActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .prompt {
   margin: 0;
+  min-width: 0;
   font-size: t.$font-xl;
   font-weight: 700;
   text-transform: uppercase;

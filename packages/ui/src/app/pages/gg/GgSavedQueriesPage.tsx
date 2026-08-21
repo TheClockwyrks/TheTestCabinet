@@ -130,17 +130,17 @@ export function GgSavedQueriesPage() {
 
   return (
     <PageLayout chrome={GG_CHROME}>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--gg saved"
-          comment={<>// questions worth keeping</>}
-        />
-        {token && !draft && (
-          <Link className={exec.primary} to={routes.ggAnalysisDiscover()}>
-            Compose in Discover
-          </Link>
-        )}
-      </div>
+      <PromptHeader
+        command="--gg saved"
+        comment={<>// questions worth keeping</>}
+        titleActions={
+          token && !draft ? (
+            <Link className={exec.primary} to={routes.ggAnalysisDiscover()}>
+              Compose in Discover
+            </Link>
+          ) : undefined
+        }
+      />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
@@ -159,7 +159,9 @@ export function GgSavedQueriesPage() {
             <input
               className={styles.input}
               value={draft.description}
-              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              onChange={(e) =>
+                setDraft({ ...draft, description: e.target.value })
+              }
             />
           </label>
           <label className={styles.field}>
@@ -210,15 +212,15 @@ export function GgSavedQueriesPage() {
 
       {!token ? (
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to save queries — they are kept on your account. The corpus they run
-          over is deployment-wide either way.
+          Sign in to save queries — they are kept on your account. The corpus
+          they run over is deployment-wide either way.
         </p>
       ) : loading ? (
         <p className={styles.empty}>Loading saved queries…</p>
       ) : saved.length === 0 ? (
         <p className={styles.empty}>
-          Nothing saved yet. Compose a question in Discover and use its Save control —
-          the text comes across, so a relative range stays relative.
+          Nothing saved yet. Compose a question in Discover and use its Save
+          control — the text comes across, so a relative range stays relative.
         </p>
       ) : (
         <div className={styles.list}>
