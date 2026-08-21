@@ -174,6 +174,16 @@ export type GgRunRequest = {
    * sane maximum. Same semantics as a conventional run's `retryCount`.
    */
   retryCount?: number;
+  /**
+   * Built-in [engine](test_cabinet_core::engine) slug the produced build is
+   * written against. Omit for the `none` default, which supplies no runtime.
+   *
+   * A gg run seeds and builds a workspace like any other run, so it carries the
+   * engine dimension on the same terms: the slug must be one the engine
+   * catalogue knows and one the requested case version declares support for,
+   * both checked when the run executes.
+   */
+  engine?: string;
 };
 
 /**

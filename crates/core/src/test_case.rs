@@ -4101,11 +4101,11 @@ pub struct TestCaseVersion {
     pub packages: Vec<String>,
     /// The [engines](crate::engine) a run of this version may be built on, each
     /// with the range of engine versions this version supports — from the
-    /// manifest's `engines` list and its `[[engine]]` tables, in declared order,
-    /// but always led by [`NONE_SLUG`], which every case supports whether it
-    /// declares it or not. So this is never empty: a version declaring nothing
-    /// resolves to exactly unbounded support for `none`, the engineless run every
-    /// case supports.
+    /// manifest's `engines` list and its `[[engine]]` tables, in declared order.
+    /// Never empty: a version declaring nothing resolves to exactly unbounded
+    /// support for [`NONE_SLUG`], the engineless run. A version that declares any
+    /// engine supports exactly what it declares, so one built against a runtime
+    /// may leave the engineless run out.
     ///
     /// It is the **compatibility gate** a run's `--engine` is checked against
     /// (see [`Self::supports_engine`] for the slug and

@@ -536,6 +536,15 @@ fn version_response(
         changelog: manifest.changelog.clone(),
         max_runtime_seconds: manifest.max_runtime_seconds,
         test_type: manifest.test_type,
+        engines: manifest
+            .engines
+            .iter()
+            .map(|engine| EngineOut {
+                slug: engine.slug.clone(),
+                min_version: engine.min_version.as_ref().map(|v| v.to_string()),
+                max_version: engine.max_version.as_ref().map(|v| v.to_string()),
+            })
+            .collect(),
         build: manifest.build.as_ref().map(|build| BuildOut {
             install: build.install.clone(),
             build: build.build.clone(),
@@ -1023,6 +1032,9 @@ pub struct VersionResponse {
     changelog: String,
     max_runtime_seconds: u64,
     test_type: TestType,
+    /// The engines a run of this version may select. Never empty — a version that
+    /// declares none supports the engineless run.
+    engines: Vec<EngineOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     build: Option<BuildOut>,
     /// The case's TypeScript toolchain commands, when it declares a `[toolchain]`
@@ -1181,6 +1193,29 @@ struct SpecDocumentOut {
     body: String,
     /// The seeded file's role (`spec`/`script`), for the Inputs-tab tag.
     kind: SpecKind,
+}
+
+/// One [engine](test_cabinet_core::engine) a run of this version may select, with
+/// the version range the case accepts it at. A launcher offers exactly this set,
+/// and the runner holds a run's selection against it before any container work.
+///
+/// Always the table spelling, so one shape answers both readers: a case that pins
+/// nothing carries the slug alone and omits the bounds.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct EngineOut {
+    slug: String,
+    /// The lowest engine version a run may select, inclusive. Absent when the case
+    /// pinned no floor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    min_version: Option<String>,
+    /// The version support stops at, exclusive. Absent when the range is unbounded
+    /// above, which is the default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    max_version: Option<String>,
 }
 
 /// A runtime package a case ships into its runs, exposed for the console's Inputs

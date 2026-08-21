@@ -250,12 +250,21 @@ running under an engine.
 
 ## Selecting an engine
 
-An engine is selected per run with `--engine` and defaults to `none`. The engine
-must resolve in the catalogue, must be one the case supports, and its catalogued
-version must fall inside the range the case declared for it; a run failing any of
-those is rejected before any container work begins. Both the engine slug and the
-exact engine version are recorded on the run, the version taken at seed time from
-the package store.
+An engine is selected per run and defaults to `none`. The CLI selects it with
+`--engine`; every enqueue endpoint carries it on the launch body alongside the
+harness, the model, and the orchestrator. A gg run carries it too, since a gg run
+builds inside a seeded workspace like any other run.
+
+The engine must resolve in the catalogue, must be one the case supports, and its
+catalogued version must fall inside the range the case declared for it; a run
+failing any of those is rejected before any container work begins. Both the
+engine slug and the exact engine version are recorded on the run, the version
+taken at seed time from the package store.
+
+The resolved-version response carries the case's declared support set, so a
+launcher offers exactly the engines the selected version supports and a host that
+resolves a case over HTTP holds the same gate a host reading the manifest from a
+checkout does.
 
 A run's engine is part of what makes its result comparable. Runs of one case
 under different engines measure different work and carry different available

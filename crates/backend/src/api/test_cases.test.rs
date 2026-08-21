@@ -32,6 +32,9 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: TestType::EndToEnd,
+        engines: vec![test_cabinet_core::EngineSupport::unbounded(
+            test_cabinet_core::engine::NONE_SLUG,
+        )],
         experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
@@ -242,6 +245,30 @@ fn no_reference_builds_leaves_every_variant_without_one() {
             .iter()
             .all(|v| v.reference_builds.is_empty())
     );
+}
+
+#[test]
+fn the_declared_engines_are_folded_into_the_version_response() {
+    // The engines a version supports are the set a launcher offers and the gate the
+    // runner holds a selection against, so they have to reach the wire. Both
+    // spellings map onto the one table shape: a bare engine carries the slug alone,
+    // a pinned one carries its bounds.
+    let mut manifest = manifest();
+    manifest.engines = vec![
+        test_cabinet_core::EngineSupport::unbounded("none"),
+        test_cabinet_core::EngineSupport {
+            slug: "simple-2d".to_string(),
+            min_version: Some("1.0.0".parse().expect("a valid version")),
+            max_version: Some("2.0.0".parse().expect("a valid version")),
+        },
+    ];
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new()).unwrap();
+    let engines: Vec<&str> = response.engines.iter().map(|e| e.slug.as_str()).collect();
+    assert_eq!(engines, vec!["none", "simple-2d"]);
+    assert_eq!(response.engines[0].min_version, None);
+    assert_eq!(response.engines[0].max_version, None);
+    assert_eq!(response.engines[1].min_version.as_deref(), Some("1.0.0"));
+    assert_eq!(response.engines[1].max_version.as_deref(), Some("2.0.0"));
 }
 
 #[test]

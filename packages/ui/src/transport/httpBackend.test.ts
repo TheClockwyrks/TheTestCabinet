@@ -224,6 +224,98 @@ function useFakeEventSource() {
   return FakeEventSource;
 }
 
+describe("engine dimension", () => {
+  // The engines a version supports are what the new-run form's picker offers. A
+  // resolved version that drops them offers nothing, so no case can be run on an
+  // engine at all.
+  it("carries a version's supported engines through resolution", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          slug: "carom",
+          version: "v3.0.0",
+          name: "Carom",
+          difficulty: "easy",
+          tags: [],
+          summary: null,
+          description: null,
+          changelog: "",
+          maxRuntimeSeconds: 1800,
+          testType: "end-to-end",
+          engines: [
+            { slug: "none" },
+            { slug: "simple-2d", minVersion: "1.0.0" },
+          ],
+          variants: [],
+          checks: [],
+        }),
+      ),
+    );
+
+    const info = await createHttpBackend(BACKEND).resolveVersion(
+      "carom",
+      "v3.0.0",
+    );
+
+    // The range is the host's gate, not the picker's, so only the slugs travel on.
+    expect(info.engines).toEqual(["none", "simple-2d"]);
+  });
+
+  // The launch body is the only place a collected engine reaches the backend. A
+  // run enqueued without it is an engineless run, whatever the operator picked.
+  it("puts the selected engine on the enqueued launch body", async () => {
+    // The mock declares its parameters so the recorded call is typed, which is
+    // what lets the assertion read the enqueued body back off it.
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      Response.json({ runId: "run-9" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createBackendExec(BACKEND, AUTH, ARTIFACTS).launchRun(
+      {
+        testCase: "carom",
+        version: "v3.0.0",
+        variant: "base",
+        harness: "claude",
+        modelId: "claude-opus-4-8",
+        orchestrator: "one-shot",
+        engine: "simple-2d",
+        maxRuntimeOverride: null,
+      },
+      "token",
+    );
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1].body));
+    expect(body.engine).toBe("simple-2d");
+  });
+
+  // Omitted rather than sent as an empty value, which is how the backend spells
+  // the `none` default.
+  it("omits the engine when the caller pinned none", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      Response.json({ runId: "run-10" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createBackendExec(BACKEND, AUTH, ARTIFACTS).launchRun(
+      {
+        testCase: "carom",
+        version: "v1.0.0",
+        variant: "base",
+        harness: "claude",
+        modelId: "claude-opus-4-8",
+        orchestrator: "one-shot",
+        maxRuntimeOverride: null,
+      },
+      "token",
+    );
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1].body));
+    expect(body).not.toHaveProperty("engine");
+  });
+});
+
 describe("createBackendExec console stream", () => {
   afterEach(() => {
     vi.useRealTimers();

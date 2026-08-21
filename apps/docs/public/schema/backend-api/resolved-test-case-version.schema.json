@@ -336,6 +336,24 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "EngineOut": {
+      "description": "One [engine](test_cabinet_core::engine) a run of this version may select, with\nthe version range the case accepts it at. A launcher offers exactly this set,\nand the runner holds a run's selection against it before any container work.\n\nAlways the table spelling, so one shape answers both readers: a case that pins\nnothing carries the slug alone and omits the bounds.",
+      "properties": {
+        "maxVersion": {
+          "description": "The version support stops at, exclusive. Absent when the range is unbounded\nabove, which is the default.",
+          "type": ["string", "null"]
+        },
+        "minVersion": {
+          "description": "The lowest engine version a run may select, inclusive. Absent when the case\npinned no floor.",
+          "type": ["string", "null"]
+        },
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": ["slug"],
+      "type": "object"
+    },
     "ErratumOut": {
       "description": "A known-issue erratum in the §1.2 wire shape (see\n[`test_cabinet_core::test_case::Erratum`]).",
       "properties": {
@@ -1185,6 +1203,13 @@
       },
       "type": "array"
     },
+    "engines": {
+      "description": "The engines a run of this version may select. Never empty — a version that\ndeclares none supports the engineless run.",
+      "items": {
+        "$ref": "#/$defs/EngineOut"
+      },
+      "type": "array"
+    },
     "errata": {
       "description": "Known-issue errata recorded for this version after it shipped. Site-facing:\nshown on the case's Errata tab and, where relevant, to reviewers scoring a\nrun of the version. Empty when the version has none.",
       "items": {
@@ -1398,6 +1423,7 @@
     "changelog",
     "maxRuntimeSeconds",
     "testType",
+    "engines",
     "assetKind",
     "promptTemplate",
     "commonSpecs",

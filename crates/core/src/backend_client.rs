@@ -31,11 +31,11 @@ use crate::review::Writeup;
 use crate::run_record::{PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
-    EngineWorkspaces, Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec,
-    OutputSpec, ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec,
-    ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec, SpecFile,
-    SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant,
-    VoxelSpec, WorkspaceFile,
+    EngineSupport, EngineWorkspaces, Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind,
+    ModelSpec, OutputSpec, ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView,
+    ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec,
+    SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec,
+    Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1613,6 +1613,13 @@ struct VersionBody {
     max_runtime_seconds: u64,
     #[serde(default)]
     test_type: TestType,
+    /// The [engines](crate::engine) a run of this version may select, each with the
+    /// version range the case accepts it at. Required, and deliberately not
+    /// defaulted: a defaulted set says every case supports the engineless run alone,
+    /// which would refuse every engine-backed run of a case that supports one. A
+    /// backend that does not serve the field is a backend this driver cannot run
+    /// against.
+    engines: Vec<EngineSupport>,
     #[serde(default)]
     build: Option<BuildBody>,
     /// The case's TypeScript toolchain commands, when it declares a `[toolchain]`
@@ -1718,7 +1725,7 @@ impl VersionBody {
         // never reads it (it is site-facing only).
         let changelog_path = PathBuf::from("changelog.md");
         TestCaseVersion {
-            engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
+            engines: self.engines,
             slug: self.slug,
             version: self.version,
             name: self.name,

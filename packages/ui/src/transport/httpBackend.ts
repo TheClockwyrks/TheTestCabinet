@@ -66,6 +66,7 @@ import type {
   BulkCancelOut,
   GgRunRequest,
   LaunchAck,
+  LaunchBody,
   StreamOpened,
 } from "@test-cabinet/run-record/jobs-api";
 import type {
@@ -215,6 +216,11 @@ interface ResolvedVersion {
   changelog: string;
   maxRuntimeSeconds: number;
   testType: TestType;
+  // The engines a run of this version may select, each with the version range the
+  // case accepts it at. Never empty — a version that declares none supports the
+  // engineless run. The range is the host's business, so only the slug is carried
+  // any further.
+  engines: { slug: string }[];
   // The asset shape an asset-generation case produces (camelCase `AssetKind`),
   // carried through verbatim so the catalog can split Sprite vs Voxel tabs.
   assetKind?: AssetKind | null;
@@ -456,6 +462,9 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         changelog: r.changelog,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
+        // The engines this version supports, which is exactly what the run form's
+        // engine picker offers.
+        engines: r.engines.map((engine) => engine.slug),
         assetKind: r.assetKind ?? null,
         // Case-level runtime packages (shared by every variant), each with a
         // UI-only description. Absent on a backend that predates the field.
@@ -1371,14 +1380,24 @@ interface LaunchBatchAckResponse {
 // The backend's `LaunchBody` (camelCase) for one run. Shared by the single
 // (`POST /jobs`) and batch (`POST /jobs/batch`) enqueue paths so the two never
 // drift on how a `LaunchConfig` is put on the wire.
-function launchBodyOf(config: LaunchConfig) {
+function launchBodyOf(config: LaunchConfig): LaunchBody {
   return {
     testCase: config.testCase,
     version: config.version,
     variant: config.variant,
-    harness: config.harness,
+    // The console collects the slug from its own harness catalog, which mirrors
+    // the contract's `HarnessSlug` in the same order, so the narrowing is a
+    // restatement of what the picker can produce rather than a claim about
+    // arbitrary input.
+    harness: config.harness as LaunchBody["harness"],
     model: config.modelId,
     orchestrator: config.orchestrator,
+    // Omitted entirely by a caller that pins no engine — a coverage plan and a
+    // comparison arm both mean the `none` default, which the backend spells as an
+    // absent field. The run form always names one. Typing this return against the
+    // contract's own `LaunchBody` is what keeps a field the console collects from
+    // being silently dropped here.
+    ...(config.engine ? { engine: config.engine } : {}),
     ...(config.maxRuntimeOverride != null
       ? { maxRuntimeSeconds: config.maxRuntimeOverride }
       : {}),

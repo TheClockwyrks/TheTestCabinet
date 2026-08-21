@@ -305,6 +305,11 @@ export interface VersionInfo {
   // The case's test type. Drives type-specific UI affordances — notably the
   // run-launch orchestrator selector, which is offered only for "end-to-end".
   testType: TestType;
+  // The engine slugs a run of this version may select, in the order the case
+  // declares them. Never empty: a version that declares no engine supports the
+  // engineless run. This is the compatibility gate a run is held to, so the
+  // new-run form offers exactly this set and nothing else.
+  engines: string[];
   // For an asset-generation case, which asset shape it produces — the finer
   // discriminator the catalog partitions its 2D / 3D / Particle / Audio tabs on.
   // Carried by every host, including the static snapshot; null only for a
@@ -634,6 +639,10 @@ export interface LaunchConfig {
   // to "one-shot" (a single session); a non-default orchestrator is accepted
   // only for the end-to-end test type.
   orchestrator: string;
+  // The engine the produced build is written against. Omit (undefined) to accept
+  // the `none` default, which supplies no runtime. A named slug must be one the
+  // targeted case version supports, or the run is refused when it executes.
+  engine?: string;
   maxRuntimeOverride: number | null;
   // How many times the backend automatically retries this run after a terminal
   // infrastructure error or catastrophic (won't-load) build. Omit (undefined) to

@@ -31,7 +31,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::test_case::{
-    AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
+    AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 
@@ -201,6 +201,18 @@ pub struct StoredManifest {
     /// Common specs (`source` is a store-relative artifact key, `dest` the
     /// workspace destination, `template` whether it is a `.hbs` the runner renders).
     pub common_specs: Vec<StoredSpec>,
+    /// The [engines](test_cabinet_core::engine) a run of this version may select,
+    /// each with the version range it accepts. This is the compatibility gate the
+    /// driver holds a run's engine selection against, so it has to survive the trip
+    /// through the store: a version served without it would resolve as supporting
+    /// the engineless run alone, and every engine-backed run of it would be refused.
+    /// Defaulted to the engineless set for a manifest stored before the field
+    /// existed, which is all such a record can express. A version that declares an
+    /// engine and is already in the store therefore reads back engineless until it
+    /// is re-ingested, which a whole-catalog ingest under a new catalog version
+    /// does.
+    #[serde(default = "default_engines")]
+    pub engines: Vec<EngineSupport>,
     /// Common starter workspace files (directory already expanded to individual
     /// files), per [engine](test_cabinet_core::engine), seeded into the run root for
     /// every variant that does not override the workspace. Defaulted for manifests
@@ -612,6 +624,16 @@ pub struct StoredReference {
     /// `png` for manifests stored before the field existed.
     #[serde(default = "default_reference_extension")]
     pub extension: String,
+}
+
+/// The engine support set for a manifest stored before engines were recorded:
+/// support for the engineless run at any version, matching what
+/// [`TestCaseVersion`](test_cabinet_core::TestCaseVersion) resolves for a manifest
+/// that declares nothing.
+fn default_engines() -> Vec<EngineSupport> {
+    vec![EngineSupport::unbounded(
+        test_cabinet_core::engine::NONE_SLUG,
+    )]
 }
 
 /// The default reference kind for manifests stored before `kind` was recorded:

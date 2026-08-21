@@ -20,6 +20,21 @@
   margin-bottom: t.$space-lg;
 }
 
+// The new-run form's test half: the type, case and version on the first row, the
+// variant and the engine on the second. The columns are fixed rather than
+// auto-fit so the second row keeps its shape whether or not the resolved version
+// offers a choice of engine — an engine that appears takes the empty column
+// beside the variant instead of resizing the row.
+.testFields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  // Three columns at the 14rem floor the rest of the form holds to need a 44rem
+  // container, and the page's own padding costs 2rem of the viewport.
+  @media (max-width: 46rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .field {
   display: flex;
   flex-direction: column;

@@ -238,6 +238,10 @@ A representative response:
   "description": "## Carom\n…",
   "changelog": "…",
   "maxRuntimeSeconds": 1800,
+  // The engines this version supports, each with the version range it accepts.
+  // A launcher offers exactly this set; `minVersion` and `maxVersion` are
+  // present only on an engine the case pinned.
+  "engines": [{ "slug": "none" }, { "slug": "simple-2d", "minVersion": "1.0.0" }],
   "build": { "install": "npm ci", "build": "npm run build" },
   "promptTemplate": "…handlebars source…",
   "commonSpecs": [

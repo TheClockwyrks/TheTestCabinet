@@ -461,6 +461,35 @@ fn stored_manifest_carries_voxel_specs() {
 }
 
 #[test]
+fn stored_manifest_carries_the_engines_the_case_declares() {
+    // The engines a version supports are the compatibility gate a run's selection is
+    // held against in the driver pod, which resolves the case over HTTP rather than
+    // from a checkout. Dropping them at ingest makes every version look as though it
+    // supports the engineless run alone, so an engine-backed run is refused whatever
+    // the case declares. Carom declares both spellings.
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+
+    let carom = catalog.resolve("carom", "v3.0.0").unwrap();
+    let manifest = build_stored_manifest(&carom).unwrap();
+    let slugs: Vec<&str> = manifest.engines.iter().map(|e| e.slug.as_str()).collect();
+    assert_eq!(slugs, vec!["none", "simple-2d"]);
+    // A pinned engine keeps its floor through the store, or the gate would admit a
+    // staged runtime the case's specs were never written against.
+    let pinned = manifest
+        .engines
+        .iter()
+        .find(|e| e.slug == "simple-2d")
+        .expect("declared");
+    assert_eq!(pinned.min_version, Some("1.0.0".parse().unwrap()));
+
+    // And the whole set survives the JSON round-trip the on-disk sidecar takes.
+    let json = serde_json::to_string(&manifest).unwrap();
+    let read: crate::store::StoredManifest = serde_json::from_str(&json).unwrap();
+    assert_eq!(read.engines, manifest.engines);
+}
+
+#[test]
 fn every_stored_manifest_preserves_its_asset_shape() {
     // A whole-catalog guard against ingest drift: a field that resolution fills in
     // but `build_stored_manifest` forgets to copy, so a run seeds from a manifest

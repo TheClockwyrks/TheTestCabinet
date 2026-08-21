@@ -51,6 +51,10 @@
       "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
       "description": "The declarative capability set configuring the run: its agent profiles (each\nwith its own capabilities, model binding, and delegation graph) and the\nrun-level model slots and limits. Must bind a model to its\n[root agent](GgCapabilitySet::root)."
     },
+    "engine": {
+      "description": "Built-in [engine](test_cabinet_core::engine) slug the produced build is\nwritten against. Omit for the `none` default, which supplies no runtime.\n\nA gg run seeds and builds a workspace like any other run, so it carries the\nengine dimension on the same terms: the slug must be one the engine\ncatalogue knows and one the requested case version declares support for,\nboth checked when the run executes.",
+      "type": ["string", "null"]
+    },
     "maxRuntimeSeconds": {
       "description": "Optional override for the maximum harness runtime, in seconds.",
       "format": "uint64",
