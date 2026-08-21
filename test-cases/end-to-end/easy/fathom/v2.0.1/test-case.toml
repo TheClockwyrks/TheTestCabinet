@@ -427,6 +427,13 @@ validation = { script = "validation/maze-movement/no-wall.mjs", outputs = [
   { id = "blocked", name = "The forager stopped at a wall", kind = "video" },
 ] }
 [[review.categories.items]]
+id = "predators-keep-to-corridors"
+title = "Predators keep to the corridors"
+description = "The hunters' half of the rule above: a predator travels the tile grid along corridor centers and never over rock. Chasing a fix through an obstacle it rounds the obstacle rather than pressing into the wall between them, and boxed into a tile with no open neighbor it stays where it is."
+validation = { script = "validation/maze-movement/predators-keep-to-corridors.mjs", outputs = [
+  { id = "route", name = "A hunter taking the long way round a rock spine", kind = "video" },
+] }
+[[review.categories.items]]
 id = "wrap-tunnel"
 title = "The wrap tunnel is continuous"
 description = "Traveling into the horizontal wrap tunnel carries the forager continuously out the opposite edge."

@@ -24,7 +24,13 @@
 // to reading "within about 2 tiles" as `<=` or `<`. Every build under test failed here on
 // that hair. Diagonally adjacent is `45 px`: inside "about 2 tiles" under any reading, and
 // still far enough that nothing about contact comes into it.
-import { startPlaying, poseMaze, denAllExcept, pred } from "../_helpers.mjs";
+import {
+  startPlaying,
+  poseMaze,
+  denAllExcept,
+  pred,
+  unmetPrecondition,
+} from "../_helpers.mjs";
 
 // `F` and `G` are diagonally adjacent, each walled into its own tile; the pocket off to
 // the right holds the plankton, so eating the two tiles under the pair cannot clear the
@@ -81,11 +87,23 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk(
-        "the walls held the pair apart for the whole watch (the forager was not caught through rock)",
-        held,
-      );
-      if (!held) return;
+      // A PRECONDITION, NOT A FINDING. The rock between the pair is what lets this item ask
+      // its question at all, and a predator that crosses it has broken the scenario rather
+      // than the silence: the forager is eaten, every predator is re-denned and the dive
+      // restarts, after which "the lock dropped" is true and about nothing.
+      //
+      // Whether a predator keeps to the corridors is
+      // `maze-movement/predators-keep-to-corridors`'s verdict, and it gives it — on both
+      // shapes, including the sealed cell this fixture uses. So this says what happened and
+      // steps aside rather than reporting a wall-crossing under a heading about pings.
+      if (!held) {
+        throw unmetPrecondition(
+          "the Gloamfin crossed the rock this scenario keeps between the pair and caught the " +
+            "forager, so there was no undisturbed close-range hold left to watch — whether a " +
+            "predator keeps to the corridors is maze-movement/predators-keep-to-corridors's " +
+            "verdict, not this one's",
+        );
+      }
       check.expectOk(
         "the Gloamfin holds a continuous close-range hearing lock",
         lockedAtStart === true,

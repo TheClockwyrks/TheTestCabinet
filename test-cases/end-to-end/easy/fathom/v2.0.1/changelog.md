@@ -1,3 +1,31 @@
+## A predator that crosses rock is reported as one
+
+Every posed fixture in this suite keeps a scenario apart with rock — a bystander walled off
+from its subject, a pair sealed into neighboring cells, a hunter in a sealed ring — and
+nothing checked that a predator honours it. `specs/predators.md` has for a while: they "move
+on the tile grid, along corridor centers", and a hunter holding a fix must "genuinely path
+around obstacles … rounding the corner you slipped behind rather than pressing into the wall
+between you".
+
+A run turned up a build whose Gloamfin steps into the wall beside it whenever it has no open
+neighbor at all. In `gloamfin/silent-when-close` that is the single rock tile between two
+sealed cells, so it crossed, reached the forager and took a life — and the only item that
+said anything was one about whether the Gloamfin goes quiet. It could as easily have
+surfaced nowhere.
+
+`maze-movement/predators-keep-to-corridors` now owns the claim, as `maze-movement/no-wall`
+owns it for the forager. It asks both shapes, because either alone is passed by a build that
+fails the other: a hunter chasing a fix through a rock spine must round it and reach the far
+corridor without ever standing on rock, and one boxed into a tile with no open neighbor must
+stay where it is. Against references mutated to let predators enter any tile, and to step
+only the way that shortens the straight line, the two halves fail one each.
+
+`gloamfin/silent-when-close` steps aside instead. The rock between the pair is what lets it
+ask its question, and a predator that crosses it has broken the scenario rather than the
+silence — after the catch every predator is re-denned and the dive restarts, at which point
+"the lock dropped" is true and about nothing. It now raises the precondition and names where
+the verdict belongs.
+
 ## A posed fixture says whether it is safe to grade
 
 Fifty-odd checks pose a maze and then measure something standing on it, and every one of
