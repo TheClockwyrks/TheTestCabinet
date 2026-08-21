@@ -25,8 +25,8 @@ use crate::store::{
     StoredContract, StoredDomain, StoredErratum, StoredInstrumentation, StoredManifest,
     StoredMatch, StoredOutput, StoredProof, StoredReference, StoredReplay, StoredReviewItem,
     StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredSimulation, StoredSpec,
-    StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspaceFile, reference_in,
-    write_manifest_in,
+    StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspace, StoredWorkspaceFile,
+    reference_in, write_manifest_in,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -391,11 +391,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
     // The starter workspace files (common + each variant's override) are keyed by
     // their store-relative source path; the runner fetches each like an asset and
     // seeds it at the file's run-relative `dest`.
-    let workspace = resolved
-        .common_workspace
-        .iter()
-        .map(|file| stored_workspace(root, file))
-        .collect::<Result<Vec<_>>>()?;
+    let workspace = stored_workspaces(root, &resolved.common_workspace)?;
 
     // Asset *paths* in a resolved version may be files or directories; the
     // contract expands directories to individual files. Each becomes an artifact
@@ -417,12 +413,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             let workspace = variant
                 .workspace
                 .as_ref()
-                .map(|files| {
-                    files
-                        .iter()
-                        .map(|file| stored_workspace(root, file))
-                        .collect::<Result<Vec<_>>>()
-                })
+                .map(|workspaces| stored_workspaces(root, workspaces))
                 .transpose()?;
             Ok(StoredVariant {
                 slug: variant.slug.clone(),
@@ -638,6 +629,7 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
 fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> StoredReviewValidation {
     StoredReviewValidation {
         script: validation.script_rel.clone(),
+        per_engine: validation.script.is_none(),
         outputs: validation
             .outputs
             .iter()
@@ -699,6 +691,25 @@ fn stored_workspace(
         source: relative_key(root, &file.source_path)?,
         dest: to_forward_slash(&file.dest),
     })
+}
+
+/// Build a [`StoredWorkspace`] from a resolved per-engine starter project: one
+/// entry per [engine](test_cabinet_core::engine) the case ships a project for, each
+/// keyed by its store-relative source exactly as a spec or an asset is.
+fn stored_workspaces(
+    root: &Path,
+    workspaces: &test_cabinet_core::test_case::EngineWorkspaces,
+) -> Result<StoredWorkspace> {
+    let mut by_engine = std::collections::BTreeMap::new();
+    for engine in workspaces.engines() {
+        let files = workspaces
+            .get(engine)
+            .iter()
+            .map(|file| stored_workspace(root, file))
+            .collect::<Result<Vec<_>>>()?;
+        by_engine.insert(engine.to_string(), files);
+    }
+    Ok(StoredWorkspace::ByEngine(by_engine))
 }
 
 /// Build a [`StoredCase`] from a resolved performance case: the held-out `input`

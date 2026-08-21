@@ -13,7 +13,8 @@ use std::time::Duration;
 use super::*;
 use crate::engine::{EngineCatalog, EngineSelection};
 use crate::test_case::{
-    AssetKind, ReviewItem, ReviewValidation, SubReviewItem, TestCaseVersion, TestType, Variant,
+    AssetKind, MediaKind, ReviewItem, ReviewOutput, ReviewValidation, SubReviewItem,
+    TestCaseVersion, TestType, Variant,
 };
 
 // --- Fixtures ---------------------------------------------------------------
@@ -55,7 +56,7 @@ fn version(root: PathBuf, items: Vec<ReviewItem>) -> TestCaseVersion {
         particle: None,
         audio: None,
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
@@ -123,9 +124,29 @@ fn sub_item(id: &str, script_rel: &str) -> SubReviewItem {
 
 fn validation(script_rel: &str) -> ReviewValidation {
     ReviewValidation {
-        script: PathBuf::from(script_rel),
+        script: Some(PathBuf::from(script_rel)),
         script_rel: script_rel.to_string(),
         outputs: Vec::new(),
+    }
+}
+
+/// A review item decided by the validator at `script_rel`, which declares `outputs`
+/// as its proof media.
+fn item_with_outputs(id: &str, script_rel: &str, outputs: Vec<ReviewOutput>) -> ReviewItem {
+    let mut item = item(id, script_rel);
+    item.validation = Some(ReviewValidation {
+        outputs,
+        ..validation(script_rel)
+    });
+    item
+}
+
+/// One declared media output.
+fn output(id: &str, kind: MediaKind) -> ReviewOutput {
+    ReviewOutput {
+        id: id.to_string(),
+        name: format!("The {id}"),
+        kind,
     }
 }
 
@@ -140,6 +161,19 @@ fn engine() -> crate::engine::ResolvedEngine {
 fn suite_for(items: &[ReviewItem]) -> Suite {
     let units = drive_units(items);
     Suite::of(&units[0], "simple-2d")
+}
+
+/// The `simple-2d` suites for a checklist of `(point id, declared script)` pairs, in
+/// declared order — the shape `run_vitest_suites` builds its filters from.
+fn suites_for(points: &[(&str, &str)]) -> Vec<Suite> {
+    let items: Vec<ReviewItem> = points
+        .iter()
+        .map(|(id, script_rel)| item(id, script_rel))
+        .collect();
+    drive_units(&items)
+        .iter()
+        .map(|unit| Suite::of(unit, "simple-2d"))
+        .collect()
 }
 
 /// A realistic vitest JSON reporter document over three files: one whose checks all
@@ -298,7 +332,7 @@ fn a_file_that_passed_earns_its_declaring_item_a_passing_verdict() {
     assert_eq!(result.verdicts[0].id, "serve-speed");
     assert!(
         result.outputs.is_empty(),
-        "a validator captures no media, so it declares no outputs",
+        "this point declares no media, so there is nothing to report the presence of",
     );
 }
 
@@ -463,7 +497,13 @@ fn a_case_with_no_validator_project_for_the_engine_reports_every_point_as_not_ru
     let test_case = version(root.path().to_path_buf(), items);
     let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
 
-    let results = run_vitest_suites(&test_case, &variant(), &engine(), &artifacts, "npm ci");
+    let results = run_vitest_suites(
+        &test_case,
+        &variant(),
+        engine().slug(),
+        &artifacts,
+        "npm ci",
+    );
 
     assert_eq!(results.len(), 2, "every declared point is still reported");
     for result in &results {
@@ -486,6 +526,48 @@ fn a_case_with_no_validator_project_for_the_engine_reports_every_point_as_not_ru
 }
 
 #[test]
+fn a_variant_whose_every_validator_belongs_to_another_engine_runs_nothing() {
+    // The project for the run's engine is present, so the runner gets as far as
+    // choosing what to run — and finds that nothing this variant declares names a
+    // suite of this engine. Running vitest now would collect the WHOLE staged
+    // directory, which is the one thing the filters exist to prevent, so the run is
+    // refused and every point is left for the reviewer.
+    let root = tempfile::tempdir().expect("a scratch case root");
+    let project = root
+        .path()
+        .join(crate::validator::VALIDATION_SCRIPT_DIR)
+        .join("simple-2d");
+    std::fs::create_dir_all(&project).expect("a scratch validator project");
+    std::fs::write(project.join(VITEST_CONFIG_FILE), "export default {};")
+        .expect("the project's config");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let items = vec![item("ball-color", "validation/none/color/ball.test.ts")];
+    let test_case = version(root.path().to_path_buf(), items);
+    let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
+
+    let results = run_vitest_suites(
+        &test_case,
+        &variant(),
+        engine().slug(),
+        &artifacts,
+        "npm ci",
+    );
+
+    assert_eq!(results.len(), 1, "the declared point is still reported");
+    assert!(!results[0].ran);
+    assert!(results[0].verdicts.is_empty());
+    assert!(
+        results[0]
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("nothing for the runner to run"),
+        "the reason is the empty filter list, not a failure the build earned: {:?}",
+        results[0].detail,
+    );
+}
+
+#[test]
 fn a_case_declaring_no_validators_reports_nothing() {
     let root = tempfile::tempdir().expect("a scratch case root");
     let repo = tempfile::tempdir().expect("a scratch tree");
@@ -493,7 +575,14 @@ fn a_case_declaring_no_validators_reports_nothing() {
     let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
 
     assert!(
-        run_vitest_suites(&test_case, &variant(), &engine(), &artifacts, "npm ci").is_empty(),
+        run_vitest_suites(
+            &test_case,
+            &variant(),
+            engine().slug(),
+            &artifacts,
+            "npm ci"
+        )
+        .is_empty(),
         "there is nothing to run and nothing to record",
     );
 }
@@ -510,6 +599,7 @@ fn a_command_that_outlives_its_cap_is_stopped_and_reported_as_timed_out() {
         Duration::from_millis(300),
         scratch.path(),
         "hung",
+        &[],
     )
     .expect_err("a command that never finishes cannot succeed");
 
@@ -532,6 +622,7 @@ fn a_command_that_finishes_reports_its_status_and_output() {
         Duration::from_secs(30),
         scratch.path(),
         "quick",
+        &[],
     )
     .expect("the command runs");
 
@@ -599,7 +690,10 @@ fn a_short_excerpt_is_left_alone() {
 
 #[test]
 fn vitest_is_run_over_the_cases_project_with_the_json_reporter() {
-    let command = vitest_command(Path::new("/tmp/tcab-vitest/report.json"));
+    let command = vitest_command(
+        Path::new("/tmp/tcab-vitest/report.json"),
+        &["validation/color/ball.test.ts".to_string()],
+    );
     assert!(
         command.contains("--config 'validation/vitest.config.ts'"),
         "the case's project is named, not the build's own: {command}",
@@ -611,6 +705,82 @@ fn vitest_is_run_over_the_cases_project_with_the_json_reporter() {
     assert!(
         command.contains("--outputFile='/tmp/tcab-vitest/report.json'"),
         "the report is written where the runner reads it: {command}",
+    );
+}
+
+#[test]
+fn the_declared_suites_are_named_to_vitest_after_its_options() {
+    let command = vitest_command(
+        Path::new("/tmp/tcab-vitest/report.json"),
+        &[
+            "validation/color/ball.test.ts".to_string(),
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+        ],
+    );
+    assert!(
+        command.ends_with(
+            "'validation/color/ball.test.ts' 'validation/gameplay/serve-initial.test.ts'",
+        ),
+        "each filter is quoted and follows the options: {command}",
+    );
+}
+
+#[test]
+fn a_variant_is_filtered_to_its_own_suites_and_the_common_ones() {
+    // The shape Carom has: a checklist every variant shares, plus a point only the
+    // `gyre` variant declares, whose suite the staged directory carries either way.
+    // The run is scoped by the checklist, so `base` must never name that suite.
+    let common = vec![
+        item("serve-initial", "gameplay/serve-initial.test.ts"),
+        item("ball-color", "color/ball.test.ts"),
+    ];
+    let test_case = version(PathBuf::new(), common);
+
+    let mut gyre = variant();
+    gyre.slug = "gyre".to_string();
+    gyre.review_items = vec![item("obstacles-sway", "gyre/obstacles-sway.test.ts")];
+
+    let filters_for = |variant: &Variant| {
+        let items = test_case.review_items_for(variant);
+        let units = drive_units(&items);
+        let suites: Vec<Suite> = units
+            .iter()
+            .map(|unit| Suite::of(unit, "simple-2d"))
+            .collect();
+        suite_filters(&suites)
+    };
+
+    assert_eq!(
+        filters_for(&variant()),
+        vec![
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+            "validation/color/ball.test.ts".to_string(),
+        ],
+        "`base` names the common suites and nothing the staged directory holds for `gyre`",
+    );
+    assert_eq!(
+        filters_for(&gyre),
+        vec![
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+            "validation/color/ball.test.ts".to_string(),
+            "validation/gyre/obstacles-sway.test.ts".to_string(),
+        ],
+        "`gyre` names its own suite as well as the common ones",
+    );
+}
+
+#[test]
+fn a_suite_of_another_engine_contributes_no_filter() {
+    // A declared path naming ANOTHER engine's validator leaves `Suite::file` unset:
+    // there is nothing to point vitest at, and the suite is already reported as not
+    // having run, so it must not widen the run to the whole staged directory either.
+    let filters = suite_filters(&suites_for(&[(
+        "ball-color",
+        "validation/none/color/ball.test.ts",
+    )]));
+    assert!(
+        filters.is_empty(),
+        "a validator of another engine names no file in this run's tree: {filters:?}",
     );
 }
 
@@ -641,4 +811,197 @@ fn a_tree_nothing_prepared_is_installed_by_the_runner() {
         error.contains("exit 7") || error.contains("did not succeed"),
         "the failure is reported as the install's: {error}",
     );
+}
+
+// --- The media the suites produce -------------------------------------------
+
+/// The directory a suite writes into, as the runner tells it to: the media root, then
+/// the suite's own staged path.
+/// Stand-in bytes for a recording a suite wrote: the first bytes of a gzip member
+/// (RFC 1952 §2.3.1) and nothing more.
+///
+/// Collection moves what a suite left behind without ever reading it, so what these
+/// tests need of the file is its name and its framing rather than a document. A
+/// recording is written gzipped, and every consumer downstream of here reads it that
+/// way, so the fixture is framed the way a real one is.
+const GZIPPED_RECORDING: &[u8] = &[0x1f, 0x8b, 0x08, 0x00];
+
+fn suite_media_dir(media_dir: &Path, staged: &str) -> PathBuf {
+    let dir = media_dir.join(staged);
+    std::fs::create_dir_all(&dir).expect("the suite's own media directory");
+    dir
+}
+
+#[test]
+fn a_suites_declared_media_is_flattened_out_of_the_directory_it_wrote_it_to() {
+    // The whole collection contract in one run: the suite wrote each output under its
+    // own id inside a directory named by its staged path, and the runner leaves the
+    // flat `<verdict>__<output>.<ext>` names every consumer of validation media
+    // addresses — with the scaffolding gone.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![item_with_outputs(
+        "no-tunnel",
+        "validation/simple-2d/ball/no-tunnel.test.ts",
+        vec![
+            output("serve", MediaKind::Replay),
+            output("rebound", MediaKind::Replay),
+        ],
+    )];
+    let suite = suite_for(&items);
+    let wrote = suite_media_dir(media.path(), "validation/ball/no-tunnel.test.ts");
+    std::fs::write(wrote.join("serve.json.gz"), GZIPPED_RECORDING).expect("the first recording");
+    std::fs::write(wrote.join("rebound.json.gz"), GZIPPED_RECORDING).expect("the second recording");
+
+    let outputs = suite.collect_media(media.path());
+
+    assert_eq!(outputs.len(), 2, "one entry per declared output, in order");
+    assert_eq!(outputs[0].id, "serve");
+    assert_eq!(outputs[0].kind, MediaKind::Replay);
+    assert!(outputs[0].actual_present && outputs[1].actual_present);
+    assert!(
+        media.path().join("no-tunnel__serve.json.gz").is_file(),
+        "the recording is keyed by the verdict it backs",
+    );
+    assert!(media.path().join("no-tunnel__rebound.json.gz").is_file());
+    assert!(
+        !media.path().join("validation").exists(),
+        "the per-suite scaffolding is removed once its outputs are collected",
+    );
+}
+
+#[test]
+fn a_declared_output_the_suite_did_not_write_is_absent_rather_than_a_failure() {
+    // Media is the evidence beside a verdict; the assertions are what decide the
+    // point. A suite that passed every check while writing nothing still earns its
+    // point, and the reviewer is told there is nothing to look at.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![item_with_outputs(
+        "serve-speed",
+        "validation/simple-2d/gameplay/serve-speed.test.ts",
+        vec![output("serve", MediaKind::Replay)],
+    )];
+    let suite = suite_for(&items);
+
+    let repo = Path::new("/runs/impl");
+    let reports = parse_report(&reporter_document(repo), repo).expect("the document parses");
+    let mut result = suite.result(
+        reports
+            .iter()
+            .find(|r| r.file == "validation/gameplay/serve-speed.test.ts"),
+    );
+    result.outputs = suite.collect_media(media.path());
+
+    assert!(result.ran, "the suite ran");
+    assert!(result.verdicts[0].pass, "and passed, media or no media");
+    assert_eq!(
+        result.outputs.len(),
+        1,
+        "the declared output is still named"
+    );
+    assert!(
+        !result.outputs[0].actual_present,
+        "it simply was not produced",
+    );
+}
+
+#[test]
+fn a_suite_that_never_ran_reports_its_declared_outputs_absent() {
+    // Two ways to get here — a runner that could not execute at all, and a validator
+    // belonging to another engine — and both must still name what the point declares,
+    // so an empty list keeps meaning "this point declares no media".
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![item_with_outputs(
+        "serve-speed",
+        "validation/simple-2d/gameplay/serve-speed.test.ts",
+        vec![output("serve", MediaKind::Replay)],
+    )];
+    let not_run = suite_for(&items).not_run("no vitest in the tree");
+    assert_eq!(not_run.outputs.len(), 1);
+    assert!(!not_run.outputs[0].actual_present);
+
+    let elsewhere = vec![item_with_outputs(
+        "ball-color",
+        "validation/none/color/ball.test.ts",
+        vec![output("title", MediaKind::Image)],
+    )];
+    let collected = suite_for(&elsewhere).collect_media(media.path());
+    assert_eq!(collected.len(), 1);
+    assert!(
+        !collected[0].actual_present,
+        "there was no staged suite to have written it",
+    );
+}
+
+#[test]
+fn collecting_one_suite_leaves_a_sibling_suites_directory_alone() {
+    // The suites are collected one at a time and share the parents of their staged
+    // paths. Pruning walks up only while it keeps emptying directories, so a sibling
+    // that has not been collected yet still has somewhere to have written to.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![
+        item_with_outputs(
+            "serve-speed",
+            "validation/simple-2d/gameplay/serve-speed.test.ts",
+            vec![output("serve", MediaKind::Replay)],
+        ),
+        item_with_outputs(
+            "serve-initial",
+            "validation/simple-2d/gameplay/serve-initial.test.ts",
+            vec![output("first", MediaKind::Replay)],
+        ),
+    ];
+    let suites: Vec<Suite> = drive_units(&items)
+        .iter()
+        .map(|unit| Suite::of(unit, "simple-2d"))
+        .collect();
+    let first = suite_media_dir(media.path(), "validation/gameplay/serve-speed.test.ts");
+    let second = suite_media_dir(media.path(), "validation/gameplay/serve-initial.test.ts");
+    std::fs::write(first.join("serve.json.gz"), GZIPPED_RECORDING).expect("the first recording");
+    std::fs::write(second.join("first.json.gz"), GZIPPED_RECORDING).expect("the second recording");
+
+    assert!(suites[0].collect_media(media.path())[0].actual_present);
+    assert!(
+        second.is_dir(),
+        "the sibling's directory survives its neighbour's collection",
+    );
+    assert!(suites[1].collect_media(media.path())[0].actual_present);
+    assert!(
+        !media.path().join("validation").exists(),
+        "the last one out removes the shared parents",
+    );
+    assert!(media.path().join("serve-speed__serve.json.gz").is_file());
+    assert!(media.path().join("serve-initial__first.json.gz").is_file());
+}
+
+#[test]
+fn the_media_directory_is_named_to_the_suites_in_the_environment() {
+    // The one channel the runner has to code it never calls directly. A suite derives
+    // its own staged path itself; where to put the result has to be handed to it.
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let ran = run_bounded(
+        scratch.path(),
+        &format!("printf '%s' \"${VALIDATION_MEDIA_ENV}\""),
+        Duration::from_secs(30),
+        scratch.path(),
+        "env",
+        &[(
+            VALIDATION_MEDIA_ENV,
+            "/runs/impl/.tcab/validation".to_string(),
+        )],
+    )
+    .expect("the command runs");
+
+    assert_eq!(ran.stdout, "/runs/impl/.tcab/validation");
+}
+
+#[test]
+fn the_exported_media_directory_is_absolute() {
+    // A vitest project sets its own `root`, so a relative path would name one
+    // directory to the runner and another to the suite.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    assert!(
+        Path::new(&absolute(&media.path().join(".tcab/validation"))).is_absolute(),
+        "the suites are handed a path they cannot resolve differently",
+    );
+    assert!(Path::new(&absolute(Path::new("relative/media"))).is_absolute());
 }

@@ -35,12 +35,11 @@ fn none_provides_no_runtime() {
     );
     // Nothing to seed, nothing to bind a host interface to, nothing to document.
     assert_eq!(engine.package(), None);
-    assert_eq!(engine.handle(), None);
     assert_eq!(engine.docs(), None);
 }
 
 #[test]
-fn simple_2d_reports_its_package_handle_and_docs() {
+fn simple_2d_reports_its_package_and_docs() {
     let catalog = EngineCatalog::new();
     let engine = catalog
         .resolve(&EngineSelection::new("simple-2d"))
@@ -51,7 +50,6 @@ fn simple_2d_reports_its_package_handle_and_docs() {
     // store, what a driver binds to, and which directory is seeded as the
     // workspace's engine documentation.
     assert_eq!(engine.package(), Some("@test-cabinet/simple-2d"));
-    assert_eq!(engine.handle(), Some("__tcabEngine"));
     assert_eq!(engine.docs(), Some("docs"));
 }
 

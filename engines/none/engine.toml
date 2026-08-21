@@ -8,8 +8,8 @@
 #
 # This engine vendors nothing. Selecting it leaves the build supplying every one
 # of those surfaces itself. It is the default, and every case supports it whether
-# the case declares it or not, so it omits `package`, `handle`, and `docs` — the
-# three fields only an engine with a runtime to deliver can answer.
+# the case declares it or not, so it omits `package` and `docs` — the two fields
+# only an engine with a runtime to deliver can answer.
 #
 # See `engines/README.md` and the design doc at
 # `apps/docs/src/content/docs/components/core/engines.md`.

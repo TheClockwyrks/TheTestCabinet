@@ -12,24 +12,23 @@ description = "The obstacles sway and rotate, so the ball bounces off tilted, or
 # and snapshot field are the `gyre` branch of `specs/instrumentation.md.hbs`. So gyre
 # declares no `spec` of its own.
 
-# This variant needs a workspace of its own: base's state carries no obstacle clock
-# and no obstacle poses, and its debug API has no `setObstacleClock`. `workspace`
-# REPLACES the case's common workspace rather than layering on it, so
-# `workspaces/gyre` is the whole seeded project for a gyre run — the base workspace
-# with those three additions.
-workspace = "workspaces/gyre"
-
-# The authored, *correct* static build of this variant, in the per-engine table form
-# base.toml uses and for the same reason: the table says out loud which runtime the
-# directory is a reference for, and naming `simple-2d` alone IS the complete table
-# now that the case supports exactly one engine. It is built with this case's
-# `[build]` commands run from that directory, deployed via `tcab publish-reference`,
-# and shown on the case's "Reference" tab; it is never seeded into a run. It is also
-# what `tcab capture-baselines` drives to produce the baseline half of this variant's
-# validation media — the same vitest validator suites that decide a run's points, run
-# against the authored answer.
+# The authored, *correct* static build of this variant, one per engine — see
+# `variants/base.toml` for what a reference implementation is and how it is
+# published. Under `none` the build carries its own runtime in `src/host.ts`;
+# under `simple-2d` it hands the same surfaces to the vendored engine. The game
+# either one implements is identical, which is what makes the two comparable.
 [reference_implementation]
-simple-2d = "reference-impl-simple-2d/gyre"
+none = "references/none/gyre"
+"simple-2d" = "references/simple-2d/gyre"
+
+# This variant needs a starter project of its own: base's state carries no obstacle
+# clock and no obstacle poses, and its debug API has no `setObstacleClock`. The
+# table REPLACES the case's `[workspaces]` rather than layering on it, so it names
+# one directory per engine exactly as the case's does, and each is the matching
+# base project with those three additions.
+[workspaces]
+none = "workspaces/gyre/none"
+"simple-2d" = "workspaces/gyre/simple-2d"
 
 # The gyre-specific category, worth one point per item. It applies to the whole
 # game (both Solo and Versus). Its points pose the obstacles through the
@@ -46,9 +45,9 @@ title = "Obstacles sway"
 description = "The two obstacles move — each sways vertically about its base center as time passes, and they sway in opposite directions so the field stays balanced."
 # Automated validation: pose the obstacle clock at two times and read each obstacle's
 # center back — both move well off their base y, in opposite directions. See
-# validation/simple-2d/gyre/obstacles-sway.test.ts.
-validation = { script = "validation/simple-2d/gyre/obstacles-sway.test.ts", outputs = [
-  { id = "sway", name = "The obstacles swaying vertically", kind = "video" },
+# validation/<engine>/gyre/obstacles-sway.test.ts.
+validation = { script = "gyre/obstacles-sway.test.ts", outputs = [
+  { id = "sway", name = "The obstacles swaying vertically", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "obstacles-spin"
@@ -56,9 +55,9 @@ title = "Obstacles spin"
 description = "The two obstacles rotate — each spins about its own center as time passes, presenting continuously tilting faces."
 # Automated validation: pose the obstacle clock at three times and read each
 # obstacle's rotation back — upright at the start, then rotating further as time
-# advances. See validation/simple-2d/gyre/obstacles-spin.test.ts.
-validation = { script = "validation/simple-2d/gyre/obstacles-spin.test.ts", outputs = [
-  { id = "spin", name = "The obstacles rotating about their centers", kind = "video" },
+# advances. See validation/<engine>/gyre/obstacles-spin.test.ts.
+validation = { script = "gyre/obstacles-spin.test.ts", outputs = [
+  { id = "spin", name = "The obstacles rotating about their centers", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "oriented-bounce"
@@ -67,9 +66,9 @@ description = "The ball bounces off the obstacles' tilted faces at oriented angl
 # Automated validation: pose an obstacle upright then tilted ~45deg and fire the same
 # horizontal shot — the tilted face deflects it well off-axis while the upright face
 # returns it straight, proving the bounce tracks orientation. See
-# validation/simple-2d/gyre/oriented-bounce.test.ts.
-validation = { script = "validation/simple-2d/gyre/oriented-bounce.test.ts", outputs = [
-  { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "video" },
+# validation/<engine>/gyre/oriented-bounce.test.ts.
+validation = { script = "gyre/oriented-bounce.test.ts", outputs = [
+  { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "replay" },
 ] }
 
 # Gyre serves toward the receiver exactly as base does, so — like base — it adds the
@@ -83,20 +82,20 @@ title = "Gameplay"
 id = "serve-initial"
 title = "Initial serve direction"
 description = "The very first serve of a match always travels toward player one."
-validation = { script = "validation/simple-2d/gameplay/serve-initial.test.ts", outputs = [
-  { id = "serve", name = "First serve toward player one", kind = "video" },
+validation = { script = "gameplay/serve-initial.test.ts", outputs = [
+  { id = "serve", name = "First serve toward player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "serve-after-p1"
 title = "Serve after scoring on player one"
 description = "After a point is scored on player one (player two scores), the next serve travels toward player one, the receiver."
-validation = { script = "validation/simple-2d/gameplay/serve-after-p1.test.ts", outputs = [
-  { id = "serve", name = "Serve toward player one after a point on player one", kind = "video" },
+validation = { script = "gameplay/serve-after-p1.test.ts", outputs = [
+  { id = "serve", name = "Serve toward player one after a point on player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "serve-after-p2"
 title = "Serve after scoring on player two"
 description = "After a point is scored on player two (player one scores), the next serve travels toward player two, the receiver."
-validation = { script = "validation/simple-2d/gameplay/serve-after-p2.test.ts", outputs = [
-  { id = "serve", name = "Serve toward player two after a point on player two", kind = "video" },
+validation = { script = "gameplay/serve-after-p2.test.ts", outputs = [
+  { id = "serve", name = "Serve toward player two after a point on player two", kind = "replay" },
 ] }

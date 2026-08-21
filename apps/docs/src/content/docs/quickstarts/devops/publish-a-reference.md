@@ -50,13 +50,15 @@ selector, every variant declaring a
 per-variant failures and exits non-zero when any failed, after attempting them
 all.
 
-The command builds each variant's reference, re-captures its committed
+A variant has one reference build per [engine](/components/core/engines/), and
+the command targets each pair. It builds the reference, re-captures its committed
 [baseline validation media](#baseline-validation-media), scrubs secrets, deploys
-to the `--env` Pages project under a `<slug>-<version>-<variant>` branch alias,
-reads the served URL back from `wrangler`, and writes it into
-`test-cases/reference-builds.lock.json` under the `--env` key. The backends
-ingest that lockfile from their own git checkout, which is what lands each URL on
-the variant's `referenceBuild` and the Reference tab.
+to the `--env` Pages project under a `<slug>-<version>-<variant>-<engine>` branch
+alias, reads the served URL back from `wrangler`, and writes it into
+`test-cases/reference-builds.lock.json` under the `--env` key. `--engine <slug>`
+narrows a run to one engine. The backends ingest that lockfile from their own git
+checkout, which is what lands each URL on the variant's `referenceBuilds` and the
+Reference tab.
 
 ## Asset-generation references
 

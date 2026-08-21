@@ -100,6 +100,11 @@ fn drive(
         .into_iter()
         .map(|id| id.to_string())
         .collect();
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's — and it is subtracted from the guest's head start when it is charged to the
+    // program, which is what used to make the test below a race. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     let result = bound
         .call_run(
             &mut store,
@@ -341,6 +346,16 @@ files.readFile("notes.md");
 /// rather than the store simply dying with an epoch trap that names nothing. The budget reaches the
 /// guest through `GG_SANDBOX_DEADLINE_MS`, which `wasi_context` sets from this run's own limits.
 ///
+/// **This is a race by construction, and what keeps it from being a coin flip is the guest's
+/// [head start](crate::sandbox::engine::GUEST_HEAD_START).** The guest has to notice the interrupt,
+/// render the error and flush it before gg's ceiling arrives — a few milliseconds of work, on a
+/// wall clock, so a loaded or throttled machine stretches it. It stretched past the one epoch tick
+/// the head start used to be during a full workspace run, and this test came back with an empty
+/// standard error and `Timeout { limit: 400ms }`. The head start is half a second now and gg's own
+/// instantiate is no longer charged against it, so the ceiling below is chosen to leave the whole
+/// of that half second as margin over a path that costs about three milliseconds when the machine
+/// is idle.
+///
 /// Caveat, stated here because the arm's documentation must not overstate it: the innermost frame's
 /// line is the looping function's DECLARATION, not the statement executing when the interrupt
 /// arrived. The function name and the whole call chain above it are exact.
@@ -351,8 +366,12 @@ fn a_runaway_loop_is_stopped_by_the_engine_rather_than_by_an_epoch_trap() {
     // The budget travels to the guest through the membrane STATE's WASI context, so the short
     // ceiling has to be the one the state was built with — not merely the one the store is bounded
     // by. They are the same value in production; they are two arguments here.
+    //
+    // A second rather than a fraction of one: `guest_deadline` floors the guest's budget at half the
+    // ceiling, so a ceiling under twice the head start would give the guest a margin thinner than
+    // the head start asks for and put this test back on the wrong side of the race it is about.
     let limits = SandboxLimits {
-        timeout: std::time::Duration::from_millis(400),
+        timeout: std::time::Duration::from_secs(1),
         ..SandboxLimits::AMPLE
     };
     let capabilities = fake::all_capabilities();

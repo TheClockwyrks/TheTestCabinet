@@ -228,6 +228,10 @@ fn evaluate_granting(
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     let returned = bound
         .call_run(&mut store, "", modules, &granted, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
@@ -952,11 +956,18 @@ fn what_a_program_costs_and_what_it_weighs() {
 
 /// **A pooled JVM is reused and the first one is the expensive one** — the measurement that
 /// justifies the pool, taken through the production path rather than quoted.
+///
+/// Shaped exactly as the Kotlin arm's copy of this is, and for the reasons written out at length
+/// there: the reuse is a **count** the pool is asked for, and the cold reading the ratio rests on is
+/// taken beside the warm ones rather than tens of seconds before them. A cold reading and a warm one
+/// inflate together only if they are readings of the same machine, and on a laptop that throttles
+/// between them they are not — which is how the Kotlin copy came back with a cold build cheaper than
+/// every warm one under a full workspace run.
 #[test]
 fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
-    let cold = Instant::now();
+    let first_cold = Instant::now();
     prepare(&whole(&["Gg"], "        Gg.log(\"warm\");\n"));
-    let cold = cold.elapsed();
+    let first_cold = first_cold.elapsed();
 
     // Five more through the same pool. The pool has four JVMs and this is one thread, so every one
     // of these is served by the JVM the first left behind.
@@ -968,11 +979,29 @@ fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
         ));
     }
     let warm = warm.elapsed() / 5;
+
+    // **The reuse itself**, which is not a measurement: six compilations on one thread, and if the
+    // pool had started a JVM for any of them there would be more than one alive.
+    assert_eq!(
+        super::compile::live_jvms(),
+        1,
+        "six compilations on one thread went through more than one JVM, so nothing was pooled"
+    );
+
+    // **The cold reading the gate rests on**, taken here — beside the warm builds it is compared
+    // with — by making the pool cold again.
+    super::compile::discard_pooled_jvms();
+    let cold = Instant::now();
+    prepare(&whole(&["Gg"], "        Gg.log(\"cold again\");\n"));
+    let cold = cold.elapsed();
+
     assert!(
         warm * 2 < cold,
-        "a warm build ({warm:?}) is not meaningfully cheaper than the cold one ({cold:?}): the \
-         pool is not keeping a JVM"
+        "a warm build ({warm:?}) is not meaningfully cheaper than the cold one ({cold:?}, and \
+         {first_cold:?} for the first of the run): the pool is not keeping a JVM"
     );
+
+    println!("java pool: first cold {first_cold:?}, cold again {cold:?}, warm {warm:?}");
 }
 
 /// **The programs gg writes for this arm are whole programs, and they run.**

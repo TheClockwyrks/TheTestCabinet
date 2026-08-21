@@ -5867,6 +5867,7 @@ impl Db {
         slug: &str,
         version: &str,
         variant: &str,
+        engine: &str,
         url: &str,
         now: &str,
     ) -> Result<()> {
@@ -5874,6 +5875,7 @@ impl Db {
             slug: Set(slug.to_string()),
             version: Set(version.to_string()),
             variant: Set(variant.to_string()),
+            engine: Set(engine.to_string()),
             url: Set(url.to_string()),
             updated_at: Set(now.to_string()),
         })
@@ -5882,6 +5884,7 @@ impl Db {
                 case_reference_build::Column::Slug,
                 case_reference_build::Column::Version,
                 case_reference_build::Column::Variant,
+                case_reference_build::Column::Engine,
             ])
             .update_columns([
                 case_reference_build::Column::Url,
@@ -5894,30 +5897,39 @@ impl Db {
         Ok(())
     }
 
-    /// The reference-build URL of every variant of `(slug, version)` that has one,
-    /// keyed by variant slug. Feeds the version response and the snapshot, both of
-    /// which fold the URL onto each variant object; a variant absent from the map
-    /// simply has no reference implementation.
+    /// The reference-build URLs of every variant of `(slug, version)` that has any,
+    /// keyed by variant slug and then by engine slug. Feeds the version response and
+    /// the snapshot, both of which fold the inner map onto each variant object; a
+    /// variant absent from the outer map simply has no reference implementation, and
+    /// an engine absent from an inner map has none published for that engine yet.
     pub async fn reference_builds_for_version(
         &self,
         slug: &str,
         version: &str,
-    ) -> Result<std::collections::HashMap<String, String>> {
-        Ok(case_reference_build::Entity::find()
+    ) -> Result<std::collections::HashMap<String, std::collections::BTreeMap<String, String>>> {
+        let mut by_variant: std::collections::HashMap<
+            String,
+            std::collections::BTreeMap<String, String>,
+        > = std::collections::HashMap::new();
+        for row in case_reference_build::Entity::find()
             .filter(case_reference_build::Column::Slug.eq(slug))
             .filter(case_reference_build::Column::Version.eq(version))
             .all(&self.conn())
             .await?
-            .into_iter()
-            .map(|row| (row.variant, row.url))
-            .collect())
+        {
+            by_variant
+                .entry(row.variant)
+                .or_default()
+                .insert(row.engine, row.url);
+        }
+        Ok(by_variant)
     }
 
     /// Reconcile the **entire** reference-build table to `desired` — the complete set
     /// of deployed reference URLs for this backend's environment, read from the
     /// committed reference-builds lockfile at ingest (see the `/ingest` handler).
-    /// Every triple in `desired` is upserted; every stored triple absent from
-    /// `desired` is removed. The lockfile is the single source of truth, so this
+    /// Every entry in `desired` is upserted; every stored row absent from `desired`
+    /// is removed. The lockfile is the single source of truth, so this
     /// makes the table match it exactly — the pull-model replacement for the former
     /// per-variant write endpoint.
     ///
@@ -5930,32 +5942,41 @@ impl Db {
     ) -> Result<bool> {
         // Snapshot the current rows so the table is touched only where it differs; an
         // unchanged re-ingest then neither writes nor forces a snapshot rebuild.
-        let current: std::collections::HashMap<(String, String, String), String> =
-            case_reference_build::Entity::find()
-                .all(&self.conn())
-                .await?
-                .into_iter()
-                .map(|row| ((row.slug, row.version, row.variant), row.url))
-                .collect();
-        let desired_keys: std::collections::HashSet<(String, String, String)> = desired
+        type Key = (String, String, String, String);
+        let current: std::collections::HashMap<Key, String> = case_reference_build::Entity::find()
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| ((row.slug, row.version, row.variant, row.engine), row.url))
+            .collect();
+        let desired_keys: std::collections::HashSet<Key> = desired
             .iter()
-            .map(|e| (e.slug.clone(), e.version.clone(), e.variant.clone()))
+            .map(|e| {
+                (
+                    e.slug.clone(),
+                    e.version.clone(),
+                    e.variant.clone(),
+                    e.engine.clone(),
+                )
+            })
             .collect();
 
         let mut changed = false;
 
-        // Upsert triples that are new or whose served URL moved.
+        // Upsert rows that are new or whose served URL moved.
         for entry in desired {
             let key = (
                 entry.slug.clone(),
                 entry.version.clone(),
                 entry.variant.clone(),
+                entry.engine.clone(),
             );
             if current.get(&key).map(String::as_str) != Some(entry.url.as_str()) {
                 self.upsert_reference_build(
                     &entry.slug,
                     &entry.version,
                     &entry.variant,
+                    &entry.engine,
                     &entry.url,
                     now,
                 )
@@ -5964,7 +5985,7 @@ impl Db {
             }
         }
 
-        // Remove triples the lockfile no longer lists.
+        // Remove rows the lockfile no longer lists.
         for key in current.keys() {
             if !desired_keys.contains(key) {
                 case_reference_build::Entity::delete_by_id(key.clone())

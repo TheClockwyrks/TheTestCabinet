@@ -6,14 +6,14 @@
 // the ceiling checks exactly what the integrator is required to survive, rather
 // than an impossible value no build is obliged to handle.
 //
-// WHY EACH PROBE RUNS TWICE. Under this engine the SIZE of a frame is not the
-// build's to choose: the engine hands the game whatever elapsed time the last
+// WHY EACH PROBE RUNS TWICE. Under this runtime the SIZE of a frame is not the
+// build's to choose: the runtime hands the game whatever elapsed time the last
 // frame really took, and a game that resolves collisions once per frame is safe
 // only while that time stays small. At the fine cadence the rest of this suite
 // uses, a ball at the ceiling speed moves eight pixels a frame — less than the
 // width of every object on the field, so nothing tunnels whatever the build does
 // and the check would be vacuous. The coarse step below is an ordinary bad
-// moment on a real machine (twenty frames a second, well inside the engine's own
+// moment on a real machine (twenty frames a second, well inside the runtime's own
 // delta clamp), and there the ball crosses far more than an obstacle's width in
 // one frame. A build that sub-steps its integration is unaffected; a build that
 // integrates once per frame puts the ball out the far side.
@@ -33,6 +33,7 @@ import {
 import {
   PARKED_CY,
   TICK_MS,
+  captureReplay,
   clearPaddles,
   createHarness,
   startPlaying,
@@ -62,6 +63,22 @@ function framesFor(distance: number, stepMs: number): number {
   return Math.ceil((distance / SPEED_CAP) * (1000 / stepMs)) + 4;
 }
 
+/**
+ * How much of the departing flight is recorded after the rebound, in ms of GAME
+ * time.
+ *
+ * A duration rather than a frame count, because this check is the one that drives
+ * its probes at two very different frame sizes: a fixed number of frames would be
+ * a tenth of a second at the suite's cadence and three quarters of a second at
+ * the coarse one. What the review item promises is a rebound rather than a
+ * tunnelling, and telling those apart means seeing the ball come back OFF the
+ * obstacle — a distance travelled, which is a time.
+ *
+ * Short of the 0.47 s a ball at the ceiling speed needs to reach the left goal
+ * from that face, so the recording ends with the ball still in play.
+ */
+const DEPARTURE_MS = 350;
+
 const live: Harness[] = [];
 
 afterEach(() => {
@@ -87,9 +104,19 @@ it("rebounds off an obstacle at the ceiling speed", async () => {
       spin: 0,
     });
 
-    const bank = await harness.until((s) => s.ball.vx < 0, {
-      maxFrames: framesFor(OBSTACLE_RUN_UP - BALL_R, stepMs),
-      poll: 1,
+    // Both probes are recorded under the one output, so the coarse step — the
+    // frame long enough to carry the ball past a whole obstacle, which is what
+    // this point is about — is the one that lands.
+    const bank = await captureReplay(harness, "fast", async () => {
+      const rebound = await harness.until((s) => s.ball.vx < 0, {
+        maxFrames: framesFor(OBSTACLE_RUN_UP - BALL_R, stepMs),
+        poll: 1,
+      });
+      // Driven after the sweep, so the rebound the assertions read is still the
+      // frame the sweep stopped on — the earliest frame the ball was travelling
+      // back, which is where "stays clear of the face" has to be read.
+      await harness.advance(Math.ceil(DEPARTURE_MS / stepMs));
+      return rebound;
     });
 
     expect(bank.hit, `${stepMs} ms frames: rebounds`).toBe(true);

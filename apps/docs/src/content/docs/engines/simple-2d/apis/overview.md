@@ -7,22 +7,18 @@ functions, and methods an implementation of the engine provides, with their
 parameters, return values, defaults, and error conditions. An implementer
 satisfies these pages; a game and a validator read them as reference.
 
-## Entry points
+## Entry point
 
-The package `@test-cabinet/simple-2d` has two entry points.
+The package `@test-cabinet/simple-2d` has one entry point.
 
 | Specifier | Provides |
 | --- | --- |
-| `@test-cabinet/simple-2d` | `createEngine`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, and every type a game names. |
-| `@test-cabinet/simple-2d/host` | The host interface: `HOST_HANDLE`, `HOST_VERSION`, `installHost`, and the types the published handle exposes. |
+| `@test-cabinet/simple-2d` | `createEngine`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, `RECORDING_FORMAT`, and every type a game names. |
 
-A game and a validator both import the root entry point. A validator constructs
-the engine over the game's own module, installs a scripted
+A game and a validator both import it. A validator constructs the engine over the
+game's own module, installs a scripted
 [clock](/engines/simple-2d/apis/clocks/), and steps it with `engine.advance`, so
 the surface a validator exercises is the surface the game was written against.
-
-The host entry point depends on the contract types alone, so a build check may
-import it for its constants and types without pulling in the engine.
 
 ## Pages
 
@@ -36,4 +32,4 @@ import it for its constants and types without pulling in the engine.
 | [Audio](/engines/simple-2d/apis/audio/) | `CueSpec`, synthesized and file-based cues, and the mute and unlock calls. |
 | [Assets](/engines/simple-2d/apis/assets/) | `loadImage`, `loadAudio`, `load`, `resolve`, and the asset root. |
 | [Diagnostics](/engines/simple-2d/apis/diagnostics/) | Source registration, the overlay, and its toggle. |
-| [Host](/engines/simple-2d/apis/host/) | `HOST_HANDLE`, `HOST_VERSION`, and the operations the published handle carries. |
+| [Recording](/engines/simple-2d/apis/recording/) | The recorder's engine members, `Recording`, `RecordedFrame`, `DrawState`, `DrawOp`, and `DrawValue`. |

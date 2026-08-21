@@ -11,7 +11,8 @@
 use semver::Version;
 
 use super::tests::{
-    ENGINE_WORKSPACE_FILES, VALID_ASSET_MANIFEST, asset_catalog, catalog_with_files, manifest_with,
+    ENGINE_WORKSPACE_FILES, VALID_ASSET_MANIFEST, asset_catalog, catalog_with_files,
+    engines_manifest_with,
 };
 use super::*;
 
@@ -19,7 +20,7 @@ use super::*;
 /// runtime engine owes. The tables land after `[build]` because `[[engine]]` is a
 /// table and every root key must precede the first table header.
 fn engine_table_manifest(tables: &str) -> String {
-    manifest_with("workspace = \"workspaces/base\"\n", tables)
+    engines_manifest_with("", tables, &["simple-2d"])
 }
 
 /// Resolve a manifest declaring `tables`, expecting it to resolve.
@@ -47,9 +48,10 @@ fn the_bare_slug_form_resolves_to_support_at_any_version() {
     // The form every shipped (frozen) case is written in. It states a slug and
     // nothing else, so it must resolve to a support entry that constrains nothing
     // — otherwise a frozen case would start refusing runs the day this landed.
-    let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\nengines = [\"none\", \"simple-2d\"]\n",
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
         "",
+        &["none", "simple-2d"],
     );
     let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
@@ -94,9 +96,10 @@ fn both_forms_may_appear_in_one_manifest() {
     // `none` carries no version so it is declared in the list; the runtime engine
     // carries a range so it is declared as a table. The resolved set merges them,
     // still led by `none`.
-    let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\nengines = [\"none\"]\n",
+    let manifest = engines_manifest_with(
+        "engines = [\"none\"]\n",
         "[[engine]]\nslug = \"simple-2d\"\nmin_version = \"1.0.0\"\n",
+        &["none", "simple-2d"],
     );
     let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
@@ -123,7 +126,8 @@ fn an_engine_table_still_requires_the_workspace_package_json() {
     // list form does.
     let manifest =
         engine_table_manifest("[[engine]]\nslug = \"simple-2d\"\nmin_version = \"1.0.0\"\n");
-    let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/README.md", "hi")]);
+    let (_dir, catalog) =
+        catalog_with_files(&manifest, &[("workspaces/simple-2d/README.md", "hi")]);
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("a runtime engine without a workspace package.json is refused");
@@ -133,7 +137,7 @@ fn an_engine_table_still_requires_the_workspace_package_json() {
 #[test]
 fn an_engine_table_is_end_to_end_only() {
     let manifest = format!(
-        "{VALID_ASSET_MANIFEST}\n[[engine]]\nslug = \"simple-2d\"\nmin_version = \"1.0.0\"\n"
+        "format = 2\n{VALID_ASSET_MANIFEST}\n         [[engine]]\nslug = \"simple-2d\"\nmin_version = \"1.0.0\"\n"
     );
     let err = asset_catalog(&manifest)
         .1
@@ -160,9 +164,10 @@ fn an_engine_table_rejects_an_unknown_slug() {
 fn an_engine_table_rejects_a_slug_the_bare_list_already_declared() {
     // Two entries for one engine would be two answers to the same question, so the
     // slug is held to appearing once across both spellings.
-    let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\nengines = [\"simple-2d\"]\n",
+    let manifest = engines_manifest_with(
+        "engines = [\"simple-2d\"]\n",
         "[[engine]]\nslug = \"simple-2d\"\nmin_version = \"1.0.0\"\n",
+        &["simple-2d"],
     );
     let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
     let err = catalog

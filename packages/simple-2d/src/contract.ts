@@ -337,6 +337,102 @@ export interface Game<S> {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Recording                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A value carried inside a recorded operation.
+ *
+ * Plain data travels as itself. `$ref` names a value an earlier recorded call
+ * produced, which is how a gradient created through the context and then filled
+ * with colour stops replays as the same gradient. `$opaque` names a value the
+ * recorder could not carry, so a player reports the operation it cannot reproduce
+ * instead of drawing something else.
+ */
+export type DrawValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly DrawValue[]
+  | { readonly $ref: number }
+  | { readonly $opaque: string }
+  | { readonly [key: string]: DrawValue };
+
+/**
+ * One recorded operation.
+ *
+ * `target` is absent for an operation the context performed and names an interned
+ * value for an operation performed on something the context returned. `id` is
+ * present when the call produced a value later operations refer to.
+ */
+export type DrawOp =
+  | {
+      readonly op: "call";
+      readonly target?: number;
+      readonly method: string;
+      readonly args: readonly DrawValue[];
+      readonly id?: number;
+    }
+  | {
+      readonly op: "set";
+      readonly target?: number;
+      readonly property: string;
+      readonly value: DrawValue;
+    };
+
+/**
+ * The context state a frame inherited from the frame before it.
+ *
+ * Recording it is what makes a frame independently renderable: a game that sets a
+ * font once relies on the context still carrying it much later, and a player that
+ * seeks straight to a frame has no earlier frame to have inherited it from.
+ */
+export interface DrawState {
+  /** The style properties in force, by name. */
+  readonly properties: Readonly<Record<string, DrawValue>>;
+  /** The transform as `[a, b, c, d, e, f]`, or `null` when unreadable. */
+  readonly transform: readonly number[] | null;
+  /** The dash pattern, or `null` when unreadable. */
+  readonly lineDash: readonly number[] | null;
+}
+
+/** One frame of a recording. */
+export interface RecordedFrame {
+  /** The engine's frame counter at this frame. */
+  readonly count: number;
+  /** Accumulated simulated time through this frame, in milliseconds. */
+  readonly timeMs: number;
+  /** What this frame was worth, in milliseconds. */
+  readonly deltaMs: number;
+  /** The canvas backing store this frame was drawn into, in device pixels. */
+  readonly surface: { readonly width: number; readonly height: number };
+  /** The context state this frame inherited. */
+  readonly state: DrawState;
+  /** The operations this frame issued, in order. */
+  readonly ops: readonly DrawOp[];
+}
+
+/**
+ * A recorded run of frames.
+ *
+ * Every frame stands alone, so a player may draw any frame without drawing the
+ * ones before it. That is what lets two recordings be scrubbed together in step.
+ */
+export interface Recording {
+  /** The format version a player checks before drawing anything. */
+  readonly format: number;
+  /** The logical design width the operations were issued in. */
+  readonly width: number;
+  /** The logical design height the operations were issued in. */
+  readonly height: number;
+  /** The colour each frame was cleared to, or `null` for transparency. */
+  readonly background: string | null;
+  /** The frames captured, in order. */
+  readonly frames: readonly RecordedFrame[];
+}
+
+/* -------------------------------------------------------------------------- */
 /* The engine                                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -391,6 +487,15 @@ export interface Engine<S> {
   frame(): FrameInfo;
   /** The current logical-to-device fit, as a snapshot the caller owns. */
   viewport(): Viewport;
-  /** Halt the loop, drop every listener, and unpublish the host interface. */
+  /** Whether draw-command recording is currently capturing. */
+  recording(): boolean;
+  /**
+   * Begin capturing draw commands. Capture starts at the next frame, so a caller
+   * that arms the recorder from inside a frame records whole frames only.
+   */
+  startRecording(): void;
+  /** Stop capturing and hand back everything captured since `startRecording`. */
+  stopRecording(): Recording;
+  /** Halt the loop and drop every listener. */
   destroy(): void;
 }

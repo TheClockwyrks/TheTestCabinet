@@ -36,6 +36,7 @@ use test_cabinet_core::{
     r2::{R2Client, R2Config},
 };
 
+use super::capture_baselines::Target;
 use crate::cli::PublishReferenceArgs;
 
 /// Publish every targeted variant's asset reference to the object store.
@@ -45,18 +46,20 @@ use crate::cli::PublishReferenceArgs;
 /// a multi-variant sweep still makes progress.
 pub(super) async fn execute(
     test_case: &TestCaseVersion,
-    targets: &[&Variant],
+    targets: &[Target<'_>],
     args: &PublishReferenceArgs,
 ) -> Result<()> {
     if args.dry_run {
         println!("\n--dry-run: nothing was built or uploaded.");
-        for variant in targets {
-            let dir = super::capture_baselines::reference_dir(variant);
-            println!("  {}", variant.slug);
-            println!("    script: {}", dir.join(ASSET_REFERENCE_SCRIPT).display());
+        for target in targets {
+            println!("  {}", target.label());
+            println!(
+                "    script: {}",
+                target.dir.join(ASSET_REFERENCE_SCRIPT).display()
+            );
             println!(
                 "    keys:   {}/frames/…",
-                reference_prefix(&test_case.slug, &test_case.version, &variant.slug)
+                reference_prefix(&test_case.slug, &test_case.version, &target.variant.slug)
             );
         }
         return Ok(());
@@ -82,7 +85,8 @@ pub(super) async fn execute(
 
     let mut published = 0usize;
     let mut failures = 0usize;
-    for variant in targets {
+    for target in targets {
+        let variant = target.variant;
         match publish_one(&runner, &client, test_case, variant).await {
             Ok(frames) => {
                 println!("  {} — published {frames} frame(s)", variant.slug);

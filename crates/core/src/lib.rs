@@ -168,11 +168,11 @@ pub use run_record::{
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
     AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
-    Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile, ReferenceKind,
-    ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec,
-    SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase,
-    TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile,
-    shippable_package_description,
+    EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile,
+    ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation,
+    SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
+    TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec,
+    WorkspaceFile, shippable_package_description,
 };
 pub use toolchain::{
     TOOLCHAIN_OUTPUT_LIMIT, ToolchainCommandResult, ToolchainCommands, ToolchainSmokeResult,
@@ -1443,7 +1443,7 @@ where
         // The starter workspace seeded for this variant: its own when it overrides
         // the case's workspace, otherwise the common one. Cloned so it outlives the
         // borrow of `test_case` through the rest of the run.
-        let workspace = test_case.workspace_for(&variant).to_vec();
+        let workspace = test_case.workspace_for(&variant, engine.slug()).to_vec();
         // Render the selected variant's reference mockups once: the screenshots
         // are both seeded as visual targets and reused as validation baselines
         // below. A variant may add references of its own on top of the common set.

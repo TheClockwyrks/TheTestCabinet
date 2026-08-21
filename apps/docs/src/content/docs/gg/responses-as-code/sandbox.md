@@ -11,7 +11,7 @@ keeps its own budget.
 
 | Limit | What it bounds |
 | --- | --- |
-| `timeoutSecs` | Guest-execution time for one program: the guest's own setup, the program itself, and every value marshalled across the membrane. |
+| `timeoutSecs` | Guest-execution time for one program, measured from the call into the guest: the guest engine's own start-up, the program itself, and every value marshalled across the membrane. Instantiating the component is gg's own work and belongs to gg. |
 | `maxMemoryBytes` | Guest linear memory. A `memory.grow` past the cap is denied. |
 
 Each profile writes both, on the terms in
@@ -114,10 +114,16 @@ out to the nearest line boundary and the bytes that move with it are added to
 the count, so a model never reads a frame the bound cut in half.
 
 gg adds `GG_SANDBOX_DEADLINE_MS` to the environment, holding this program's
-execution budget one epoch tick short of gg's own deadline. It is for a guest
+execution budget half a second short of gg's own deadline. It is for a guest
 whose engine can stop a runaway loop itself and report which function was
 looping; a guest that leaves it alone has the epoch deadline as its only
 ceiling.
+
+That half second is the guest's head start, and it has to cover the guest
+engine's start-up, its interrupt check, and rendering and flushing the report —
+milliseconds of work on a wall clock that a loaded or throttled machine
+stretches. It is a flat duration because the work it covers is a fixed amount
+rather than a share of the budget.
 
 The rest of the environment is inherited because a language runtime needs
 `HOME`, `PATH`, `TMPDIR` and the locale to work at all. The accepted consequence is that

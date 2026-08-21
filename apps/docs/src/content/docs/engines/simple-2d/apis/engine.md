@@ -77,6 +77,9 @@ interface Engine<S> {
   setClock(clock: Clock): void;
   frame(): FrameInfo;
   viewport(): Viewport;
+  recording(): boolean;
+  startRecording(): void;
+  stopRecording(): Recording;
   destroy(): void;
 }
 
@@ -95,7 +98,10 @@ interface RunOptions {
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `destroy` | Halt the loop, drop every listener, and unpublish the host interface. |
+| `recording` | Whether draw-command [recording](/engines/simple-2d/apis/recording/) is currently capturing. |
+| `startRecording` | Arm the recorder. Capture begins at the next frame. |
+| `stopRecording` | Disarm the recorder and return everything captured since `startRecording`. |
+| `destroy` | Halt the loop and drop every listener. |
 
 ### `initialize`
 
@@ -169,6 +175,7 @@ over. A clock installed mid-run takes effect on the next frame.
 | The game's `initialize` throws or rejects | `initialize` rejects with the cause |
 | `state`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
+| `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
 
 Each construction failure otherwise presents as a build that runs and draws
 nothing, which is the most expensive kind to trace, so each is refused where it
@@ -182,8 +189,7 @@ The returned object is a copy, so holding one does not observe later frames.
 
 ## `engine.destroy()`
 
-Halts the loop, detaches every listener, and removes the host interface handle
-while it still belongs to this engine. Idempotent, because teardown races.
+Halts the loop and detaches every listener. Idempotent, because teardown races.
 
 Destroying resolves any promise `run` returned. Aborting a run's signal halts
 the loop and leaves the engine usable, so the two are separate acts.

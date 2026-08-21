@@ -165,6 +165,10 @@ fn run_as(
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     let returned = bound
         .call_run(
             &mut store,
@@ -1998,6 +2002,10 @@ print(gg.views.current()[0].close(), len(gg.views.current()))
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     bound
         .call_run(
             &mut store,
@@ -2148,6 +2156,10 @@ print(type(region).__name__, region.offset, region.limit)
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     bound
         .call_run(
             &mut store,
@@ -2201,6 +2213,10 @@ gg.programs.rerun(source.replace("ran", "walked"))
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
+    // The program's clock starts here rather than when the state was built, exactly as
+    // `crate::sandbox::evaluate` does it: instantiating the component above is gg's work, not the
+    // program's. See `MembraneState::start_program`.
+    store.data_mut().start_program();
     bound
         .call_run(
             &mut store,

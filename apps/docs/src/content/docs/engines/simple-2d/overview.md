@@ -16,8 +16,8 @@ package's own `docs/` directory.
 The engine owns the frame loop, the [clock](/engines/simple-2d/apis/clocks/)
 that decides what each frame's delta time is, the fit from the logical design
 size to the canvas, the input action registry and its bindings, the audio bus,
-the asset loader, and the debug overlay together with the frame metrics it
-reports.
+the asset loader, the debug overlay together with the frame metrics it reports,
+and the draw-command recorder over the context the game draws through.
 
 The game owns its simulation and its drawing, supplied as a
 [`Game<S>`](/engines/simple-2d/apis/game/): an `initialize` that builds the
@@ -57,3 +57,9 @@ a check depends on are exactly the frames it asked for.
 
 A case still declares the scenario its checks arrange, since setting up a
 situation runs through the game's own state.
+
+The engine also captures what a build drew. A validator arms the
+[recorder](/engines/simple-2d/concepts/recording/) around the stretch of a
+scenario its check is about and hands back the operations the build issued,
+which a reviewer replays beside the same scenario driven against the case's
+reference implementation.

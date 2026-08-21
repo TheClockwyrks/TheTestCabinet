@@ -71,7 +71,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
             dest: PathBuf::from("specs/overview.md"),
             kind: Default::default(),
         }],
-        common_workspace: vec![],
+        common_workspace: Default::default(),
         init: None,
         asset_paths: vec![],
         packages: Vec::new(),

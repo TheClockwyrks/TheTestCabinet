@@ -142,11 +142,14 @@ pub fn proof_served_extension(dest: &str) -> String {
 /// console serves verbatim; but the snapshot builder transcodes it to H.264
 /// `.mp4` so the public gallery plays on every browser (webm/VP8 does not on
 /// iOS/Safari). So a `Video` proof publishes as `mp4` regardless of its `dest`,
-/// while an `Image` proof publishes under its recorded extension unchanged.
+/// while an `Image` or `Replay` proof publishes under its recorded extension
+/// unchanged — there is no second format either of those is converted into.
 pub fn proof_published_extension(kind: crate::test_case::MediaKind, dest: &str) -> String {
     match kind {
         crate::test_case::MediaKind::Video => "mp4".to_string(),
-        crate::test_case::MediaKind::Image => proof_served_extension(dest),
+        crate::test_case::MediaKind::Image | crate::test_case::MediaKind::Replay => {
+            proof_served_extension(dest)
+        }
     }
 }
 
@@ -377,10 +380,10 @@ fn asset_content_type(file: &str) -> &'static str {
     }
 }
 
-/// The `Content-Type` for a proof media file, by file extension — the image and
-/// video formats a proof's `dest` may name (see
-/// [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls back
-/// to a binary stream.
+/// The `Content-Type` for a proof media file, by file extension — the image,
+/// video, and recording formats a proof's `dest` (or a validation output) may name
+/// (see [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls
+/// back to a binary stream.
 fn proof_content_type(file: &str) -> &'static str {
     let ext = Path::new(file)
         .extension()
@@ -393,6 +396,14 @@ fn proof_content_type(file: &str) -> &'static str {
         Some("gif") => "image/gif",
         Some("webm") => "video/webm",
         Some("mp4") => "video/mp4",
+        // A draw-command recording, stored gzipped (`<name>.json.gz`). The type
+        // describes the bytes as they are served — the response is never labelled
+        // `Content-Encoding: gzip`, which would invite the browser to inflate the
+        // body before the player ever saw it. The player decompresses what it
+        // fetched, and so reads a recording the same way wherever it is served from.
+        Some("gz") => "application/gzip",
+        // An uncompressed recording, and any other JSON media a proof names.
+        Some("json") => "application/json",
         _ => "application/octet-stream",
     }
 }

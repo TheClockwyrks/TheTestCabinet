@@ -1102,7 +1102,7 @@
       "type": "object"
     },
     "MediaKind": {
-      "description": "The kind of a piece of media — used for both reference media and proof\nartifacts so a UI knows whether to render an `<img>` or a `<video>`.",
+      "description": "The kind of a piece of media — used for both reference media and proof\nartifacts so a UI knows whether to render an `<img>`, a `<video>`, or a\nplayer that redraws a recording.",
       "oneOf": [
         {
           "const": "image",
@@ -1112,6 +1112,11 @@
         {
           "const": "video",
           "description": "A video clip (`webm`, `mp4`). A run captures its clip as the `.webm`\nPlaywright records natively; the public snapshot transcodes it to `.mp4`\nfor universal (incl. iOS/Safari) playback.",
+          "type": "string"
+        },
+        {
+          "const": "replay",
+          "description": "A draw-command recording (`json.gz`): the list of operations a build issued\nagainst its 2D context, frame by frame, which a player re-issues against a\ncanvas of its own to reproduce the picture the build drew.\n\nIt is evidence of a different quality from a clip. A clip is a re-shoot of\nthe build at whatever rate the recorder managed; a recording *is* the build's\nown drawing, so it replays at any size, seeks to any frame without replaying\nthe frames before it, and can be scrubbed in step beside the same recording\ntaken from the reference implementation.\n\nIt is stored gzipped, and the redundancy that makes that so effective is the\nsame property that makes a frame independently drawable: each frame restates\nthe drawing state it inherited and issues very nearly the operations its\nneighbours did. The document a player reads is the JSON inside; the\ncompression is how it travels.\n\nUnlike the other two kinds it needs no transcode — the captured `.json.gz` is\nwhat the live console serves and what the public snapshot publishes.",
           "type": "string"
         }
       ]

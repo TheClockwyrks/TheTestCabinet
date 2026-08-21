@@ -52,7 +52,7 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
     description: null,
     versions: ["v1.0.0"],
     latestVersion: "v1.0.0",
-    variants: [{ slug: "base", name: "Base" }],
+    variants: [{ slug: "base", name: "Base", referenceBuilds: {} }],
     changelog: [],
     errata: [],
     ...extra,

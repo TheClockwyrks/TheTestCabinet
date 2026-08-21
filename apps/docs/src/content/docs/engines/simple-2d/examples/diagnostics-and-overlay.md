@@ -171,25 +171,11 @@ describes, and the source runs after that frame's render.
 
 ## Reading the values back
 
-The engine publishes a handle on the game's own window, named by
-[`HOST_HANDLE`](/engines/simple-2d/apis/host/). Its `diagnostics()` evaluates
-every registered source at the moment of the call and returns the values as
-plain data.
-
-```js
-window.__tcabEngine.diagnostics();
-// { phase: "rally", score: "3 - 1", ball: { x: 412.5, y: 96.25 },
-//   speed: 245.967…, fps: 60 }
-```
-
-The read is independent of whether the overlay is drawn, so a post-run check and
-a devtools console both see the values while the game is hidden. `setOverlay`
-brings the panel up without touching the toggle key.
-
-```js
-window.__tcabEngine.setOverlay(true);
-```
-
-The overlay starts hidden and the engine owns the backtick key that toggles it,
-so this build binds no key of its own and leaves that key free of gameplay
+The overlay is what a person reads the sources off. The backtick key brings it
+up, so this build binds no key of its own and leaves that key free of gameplay
 bindings.
+
+A check reads the same values by holding the engine rather than the page. It
+constructs the engine over this build's `rally` module, steps it with
+`engine.advance`, and reads `state` directly, so what it asserts on is the
+object the sources close over.

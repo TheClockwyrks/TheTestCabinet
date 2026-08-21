@@ -25,4 +25,4 @@ a caller subscribes to.
 | [Audio](/engines/simple-2d/concepts/audio/) | Synthesized and file-backed cues, the first-interaction unlock, and the cue events. |
 | [Assets](/engines/simple-2d/concepts/assets/) | The single asset root, path resolution, and the load events. |
 | [Diagnostics](/engines/simple-2d/concepts/diagnostics/) | Named sources, the overlay drawn in device space, and its toggle. |
-| [Host](/engines/simple-2d/concepts/host/) | The handle a built page publishes, what it carries, and how a build is confirmed to have booted. |
+| [Recording](/engines/simple-2d/concepts/recording/) | The wrapper over the drawing context, per-frame inherited state, and independently drawable frames. |

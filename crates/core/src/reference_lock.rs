@@ -17,6 +17,13 @@
 //! backends. Each backend selects its own environment (`TCAB_ENV`) and ignores the
 //! rest. Every map is a [`BTreeMap`], so the serialized JSON is sorted and its diffs
 //! are stable.
+//!
+//! The innermost key is the [engine](crate::engine) the build was made for. A
+//! reference implementation is the *correct* build of a variant, and that build
+//! genuinely differs per engine — an engineless one carries its own runtime, an
+//! engine-backed one hands the same surfaces to the runtime it vendors — so each is
+//! deployed and recorded separately, and the case's Reference tab lets a reader
+//! switch between them.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -28,9 +35,9 @@ use serde::{Deserialize, Serialize};
 /// its entries span every case, version, and environment.
 pub const REFERENCE_LOCK_FILENAME: &str = "reference-builds.lock.json";
 
-/// One deployed reference build: the served URL for a `(slug, version, variant)`
-/// triple in a single environment. The flattened shape [`ReferenceLock`] hands the
-/// backend to reconcile its table against.
+/// One deployed reference build: the served URL for a
+/// `(slug, version, variant, engine)` tuple in a single environment. The flattened
+/// shape [`ReferenceLock`] hands the backend to reconcile its table against.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceBuildEntry {
     /// The case's slug (its manifest identity, not the folder name).
@@ -39,15 +46,19 @@ pub struct ReferenceBuildEntry {
     pub version: String,
     /// The variant slug (for example `base`).
     pub variant: String,
+    /// The [engine](crate::engine) slug this build was made for (for example
+    /// `none`).
+    pub engine: String,
     /// The served reference-build URL, as read back from `wrangler`.
     pub url: String,
 }
 
-/// One environment's deployed references: `slug → version → variant → url`. Every
-/// level is a [`BTreeMap`] so the serialized keys stay sorted for stable diffs.
-type CaseUrls = BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>;
+/// One environment's deployed references: `slug → version → variant → engine → url`.
+/// Every level is a [`BTreeMap`] so the serialized keys stay sorted for stable diffs.
+type CaseUrls = BTreeMap<String, BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>>;
 
-/// The committed reference-build lockfile: `env → slug → version → variant → url`.
+/// The committed reference-build lockfile:
+/// `env → slug → version → variant → engine → url`.
 ///
 /// Serialized transparently as the environment map, so the on-disk JSON is exactly
 /// that nesting with no wrapper object.
@@ -87,9 +98,17 @@ impl ReferenceLock {
         std::fs::write(path, json)
     }
 
-    /// Record (or overwrite) the deployed URL for one triple in one environment.
-    /// Intermediate maps are created as needed.
-    pub fn set(&mut self, env: &str, slug: &str, version: &str, variant: &str, url: &str) {
+    /// Record (or overwrite) the deployed URL for one variant-on-an-engine in one
+    /// environment. Intermediate maps are created as needed.
+    pub fn set(
+        &mut self,
+        env: &str,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        engine: &str,
+        url: &str,
+    ) {
         self.envs
             .entry(env.to_string())
             .or_default()
@@ -97,7 +116,9 @@ impl ReferenceLock {
             .or_default()
             .entry(version.to_string())
             .or_default()
-            .insert(variant.to_string(), url.to_string());
+            .entry(variant.to_string())
+            .or_default()
+            .insert(engine.to_string(), url.to_string());
     }
 
     /// The complete set of deployed reference builds for `env`, flattened for the
@@ -112,13 +133,16 @@ impl ReferenceLock {
         let mut entries = Vec::new();
         for (slug, versions) in cases {
             for (version, variants) in versions {
-                for (variant, url) in variants {
-                    entries.push(ReferenceBuildEntry {
-                        slug: slug.clone(),
-                        version: version.clone(),
-                        variant: variant.clone(),
-                        url: url.clone(),
-                    });
+                for (variant, engines) in variants {
+                    for (engine, url) in engines {
+                        entries.push(ReferenceBuildEntry {
+                            slug: slug.clone(),
+                            version: version.clone(),
+                            variant: variant.clone(),
+                            engine: engine.clone(),
+                            url: url.clone(),
+                        });
+                    }
                 }
             }
         }

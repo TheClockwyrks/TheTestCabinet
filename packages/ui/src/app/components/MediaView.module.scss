@@ -6,3 +6,15 @@
   height: auto;
   border-radius: t.$radius-sm;
 }
+
+// A media kind this build has no way to show — a kind the run-record contract
+// gained after this console was built. It reads as a note rather than a broken
+// image, which is what an <img> pointed at a non-picture would have given.
+.unsupported {
+  margin: 0;
+  padding: t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline dashed t.$color-border;
+  border-radius: t.$radius-sm;
+}

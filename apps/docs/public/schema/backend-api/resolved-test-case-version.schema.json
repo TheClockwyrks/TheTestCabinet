@@ -669,6 +669,10 @@
           },
           "type": "array"
         },
+        "perEngine": {
+          "description": "Whether `script` names a suite inside each engine's validator project rather\nthan one file under the version folder.",
+          "type": "boolean"
+        },
         "script": {
           "type": "string"
         }
@@ -960,9 +964,13 @@
           },
           "type": "array"
         },
-        "referenceBuild": {
-          "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), served on the console's \"Reference\" tab. `None` when the\nvariant declares no `reference_implementation`, or has one but it has not been\ndeployed yet. Written out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run.",
-          "type": ["string", "null"]
+        "referenceBuilds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "The absolute URLs of this variant's authored **reference implementations** —\nthe correct, deployed static builds (the case-variant analogue of a run's\n`playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was\nbuilt for and served on the console's \"Reference\" tab, which lets a reader\nswitch between them. Empty when the variant declares no\n`reference_implementation`, or has one that has not been deployed yet.\nWritten out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run.",
+          "type": "object"
         },
         "referenceSheet": {
           "anyOf": [
@@ -973,7 +981,7 @@
               "type": "null"
             }
           ],
-          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_build`]. An asset case's reference is a `draw.sh` script, not\na site, so what is recorded is which of its rendered frames were published to\nthe public snapshot bucket. `None` when the variant declares no\n`reference_implementation`, or has one that has not been published yet.\n\nWritten out-of-band by `tcab publish-reference` (which uploads the frames) and\nread from the `case_reference_sheet` table, which the backend reconciles by\nlisting the bucket at ingest — never resolved from the manifest and never\nseeded into a run. Only the indices travel: each frame's URL is derivable from\nthe case triple and its index (see `test_cabinet_core::asset_reference`), so\nthe client builds them against the `snapshotUrl` from `GET /config`."
+          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_builds`]. An asset case's reference is a `draw.sh` script, not\na site, so what is recorded is which of its rendered frames were published to\nthe public snapshot bucket. `None` when the variant declares no\n`reference_implementation`, or has one that has not been published yet.\n\nWritten out-of-band by `tcab publish-reference` (which uploads the frames) and\nread from the `case_reference_sheet` table, which the backend reconciles by\nlisting the bucket at ingest — never resolved from the manifest and never\nseeded into a run. Only the indices travel: each frame's URL is derivable from\nthe case triple and its index (see `test_cabinet_core::asset_reference`), so\nthe client builds them against the `snapshotUrl` from `GET /config`."
         },
         "references": {
           "items": {
@@ -1008,10 +1016,13 @@
           "description": "The variant's bounding-volume override, when it declares its own `[voxel]`\n(the size axis behind a case's half/base/double variants). `None` inherits\nthe case's common [`VersionResponse::voxel`]."
         },
         "workspace": {
-          "items": {
-            "$ref": "#/$defs/WorkspaceOut"
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/WorkspaceOut"
+            },
+            "type": "array"
           },
-          "type": ["array", "null"]
+          "type": ["object", "null"]
         }
       },
       "required": [
@@ -1369,10 +1380,13 @@
       ]
     },
     "workspace": {
-      "items": {
-        "$ref": "#/$defs/WorkspaceOut"
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/WorkspaceOut"
+        },
+        "type": "array"
       },
-      "type": "array"
+      "type": "object"
     }
   },
   "required": [
