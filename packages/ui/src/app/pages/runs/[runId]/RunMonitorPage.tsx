@@ -120,8 +120,10 @@ export function RunMonitorPage() {
     return unsubscribe;
   }, [worker, runId]);
 
-  // The event feed half: its header (the run id and the Follow toggle) and the
-  // feed itself. Shared by both the tabbed (asset) and untabbed layouts.
+  // The event feed half: its header (the run id, the kill control and the Follow
+  // toggle) and the feed itself. Shared by both the tabbed (asset) and untabbed
+  // layouts — an asset run hosts its kill control in the tab row instead, so the
+  // header only carries it when there is no tab row to put it in.
   const feed = (
     <>
       <div className={styles.feedHeader}>
@@ -131,15 +133,20 @@ export function RunMonitorPage() {
             Run id <code>{runId}</code>
           </span>
         </div>
-        <button
-          type="button"
-          className={styles.followButton}
-          data-active={following ? "" : undefined}
-          aria-pressed={following}
-          onClick={() => setFollowing((on) => !on)}
-        >
-          Follow
-        </button>
+        <div className={styles.feedActions}>
+          {status.kind === "running" && runId && !isAssetRun && (
+            <KillRunControl runId={runId} />
+          )}
+          <button
+            type="button"
+            className={styles.followButton}
+            data-active={following ? "" : undefined}
+            aria-pressed={following}
+            onClick={() => setFollowing((on) => !on)}
+          >
+            Follow
+          </button>
+        </div>
       </div>
       <EventFeed
         events={events}
@@ -165,16 +172,6 @@ export function RunMonitorPage() {
           No worker connected — the live stream comes from the worker that ran
           this job.
         </p>
-      )}
-
-      {/* While the run is still in flight, offer to kill it. The control hides
-          itself when cancellation isn't possible (no execution rights, no token,
-          or a transport that can't cancel). An asset run hosts this in its tab
-          row (below) so it sits inline with the tabs, mirroring the test-case
-          detail page's variant selector; every other run type has no tab row, so
-          the control stands on its own above the feed. */}
-      {status.kind === "running" && runId && !isAssetRun && (
-        <KillRunControl runId={runId} />
       )}
 
       {status.kind === "done" && status.outcome.kind === "canceled" && (
@@ -246,9 +243,13 @@ export function RunMonitorPage() {
                 Event feed
               </button>
             </nav>
-            {/* Sits in the tab row, pushed to the trailing edge by its own
+            {/* While the run is still in flight, offer to kill it. The control
+                hides itself when cancellation isn't possible (no execution
+                rights, no token, or a transport that can't cancel). An asset run
+                hosts it in the tab row, pushed to the trailing edge by its own
                 `margin-left: auto`, mirroring the variant selector on the test
-                case detail page. */}
+                case detail page; every other run type has no tab row, so it
+                rides in the feed header beside Follow. */}
             {status.kind === "running" && runId && (
               <KillRunControl runId={runId} />
             )}

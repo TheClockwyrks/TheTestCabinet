@@ -590,6 +590,21 @@
   font-size: t.$font-sm;
 }
 
+// The trailing edge of the feed header: the kill control (when the run is still
+// in flight and cancellable) and the Follow toggle, on one row. The kill control
+// carries a bottom margin for the layout it was born in — hanging under the page
+// header — which would push Follow out of line here, so this host zeroes it.
+.feedActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: t.$space-sm;
+
+  > * {
+    margin-bottom: 0;
+  }
+}
+
 // The Follow toggle. Reads as an outlined control when off; when auto-follow is
 // active (`data-active`) it fills with the accent and glows, so its state is
 // legible at a glance (and conveyed to AT via `aria-pressed`).
