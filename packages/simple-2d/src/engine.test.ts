@@ -461,6 +461,122 @@ describe("initialize", () => {
     expect([...Object.keys(api?.input ?? {})].sort()).toEqual(["layout", "register"]);
     expect([...Object.keys(api?.audio ?? {})].sort()).toEqual(["define", "load"]);
     expect(Object.keys(api?.diagnostics ?? {})).toEqual(["register"]);
+    expect(Object.keys(api?.debug ?? {})).toEqual(["expose"]);
+  });
+});
+
+describe("the debug surface", () => {
+  /** A game that exposes `surface` from its `initialize`. */
+  function exposing(surface: unknown): Game<TestState> & { initializations: number } {
+    return testGame({
+      initialize: (api) => {
+        api.debug.expose(surface);
+      },
+    });
+  }
+
+  it("hands back the value the game exposed, unchanged", async () => {
+    const surface = { startMatch: (): void => {} };
+    const { engine } = build({ game: exposing(surface) });
+
+    await engine.initialize();
+
+    // Identity, not equality: a caller poses a scenario through the game's own
+    // object, so an engine that copied it would drive a different one.
+    expect(engine.debug).toBe(surface);
+  });
+
+  it("reads no member of the surface it holds", async () => {
+    // Every read of the surface throws, so the engine touching one at any point
+    // between construction and a drawn frame fails the test rather than passing
+    // it quietly.
+    const hostile = new Proxy(
+      {},
+      {
+        get(_target, property): never {
+          throw new Error(`the engine read ${String(property)} off the debug surface`);
+        },
+      },
+    );
+    const { engine } = build({ game: exposing(hostile) });
+
+    await engine.initialize();
+    await engine.advance(3);
+
+    expect(engine.debug).toBe(hostile);
+  });
+
+  it("refuses to be read before initialize resolves", () => {
+    const { engine } = build({ game: exposing({}) });
+    expect(() => engine.debug).toThrow(/initialize/);
+  });
+
+  it("refuses to be read when the game exposed none", async () => {
+    const { engine } = build({ game: testGame() });
+    await engine.initialize();
+    expect(() => engine.debug).toThrow(/expose/);
+  });
+
+  it("holds a nullish surface rather than treating it as none exposed", async () => {
+    const { engine } = build({ game: exposing(null) });
+
+    await engine.initialize();
+
+    // The engine boxes what it was handed, so `null` is a surface the game chose
+    // rather than the absence of one.
+    expect(engine.debug).toBeNull();
+  });
+
+  it("refuses a second surface, naming the duplicate", async () => {
+    // Both calls sit inside `initialize`, which is the only window in which a
+    // second one is even reachable: after initialization every call is refused
+    // for arriving late, whether or not a surface is already held.
+    let refusal: unknown;
+    const game = testGame({
+      initialize: (api) => {
+        api.debug.expose({ first: true });
+        try {
+          api.debug.expose({ second: true });
+        } catch (error) {
+          refusal = error;
+        }
+      },
+    });
+    const { engine } = build({ game });
+    await engine.initialize();
+
+    expect(refusal).toBeInstanceOf(Error);
+    expect((refusal as Error).message).toMatch(/twice/);
+    // The first surface survives the refused replacement.
+    expect(engine.debug).toEqual({ first: true });
+  });
+
+  it("refuses a surface exposed after initialization finished", async () => {
+    let late: ((surface: unknown) => void) | undefined;
+    const game = testGame({
+      initialize: (api) => {
+        late = (surface): void => {
+          api.debug.expose(surface);
+        };
+      },
+    });
+    const { engine } = build({ game });
+    await engine.initialize();
+
+    // A game that keeps the API it was handed cannot install a surface once a
+    // frame could already have run against the engine without one.
+    expect(() => late?.({})).toThrow(/initializ/);
+    expect(() => engine.debug).toThrow(/expose/);
+  });
+
+  it("is readable the moment initialize resolves, before any frame", async () => {
+    const surface = { poses: 0 };
+    const { engine } = build({ game: exposing(surface) });
+
+    await engine.initialize();
+
+    expect(engine.frame().count).toBe(0);
+    expect(engine.debug).toBe(surface);
   });
 });
 

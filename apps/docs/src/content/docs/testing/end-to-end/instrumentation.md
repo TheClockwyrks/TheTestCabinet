@@ -37,6 +37,11 @@ constructs the engine itself and holds the build's state, events, and drawing
 context as live values, and the case declares only the scenario setup that is
 specific to its game.
 
+The global handle below belongs to the engineless run alone. Under an engine the
+case's scenario operations reach a check through the
+[debug surface](/components/core/engines/) the game hands the engine, so the
+page the build draws on carries no handle.
+
 ## The reliability principle
 
 Instrumentation is code the model under test writes, and anything the model

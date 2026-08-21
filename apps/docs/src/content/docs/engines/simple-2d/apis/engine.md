@@ -9,8 +9,14 @@ so an engine drives exactly one game for its lifetime.
 ## `createEngine`
 
 ```ts
-function createEngine<S>(options: EngineOptions<S>): Engine<S>;
+function createEngine<S, D = unknown>(
+  options: EngineOptions<S, D>,
+): Engine<S, D>;
 ```
+
+`S` is the game's state type and `D` is its
+[debug surface](/engines/simple-2d/apis/game/). Both are inferred from the
+`game` the options carry.
 
 Construction performs no loading and runs no game code. An engine therefore
 exists in a state where its clock can be replaced and its
@@ -21,11 +27,11 @@ initialization.
 ## `EngineOptions`
 
 ```ts
-interface EngineOptions<S> {
+interface EngineOptions<S, D = unknown> {
   canvas: HTMLCanvasElement;
   width: number;
   height: number;
-  game: Game<S>;
+  game: Game<S, D>;
   background?: string;
   layout?: string;
   clock?: Clock;
@@ -68,9 +74,10 @@ Absent, the engine reads `clientWidth`, `clientHeight`, and the owning window's
 ## `Engine`
 
 ```ts
-interface Engine<S> {
+interface Engine<S, D = unknown> {
   readonly events: EngineEvents;
   readonly state: S;
+  readonly debug: D;
   initialize(): Promise<S>;
   run(options?: RunOptions): Promise<void>;
   advance(frames: number): Promise<void>;
@@ -92,6 +99,7 @@ interface RunOptions {
 | --- | --- |
 | `events` | Subscribe to engine [events](/engines/simple-2d/apis/game/). Available from construction. |
 | `state` | The value `initialize` resolved to, live. |
+| `debug` | The [debug surface](/engines/simple-2d/apis/game/) the game exposed. |
 | `initialize` | Run the game's `initialize` and resolve to the state it produced. |
 | `run` | Drive the game off the host's frame callback until the supplied signal aborts. |
 | `advance` | Tick the clock `frames` times, running a frame for each tick the clock accepts. |
@@ -124,6 +132,16 @@ survive later frames copies what it read.
 
 Reading it before `initialize` resolves throws, naming the ordering. That keeps
 a contract violation loud at the point of the mistake.
+
+### `debug`
+
+The value the game handed to `api.debug.expose` during its `initialize`,
+returned unchanged. The engine holds it and reads no member of it, so its shape
+is whatever the game declared as `D`.
+
+Reading it before the game has exposed one throws, naming the ordering, exactly
+as `state` does. A game that exposes no surface therefore has no readable
+`engine.debug` rather than a `null` every caller has to test.
 
 ### `run`
 
@@ -174,6 +192,9 @@ over. A clock installed mid-run takes effect on the next frame.
 | A `layout` outside the catalogue | `Error` naming every valid layout |
 | The game's `initialize` throws or rejects | `initialize` rejects with the cause |
 | `state`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
+| `debug` read before the game exposed a surface | `Error` naming the ordering |
+| `expose` reached after the game finished initializing | `Error` naming the ordering |
+| `expose` called a second time | `Error` naming the duplicate |
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
 | `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
 

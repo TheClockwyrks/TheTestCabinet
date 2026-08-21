@@ -1,11 +1,11 @@
 /**
  * The vocabulary shared by the engine's subsystems, by the game-facing API, and
- * by the host interface.
+ * by the events it publishes.
  *
  * These types are declared once, here, rather than beside the subsystem that owns
  * each one, because almost every one of them is spoken by more than one side of
  * the package. Keeping the declarations in a leaf module with no imports means the
- * entry points cannot drift apart, and that `@test-cabinet/simple-2d/host` can be
+ * entry points cannot drift apart, and that `@test-cabinet/simple-2d` can be
  * consumed for its types alone without pulling in the DOM-bound engine.
  */
 
@@ -238,8 +238,13 @@ export interface SurfaceMetrics {
 /* The scoped APIs                                                            */
 /* -------------------------------------------------------------------------- */
 
-/** What a game may reach while it initializes. */
-export interface InitApi {
+/**
+ * What a game may reach while it initializes.
+ *
+ * `D` is the game's debug surface, the value {@link InitApi.debug} accepts. A
+ * game that exposes none leaves it at its default and never calls `expose`.
+ */
+export interface InitApi<D = unknown> {
   readonly input: {
     /** Register or re-register an action. */
     register(name: string, binding: ActionBinding): void;
@@ -265,6 +270,20 @@ export interface InitApi {
   readonly diagnostics: {
     /** Name a value for the overlay. The source is called on every read. */
     register(name: string, source: () => unknown): void;
+  };
+  readonly debug: {
+    /**
+     * Hand the engine the game's debug surface, returned unchanged from
+     * {@link Engine.debug}.
+     *
+     * The engine holds the value and reads no member of it, so its shape belongs
+     * to the game. Initialization is the one place it can be handed over, which
+     * is what puts it in place before any frame runs.
+     *
+     * @throws if a surface has already been exposed. One that could be replaced
+     * would leave a caller holding a surface the game had abandoned.
+     */
+    expose(surface: D): void;
   };
   readonly events: EngineEvents;
   /** The current logical-to-device fit. */
@@ -327,9 +346,12 @@ export interface RenderApi {
  * Because the state is built in one go during initialization and no frame runs
  * before that resolves, it has no not-yet-loaded fields for a frame to branch on.
  */
-export interface Game<S> {
-  /** Declare the game's bindings, cues, and diagnostics, and build its state. */
-  initialize(api: InitApi): S | Promise<S>;
+export interface Game<S, D = unknown> {
+  /**
+   * Declare the game's bindings, cues, diagnostics and debug surface, and build
+   * its state.
+   */
+  initialize(api: InitApi<D>): S | Promise<S>;
   /** Advance the simulation by `dt` seconds. */
   update(state: S, api: UpdateApi, dt: number): void;
   /** Draw the state the update left behind. */
@@ -437,7 +459,7 @@ export interface Recording {
 /* -------------------------------------------------------------------------- */
 
 /** What a game hands `createEngine`. */
-export interface EngineOptions<S> {
+export interface EngineOptions<S, D = unknown> {
   /** The canvas the engine sizes, clears, and renders through. */
   canvas: HTMLCanvasElement;
   /** The logical design width the game draws in. */
@@ -445,7 +467,7 @@ export interface EngineOptions<S> {
   /** The logical design height the game draws in. */
   height: number;
   /** The game this engine drives, bound for the engine's lifetime. */
-  game: Game<S>;
+  game: Game<S, D>;
   /** A CSS color cleared to before every frame; absent clears to transparency. */
   background?: string;
   /** A touch layout from the catalogue, whose vocabulary the game then registers. */
@@ -470,11 +492,18 @@ export interface RunOptions {
  * Construction runs no game code, so a caller may replace the clock and subscribe
  * to {@link Engine.events} before anything the game does is observable.
  */
-export interface Engine<S> {
+export interface Engine<S, D = unknown> {
   /** Subscribe to engine events. Available from construction. */
   readonly events: EngineEvents;
   /** The value `initialize` resolved to, live. Throws before then. */
   readonly state: S;
+  /**
+   * The debug surface the game exposed, live. Throws before it has exposed one.
+   *
+   * Returned exactly as the game handed it over, so a caller reads the shape the
+   * game declared rather than one the engine imposed.
+   */
+  readonly debug: D;
   /** Run the game's `initialize` and resolve to the state it produced. */
   initialize(): Promise<S>;
   /** Drive the game off the host's frame callback until the signal aborts. */

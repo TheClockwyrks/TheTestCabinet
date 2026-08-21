@@ -10,8 +10,8 @@ receives only the part of the engine it is allowed to use.
 ## `Game`
 
 ```ts
-interface Game<S> {
-  initialize(api: InitApi): S | Promise<S>;
+interface Game<S, D = unknown> {
+  initialize(api: InitApi<D>): S | Promise<S>;
   update(state: S, api: UpdateApi, dt: number): void;
   render(state: S, api: RenderApi): void;
 }
@@ -29,6 +29,11 @@ everything a frame needs is reachable from a value the type system already
 checked, and the engine exposes the same value as
 [`engine.state`](/engines/simple-2d/apis/engine/).
 
+`D` is the game's [debug surface](#debug), the value `initialize` hands to
+`api.debug.expose` and the engine returns from
+[`engine.debug`](/engines/simple-2d/apis/engine/). A game that exposes none
+leaves it at its default and never calls `expose`.
+
 `initialize` may return a promise, and the engine awaits it before running any
 frame. A game that loads assets resolves them here and stores them in `S`, so
 every field of the state is present by the time a frame can observe it and the
@@ -44,7 +49,7 @@ are what the game multiplies by.
 ## `InitApi`
 
 ```ts
-interface InitApi {
+interface InitApi<D = unknown> {
   readonly input: {
     register(name: string, binding: ActionBinding): void;
     layout(): TouchLayout | null;
@@ -62,13 +67,32 @@ interface InitApi {
   readonly diagnostics: {
     register(name: string, source: () => unknown): void;
   };
+  readonly debug: {
+    expose(surface: D): void;
+  };
   readonly events: EngineEvents;
   viewport(): Viewport;
 }
 ```
 
 Everything a game declares once belongs here: its action bindings, its cue
-definitions, the assets it needs, and the values it wants on the overlay.
+definitions, the assets it needs, the values it wants on the overlay, and its
+debug surface.
+
+### `debug`
+
+`expose` hands the engine the game's debug surface, and the engine returns that
+same value from [`engine.debug`](/engines/simple-2d/apis/engine/). The engine
+holds it and nothing more: the shape is the game's own, and the engine reads no
+member of it.
+
+A game calls `expose` from `initialize`, which is the one place it can, so the
+surface is in place before any frame runs and a caller holding the engine finds
+it as soon as `initialize` resolves.
+
+Calling `expose` a second time throws. A surface that could be replaced would
+leave a caller that already read `engine.debug` holding one the game had
+abandoned.
 
 ## `UpdateApi`
 

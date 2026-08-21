@@ -20,6 +20,9 @@
  *   and the key that toggles it.
  * - **Draw-command recording** — an opt-in flight recorder over the drawing context,
  *   so a scenario a check drove can be replayed as the operations the build issued.
+ * - **The debug surface** — the object a game hands over as it initializes, held and
+ *   returned off the engine, so a check poses a scenario through the engine it built
+ *   rather than through the page the build is drawn on.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,
@@ -147,7 +150,9 @@ function isDesignSize(size: number): boolean {
  * build that runs and draws nothing, which is the most expensive kind of failure to
  * trace, so each is refused where it happens.
  */
-export function createEngine<S>(options: EngineOptions<S>): Engine<S> {
+export function createEngine<S, D = unknown>(
+  options: EngineOptions<S, D>,
+): Engine<S, D> {
   const { canvas, width, height, game } = options;
 
   if (!isDesignSize(width) || !isDesignSize(height)) {
@@ -231,6 +236,14 @@ export function createEngine<S>(options: EngineOptions<S>): Engine<S> {
    */
   let built: { value: S } | null = null;
   let starting: Promise<S> | null = null;
+  /**
+   * The debug surface the game exposed, or `null` before it has exposed one.
+   *
+   * A box for the same reason {@link built} is one: `D` may perfectly well be a
+   * nullish type, and "has the game exposed a surface" must not be answered by
+   * inspecting the value it handed over.
+   */
+  let exposed: { value: D } | null = null;
   let destroyed = false;
 
   /**
@@ -303,7 +316,7 @@ export function createEngine<S>(options: EngineOptions<S>): Engine<S> {
   // for, and that would hand the game `setAction`, `detach`, and the rest; naming
   // the members explicitly is what makes "each function receives only the part of
   // the engine it may use" true rather than merely documented.
-  const initApi: InitApi = {
+  const initApi: InitApi<D> = {
     input: {
       register: (name, binding): void => input.register(name, binding),
       layout: () => input.layout(),
@@ -320,6 +333,25 @@ export function createEngine<S>(options: EngineOptions<S>): Engine<S> {
     },
     diagnostics: {
       register: (name, source): void => diagnostics.register(name, source),
+    },
+    debug: {
+      // Refused outside initialization, and refused twice, so `engine.debug` is
+      // fixed from the moment `initialize` resolves. A surface that could arrive
+      // later — or be swapped — would let one caller read what another had
+      // already replaced, and neither could tell which it held.
+      expose: (surface: D): void => {
+        if (built !== null) {
+          throw new Error(
+            "api.debug.expose() was reached after the game finished initializing: expose the surface from the game's initialize",
+          );
+        }
+        if (exposed !== null) {
+          throw new Error(
+            "api.debug.expose() was called twice: a game exposes one debug surface",
+          );
+        }
+        exposed = { value: surface };
+      },
     },
     events: bus,
     viewport: snapshot,
@@ -437,6 +469,22 @@ export function createEngine<S>(options: EngineOptions<S>): Engine<S> {
 
     get state(): S {
       return requireState("state");
+    },
+
+    /**
+     * The surface the game exposed, or a refusal naming the ordering.
+     *
+     * Worded like {@link requireState}'s refusal, because the mistake has the
+     * same two shapes: reaching for it before `initialize` has run, and reaching
+     * for it in a build whose game never exposed one.
+     */
+    get debug(): D {
+      if (exposed === null) {
+        throw new Error(
+          "engine.debug was reached before the game exposed a debug surface: await engine.initialize() first, and expose one from the game's initialize",
+        );
+      }
+      return exposed.value;
     },
 
     /**

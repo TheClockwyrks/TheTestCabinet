@@ -89,10 +89,11 @@ import {
   type SurfaceMetrics,
 } from "@test-cabinet/simple-2d";
 import { FIELD_H, FIELD_W } from "../src/constants";
+import type { Debug } from "../src/debug";
 import { game, type State } from "../src/game";
 
 export interface Harness {
-  engine: Engine<State>;
+  engine: Engine<State, Debug>;
   canvas: Canvas;
   keys: EventTarget;
 }
@@ -110,7 +111,7 @@ export function createHarness(
     events: () => keys,
   };
 
-  const engine = createEngine<State>({
+  const engine = createEngine<State, Debug>({
     canvas: canvas as unknown as HTMLCanvasElement,
     width: FIELD_W,
     height: FIELD_H,
@@ -153,6 +154,27 @@ it wants without testing for a value that has yet to load.
 Call `engine.destroy()` when a suite is finished with an engine, which drops the
 listeners it attached and releases the canvas.
 
+## The debug surface
+
+A check poses its scenario through the surface the game exposed, read from the
+engine the suite constructed.
+
+```ts
+const { engine } = createHarness();
+await engine.initialize();
+
+engine.debug.startMatch("solo");
+await engine.advance(90);
+
+expect(engine.debug.snapshot().screen).toBe("playing");
+```
+
+The case supplies the module that builds the surface, so its operations are the
+same in every build and a scenario reads the same way in every suite. What the
+build supplies is the call that hands it over, which is why a build that never
+exposes one leaves `engine.debug` unreadable and fails the points its checks
+decide.
+
 ## An unmet precondition
 
 A suite sometimes cannot construct its scenario against a fully conformant build,
@@ -179,14 +201,18 @@ every build of the case the same shape to check.
 | Module             | Supplied by | Holds                                                                                                                                     |
 | ------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/constants.ts` | The case    | The logical design size, the palette, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
-| `src/game.ts`      | The build   | The `State` type the case declares and the `Game<State>` the engine drives.                                                               |
-| `src/debug.ts`     | The case    | The scenario operations, each a function over `State`, that pose a situation through the same systems play uses.                          |
+| `src/game.ts`      | The build   | The `State` type the case declares, the `Game<State, Debug>` the engine drives, and the `expose` call that hands the surface over.        |
+| `src/debug.ts`     | The case    | The `Debug` type and the factory building it over a `State`, whose operations pose a situation through the same systems play uses.        |
 | `src/main.ts`      | The case    | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it.                                          |
 
 A suite imports `constants.ts` for the numbers and names its assertions are
-stated in, `game.ts` for the game it drives, and `debug.ts` for the scenarios it
-arranges. `main.ts` belongs to the built page, and a suite constructs its own
-engine instead.
+stated in, `game.ts` for the game it drives, and `debug.ts` for the `Debug` type
+its engine handle is parameterized by. `main.ts` belongs to the built page, and
+a suite constructs its own engine instead.
+
+The build writes the one line that joins them: its `initialize` builds the
+surface from `debug.ts` over the state it just built and hands it to
+`api.debug.expose`.
 
 The build writes `game.ts` against the other three. It is free in how it
 organizes everything else under `src/`, because the contract covers what a check

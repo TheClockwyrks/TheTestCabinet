@@ -14,10 +14,10 @@ this section states. These pages are the developer-facing statement of it.
 ## The division
 
 The build supplies one [`Game<S>`](/engines/simple-2d/apis/game/). Its
-`initialize` declares the action bindings, cue definitions, assets, and
-diagnostic sources the game needs and returns the state; its `update` advances
-that state by the frame's delta; its `render` draws the state in logical
-coordinates.
+`initialize` declares the action bindings, cue definitions, assets, diagnostic
+sources, and debug surface the game needs and returns the state; its `update`
+advances that state by the frame's delta; its `render` draws the state in
+logical coordinates.
 
 The engine owns everything around that: the frame loop and the clock behind its
 delta time, the canvas fit, keyboard listening and edge detection, the audio
@@ -37,3 +37,4 @@ variables only for constants.
 | [Actions](/engines/simple-2d/usage/actions/) | Registering actions, reading held values and edges, and selecting a touch layout. |
 | [Audio and Assets](/engines/simple-2d/usage/audio-and-assets/) | Defining and loading cues, playing them from `update`, and loading assets under the asset root. |
 | [Diagnostics](/engines/simple-2d/usage/diagnostics/) | Registering overlay sources and choosing what a case's checks can read. |
+| [Debug Surface](/engines/simple-2d/usage/debug/) | Declaring the surface type, building it over the state, exposing it from `initialize`, and what a caller reads back. |

@@ -124,8 +124,30 @@ an exact number of frames.
 Everything a check observes is therefore a live value it already holds: the game
 state the build returned, the frame counter and the accumulated simulated time,
 the viewport, the events the engine broadcast, and the drawing context the game
-rendered through. A build publishes nothing for a check to find, so there is no
-surface a build could fail to install.
+rendered through. A build reaches a check through the engine it was given, so a
+run under an engine publishes nothing to the page it is drawn on.
+
+## The debug surface
+
+A case that drives its game from code fixes a debug surface: the operations that
+pose a situation and read it back, expressed over the game's own state. The game
+hands that surface to the engine while it initializes, and the engine holds it
+and hands it back off its handle. A validator reads it from the engine it
+constructed.
+
+The surface travels through the engine because the engine is what both halves
+already hold. A game reaches it through the API its `initialize` receives, and a
+check reaches it through the engine it built, so the two meet without a global
+and a page carries no handle a build has to install.
+
+An engine states the exact member names in its own documentation, and the shape
+of the surface belongs to the case rather than to the engine: an engine holds
+whatever the game gave it and makes no claim about what is in it.
+
+Exposing the surface is the game's own work, so a build that never exposes one
+fails the points a check behind that surface decides. That is the same rule
+[instrumentation](/testing/end-to-end/instrumentation/) applies to every
+model-implemented mechanism a verdict leans on.
 
 ## Recording
 
