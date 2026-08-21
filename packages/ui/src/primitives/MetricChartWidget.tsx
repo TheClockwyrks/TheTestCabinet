@@ -1,7 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { canonicalModelId } from "../modelId";
 import { ChartWidget } from "./ChartWidget";
+import {
+  orderBars,
+  type BetterIs,
+  type ChartSort,
+  type ChartTieBreak,
+} from "./chartSort";
 import { barChart } from "./plot/charts";
 import type { BarPoint } from "./plot/charts";
 import type { ChartPalette } from "./plot/theme";
@@ -68,6 +74,26 @@ interface MetricChartWidgetProps {
    * hovered. Defaults to a plain localized integer.
    */
   formatValue?: (value: number) => string;
+  /**
+   * The bar order. Defaults to `alphabetical` — the order Plot infers on its own
+   * — so a caller that has no order control keeps the roster it always had.
+   */
+  sort?: ChartSort;
+  /**
+   * Which end of this metric is better, for the `best` order. Defaults to
+   * `lower` (cost, tokens); pass `higher` for a metric where more is better
+   * (points).
+   */
+  betterIs?: BetterIs;
+  /** Mean points per bar label, splitting `best`-order ties. */
+  tieBreak?: ChartTieBreak;
+  /** Controls for the widget header's trailing edge (e.g. the order control). */
+  actions?: ReactNode;
+  /**
+   * Shown in place of the chart when no run yielded a value. Omit to plot an
+   * empty chart instead (the shape a metric every run reports never reaches).
+   */
+  empty?: string;
 }
 
 // A self-contained metric chart: a titled, full-width panel that charts one
@@ -85,6 +111,11 @@ export function MetricChartWidget({
   colorForModel,
   labelForModel,
   formatValue = defaultFormatValue,
+  sort = "alphabetical",
+  betterIs = "lower",
+  tieBreak,
+  actions,
+  empty,
 }: MetricChartWidgetProps) {
   const barPoints = useMemo<BarPoint[]>(
     () =>
@@ -94,11 +125,34 @@ export function MetricChartWidget({
     [runs, value, barMode, formatValue, colorForModel, labelForModel],
   );
 
-  // Memoized so <Chart> only re-plots when the data or unit change.
+  // The bars in the chosen order. Kept separate from building them so flipping
+  // the order re-sorts without re-folding every run.
+  const ordered = useMemo(
+    () =>
+      orderBars(
+        barPoints,
+        sort,
+        (bar) => bar.label,
+        (bar) => bar.value,
+        betterIs,
+        tieBreak,
+      ),
+    [barPoints, sort, betterIs, tieBreak],
+  );
+
+  // Memoized so <Chart> only re-plots when the data, order, or unit change. The
+  // x domain is stated explicitly (deduped — `perRun` mode puts several runs of
+  // one pair on the same band) because Plot sorts a domain it infers itself,
+  // which would silently override the order chosen above.
   const spec = useMemo(() => {
-    const labels = { y: unit, yTickFormat, xTickRotate: LABEL_ROTATE };
-    return (palette: ChartPalette) => barChart(barPoints, palette, labels);
-  }, [barPoints, unit, yTickFormat]);
+    const labels = {
+      y: unit,
+      yTickFormat,
+      xTickRotate: LABEL_ROTATE,
+      xDomain: [...new Set(ordered.map((bar) => bar.label))],
+    };
+    return (palette: ChartPalette) => barChart(ordered, palette, labels);
+  }, [ordered, unit, yTickFormat]);
 
   return (
     <ChartWidget
@@ -106,7 +160,9 @@ export function MetricChartWidget({
       chartTitle={`${title} by harness & model${
         barMode === "meanByModel" ? "" : " — per run"
       }`}
-      spec={spec}
+      actions={actions}
+      spec={empty && ordered.length === 0 ? undefined : spec}
+      empty={empty}
     />
   );
 }

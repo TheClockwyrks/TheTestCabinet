@@ -20,6 +20,13 @@ export { MetricTile } from "./MetricTile";
 export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";
 export { ChartWidget } from "./ChartWidget";
+export { ChartSortControl } from "./ChartSortControl";
+export {
+  orderBars,
+  type BetterIs,
+  type ChartSort,
+  type ChartTieBreak,
+} from "./chartSort";
 export { DonutChartWidget, type DonutSegment } from "./DonutChartWidget";
 export { MetricChartWidget } from "./MetricChartWidget";
 export { RatingsChartWidget, type RatingCounts } from "./RatingsChartWidget";

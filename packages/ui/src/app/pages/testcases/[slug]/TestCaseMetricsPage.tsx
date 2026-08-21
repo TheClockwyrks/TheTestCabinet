@@ -1,10 +1,13 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   canonicalModelId,
+  ChartSortControl,
+  formatPoints,
   MetricChartWidget,
   Panel,
   RatingsChartWidget,
+  type ChartSort,
   type RatingCounts,
 } from "@test-cabinet/ui";
 import {
@@ -48,10 +51,19 @@ const tokensValue = (run: RunSummary): number | null =>
 const costValue = (run: RunSummary): number | null =>
   run.metrics.cost.comparable;
 
-// The Metrics tab (`/test-cases/:slug/metrics`): token and cost distributions
-// for the selected variant, grouped by model so the spread across runs is
-// visible without implying a winner. The charts show spread, never a ranking
-// (docs/site.md).
+// The bar label every chart on this tab agrees on: the model's display name and
+// the harness that ran it. It mirrors `MetricChartWidget`'s own pair label, which
+// is what lets one points-per-bar lookup serve as the tie-break for all four
+// charts (they are all describing the same roster).
+function pairLabel(modelName: string, harnessSlug: string): string {
+  return `${modelName} · ${harnessSlug}`;
+}
+
+// The Metrics tab (`/test-cases/:slug/metrics`): rating, points, token and cost
+// distributions for the selected variant, grouped by model so the spread across
+// runs is visible without implying a winner. The charts show spread, never a
+// ranking (docs/site.md) — the shared order control reorders the bars, it does
+// not turn the charts into a leaderboard.
 export function TestCaseMetricsPage() {
   return (
     <TestCaseDetailLayout tab="metrics">
@@ -64,7 +76,8 @@ export function TestCaseMetricsPage() {
 
 // The metrics body, given the resolved case and variant. Exported so the
 // game-jam detail's Metrics tab renders the identical distributions under its own
-// layout — run metrics (tokens, cost) are review-model-independent.
+// layout — run metrics (tokens, cost) are review-model-independent, and the
+// points chart reads a jam's graded checklist through the same scorer.
 export function MetricsContent({
   testCase,
   variant,
@@ -179,9 +192,66 @@ export function MetricsContent({
     }
     return order.map((key) => {
       const { modelId, harness, counts } = byPair.get(key)!;
-      return { label: `${labelForModel(modelId)} · ${harness}`, counts };
+      return { label: pairLabel(labelForModel(modelId), harness), counts };
     });
   }, [scopedRuns, variant, findReview, localWriteups, labelForModel]);
+
+  // The points every scored run in scope earned, folded per `(harness, model)`
+  // bar: the mean the Points chart plots against, and the points available it is
+  // measured out of. A run is scored the same way the Leaderboard scores it
+  // (enriched summary card, else local writeup), so the two tabs never disagree
+  // about a model's points. The available total is the largest any run in scope
+  // was scored out of — versions in scope may declare different checklists, and
+  // the fullest of them is the only denominator that fits every bar.
+  const points = useMemo(() => {
+    const sums = new Map<string, { earned: number; runs: number }>();
+    let total = 0;
+    for (const run of scopedRuns) {
+      const scored = resolveRunScore(run, variant, findReview, localWriteups);
+      if (!scored) continue;
+      const harness = run.subject.harnessSlug;
+      const modelId = canonicalModelId(run.subject.modelId, harness);
+      const label = pairLabel(labelForModel(modelId), harness);
+      total = Math.max(total, scored.total);
+      const acc = sums.get(label) ?? { earned: 0, runs: 0 };
+      acc.earned += scored.earned;
+      acc.runs += 1;
+      sums.set(label, acc);
+    }
+    const mean = new Map<string, number>();
+    for (const [label, acc] of sums) mean.set(label, acc.earned / acc.runs);
+    return { mean, total };
+  }, [scopedRuns, variant, findReview, localWriteups, labelForModel]);
+
+  // The points a single run earned, for the Points chart's bars. An unscored run
+  // (no published score and no local writeup) yields null and is left out of the
+  // mean rather than dragging it down with a zero it never earned.
+  const pointsValue = useCallback(
+    (run: RunSummary): number | null =>
+      resolveRunScore(run, variant, findReview, localWriteups)?.earned ?? null,
+    [variant, findReview, localWriteups],
+  );
+
+  const formatPointsValue = useCallback(
+    (value: number): string =>
+      points.total > 0
+        ? `${formatPoints(value)} / ${points.total} pts`
+        : `${formatPoints(value)} pts`,
+    [points.total],
+  );
+
+  // Splits a `best`-order tie on any chart: the bar whose runs averaged more
+  // points wins. Keyed by the bar label the four charts share.
+  const tieBreak = useCallback(
+    (label: string): number | null => points.mean.get(label) ?? null,
+    [points],
+  );
+
+  // One order for the whole tab. Every chart renders its own copy of the control
+  // bound to this state, so moving any one slider moves all of them — the charts
+  // describe one roster and are only comparable while they agree on its order.
+  const [sort, setSort] = useState<ChartSort>("alphabetical");
+  const sortControl = <ChartSortControl value={sort} onChange={setSort} />;
 
   return (
     <section className={styles.section}>
@@ -206,6 +276,24 @@ export function MetricsContent({
             title="Ratings"
             models={ratingModels}
             variantName={variant.name}
+            sort={sort}
+            tieBreak={tieBreak}
+            actions={sortControl}
+          />
+          <MetricChartWidget
+            title="Average points"
+            runs={scopedRuns}
+            value={pointsValue}
+            unit="points"
+            barMode="meanByModel"
+            betterIs="higher"
+            colorForModel={colorForModel}
+            labelForModel={labelForModel}
+            formatValue={formatPointsValue}
+            sort={sort}
+            tieBreak={tieBreak}
+            actions={sortControl}
+            empty={`No scored runs of ${variant.name} yet — points appear once runs have been reviewed.`}
           />
           <MetricChartWidget
             title="Average tokens"
@@ -217,6 +305,9 @@ export function MetricsContent({
             colorForModel={colorForModel}
             labelForModel={labelForModel}
             formatValue={formatCompact}
+            sort={sort}
+            tieBreak={tieBreak}
+            actions={sortControl}
           />
           <MetricChartWidget
             title="Average cost"
@@ -227,6 +318,9 @@ export function MetricsContent({
             colorForModel={colorForModel}
             labelForModel={labelForModel}
             formatValue={formatUsd}
+            sort={sort}
+            tieBreak={tieBreak}
+            actions={sortControl}
           />
         </div>
       )}
