@@ -8,10 +8,37 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { SERVE_MAX_ANGLE, SERVE_SPEED } from "../../src/constants";
-import { angleDeg, createHarness, type Harness } from "../harness";
+import {
+  angleDeg,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
 
 /** The old browser suite's margin: 15% of the spec speed. */
 const SPEED_TOLERANCE = SERVE_SPEED * 0.15;
+
+/**
+ * Frames of the pre-serve hold recorded before the hold is expired.
+ *
+ * A recording that opened on the launch frame would drop a reviewer into a ball
+ * already in flight; opening on the held ball is what makes the launch something
+ * they watch HAPPEN. It cannot move what is measured: `serve()` only expires the
+ * hold, the launch is still the build's own on the frame after it, and what
+ * leaves a countdown is not a function of how long the countdown had been
+ * running when it was cut short.
+ */
+const HELD_TICKS = 24; // 0.2 s
+
+/**
+ * Frames of the served flight recorded after the launch.
+ *
+ * The reading is taken on the launch frame — before a wall or a paddle could
+ * change the ball — and that instant does not move. But a serve is only visible
+ * as a serve once the ball has travelled, so the flight is driven after the
+ * reading, inside the same recorded section, where it cannot reach an assertion.
+ */
+const FLIGHT_TICKS = 90; // 0.75 s
 
 let harness: Harness;
 
@@ -27,11 +54,17 @@ it("serves the ball at the base serve speed", async () => {
   const { debug } = harness;
   debug.reset();
   debug.startMatch("versus");
-  debug.serve();
 
-  const launched = await harness.until((s) => s.screen === "playing", {
-    maxFrames: 60,
-    poll: 1,
+  const launched = await captureReplay(harness, "serve", async () => {
+    await harness.advance(HELD_TICKS);
+    debug.serve();
+
+    const swept = await harness.until((s) => s.screen === "playing", {
+      maxFrames: 60,
+      poll: 1,
+    });
+    await harness.advance(FLIGHT_TICKS);
+    return swept;
   });
 
   expect(launched.hit).toBe(true);

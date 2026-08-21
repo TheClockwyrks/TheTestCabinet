@@ -11,6 +11,7 @@ import {
   LEAD_TICKS,
   angleDeg,
   arrangePaddleHit,
+  captureReplay,
   createHarness,
   drivePaddleHit,
   startPlaying,
@@ -20,6 +21,22 @@ import {
 const EDGE_ANGLE_DEG = (MAX_BOUNCE_ANGLE * 180) / Math.PI;
 /** The old browser suite's margin, in degrees. */
 const ANGLE_TOLERANCE_DEG = 8;
+
+/**
+ * Frames of the return flight recorded after the contact.
+ *
+ * `drivePaddleHit` stops on the frame the ball comes off the paddle, because that
+ * is the instant the reading has to be taken at — a frame later and spin has
+ * already begun to curve the flight this check is about. That makes it a bad
+ * place to stop RECORDING: the clip would end on the contact and a reviewer would
+ * never see the shot it produced.
+ *
+ * So the reading stays exactly where it was and the flight is driven after it,
+ * inside the same recorded section. Three quarters of a second is long enough for
+ * a curve to be a curve and a straight return to be visibly straight, and short
+ * enough that the ball is still on the field at the end of it.
+ */
+const RETURN_TICKS = 90; // 0.75 s
 
 let harness: Harness;
 
@@ -40,8 +57,12 @@ it("deflects the ball steeply off the extreme edge of a still paddle", async () 
     leadTicks: LEAD_TICKS,
   });
 
-  const contact = await drivePaddleHit(harness, "left", {
-    leadTicks: LEAD_TICKS,
+  const contact = await captureReplay(harness, "deflection", async () => {
+    const rebound = await drivePaddleHit(harness, "left", {
+      leadTicks: LEAD_TICKS,
+    });
+    await harness.advance(RETURN_TICKS);
+    return rebound;
   });
 
   expect(contact.hit).toBe(true);

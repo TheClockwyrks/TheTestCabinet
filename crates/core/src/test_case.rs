@@ -1304,9 +1304,14 @@ struct ManifestReviewOutput {
     id: String,
     /// Human-readable display name. Defaults to a humanized form of `id`.
     name: Option<String>,
-    /// Whether this output is an `image` (a still the script screenshots) or a
-    /// `video` (a clip recorded across the script's drive). A script may declare at
-    /// most one `video` output.
+    /// Whether this output is an `image` (a still the script screenshots), a
+    /// `video` (a clip recorded across the script's drive), or a `replay` (the
+    /// draw-command recording a validator takes off the engine). A script may
+    /// declare at most one `video` output — a browser drive records one screen
+    /// capture per script and there is only one of it. That limit does not extend
+    /// to `replay`: a recording is armed and disarmed by the suite itself, so one
+    /// suite may hand back a recording per scenario it walks through, and each is a
+    /// separate output of its own.
     kind: MediaKind,
 }
 
@@ -2321,7 +2326,8 @@ impl AssetKind {
 }
 
 /// The kind of a piece of media — used for both reference media and proof
-/// artifacts so a UI knows whether to render an `<img>` or a `<video>`.
+/// artifacts so a UI knows whether to render an `<img>`, a `<video>`, or a
+/// player that redraws a recording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2332,16 +2338,50 @@ pub enum MediaKind {
     /// Playwright records natively; the public snapshot transcodes it to `.mp4`
     /// for universal (incl. iOS/Safari) playback.
     Video,
+    /// A draw-command recording (`json.gz`): the list of operations a build issued
+    /// against its 2D context, frame by frame, which a player re-issues against a
+    /// canvas of its own to reproduce the picture the build drew.
+    ///
+    /// It is evidence of a different quality from a clip. A clip is a re-shoot of
+    /// the build at whatever rate the recorder managed; a recording *is* the build's
+    /// own drawing, so it replays at any size, seeks to any frame without replaying
+    /// the frames before it, and can be scrubbed in step beside the same recording
+    /// taken from the reference implementation.
+    ///
+    /// It is stored gzipped, and the redundancy that makes that so effective is the
+    /// same property that makes a frame independently drawable: each frame restates
+    /// the drawing state it inherited and issues very nearly the operations its
+    /// neighbours did. The document a player reads is the JSON inside; the
+    /// compression is how it travels.
+    ///
+    /// Unlike the other two kinds it needs no transcode — the captured `.json.gz` is
+    /// what the live console serves and what the public snapshot publishes.
+    Replay,
 }
 
 impl MediaKind {
-    /// Infer the media kind from a path's file extension. Returns `None` for an
-    /// extension that is neither a supported image nor a supported video.
+    /// Infer the media kind from a path's file name. Returns `None` for a name that
+    /// is none of a supported image, video, or recording.
+    ///
+    /// A recording is stored gzipped, so it carries two extensions and
+    /// [`Path::extension`] answers `gz` for it rather than `json.gz`. The compound
+    /// suffix is therefore matched against the whole file name, before the single
+    /// extension is consulted at all. A bare `.json` still resolves to a recording:
+    /// compression is how a recording travels rather than part of what it is, so a
+    /// name that states only the document format still names the same kind of media.
     pub fn from_path(path: &Path) -> Option<Self> {
+        let name = path.file_name()?.to_str()?.to_ascii_lowercase();
+        if name
+            .strip_suffix(".json.gz")
+            .is_some_and(|stem| !stem.is_empty())
+        {
+            return Some(Self::Replay);
+        }
         let ext = path.extension()?.to_str()?.to_ascii_lowercase();
         match ext.as_str() {
             "png" | "jpg" | "jpeg" | "webp" | "gif" => Some(Self::Image),
             "webm" | "mp4" => Some(Self::Video),
+            "json" => Some(Self::Replay),
             _ => None,
         }
     }
@@ -6399,6 +6439,19 @@ impl TestCaseCatalog {
                     let kind = match kind {
                         MediaKind::Image => ReferenceKind::Image,
                         MediaKind::Video => ReferenceKind::Video,
+                        // A reference view is what a reviewer looks at beside the
+                        // build: a committed picture or clip of the intended result.
+                        // A recording is not that — it carries no picture of its own,
+                        // only the operations some build issued, so it is synthesized
+                        // per validation rather than committed as a mockup.
+                        MediaKind::Replay => {
+                            return Err(invalid(format!(
+                                "reference media `{}` for view `{}` is a draw-command \
+                                 recording; a reference view is an image or .mp4",
+                                media.display(),
+                                reference.view
+                            )));
+                        }
                     };
                     (media, kind)
                 }
@@ -6449,7 +6502,7 @@ impl TestCaseCatalog {
             let kind = MediaKind::from_path(&proof.dest).ok_or_else(|| {
                 invalid(format!(
                     "proof `{}` dest `{}` has an unsupported extension \
-                     (expected an image or .mp4)",
+                     (expected an image, .mp4, or a .json recording)",
                     proof.id,
                     proof.dest.display()
                 ))
@@ -6632,15 +6685,16 @@ impl TestCaseCatalog {
                     Some(script)
                 };
                 // Every automated validation must produce proof: at least one media
-                // output (a screenshot or clip) a reviewer can see, synthesized
-                // side-by-side against the reference baseline. A `validation` with no
-                // `outputs` decides a verdict a reviewer cannot visually corroborate,
-                // so it is rejected here rather than silently allowed.
+                // output (a screenshot, a clip, or a recording) a reviewer can see,
+                // synthesized side-by-side against the reference baseline. A
+                // `validation` with no `outputs` decides a verdict a reviewer cannot
+                // visually corroborate, so it is rejected here rather than silently
+                // allowed.
                 if v.outputs.is_empty() {
                     return Err(invalid(format!(
                         "{label} declares a `validation` script but no `outputs`; every \
                          automated validation must produce at least one proof output \
-                         (a screenshot or clip)"
+                         (a screenshot, a clip, or a recording)"
                     )));
                 }
                 let mut outputs = Vec::with_capacity(v.outputs.len());
@@ -6658,6 +6712,13 @@ impl TestCaseCatalog {
                             out.id
                         )));
                     }
+                    // A screen capture is a property of the drive, not of a moment
+                    // inside it: one script is recorded end to end, so a second
+                    // `video` output names a clip that does not exist. This counts
+                    // `Video` alone — a `Replay` is armed and disarmed by the
+                    // validator around whichever stretch of its scenario it wants
+                    // evidence of, so a suite may declare as many recordings as it
+                    // has scenarios.
                     if out.kind == MediaKind::Video {
                         video_count += 1;
                         if video_count > 1 {

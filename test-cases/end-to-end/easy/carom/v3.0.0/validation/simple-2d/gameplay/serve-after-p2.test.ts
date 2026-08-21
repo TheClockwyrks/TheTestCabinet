@@ -8,11 +8,23 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   arrangeGoal,
+  captureReplay,
   createHarness,
   driveGoal,
   startPlaying,
   type Harness,
 } from "../harness";
+
+/**
+ * Frames of the served flight recorded after the launch.
+ *
+ * The direction is read on the launch frame — before a wall or a paddle could
+ * turn the ball around — and that instant does not move. A recording that ended
+ * there would stop on the frame the ball started moving, so the review item's
+ * serve would never be seen to travel; the flight is driven after the reading,
+ * inside the same recorded section, where it cannot reach an assertion.
+ */
+const FLIGHT_TICKS = 90; // 0.75 s
 
 let harness: Harness;
 
@@ -29,19 +41,25 @@ it("serves toward player two after player one scores", async () => {
   harness.debug.setScore(0, 0);
   arrangeGoal(harness, "right");
 
-  const point = await driveGoal(harness);
-  expect(point.hit).toBe(true);
-  expect(point.snapshot.score.p1).toBe(1);
-  expect(point.snapshot.screen).toBe("countdown");
+  // The point and the serve that answers it, as one continuous section: the
+  // direction only means anything beside the point that decided it.
+  await captureReplay(harness, "serve", async () => {
+    const point = await driveGoal(harness);
+    expect(point.hit).toBe(true);
+    expect(point.snapshot.score.p1).toBe(1);
+    expect(point.snapshot.screen).toBe("countdown");
 
-  harness.debug.serve();
-  const launched = await harness.until((s) => s.screen === "playing", {
-    maxFrames: 60,
-    poll: 1,
+    harness.debug.serve();
+    const launched = await harness.until((s) => s.screen === "playing", {
+      maxFrames: 60,
+      poll: 1,
+    });
+    await harness.advance(FLIGHT_TICKS);
+
+    expect(launched.hit).toBe(true);
+    // Player two defends the RIGHT edge: the receiver is the player just scored
+    // on.
+    expect(launched.snapshot.ball.vx).toBeGreaterThan(0);
   });
-
-  expect(launched.hit).toBe(true);
-  // Player two defends the RIGHT edge: the receiver is the player just scored on.
-  expect(launched.snapshot.ball.vx).toBeGreaterThan(0);
   expect(harness.assetFailures).toEqual([]);
 });

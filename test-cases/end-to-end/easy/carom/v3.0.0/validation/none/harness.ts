@@ -27,12 +27,19 @@
 // specifically about the step size (gameplay/delta-time-independent) builds its
 // own harnesses with clocks of its own.
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
+import { expect } from "vitest";
 import {
   ConstantClock,
   createHost,
   type Clock,
   type Host,
+  type RecordedFrame,
+  type Recording,
   type SurfaceMetrics,
   type Viewport,
 } from "../src/host";
@@ -363,6 +370,218 @@ export async function createHarness(
   };
 
   return harness;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Replay capture                                                             */
+/* -------------------------------------------------------------------------- */
+//
+// A review item may declare a `replay` OUTPUT beside its verdict: the frames the
+// build itself drew while a check drove it, kept as evidence a reviewer can
+// scrub and compare against the reference implementation's. `captureReplay` is
+// how a check produces one.
+//
+// Four properties are what make it usable, and each is deliberate:
+//
+// 1. IT RECORDS THE SECTION, NOT THE RUN. The recorder is armed around the
+//    caller's scenario and disarmed the moment that scenario returns, so what is
+//    kept is the part the check is ABOUT and never the setup that got there. A
+//    check that poses a ball in front of a paddle and then plays out the contact
+//    records the contact; the pose costs nothing, and the reviewer is not asked to
+//    scrub past a minute of arrangement to reach the two seconds that decide the
+//    point.
+// 2. IT IS EVIDENCE, NEVER A VERDICT. The scenario's own value comes straight
+//    back, so a check reads it exactly as it did before capture existed, and a
+//    scenario that THROWS still writes what it had recorded before the failure
+//    travels on — a failing check is the one whose replay a reviewer most wants.
+//    Nothing here can turn a passing check into a failing one: a recording that
+//    cannot be written is reported as an output that never turned up, which is a
+//    fact about the host rather than about the build.
+// 3. IT WRITES ONLY WHAT THERE IS TO LOOK AT. A capture that closed no frames
+//    leaves no file, so the run reports the output absent instead of offering the
+//    reviewer a replay of nothing.
+// 4. IT COSTS NOTHING WHEN NOBODY IS COLLECTING. Outside a run — a developer
+//    running this suite from a shell — the media directory is unset, and the whole
+//    thing is a no-op that still runs the scenario. The suite behaves identically
+//    either way, so a check cannot pass in one place and fail in the other.
+
+/**
+ * The environment variable the runner names the media directory in.
+ *
+ * Unset is not an error: it is the normal state of a suite nobody is collecting
+ * media from.
+ */
+const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
+
+/**
+ * The directory this harness sits in, which is the validator project's root.
+ *
+ * Taken from this module's own URL rather than from the working directory,
+ * because it has to name the same directory in both layouts this file lives in:
+ * the case's own `validation/<engine>/`, and the `validation/` the runner stages
+ * that directory to inside the build's tree.
+ */
+const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The directory the runner stages this project to inside the build's tree.
+ *
+ * A recording is addressed by the STAGED path of the suite that produced it —
+ * `validation/gameplay/serve-speed.test.ts` — because that is the path the review
+ * item's declared script resolves to, and so the only name the case's manifest and
+ * the runner both already agree on. Stating the prefix here is what keeps that
+ * address the same when this suite is run in place against a reference
+ * implementation, where the project root is `validation/<engine>/` instead.
+ */
+const STAGED_PROJECT_DIR = "validation";
+
+/**
+ * The most frames a written recording holds.
+ *
+ * A recording is one JSON operation log per frame, and a frame of this game is a
+ * couple of hundred operations, so a section a check drives for half a minute of
+ * game time runs to tens of megabytes — a file nobody can serve to a reviewer and
+ * nobody wants in a run's artifacts. The cap is what makes `captureReplay` safe to
+ * wrap ANY section in: an author arms the recorder around what the check is about
+ * and never has to reason about how long that turns out to be.
+ *
+ * The cap is generous enough that the great majority of this suite's sections —
+ * a paddle contact, a bank shot, a point played out — are written whole.
+ */
+const MAX_REPLAY_FRAMES = 300;
+
+/**
+ * Where the running suite's `outputId` recording belongs, or `null` when nothing
+ * is collecting media.
+ *
+ * The suite is the one vitest is currently running rather than one the caller
+ * names, because the two must not be able to disagree: a check that named its own
+ * path would be free to write its evidence under some other point's address.
+ *
+ * The name carries both extensions, because a recording is a JSON document stored
+ * gzipped: `.json` is what the bytes are and `.gz` is how they are framed. The
+ * runner collects a `replay` output under exactly this name, so the two agree by
+ * being the same statement of what a recording is.
+ */
+function replayDestination(outputId: string): string | null {
+  const mediaDir = process.env[MEDIA_DIR_ENV];
+  if (mediaDir === undefined || mediaDir === "") return null;
+  const testPath = expect.getState().testPath;
+  if (testPath === undefined) return null;
+  const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
+  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.json.gz`);
+}
+
+/**
+ * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole of
+ * what was captured.
+ *
+ * An over-long section is THINNED rather than cut short: every nth frame is kept,
+ * so the reviewer sees the entire section at a lower frame rate instead of its
+ * first — or last — few seconds at the full one. That is the reading that matches
+ * what these outputs are named for. A rally is evidence that the ball accelerated
+ * hit after hit, and the hits are spread across the whole of it.
+ *
+ * Thinning is legitimate because every frame in a recording is independently
+ * renderable by construction: each carries the context state it inherited, so
+ * dropping the frames between two kept ones cannot leave a frame undrawable. Each
+ * kept frame's `deltaMs` is restated as the time since the frame kept before it,
+ * so the deltas still sum to the section's elapsed time and a player pacing itself
+ * off them runs at the speed the game really ran at. The frame `count` is left as
+ * the host reported it, so a reader can see that frames were skipped rather than
+ * being told a smooth lie.
+ *
+ * The last frame is always kept, whatever the stride lands on: it is the frame the
+ * check's sweep stopped at — the contact, the point, the rebound — and it is the
+ * one a reviewer looks at first.
+ */
+function thinReplay(recording: Recording): Recording {
+  const { frames } = recording;
+  if (frames.length <= MAX_REPLAY_FRAMES) return recording;
+
+  const stride = Math.ceil(frames.length / MAX_REPLAY_FRAMES);
+  const kept: RecordedFrame[] = [];
+  // The moment the section started, so the first kept frame's delta is its own
+  // rather than a step measured from nothing.
+  let previousMs = frames[0].timeMs - frames[0].deltaMs;
+  const keep = (frame: RecordedFrame): void => {
+    kept.push({ ...frame, deltaMs: frame.timeMs - previousMs });
+    previousMs = frame.timeMs;
+  };
+
+  for (let i = 0; i < frames.length; i += stride) keep(frames[i]);
+  const last = frames[frames.length - 1];
+  if (kept[kept.length - 1].count !== last.count) keep(last);
+
+  return { ...recording, frames: kept };
+}
+
+/**
+ * Write a recording out, reporting rather than raising anything that goes wrong.
+ *
+ * A capture that closed no frames writes nothing. There is no picture in it to
+ * draw, and a file holding an empty frame list would be collected as an output
+ * that turned up — the run would tell the reviewer there is a replay to watch and
+ * the player would open on nothing. A declared output that never turned up is
+ * already reported as absent, and that is the truthful reading of a section that
+ * drew no frames.
+ *
+ * What lands on disk is gzip rather than raw JSON. The recording format is
+ * deliberately repetitive: every frame restates the drawing state it inherited so
+ * that any frame can be drawn without drawing the frames before it, and
+ * consecutive frames of a game issue very nearly the same operations as each
+ * other. That redundancy is what makes seeking and side-by-side scrubbing work,
+ * and it is also almost exactly what gzip removes: a real capture stores tens of
+ * times smaller. Compressing is what makes the property affordable, so a run's
+ * whole set of recordings costs a few megabytes rather than a hundred. The
+ * document inside is the same one, so nothing about the format has changed.
+ *
+ * Never throws. A directory that cannot be made or a file that cannot be written
+ * says something about the machine the validators ran on, and failing the point
+ * over it would blame the build for the host's problem. The runner already reads
+ * a declared output that never turned up as exactly that.
+ */
+function writeReplay(destination: string, recording: Recording): void {
+  if (recording.frames.length === 0) return;
+  try {
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
+  } catch (error) {
+    console.warn(`carom: could not write ${destination}: ${String(error)}`);
+  }
+}
+
+/**
+ * Record the frames `scenario` draws and keep them as the review item's
+ * `outputId` output, handing back whatever the scenario returned.
+ *
+ * Wrap the drive, not the arrangement:
+ *
+ * ```ts
+ * const point = await captureReplay(harness, "goal", () => driveGoal(harness));
+ * expect(point.hit).toBe(true);
+ * ```
+ *
+ * The assertions stay exactly where they were and read exactly what they did.
+ * Capture sits BESIDE them rather than in place of them: a check still fails for
+ * the reasons it failed before, and the recording is what a reviewer looks at
+ * afterwards to see what the build actually drew while it did.
+ */
+export async function captureReplay<T>(
+  h: Harness,
+  outputId: string,
+  scenario: () => T | Promise<T>,
+): Promise<T> {
+  const destination = replayDestination(outputId);
+  if (destination === null) return scenario();
+
+  h.engine.startRecording();
+  try {
+    return await scenario();
+  } finally {
+    // In a `finally`, so a scenario that failed still leaves its evidence behind.
+    writeReplay(destination, h.engine.stopRecording());
+  }
 }
 
 /* -------------------------------------------------------------------------- */

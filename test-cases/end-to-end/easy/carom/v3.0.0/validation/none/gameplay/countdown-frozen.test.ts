@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { HOLD_TIME } from "../../src/constants";
 import {
   TICK_HZ,
+  captureReplay,
   createHarness,
   startWithKeys,
   type Harness,
@@ -36,29 +37,38 @@ afterEach(() => {
 it("freezes the countdown while paused and resumes it where it stopped", async () => {
   await startWithKeys(harness, "solo");
 
-  await harness.advance(PARTWAY_TICKS);
-  const mid = harness.snapshot();
-  expect(mid.screen).toBe("countdown");
+  // The whole bracket is one recorded section: a countdown part-run, the press
+  // that pauses it, the long stretch in which it does NOT run, the press that
+  // resumes it, and the launch that proves it picked up where it stopped. The
+  // frozen stretch alone would be a still screen, which is what a countdown that
+  // wrongly kept running looks like too until it elapses — the freeze is only
+  // legible against the counting either side of it. Nothing about the timeline
+  // moves; the recorder is simply armed earlier and disarmed later.
+  await captureReplay(harness, "countdown", async () => {
+    await harness.advance(PARTWAY_TICKS);
+    const mid = harness.snapshot();
+    expect(mid.screen).toBe("countdown");
 
-  await harness.tap("Escape");
-  expect(harness.snapshot().screen).toBe("paused");
+    await harness.tap("Escape");
+    expect(harness.snapshot().screen).toBe("paused");
 
-  await harness.advance(PAUSED_TICKS);
-  const whilePaused = harness.snapshot();
+    await harness.advance(PAUSED_TICKS);
+    const whilePaused = harness.snapshot();
 
-  expect(whilePaused.screen).toBe("paused");
-  expect(Math.abs(whilePaused.ball.x - mid.ball.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(whilePaused.ball.y - mid.ball.y)).toBeLessThanOrEqual(1);
+    expect(whilePaused.screen).toBe("paused");
+    expect(Math.abs(whilePaused.ball.x - mid.ball.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(whilePaused.ball.y - mid.ball.y)).toBeLessThanOrEqual(1);
 
-  // Resuming returns to the countdown; it did not skip ahead to a live serve.
-  await harness.tap("Escape");
-  expect(harness.snapshot().screen).toBe("countdown");
+    // Resuming returns to the countdown; it did not skip ahead to a live serve.
+    await harness.tap("Escape");
+    expect(harness.snapshot().screen).toBe("countdown");
 
-  // And the resumed countdown is live, not stuck for good: the remainder of the
-  // hold runs out and the ball really launches.
-  await harness.advance(RESUMED_TICKS);
-  const resumed = harness.snapshot();
+    // And the resumed countdown is live, not stuck for good: the remainder of
+    // the hold runs out and the ball really launches.
+    await harness.advance(RESUMED_TICKS);
+    const resumed = harness.snapshot();
 
-  expect(resumed.screen).toBe("playing");
-  expect(resumed.ball.speed).toBeGreaterThan(1);
+    expect(resumed.screen).toBe("playing");
+    expect(resumed.ball.speed).toBeGreaterThan(1);
+  });
 });

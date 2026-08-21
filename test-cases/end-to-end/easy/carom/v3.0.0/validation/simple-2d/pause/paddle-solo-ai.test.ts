@@ -15,9 +15,27 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   STILL_MAX,
   arrangeAiChase,
+  captureReplay,
   createHarness,
   type Harness,
 } from "../harness";
+
+/**
+ * The frames of live chasing recorded before the pause, and the frozen ones
+ * after it.
+ *
+ * A clip of a still paddle is not evidence of anything on its own — it is
+ * indistinguishable from a build whose AI never moved. What makes it evidence is
+ * the chase it is cut from: the same paddle, with the same ball to run down,
+ * tracking in live play and then not tracking once the game is paused, in one
+ * recording.
+ *
+ * That precondition was always driven; arming the recorder before it rather than
+ * after moves nothing, and every reading below is still taken on exactly the
+ * frame it was taken on before.
+ */
+const CHASING_TICKS = 36; // 0.3 s of the real opponent tracking
+const FROZEN_TICKS = 120; // 1.0 s of a paused game with a ball to chase
 
 let h: Harness;
 
@@ -35,19 +53,24 @@ it("holds the AI paddle still while paused", async () => {
   // The precondition: the real opponent is chasing, so a still paddle later is
   // the pause's doing.
   const start = h.snapshot().paddles.right.cy;
-  await h.advance(36);
-  expect(Math.abs(h.snapshot().paddles.right.cy - start)).toBeGreaterThan(
-    STILL_MAX,
-  );
 
-  await h.tap("Escape");
+  const held = await captureReplay(h, "frozen", async () => {
+    await h.advance(CHASING_TICKS);
+    const chasing = h.snapshot().paddles.right.cy;
+
+    await h.tap("Escape");
+    const screen = h.snapshot().screen;
+    const paused = h.snapshot().paddles.right.cy;
+
+    await h.advance(FROZEN_TICKS);
+    return { chasing, screen, paused };
+  });
+
+  expect(Math.abs(held.chasing - start)).toBeGreaterThan(STILL_MAX);
+  expect(held.screen).toBe("paused");
+
   expect(h.snapshot().screen).toBe("paused");
-
-  const paused = h.snapshot().paddles.right.cy;
-  await h.advance(120);
-
-  expect(h.snapshot().screen).toBe("paused");
-  expect(Math.abs(h.snapshot().paddles.right.cy - paused)).toBeLessThan(
+  expect(Math.abs(h.snapshot().paddles.right.cy - held.paused)).toBeLessThan(
     STILL_MAX,
   );
 });

@@ -941,6 +941,11 @@ fn content_type_for(path: &str) -> &'static str {
         "hbs" => "text/plain; charset=utf-8",
         "html" => "text/html; charset=utf-8",
         "json" => "application/json",
+        // A gzipped document served as it is stored — a validator's draw-command
+        // recording (`<name>.json.gz`). The body is not labelled with a content
+        // encoding, so nothing between the store and the player inflates it on the
+        // way past; the player decompresses what it fetched.
+        "gz" => "application/gzip",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",

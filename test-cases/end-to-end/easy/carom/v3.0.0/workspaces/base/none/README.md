@@ -36,8 +36,9 @@ synchronous and needs no browser.
   page's canvas, binds `game` to it, installs the debug API, and runs.
 - **`src/host.ts`** — the runtime: the frame loop and its delta time, the
   letterboxed canvas fit, named input actions over keyboard bindings, the audio
-  cue bus and its first-gesture unlock, asset resolution, and the diagnostics
-  overlay. It is the reference for every API `game` receives.
+  cue bus and its first-gesture unlock, asset resolution, the diagnostics
+  overlay, and the draw-command recorder a reviewer's replays come from. It is
+  the reference for every API `game` receives.
 - **`src/constants.ts`** — every figure the specification fixes: geometry,
   colors, speeds, spin, the match rules, the action names, the cue names. Read
   from it, and never restate a number it already names.

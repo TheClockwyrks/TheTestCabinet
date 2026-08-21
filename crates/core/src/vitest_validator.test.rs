@@ -13,7 +13,8 @@ use std::time::Duration;
 use super::*;
 use crate::engine::{EngineCatalog, EngineSelection};
 use crate::test_case::{
-    AssetKind, ReviewItem, ReviewValidation, SubReviewItem, TestCaseVersion, TestType, Variant,
+    AssetKind, MediaKind, ReviewItem, ReviewOutput, ReviewValidation, SubReviewItem,
+    TestCaseVersion, TestType, Variant,
 };
 
 // --- Fixtures ---------------------------------------------------------------
@@ -126,6 +127,26 @@ fn validation(script_rel: &str) -> ReviewValidation {
         script: Some(PathBuf::from(script_rel)),
         script_rel: script_rel.to_string(),
         outputs: Vec::new(),
+    }
+}
+
+/// A review item decided by the validator at `script_rel`, which declares `outputs`
+/// as its proof media.
+fn item_with_outputs(id: &str, script_rel: &str, outputs: Vec<ReviewOutput>) -> ReviewItem {
+    let mut item = item(id, script_rel);
+    item.validation = Some(ReviewValidation {
+        outputs,
+        ..validation(script_rel)
+    });
+    item
+}
+
+/// One declared media output.
+fn output(id: &str, kind: MediaKind) -> ReviewOutput {
+    ReviewOutput {
+        id: id.to_string(),
+        name: format!("The {id}"),
+        kind,
     }
 }
 
@@ -311,7 +332,7 @@ fn a_file_that_passed_earns_its_declaring_item_a_passing_verdict() {
     assert_eq!(result.verdicts[0].id, "serve-speed");
     assert!(
         result.outputs.is_empty(),
-        "a validator captures no media, so it declares no outputs",
+        "this point declares no media, so there is nothing to report the presence of",
     );
 }
 
@@ -578,6 +599,7 @@ fn a_command_that_outlives_its_cap_is_stopped_and_reported_as_timed_out() {
         Duration::from_millis(300),
         scratch.path(),
         "hung",
+        &[],
     )
     .expect_err("a command that never finishes cannot succeed");
 
@@ -600,6 +622,7 @@ fn a_command_that_finishes_reports_its_status_and_output() {
         Duration::from_secs(30),
         scratch.path(),
         "quick",
+        &[],
     )
     .expect("the command runs");
 
@@ -788,4 +811,197 @@ fn a_tree_nothing_prepared_is_installed_by_the_runner() {
         error.contains("exit 7") || error.contains("did not succeed"),
         "the failure is reported as the install's: {error}",
     );
+}
+
+// --- The media the suites produce -------------------------------------------
+
+/// The directory a suite writes into, as the runner tells it to: the media root, then
+/// the suite's own staged path.
+/// Stand-in bytes for a recording a suite wrote: the first bytes of a gzip member
+/// (RFC 1952 §2.3.1) and nothing more.
+///
+/// Collection moves what a suite left behind without ever reading it, so what these
+/// tests need of the file is its name and its framing rather than a document. A
+/// recording is written gzipped, and every consumer downstream of here reads it that
+/// way, so the fixture is framed the way a real one is.
+const GZIPPED_RECORDING: &[u8] = &[0x1f, 0x8b, 0x08, 0x00];
+
+fn suite_media_dir(media_dir: &Path, staged: &str) -> PathBuf {
+    let dir = media_dir.join(staged);
+    std::fs::create_dir_all(&dir).expect("the suite's own media directory");
+    dir
+}
+
+#[test]
+fn a_suites_declared_media_is_flattened_out_of_the_directory_it_wrote_it_to() {
+    // The whole collection contract in one run: the suite wrote each output under its
+    // own id inside a directory named by its staged path, and the runner leaves the
+    // flat `<verdict>__<output>.<ext>` names every consumer of validation media
+    // addresses — with the scaffolding gone.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![item_with_outputs(
+        "no-tunnel",
+        "validation/simple-2d/ball/no-tunnel.test.ts",
+        vec![
+            output("serve", MediaKind::Replay),
+            output("rebound", MediaKind::Replay),
+        ],
+    )];
+    let suite = suite_for(&items);
+    let wrote = suite_media_dir(media.path(), "validation/ball/no-tunnel.test.ts");
+    std::fs::write(wrote.join("serve.json.gz"), GZIPPED_RECORDING).expect("the first recording");
+    std::fs::write(wrote.join("rebound.json.gz"), GZIPPED_RECORDING).expect("the second recording");
+
+    let outputs = suite.collect_media(media.path());
+
+    assert_eq!(outputs.len(), 2, "one entry per declared output, in order");
+    assert_eq!(outputs[0].id, "serve");
+    assert_eq!(outputs[0].kind, MediaKind::Replay);
+    assert!(outputs[0].actual_present && outputs[1].actual_present);
+    assert!(
+        media.path().join("no-tunnel__serve.json.gz").is_file(),
+        "the recording is keyed by the verdict it backs",
+    );
+    assert!(media.path().join("no-tunnel__rebound.json.gz").is_file());
+    assert!(
+        !media.path().join("validation").exists(),
+        "the per-suite scaffolding is removed once its outputs are collected",
+    );
+}
+
+#[test]
+fn a_declared_output_the_suite_did_not_write_is_absent_rather_than_a_failure() {
+    // Media is the evidence beside a verdict; the assertions are what decide the
+    // point. A suite that passed every check while writing nothing still earns its
+    // point, and the reviewer is told there is nothing to look at.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![item_with_outputs(
+        "serve-speed",
+        "validation/simple-2d/gameplay/serve-speed.test.ts",
+        vec![output("serve", MediaKind::Replay)],
+    )];
+    let suite = suite_for(&items);
+
+    let repo = Path::new("/runs/impl");
+    let reports = parse_report(&reporter_document(repo), repo).expect("the document parses");
+    let mut result = suite.result(
+        reports
+            .iter()
+            .find(|r| r.file == "validation/gameplay/serve-speed.test.ts"),
+    );
+    result.outputs = suite.collect_media(media.path());
+
+    assert!(result.ran, "the suite ran");
+    assert!(result.verdicts[0].pass, "and passed, media or no media");
+    assert_eq!(
+        result.outputs.len(),
+        1,
+        "the declared output is still named"
+    );
+    assert!(
+        !result.outputs[0].actual_present,
+        "it simply was not produced",
+    );
+}
+
+#[test]
+fn a_suite_that_never_ran_reports_its_declared_outputs_absent() {
+    // Two ways to get here — a runner that could not execute at all, and a validator
+    // belonging to another engine — and both must still name what the point declares,
+    // so an empty list keeps meaning "this point declares no media".
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![item_with_outputs(
+        "serve-speed",
+        "validation/simple-2d/gameplay/serve-speed.test.ts",
+        vec![output("serve", MediaKind::Replay)],
+    )];
+    let not_run = suite_for(&items).not_run("no vitest in the tree");
+    assert_eq!(not_run.outputs.len(), 1);
+    assert!(!not_run.outputs[0].actual_present);
+
+    let elsewhere = vec![item_with_outputs(
+        "ball-color",
+        "validation/none/color/ball.test.ts",
+        vec![output("title", MediaKind::Image)],
+    )];
+    let collected = suite_for(&elsewhere).collect_media(media.path());
+    assert_eq!(collected.len(), 1);
+    assert!(
+        !collected[0].actual_present,
+        "there was no staged suite to have written it",
+    );
+}
+
+#[test]
+fn collecting_one_suite_leaves_a_sibling_suites_directory_alone() {
+    // The suites are collected one at a time and share the parents of their staged
+    // paths. Pruning walks up only while it keeps emptying directories, so a sibling
+    // that has not been collected yet still has somewhere to have written to.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![
+        item_with_outputs(
+            "serve-speed",
+            "validation/simple-2d/gameplay/serve-speed.test.ts",
+            vec![output("serve", MediaKind::Replay)],
+        ),
+        item_with_outputs(
+            "serve-initial",
+            "validation/simple-2d/gameplay/serve-initial.test.ts",
+            vec![output("first", MediaKind::Replay)],
+        ),
+    ];
+    let suites: Vec<Suite> = drive_units(&items)
+        .iter()
+        .map(|unit| Suite::of(unit, "simple-2d"))
+        .collect();
+    let first = suite_media_dir(media.path(), "validation/gameplay/serve-speed.test.ts");
+    let second = suite_media_dir(media.path(), "validation/gameplay/serve-initial.test.ts");
+    std::fs::write(first.join("serve.json.gz"), GZIPPED_RECORDING).expect("the first recording");
+    std::fs::write(second.join("first.json.gz"), GZIPPED_RECORDING).expect("the second recording");
+
+    assert!(suites[0].collect_media(media.path())[0].actual_present);
+    assert!(
+        second.is_dir(),
+        "the sibling's directory survives its neighbour's collection",
+    );
+    assert!(suites[1].collect_media(media.path())[0].actual_present);
+    assert!(
+        !media.path().join("validation").exists(),
+        "the last one out removes the shared parents",
+    );
+    assert!(media.path().join("serve-speed__serve.json.gz").is_file());
+    assert!(media.path().join("serve-initial__first.json.gz").is_file());
+}
+
+#[test]
+fn the_media_directory_is_named_to_the_suites_in_the_environment() {
+    // The one channel the runner has to code it never calls directly. A suite derives
+    // its own staged path itself; where to put the result has to be handed to it.
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let ran = run_bounded(
+        scratch.path(),
+        &format!("printf '%s' \"${VALIDATION_MEDIA_ENV}\""),
+        Duration::from_secs(30),
+        scratch.path(),
+        "env",
+        &[(
+            VALIDATION_MEDIA_ENV,
+            "/runs/impl/.tcab/validation".to_string(),
+        )],
+    )
+    .expect("the command runs");
+
+    assert_eq!(ran.stdout, "/runs/impl/.tcab/validation");
+}
+
+#[test]
+fn the_exported_media_directory_is_absolute() {
+    // A vitest project sets its own `root`, so a relative path would name one
+    // directory to the runner and another to the suite.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    assert!(
+        Path::new(&absolute(&media.path().join(".tcab/validation"))).is_absolute(),
+        "the suites are handed a path they cannot resolve differently",
+    );
+    assert!(Path::new(&absolute(Path::new("relative/media"))).is_absolute());
 }

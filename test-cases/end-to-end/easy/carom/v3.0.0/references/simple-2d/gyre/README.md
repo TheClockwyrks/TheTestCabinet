@@ -120,11 +120,10 @@ frame.
 
 Everything about _driving a browser game_ rather than about Carom is the
 engine's. The clock, the exact frames, and the registered actions are driven by
-constructing an engine directly (which is what `src/engine.test.ts` does), and
-the engine publishes a read-mostly host interface on **`window.__tcabEngine`** for
-confirming a built page is running frames and for reading the diagnostics. So
+constructing an engine directly (which is what `src/engine.test.ts` does), so
 there is deliberately no `step`, `setAutoStep`, `keyDown`, `keyUp`, or `press` on
-`window.__carom`.
+`window.__carom`. A check that wants the frames a scenario drew arms the engine's
+draw-command recorder around that section and keeps the recording.
 
 Both surfaces are inert during normal play.
 

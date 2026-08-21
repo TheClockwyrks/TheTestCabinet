@@ -81,6 +81,10 @@ browser game, and none of it is the game's:
   unlock. The game declares four cues and plays them by name.
 - **The debug overlay.** The panel, the toggle key, and its read-only-ness; the
   game only names the values it shows.
+- **Draw-command recording.** An opt-in recorder over the 2D context, off unless
+  something arms it. Nothing the game does touches it: it logs the operations
+  each frame issued, so a scenario a check drove can be replayed as the frames
+  this build drew.
 
 What is left is the game: the simulation, the drawing, and the state the debug
 API poses.
@@ -171,7 +175,8 @@ vite.config.ts        Build config (emits to dist/)
 vitest.config.ts      The build's own test suite, over src/
 src/
   main.ts             Bootstrap: stand the host up, initialize, install, run
-  host.ts             The runtime: frame loop, canvas fit, input, audio, overlay
+  host.ts             The runtime: frame loop, canvas fit, input, audio,
+                      overlay, draw-command recording
   constants.ts        Palette, geometry, physics constants (logical 1280x720)
   debug.ts            The window.__carom surface over CaromState
   game.ts             The state contract, the state machine, and the three

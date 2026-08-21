@@ -2982,6 +2982,110 @@ fn more_than_one_video_output_is_rejected() {
 }
 
 #[test]
+fn a_media_kind_is_inferred_from_an_extension() {
+    // The three kinds a case may name, and the answer for an extension that is none
+    // of them. A recording is the only non-pixel evidence a point can declare, and
+    // the reason the inference is not just image-or-video.
+    let kind = |name: &str| MediaKind::from_path(Path::new(name));
+    assert_eq!(kind("shots/title.PNG"), Some(MediaKind::Image));
+    assert_eq!(kind("clips/rally.webm"), Some(MediaKind::Video));
+    assert_eq!(kind("clips/rally.mp4"), Some(MediaKind::Video));
+    assert_eq!(kind("recordings/serve.json"), Some(MediaKind::Replay));
+    assert_eq!(kind("notes.txt"), None);
+    assert_eq!(kind("no-extension"), None);
+}
+
+#[test]
+fn a_recording_is_recognized_by_its_compound_extension() {
+    // A recording is stored gzipped, so its name carries two extensions and the
+    // single extension of `serve.json.gz` is `gz`, not `json.gz`. Every route that
+    // resolves stored media back to its kind depends on the compound suffix being
+    // matched against the whole name, so it is asserted here rather than left to the
+    // caller to remember.
+    let kind = |name: &str| MediaKind::from_path(Path::new(name));
+    assert_eq!(
+        Path::new("no-tunnel__serve.json.gz")
+            .extension()
+            .and_then(|ext| ext.to_str()),
+        Some("gz"),
+        "the premise: the standard extension of a stored recording is `gz`",
+    );
+    assert_eq!(kind("no-tunnel__serve.json.gz"), Some(MediaKind::Replay));
+    assert_eq!(
+        kind("media/NO-TUNNEL__SERVE.JSON.GZ"),
+        Some(MediaKind::Replay)
+    );
+    // Compression is how a recording travels rather than part of what it is, so an
+    // uncompressed one names the same kind.
+    assert_eq!(kind("recordings/serve.json"), Some(MediaKind::Replay));
+    // A gzipped anything-else is not a recording, and neither is a name that is
+    // nothing but the suffix.
+    assert_eq!(kind("archive/tree.tar.gz"), None);
+    assert_eq!(kind(".json.gz"), None);
+}
+
+#[test]
+fn a_replay_output_resolves_and_is_not_limited_to_one_per_script() {
+    // A clip is a property of the whole drive, so a script records at most one of
+    // them. A recording is armed and disarmed by the validator around whichever
+    // stretch of its scenario it wants evidence of, so a point may declare several —
+    // and each is a separate output with its own id. The one-video rule counts
+    // `video` alone, and this is what proves it does not reach `replay`.
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", outputs = [ \
+         { id = \"serve\", kind = \"replay\" }, \
+         { id = \"rebound\", name = \"The rebound\", kind = \"replay\" }, \
+         { id = \"clip\", kind = \"video\" } ] }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let item = version
+        .common_review_items
+        .iter()
+        .find(|item| item.id == "spin")
+        .expect("review item");
+    let outputs = &item.validation.as_ref().expect("validation").outputs;
+    assert_eq!(outputs.len(), 3);
+    assert_eq!(outputs[0].kind, MediaKind::Replay);
+    assert_eq!(
+        outputs[0].name, "Serve",
+        "an unnamed output humanizes its id"
+    );
+    assert_eq!(outputs[1].kind, MediaKind::Replay);
+    assert_eq!(outputs[1].name, "The rebound");
+    assert_eq!(
+        outputs[2].kind,
+        MediaKind::Video,
+        "the one clip the script is allowed sits beside them",
+    );
+}
+
+#[test]
+fn a_reference_view_may_not_be_a_recording() {
+    // A reference view is the committed picture of the intended result a reviewer
+    // looks at beside the build. A recording carries no picture of its own — only
+    // the operations some build issued — so it is synthesized per validation rather
+    // than committed as a mockup, and naming one here is a manifest error.
+    let manifest = instrumented_manifest(
+        "[[reference]]\nview = \"title\"\nmedia = \"refs/title.json\"",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[("refs/title.json", "{}")]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a recording is not a reference view");
+    assert!(
+        format!("{err}").contains("draw-command recording"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn sub_item_validation_resolves() {
     // An item broken into sub-items carries its validation on the sub-items, not on
     // the item: each validated sub-item resolves its own driver, and a human-judged

@@ -47,7 +47,7 @@ description = "The two obstacles move — each sways vertically about its base c
 # center back — both move well off their base y, in opposite directions. See
 # validation/<engine>/gyre/obstacles-sway.test.ts.
 validation = { script = "gyre/obstacles-sway.test.ts", outputs = [
-  { id = "sway", name = "The obstacles swaying vertically", kind = "video" },
+  { id = "sway", name = "The obstacles swaying vertically", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "obstacles-spin"
@@ -57,7 +57,7 @@ description = "The two obstacles rotate — each spins about its own center as t
 # obstacle's rotation back — upright at the start, then rotating further as time
 # advances. See validation/<engine>/gyre/obstacles-spin.test.ts.
 validation = { script = "gyre/obstacles-spin.test.ts", outputs = [
-  { id = "spin", name = "The obstacles rotating about their centers", kind = "video" },
+  { id = "spin", name = "The obstacles rotating about their centers", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "oriented-bounce"
@@ -68,7 +68,7 @@ description = "The ball bounces off the obstacles' tilted faces at oriented angl
 # returns it straight, proving the bounce tracks orientation. See
 # validation/<engine>/gyre/oriented-bounce.test.ts.
 validation = { script = "gyre/oriented-bounce.test.ts", outputs = [
-  { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "video" },
+  { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "replay" },
 ] }
 
 # Gyre serves toward the receiver exactly as base does, so — like base — it adds the
@@ -83,19 +83,19 @@ id = "serve-initial"
 title = "Initial serve direction"
 description = "The very first serve of a match always travels toward player one."
 validation = { script = "gameplay/serve-initial.test.ts", outputs = [
-  { id = "serve", name = "First serve toward player one", kind = "video" },
+  { id = "serve", name = "First serve toward player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "serve-after-p1"
 title = "Serve after scoring on player one"
 description = "After a point is scored on player one (player two scores), the next serve travels toward player one, the receiver."
 validation = { script = "gameplay/serve-after-p1.test.ts", outputs = [
-  { id = "serve", name = "Serve toward player one after a point on player one", kind = "video" },
+  { id = "serve", name = "Serve toward player one after a point on player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "serve-after-p2"
 title = "Serve after scoring on player two"
 description = "After a point is scored on player two (player one scores), the next serve travels toward player two, the receiver."
 validation = { script = "gameplay/serve-after-p2.test.ts", outputs = [
-  { id = "serve", name = "Serve toward player two after a point on player two", kind = "video" },
+  { id = "serve", name = "Serve toward player two after a point on player two", kind = "replay" },
 ] }

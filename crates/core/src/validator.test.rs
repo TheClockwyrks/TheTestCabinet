@@ -108,6 +108,76 @@ fn validation_media_name_is_flat() {
         validation_media_name("states-complete", "title", MediaKind::Image),
         "states-complete__title.png"
     );
+    // A recording is gzipped JSON, and it is gzipped JSON on both sides: unlike a
+    // clip there is no second format the public snapshot converts it into, so the
+    // name a run serves and the name the gallery publishes are the same one. Both
+    // extensions are in the name, so the document format and its framing are each
+    // readable off the file.
+    assert_eq!(
+        validation_media_name("ball-spin.no-tunnel", "serve", MediaKind::Replay),
+        "ball-spin.no-tunnel__serve.json.gz"
+    );
+    assert_eq!(
+        crate::validator::validation_published_extension(MediaKind::Replay),
+        "json.gz"
+    );
+    // The stored name resolves back to the kind that produced it, which is what the
+    // manifest's proof declarations and the media routes both depend on.
+    assert_eq!(
+        MediaKind::from_path(std::path::Path::new("ball-spin.no-tunnel__serve.json.gz")),
+        Some(MediaKind::Replay),
+    );
+}
+
+#[test]
+fn declared_outputs_are_flattened_out_of_the_directory_they_were_written_to() {
+    // The shared relocation both validation paths use: a producer writes each output
+    // under its own id in a directory of its own, and the run serves them from the
+    // flat `<verdict>__<output>.<ext>` names keyed by the point they back. What was
+    // not written is recorded absent — media is the evidence beside a verdict, not
+    // the verdict.
+    use crate::test_case::ReviewOutput;
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let media = dir.path().join("media");
+    let produced = dir.path().join("produced");
+    std::fs::create_dir_all(&media).expect("media dir");
+    std::fs::create_dir_all(&produced).expect("produced dir");
+    std::fs::write(produced.join("serve.json.gz"), b"\x1f\x8b").expect("the recording");
+    std::fs::write(produced.join("title.png"), b"\x89PNG").expect("the still");
+
+    let outputs = vec![
+        ReviewOutput {
+            id: "serve".to_string(),
+            name: "Serve".to_string(),
+            kind: MediaKind::Replay,
+        },
+        ReviewOutput {
+            id: "title".to_string(),
+            name: "Title".to_string(),
+            kind: MediaKind::Image,
+        },
+        ReviewOutput {
+            id: "rally".to_string(),
+            name: "Rally".to_string(),
+            kind: MediaKind::Video,
+        },
+    ];
+    let collected = crate::validator::relocate_outputs(&outputs, "spin.serve", &media, &produced);
+
+    assert!(collected[0].present, "the recording was written");
+    assert!(collected[1].present, "the still was written");
+    assert!(
+        !collected[2].present,
+        "the clip was never written, which is absence and not failure",
+    );
+    assert!(media.join("spin.serve__serve.json.gz").is_file());
+    assert!(media.join("spin.serve__title.png").is_file());
+    assert!(!media.join("spin.serve__rally.webm").exists());
+    assert!(
+        !produced.join("serve.json.gz").exists(),
+        "the file is moved rather than copied, so the run carries one of each",
+    );
 }
 
 #[test]

@@ -83,10 +83,10 @@ fn print_table(listing: &[EngineManifest]) {
 /// Render the listing as a JSON array of `{ "slug", "name", "description" }`
 /// objects.
 ///
-/// The manifest's remaining fields — the npm package, the `window` handle, the
-/// documentation directory — are how the engine is *delivered*, not how it is
-/// chosen, so they are deliberately left out of a listing whose job is to show
-/// what `--engine` accepts.
+/// The manifest's remaining fields — the npm package and the documentation
+/// directory — are how the engine is *delivered*, not how it is chosen, so they
+/// are deliberately left out of a listing whose job is to show what `--engine`
+/// accepts.
 fn print_json(listing: &[EngineManifest]) {
     let entries: Vec<String> = listing
         .iter()

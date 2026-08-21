@@ -1608,6 +1608,8 @@ fn media_content_type(extension: &str) -> &'static str {
         "webm" => "video/webm",
         "mp4" => "video/mp4",
         "json" => "application/json",
+        // A validator's draw-command recording, published gzipped as it is stored.
+        "gz" => "application/gzip",
         "glb" => "model/gltf-binary",
         "wav" => "audio/wav",
         "mid" | "midi" => "audio/midi",

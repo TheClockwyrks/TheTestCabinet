@@ -70,6 +70,33 @@ own world, which no runtime can know. What they no longer sit beside are `step`,
 `setAutoStep`, `keyDown`, `keyUp` and `press`: the runtime owns the clock and the
 actions, so the build is not asked for them twice.
 
+## A reviewer's evidence is a replay of the build's own drawing
+
+Almost every objective point declares a **replay**, and its validator produces
+it. The runtime — the vendored engine under `simple-2d`, the seeded `src/host.ts`
+under `none` — carries a draw-command recorder: a wrapper over the 2D context that
+logs the operations a frame issued, frame by frame, together with the context
+state each frame inherited. A validator arms it, drives its scenario, disarms it,
+and writes the recording out as JSON. Playing it back re-issues those operations
+against a canvas, so what a reviewer scrubs is the build's own drawing rather than
+a video re-shot from it — and because each frame carries the state it inherited,
+any frame can be drawn without drawing the ones before it, which is what lets a
+build's replay and the reference implementation's be scrubbed side by side in
+step.
+
+The arming is the point. A validator records the section of its scenario the
+point is about and never the arrangement that got there: the paddle contact rather
+than the half-second of approach posed in front of it, the point played out rather
+than the match wound up to a deuce first. A section that runs long is thinned to a
+frame budget rather than cut short, so a rally still reads as a whole rally.
+
+Recording never decides anything. The check's assertions are untouched by it and
+a point fails for exactly the reasons it failed before; a scenario that throws
+still leaves behind what it recorded, because a failing check is the one whose
+replay is worth the most. The handful of points where the thing being judged is a
+single frame — a screen's layout, a color, the fit of the field in its window —
+declare an image instead.
+
 ## Reference mockups and proof captures are retired
 
 This version declares no `[[reference]]` views, no `[[proof]]` artifacts and no
@@ -77,7 +104,9 @@ This version declares no `[[reference]]` views, no `[[proof]]` artifacts and no
 the model's design and graded by a person; the objective points are decided by the
 validators above, which reach the state a check would have had to drive a browser
 into and assert on it directly. Media for a reviewer is captured by the validators
-from a scenario the case controls, rather than requested from the build.
+from a scenario the case controls, rather than requested from the build — as
+replays of the frames the build drew, and as single images where one frame is what
+is being judged.
 
 ## The multi-ball variant is not carried forward
 
@@ -106,5 +135,7 @@ weight or domain was added, removed or renumbered, and the serve-direction point
 moved from the common set onto `base` and `gyre` without changing what either
 variant is worth. `gyre` keeps its own three-point `gyre` category. A score
 recorded against a `v3.0.0` variant is therefore computed against the same
-checklist that variant had before, minus the reference and proof media a reviewer
-used to see beside it.
+checklist that variant had before. What a reviewer sees beside a point has
+changed — the reference mockups and the build's own proof captures are gone, and
+in their place is the replay or the frame the point's own validator captured — but
+what the point is worth, and what decides it, has not.

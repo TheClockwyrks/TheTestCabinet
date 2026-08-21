@@ -16,13 +16,27 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { CUES, FIELD_CY } from "../../src/constants";
 import {
+  LEAD_TICKS,
   arrangePaddleHit,
+  captureReplay,
   createHarness,
   drivePaddleHit,
   startPlaying,
   watchCues,
   type Harness,
 } from "../harness";
+
+/**
+ * Frames of the return flight recorded after the contact.
+ *
+ * `drivePaddleHit` stops on the frame the ball comes off the paddle, which is the
+ * frame the cue must have played on and therefore the frame every reading here
+ * has to be taken at. It is a bad place to stop RECORDING, though: the review
+ * item promises "the paddle hit whose cue is checked", and a hit is the ball
+ * arriving, the contact, and the ball leaving. So the readings stay where they
+ * were and the departing leg is driven after them, inside the same section.
+ */
+const RETURN_TICKS = 90; // 0.75 s
 
 let h: Harness;
 
@@ -36,15 +50,35 @@ afterEach(() => {
 
 it("plays the paddle-hit cue on the frame of the contact", async () => {
   await startPlaying(h, "versus");
-  arrangePaddleHit(h, "left", { cy: FIELD_CY, ballY: FIELD_CY });
+  // Posed with the standard run-up rather than on the paddle's face, so the clip
+  // opens on a ball approaching. The contact is the same one either way: the
+  // struck paddle is still (`vy` defaults to zero, so the lead does not move it),
+  // the lane is clear of both obstacles and of the far paddle, and the ball
+  // arrives at the same point of the same face at the same speed.
+  arrangePaddleHit(h, "left", {
+    cy: FIELD_CY,
+    ballY: FIELD_CY,
+    leadTicks: LEAD_TICKS,
+  });
 
   // Subscribed after the scenario is posed, so what is read is the drive alone.
   const played = watchCues(h);
-  const contact = await drivePaddleHit(h, "left");
-  const frame = h.engine.frame().count;
+  const contact = await captureReplay(h, "hit", async () => {
+    const rebound = await drivePaddleHit(h, "left", { leadTicks: LEAD_TICKS });
+    // Read HERE, on the frame the sweep stopped: the frame number and the cues
+    // that had sounded by then are exactly what the assertions read before the
+    // return flight below was recorded.
+    const measured = {
+      rebound,
+      frame: h.engine.frame().count,
+      cues: [...played],
+    };
+    await h.advance(RETURN_TICKS);
+    return measured;
+  });
 
-  expect(contact.hit).toBe(true);
-  expect(played.map((cue) => cue.cue)).toEqual([CUES.paddleHit]);
-  expect(played[0].frame).toBe(frame);
-  expect(played[0].gain).toBeGreaterThan(0);
+  expect(contact.rebound.hit).toBe(true);
+  expect(contact.cues.map((cue) => cue.cue)).toEqual([CUES.paddleHit]);
+  expect(contact.cues[0].frame).toBe(contact.frame);
+  expect(contact.cues[0].gain).toBeGreaterThan(0);
 });

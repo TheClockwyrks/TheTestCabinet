@@ -58,7 +58,7 @@ description = "The very first serve of a match always travels toward player one.
 # Automated validation: start fresh matches and read the first serve's horizontal
 # direction (toward player one). See validation/<engine>/gameplay/serve-initial.test.ts.
 validation = { script = "gameplay/serve-initial.test.ts", outputs = [
-  { id = "serve", name = "First serve toward player one", kind = "video" },
+  { id = "serve", name = "First serve toward player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "serve-after-p1"
@@ -68,7 +68,7 @@ description = "After a point is scored on player one (player two scores), the ne
 # serve's horizontal direction (toward player one). See
 # validation/<engine>/gameplay/serve-after-p1.test.ts.
 validation = { script = "gameplay/serve-after-p1.test.ts", outputs = [
-  { id = "serve", name = "Serve toward player one after a point on player one", kind = "video" },
+  { id = "serve", name = "Serve toward player one after a point on player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "serve-after-p2"
@@ -78,5 +78,5 @@ description = "After a point is scored on player two (player one scores), the ne
 # serve's horizontal direction (toward player two). See
 # validation/<engine>/gameplay/serve-after-p2.test.ts.
 validation = { script = "gameplay/serve-after-p2.test.ts", outputs = [
-  { id = "serve", name = "Serve toward player two after a point on player two", kind = "video" },
+  { id = "serve", name = "Serve toward player two after a point on player two", kind = "replay" },
 ] }

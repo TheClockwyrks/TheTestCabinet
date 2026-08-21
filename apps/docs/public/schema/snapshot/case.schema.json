@@ -399,9 +399,13 @@
           "description": "The variant's prompt, rendered as a real run receives it, so the public\ngallery's Specifications tab shows the instruction the model was handed.",
           "type": "string"
         },
-        "referenceBuild": {
-          "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), shown on the static gallery's \"Reference\" tab. `null` when\nthe variant declares no `reference_implementation`, or has one that has not\nbeen deployed yet. Written out-of-band by `tcab publish-reference` into the\n`case_reference_build` table and folded in here at export — never resolved\nfrom the manifest and never seeded into a run.",
-          "type": ["string", "null"]
+        "referenceBuilds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "The absolute URLs of this variant's authored **reference implementations** —\nthe correct, deployed static builds (the case-variant analogue of a run's\n`playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was\nbuilt for and shown on the static gallery's \"Reference\" tab, which lets a\nreader switch between them. Empty when the variant declares no\n`reference_implementation`, or has one that has not been deployed yet. Written\nout-of-band by `tcab publish-reference` into the `case_reference_build` table\nand folded in here at export — never resolved from the manifest and never\nseeded into a run.",
+          "type": "object"
         },
         "referenceSheet": {
           "anyOf": [
@@ -412,7 +416,7 @@
               "type": "null"
             }
           ],
-          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_build`], shown on the static gallery's \"Reference\" tab.\n`null` when the variant declares no `reference_implementation`, or has one that\nhas not been published yet.\n\nAn asset case's reference is a `draw.sh` script whose output is a set of\nrendered frames, so what is exported is which frames the snapshot bucket holds.\nOnly the indices travel: every frame's object key is derivable from the case\ntriple plus its index (`media/references/<slug>/<version>/<variant>/frames/<index>.png`,\nsee `test_cabinet_core::asset_reference`), so the site joins them onto its own\nsnapshot base URL rather than being handed absolute URLs it would have to trust.\nWritten out-of-band by `tcab publish-reference` into the bucket, reconciled into\nthe `case_reference_sheet` table at ingest, and folded in here at export — never\nresolved from the manifest and never seeded into a run."
+          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_builds`], shown on the static gallery's \"Reference\" tab.\n`null` when the variant declares no `reference_implementation`, or has one that\nhas not been published yet.\n\nAn asset case's reference is a `draw.sh` script whose output is a set of\nrendered frames, so what is exported is which frames the snapshot bucket holds.\nOnly the indices travel: every frame's object key is derivable from the case\ntriple plus its index (`media/references/<slug>/<version>/<variant>/frames/<index>.png`,\nsee `test_cabinet_core::asset_reference`), so the site joins them onto its own\nsnapshot base URL rather than being handed absolute URLs it would have to trust.\nWritten out-of-band by `tcab publish-reference` into the bucket, reconciled into\nthe `case_reference_sheet` table at ingest, and folded in here at export — never\nresolved from the manifest and never seeded into a run."
         },
         "reviewItems": {
           "description": "Reviewer checklist items additive to the common ones, with their point\nweights, surfaced only when this variant is selected.",

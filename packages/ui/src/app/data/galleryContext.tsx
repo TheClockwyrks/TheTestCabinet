@@ -290,7 +290,9 @@ export interface ValidationMedia {
   id: string;
   /** Human-readable display name, carried through from the declared output. */
   name: string;
-  /** Whether the output is an image or a video clip. */
+  /** Whether the output is a still image, a video clip, or an engine replay — a
+   * recording of the draw commands the build issued, which the console re-draws
+   * onto a canvas of its own rather than playing as a media file. */
   kind: MediaKind;
   /** The model build's captured output (run-scoped), or null when it was not
    * produced/served. */
@@ -1015,7 +1017,7 @@ export function GalleryDataProvider({
         const media: ValidationMedia[] = [];
         // Each debug script's outputs share one flat name, `<verdict>__<outputId>.<ext>`,
         // with the extension fixed by the output's kind — `png` for a still, `webm`
-        // for a clip. The verdict id is the item's own id, or the composite
+        // for a clip, `json.gz` for an engine replay. The verdict id is the item's own id, or the composite
         // `<item>.<sub>` for a per-sub-item driver, so a sub-item's proof is addressed
         // (and grouped) separately from its siblings'. The *actual* media is run-scoped
         // (served like proof media, keyed by run id); the *baseline* media is
@@ -1027,7 +1029,19 @@ export function GalleryDataProvider({
             ? subItemVerdictId(script.itemId, script.subItemId)
             : script.itemId;
           for (const output of script.outputs) {
-            const ext = output.kind === "video" ? "webm" : "png";
+            // A clip is captured as the `.webm` Playwright records natively, a
+            // still as `.png`, and an engine replay as the `.json.gz` the
+            // validator writes: a JSON document stored gzipped, because a format
+            // in which every frame restates the state it inherited is repetitive
+            // by design and compresses to a fraction of itself. It needs no
+            // transcode, so it is served under that one name everywhere and the
+            // player decompresses what it fetched.
+            const ext =
+              output.kind === "video"
+                ? "webm"
+                : output.kind === "replay"
+                  ? "json.gz"
+                  : "png";
             const file = `${verdictId}__${output.id}.${ext}`;
             media.push({
               itemId: script.itemId,

@@ -9,8 +9,8 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../../src/constants";
-import { createHarness, type Harness } from "../harness";
-import { angleDelta, poseObstacles } from "./harness";
+import { captureReplay, createHarness, type Harness } from "../harness";
+import { angleDelta, poseObstacles, type ObstaclePose } from "./harness";
 
 /** The three clock times the obstacles are posed at, in seconds. */
 const TIMES = [0, 0.75, 1.5];
@@ -22,6 +22,20 @@ const TIMES = [0, 0.75, 1.5];
  * little off the exact rate passes and one whose obstacles are static fails.
  */
 const TURN_MIN = OBSTACLE_SPIN_RATE * (TIMES[1]! - TIMES[0]!) * 0.6;
+
+/**
+ * A fine sweep of the same span, posed after every graded sample has been taken.
+ *
+ * `setObstacleClock` poses the clock and HOLDS it there, so the graded samples
+ * are one frame each: a recording of them alone is a jump cut between still
+ * fields, and the review item promises a reviewer the obstacles MOVING. Walking
+ * the same span in small steps gives the clip the motion the check is about.
+ *
+ * It runs strictly after `samples` is complete, so nothing it poses can reach an
+ * assertion — what is graded is the same poses, read at the same clock times, as
+ * before this sweep existed.
+ */
+const SWEEP_FRAMES = 90;
 
 let harness: Harness;
 
@@ -38,8 +52,17 @@ it("rotates both obstacles about their own centers as the clock runs", async () 
   debug.reset();
   debug.startMatch("versus");
 
-  const samples = [];
-  for (const t of TIMES) samples.push(await poseObstacles(harness, t));
+  // Annotated rather than inferred: the pushes happen inside the recorded
+  // section's closure, which is out of the flow the empty literal is widened by.
+  const samples: ObstaclePose[][] = [];
+  await captureReplay(harness, "spin", async () => {
+    for (const t of TIMES) samples.push(await poseObstacles(harness, t));
+
+    const from = TIMES[0]!;
+    const span = TIMES[TIMES.length - 1]! - from;
+    for (let i = 0; i <= SWEEP_FRAMES; i += 1)
+      await poseObstacles(harness, from + (span * i) / SWEEP_FRAMES);
+  });
 
   // The field starts upright, so the motion is visibly a rotation FROM
   // somewhere rather than an arbitrary fixed tilt.

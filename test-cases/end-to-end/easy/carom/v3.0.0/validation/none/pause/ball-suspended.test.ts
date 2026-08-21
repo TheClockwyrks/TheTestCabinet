@@ -12,7 +12,25 @@
 // pixels.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { arrangeLiveBall, createHarness, type Harness } from "../harness";
+import {
+  arrangeLiveBall,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/**
+ * The frames of live flight recorded before the pause, and the frozen ones after
+ * it.
+ *
+ * A ball hanging still is only visibly HANGING beside the flight it was stopped
+ * out of; a recording of the paused stretch alone is indistinguishable from a
+ * ball that was never moving. The flight was always driven — arming the recorder
+ * before it rather than after moves nothing about when the pause lands, and the
+ * paused reading is still taken on the frame the key was consumed.
+ */
+const FLIGHT_TICKS = 30; // 0.25 s of visible flight
+const PAUSED_TICKS = 180; // 1.5 s paused — ample for any drift to show
 
 let h: Harness;
 
@@ -28,16 +46,19 @@ it("suspends a ball in flight for as long as the game is paused", async () => {
   await arrangeLiveBall(h, { x: 500, y: 360, vx: 400, vy: -120 });
   const launched = h.snapshot().ball;
 
-  await h.advance(30); // 0.25 s of visible flight
-  await h.tap("Escape");
-  const paused = h.snapshot();
+  const paused = await captureReplay(h, "suspended", async () => {
+    await h.advance(FLIGHT_TICKS);
+    await h.tap("Escape");
+    const at = h.snapshot();
+    await h.advance(PAUSED_TICKS);
+    return at;
+  });
 
   expect(paused.screen).toBe("paused");
   expect(
     Math.hypot(paused.ball.x - launched.x, paused.ball.y - launched.y),
   ).toBeGreaterThan(10);
 
-  await h.advance(180); // 1.5 s paused — ample for any drift to show
   const later = h.snapshot();
 
   expect(later.screen).toBe("paused");

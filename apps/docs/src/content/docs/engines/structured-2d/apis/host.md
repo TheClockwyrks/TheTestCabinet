@@ -19,10 +19,11 @@ carries observation, the overlay switch, and the two render switches alone.
 | `HOST_HANDLE` | `string` | `"__tcabEngine"` |
 | `HOST_VERSION` | `number` | `1` |
 
-`HOST_HANDLE` is the `window` property the interface is installed on. It matches
-the `handle` field of `engines/structured-2d/engine.toml`; the two are one
-contract, and a reader looks the handle up from the engine catalogue rather than
-hard-coding it.
+`HOST_HANDLE` is the `window` property the interface is installed on. The engine
+package is the single source of it, so a reader imports the constant rather than
+hard-coding the name. An engine manifest declares no handle, because a validator
+constructs the engine itself and holds its state, events, and drawing context as
+live values.
 
 `HOST_VERSION` is bumped whenever a member's shape or meaning changes. A reader
 takes it first, and can then report that a build predates the member it wants.

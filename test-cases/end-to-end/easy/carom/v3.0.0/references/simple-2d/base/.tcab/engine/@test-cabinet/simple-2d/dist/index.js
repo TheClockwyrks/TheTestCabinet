@@ -18,8 +18,8 @@
  * - **Assets** — resolution and loading under one fixed root.
  * - **Diagnostics** — an overlay of values the game names, its frame-time graph,
  *   and the key that toggles it.
- * - **The host interface** — `window.__tcabEngine`, installed unconditionally, so a
- *   post-run check can confirm any build of any case identically.
+ * - **Draw-command recording** — an opt-in flight recorder over the drawing context,
+ *   so a scenario a check drove can be replayed as the operations the build issued.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,
@@ -51,8 +51,8 @@ import { WallClock } from "./clocks";
 import { Diagnostics } from "./diagnostics";
 import { EventBus } from "./events";
 import { FrameLoop } from "./frame";
-import { installHost } from "./host";
 import { InputRegistry } from "./input";
+import { ContextRecorder } from "./recording";
 import { applyViewport, domSurface, syncCanvas } from "./viewport";
 /**
  * The key that toggles the debug overlay.
@@ -64,18 +64,6 @@ import { applyViewport, domSurface, syncCanvas } from "./viewport";
  * the engine keeps its chrome out of it.
  */
 const OVERLAY_TOGGLE_CODE = "Backquote";
-/**
- * Where the host interface is published.
- *
- * The canvas's *own* window rather than the ambient one: a game rendered inside an
- * iframe — a run's preview pane — must publish where a driver holding that frame
- * looks, and a canvas from a native implementation has no document at all, in which
- * case the process's global object is the only window there is.
- */
-function hostTarget(canvas) {
-    const owner = canvas.ownerDocument;
-    return (owner?.defaultView ?? globalThis);
-}
 /**
  * One audio context, built at most once, shared by whoever asks first.
  *
@@ -109,8 +97,8 @@ function isDesignSize(size) {
  * parts together.
  *
  * Synchronous, and it runs no game code: it validates its arguments, builds the
- * subsystems, attaches the engine's own listeners, and publishes the host
- * interface. The game's `initialize` runs from {@link Engine.initialize} and the
+ * subsystems, and attaches the engine's own listeners. The game's `initialize`
+ * runs from {@link Engine.initialize} and the
  * first frame from {@link Engine.run} or {@link Engine.advance}, so an engine
  * exists — subscribable, with its clock replaceable — before anything the game
  * does is observable.
@@ -145,10 +133,18 @@ export function createEngine(options) {
     if (!isDesignSize(width) || !isDesignSize(height)) {
         throw new Error(`createEngine needs a finite, positive logical design size, got ${width}x${height}`);
     }
-    const ctx = canvas.getContext("2d");
-    if (ctx === null) {
+    const rawCtx = canvas.getContext("2d");
+    if (rawCtx === null) {
         throw new Error("createEngine could not get a 2D context from the canvas; the engine renders through it");
     }
+    // Everything drawn as part of a frame goes through the recorder's wrapper: the
+    // engine's own frame preparation as well as the game's render, because the clear
+    // and the viewport transform are part of the picture a replay has to reproduce.
+    // The wrapper is built once and never swapped, so a game that holds on to the
+    // context it was handed on its first frame keeps drawing through the same object
+    // the recorder watches.
+    const recorder = new ContextRecorder(rawCtx);
+    const ctx = recorder.context;
     // Read once and held: the surface is the engine's only window onto the element,
     // and re-deriving it per frame would let a build be measured through one object
     // and listened to through another.
@@ -321,6 +317,10 @@ export function createEngine(options) {
      */
     const callbacks = {
         update: (dt) => {
+            // The frame opens before `prepare`, so the clear and the viewport transform
+            // are recorded as part of it and a replayed frame starts from the same blank
+            // page the original did.
+            recorder.beginFrame();
             prepare();
             game.update(frameState(), updateApi, dt);
         },
@@ -328,12 +328,18 @@ export function createEngine(options) {
         // over, so the argument is left unnamed rather than shadowing it.
         render: () => {
             game.render(frameState(), renderApi);
+            // Closed here rather than in the loop's after-frame hook, so the diagnostics
+            // overlay drawn there stays out of the recording: the overlay is chrome laid
+            // over the finished picture, and baking a debug panel into a reviewer's
+            // evidence would misreport what the build drew.
+            const info = loop.info();
+            recorder.endFrame({ count: info.count, timeMs: info.timeMs, deltaMs: info.lastDeltaMs }, { width: canvas.width, height: canvas.height });
         },
     };
     const loop = new FrameLoop({
         clock: options.clock ?? new WallClock(),
         callbacks,
-        context: () => ctx,
+        context: () => rawCtx,
     });
     // Late-wired, because the overlay and the loop each need the other: the loop's
     // frames are what there is to time, and the overlay is what reports the timing.
@@ -345,8 +351,8 @@ export function createEngine(options) {
         // Identity transform: the overlay is chrome laid over the finished picture, not
         // part of it, so it is measured and drawn in device pixels rather than being
         // scaled — and letterboxed — along with the game's own coordinates.
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        diagnostics.draw(ctx, canvas.width, canvas.height);
+        rawCtx.setTransform(1, 0, 0, 1, 0, 0);
+        diagnostics.draw(rawCtx, canvas.width, canvas.height);
         // Last, so an edge armed during this frame was available to the game's update
         // and is gone before the next one: a press is news for exactly one frame.
         input.endFrame();
@@ -376,11 +382,6 @@ export function createEngine(options) {
     };
     target.addEventListener("pointerdown", unlockAudio, true);
     target.addEventListener("keydown", unlockAudio, true);
-    const uninstallHost = installHost({
-        target: hostTarget(canvas),
-        frame: loop,
-        diagnostics,
-    });
     return {
         events: bus,
         get state() {
@@ -458,8 +459,47 @@ export function createEngine(options) {
         },
         frame: () => loop.info(),
         viewport: snapshot,
+        recording: () => recorder.active,
         /**
-         * Halt the loop, drop every listener, and unpublish the host interface.
+         * Arm the recorder, so the frames from here on are captured.
+         *
+         * Capture begins at the next frame rather than part-way through the current
+         * one. A recorder armed from inside an `update` would otherwise open a frame
+         * whose clear and viewport transform had already happened, and replaying that
+         * frame would draw the game's own operations onto whatever the player's canvas
+         * already held.
+         *
+         * A second call while already recording is refused rather than silently
+         * discarding what has been captured: the mistake is always an unbalanced
+         * `stopRecording`, and a caller told about it loses nothing, while a caller
+         * handed an empty recording has lost the frames its check was about.
+         */
+        startRecording() {
+            if (recorder.active) {
+                throw new Error("engine.startRecording() was called while already recording: call engine.stopRecording() first");
+            }
+            recorder.start({
+                width,
+                height,
+                background: options.background ?? null,
+            });
+        },
+        /**
+         * Disarm the recorder and hand back what it captured.
+         *
+         * Refuses when nothing is being recorded, for the same reason `startRecording`
+         * refuses a second arming: an empty recording returned from an unbalanced call
+         * reads as "the build drew nothing", which is a claim about the build rather
+         * than about the caller.
+         */
+        stopRecording() {
+            if (!recorder.active) {
+                throw new Error("engine.stopRecording() was called while not recording: call engine.startRecording() first");
+            }
+            return recorder.stop();
+        },
+        /**
+         * Halt the loop and drop every listener.
          *
          * Idempotent, because teardown races: a page unload, an explicit call, and a
          * test's `afterEach` all reach here, and only the first one has anything to do.
@@ -477,12 +517,12 @@ export function createEngine(options) {
             input.detach();
             target.removeEventListener("keydown", onOverlayKey);
             removeUnlockListeners();
-            uninstallHost();
             bus.clear();
         },
     };
 }
 export { ConstantClock, JitterClock, PacedClock, SequenceClock, WallClock } from "./clocks";
 export { TOUCH_LAYOUTS } from "./layouts";
+export { RECORDING_FORMAT } from "./recording";
 export { applyViewport, fitViewport, syncCanvas } from "./viewport";
 //# sourceMappingURL=index.js.map

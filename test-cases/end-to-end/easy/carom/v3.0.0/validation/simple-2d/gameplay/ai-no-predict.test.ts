@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CX, FIELD_CY } from "../../src/constants";
 import {
   arrangeAiScenario,
+  captureReplay,
   createHarness,
   driveAiScenario,
   type Harness,
@@ -19,6 +20,18 @@ const SCENARIO = {
   paddleCy: FIELD_CY,
   ball: { x: FIELD_CX, y: FIELD_CY, vx: 520, vy: -820 },
 };
+
+/**
+ * Frames recorded after the shot resolves.
+ *
+ * `driveAiScenario` returns on the instant the outcome is decided — the frame the
+ * ball comes back off the AI paddle, or the frame the score changes — which is
+ * exactly where the verdict has to be read. It is the wrong place to stop
+ * RECORDING: a block is only legible once the return is under way, and a point is
+ * only legible once the scoreboard has turned over. Half a second of what follows
+ * is what turns the clip from an approach into an outcome.
+ */
+const AFTERMATH_TICKS = 60; // 0.5 s
 
 let harness: Harness;
 
@@ -33,7 +46,11 @@ afterEach(() => {
 it("is beaten by a shot that banks off a wall on its way in", async () => {
   await arrangeAiScenario(harness, SCENARIO);
 
-  const { result } = await driveAiScenario(harness);
+  const { result } = await captureReplay(harness, "scored", async () => {
+    const outcome = await driveAiScenario(harness);
+    await harness.advance(AFTERMATH_TICKS);
+    return outcome;
+  });
 
   expect(result).toBe("scored");
 });

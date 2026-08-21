@@ -20,7 +20,7 @@ use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
     JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
-    ReviewItem, ReviewValidation, TestCaseVersion, TestType, Variant,
+    ReviewItem, ReviewOutput, ReviewValidation, TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
     Assertion, AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult,
@@ -685,7 +685,7 @@ pub fn drive_scripted_items(
 
         // Relocate the captured media to their stable, addressable flat names (keyed by
         // the verdict id) and record whether each declared output was produced.
-        let outputs = relocate_outputs(validation, &unit.verdict_id, media_dir, &tmp);
+        let outputs = relocate_outputs(&validation.outputs, &unit.verdict_id, media_dir, &tmp);
         let _ = std::fs::remove_dir_all(&tmp);
 
         results.push(ScriptedItemDrive {
@@ -752,15 +752,28 @@ fn media_kind_tag(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "image",
         MediaKind::Video => "video",
+        MediaKind::Replay => "replay",
     }
 }
 
 /// The file extension a synthesized output is captured under, by kind: a still is a
-/// PNG, a clip is the `.webm` Playwright records natively.
+/// PNG, a clip is the `.webm` Playwright records natively, and a draw-command
+/// recording is the gzipped JSON document the engine's recorder hands back.
+///
+/// A recording is stored compressed because its format is deliberately repetitive.
+/// Every frame restates the drawing state it inherited so that any frame can be
+/// drawn without drawing the frames before it, and consecutive frames of a game
+/// issue very nearly the same operations as each other. That redundancy is what
+/// makes seeking and side-by-side scrubbing work at all, and it is also exactly
+/// what gzip removes: a real capture stores tens of times smaller, which is the
+/// difference between a run whose recordings are tens of megabytes and one whose
+/// recordings are a few. The name carries both extensions, so what the bytes
+/// are and how they are framed are each readable off the file.
 pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "png",
         MediaKind::Video => "webm",
+        MediaKind::Replay => "json.gz",
     }
 }
 
@@ -774,11 +787,14 @@ pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
 /// snapshot builder transcodes it to H.264 `.mp4` so the public gallery plays on every
 /// browser (webm/VP8 does not on iOS/Safari) — exactly as a video proof is published
 /// (see [`crate::proof_published_extension`]). A still publishes as its captured PNG
-/// unchanged.
+/// unchanged, and so does a recording: a `.json.gz` document is decompressed and
+/// drawn by the console's own player, so there is no format the gallery would need
+/// it converted into and no reason to publish it any larger than it is stored.
 pub fn validation_published_extension(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "png",
         MediaKind::Video => "mp4",
+        MediaKind::Replay => "json.gz",
     }
 }
 
@@ -801,16 +817,26 @@ pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind)
     format!("{verdict_id}__{output_id}.{ext}")
 }
 
-/// Move each declared output's captured file from a drive's temp directory to its
-/// stable flat name under `media_dir`, returning the per-output presence record.
-fn relocate_outputs(
-    validation: &ReviewValidation,
+/// Move each declared output's produced file from `tmp` to its stable flat name
+/// under `media_dir`, returning the per-output presence record.
+///
+/// `tmp` is wherever the producer was told to write, named by output id and
+/// nothing else: the temp directory a browser drive captures into, or the
+/// per-suite directory a [vitest validator](crate::vitest_validator) writes its
+/// recordings to. Both arrive here because the destination is the same in both
+/// cases — a name keyed by the verdict the media backs, flat enough to route
+/// through the one-segment media endpoints.
+///
+/// A file that is not there is recorded absent rather than treated as a failure.
+/// Media is the evidence beside a verdict, not the verdict: what decides the point
+/// is the drive's own outcome, or the suite's assertions.
+pub(crate) fn relocate_outputs(
+    outputs: &[ReviewOutput],
     verdict_id: &str,
     media_dir: &Path,
     tmp: &Path,
 ) -> Vec<ScriptedOutput> {
-    validation
-        .outputs
+    outputs
         .iter()
         .map(|output| {
             let ext = validation_output_extension(output.kind);

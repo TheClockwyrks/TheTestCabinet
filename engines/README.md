@@ -39,7 +39,6 @@ Each `engine.toml` declares:
 | `name` | Human-readable name, shown by `tcab engines`. |
 | `description` | What the runtime provides, for display. |
 | `package` | Optional npm package providing the runtime. Absent for an engine that vendors no runtime. |
-| `handle` | Optional `window` property the host interface is installed on. |
 | `docs` | Optional directory inside the package holding the documentation seeded into the run workspace. |
 
 ## The runtime

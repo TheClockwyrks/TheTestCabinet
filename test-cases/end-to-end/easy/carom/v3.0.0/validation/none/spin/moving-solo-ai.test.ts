@@ -17,6 +17,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { SPIN_FROM_PADDLE } from "../../src/constants";
 import {
   arrangeAiMovingHit,
+  captureReplay,
   createHarness,
   drivePaddleHit,
   type Harness,
@@ -27,6 +28,22 @@ const MOVING_FLOOR = 100;
 /** The old browser suite's margin: a quarter of the expected spin, or 50 px/s². */
 const RELATIVE_TOLERANCE = 0.25;
 const ABSOLUTE_TOLERANCE = 50;
+
+/**
+ * Frames of the return flight recorded after the contact.
+ *
+ * `drivePaddleHit` stops on the frame the ball comes off the paddle, because that
+ * is the instant the reading has to be taken at — a frame later and spin has
+ * already begun to curve the flight this check is about. That makes it a bad
+ * place to stop RECORDING: the clip would end on the contact and a reviewer would
+ * never see the shot it produced.
+ *
+ * So the reading stays exactly where it was and the flight is driven after it,
+ * inside the same recorded section. Three quarters of a second is long enough for
+ * a curve to be a curve and a straight return to be visibly straight, and short
+ * enough that the ball is still on the field at the end of it.
+ */
+const RETURN_TICKS = 90; // 0.75 s
 
 let harness: Harness;
 
@@ -41,7 +58,11 @@ afterEach(() => {
 it("imparts spin tracking the AI paddle's own speed", async () => {
   await arrangeAiMovingHit(harness);
 
-  const contact = await drivePaddleHit(harness, "right");
+  const contact = await captureReplay(harness, "curve", async () => {
+    const rebound = await drivePaddleHit(harness, "right");
+    await harness.advance(RETURN_TICKS);
+    return rebound;
+  });
 
   expect(contact.hit).toBe(true);
   expect(contact.paddle.vy).toBeGreaterThan(MOVING_FLOOR);

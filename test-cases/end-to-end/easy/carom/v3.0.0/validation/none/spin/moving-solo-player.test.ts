@@ -15,6 +15,7 @@ import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
 import {
   LEAD_TICKS,
   arrangePaddleHit,
+  captureReplay,
   createHarness,
   drivePaddleHit,
   startPlaying,
@@ -24,6 +25,22 @@ import {
 const CONTACT_CY = 480;
 const CONTACT_BALL_Y = 500;
 const SPIN_FLOOR = PADDLE_SPEED * SPIN_FROM_PADDLE * 0.65;
+
+/**
+ * Frames of the return flight recorded after the contact.
+ *
+ * `drivePaddleHit` stops on the frame the ball comes off the paddle, because that
+ * is the instant the reading has to be taken at — a frame later and spin has
+ * already begun to curve the flight this check is about. That makes it a bad
+ * place to stop RECORDING: the clip would end on the contact and a reviewer would
+ * never see the shot it produced.
+ *
+ * So the reading stays exactly where it was and the flight is driven after it,
+ * inside the same recorded section. Three quarters of a second is long enough for
+ * a curve to be a curve and a straight return to be visibly straight, and short
+ * enough that the ball is still on the field at the end of it.
+ */
+const RETURN_TICKS = 90; // 0.75 s
 
 let harness: Harness;
 
@@ -44,8 +61,12 @@ it("curves the ball off a downward swing of the human paddle", async () => {
     leadTicks: LEAD_TICKS,
   });
 
-  const contact = await drivePaddleHit(harness, "left", {
-    leadTicks: LEAD_TICKS,
+  const contact = await captureReplay(harness, "curve", async () => {
+    const rebound = await drivePaddleHit(harness, "left", {
+      leadTicks: LEAD_TICKS,
+    });
+    await harness.advance(RETURN_TICKS);
+    return rebound;
   });
 
   expect(contact.hit).toBe(true);

@@ -134,11 +134,6 @@ One line per source, formatted `` `${name}: ${value}` ``.
 | `object`, array | `JSON.stringify(value)`, falling back to `String(value)` when it throws or yields `undefined`. |
 | Any other type | `String(value)`. |
 
-## Host operations
-
-A build's overlay is reached from outside through the host interface, specified
-in [the host API](/engines/simple-2d/apis/host/).
-
 ## Exports
 
 `FrameMetrics` is exported as a type from `@test-cabinet/simple-2d`.

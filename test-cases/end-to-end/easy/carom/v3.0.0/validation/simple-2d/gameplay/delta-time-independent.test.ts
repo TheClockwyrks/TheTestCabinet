@@ -36,9 +36,11 @@ import type { CaromSnapshot } from "../../src/debug";
 import {
   PARKED_CY,
   TICK_MS,
+  captureReplay,
   createHarness,
   startPlaying,
   type Harness,
+  type UntilResult,
 } from "../harness";
 
 /**
@@ -59,13 +61,21 @@ import {
  * chaos: a 40 ms step would move the ball far enough between frames to start
  * deciding which side of an obstacle it passes, which says nothing about a build.
  */
-const SCHEDULES: { name: string; clock: () => Clock }[] = [
+const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
   { name: "a steady step", clock: () => new ConstantClock(TICK_MS) },
   {
     name: "an uneven repeating step",
     clock: () => new SequenceClock([2, 8, 3, 5]),
   },
-  { name: "a seeded jitter", clock: () => new JitterClock(10, 16, 20250819) },
+  // The recorded drive is the jittered one, and only it: the three differ solely
+  // in their clocks, so three recordings under the one declared output would
+  // leave whichever happened to run last, and the point this evidence is for is
+  // that the scenario plays out the same way under a clock that is not steady.
+  {
+    name: "a seeded jitter",
+    clock: () => new JitterClock(10, 16, 20250819),
+    replay: "drive",
+  },
 ];
 
 /**
@@ -141,8 +151,13 @@ afterEach(() => {
   while (live.length > 0) live.pop()?.dispose();
 });
 
-/** Pose the scenario on a fresh runtime driven by `clock`, and play it out. */
-async function driveOnce(clock: Clock): Promise<Outcome> {
+/**
+ * Pose the scenario on a fresh runtime driven by `clock`, and play it out.
+ *
+ * `replay` names the review item's output when this is the drive whose frames are
+ * kept as evidence, and is absent for the drives that are only compared against.
+ */
+async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
   const harness = await createHarness({ clock });
   live.push(harness);
 
@@ -162,32 +177,39 @@ async function driveOnce(clock: Clock): Promise<Outcome> {
   let lastInFlight = opening.ball;
   let scorer: "p1" | "p2" | null = null;
 
-  const swept = await harness.until(
-    (s) => {
-      // The score is read first: the sample carrying the point is also the one
-      // where the ball has been taken back to the centre for the next serve, so
-      // the flight is described from the sample before it.
-      if (s.score.p1 > startScore.p1) {
-        scorer = "p1";
-        return true;
-      }
-      if (s.score.p2 > startScore.p2) {
-        scorer = "p2";
-        return true;
-      }
-      // The ball is posed travelling left, so travelling right means the left
-      // paddle sent it back.
-      if (s.ball.vx > 0) contacted = true;
-      const sign = Math.sign(s.ball.vy);
-      if (sign !== 0) {
-        if (verticalSign !== 0 && sign !== verticalSign) banked = true;
-        verticalSign = sign;
-      }
-      lastInFlight = s.ball;
-      return false;
-    },
-    { maxFrames: MAX_FRAMES, poll: POLL_FRAMES },
-  );
+  /** The drive itself, so the recorded section is exactly this and no more. */
+  const play = (): Promise<UntilResult> =>
+    harness.until(
+      (s) => {
+        // The score is read first: the sample carrying the point is also the one
+        // where the ball has been taken back to the centre for the next serve,
+        // so the flight is described from the sample before it.
+        if (s.score.p1 > startScore.p1) {
+          scorer = "p1";
+          return true;
+        }
+        if (s.score.p2 > startScore.p2) {
+          scorer = "p2";
+          return true;
+        }
+        // The ball is posed travelling left, so travelling right means the left
+        // paddle sent it back.
+        if (s.ball.vx > 0) contacted = true;
+        const sign = Math.sign(s.ball.vy);
+        if (sign !== 0) {
+          if (verticalSign !== 0 && sign !== verticalSign) banked = true;
+          verticalSign = sign;
+        }
+        lastInFlight = s.ball;
+        return false;
+      },
+      { maxFrames: MAX_FRAMES, poll: POLL_FRAMES },
+    );
+
+  const swept =
+    replay === undefined
+      ? await play()
+      : await captureReplay(harness, replay, play);
 
   return {
     contacted,
@@ -205,7 +227,7 @@ it("reaches the same outcome however the elapsed time is divided into frames", a
   // process to itself and a failure names one schedule.
   const drives: Outcome[] = [];
   for (const schedule of SCHEDULES)
-    drives.push(await driveOnce(schedule.clock()));
+    drives.push(await driveOnce(schedule.clock(), schedule.replay));
   const [reference, ...compared] = drives;
 
   // The comparison is only worth making if the reference drive did what the

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { SPEED_CAP } from "../../src/constants";
 import {
   arrangeRally,
+  captureReplay,
   createHarness,
   driveRallySpeeds,
   type Harness,
@@ -32,7 +33,9 @@ afterEach(() => {
 it("plateaus at the speed ceiling and never exceeds it", async () => {
   await arrangeRally(harness);
 
-  const speeds = await driveRallySpeeds(harness);
+  const speeds = await captureReplay(harness, "ceiling", () =>
+    driveRallySpeeds(harness),
+  );
 
   expect(speeds.length).toBeGreaterThanOrEqual(MIN_HITS);
   expect(Math.max(...speeds)).toBeLessThanOrEqual(

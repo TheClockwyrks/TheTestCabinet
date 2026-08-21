@@ -16,12 +16,27 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   TICK_HZ,
   arrangeLiveBall,
+  captureReplay,
   createHarness,
   type Harness,
 } from "../harness";
 
 /** Frames run after the resume key, the resuming frame included. */
 const RESUMED_TICKS = 24;
+
+/** How long the ball is left hanging before it is resumed. */
+const FROZEN_TICKS = 120; // 1 s
+
+/**
+ * How much of the freeze is recorded, out of the whole of it.
+ *
+ * A recording that opened on the resume key would show a ball moving and nothing
+ * to tell a reviewer it had ever stopped — the review item promises "the ball
+ * resuming from where it was paused", and the "from where it was paused" half is
+ * the still frames in front of it. The freeze still lasts exactly `FROZEN_TICKS`;
+ * the split is only where the recorder is armed.
+ */
+const HANGING_TICKS = 48; // 0.4 s
 
 /** Float slop, in logical px. The window itself is a whole frame of travel. */
 const SLOP = 0.5;
@@ -44,13 +59,20 @@ it("resumes the ball from its paused position at its preserved velocity", async 
   const paused = h.snapshot();
   expect(paused.screen).toBe("paused");
 
-  await h.advance(120); // 1 s frozen
-  const held = h.snapshot();
+  await h.advance(FROZEN_TICKS - HANGING_TICKS);
+
+  const held = await captureReplay(h, "continues", async () => {
+    await h.advance(HANGING_TICKS);
+    // The end of the freeze, read on exactly the frame it was read on before.
+    const still = h.snapshot();
+
+    await h.tap("Escape"); // resume, which is itself one frame
+    await h.advance(RESUMED_TICKS - 1);
+    return still;
+  });
   expect(held.ball.x).toBeCloseTo(paused.ball.x, 1);
   expect(held.ball.y).toBeCloseTo(paused.ball.y, 1);
 
-  await h.tap("Escape"); // resume, which is itself one frame
-  await h.advance(RESUMED_TICKS - 1);
   const resumed = h.snapshot();
 
   expect(resumed.screen).toBe("playing");

@@ -31,9 +31,11 @@ This contract governs a run with no [engine](/components/core/engines/) selected
 which is every case's baseline. The build supplies the whole instrumentation
 surface, so the reliability rules below apply in full.
 
-An engine supplies the same control and inspection from its own host interface.
-A run under an engine is driven through that interface, and the case declares only
-the scenario setup that is specific to its game.
+An engine supplies the same control and inspection as engine code. A run under
+an engine is driven by a [validator](/components/core/validation/) that
+constructs the engine itself and holds the build's state, events, and drawing
+context as live values, and the case declares only the scenario setup that is
+specific to its game.
 
 ## The reliability principle
 

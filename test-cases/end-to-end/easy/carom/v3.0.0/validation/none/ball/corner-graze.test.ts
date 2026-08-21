@@ -24,6 +24,7 @@ import {
   SERVE_SPEED,
 } from "../../src/constants";
 import {
+  captureReplay,
   clearPaddles,
   createHarness,
   startPlaying,
@@ -57,6 +58,18 @@ const GRAZE_MAX = 120;
  * Reading a few frames later sees the contact as the player does — whole.
  */
 const SETTLE = 6;
+/**
+ * Frames of the departing flight recorded after each graze is read.
+ *
+ * The settle above is as long as it can be without blurring what is MEASURED —
+ * it is the shortest wait that sees the contact whole. That leaves the recording
+ * cutting three frames after each bank, so the review item's "three corner
+ * grazes, each banking off a single face" would arrive as three approaches and
+ * three jump cuts. This is the leg that makes each one a bank, driven after the
+ * reading is taken and short enough that the ball is still on the field when the
+ * next graze is posed over it.
+ */
+const DEPARTURE_TICKS = 30; // 0.25 s
 
 interface Graze {
   label: string;
@@ -134,41 +147,49 @@ it("reverses only the component normal to the face it grazed", async () => {
   // land inside it; stated here so a change to either is read against the other.
   expect(INSET).toBeLessThan(BALL_R);
 
-  for (const graze of GRAZES) {
-    const shot = shotFor(graze);
-    clearPaddles(harness);
-    harness.debug.setBall(0, { ...shot, spin: 0 });
+  // All three grazes as one section: each is posed instantaneously and then
+  // played out, so the recording is the three flights back to back.
+  await captureReplay(harness, "graze", async () => {
+    for (const graze of GRAZES) {
+      const shot = shotFor(graze);
+      clearPaddles(harness);
+      harness.debug.setBall(0, { ...shot, spin: 0 });
 
-    const banked = await harness.until(
-      (s) => Math.sign(s.ball.vx) !== Math.sign(shot.vx),
-      { maxFrames: GRAZE_MAX, poll: 1 },
-    );
-    await harness.advance(SETTLE);
-    const out = harness.snapshot().ball;
-
-    // The bank itself. Without this the vertical assertion would pass vacuously
-    // on a build that never reflected the ball at all.
-    expect(banked.hit, `${graze.label}: banks off the face`).toBe(true);
-    expect(Math.sign(out.vx), `${graze.label}: horizontal reversed`).toBe(
-      -Math.sign(shot.vx),
-    );
-
-    // The property under test: the ball leaves still travelling the way it came
-    // vertically. Both components reversed means it went back down its own path.
-    expect(
-      Math.sign(out.vy),
-      `${graze.label}: keeps travelling ${graze.upward ? "up" : "down"}`,
-    ).toBe(Math.sign(shot.vy));
-
-    // And it came off the face rather than through it.
-    if (graze.fromLeft) {
-      expect(out.x, `${graze.label}: stays left of the face`).toBeLessThan(
-        graze.faceX,
+      const banked = await harness.until(
+        (s) => Math.sign(s.ball.vx) !== Math.sign(shot.vx),
+        { maxFrames: GRAZE_MAX, poll: 1 },
       );
-    } else {
-      expect(out.x, `${graze.label}: stays right of the face`).toBeGreaterThan(
-        graze.faceX,
+      await harness.advance(SETTLE);
+      const out = harness.snapshot().ball;
+      // `out` is frozen, so the flight recorded here reaches no assertion below.
+      await harness.advance(DEPARTURE_TICKS);
+
+      // The bank itself. Without this the vertical assertion would pass
+      // vacuously on a build that never reflected the ball at all.
+      expect(banked.hit, `${graze.label}: banks off the face`).toBe(true);
+      expect(Math.sign(out.vx), `${graze.label}: horizontal reversed`).toBe(
+        -Math.sign(shot.vx),
       );
+
+      // The property under test: the ball leaves still travelling the way it
+      // came vertically. Both components reversed means it went back down its
+      // own path.
+      expect(
+        Math.sign(out.vy),
+        `${graze.label}: keeps travelling ${graze.upward ? "up" : "down"}`,
+      ).toBe(Math.sign(shot.vy));
+
+      // And it came off the face rather than through it.
+      if (graze.fromLeft) {
+        expect(out.x, `${graze.label}: stays left of the face`).toBeLessThan(
+          graze.faceX,
+        );
+      } else {
+        expect(
+          out.x,
+          `${graze.label}: stays right of the face`,
+        ).toBeGreaterThan(graze.faceX);
+      }
     }
-  }
+  });
 });

@@ -615,18 +615,20 @@ export type CaseVariantOut = {
    */
   domains: Array<CaseDomainOut>;
   /**
-   * The absolute URL of this variant's authored **reference implementation** — the
-   * correct, deployed static build (the case-variant analogue of a run's
-   * `playableBuild`), shown on the static gallery's "Reference" tab. `null` when
-   * the variant declares no `reference_implementation`, or has one that has not
-   * been deployed yet. Written out-of-band by `tcab publish-reference` into the
-   * `case_reference_build` table and folded in here at export — never resolved
-   * from the manifest and never seeded into a run.
+   * The absolute URLs of this variant's authored **reference implementations** —
+   * the correct, deployed static builds (the case-variant analogue of a run's
+   * `playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was
+   * built for and shown on the static gallery's "Reference" tab, which lets a
+   * reader switch between them. Empty when the variant declares no
+   * `reference_implementation`, or has one that has not been deployed yet. Written
+   * out-of-band by `tcab publish-reference` into the `case_reference_build` table
+   * and folded in here at export — never resolved from the manifest and never
+   * seeded into a run.
    */
-  referenceBuild: string | null;
+  referenceBuilds: { [key in string]: string };
   /**
    * This variant's published **reference sheet** — the asset-generation analogue of
-   * [`Self::reference_build`], shown on the static gallery's "Reference" tab.
+   * [`Self::reference_builds`], shown on the static gallery's "Reference" tab.
    * `null` when the variant declares no `reference_implementation`, or has one that
    * has not been published yet.
    *

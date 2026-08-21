@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
 import {
   arrangeGoal,
+  captureReplay,
   createHarness,
   driveGoal,
   startPlaying,
@@ -17,6 +18,17 @@ import {
 
 /** 10-10: the tie one point below the win score, where the deuce rule applies. */
 const TIED_AT = WIN_SCORE - 1;
+
+/**
+ * Frames recorded after the deciding point resolves.
+ *
+ * `driveGoal` returns on the instant the point lands, which is where the reading
+ * has to be taken — but the review item promises "the deciding deuce point", and
+ * what makes a point the deciding one is the match-over screen that follows it.
+ * Half a second of it is enough to read the winner and the final score off the
+ * clip itself.
+ */
+const AFTERMATH_TICKS = 60; // 0.5 s
 
 let harness: Harness;
 
@@ -53,7 +65,13 @@ it("plays on at a one-point lead and ends at two", async () => {
   expect(live.hit).toBe(true);
 
   arrangeGoal(harness, "right");
-  const twoClear = await driveGoal(harness);
+  // The deciding point, and only it: the one before it is the arrangement that
+  // put the match at a one-point lead.
+  const twoClear = await captureReplay(harness, "deuce", async () => {
+    const resolved = await driveGoal(harness);
+    await harness.advance(AFTERMATH_TICKS);
+    return resolved;
+  });
 
   expect(twoClear.hit).toBe(true);
   expect(twoClear.snapshot.screen).toBe("matchover");

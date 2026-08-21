@@ -14,12 +14,28 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { CUES, OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
 import {
   arrangeObstacleBounce,
+  captureReplay,
   createHarness,
   driveObstacleBounce,
   startPlaying,
   watchCues,
   type Harness,
 } from "../harness";
+
+/**
+ * Frames of the departing flight recorded after the bounce.
+ *
+ * The sweep stops on the frame the ball comes off the obstacle, which is also the
+ * frame the cue must have played on — so a recording that ended there would hold
+ * the approach and the contact and nothing of what the contact produced. The
+ * review item promises "the obstacle bounce whose cue is checked", and a bounce a
+ * reviewer can hear placed against is one they can see leave the face.
+ *
+ * Driven after every reading is taken, so nothing recorded here reaches an
+ * assertion: the cue list, the frame number and the sweep's own result are all
+ * frozen at the instant the sweep stopped.
+ */
+const DEPARTURE_TICKS = 60; // 0.5 s
 
 let h: Harness;
 
@@ -40,11 +56,22 @@ it("plays the obstacle-bounce cue on the frame of the bounce", async () => {
   });
 
   const played = watchCues(h);
-  const bounced = await driveObstacleBounce(h, "left");
-  const frame = h.engine.frame().count;
+  const bounce = await captureReplay(h, "bounce", async () => {
+    const bounced = await driveObstacleBounce(h, "left");
+    // Read HERE, on the frame the sweep stopped: the frame number and the cues
+    // that had sounded by then are exactly what the assertions read before the
+    // departing flight below was recorded.
+    const measured = {
+      bounced,
+      frame: h.engine.frame().count,
+      cues: [...played],
+    };
+    await h.advance(DEPARTURE_TICKS);
+    return measured;
+  });
 
-  expect(bounced.hit).toBe(true);
-  expect(played.map((cue) => cue.cue)).toEqual([CUES.obstacleBounce]);
-  expect(played[0].frame).toBe(frame);
-  expect(played[0].gain).toBeGreaterThan(0);
+  expect(bounce.bounced.hit).toBe(true);
+  expect(bounce.cues.map((cue) => cue.cue)).toEqual([CUES.obstacleBounce]);
+  expect(bounce.cues[0].frame).toBe(bounce.frame);
+  expect(bounce.cues[0].gain).toBeGreaterThan(0);
 });

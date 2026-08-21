@@ -149,8 +149,8 @@ const controller = new AbortController();
 await engine.run({ signal: controller.signal });
 ```
 
-`engine.destroy()` halts the loop, detaches every listener, and removes the host
-interface handle. It is idempotent, and it resolves any promise `run` returned.
+`engine.destroy()` halts the loop and detaches every listener. It is idempotent,
+and it resolves any promise `run` returned.
 
 ```ts
 engine.destroy();

@@ -143,8 +143,45 @@ The whole suite run is capped at wall-clock minutes and the output retained per
 suite at kilobytes, so a validator that never terminates costs the run the cap and
 nothing more.
 
-A validator captures no media. Its evidence is the assertions it recorded, so a
-result from an engine-backed run declares no outputs at all.
+### The media a validator produces
+
+A validator captures a recording for each `replay` output its verdict unit
+declares. It arms the engine's draw-command
+[recorder](/components/core/engines/#recording) once its scenario is posed,
+disarms it once the behavior under test has happened, and writes what came back.
+The evidence is therefore the operations the build itself issued over exactly
+the stretch of the scenario the check is about, which nothing outside the suite
+knows the bounds of.
+
+The runner creates the media directory before the suite run starts and names it
+to the suites in an environment variable. Each suite writes its outputs into a
+directory named by its own staged path, so two suites of the same name in
+different directories cannot collide. Once the run returns, the runner moves
+each declared output to the flat name every consumer of validation media
+addresses and records whether it was there.
+
+A recording is stored and served gzipped, as `<verdict>__<output>.json.gz`. The
+format is repetitive by design: every frame restates the drawing state it
+inherited so that any frame can be drawn on its own, which is what seeking and
+side-by-side scrubbing are built on. Compression is what makes that affordable,
+taking a real capture down to a small fraction of its size, so a run's whole set
+of recordings costs a few megabytes. The console decompresses what it fetched and
+reads the same document the recorder produced.
+
+An output that is not there is recorded absent rather than failing anything. The
+assertions decide the point and the media is the evidence beside the verdict, so
+a suite that passed every check while failing to write its recording still
+earns its point, and the reviewer sees that there is nothing to look at. A
+capture that closed no frames is one of these: the file is left unwritten and
+the output reported absent, which is the truthful reading of a section that drew
+nothing. A recording is kept whatever the verdict was: a suite that failed its
+checks is the one whose frames a reviewer most wants.
+
+The baseline half is the same suites driven against the variant's
+`reference_implementation` by
+[`tcab capture-baselines`](/components/cli/overview/#commands), captured once
+and served case-scoped. Every frame of a recording is drawable on its own, so
+the reviewer scrubs the build's recording and the reference's in step.
 
 ## Checks
 

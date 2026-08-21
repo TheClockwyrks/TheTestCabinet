@@ -13,6 +13,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { HOLD_TIME } from "../../src/constants";
 import {
   TICK_HZ,
+  captureReplay,
   createHarness,
   startWithKeys,
   type Harness,
@@ -26,6 +27,15 @@ const HOLD_TICKS = HOLD_TIME * TICK_HZ;
  * hold of the wrong length.
  */
 const TOLERANCE_TICKS = 3;
+/**
+ * Frames of the served flight recorded after the launch.
+ *
+ * The sweep stops on the frame the screen turns over, which is what the hold's
+ * length is measured against and so cannot move. The review item promises "the
+ * pre-serve countdown running out", and a countdown running out ends in a serve —
+ * so the ball leaving is recorded too, after every reading is taken.
+ */
+const FLIGHT_TICKS = 60; // 0.5 s
 
 let harness: Harness;
 
@@ -44,9 +54,15 @@ it("holds the ball for the pre-serve countdown, then serves", async () => {
   expect(start.screen).toBe("countdown");
   expect(start.ball.held).toBe(true);
 
-  const served = await harness.until((s) => s.screen === "playing", {
-    maxFrames: 240,
-    poll: 1,
+  // The hold itself, from the frame after the menu confirm to the launch: the
+  // countdown running out is the whole of what this point is about.
+  const served = await captureReplay(harness, "countdown", async () => {
+    const launched = await harness.until((s) => s.screen === "playing", {
+      maxFrames: 240,
+      poll: 1,
+    });
+    await harness.advance(FLIGHT_TICKS);
+    return launched;
   });
 
   expect(served.hit).toBe(true);

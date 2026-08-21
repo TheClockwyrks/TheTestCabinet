@@ -39,6 +39,33 @@
 //! per-variant checklist is the single declaration of which validators apply, and a
 //! variant-specific suite is skipped by not being named there.
 //!
+//! # The suites produce the media, and the runner collects it
+//!
+//! A browser drive captures its evidence from the outside: the driver screenshots the
+//! page and records the tab, so the runner both asks for the media and takes it. A
+//! validator suite is inside the build instead, holding the engine it is stepping, so
+//! the evidence it can produce is better than a re-shoot — it can arm the engine's
+//! [draw-command recorder](crate::test_case::MediaKind::Replay) around exactly the
+//! stretch of the scenario its check is about and hand back the operations the build
+//! itself issued. Nothing outside the suite knows when that stretch begins.
+//!
+//! So the suite writes and the runner collects. Before vitest starts, the runner
+//! creates the run's media directory and names it to the suites in
+//! [`VALIDATION_MEDIA_ENV`]; a suite writes each output the manifest declares for its
+//! point to `$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output id>.<ext>`. The
+//! per-suite directory is why nothing has to be escaped or flattened: a suite writes
+//! under a path it already knows — its own — and two suites of the same name in
+//! different directories cannot collide. Once vitest returns, the runner moves each
+//! declared output to the flat `<verdict>__<output>.<ext>` name every consumer of
+//! validation media addresses (see
+//! [`validation_media_name`](crate::validator::validation_media_name)) and removes
+//! the scaffolding.
+//!
+//! An output that is not there is recorded absent, never a failure. Media is the
+//! evidence beside a verdict and the assertions are what decide the point, so a suite
+//! that passed every check while failing to write its recording still earns its point
+//! — and the reviewer sees that there is nothing to look at.
+//!
 //! # Bounded by construction
 //!
 //! The whole suite run is capped at [`VITEST_TIMEOUT`] of wall clock and the output
@@ -68,9 +95,11 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 
 use crate::execution::ArtifactCollection;
-use crate::test_case::{TestCaseVersion, Variant};
-use crate::validation::{Assertion, AutoVerdict, DebugScriptResult};
-use crate::validator::{DriveUnit, VALIDATION_SCRIPT_DIR, drive_units};
+use crate::test_case::{ReviewOutput, TestCaseVersion, Variant};
+use crate::validation::{Assertion, AutoVerdict, DebugScriptOutput, DebugScriptResult};
+use crate::validator::{
+    DriveUnit, VALIDATION_MEDIA_DIR, VALIDATION_SCRIPT_DIR, drive_units, relocate_outputs,
+};
 
 /// Wall-clock cap on the whole validator suite run.
 ///
@@ -100,6 +129,19 @@ pub const VITEST_ASSERTION_LIMIT: usize = 1024;
 /// The vitest project file a case's validator directory must declare.
 pub const VITEST_CONFIG_FILE: &str = "vitest.config.ts";
 
+/// The environment variable naming the directory a suite writes its declared media
+/// outputs into: an absolute host path, created before vitest starts.
+///
+/// A suite writes to `$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output
+/// id>.<ext>` — the staged path being the same one this runner hands vitest as a
+/// file filter, so a suite derives it from `import.meta.url` and needs no name of
+/// its own. The runner then flattens what it finds there; see the module docs.
+///
+/// Absolute rather than relative because a vitest project sets its own `root` and a
+/// suite may `process.chdir` for reasons of its own, so a relative path would name
+/// different directories to the runner and to the suite.
+pub const VALIDATION_MEDIA_ENV: &str = "TCAB_VALIDATION_MEDIA_DIR";
+
 /// The local vitest binary a produced tree's install leaves behind.
 const VITEST_BIN: &str = "node_modules/.bin/vitest";
 
@@ -113,10 +155,10 @@ const TRUNCATION_MARKER: &str = " … output truncated … ";
 /// for `engine` over the collected tree.
 ///
 /// Returns one [`DebugScriptResult`] per verdict unit the case declares a validator
-/// for, in declared order, or an empty vec when the case declares none. Every result
-/// carries an empty [`outputs`](DebugScriptResult::outputs) list: a validator captures
-/// no media, and an empty list is the absence of declared outputs rather than a
-/// declared output that went missing.
+/// for, in declared order, or an empty vec when the case declares none. Each result
+/// carries one [`output`](DebugScriptResult::outputs) entry per output the manifest
+/// declares for that point, recording whether the suite actually produced it — so an
+/// empty list means the point declared no media, never that its media went missing.
 pub(crate) fn run_vitest_suites(
     test_case: &TestCaseVersion,
     variant: &Variant,
@@ -131,8 +173,16 @@ pub(crate) fn run_vitest_suites(
     }
     let suites: Vec<Suite> = units.iter().map(|unit| Suite::of(unit, engine)).collect();
     let filters = suite_filters(&suites);
+    let media_dir = artifacts.repo_path.join(VALIDATION_MEDIA_DIR);
 
-    let results = match execute(test_case, engine, artifacts, install_command, &filters) {
+    let mut results = match execute(
+        test_case,
+        engine,
+        artifacts,
+        install_command,
+        &filters,
+        &media_dir,
+    ) {
         Ok(reports) => suites
             .iter()
             .map(|suite| {
@@ -152,6 +202,14 @@ pub(crate) fn run_vitest_suites(
             suites.iter().map(|suite| suite.not_run(&reason)).collect()
         }
     };
+    // Collected after the verdicts and regardless of how the run ended. A suite that
+    // failed its checks is exactly the one whose recording a reviewer wants to look
+    // at, and a run the runner had to abandon may still have suites that wrote their
+    // evidence before it did — so what is on disk is kept either way, and the
+    // per-suite scaffolding never survives into the collected tree.
+    for (result, suite) in results.iter_mut().zip(&suites) {
+        result.outputs = suite.collect_media(&media_dir);
+    }
     tracing::info!(
         engine,
         points = results.len(),
@@ -207,6 +265,11 @@ pub(crate) fn has_project(test_case: &TestCaseVersion, engine: &str) -> bool {
 /// Stage the case's validator project, run vitest over it, and return the parsed
 /// per-file reports.
 ///
+/// `media_dir` is the run's validation media directory: it is created here, before
+/// vitest starts, and named to the suites in [`VALIDATION_MEDIA_ENV`] so each of them
+/// can write the outputs its point declares. The runner collects what they wrote once
+/// this returns.
+///
 /// `Err` is reserved for a failure of the runner itself, which is a fact about the
 /// host or the case rather than about the build, and every suite is reported as not
 /// having run because of it.
@@ -216,6 +279,7 @@ fn execute(
     artifacts: &ArtifactCollection,
     install_command: &str,
     filters: &[String],
+    media_dir: &Path,
 ) -> Result<Vec<SuiteReport>, String> {
     let repo = &artifacts.repo_path;
     let project = project_dir(test_case, engine);
@@ -249,7 +313,23 @@ fn execute(
         .map_err(|err| format!("could not create a scratch directory: {err}"))?;
     let report_path = scratch.path().join("report.json");
     let command = vitest_command(&report_path, filters);
-    let ran = run_bounded(repo, &command, VITEST_TIMEOUT, scratch.path(), "vitest")?;
+    // The directory exists before the first suite loads, so a suite may write into it
+    // without creating anything itself — and the media the run collects is only ever
+    // under a directory this runner chose.
+    std::fs::create_dir_all(media_dir).map_err(|err| {
+        format!(
+            "could not create the validation media directory `{}`: {err}",
+            media_dir.display(),
+        )
+    })?;
+    let ran = run_bounded(
+        repo,
+        &command,
+        VITEST_TIMEOUT,
+        scratch.path(),
+        "vitest",
+        &[(VALIDATION_MEDIA_ENV, absolute(media_dir))],
+    )?;
 
     let json = std::fs::read_to_string(&report_path).map_err(|_| {
         format!(
@@ -340,6 +420,7 @@ fn ensure_dependencies(
         VITEST_INSTALL_TIMEOUT,
         scratch.path(),
         "install",
+        &[],
     )?;
     if ran.code == Some(0) {
         return Ok(());
@@ -388,12 +469,16 @@ fn exit_description(code: Option<i32>) -> String {
 /// more than a pipe buffer holds cannot deadlock the runner while it waits. A command
 /// that outlives the cap is killed and reported as timed out, never as a failure it
 /// earned.
+///
+/// `env` is set on top of the runner's own inherited environment — the one channel the
+/// runner has to a suite it never calls directly.
 fn run_bounded(
     repo: &Path,
     command: &str,
     timeout: Duration,
     scratch: &Path,
     tag: &str,
+    env: &[(&str, String)],
 ) -> Result<Ran, String> {
     let out_path = scratch.join(format!("{tag}.stdout"));
     let err_path = scratch.join(format!("{tag}.stderr"));
@@ -411,6 +496,7 @@ fn run_bounded(
         .env("CI", "1")
         .env("NO_COLOR", "1")
         .env("FORCE_COLOR", "0")
+        .envs(env.iter().map(|(name, value)| (*name, value)))
         // Nothing may prompt: a tool waiting on stdin would otherwise burn the whole
         // cap on a question no one is there to answer.
         .stdin(Stdio::null())
@@ -578,6 +664,9 @@ pub(crate) struct Suite {
     /// The declared validator path, version-folder-relative, for display.
     script_rel: String,
     gates: bool,
+    /// The media outputs the manifest declares for this point, in declared order —
+    /// what the suite is expected to write and what the runner then collects.
+    outputs: Vec<ReviewOutput>,
     /// The test file's path in the collected tree, or `None` when the declared path
     /// does not name a validator of the run's engine.
     file: Option<String>,
@@ -594,6 +683,7 @@ impl Suite {
             category_title: unit.category_title.clone(),
             script_rel: unit.validation.script_rel.clone(),
             gates: unit.gates,
+            outputs: unit.validation.outputs.clone(),
             file: staged_path(&unit.validation.script_rel, engine_slug),
         }
     }
@@ -695,12 +785,92 @@ impl Suite {
             precondition_unmet: false,
             detail: None,
             verdicts: Vec::new(),
-            // A validator captures no media. The empty list is the absence of any
-            // declared output, which the console reads as nothing to show rather than
-            // as a declared output that went missing.
-            outputs: Vec::new(),
+            // Every declared output, recorded absent. That is the honest answer for a
+            // run that never reached the suites at all, and the caller replaces it
+            // with what the suite actually wrote when there was a run to collect
+            // from. An empty list here means the point declares no media.
+            outputs: self.declared_media(),
         }
     }
+
+    /// This suite's declared outputs, each recorded as not produced.
+    fn declared_media(&self) -> Vec<DebugScriptOutput> {
+        self.outputs
+            .iter()
+            .map(|output| DebugScriptOutput {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
+                actual_present: false,
+            })
+            .collect()
+    }
+
+    /// Move whatever the suite wrote for its declared outputs out of its own
+    /// directory under `media_dir` and into the flat names the run serves them
+    /// under, reporting which of them arrived.
+    ///
+    /// The suite wrote to `<media_dir>/<its staged path>/<output id>.<ext>`, which is
+    /// precisely the shape [`relocate_outputs`] already flattens for a browser drive
+    /// — the browser driver's per-drive temp directory is named by output id in the
+    /// same way — so the two paths share one implementation and cannot drift into
+    /// naming a run's media differently.
+    fn collect_media(&self, media_dir: &Path) -> Vec<DebugScriptOutput> {
+        // No staged file is a validator of some other engine: nothing ran, and no
+        // directory was ever named to a suite, so every declared output is absent.
+        let Some(file) = self.file.as_deref() else {
+            return self.declared_media();
+        };
+        let produced = media_dir.join(file);
+        let collected = relocate_outputs(&self.outputs, &self.verdict_id, media_dir, &produced);
+        prune(&produced, media_dir);
+        collected
+            .into_iter()
+            .map(|output| DebugScriptOutput {
+                id: output.id,
+                name: output.name,
+                kind: output.kind,
+                actual_present: output.present,
+            })
+            .collect()
+    }
+}
+
+/// Remove the directory a suite wrote its outputs into, along with every parent it
+/// leaves empty, stopping at `media_dir`.
+///
+/// The nesting is scaffolding: it exists so a suite can be told where to write using
+/// a path it already knows — its own — rather than a flat name it would have to
+/// escape. Once the outputs are relocated it is a second copy of the validator
+/// project's directory shape sitting inside the collected run, so it goes. A parent
+/// that is not empty belongs to a suite that has not been collected yet, and the
+/// walk stops there.
+fn prune(produced: &Path, media_dir: &Path) {
+    if std::fs::remove_dir_all(produced).is_err() {
+        // The suite wrote nothing, so there is nothing above it to have emptied
+        // either.
+        return;
+    }
+    let mut parent = produced.parent();
+    while let Some(dir) = parent {
+        if dir == media_dir || !dir.starts_with(media_dir) || std::fs::remove_dir(dir).is_err() {
+            return;
+        }
+        parent = dir.parent();
+    }
+}
+
+/// `path` as an absolute path, without requiring it to exist.
+///
+/// [`std::path::absolute`] is lexical: it prepends the process's working directory
+/// and normalizes, touching the filesystem only for the working directory itself. A
+/// path it cannot resolve is handed back as it stands, which for a runner whose repo
+/// path is already absolute — every caller's, in practice — is the same string.
+fn absolute(path: &Path) -> String {
+    std::path::absolute(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// The collected tree's path for a validator declared at `script_rel`.

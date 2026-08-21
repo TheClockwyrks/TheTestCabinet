@@ -14,11 +14,23 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { CUES } from "../../src/constants";
 import {
   arrangeGoal,
+  captureReplay,
   createHarness,
   startPlaying,
   watchCues,
   type Harness,
 } from "../harness";
+
+/**
+ * Frames recorded after the point lands.
+ *
+ * The sweep stops on the frame the score changes, which is the frame the cue must
+ * have played on and therefore where every reading has to be taken. A recording
+ * that stopped there would cut on the goal itself: the review item promises "the
+ * scored point whose cue is checked", and what tells a reviewer a point was
+ * scored is the scoreboard turning over and the next countdown opening.
+ */
+const AFTERMATH_TICKS = 60; // 0.5 s
 
 let h: Harness;
 
@@ -35,12 +47,23 @@ it("plays the score cue on the frame the point lands", async () => {
   arrangeGoal(h, "right");
 
   const played = watchCues(h);
-  const scored = await h.until((s) => s.score.p1 > 0, { maxFrames: 360 });
-  const frame = h.engine.frame().count;
+  const point = await captureReplay(h, "score", async () => {
+    const scored = await h.until((s) => s.score.p1 > 0, { maxFrames: 360 });
+    // Read HERE, on the frame the sweep stopped: the frame number and the cues
+    // that had sounded by then are exactly what the assertions read before the
+    // aftermath below was recorded.
+    const measured = {
+      scored,
+      frame: h.engine.frame().count,
+      cues: [...played],
+    };
+    await h.advance(AFTERMATH_TICKS);
+    return measured;
+  });
 
-  expect(scored.hit).toBe(true);
-  expect(scored.snapshot.score).toEqual({ p1: 1, p2: 0 });
-  expect(played.map((cue) => cue.cue)).toEqual([CUES.score]);
-  expect(played[0].frame).toBe(frame);
-  expect(played[0].gain).toBeGreaterThan(0);
+  expect(point.scored.hit).toBe(true);
+  expect(point.scored.snapshot.score).toEqual({ p1: 1, p2: 0 });
+  expect(point.cues.map((cue) => cue.cue)).toEqual([CUES.score]);
+  expect(point.cues[0].frame).toBe(point.frame);
+  expect(point.cues[0].gain).toBeGreaterThan(0);
 });

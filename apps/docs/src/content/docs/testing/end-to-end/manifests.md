@@ -646,15 +646,31 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   test, both required; the optional `assert` records the checks that decide the
   verdict. A debug script is reporter-side and never seeded. Each script may
   drive at most one verdict unit across the whole checklist.
-- `outputs` declares the media the script captures, each an `{ id, name, kind }`
-  where `kind` is `image` for a still or `video` for a clip recorded across the
-  drive. `name` defaults to a humanized `id`. At least one output is required,
-  output ids must be unique within the script, and a script may declare at most
-  one `video` output. Each output is served under the flat name
+- `outputs` declares the media the script captures, each an `{ id, name, kind }`.
+  `name` defaults to a humanized `id`. At least one output is required and output
+  ids must be unique within the script. Each output is served under the flat name
   `<verdict>__<output>.<ext>`, where `<verdict>` is the item's id or the
   composite `<item>.<sub>`. The run-scoped actual media and the case-scoped
   baseline media share that name and are told apart by where they are served
   from.
+
+  | `kind` | Extension | Captured by |
+  | --- | --- | --- |
+  | `image` | `png` | A still the drive screenshots. |
+  | `video` | `mp4` | A clip recorded across the drive. |
+  | `replay` | `json.gz` | The draw-command [recording](/components/core/engines/#recording) a validator takes off the engine. |
+
+  A recording is a JSON document stored gzipped, which both extensions state. The
+  format restates each frame's inherited drawing state so that any frame can be
+  drawn on its own, and that redundancy is what compression removes, taking a real
+  capture down to a small fraction of its size.
+
+  A script may declare at most one `video` output, because a browser drive
+  records one screen capture per script and there is only one of it. That limit
+  does not extend to `replay`: a validator arms and disarms the recorder itself,
+  so one suite may hand back a recording per scenario it walks through and each
+  is a separate output. A `replay` output belongs to a validator, since the
+  recorder is an engine capability a browser drive has no access to.
 - Per run, validation runs the script against the model's build to capture the
   actual media. The baseline is the same script driven against the variant's
   `reference_implementation`, a fixed property of the case version, so it is

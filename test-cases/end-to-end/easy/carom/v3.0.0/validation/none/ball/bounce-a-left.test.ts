@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
 import {
   arrangeObstacleBounce,
+  captureReplay,
   createHarness,
   driveObstacleBounce,
   startPlaying,
@@ -18,6 +19,21 @@ import {
 
 const FACE_X = OBSTACLES[0].x0;
 const LANE_Y = OBSTACLE_CENTERS[0].y;
+
+/**
+ * Frames of the departing flight recorded after the rebound.
+ *
+ * The sweep that drives the bank stops on the frame the ball's horizontal
+ * velocity reverses — the frame of the contact itself. A recording that ended
+ * there would show the ball arriving and nothing more, and the review item
+ * promises a reviewer a BANK: the leg that leaves the face is half of what the
+ * clip is for. Half a second of it is enough to read the outgoing angle off and
+ * short enough that the ball is still on the field at the end.
+ *
+ * These frames are driven AFTER the sweep, inside the same recorded section, so
+ * the rebound the assertions read is still the sweep's own frame.
+ */
+const DEPARTURE_TICKS = 60; // 0.5 s
 
 let harness: Harness;
 
@@ -33,7 +49,11 @@ it("banks the ball off obstacle A's left face", async () => {
   await startPlaying(harness);
   arrangeObstacleBounce(harness, { faceX: FACE_X, y: LANE_Y, from: "left" });
 
-  const bank = await driveObstacleBounce(harness, "left");
+  const bank = await captureReplay(harness, "bank", async () => {
+    const rebound = await driveObstacleBounce(harness, "left");
+    await harness.advance(DEPARTURE_TICKS);
+    return rebound;
+  });
 
   expect(bank.hit).toBe(true);
   expect(bank.snapshot.ball.x).toBeLessThan(FACE_X);

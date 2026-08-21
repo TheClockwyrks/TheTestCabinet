@@ -88,6 +88,23 @@ captures: every screen is left to the model's design, guided by the palette and
 measurements the specs name, and graded by a person. The objective points are
 decided by the validators under `validation/`.
 
+The media a reviewer looks at is produced by those same validators, from
+scenarios the case controls, rather than asked of the build. Most points declare
+a **replay**: the draw-command recording the runtime made while the check drove
+the build, written as JSON and played back by re-issuing the operations against a
+canvas — so what a reviewer scrubs is the build's own drawing rather than a
+re-shoot of it. A suite arms the recorder around the section its point is about
+and disarms it the moment that section ends, so a replay is the contact, the
+point played out, or the paddle held still while paused, and never the
+arrangement that got there. A few points declare a single **image** instead,
+where the thing being judged is one frame: a screen's layout, a color, the fit
+of the field in its window.
+
+Capture never decides anything. A point passes or fails on its assertions, and
+the replay is what a reviewer looks at afterwards to see what the build actually
+drew while it did — including when the check failed, since a failing scenario
+still writes what it recorded.
+
 ## Versioning
 
 This case follows semantic versioning per version folder

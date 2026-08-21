@@ -10,6 +10,7 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import {
   ConstantClock,
+  RECORDING_FORMAT,
   createHost,
   type Clock,
   type Host,
@@ -743,5 +744,128 @@ describe("rendering", () => {
       viewport: () => harness.engine.viewport(),
     });
     expect(JSON.stringify(harness.debug.snapshot())).toBe(before);
+  });
+});
+
+// ---- Draw-command recording ---------------------------------------------
+
+describe("the draw-command recorder", () => {
+  it("captures nothing until it is armed", async () => {
+    await rally(harness, "versus", { x: 400, y: 300, vx: 0, vy: 0 });
+
+    expect(harness.engine.recording()).toBe(false);
+    await harness.engine.advance(3);
+    expect(harness.engine.recording()).toBe(false);
+
+    // Arming captures from the NEXT frame, so the three frames above are gone
+    // for good rather than waiting somewhere to be swept up.
+    harness.engine.startRecording();
+    expect(harness.engine.recording()).toBe(true);
+    await harness.engine.advance(2);
+    const capture = harness.engine.stopRecording();
+
+    expect(harness.engine.recording()).toBe(false);
+    expect(capture.frames).toHaveLength(2);
+  });
+
+  it("states the logical design size and the background it cleared to", async () => {
+    harness.debug.startMatch("versus");
+    harness.engine.startRecording();
+    await harness.engine.advance(1);
+    const capture = harness.engine.stopRecording();
+
+    expect(capture.format).toBe(RECORDING_FORMAT);
+    expect(capture.width).toBe(FIELD_W);
+    expect(capture.height).toBe(FIELD_H);
+    expect(capture.background).toBe(COLOR.bg);
+  });
+
+  it("records the frame's own clear and viewport transform, then the game's drawing", async () => {
+    await rally(harness, "versus", { x: 400, y: 300, vx: 0, vy: 0 });
+    harness.engine.startRecording();
+    await harness.engine.advance(1);
+    const [frame] = harness.engine.stopRecording().frames;
+
+    // The blank page the frame started from, in the order the host laid it down.
+    expect(frame.ops.slice(0, 3)).toEqual([
+      { op: "call", method: "setTransform", args: [1, 0, 0, 1, 0, 0] },
+      { op: "set", property: "fillStyle", value: COLOR.bg },
+      { op: "call", method: "fillRect", args: [0, 0, FIELD_W, FIELD_H] },
+    ]);
+    // And the game's own drawing after it: the ball, where the state put it.
+    const arcs = frame.ops.flatMap((op) =>
+      op.op === "call" && op.method === "arc" ? [op.args] : [],
+    );
+    expect(arcs).toHaveLength(1);
+    expect(arcs[0].slice(0, 3)).toEqual([400, 300, BALL_R]);
+  });
+
+  it("stamps each frame with the counter, the time, and the surface it drew into", async () => {
+    harness.debug.startMatch("versus");
+    const before = harness.engine.frame().count;
+    harness.engine.startRecording();
+    await harness.engine.advance(2);
+    const { frames: captured } = harness.engine.stopRecording();
+
+    expect(captured.map((frame) => frame.count)).toEqual([
+      before + 1,
+      before + 2,
+    ]);
+    expect(captured[1].timeMs - captured[0].timeMs).toBeCloseTo(FRAME_MS, 6);
+    expect(captured[0].deltaMs).toBeCloseTo(FRAME_MS, 6);
+    expect(captured[0].surface).toEqual({ width: FIELD_W, height: FIELD_H });
+  });
+
+  it("carries the state each frame inherited rather than the one it left", async () => {
+    await rally(harness, "versus", { x: 400, y: 300, vx: 0, vy: 0 });
+    harness.engine.startRecording();
+    await harness.engine.advance(2);
+    const [first, second] = harness.engine.stopRecording().frames;
+
+    // The transform is the identity at the top of every frame: the host resets
+    // it before the clear, so a frame replayed on its own starts where it did.
+    expect(first.state.transform).toEqual([1, 0, 0, 1, 0, 0]);
+    expect(second.state.transform).toEqual([1, 0, 0, 1, 0, 0]);
+    // And the inherited style is the previous frame's last word, not this one's
+    // first: the frame goes on to set `fillStyle` to the background immediately.
+    expect(second.state.properties.fillStyle).not.toBe(COLOR.bg);
+  });
+
+  it("keeps the diagnostics overlay out of what it captured", async () => {
+    harness.debug.startMatch("versus");
+
+    /**
+     * How much of a frame's drawing did NOT reach the recording.
+     *
+     * Never zero: the recorder reads the state each frame inherited through the
+     * same context, and this suite's own proxy sees those reads as calls. What
+     * matters is that the figure does not GROW when the overlay is switched on.
+     */
+    const unrecorded = async (): Promise<number> => {
+      harness.calls.length = 0;
+      harness.engine.startRecording();
+      await harness.engine.advance(1);
+      const [frame] = harness.engine.stopRecording().frames;
+      return harness.calls.length - frame.ops.length;
+    };
+
+    const hidden = await unrecorded();
+    harness.tap("Backquote"); // the overlay's own toggle
+    const shown = await unrecorded();
+
+    // The overlay drew, and none of what it drew reached the recording: the same
+    // frame issued strictly more operations against the context than were kept.
+    expect(shown).toBeGreaterThan(hidden);
+  });
+
+  it("refuses an unbalanced arm or disarm", async () => {
+    harness.debug.startMatch("versus");
+
+    expect(() => harness.engine.stopRecording()).toThrow(/not recording/);
+    harness.engine.startRecording();
+    expect(() => harness.engine.startRecording()).toThrow(/already recording/);
+
+    await harness.engine.advance(1);
+    expect(harness.engine.stopRecording().frames).toHaveLength(1);
   });
 });

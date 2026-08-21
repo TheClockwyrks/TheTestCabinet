@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { SPEED_CAP, SPEED_MULT } from "../../src/constants";
 import {
   arrangeRally,
+  captureReplay,
   createHarness,
   driveRallySpeeds,
   type Harness,
@@ -35,7 +36,9 @@ afterEach(() => {
 it("multiplies the ball's speed on every hit below the ceiling", async () => {
   await arrangeRally(harness);
 
-  const speeds = await driveRallySpeeds(harness);
+  const speeds = await captureReplay(harness, "acceleration", () =>
+    driveRallySpeeds(harness),
+  );
 
   expect(speeds.length).toBeGreaterThanOrEqual(MIN_HITS);
 

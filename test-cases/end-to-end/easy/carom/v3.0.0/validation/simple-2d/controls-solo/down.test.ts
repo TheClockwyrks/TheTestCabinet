@@ -20,11 +20,30 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   MOVE_MIN,
+  captureReplay,
   createHarness,
   holdMove,
   startWithKeys,
   type Harness,
 } from "../harness";
+
+/**
+ * Frames recorded either side of the held span.
+ *
+ * The hold itself is short — a third of a second — and on its own it records as a
+ * paddle that was already moving when the clip opened and still moving when it
+ * ended. The two stretches here are what make it read as a control: the paddle at
+ * rest before the key goes down, and the paddle at rest after it comes up.
+ *
+ * The coast was always driven; all that changed is that it is now driven INSIDE
+ * the recorded section, because "and stops on release" is half of what this point
+ * promises a reviewer and it is only legible beside the travel it followed.
+ * Nothing measured moves: `holdMove` takes its own readings across the hold
+ * alone, and the position the coast is checked against is still the one read on
+ * the frame the key came up.
+ */
+const REST_TICKS = 24; // 0.2 s at rest before the key goes down
+const COAST_TICKS = 36; // 0.3 s with nothing held after it comes up
 
 let h: Harness;
 
@@ -40,13 +59,18 @@ it("moves the human's paddle down while ArrowDown is held, and stops on release"
   await startWithKeys(h, "solo");
   expect(["countdown", "playing"]).toContain(h.snapshot().screen);
 
-  const moved = await holdMove(h, "left", "ArrowDown");
-  expect(moved.delta).toBeGreaterThan(MOVE_MIN);
+  const moved = await captureReplay(h, "move", async () => {
+    await h.advance(REST_TICKS);
+    const held = await holdMove(h, "left", "ArrowDown");
 
-  // A paddle is stationary unless a movement action is held
-  // (specs/playfield.md), so releasing the key leaves it exactly where it
-  // stopped rather than coasting on.
-  const stopped = h.snapshot().paddles.left.cy;
-  await h.advance(36);
-  expect(h.snapshot().paddles.left.cy).toBeCloseTo(stopped, 6);
+    // A paddle is stationary unless a movement action is held
+    // (specs/playfield.md), so releasing the key leaves it exactly where it
+    // stopped rather than coasting on.
+    const stopped = h.snapshot().paddles.left.cy;
+    await h.advance(COAST_TICKS);
+    return { ...held, stopped };
+  });
+
+  expect(moved.delta).toBeGreaterThan(MOVE_MIN);
+  expect(h.snapshot().paddles.left.cy).toBeCloseTo(moved.stopped, 6);
 });

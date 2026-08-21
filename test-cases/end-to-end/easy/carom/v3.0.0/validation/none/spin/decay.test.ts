@@ -22,6 +22,7 @@ import {
 import {
   TICK_HZ,
   arrangePaddleHit,
+  captureReplay,
   clearPaddles,
   createHarness,
   drivePaddleHit,
@@ -82,17 +83,21 @@ it("halves the spin every half-life without changing its sign", async () => {
   // this check is watching decay.
   clearPaddles(harness);
 
-  await flyFor(harness, HALF_LIFE_TICKS);
-  const afterOne = harness.snapshot().ball.spin;
+  // The whole decay, both stretches of flight, as one section: the contact that
+  // imparted the spin is the arrangement, and what decays is what follows it.
+  await captureReplay(harness, "decay", async () => {
+    await flyFor(harness, HALF_LIFE_TICKS);
+    const afterOne = harness.snapshot().ball.spin;
 
-  expect(Math.sign(afterOne)).toBe(Math.sign(imparted));
-  expect(Math.abs(afterOne)).toBeGreaterThan(
-    HALF_LIFE_MIN * Math.abs(imparted),
-  );
-  expect(Math.abs(afterOne)).toBeLessThan(HALF_LIFE_MAX * Math.abs(imparted));
+    expect(Math.sign(afterOne)).toBe(Math.sign(imparted));
+    expect(Math.abs(afterOne)).toBeGreaterThan(
+      HALF_LIFE_MIN * Math.abs(imparted),
+    );
+    expect(Math.abs(afterOne)).toBeLessThan(HALF_LIFE_MAX * Math.abs(imparted));
 
-  await flyFor(harness, FURTHER_TICKS);
-  const settled = harness.snapshot().ball.spin;
+    await flyFor(harness, FURTHER_TICKS);
+    const settled = harness.snapshot().ball.spin;
 
-  expect(Math.abs(settled)).toBeLessThan(SETTLED_MAX * Math.abs(imparted));
+    expect(Math.abs(settled)).toBeLessThan(SETTLED_MAX * Math.abs(imparted));
+  });
 });

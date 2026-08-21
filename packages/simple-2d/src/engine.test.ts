@@ -9,8 +9,6 @@ import type {
   SurfaceMetrics,
   UpdateApi,
 } from "./contract";
-import type { EngineHost } from "./host";
-import { HOST_HANDLE, HOST_VERSION } from "./host";
 import { createEngine } from "./index";
 
 /**
@@ -128,12 +126,6 @@ function fakeRaf(): { tick: (t: number) => void; pending: () => number } {
     },
     pending: () => queued.size,
   };
-}
-
-/** The host interface as a driver finds it, or `undefined` when none is installed. */
-function installedHost(): EngineHost | undefined {
-  const view = window as unknown as Record<string, unknown>;
-  return view[HOST_HANDLE] as EngineHost | undefined;
 }
 
 /** The state every game below carries: a record of what its frames were handed. */
@@ -291,17 +283,6 @@ describe("construction", () => {
     await engine.initialize();
 
     expect(seen).toBe("dpad-4-two-buttons");
-  });
-
-  it("publishes the host interface at the documented handle", () => {
-    const { engine } = build();
-
-    const host = installedHost();
-    expect(host?.version).toBe(HOST_VERSION);
-    expect(HOST_HANDLE).toBe("__tcabEngine");
-
-    engine.destroy();
-    expect(installedHost()).toBeUndefined();
   });
 
   it("sizes the canvas and reports the fit before any frame has run", () => {
@@ -875,7 +856,6 @@ describe("destroy", () => {
       engine.destroy();
       engine.destroy();
     }).not.toThrow();
-    expect(installedHost()).toBeUndefined();
   });
 
   it("detaches every listener it attached", async () => {
@@ -924,20 +904,6 @@ describe("destroy", () => {
     expect(cues).toBe(1);
   });
 
-  it("leaves the host handle owned by whichever engine is running", async () => {
-    // The order a page recreating its engine actually uses: build the replacement,
-    // then dispose of the original.
-    const first = build().engine;
-    const second = build().engine;
-    await second.initialize();
-    await second.advance(2);
-
-    expect(installedHost()?.frame().count).toBe(2);
-
-    first.destroy();
-
-    expect(installedHost()?.frame().count).toBe(2);
-  });
 
   it("runs and advances nothing once destroyed, rather than failing a teardown race", async () => {
     const { engine } = build();
@@ -951,39 +917,107 @@ describe("destroy", () => {
   });
 });
 
-describe("the host interface", () => {
-  it("reports the frame counter a post-run check reads", async () => {
+describe("draw-command recording", () => {
+  it("records nothing until it is armed", async () => {
     const { engine } = build({ clock: new ConstantClock(20) });
     await engine.initialize();
-    await engine.advance(3);
+    await engine.advance(2);
 
-    expect(installedHost()?.frame()).toEqual({ count: 3, timeMs: 60, lastDeltaMs: 20 });
+    expect(engine.recording()).toBe(false);
+    engine.startRecording();
+    expect(engine.recording()).toBe(true);
+    expect(engine.stopRecording().frames).toEqual([]);
   });
 
-  it("reads the game's diagnostics whether or not the overlay is visible", async () => {
+  it("captures one frame per advanced frame, with the clock's own deltas", async () => {
+    const { engine } = build({ clock: new ConstantClock(20) });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(3);
+    const recording = engine.stopRecording();
+
+    expect(recording.frames.map((frame) => frame.count)).toEqual([1, 2, 3]);
+    expect(recording.frames.map((frame) => frame.deltaMs)).toEqual([20, 20, 20]);
+    expect(recording.frames.map((frame) => frame.timeMs)).toEqual([20, 40, 60]);
+  });
+
+  it("records the engine's own frame preparation, so a replayed frame starts blank", async () => {
+    const { engine } = build({ clock: new ConstantClock(20), background: "#101018" });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(1);
+    const [frame] = engine.stopRecording().frames;
+
+    // `prepare` resets the transform, paints the background, then applies the
+    // viewport — in that order, before anything the game draws.
+    const names = (frame?.ops ?? []).flatMap((op) => (op.op === "call" ? [op.method] : []));
+    expect(names.slice(0, 2)).toEqual(["setTransform", "fillRect"]);
+  });
+
+  it("records what the game drew", async () => {
     const game = testGame({
-      initialize: (api) => {
-        api.diagnostics.register("score", () => 12);
-        api.diagnostics.register("nested", () => ({ x: 1 }));
+      render: (_state, api) => {
+        api.ctx.fillStyle = "#7fd1ff";
+        api.ctx.fillRect(1, 2, 3, 4);
       },
     });
-    const { engine } = build({ game });
+    const { engine } = build({ game, clock: new ConstantClock(20) });
     await engine.initialize();
+    engine.startRecording();
+    await engine.advance(1);
+    const [frame] = engine.stopRecording().frames;
 
-    expect(installedHost()?.diagnostics()).toEqual({ score: 12, nested: { x: 1 } });
+    expect(frame?.ops).toContainEqual({ op: "set", property: "fillStyle", value: "#7fd1ff" });
+    expect(frame?.ops).toContainEqual({ op: "call", method: "fillRect", args: [1, 2, 3, 4] });
   });
 
-  it("switches the overlay from outside without touching the toggle key", async () => {
+  it("keeps the diagnostics overlay out of the recording", async () => {
     const game = testGame({
       initialize: (api) => api.diagnostics.register("score", () => 7),
     });
-    const { engine, stub } = build({ game });
+    const { engine, stub } = build({ game, clock: new ConstantClock(20) });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(1);
+    const [frame] = engine.stopRecording().frames;
+
+    // The overlay is off by default, so turn it on through the toggle key and
+    // confirm the drawing it produces reaches the canvas and not the recording.
+    const names = (frame?.ops ?? []).flatMap((op) => (op.op === "call" ? [op.method] : []));
+    expect(stub.names()).toContain("setTransform");
+    expect(names).not.toContain("fillText");
+  });
+
+  it("reports the design size and background the engine was built with", async () => {
+    const { engine } = build({ clock: new ConstantClock(20), background: "#101018" });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(1);
+    const recording = engine.stopRecording();
+
+    expect(recording.width).toBe(400);
+    expect(recording.height).toBe(200);
+    expect(recording.background).toBe("#101018");
+  });
+
+  it("records only the frames between arming and disarming", async () => {
+    const { engine } = build({ clock: new ConstantClock(20) });
+    await engine.initialize();
+    await engine.advance(5);
+    engine.startRecording();
+    await engine.advance(2);
+    const recording = engine.stopRecording();
+    await engine.advance(3);
+
+    expect(recording.frames.map((frame) => frame.count)).toEqual([6, 7]);
+  });
+
+  it("refuses an unbalanced call rather than discarding or inventing frames", async () => {
+    const { engine } = build({ clock: new ConstantClock(20) });
     await engine.initialize();
 
-    installedHost()?.setOverlay(true);
-    stub.ops.length = 0;
-    await engine.advance(1);
-
-    expect(stub.names()).toContain("fillText");
+    expect(() => engine.stopRecording()).toThrow(/while not recording/);
+    engine.startRecording();
+    expect(() => engine.startRecording()).toThrow(/while already recording/);
   });
 });

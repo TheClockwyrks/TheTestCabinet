@@ -46,10 +46,9 @@ An engine is a directory under `engines/<slug>/` containing one manifest,
 - `slug`, the stable identifier, matching the directory name;
 - `name` and `description`, shown wherever the catalogue is listed;
 - `package`, the npm package providing the runtime;
-- `handle`, the `window` property the host interface is installed on;
 - `docs`, the directory inside the package holding the engine's documentation.
 
-The last three are declared by an engine that provides a runtime. An engine
+The last two are declared by an engine that provides a runtime. An engine
 without them supplies no runtime, which is what `none` is.
 
 The built-in engines live under `engines/` in the repo, embedded into
@@ -57,8 +56,7 @@ The built-in engines live under `engines/` in the repo, embedded into
 them the same way the CLI does. They are catalogued under
 [Engines](/engines/overview/). The catalogue is closed: a run naming a slug
 outside it is refused rather than resolved from disk, because an engine is a
-staged package, a seeded documentation tree, and a host interface a driver binds
-to.
+staged package and a seeded documentation tree the host has to hold.
 
 An engine that carries a simulation core compiled to WebAssembly ships that
 module prebuilt inside its package, so staging and seeding copy an engine's
@@ -115,16 +113,45 @@ Reading that documentation is part of the work a run measures. An engine
 documents its own contract in the depth a model needs to build against it without
 seeing its source.
 
-## The host interface
+## Validators hold the engine
 
-An engine installs a host interface on the `window` handle its manifest names
-when the game creates the engine. It is engine code, so every build carries it.
-Each engine's own page documents the exact surface it provides.
+A run under an engine decides its objective points with
+[validators](/components/core/validation/) that run in the same process as the
+build they check. A validator imports the engine and the build's own game
+module, constructs the engine over a canvas and a clock of its own, and steps it
+an exact number of frames.
 
-The interface has two readers. A post-run build check loads the built page and
-looks for the handle, which establishes that the page came up and the engine
-started. A person opening a build reads the same handle to inspect the running
-game by hand.
+Everything a check observes is therefore a live value it already holds: the game
+state the build returned, the frame counter and the accumulated simulated time,
+the viewport, the events the engine broadcast, and the drawing context the game
+rendered through. A build publishes nothing for a check to find, so there is no
+surface a build could fail to install.
+
+## Recording
+
+An engine records the drawing commands a build issues, as an opt-in capture its
+owner arms and disarms. A recording is the operations themselves, frame by
+frame, so replaying it against a fresh drawing surface reproduces the picture
+the build drew.
+
+Each frame carries the drawing state it inherited alongside its own operations,
+which makes every frame drawable on its own. A player seeks to any frame without
+replaying the frames before it, and two recordings of the same scenario are
+scrubbed in step. Each engine's own page documents the exact format it writes
+and the version a player checks before drawing anything.
+
+Recording is bracketed by the caller rather than by the engine's lifetime, so a
+validator captures the stretch of a scenario its check is about and nothing
+accumulates while the recorder is idle. The engine's own frame preparation is
+inside the bracket and the debug overlay is outside it, so a replayed frame
+reproduces the build's picture without the chrome drawn over it.
+
+A validator emits a recording as the media of the review item its check backs,
+declared as a `replay` output in the case's
+[manifest](/testing/end-to-end/manifests/). The same suites driven against the
+case's reference implementation produce the baseline recording, so the reviewer
+sees the operations the build issued beside the operations the reference
+issued, scrubbed together.
 
 ## The frame
 

@@ -20,7 +20,12 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../../src/constants";
-import { createHarness, startPlaying, type Harness } from "../harness";
+import {
+  captureReplay,
+  createHarness,
+  startPlaying,
+  type Harness,
+} from "../harness";
 import { poseObstacles, type ObstaclePose } from "./harness";
 
 /** The clock time that presents a face turned a quarter turn from upright. */
@@ -59,6 +64,18 @@ async function shootLevelAt(
   return { hit: r.hit, vx: r.snapshot.ball.vx, vy: r.snapshot.ball.vy };
 }
 
+/**
+ * Frames of the deflected flight recorded after the bounce resolves.
+ *
+ * `shootLevelAt` returns on the frame the velocity first turns away from the
+ * launch, which is where the outgoing velocity has to be read — a frame later and
+ * a second contact could have changed it. That makes it the wrong place to stop
+ * RECORDING: the review item promises "a shot deflecting off a tilted obstacle",
+ * and a deflection is an angle, which is only visible once the ball has flown
+ * along it.
+ */
+const DEPARTURE_TICKS = 60; // 0.5 s
+
 let harness: Harness;
 
 beforeEach(async () => {
@@ -86,7 +103,11 @@ it("deflects off a tilted face and returns straight off an upright one", async (
 
   // 2. The same shot against a face turned a quarter turn.
   const tilted = (await poseObstacles(harness, TILT_T))[0]!;
-  const deflected = await shootLevelAt(harness, tilted);
+  const deflected = await captureReplay(harness, "oriented", async () => {
+    const shot = await shootLevelAt(harness, tilted);
+    await harness.advance(DEPARTURE_TICKS);
+    return shot;
+  });
   expect(deflected.hit, "the tilted shot should reach the obstacle").toBe(true);
   expect(
     Math.abs(deflected.vy),

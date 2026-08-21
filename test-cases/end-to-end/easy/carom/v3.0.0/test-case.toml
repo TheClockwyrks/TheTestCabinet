@@ -307,19 +307,30 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 #
 # EVERY point on this checklist now carries a validation script. Each is a vitest
 # suite under `validation/<engine>/<category>/<item id>.test.ts` that runs in the
-# same process as the build. The `simple-2d` level is the ENGINE the suite is
-# written against — a validator speaks one engine's vocabulary, so a case that
-# supported a second engine would carry a second directory beside this one — and
-# the directory for the run's engine is what gets staged into the built workspace
-# at `validation/`, which is why a suite reaches the build with `../src/...`.
+# same process as the build. The `<engine>` level is the ENGINE the suite is
+# written against — a validator speaks one engine's vocabulary, so this case,
+# which supports two, ships one directory per engine: `validation/none/` against
+# the runtime the build carries in `src/host.ts`, and `validation/simple-2d/`
+# against the vendored engine. The two are the same suites over the same
+# scenarios; only the runtime they reach for differs. The directory for the run's
+# engine is what gets staged into the built workspace at `validation/`, which is
+# why a suite reaches the build with `../src/...`.
 #
-# A suite imports `@test-cabinet/simple-2d` and the build's own `src/game.ts`,
-# constructs an engine over a headless canvas with a clock it scripts, poses the
-# scenario through `src/debug.ts`, and steps it with `engine.advance`. It reads
-# behavior back from the game's state, audio from the engine's `cue:played` event,
-# and drawing from the canvas — either the pixels or a recording proxy over the 2D
-# context. Nothing drives a browser, so there is no
-# waiting and no flake.
+# A suite imports that runtime and the build's own `src/game.ts`, constructs it
+# over a headless canvas with a clock it scripts, poses the scenario through
+# `src/debug.ts`, and steps it with `advance`. It reads behavior back from the
+# game's state, audio from the runtime's `cue:played` event, and drawing from the
+# canvas — either the pixels or a recording proxy over the 2D context. Nothing
+# drives a browser, so there is no waiting and no flake.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. A `replay` output is a draw-command recording: the suite arms the
+# runtime's recorder around the section the point is about — the contact, the
+# point played out, the paddle held still while paused — and never around the
+# arrangement that got there, so what a reviewer scrubs is the build's own drawing
+# of exactly the thing being graded. An `image` output is a single captured frame.
+# Both are evidence beside the verdict rather than any part of it: a point still
+# passes or fails on its assertions alone.
 #
 # Automation deciding a point does not make it un-reviewed. The two rendering
 # points (window fit and the motion trail) and the four UI game-state points assert
@@ -365,7 +376,7 @@ description = "A served ball leaves at the base serve speed of 520 units per sec
 # Automated validation: start a fresh match, serve, and read the ball's launch speed
 # (~520 units per second). See validation/<engine>/gameplay/serve-speed.test.ts.
 validation = { script = "gameplay/serve-speed.test.ts", outputs = [
-  { id = "serve", name = "A ball leaving at the serve speed", kind = "video" },
+  { id = "serve", name = "A ball leaving at the serve speed", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "countdown-length"
@@ -375,7 +386,7 @@ description = "The pre-serve countdown lasts a fixed 1.0 s at match start and af
 # the hold lasts ~1.0 s of simulated time on the validator's own clock. See
 # validation/<engine>/gameplay/countdown-length.test.ts.
 validation = { script = "gameplay/countdown-length.test.ts", outputs = [
-  { id = "countdown", name = "The pre-serve countdown running out", kind = "video" },
+  { id = "countdown", name = "The pre-serve countdown running out", kind = "replay" },
 ] }
 # Scoring is checked per side — one point for each goal — so a build that scores on
 # only one edge is caught rather than averaged away by the other.
@@ -386,7 +397,7 @@ description = "A ball crossing the right goal edge scores a point for player one
 # Automated validation: drive a real ball out the right goal and confirm player one's
 # score increments and player two's does not. See validation/<engine>/gameplay/scoring-p1.test.ts.
 validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
-  { id = "goal", name = "Player one scoring past the right goal", kind = "video" },
+  { id = "goal", name = "Player one scoring past the right goal", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "scoring-p2"
@@ -395,7 +406,7 @@ description = "A ball crossing the left goal edge scores a point for player two 
 # Automated validation: drive a real ball out the left goal and confirm player two's
 # score increments and player one's does not. See validation/<engine>/gameplay/scoring-p2.test.ts.
 validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
-  { id = "goal", name = "Player two scoring past the left goal", kind = "video" },
+  { id = "goal", name = "Player two scoring past the left goal", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "match-win"
@@ -414,7 +425,7 @@ description = "Any tie at or above 10-10 keeps playing until one player leads by
 # Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
 # a further point to 12-10 must. See validation/<engine>/gameplay/deuce.test.ts.
 validation = { script = "gameplay/deuce.test.ts", outputs = [
-  { id = "deuce", name = "The deciding deuce point", kind = "video" },
+  { id = "deuce", name = "The deciding deuce point", kind = "replay" },
 ] }
 # Pausing is checked around the pre-serve countdown: that it is allowed there (not
 # only once the ball is in flight), and that the countdown freezes while paused
@@ -438,7 +449,7 @@ description = "While the game is paused the pre-serve countdown does not advance
 # still held, and resume back into the countdown. See
 # validation/<engine>/gameplay/countdown-frozen.test.ts.
 validation = { script = "gameplay/countdown-frozen.test.ts", outputs = [
-  { id = "countdown", name = "The countdown frozen while paused", kind = "video" },
+  { id = "countdown", name = "The countdown frozen while paused", kind = "replay" },
 ] }
 # Beatable AI is checked as three separate points, all in Solo, each driving the real
 # computer opponent (setAiControl, see specs/instrumentation.md) against a posed shot
@@ -453,7 +464,7 @@ description = "In Solo the AI is competent: a ball aimed to arrive a moderate di
 # start — within its reach — and confirm it blocks it (player one does not score). See
 # validation/<engine>/gameplay/ai-intercepts.test.ts.
 validation = { script = "gameplay/ai-intercepts.test.ts", outputs = [
-  { id = "block", name = "The AI running down and blocking a reachable shot", kind = "video" },
+  { id = "block", name = "The AI running down and blocking a reachable shot", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "ai-outrun"
@@ -463,7 +474,7 @@ description = "In Solo the AI is clearly beatable and not superhuman: a fast sho
 # from its start and confirm the shot gets past it (player one scores) — an AI that
 # moved faster than it should would block it. See validation/<engine>/gameplay/ai-outrun.test.ts.
 validation = { script = "gameplay/ai-outrun.test.ts", outputs = [
-  { id = "scored", name = "A fast shot outrunning the AI paddle", kind = "video" },
+  { id = "scored", name = "A fast shot outrunning the AI paddle", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "ai-no-predict"
@@ -474,7 +485,7 @@ description = "In Solo the AI does not predict bank shots: a fast, steep shot th
 # the reflected destination, or moved too fast, would block it. See
 # validation/<engine>/gameplay/ai-no-predict.test.ts.
 validation = { script = "gameplay/ai-no-predict.test.ts", outputs = [
-  { id = "scored", name = "A bank shot beating the AI paddle", kind = "video" },
+  { id = "scored", name = "A bank shot beating the AI paddle", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "advances-in-real-time"
@@ -500,7 +511,7 @@ description = "One scenario — a ball banked off a wall into the paddle, and th
 # advances per frame rather than per second traces the identical path and can only give
 # itself away on the clock. See validation/<engine>/gameplay/delta-time-independent.test.ts.
 validation = { script = "gameplay/delta-time-independent.test.ts", outputs = [
-  { id = "drive", name = "The scenario driven under a varying clock", kind = "video" },
+  { id = "drive", name = "The scenario driven under a varying clock", kind = "replay" },
 ] }
 
 # --- Paddles ------------------------------------------------------------------
@@ -517,7 +528,7 @@ description = "A center hit off a stationary paddle sends the ball straight acro
 # Automated validation: read back the outgoing angle of a real stationary-paddle
 # bounce at the paddle center (~0 deg). See validation/<engine>/paddles/hit-center.test.ts.
 validation = { script = "paddles/hit-center.test.ts", outputs = [
-  { id = "straight", name = "A straight center hit", kind = "video" },
+  { id = "straight", name = "A straight center hit", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "hit-edge"
@@ -526,7 +537,7 @@ description = "An extreme-edge hit off a stationary paddle sends the ball off at
 # Automated validation: read back the outgoing angle of a real stationary-paddle
 # bounce at the extreme edge (~55 deg). See validation/<engine>/paddles/hit-edge.test.ts.
 validation = { script = "paddles/hit-edge.test.ts", outputs = [
-  { id = "deflection", name = "A steep edge deflection", kind = "video" },
+  { id = "deflection", name = "A steep edge deflection", kind = "replay" },
 ] }
 # Rally acceleration is checked as two separate points — that a hit speeds the ball
 # up, and that the speed-up stops at a ceiling — so a build that never accelerates and
@@ -539,7 +550,7 @@ description = "Each paddle hit speeds the ball up slightly (about 1.04x), so a r
 # each paddle hit — the per-hit ratio is ~1.04 and the sequence never decreases while
 # below the cap. See validation/<engine>/paddles/rally-accelerates.test.ts.
 validation = { script = "paddles/rally-accelerates.test.ts", outputs = [
-  { id = "acceleration", name = "A rally accelerating hit by hit", kind = "video" },
+  { id = "acceleration", name = "A rally accelerating hit by hit", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "rally-caps"
@@ -548,7 +559,7 @@ description = "The per-hit speed-up stops at a ceiling (980 units per second): t
 # Automated validation: drive a real straight rally to its ceiling and confirm the
 # ball's speed plateaus at 980 and never exceeds it. See validation/<engine>/paddles/rally-caps.test.ts.
 validation = { script = "paddles/rally-caps.test.ts", outputs = [
-  { id = "ceiling", name = "A rally plateauing at the speed ceiling", kind = "video" },
+  { id = "ceiling", name = "A rally plateauing at the speed ceiling", kind = "replay" },
 ] }
 
 # --- Paddle Movement ----------------------------------------------------------
@@ -567,7 +578,7 @@ description = "In Solo the human's paddle (left) moves at about 720 units per se
 # Automated validation: hold a movement key and measure the left paddle's rate. See
 # validation/<engine>/paddle-movement/speed-solo-player.test.ts.
 validation = { script = "paddle-movement/speed-solo-player.test.ts", outputs = [
-  { id = "move", name = "The human paddle moving at its speed (Solo)", kind = "video" },
+  { id = "move", name = "The human paddle moving at its speed (Solo)", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "speed-solo-ai"
@@ -576,7 +587,7 @@ description = "In Solo the AI's paddle (right) chases the ball at a competent ra
 # Automated validation: hand the real AI its paddle, give it a ball to chase, and
 # measure its rate (competent, under 720). See validation/<engine>/paddle-movement/speed-solo-ai.test.ts.
 validation = { script = "paddle-movement/speed-solo-ai.test.ts", outputs = [
-  { id = "move", name = "The AI paddle chasing at its speed", kind = "video" },
+  { id = "move", name = "The AI paddle chasing at its speed", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "speed-versus-p1"
@@ -585,7 +596,7 @@ description = "In Versus player one's paddle (left) moves at about 720 units per
 # Automated validation: hold a movement key and measure the left paddle's rate. See
 # validation/<engine>/paddle-movement/speed-versus-p1.test.ts.
 validation = { script = "paddle-movement/speed-versus-p1.test.ts", outputs = [
-  { id = "move", name = "Player one's paddle moving at its speed (Versus)", kind = "video" },
+  { id = "move", name = "Player one's paddle moving at its speed (Versus)", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "speed-versus-p2"
@@ -594,7 +605,7 @@ description = "In Versus player two's paddle (right) moves at about 720 units pe
 # Automated validation: hold a movement key and measure the right paddle's rate. See
 # validation/<engine>/paddle-movement/speed-versus-p2.test.ts.
 validation = { script = "paddle-movement/speed-versus-p2.test.ts", outputs = [
-  { id = "move", name = "Player two's paddle moving at its speed (Versus)", kind = "video" },
+  { id = "move", name = "Player two's paddle moving at its speed (Versus)", kind = "replay" },
 ] }
 
 # --- Ball ---------------------------------------------------------------------
@@ -615,7 +626,7 @@ description = "The ball reflects off the left face of the near mid-field obstacl
 # Automated validation: fire a real shot at obstacle A's left face and confirm it
 # reflects, staying on the near side. See validation/<engine>/ball/bounce-a-left.test.ts.
 validation = { script = "ball/bounce-a-left.test.ts", outputs = [
-  { id = "bank", name = "Bank shot off obstacle A's left face", kind = "video" },
+  { id = "bank", name = "Bank shot off obstacle A's left face", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "bounce-a-right"
@@ -624,7 +635,7 @@ description = "The ball reflects off the right face of the near mid-field obstac
 # Automated validation: fire a real shot at obstacle A's right face and confirm it
 # reflects, staying on the near side. See validation/<engine>/ball/bounce-a-right.test.ts.
 validation = { script = "ball/bounce-a-right.test.ts", outputs = [
-  { id = "bank", name = "Bank shot off obstacle A's right face", kind = "video" },
+  { id = "bank", name = "Bank shot off obstacle A's right face", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "bounce-b-left"
@@ -633,7 +644,7 @@ description = "The ball reflects off the left face of the far mid-field obstacle
 # Automated validation: fire a real shot at obstacle B's left face and confirm it
 # reflects, staying on the near side. See validation/<engine>/ball/bounce-b-left.test.ts.
 validation = { script = "ball/bounce-b-left.test.ts", outputs = [
-  { id = "bank", name = "Bank shot off obstacle B's left face", kind = "video" },
+  { id = "bank", name = "Bank shot off obstacle B's left face", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "bounce-b-right"
@@ -642,7 +653,7 @@ description = "The ball reflects off the right face of the far mid-field obstacl
 # Automated validation: fire a real shot at obstacle B's right face and confirm it
 # reflects, staying on the near side. See validation/<engine>/ball/bounce-b-right.test.ts.
 validation = { script = "ball/bounce-b-right.test.ts", outputs = [
-  { id = "bank", name = "Bank shot off obstacle B's right face", kind = "video" },
+  { id = "bank", name = "Bank shot off obstacle B's right face", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "corner-graze"
@@ -653,7 +664,7 @@ description = "A ball striking a vertical face close to one end of an obstacle b
 # horizontal velocity reverses while the vertical one keeps its sign. See
 # validation/<engine>/ball/corner-graze.test.ts.
 validation = { script = "ball/corner-graze.test.ts", outputs = [
-  { id = "graze", name = "Three corner grazes, each banking off a single face", kind = "video" },
+  { id = "graze", name = "Three corner grazes, each banking off a single face", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "no-tunnel"
@@ -663,7 +674,7 @@ description = "The ball never tunnels through an obstacle, paddle, or wall, even
 # 980 units per second rally ceiling — the fastest the spec allows the ball to move — and confirm
 # none tunnel through. See validation/<engine>/ball/no-tunnel.test.ts.
 validation = { script = "ball/no-tunnel.test.ts", outputs = [
-  { id = "fast", name = "High-speed rebound without tunneling", kind = "video" },
+  { id = "fast", name = "High-speed rebound without tunneling", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "obstacle-no-speedup"
@@ -673,7 +684,7 @@ description = "Bouncing off a mid-field obstacle does not speed the ball up — 
 # before and after the bounce — an obstacle reflects the ball without accelerating it,
 # unlike a paddle. See validation/<engine>/ball/obstacle-no-speedup.test.ts.
 validation = { script = "ball/obstacle-no-speedup.test.ts", outputs = [
-  { id = "bank", name = "A bank shot keeping its speed", kind = "video" },
+  { id = "bank", name = "A bank shot keeping its speed", kind = "replay" },
 ] }
 
 # --- Spin ---------------------------------------------------------------------
@@ -687,7 +698,7 @@ description = "A stationary paddle imparts no new spin, so the return stays stra
 # Automated validation: a real stationary-paddle contact imparts no spin, so the
 # return stays straight. See validation/<engine>/spin/stationary.test.ts.
 validation = { script = "spin/stationary.test.ts", outputs = [
-  { id = "straight", name = "Straight return, no curve", kind = "video" },
+  { id = "straight", name = "Straight return, no curve", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "at-bound"
@@ -697,7 +708,7 @@ description = "A paddle pinned at the field bound imparts no spin even while the
 # imparts no spin (its real velocity clamps to zero), while the same held key
 # mid-field does. See validation/<engine>/spin/at-bound.test.ts.
 validation = { script = "spin/at-bound.test.ts", outputs = [
-  { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "video" },
+  { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "replay" },
 ] }
 # A paddle swung as it strikes imparts spin — checked for each way a paddle is
 # controlled: the human paddle in Solo and for both players in Versus, and the real
@@ -711,7 +722,7 @@ description = "In Solo the human's paddle (left), swung as it strikes, curves th
 # Automated validation: a real downward-swung left-paddle contact imparts significant
 # positive spin. See validation/<engine>/spin/moving-solo-player.test.ts.
 validation = { script = "spin/moving-solo-player.test.ts", outputs = [
-  { id = "curve", name = "A curved shot off the moving human paddle (Solo)", kind = "video" },
+  { id = "curve", name = "A curved shot off the moving human paddle (Solo)", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "moving-solo-ai"
@@ -720,7 +731,7 @@ description = "In Solo the AI's paddle (right), moving as it strikes, curves the
 # Automated validation: the real AI strikes the ball while chasing and imparts
 # significant spin from its motion. See validation/<engine>/spin/moving-solo-ai.test.ts.
 validation = { script = "spin/moving-solo-ai.test.ts", outputs = [
-  { id = "curve", name = "A curved shot off the moving AI paddle", kind = "video" },
+  { id = "curve", name = "A curved shot off the moving AI paddle", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "moving-versus-p1"
@@ -729,7 +740,7 @@ description = "In Versus player one's paddle (left), swung as it strikes, curves
 # Automated validation: a real upward-swung left-paddle contact imparts significant
 # negative spin. See validation/<engine>/spin/moving-versus-p1.test.ts.
 validation = { script = "spin/moving-versus-p1.test.ts", outputs = [
-  { id = "curve", name = "A curved shot off player one's moving paddle (Versus)", kind = "video" },
+  { id = "curve", name = "A curved shot off player one's moving paddle (Versus)", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "moving-versus-p2"
@@ -738,7 +749,7 @@ description = "In Versus player two's paddle (right), swung as it strikes, curve
 # Automated validation: a real downward-swung right-paddle contact imparts significant
 # positive spin. See validation/<engine>/spin/moving-versus-p2.test.ts.
 validation = { script = "spin/moving-versus-p2.test.ts", outputs = [
-  { id = "curve", name = "A curved shot off player two's moving paddle (Versus)", kind = "video" },
+  { id = "curve", name = "A curved shot off player two's moving paddle (Versus)", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "decay"
@@ -748,7 +759,7 @@ description = "Imparted spin decays back to straight within roughly a couple of 
 # confirm the spin falls to roughly half after one half-life and to a small fraction
 # after ~2 s. See validation/<engine>/spin/decay.test.ts.
 validation = { script = "spin/decay.test.ts", outputs = [
-  { id = "decay", name = "A curved shot straightening out", kind = "video" },
+  { id = "decay", name = "A curved shot straightening out", kind = "replay" },
 ] }
 
 # --- Pause --------------------------------------------------------------------
@@ -766,7 +777,7 @@ description = "While paused, the human's paddle (left, in Solo) does not move ev
 # Automated validation: pause, hold a movement key, and confirm the left paddle does
 # not move. See validation/<engine>/pause/paddle-solo-player.test.ts.
 validation = { script = "pause/paddle-solo-player.test.ts", outputs = [
-  { id = "frozen", name = "The human paddle held still while paused (Solo)", kind = "video" },
+  { id = "frozen", name = "The human paddle held still while paused (Solo)", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "paddle-solo-ai"
@@ -775,7 +786,7 @@ description = "While paused, the AI's paddle (right, in Solo) does not move even
 # Automated validation: pose a ball for the AI to chase, pause, and confirm the AI
 # paddle does not move. See validation/<engine>/pause/paddle-solo-ai.test.ts.
 validation = { script = "pause/paddle-solo-ai.test.ts", outputs = [
-  { id = "frozen", name = "The AI paddle held still while paused", kind = "video" },
+  { id = "frozen", name = "The AI paddle held still while paused", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "paddle-versus-p1"
@@ -784,7 +795,7 @@ description = "While paused, player one's paddle (left, in Versus) does not move
 # Automated validation: pause, hold a movement key, and confirm the left paddle does
 # not move. See validation/<engine>/pause/paddle-versus-p1.test.ts.
 validation = { script = "pause/paddle-versus-p1.test.ts", outputs = [
-  { id = "frozen", name = "Player one's paddle held still while paused (Versus)", kind = "video" },
+  { id = "frozen", name = "Player one's paddle held still while paused (Versus)", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "paddle-versus-p2"
@@ -793,7 +804,7 @@ description = "While paused, player two's paddle (right, in Versus) does not mov
 # Automated validation: pause, hold a movement key, and confirm the right paddle does
 # not move. See validation/<engine>/pause/paddle-versus-p2.test.ts.
 validation = { script = "pause/paddle-versus-p2.test.ts", outputs = [
-  { id = "frozen", name = "Player two's paddle held still while paused (Versus)", kind = "video" },
+  { id = "frozen", name = "Player two's paddle held still while paused (Versus)", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "ball-suspended"
@@ -802,7 +813,7 @@ description = "A ball in flight hangs exactly where it was while the game is pau
 # Automated validation: pause a ball in flight and confirm it does not move over a
 # long paused stretch. See validation/<engine>/pause/ball-suspended.test.ts.
 validation = { script = "pause/ball-suspended.test.ts", outputs = [
-  { id = "suspended", name = "A ball hanging still while paused", kind = "video" },
+  { id = "suspended", name = "A ball hanging still while paused", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "ball-continues"
@@ -811,7 +822,7 @@ description = "After unpausing, the ball carries on from exactly where it was su
 # Automated validation: pause a ball in flight, resume, and confirm one step advances
 # it from the paused position with no teleport. See validation/<engine>/pause/ball-continues.test.ts.
 validation = { script = "pause/ball-continues.test.ts", outputs = [
-  { id = "continues", name = "The ball resuming from where it was paused", kind = "video" },
+  { id = "continues", name = "The ball resuming from where it was paused", kind = "replay" },
 ] }
 
 # --- Single Player Controls ---------------------------------------------------
@@ -826,27 +837,27 @@ title = "Single Player Controls"
 [[review.categories.items]]
 id = "up"
 title = "Up arrow moves the paddle"
-validation = { script = "controls-solo/up.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "video" }] }
+validation = { script = "controls-solo/up.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "replay" }] }
 [[review.categories.items]]
 id = "down"
 title = "Down arrow moves the paddle"
-validation = { script = "controls-solo/down.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "video" }] }
+validation = { script = "controls-solo/down.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "replay" }] }
 [[review.categories.items]]
 id = "w"
 title = "W moves the paddle"
-validation = { script = "controls-solo/w.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "video" }] }
+validation = { script = "controls-solo/w.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "replay" }] }
 [[review.categories.items]]
 id = "s"
 title = "S moves the paddle"
-validation = { script = "controls-solo/s.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "video" }] }
+validation = { script = "controls-solo/s.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "replay" }] }
 [[review.categories.items]]
 id = "escape"
 title = "Esc pauses"
-validation = { script = "controls-solo/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+validation = { script = "controls-solo/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
 [[review.categories.items]]
 id = "p"
 title = "P pauses"
-validation = { script = "controls-solo/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+validation = { script = "controls-solo/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
 [[review.categories.items]]
 id = "m"
 title = "M toggles mute"
@@ -864,27 +875,27 @@ title = "Multi Player Controls"
 [[review.categories.items]]
 id = "up"
 title = "Up arrow moves player two's paddle"
-validation = { script = "controls-versus/up.test.ts", outputs = [{ id = "move", name = "Right paddle moving up", kind = "video" }] }
+validation = { script = "controls-versus/up.test.ts", outputs = [{ id = "move", name = "Right paddle moving up", kind = "replay" }] }
 [[review.categories.items]]
 id = "down"
 title = "Down arrow moves player two's paddle"
-validation = { script = "controls-versus/down.test.ts", outputs = [{ id = "move", name = "Right paddle moving down", kind = "video" }] }
+validation = { script = "controls-versus/down.test.ts", outputs = [{ id = "move", name = "Right paddle moving down", kind = "replay" }] }
 [[review.categories.items]]
 id = "w"
 title = "W moves player one's paddle"
-validation = { script = "controls-versus/w.test.ts", outputs = [{ id = "move", name = "Left paddle moving up", kind = "video" }] }
+validation = { script = "controls-versus/w.test.ts", outputs = [{ id = "move", name = "Left paddle moving up", kind = "replay" }] }
 [[review.categories.items]]
 id = "s"
 title = "S moves player one's paddle"
-validation = { script = "controls-versus/s.test.ts", outputs = [{ id = "move", name = "Left paddle moving down", kind = "video" }] }
+validation = { script = "controls-versus/s.test.ts", outputs = [{ id = "move", name = "Left paddle moving down", kind = "replay" }] }
 [[review.categories.items]]
 id = "escape"
 title = "Esc pauses"
-validation = { script = "controls-versus/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+validation = { script = "controls-versus/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
 [[review.categories.items]]
 id = "p"
 title = "P pauses"
-validation = { script = "controls-versus/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+validation = { script = "controls-versus/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
 [[review.categories.items]]
 id = "m"
 title = "M toggles mute"
@@ -1036,7 +1047,7 @@ description = "A distinct short cue plays when the ball strikes a paddle."
 # Automated validation: drive a real paddle contact and confirm the `paddle-hit` cue
 # is played on that frame. See validation/<engine>/audio/paddle-hit.test.ts.
 validation = { script = "audio/paddle-hit.test.ts", outputs = [
-  { id = "hit", name = "The paddle hit whose cue is checked", kind = "video" },
+  { id = "hit", name = "The paddle hit whose cue is checked", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "wall-bounce"
@@ -1045,7 +1056,7 @@ description = "A distinct short cue plays when the ball bounces off the side wal
 # Automated validation: fire the ball into a wall and confirm the `wall-bounce` cue
 # is played on that frame. See validation/<engine>/audio/wall-bounce.test.ts.
 validation = { script = "audio/wall-bounce.test.ts", outputs = [
-  { id = "bounce", name = "The wall bounce whose cue is checked", kind = "video" },
+  { id = "bounce", name = "The wall bounce whose cue is checked", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "obstacle-bounce"
@@ -1055,7 +1066,7 @@ description = "A distinct short cue plays when the ball bounces off a mid-field 
 # `obstacle-bounce` cue is played on that frame. See
 # validation/<engine>/audio/obstacle-bounce.test.ts.
 validation = { script = "audio/obstacle-bounce.test.ts", outputs = [
-  { id = "bounce", name = "The obstacle bounce whose cue is checked", kind = "video" },
+  { id = "bounce", name = "The obstacle bounce whose cue is checked", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "scoring"
@@ -1064,5 +1075,5 @@ description = "A cue plays when a point is scored."
 # Automated validation: drive a real point and confirm the `score` cue is played on
 # that frame. See validation/<engine>/audio/scoring.test.ts.
 validation = { script = "audio/scoring.test.ts", outputs = [
-  { id = "score", name = "The scored point whose cue is checked", kind = "video" },
+  { id = "score", name = "The scored point whose cue is checked", kind = "replay" },
 ] }

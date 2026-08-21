@@ -1,4 +1,9 @@
-import type { AssetSheet, ModelSpec, TestType } from "@test-cabinet/run-record";
+import type {
+  AssetSheet,
+  MediaKind,
+  ModelSpec,
+  TestType,
+} from "@test-cabinet/run-record";
 import type { AssetKind, Erratum, ReferenceSheet } from "../../client";
 
 export type { Erratum, ErratumSeverity } from "../../client";
@@ -139,8 +144,12 @@ export interface ErrataEntry {
 export interface ReferenceScreenshot {
   /** The view the reference depicts (e.g. `title`, `game-over`). */
   view: string;
-  /** Whether the media is a still image or a video. */
-  kind: "image" | "video";
+  /** Whether the media is a still image, a video, or an engine replay — the kind
+   * decides how it is shown, and a replay is re-drawn onto a canvas rather than
+   * loaded as a media file. Carried as the contract's own {@link MediaKind} rather
+   * than a narrower copy of it, so a kind added there reaches the catalog instead
+   * of failing to assign into it. */
+  kind: MediaKind;
   /** Public URL of the reference media. */
   url: string;
 }

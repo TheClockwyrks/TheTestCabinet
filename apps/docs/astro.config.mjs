@@ -558,7 +558,7 @@ export default defineConfig({
                     "engines/simple-2d/apis/audio",
                     "engines/simple-2d/apis/assets",
                     "engines/simple-2d/apis/diagnostics",
-                    "engines/simple-2d/apis/host",
+                    "engines/simple-2d/apis/recording",
                   ],
                 },
                 {
@@ -572,7 +572,7 @@ export default defineConfig({
                     "engines/simple-2d/concepts/audio",
                     "engines/simple-2d/concepts/assets",
                     "engines/simple-2d/concepts/diagnostics",
-                    "engines/simple-2d/concepts/host",
+                    "engines/simple-2d/concepts/recording",
                   ],
                 },
                 {
@@ -610,6 +610,7 @@ export default defineConfig({
                     "engines/simple-2d/validators/simulation",
                     "engines/simple-2d/validators/rendering",
                     "engines/simple-2d/validators/input-and-audio",
+                    "engines/simple-2d/validators/recording",
                   ],
                 },
               ],

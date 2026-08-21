@@ -18,8 +18,8 @@
  * - **Assets** — resolution and loading under one fixed root.
  * - **Diagnostics** — an overlay of values the game names, its frame-time graph,
  *   and the key that toggles it.
- * - **The host interface** — `window.__tcabEngine`, installed unconditionally, so a
- *   post-run check can confirm any build of any case identically.
+ * - **Draw-command recording** — an opt-in flight recorder over the drawing context,
+ *   so a scenario a check drove can be replayed as the operations the build issued.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,
@@ -51,8 +51,8 @@ import type { Engine, EngineOptions } from "./contract";
  * parts together.
  *
  * Synchronous, and it runs no game code: it validates its arguments, builds the
- * subsystems, attaches the engine's own listeners, and publishes the host
- * interface. The game's `initialize` runs from {@link Engine.initialize} and the
+ * subsystems, and attaches the engine's own listeners. The game's `initialize`
+ * runs from {@link Engine.initialize} and the
  * first frame from {@link Engine.run} or {@link Engine.advance}, so an engine
  * exists — subscribable, with its clock replaceable — before anything the game
  * does is observable.
@@ -86,14 +86,15 @@ export declare function createEngine<S>(options: EngineOptions<S>): Engine<S>;
 export { ConstantClock, JitterClock, PacedClock, SequenceClock, WallClock } from "./clocks";
 export type { PacedClockOptions } from "./clocks";
 export { TOUCH_LAYOUTS } from "./layouts";
+export { RECORDING_FORMAT } from "./recording";
 export { applyViewport, fitViewport, syncCanvas } from "./viewport";
 /**
  * The whole shared vocabulary, re-exported wholesale.
  *
  * `contract.ts` *is* the package's type surface — it exists precisely so that the
- * engine, the game-facing API, and the `./host` entry point cannot drift apart —
- * and re-exporting it as a list would add a fourth place for a type to be forgotten
- * in. The contract module holds no runtime values, so nothing but types crosses.
+ * engine, the game-facing API, and the recording format cannot drift apart — and
+ * re-exporting it as a list would add a fourth place for a type to be forgotten in.
+ * The contract module holds no runtime values, so nothing but types crosses.
  */
 export type * from "./contract";
 //# sourceMappingURL=index.d.ts.map

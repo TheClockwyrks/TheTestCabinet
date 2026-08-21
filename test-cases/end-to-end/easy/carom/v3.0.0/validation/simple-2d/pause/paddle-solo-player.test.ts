@@ -17,6 +17,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   MOVE_MIN,
   STILL_MAX,
+  captureReplay,
   createHarness,
   startWithKeys,
   type Harness,
@@ -24,6 +25,23 @@ import {
 
 /** Past the 1.0 s pre-serve hold and into a live rally: 1.3 s at 120 Hz. */
 const RALLY_TICKS = 156;
+
+/**
+ * The frames of live movement recorded before the pause, and the frozen ones
+ * after it.
+ *
+ * A clip of a still paddle is not evidence of anything on its own — it is
+ * indistinguishable from a build whose paddle never moved. What makes it evidence
+ * is the motion it is cut from: the same paddle, under the same key, moving in
+ * live play and then not moving once the game is paused, in one recording.
+ *
+ * That precondition was always driven; arming the recorder before it rather than
+ * after moves nothing. Every reading below is still taken on exactly the frame it
+ * was taken on before — they are lifted out of the recorded section as values so
+ * the assertions can stay outside it.
+ */
+const MOVING_TICKS = 12; // 0.1 s of live travel
+const FROZEN_TICKS = 96; // 0.8 s of the key held against a paused game
 
 let h: Harness;
 
@@ -43,23 +61,28 @@ it("holds the human's paddle still while paused", async () => {
   // The precondition: this key really does move this paddle in live play, so the
   // freeze below is the pause's doing rather than a key that never worked.
   const start = h.snapshot().paddles.left.cy;
-  h.hold("KeyS");
-  await h.advance(12);
-  h.release("KeyS");
-  expect(Math.abs(h.snapshot().paddles.left.cy - start)).toBeGreaterThan(
-    MOVE_MIN,
-  );
 
-  await h.tap("Escape");
+  const held = await captureReplay(h, "frozen", async () => {
+    h.hold("KeyS");
+    await h.advance(MOVING_TICKS);
+    h.release("KeyS");
+    const moving = h.snapshot().paddles.left.cy;
+
+    await h.tap("Escape");
+    const screen = h.snapshot().screen;
+    const paused = h.snapshot().paddles.left.cy;
+
+    h.hold("KeyS");
+    await h.advance(FROZEN_TICKS);
+    h.release("KeyS");
+    return { moving, screen, paused };
+  });
+
+  expect(Math.abs(held.moving - start)).toBeGreaterThan(MOVE_MIN);
+  expect(held.screen).toBe("paused");
+
   expect(h.snapshot().screen).toBe("paused");
-
-  const paused = h.snapshot().paddles.left.cy;
-  h.hold("KeyS");
-  await h.advance(96);
-  h.release("KeyS");
-
-  expect(h.snapshot().screen).toBe("paused");
-  expect(Math.abs(h.snapshot().paddles.left.cy - paused)).toBeLessThan(
+  expect(Math.abs(h.snapshot().paddles.left.cy - held.paused)).toBeLessThan(
     STILL_MAX,
   );
 });

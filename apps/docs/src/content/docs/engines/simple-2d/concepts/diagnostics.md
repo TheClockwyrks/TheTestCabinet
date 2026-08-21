@@ -5,8 +5,7 @@ title: Diagnostics
 The debug overlay is a read-only window onto values the game names and onto the
 engine's own frame metrics. The engine cannot know what is worth watching inside
 someone else's simulation, so the game registers named sources and the engine
-owns everything around them: the panel, the toggle key, the frame metrics, and
-the read the host interface answers.
+owns everything around them: the panel, the toggle key, and the frame metrics.
 
 ## Sources are pulled, not pushed
 
@@ -24,16 +23,6 @@ A source runs once per read, and the overlay reads once per frame while it is
 visible, so a source belongs in the cheap, side-effect-free half of the game's
 code. A source that throws is contained: its line carries the error message and
 the remaining lines draw normally.
-
-## One evaluation, two audiences
-
-The panel the engine draws and the read the [host
-interface](/engines/simple-2d/concepts/host/) answers both come from evaluating
-the same registered sources. A person pressing the toggle sees the values a
-console read returns, with no second code path to keep in step.
-
-The read is independent of whether the panel is visible. Inspecting the game's
-named values never requires switching on a piece of human-facing chrome.
 
 ## Frame metrics
 

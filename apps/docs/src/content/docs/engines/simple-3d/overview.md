@@ -14,10 +14,9 @@ sections its sibling uses.
 ## What the family fixes
 
 Simple 3D owns the frame loop and the delta time it hands the game, the input
-action registry and its bindings, the audio bus, the asset loader, the debug
-overlay, and the host interface a validator drives. The game supplies its update
-and its rendering, receives the real elapsed time for each frame, and integrates
-against it.
+action registry and its bindings, the audio bus, the asset loader, and the debug
+overlay. The game supplies its update and its rendering, receives the real
+elapsed time for each frame, and integrates against it.
 
 ## What dimensionality changes
 
@@ -25,6 +24,19 @@ The spatial model is 3D, so the drawing surface the engine hands a game, the
 asset kinds it resolves, and the touch layouts it offers all differ from the 2D
 engine. A game targets one engine or the other from the start, and a case
 declares whichever suits it.
+
+## Draw-command recording
+
+The engine records the drawing commands its renderer issues, armed and disarmed
+by whoever owns the engine exactly as its
+[2D sibling](/engines/simple-2d/concepts/recording/) is. What comes back is the
+same per-frame format: every frame carries the counter, the simulated time, the
+renderer state it inherited, and the operations it issued, so a frame is drawn
+from itself alone.
+
+That guarantee is what a reviewer's player depends on, so a recording taken from
+a 3D build seeks and scrubs the same way a 2D one does, and a validator emits it
+as a review item's media by the same route.
 
 ## Where it fits
 

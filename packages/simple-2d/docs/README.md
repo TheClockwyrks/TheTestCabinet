@@ -15,7 +15,8 @@ The engine owns:
 - Keyboard listening, action binding, and edge detection.
 - The Web Audio graph, cue synthesis, mute, and the first-gesture unlock.
 - Asset URL resolution under the fixed `assets/` root.
-- The diagnostics overlay, its toggle key, and the host interface on `window`.
+- The diagnostics overlay and its toggle key.
+- The draw-command recorder over the drawing context.
 
 The game supplies:
 
@@ -115,6 +116,9 @@ interface Engine<S> {
   setClock(clock: Clock): void;
   frame(): FrameInfo;
   viewport(): Viewport;
+  recording(): boolean;
+  startRecording(): void;
+  stopRecording(): Recording;
   destroy(): void;
 }
 ```
@@ -129,7 +133,10 @@ interface Engine<S> {
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `destroy` | Halt the loop, drop every listener, and unpublish the host interface. |
+| `recording` | Whether draw-command recording is currently capturing. See `recording.md`. |
+| `startRecording` | Arm the recorder. Capture begins at the next frame. |
+| `stopRecording` | Disarm and return everything captured since `startRecording`. |
+| `destroy` | Halt the loop and drop every listener. |
 
 Calling `initialize` a second time resolves to the state already built, so a
 caller that cannot tell whether initialization has happened may ask again.
@@ -225,4 +232,5 @@ draws, so scaling never appears in the game's own code.
 | `input.md` | Actions, key bindings, edges, and the touch layout catalogue. |
 | `audio.md` | Cue definition, file-backed cues, playback, mute, and the unlock. |
 | `assets.md` | The asset root, the loaders, the path rules, and the load events. |
-| `diagnostics.md` | The overlay, frame metrics, and the host interface on `window`. |
+| `diagnostics.md` | The overlay, frame metrics, and the display formatting. |
+| `recording.md` | Arming the recorder, the recording format, and replaying a frame. |

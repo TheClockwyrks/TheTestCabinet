@@ -15,10 +15,33 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { CUES, FIELD_CX } from "../../src/constants";
 import {
   arrangeLiveBall,
+  captureReplay,
   createHarness,
   watchCues,
   type Harness,
 } from "../harness";
+
+/**
+ * Where the ball is posed, in logical px down the field's centre line.
+ *
+ * Far enough below the top wall for half a second of approach, so the clip opens
+ * on a ball climbing rather than on one already touching what it reflects off.
+ * The column it rises up is clear of both obstacles and of both paddles, so the
+ * flight is a straight line and the reflection is the same one a shorter run-up
+ * produces — only later, and with something to watch first.
+ */
+const START_Y = 280;
+
+/**
+ * Frames of the descending flight recorded after the reflection.
+ *
+ * The sweep stops on the frame the vertical velocity reverses, which is the frame
+ * the cue must have played on and therefore where every reading has to be taken.
+ * Recording has no such constraint: the review item promises "the wall bounce
+ * whose cue is checked", and a bounce is only legible once the ball is visibly
+ * coming back down.
+ */
+const DESCENT_TICKS = 90; // 0.75 s
 
 let h: Harness;
 
@@ -31,14 +54,25 @@ afterEach(() => {
 });
 
 it("plays the wall-bounce cue on the frame of the reflection", async () => {
-  await arrangeLiveBall(h, { x: FIELD_CX, y: 80, vx: 0, vy: -500 });
+  await arrangeLiveBall(h, { x: FIELD_CX, y: START_Y, vx: 0, vy: -500 });
 
   const played = watchCues(h);
-  const bounced = await h.until((s) => s.ball.vy > 0, { maxFrames: 120 });
-  const frame = h.engine.frame().count;
+  const bounce = await captureReplay(h, "bounce", async () => {
+    const bounced = await h.until((s) => s.ball.vy > 0, { maxFrames: 120 });
+    // Read HERE, on the frame the sweep stopped: the frame number and the cues
+    // that had sounded by then are exactly what the assertions read before the
+    // descent below was recorded.
+    const measured = {
+      bounced,
+      frame: h.engine.frame().count,
+      cues: [...played],
+    };
+    await h.advance(DESCENT_TICKS);
+    return measured;
+  });
 
-  expect(bounced.hit).toBe(true);
-  expect(played.map((cue) => cue.cue)).toEqual([CUES.wallBounce]);
-  expect(played[0].frame).toBe(frame);
-  expect(played[0].gain).toBeGreaterThan(0);
+  expect(bounce.bounced.hit).toBe(true);
+  expect(bounce.cues.map((cue) => cue.cue)).toEqual([CUES.wallBounce]);
+  expect(bounce.cues[0].frame).toBe(bounce.frame);
+  expect(bounce.cues[0].gain).toBeGreaterThan(0);
 });
