@@ -78,6 +78,17 @@ export default function item() {
         DEN_RELEASE_GAP,
         DEN_RELEASE_SLACK,
       );
+      // And each of them actually LEFT. The three assertions above are about the schedule,
+      // which is a matter of when a build stops calling a predator denned; this one is
+      // about the release being a thing that happens in the maze. A build that flips the
+      // flag and leaves the hunter standing in the chamber passes every timing above and
+      // has released nobody — see `actDenReleases`.
+      const stuck = releases.filter((r) => r.outAt === null).map((r) => r.kind);
+      check.expectOk(
+        "and each of them swims out of the chamber, not merely out of the den state" +
+          (stuck.length ? ` — the ${stuck.join(" and ")} never left it` : ""),
+        stuck.length === 0,
+      );
     },
   };
 }

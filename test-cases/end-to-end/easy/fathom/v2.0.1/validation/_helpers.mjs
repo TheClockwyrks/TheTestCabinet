@@ -2183,13 +2183,45 @@ export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
   const releases = [];
   const seen = new Set();
   let resumedAt = null;
+  // Each release is recorded TWICE: `t`, the moment the predator stopped being denned,
+  // and `outAt`, the moment it was actually out of the chamber (null if it never was).
+  //
+  // WHY BOTH. The schedule the spec fixes is a schedule of RELEASES — one hunter every
+  // `5 s` (`specs/predators.md`) — and that is the flag's moment; how long a hunter then
+  // takes to swim out through the gate is its own business, and timing the schedule from
+  // the exit would charge the stagger for it. But the flag alone is only bookkeeping, and
+  // a release is a thing that happens in the maze: a build flipped all three to `wander`
+  // while they sat on den tiles, and its Lanternjaw then stood on the same tile for twenty
+  // seconds reporting `wander` at the drifter's `64 px/s` without covering a pixel. Timed
+  // off the flag that reads as a textbook staggered release; what a reviewer watches is
+  // three predators sitting in the den.
+  //
+  // So the stagger is timed from `t` and the leaving is asserted from `outAt`, and neither
+  // claim has to stand in for the other.
+  const denTiles = (s) => {
+    const out = new Set();
+    for (let r = 0; r < s.grid.rows; r++) {
+      for (let c = 0; c < s.grid.cols; c++) {
+        const t = s.tiles[r]?.[c];
+        if (t === "d" || t === "g") out.add(`${c},${r}`);
+      }
+    }
+    return out;
+  };
+  let den = null;
   const note = (s) => {
     if (resumedAt === null && s.screen === "playing") resumedAt = s.simTime;
+    den ??= denTiles(s);
     for (const kind of DEN_ORDER) {
       const p = pred(s, kind);
-      if (p && p.state !== "den" && !seen.has(kind)) {
+      if (!p) continue;
+      if (!seen.has(kind) && p.state !== "den") {
         seen.add(kind);
-        releases.push({ kind, t: s.simTime });
+        releases.push({ kind, t: s.simTime, outAt: null });
+      }
+      const rec = releases.find((r) => r.kind === kind);
+      if (rec && rec.outAt === null && !den.has(`${p.tx},${p.ty}`)) {
+        rec.outAt = s.simTime;
       }
     }
   };
@@ -2220,6 +2252,22 @@ export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
       last = await api.snapshot();
       note(last);
     }
+  }
+
+  // The flags are all in; give the last of them a fair chance to actually get OUT before
+  // reporting on it. Without this the watch stopped the instant the third predator stopped
+  // being denned, and any hunter still crossing the chamber at that moment was recorded as
+  // one that never left — a build whose Flarefish was clear of the gate three seconds later
+  // was named alongside a Lanternjaw that sat in the den for twenty-five.
+  //
+  // A den slot is a few tiles from the gate and a predator covers a tile every `0.28 s` at
+  // `116 px/s`, so a whole release gap of grace is many times what the swim can need, and
+  // still nothing like long enough to let a hunter that never moves look as though it left.
+  const graceUntil = last.simTime + DEN_RELEASE_GAP;
+  while (releases.some((r) => r.outAt === null) && last.simTime < graceUntil) {
+    await api.advance(poll);
+    last = await api.snapshot();
+    note(last);
   }
   return { releases, resumedAt };
 }

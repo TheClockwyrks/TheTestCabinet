@@ -1,3 +1,45 @@
+## Three checks that were reading the scenario, not the build
+
+**The bulb is read where the trench is actually dark.** `lanternjaw/bulb-visible` stood
+the
+pair two tiles apart and took its darkness from the rock between them. Two tiles is
+`64 px`, inside the forager's own light pocket (`V = 96 px` while it is dim), and a build
+is entitled to paint that pocket as a soft glow rather than a hard disc. One does: the
+glow
+washed over the bulb and the sample came back green, so a build drawing the bulb at the
+palette's exact `#ffd166` was failed for it. The tile was unlit — the rock did its job —
+but the trench around it was not dark. The pair now stands five tiles apart: past the
+light,
+still inside the Kindle vision circle, the same band `amber/lookalikes` has always
+measured
+its lights from.
+
+**Ink is asked whether the Gloamfin keeps coming, not what it was doing for one tick.**
+`gloamfin/ink-noop` read the hunter's state on the single tick it touched the cloud, which
+cannot tell a hunter that swims on from one that recoils on the next step. It now watches
+it
+cross — and stops watching before the search begins. The chase is toward a tile the
+forager
+has left, so a conforming Gloamfin reaches it a beat later, drops to `search` and starts
+"casting back and forth around the spot" (`specs/predators/gloamfin.md`). That cast is a
+turn-around in plain view, and the clip used to run into it: a hunter apparently repelled
+by
+the ink, directly under a verdict saying ink does nothing.
+
+**A predator is released when it leaves the den, not when a flag says so.** `den/stagger`
+timed the stagger off `state`, which is the build's own bookkeeping. A build flipped all
+three to `wander` while they sat on den tiles, and its Lanternjaw then stood on the same
+tile for twenty-five seconds reporting `wander` at the drifter's `64 px/s` without
+covering
+a pixel — a textbook staggered release by the numbers, three predators sitting in the den
+on
+screen. `actDenReleases` now records both moments: the flag, which still times the
+schedule
+because that is what the spec fixes, and the moment the predator is clear of the chamber,
+which is a new assertion of its own. Stragglers get a release gap of grace to finish the
+swim, so a hunter still crossing the chamber when the last flag lands is not mistaken for
+one that never left.
+
 ## A fixture puts the forager where it belongs, and says when it has been moved
 
 Two runs turned nearly every posed scenario into noise, and the cause was one assumption.

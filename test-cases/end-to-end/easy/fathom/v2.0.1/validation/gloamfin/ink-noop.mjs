@@ -36,6 +36,8 @@ export default function item() {
   let entered;
   let afterInk;
   let gapAtRead = 0;
+  let chasedThrough = 0;
+  let crossed = 0;
 
   return {
     id: "gloamfin.ink-noop",
@@ -86,9 +88,32 @@ export default function item() {
         g.x - entered.snap.forager.x,
         g.y - entered.snap.forager.y,
       );
-      await api.advance(90); // it crosses the cloud and keeps coming, for the clip
+
+      // WATCH IT CROSS, rather than reading the one tick it touched the cloud. "Ink does
+      // nothing to it" is a claim about a hunter that keeps coming, and a single instant
+      // cannot tell that from one that recoils on the next step. So the cloud is watched
+      // for as long as the Gloamfin is inside it and still chasing, and what is recorded
+      // is whether it went on closing.
+      //
+      // 50 ticks, and the number is chosen to END BEFORE THE SEARCH. The chase is toward
+      // the tile the fix was taken on, and the forager has left it — so on any conforming
+      // build the Gloamfin reaches that empty tile a beat later, drops to `search` and
+      // begins "casting back and forth around the spot"
+      // (`specs/predators/gloamfin.md`). That cast is a turn-around in plain view, and a
+      // clip that runs into it shows a hunter apparently repelled by the ink directly
+      // under a verdict saying ink does nothing. Both references reach the fix around 70
+      // ticks after entering the cloud; 50 keeps the whole clip inside the chase.
+      const CROSS_TICKS = 50;
+      const from = { x: g.x, y: g.y };
+      for (let i = 0; i < CROSS_TICKS; i += 5) {
+        await api.advance(5);
+        const s = await api.snapshot();
+        const p = pred(s, "gloamfin");
+        if (p.state !== "chase") break;
+        crossed = Math.hypot(p.x - from.x, p.y - from.y);
+        chasedThrough = i + 5;
+      }
       await api.call("keyUp", DIR_KEY[line.flee]);
-      await api.advance(30);
     },
 
     async assert(api, check) {
@@ -107,6 +132,21 @@ export default function item() {
         "ink does not stop the Gloamfin (still chasing, inside the cloud)",
         afterInk,
         "chase",
+      );
+      check.expectGe(
+        `and it keeps chasing THROUGH the cloud rather than recoiling from it (${chasedThrough} ticks inside it, still fixed)`,
+        chasedThrough,
+        40,
+      );
+      // Still SWIMMING, not merely still flagged as chasing. Half a tile over those ticks
+      // is far under the two-and-a-bit tiles a hunter at its chase speed actually covers,
+      // and far over anything a Gloamfin the ink had stopped could manage. Not "closing":
+      // it gains only `6 px/s` on a forager fleeing at `128`, so the gap barely narrows —
+      // that margin is `gloamfin/chase-cap`'s to measure, not this item's.
+      check.expectGe(
+        `swimming on through it rather than stopping in it (${crossed.toFixed(0)} px covered inside the cloud)`,
+        crossed,
+        16,
       );
     },
   };

@@ -22,7 +22,22 @@ export default function item() {
 
     async arrange(api) {
       await startPlaying(api);
-      const bp = await poseOccludedPair(api); // close enough for the Kindle circle, LOS blocked so unlit
+      // FIVE TILES APART — `160 px` — and the distance is the whole point.
+      //
+      // This item reads a bulb "in the dark", and it used to get its darkness from
+      // occlusion alone, standing the pair two tiles apart with rock between. Two tiles is
+      // `64 px`, well inside the forager's own light pocket (`V = 96 + 64 G`, so `96 px`
+      // while it is dim), and a build is entitled to paint that pocket as a soft glow
+      // rather than a hard disc. One does: its glow washed over the bulb and the sample
+      // came back green (`191,220,145`) instead of amber, so a build drawing the bulb at
+      // the palette's exact `#ffd166` was failed for it. The tile was unlit — the rock did
+      // its job — but the trench around it was not dark.
+      //
+      // `160 px` is past the light pocket under any brightness this scenario uses, and
+      // still inside the `192 px` Kindle vision circle, so the bulb is drawn in both dives
+      // and read over ground nothing else is lighting. `amber/lookalikes` has always
+      // measured its lights from that same band.
+      const bp = await poseOccludedPair(api, { tiles: 5 });
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setPredator", "lanternjaw", {
         tx: bp.pred.tx,
