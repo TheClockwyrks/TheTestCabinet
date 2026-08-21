@@ -153,6 +153,7 @@ impl Validator for BuildValidator {
                 &engine,
                 artifacts,
                 &build_commands.install,
+                &repo.join(VALIDATION_MEDIA_DIR),
             ),
             ScriptedValidation::Browser => {
                 self.run_debug_scripts(test_case, variant, repo, &output_dir)
@@ -706,25 +707,134 @@ pub fn drive_scripted_items(
     Some(results)
 }
 
+/// One verdict unit's outcome as a baseline capture reports it: enough for the
+/// capturing command to say what was written and what went wrong, and nothing more.
+///
+/// The two capture paths report through this rather than through their own shapes.
+/// A browser drive produces [`ScriptedItemDrive`]s and a validator project produces
+/// [`DebugScriptResult`]s; both carry far more than a capture needs (verdicts,
+/// assertions, the checklist framing), because both were built to *decide* a run's
+/// points. A baseline decides nothing — the reference implementation is the answer,
+/// not a submission — so what it reports is which unit ran and how many outputs it
+/// left behind.
+#[derive(Debug, Clone)]
+pub struct BaselineUnit {
+    /// The backing review item's id, for naming the unit in the operator's output.
+    pub item_id: String,
+    /// Whether the unit's script or suite ran clean against the reference
+    /// implementation. A `false` here is worth surfacing: the reference is supposed
+    /// to be conformant.
+    pub ran: bool,
+    /// Detail about a failed or degraded capture, or `None` when it ran clean.
+    pub detail: Option<String>,
+    /// How many of the unit's declared outputs actually turned up.
+    pub outputs_present: usize,
+}
+
 /// Synthesize a case variant's **baseline** validation media once, from its
-/// reference implementation's already-built static site at `build_dir`, writing each
-/// declared output into `baseline_dir` under its flat [`validation_media_name`].
+/// reference implementation for `engine`, writing each declared output into
+/// `baseline_dir` under its flat [`validation_media_name`].
 ///
 /// This is the ingest-time counterpart to the per-run *actual* capture: the baseline
 /// is a fixed property of the case *version* (the reference implementation does not
-/// change per run), so it is generated exactly once — by `tcab publish-reference`,
-/// which owns building the reference implementation — and committed under the version
-/// folder, rather than re-driven on every run. Serves the build over an ephemeral
-/// static server and delegates to [`drive_scripted_items`]; see there for the `None`
-/// degrade cases.
+/// change per run), so it is generated exactly once — by
+/// [`tcab capture-baselines`](https://docs.testcabinet.ai/components/cli/overview/#commands),
+/// which owns building the reference implementation — and committed under the
+/// version folder, rather than re-driven on every run.
+///
+/// Which path produces it is the same question the per-run capture asks — does the
+/// case ship a validator project for this engine? — and it is answered the same way:
+/// a case that ships one has its baseline recorded by running THAT project against
+/// the reference implementation, so the reviewer's two panes come from the same
+/// suites driving the same scenarios, which is the only way the comparison means
+/// anything. A case that ships none has its reference build served and driven in a
+/// browser.
+///
+/// `reference_dir` is the reference implementation's own project directory and
+/// `build_dir` its built static output; the validator-project path needs the former
+/// (it imports the build's modules) and the browser path the latter (it serves the
+/// site). The project path stages the case's validators into `reference_dir` and
+/// removes them again, so a capture leaves the committed reference implementation as
+/// it found it.
+///
+/// Returns `None` when there is nothing to capture (no instrumentation, no scripted
+/// units) or nothing can capture it (the browser path with no browser) — see
+/// [`drive_scripted_items`] for the degrade cases.
 pub fn capture_baseline_media(
     test_case: &TestCaseVersion,
     variant: &Variant,
+    engine: &str,
+    reference_dir: &Path,
     build_dir: &Path,
     baseline_dir: &Path,
-) -> Option<Vec<ScriptedItemDrive>> {
+) -> Option<Vec<BaselineUnit>> {
+    if crate::vitest_validator::has_project(test_case, engine) {
+        return capture_baseline_suites(test_case, variant, engine, reference_dir, baseline_dir);
+    }
     let server = StaticServer::start(build_dir.to_path_buf()).ok()?;
-    drive_scripted_items(test_case, variant, &server.url(), baseline_dir)
+    let drives = drive_scripted_items(test_case, variant, &server.url(), baseline_dir)?;
+    Some(
+        drives
+            .into_iter()
+            .map(|drive| BaselineUnit {
+                item_id: drive.item_id,
+                ran: drive.ran,
+                detail: drive.detail,
+                outputs_present: drive.outputs.iter().filter(|out| out.present).count(),
+            })
+            .collect(),
+    )
+}
+
+/// Capture the baseline by running the case's validator project for `engine` against
+/// the reference implementation at `reference_dir`.
+///
+/// The reference implementation is a built, installed project — `tcab
+/// capture-baselines` has just run the case's own install and build from it — so the
+/// suites run over it exactly as they run over a model's collected tree, and the same
+/// [`crate::vitest_validator::run_vitest_suites`] does both.
+///
+/// The staged validator project and the media scaffolding are removed afterwards.
+/// Everything else the capture touches (`node_modules`, the build output) the build
+/// step put there and the case's own ignore rules already cover; the staged project is
+/// the one thing this step adds to a directory that is committed, so it is the one
+/// thing that has to go.
+fn capture_baseline_suites(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    engine: &str,
+    reference_dir: &Path,
+    baseline_dir: &Path,
+) -> Option<Vec<BaselineUnit>> {
+    let build = test_case.build.as_ref()?;
+    let artifacts = ArtifactCollection::new(reference_dir.to_path_buf());
+    let results = crate::vitest_validator::run_vitest_suites(
+        test_case,
+        variant,
+        engine,
+        &artifacts,
+        &build.install,
+        baseline_dir,
+    );
+    let _ = std::fs::remove_dir_all(reference_dir.join(VALIDATION_SCRIPT_DIR));
+    if results.is_empty() {
+        return None;
+    }
+    Some(
+        results
+            .into_iter()
+            .map(|result| BaselineUnit {
+                item_id: result.item_id,
+                ran: result.ran,
+                detail: result.detail,
+                outputs_present: result
+                    .outputs
+                    .iter()
+                    .filter(|out| out.actual_present)
+                    .count(),
+            })
+            .collect(),
+    )
 }
 
 /// The run-root-relative directory synthesized *actual* validation media is
@@ -733,10 +843,18 @@ pub fn capture_baseline_media(
 pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
 
 /// The version-folder-relative directory a case's committed **baseline** validation
-/// media lives under, one sub-directory per variant: `validation-baseline/<variant>/`.
-/// Synthesized once at publish-reference time from the reference implementation and
-/// committed beside the case, then served case-scoped by the backend — the invariant
-/// counterpart to the per-run `VALIDATION_MEDIA_DIR` *actual* media.
+/// media lives under, one sub-directory per engine and variant:
+/// `validation-baseline/<engine>/<variant>/`. Synthesized once at capture-baselines
+/// time from the reference implementation and committed beside the case, then served
+/// case-scoped by the backend — the invariant counterpart to the per-run
+/// `VALIDATION_MEDIA_DIR` *actual* media.
+///
+/// The engine comes first because it is what makes two captures of the same variant
+/// different media: a variant has one reference implementation PER ENGINE, and the
+/// two draw the same game through different runtimes, so their recordings are not
+/// interchangeable. A reviewer comparing a `simple-2d` run against an engineless
+/// build's frames would be shown a difference between two runtimes and read it as a
+/// difference in the build.
 pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
 
 /// The version-folder-relative directory a case's reporter-side automated-validation
@@ -811,7 +929,8 @@ pub fn validation_published_extension(kind: MediaKind) -> &'static str {
 ///
 /// Both the model's *actual* media (under a run's `VALIDATION_MEDIA_DIR`) and a
 /// case's *baseline* media (under the version folder's [`VALIDATION_BASELINE_DIR`]`/
-/// <variant>/`) use this same name; the directory, not the name, tells them apart.
+/// <engine>/<variant>/`) use this same name; the directory, not the name, tells them
+/// apart.
 pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {
     let ext = validation_output_extension(kind);
     format!("{verdict_id}__{output_id}.{ext}")

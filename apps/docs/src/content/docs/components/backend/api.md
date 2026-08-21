@@ -330,11 +330,14 @@ the [validator](/components/core/validation/) runs it. These files are
 reporter-side and are never seeded into the model's run container. The array is
 empty for a version that declares no scripted items.
 
-### `GET /test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}`
+### `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
 
-Fetch a variant's committed baseline validation media
+Fetch one reference build's committed baseline validation media
 (`<item>__<output>.<ext>`), synthesized from the reference implementation. This
-is the case-scoped invariant counterpart to a run's own validation media.
+is the case-scoped invariant counterpart to a run's own validation media. The
+engine is part of the address because a variant has one reference implementation
+per [engine](/components/core/engines/), and a run is only comparable against
+the one it was itself built on.
 
 ### `GET /game-jams/{slug}/prior-readmes?model=`
 

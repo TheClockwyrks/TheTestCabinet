@@ -275,14 +275,16 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
-  // A published case variant's *baseline* validation media (the reference
-  // implementation's debug-script outputs), resolved at build time and keyed
-  // case-scoped by a `<slug>/<version>/<variant>` subject key then the flat
+  // A published reference build's *baseline* validation media (the reference
+  // implementation's declared outputs), resolved at build time and keyed case-scoped
+  // by a `<slug>/<version>/<engine>/<variant>` subject key then the flat
   // `<item>__<output>.<ext>` name — the same file name the actual media is requested
-  // under, resolved through the case-scoped map instead of the run-scoped one.
+  // under, resolved through the case-scoped map instead of the run-scoped one. The
+  // engine is in the key because a variant has one reference implementation per
+  // engine, and a run is only comparable against the one it was built on.
   const validationBaselineUrl = useCallback(
     (subject: RunSubject, file: string): string | null => {
-      const subjectKey = `${subject.testCaseSlug}/${subject.testCaseVersion}/${subject.variant}`;
+      const subjectKey = `${subject.testCaseSlug}/${subject.testCaseVersion}/${subject.engineSlug}/${subject.variant}`;
       return publishedValidationBaselineUrls[subjectKey]?.[file] ?? null;
     },
     [],

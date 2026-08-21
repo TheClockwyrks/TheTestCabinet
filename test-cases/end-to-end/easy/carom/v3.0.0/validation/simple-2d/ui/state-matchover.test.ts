@@ -15,6 +15,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../../src/constants";
 import {
   arrangeGoal,
+  captureStill,
   createHarness,
   driveGoal,
   drewText,
@@ -47,6 +48,7 @@ it("ends the match on the winning point and draws the match-over screen", async 
 
   h.calls.length = 0;
   await h.advance(1);
+  captureStill(h, "matchover");
   for (const item of MATCHOVER_ITEMS) {
     expect(drewText(h.calls, item)).toBe(true);
   }

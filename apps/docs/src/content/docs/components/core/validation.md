@@ -145,13 +145,22 @@ nothing more.
 
 ### The media a validator produces
 
-A validator captures a recording for each `replay` output its verdict unit
-declares. It arms the engine's draw-command
+A validator captures each output its verdict unit declares, in the form the
+manifest gives it.
+
+For a `replay` it arms the engine's draw-command
 [recorder](/components/core/engines/#recording) once its scenario is posed,
 disarms it once the behavior under test has happened, and writes what came back.
 The evidence is therefore the operations the build itself issued over exactly
 the stretch of the scenario the check is about, which nothing outside the suite
 knows the bounds of.
+
+For an `image` it encodes the surface as it stands, which is the frame that last
+ran. That is the right form for a point about one picture rather than a stretch
+of motion — which screen the game opened on, what colour it drew a paddle, where
+the letterbox bars fell. A recording of a still screen would be the same frame
+several hundred times over, and a reviewer looking at a menu wants to look at the
+menu.
 
 The runner creates the media directory before the suite run starts and names it
 to the suites in an environment variable. Each suite writes its outputs into a
@@ -177,11 +186,14 @@ the output reported absent, which is the truthful reading of a section that drew
 nothing. A recording is kept whatever the verdict was: a suite that failed its
 checks is the one whose frames a reviewer most wants.
 
-The baseline half is the same suites driven against the variant's
-`reference_implementation` by
+The baseline half is the same suites run against the variant's
+`reference_implementation` for the same engine by
 [`tcab capture-baselines`](/components/cli/overview/#commands), captured once
-and served case-scoped. Every frame of a recording is drawable on its own, so
-the reviewer scrubs the build's recording and the reference's in step.
+into `validation-baseline/<engine>/<variant>/` and served case-scoped. Same
+suites, same scenarios, same form of output — so the difference a reviewer sees
+on screen is a difference between the two builds and nothing else. Every frame
+of a recording is drawable on its own, so the reviewer scrubs the build's
+recording and the reference's in step.
 
 ## Checks
 

@@ -23,6 +23,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { BALL_R, TRAIL_TIME } from "../../src/constants";
 import {
   arrangeLiveBall,
+  captureStill,
   colorDistance,
   createHarness,
   drawnPoints,
@@ -119,6 +120,8 @@ function readStreak(ball: { x: number; y: number }): Streak {
 
 it("draws a continuous, fading streak back along the ball's recent path", async () => {
   const ball = await driveTrail(FAST);
+  // The fast pass, where the streak is longest and the taper clearest.
+  captureStill(h, "trail");
   const expected = FAST * TRAIL_TIME;
 
   // The recent path really is held as state, oldest sample first.

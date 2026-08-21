@@ -18,6 +18,8 @@ function record(overrides: Partial<RunRecord> = {}): RunRecord {
       harnessSlug: "claude",
       harnessVersion: "1",
       orchestratorSlug: "one-shot",
+      engineSlug: "simple-2d",
+      engineVersion: "1.0.0",
       modelId: "anthropic/claude",
     },
     metrics: {
@@ -43,6 +45,26 @@ function review(ratings: DomainRating[]): StoredReview {
 }
 
 describe("toRunSummary", () => {
+  it("carries the run's engine onto the card, beside its variant", () => {
+    // A card that named the variant but not the engine would sort and group runs
+    // that are not comparable with each other: the engine is chosen per run, and a
+    // result only stands against another result on the same one.
+    const summary = toRunSummary(record(), []);
+    expect(summary.subject.engineSlug).toBe("simple-2d");
+    expect(summary.subject.engineVersion).toBe("1.0.0");
+  });
+
+  it("reports no engine version for an engine that vendors no runtime", () => {
+    const bare = record({
+      subject: {
+        ...record().subject,
+        engineSlug: "none",
+        engineVersion: undefined,
+      },
+    } as unknown as Partial<RunRecord>);
+    expect(toRunSummary(bare, []).subject.engineVersion).toBeNull();
+  });
+
   it("has a null rating and zero reviewCount when there are no reviews", () => {
     const summary = toRunSummary(record(), []);
     expect(summary.rating).toBeNull();

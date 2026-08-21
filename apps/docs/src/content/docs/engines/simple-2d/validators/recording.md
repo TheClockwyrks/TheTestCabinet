@@ -132,10 +132,16 @@ evidence beside the verdict.
 
 ## The baseline
 
-The same suites are driven against the variant's reference implementation by
-[`tcab capture-baselines`](/components/cli/overview/#commands), which produces
-the baseline recording under the same name in the case's version folder. The
-reviewer sees the two beside each other.
+The same suites are run against the variant's reference implementation for the
+same engine by [`tcab capture-baselines`](/components/cli/overview/#commands),
+which produces the baseline recording under the same name in the case's version
+folder, at `validation-baseline/<engine>/<variant>/`. The reviewer sees the two
+beside each other.
+
+The engine is in that path because a variant has one reference implementation
+per engine, and the two are different builds. A run recorded under one engine
+compared against the other's frames would show a reviewer a difference between
+two runtimes and invite them to read it as a difference in the build.
 
 Both recordings carry the engine's frame counter and its accumulated simulated
 time per frame, and every frame in each is drawn from itself alone, so one

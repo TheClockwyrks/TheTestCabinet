@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { WallClock } from "../../src/host";
 import { SERVE_SPEED } from "../../src/constants";
-import { createHarness, type Harness } from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
 
 /** The real-time window the loop is left to run for. */
 const RUN_MS = 1000;
@@ -53,11 +53,16 @@ it("advances on the runtime's frame loop with nothing stepping it", async () => 
   await harness.advance(1);
 
   const before = harness.snapshot();
+  captureStill(harness, "before");
   expect(before.ball.speed).toBeGreaterThan(1);
 
   await harness.runFor(RUN_MS);
 
   const after = harness.snapshot();
+  // The pair is the evidence: two frames of the same match, a second apart, with
+  // nothing between them but the runtime's own loop. A build that never advanced
+  // itself produces two identical pictures.
+  captureStill(harness, "after");
   const advanced = after.simTime - before.simTime;
   const travelled = Math.hypot(
     after.ball.x - before.ball.x,

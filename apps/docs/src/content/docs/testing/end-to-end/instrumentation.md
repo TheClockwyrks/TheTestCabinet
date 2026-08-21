@@ -271,14 +271,17 @@ an unambiguous fact, sets the item's verdict.
 A case marks a whole review item, or an individual sub-item, as an
 [automatically validated](/testing/end-to-end/manifests/#automated-validation)
 verdict unit by pointing it at a debug script that drives the declared handle.
-Per run, validation drives that script against the model's build to decide it
-and synthesize its actual media. The baseline half of the side-by-side is the
-same script driven against the case's reference implementation, a fixed property
-of the case version, so it is synthesized once by
+Per run, validation drives that script — or, under an
+[engine](/components/core/engines/), runs the case's validator suite — against
+the model's build to decide it and synthesize its actual media. The baseline
+half of the side-by-side is the same thing run against the case's reference
+implementation for that engine, a fixed property of the case version, so it is
+synthesized once by
 [`tcab capture-baselines`](/components/cli/overview/#commands) and committed
-under the version folder at `validation-baseline/<variant>/`. Run that command
-whenever you add or change a script, or change the reference implementation it
-drives; it needs only the case's toolchain and a browser.
+under the version folder at `validation-baseline/<engine>/<variant>/`. Run that
+command whenever you add or change a script or a validator suite, or change the
+reference implementation it runs against; it needs only the case's toolchain,
+and a browser for a case decided by browser scripts.
 
 Even for an item left to human judgement, the same instrumentation earns its
 place: the debug overlay gives a reviewer a read-only window into ground truth,

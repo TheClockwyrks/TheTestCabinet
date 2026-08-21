@@ -364,8 +364,11 @@
       "type": "object"
     },
     "CaseValidationBaselineOut": {
-      "description": "A committed **baseline** validation media file exposed in case metadata — one\ndebug-script output driven once against the case's reference implementation.\n`variant` is the variant slug the baseline was captured for (baselines are always\nper-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests\n(`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the\nmedia as published (a video transcoded to `.mp4`). The static gallery keys its\nbaseline lookup off `variant` + `file`.",
+      "description": "A committed **baseline** validation media file exposed in case metadata — one\ndeclared output captured once against the case's reference implementation.\n`engine` and `variant` name the reference build it was captured from (a variant\nhas one reference implementation per engine, and their captures are not\ninterchangeable); `file` is the flat `<item>__<output>.<ext>` name the gallery\nrequests (`.png`/`.webm`/`.json.gz`); `key` is its snapshot-relative object key,\nwhose bytes are the media as published (a video transcoded to `.mp4`). The static\ngallery keys its baseline lookup off `engine` + `variant` + `file`.",
       "properties": {
+        "engine": {
+          "type": "string"
+        },
         "file": {
           "type": "string"
         },
@@ -376,7 +379,7 @@
           "type": "string"
         }
       },
-      "required": ["variant", "file", "key"],
+      "required": ["engine", "variant", "file", "key"],
       "type": "object"
     },
     "CaseVariantOut": {

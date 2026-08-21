@@ -69,6 +69,21 @@ export function RunMetadataPage() {
                     title={subject.orchestratorSlug}
                   />
                 )}
+                {/* The engine the build was written against, and the runtime it
+                    vendored. The header already names the engine beside the
+                    variant; this tile is where the exact runtime version lives,
+                    which is what tells two runs of the same engine apart when
+                    they disagree. `none` vendors no package, so it has no
+                    version to state. */}
+                <MetricTile
+                  label="Engine"
+                  value={
+                    subject.engineVersion
+                      ? `${subject.engineSlug} v${subject.engineVersion}`
+                      : subject.engineSlug
+                  }
+                  title={subject.engineSlug}
+                />
                 <MetricTile
                   label="Test Cabinet commit"
                   value={

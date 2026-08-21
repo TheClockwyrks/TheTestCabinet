@@ -57,7 +57,7 @@ media/runs/<run-id>/asset/<file>
 media/runs/<run-id>/validation/<file>
 media/runs/<run-id>/code-analysis/v<generation>.json
 media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png
-media/cases/<slug>/<version>/validation-baseline/<variant>/<digest>-<file>
+media/cases/<slug>/<version>/validation-baseline/<engine>/<variant>/<digest>-<file>
 pfp/<account-id>
 ```
 

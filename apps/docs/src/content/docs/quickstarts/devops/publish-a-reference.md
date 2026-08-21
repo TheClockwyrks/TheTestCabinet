@@ -106,16 +106,16 @@ together. It needs no credentials and uploads nothing.
 
 A case's committed baseline
 [validation](/testing/end-to-end/instrumentation/) media lives in
-`validation-baseline/<variant>/` and is the expected-behavior half of a
-reviewer's side-by-side. Regenerating it is its own command, needing none of the
-credentials above:
+`validation-baseline/<engine>/<variant>/` — one directory per reference build —
+and is the expected-behavior half of a reviewer's side-by-side. Regenerating it
+is its own command, needing none of the credentials above:
 
 ```sh
-tcab capture-baselines <slug> [<version>] [--variant base] [--dry-run]
+tcab capture-baselines <slug> [<version>] [--variant base] [--engine none] [--dry-run]
 ```
 
-Run it whenever a debug script or the reference implementation it drives changes,
-then commit the result. `publish-reference` re-captures the same media as part of
+Run it whenever a validator or the reference implementation it runs against
+changes, then commit the result. `publish-reference` re-captures the same media as part of
 its build; `--skip-baselines` deploys without re-capturing when the committed
 media is already current.
 

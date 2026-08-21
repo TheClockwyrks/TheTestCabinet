@@ -1173,60 +1173,69 @@ impl DefinitionStore {
     }
 
     /// Read a stored **baseline** validation media file for a version:
-    /// `validation-baseline/<variant>/<file>`, where `<file>` is the flat
+    /// `validation-baseline/<engine>/<variant>/<file>`, where `<file>` is the flat
     /// `<item>__<output>.<ext>`.
     ///
     /// Baseline media is a fixed property of the case version — synthesized once at
-    /// `tcab publish-reference` time from the reference implementation, committed
+    /// `tcab capture-baselines` time from the reference implementation, committed
     /// under the version folder, and copied into the store at ingest (like any other
     /// committed definition file). It is served case-scoped, the invariant
     /// counterpart to a run's *actual* validation media (served run-scoped by the
     /// artifact service). Mirrors [`read_reference`](Self::read_reference).
+    ///
+    /// Keyed by engine as well as variant: a variant has one reference implementation
+    /// per engine, and the run being reviewed selected one of them.
     pub fn read_validation_baseline(
         &self,
         slug: &str,
         version: &str,
+        engine: &str,
         variant: &str,
         file: &str,
     ) -> Result<Vec<u8>> {
-        // `variant` and `file` are validated to be single, traversal-free path
-        // segments so a crafted request cannot read outside the baseline dir.
-        if !is_safe_segment(variant) || !is_safe_segment(file) {
+        // `engine`, `variant` and `file` are validated to be single, traversal-free
+        // path segments so a crafted request cannot read outside the baseline dir.
+        if !is_safe_segment(engine) || !is_safe_segment(variant) || !is_safe_segment(file) {
             return Err(BackendError::BadRequest(
-                "invalid validation-baseline variant or file".to_string(),
+                "invalid validation-baseline engine, variant or file".to_string(),
             ));
         }
         let path = self
             .version_dir(slug, version)
             .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(engine)
             .join(variant)
             .join(file);
         std::fs::read(&path).map_err(|_| {
-            BackendError::NotFound(format!("validation baseline `{variant}/{file}` not stored"))
+            BackendError::NotFound(format!(
+                "validation baseline `{engine}/{variant}/{file}` not stored"
+            ))
         })
     }
 
-    /// List a variant's committed **baseline** validation media file names (the flat
-    /// `<item>__<output>.<ext>`), sorted. Reads the directory
-    /// `validation-baseline/<variant>/` copied into the store at ingest; a variant with
-    /// no committed baseline media (the case declares no scripted items, or no
-    /// reference implementation was captured) yields an empty list. Used by the
+    /// List one reference build's committed **baseline** validation media file names
+    /// (the flat `<item>__<output>.<ext>`), sorted. Reads the directory
+    /// `validation-baseline/<engine>/<variant>/` copied into the store at ingest; a
+    /// build with no committed baseline media (the case declares no scripted items, or
+    /// no reference implementation was captured) yields an empty list. Used by the
     /// snapshot builder to publish the case-scoped baseline media, mirroring how
     /// `read_reference` baselines are exported.
     pub fn list_validation_baseline(
         &self,
         slug: &str,
         version: &str,
+        engine: &str,
         variant: &str,
     ) -> Result<Vec<String>> {
-        if !is_safe_segment(variant) {
+        if !is_safe_segment(engine) || !is_safe_segment(variant) {
             return Err(BackendError::BadRequest(
-                "invalid validation-baseline variant".to_string(),
+                "invalid validation-baseline engine or variant".to_string(),
             ));
         }
         let dir = self
             .version_dir(slug, version)
             .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(engine)
             .join(variant);
         let read = match std::fs::read_dir(&dir) {
             Ok(read) => read,

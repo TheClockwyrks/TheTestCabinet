@@ -22,7 +22,12 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CY, HOLD_TIME } from "../../src/constants";
 import { CAROM_DEBUG_VERSION } from "../../src/debug";
-import { createHarness, startPlaying, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  type Harness,
+} from "../harness";
 
 /** Every operation the surface must carry under this runtime. */
 const REQUIRED_OPS = [
@@ -59,6 +64,9 @@ it("carries a version and every required operation, as functions", () => {
 it("reports the whole documented snapshot shape, from a live match", async () => {
   await startPlaying(h, "versus");
   await h.advance(36); // 0.3 s of real flight, so the reads are of live play
+  // The frame the snapshot below is read off: what the surface reports and what
+  // the build drew, at the same instant, so the two can be held against each other.
+  captureStill(h, "state");
 
   const snapshot = h.snapshot();
 

@@ -31,7 +31,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { expect } from "vitest";
 import {
   ConstantClock,
@@ -142,6 +142,14 @@ export interface Harness {
   readonly debug: CaromDebugApi;
   /** The real 2D context, for `getImageData`. Draw calls also reach it. */
   readonly ctx: SKRSContext2D;
+  /**
+   * The surface the runtime drew into, holding the last frame that ran.
+   *
+   * Exposed for {@link captureStill}, which encodes it: a still output is the
+   * picture the build actually put on the canvas, and the only place that picture
+   * exists is here.
+   */
+  readonly canvas: Canvas;
   /** Every call and property set the render made, oldest first. */
   readonly calls: DrawCall[];
   /** Every cue the build played, oldest first. */
@@ -317,6 +325,7 @@ export async function createHarness(
     state,
     debug,
     ctx,
+    canvas,
     calls,
     cues,
     assetFailures,
@@ -373,7 +382,7 @@ export async function createHarness(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Replay capture                                                             */
+/* Evidence capture                                                           */
 /* -------------------------------------------------------------------------- */
 //
 // A review item may declare a `replay` OUTPUT beside its verdict: the frames the
@@ -451,25 +460,25 @@ const STAGED_PROJECT_DIR = "validation";
 const MAX_REPLAY_FRAMES = 300;
 
 /**
- * Where the running suite's `outputId` recording belongs, or `null` when nothing
- * is collecting media.
+ * Where the running suite's `outputId` output belongs, or `null` when nothing is
+ * collecting media.
  *
  * The suite is the one vitest is currently running rather than one the caller
  * names, because the two must not be able to disagree: a check that named its own
  * path would be free to write its evidence under some other point's address.
  *
- * The name carries both extensions, because a recording is a JSON document stored
- * gzipped: `.json` is what the bytes are and `.gz` is how they are framed. The
- * runner collects a `replay` output under exactly this name, so the two agree by
- * being the same statement of what a recording is.
+ * `extension` is the one the runner collects that OUTPUT KIND under — `json.gz`
+ * for a recording (a JSON document stored gzipped: `.json` is what the bytes are
+ * and `.gz` is how they are framed), `png` for a still. The suite and the runner
+ * agree by both stating the same thing about what the kind is.
  */
-function replayDestination(outputId: string): string | null {
+function mediaDestination(outputId: string, extension: string): string | null {
   const mediaDir = process.env[MEDIA_DIR_ENV];
   if (mediaDir === undefined || mediaDir === "") return null;
   const testPath = expect.getState().testPath;
   if (testPath === undefined) return null;
   const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
-  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.json.gz`);
+  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.${extension}`);
 }
 
 /**
@@ -572,7 +581,7 @@ export async function captureReplay<T>(
   outputId: string,
   scenario: () => T | Promise<T>,
 ): Promise<T> {
-  const destination = replayDestination(outputId);
+  const destination = mediaDestination(outputId, "json.gz");
   if (destination === null) return scenario();
 
   h.engine.startRecording();
@@ -581,6 +590,34 @@ export async function captureReplay<T>(
   } finally {
     // In a `finally`, so a scenario that failed still leaves its evidence behind.
     writeReplay(destination, h.engine.stopRecording());
+  }
+}
+
+/**
+ * Keep the frame currently on the canvas as the review item's `outputId` output.
+ *
+ * The companion to {@link captureReplay}, for a point whose evidence is one
+ * PICTURE rather than a stretch of motion: which screen the game opened on, what
+ * colour it drew a paddle, where the letterbox bars fell. A recording of a still
+ * screen would be the same frame three hundred times over, and a reviewer looking
+ * at a menu wants to look at the menu.
+ *
+ * What is written is whatever the last frame that RAN left behind, so call it
+ * after the frame that poses the thing under test — an `advance(1)` following the
+ * arrangement — and before the assertions, so a check that fails still leaves the
+ * picture that shows why. Nothing here can change a verdict: outside a run the
+ * media directory is unset and this is a no-op, and a still that cannot be written
+ * is reported as an output that never turned up, which is a fact about the host
+ * rather than about the build.
+ */
+export function captureStill(h: Harness, outputId: string): void {
+  const destination = mediaDestination(outputId, "png");
+  if (destination === null) return;
+  try {
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, h.canvas.toBuffer("image/png"));
+  } catch (error) {
+    console.warn(`carom: could not write ${destination}: ${String(error)}`);
   }
 }
 

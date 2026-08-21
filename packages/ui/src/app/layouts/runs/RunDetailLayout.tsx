@@ -326,6 +326,26 @@ export function RunDetailLayout({
             )}{" "}
             &middot; test case {subject.testCaseVersion} &middot;{" "}
             <span className={styles.variant}>{subject.variant}</span> variant
+            &middot;{" "}
+            {/* The engine sits beside the variant because it is the same kind of
+                fact: a run dimension chosen at launch that decides what the build
+                was written against. A result is only comparable with another
+                result on the SAME engine, so a reviewer reading this page has to
+                be able to see which one produced it without opening Metadata.
+                The vendored runtime version rides in the tooltip rather than the
+                line — it matters when two runs of one engine disagree, which is
+                not most of the time. */}
+            <span
+              className={styles.engine}
+              title={
+                subject.engineVersion
+                  ? `Engine runtime v${subject.engineVersion}`
+                  : undefined
+              }
+            >
+              {subject.engineSlug}
+            </span>{" "}
+            engine
           </span>
           {subject.harnessVersion && (
             <span className={styles.harnessVersion}>

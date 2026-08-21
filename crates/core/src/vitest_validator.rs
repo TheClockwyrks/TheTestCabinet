@@ -97,9 +97,7 @@ use serde::Deserialize;
 use crate::execution::ArtifactCollection;
 use crate::test_case::{ReviewOutput, TestCaseVersion, Variant};
 use crate::validation::{Assertion, AutoVerdict, DebugScriptOutput, DebugScriptResult};
-use crate::validator::{
-    DriveUnit, VALIDATION_MEDIA_DIR, VALIDATION_SCRIPT_DIR, drive_units, relocate_outputs,
-};
+use crate::validator::{DriveUnit, VALIDATION_SCRIPT_DIR, drive_units, relocate_outputs};
 
 /// Wall-clock cap on the whole validator suite run.
 ///
@@ -152,7 +150,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const TRUNCATION_MARKER: &str = " … output truncated … ";
 
 /// Decide `variant`'s scripted review points by running the case's validator project
-/// for `engine` over the collected tree.
+/// for `engine` over the tree `artifacts` describes, writing what the suites produce
+/// into `media_dir`.
+///
+/// `media_dir` is a parameter rather than a fixed place inside the tree because the
+/// same suites are run twice against two different builds: over a run's collected
+/// tree, where the media travels with the published implementation, and over the
+/// case's own reference implementation, where it lands in the version folder's
+/// committed baseline (see [`crate::validator::capture_baseline_media`]).
 ///
 /// Returns one [`DebugScriptResult`] per verdict unit the case declares a validator
 /// for, in declared order, or an empty vec when the case declares none. Each result
@@ -165,6 +170,7 @@ pub(crate) fn run_vitest_suites(
     engine: &str,
     artifacts: &ArtifactCollection,
     install_command: &str,
+    media_dir: &Path,
 ) -> Vec<DebugScriptResult> {
     let items = test_case.review_items_for(variant);
     let units = drive_units(&items);
@@ -173,7 +179,6 @@ pub(crate) fn run_vitest_suites(
     }
     let suites: Vec<Suite> = units.iter().map(|unit| Suite::of(unit, engine)).collect();
     let filters = suite_filters(&suites);
-    let media_dir = artifacts.repo_path.join(VALIDATION_MEDIA_DIR);
 
     let mut results = match execute(
         test_case,
@@ -181,7 +186,7 @@ pub(crate) fn run_vitest_suites(
         artifacts,
         install_command,
         &filters,
-        &media_dir,
+        media_dir,
     ) {
         Ok(reports) => suites
             .iter()
@@ -208,7 +213,7 @@ pub(crate) fn run_vitest_suites(
     // evidence before it did — so what is on disk is kept either way, and the
     // per-suite scaffolding never survives into the collected tree.
     for (result, suite) in results.iter_mut().zip(&suites) {
-        result.outputs = suite.collect_media(&media_dir);
+        result.outputs = suite.collect_media(media_dir);
     }
     tracing::info!(
         engine,

@@ -12,7 +12,12 @@
 // leaves whether it reads well to the reviewer looking at the capture.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { createHarness, drawnText, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  drawnText,
+  type Harness,
+} from "../harness";
 
 /** Enough text that the screen explains something rather than being a stub. */
 const MIN_CHARACTERS = 40;
@@ -38,6 +43,7 @@ it("opens the how-to-play screen from the menu", async () => {
 
   h.calls.length = 0;
   await h.advance(1);
+  captureStill(h, "howto");
 
   expect(h.snapshot().screen).toBe("howto");
 

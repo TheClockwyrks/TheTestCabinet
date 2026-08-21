@@ -140,7 +140,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
             } else {
                 println!(
                     "    baseline:  {}",
-                    baseline_dir(&test_case, &target.variant.slug).display()
+                    baseline_dir(&test_case, target.engine, &target.variant.slug).display()
                 );
             }
             println!(

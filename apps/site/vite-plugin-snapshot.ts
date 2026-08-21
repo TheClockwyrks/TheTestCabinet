@@ -233,9 +233,10 @@ interface SnapshotCaseFile {
   // the flat `<item>__<output>.<ext>` name the reviewer UI requests (`.png`/`.webm`);
   // `key` is the published object (a video transcoded to `.mp4`). Case-scoped, so the
   // gallery resolves the reviewer's baseline side-by-side from these keyed by
-  // slug/version/variant. Optional for snapshots written before automated validation
-  // existed.
+  // slug/version/engine/variant. Optional for snapshots written before automated
+  // validation existed.
   validationBaselines?: Array<{
+    engine: string;
     variant: string;
     file: string;
     key: string;
@@ -382,9 +383,9 @@ interface AssembledSnapshot {
   // never be read as "this model wrote no code".
   codeAnalysisUrls: Record<string, string>;
   // Resolved *baseline* automated-validation media URLs, keyed by a
-  // `<slug>/<version>/<variant>` subject key then by the flat `<item>__<output>.<ext>`
-  // name. Case-scoped, so keyed by subject rather than run id. The app's
-  // `validationBaselineUrl(subject, file)` reads this.
+  // `<slug>/<version>/<engine>/<variant>` subject key then by the flat
+  // `<item>__<output>.<ext>` name. Case-scoped, so keyed by subject rather than run
+  // id. The app's `validationBaselineUrl(subject, file)` reads this.
   validationBaselineUrls: Record<string, Record<string, string>>;
   // Resolved **asset-reference** media URLs — a published reference frame's image,
   // and the action log it was drawn from — keyed by a `<slug>/<version>/<variant>`
@@ -990,14 +991,15 @@ async function loadSnapshot(
     }
   }
 
-  // The case-scoped *baseline* validation media, keyed by a `<slug>/<version>/<variant>`
-  // subject key then the flat `<item>__<output>.<ext>` name the reviewer UI requests.
-  // Built from the per-version case files (not the collapsed catalog), so a run against
-  // any published version resolves its variant's baseline (a video's `.webm` request
-  // resolving to its published `.mp4` key).
+  // The case-scoped *baseline* validation media, keyed by a
+  // `<slug>/<version>/<engine>/<variant>` subject key then the flat
+  // `<item>__<output>.<ext>` name the reviewer UI requests. Built from the per-version
+  // case files (not the collapsed catalog), so a run against any published version
+  // resolves the baseline of the reference build it was compared against (a video's
+  // `.webm` request resolving to its published `.mp4` key).
   for (const file of caseFiles) {
     for (const baseline of file.validationBaselines ?? []) {
-      const subjectKey = `${file.slug}/${file.version}/${baseline.variant}`;
+      const subjectKey = `${file.slug}/${file.version}/${baseline.engine}/${baseline.variant}`;
       const byFile = validationBaselineUrls[subjectKey] ?? {};
       byFile[baseline.file] = joinUrl(base, baseline.key);
       validationBaselineUrls[subjectKey] = byFile;

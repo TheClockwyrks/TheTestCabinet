@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
 import {
   arrangeGoal,
+  captureStill,
   createHarness,
   driveGoal,
   startPlaying,
@@ -35,6 +36,11 @@ it("ends the match on the winning point and names the winner", async () => {
   arrangeGoal(harness, "right");
 
   const end = await driveGoal(harness);
+  // One frame past the winning point, so what is kept is the match-over screen
+  // rather than the last frame of the rally that reached it. The assertions below
+  // read `end.snapshot`, taken before this, so the extra frame decides nothing.
+  await harness.advance(1);
+  captureStill(harness, "game-over");
 
   expect(end.hit).toBe(true);
   expect(end.snapshot.screen).toBe("matchover");

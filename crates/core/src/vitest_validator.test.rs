@@ -503,6 +503,7 @@ fn a_case_with_no_validator_project_for_the_engine_reports_every_point_as_not_ru
         engine().slug(),
         &artifacts,
         "npm ci",
+        &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
     );
 
     assert_eq!(results.len(), 2, "every declared point is still reported");
@@ -551,6 +552,7 @@ fn a_variant_whose_every_validator_belongs_to_another_engine_runs_nothing() {
         engine().slug(),
         &artifacts,
         "npm ci",
+        &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
     );
 
     assert_eq!(results.len(), 1, "the declared point is still reported");
@@ -580,7 +582,8 @@ fn a_case_declaring_no_validators_reports_nothing() {
             &variant(),
             engine().slug(),
             &artifacts,
-            "npm ci"
+            "npm ci",
+            &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
         )
         .is_empty(),
         "there is nothing to run and nothing to record",

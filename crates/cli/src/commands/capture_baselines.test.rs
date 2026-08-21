@@ -217,14 +217,31 @@ fn resolve_version_prefers_an_explicit_version() {
 }
 
 #[test]
-fn baseline_dir_is_variant_scoped_under_the_version_folder() {
+fn baseline_dir_is_engine_and_variant_scoped_under_the_version_folder() {
     let mut case = test_case(&[("base", &["none"][..])]);
     case.root = PathBuf::from("test-cases/end-to-end/easy/carom/v1.0.0");
 
     assert_eq!(
-        baseline_dir(&case, "base"),
+        baseline_dir(&case, "none", "base"),
         PathBuf::from("test-cases/end-to-end/easy/carom/v1.0.0")
             .join(VALIDATION_BASELINE_DIR)
+            .join("none")
             .join("base")
+    );
+}
+
+#[test]
+fn two_engines_of_one_variant_capture_into_separate_directories() {
+    // The reason the engine is in the path at all: a variant has one reference
+    // implementation per engine, and they are different builds. Sharing a directory
+    // would have each sweep overwrite the last — and `generate_baseline` clears the
+    // directory before it writes, so the loser would not even be a stale mixture but
+    // simply gone.
+    let mut case = test_case(&[("base", &["none", "simple-2d"][..])]);
+    case.root = PathBuf::from("test-cases/end-to-end/easy/carom/v1.0.0");
+
+    assert_ne!(
+        baseline_dir(&case, "none", "base"),
+        baseline_dir(&case, "simple-2d", "base"),
     );
 }

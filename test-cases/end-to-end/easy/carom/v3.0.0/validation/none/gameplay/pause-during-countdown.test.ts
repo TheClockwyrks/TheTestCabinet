@@ -6,7 +6,12 @@
 // pressed THERE, with no time run first.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { createHarness, startWithKeys, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startWithKeys,
+  type Harness,
+} from "../harness";
 
 let harness: Harness;
 
@@ -25,6 +30,7 @@ it("pauses when the pause key is pressed during the countdown", async () => {
 
   // `tap` presses, releases, and runs the one frame that delivers the edge.
   await harness.tap("Escape");
+  captureStill(harness, "paused");
 
   expect(harness.snapshot().screen).toBe("paused");
 });

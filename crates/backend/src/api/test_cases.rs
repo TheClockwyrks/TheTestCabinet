@@ -267,21 +267,25 @@ pub async fn reference(
     Ok(bytes_response(&file, bytes, None))
 }
 
-/// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}`
-/// — a case variant's committed **baseline** validation media (`{file}` is the flat
-/// `<item>__<output>.<ext>`). This is the invariant counterpart to a run's *actual*
-/// validation media (served run-scoped by the artifact service): synthesized once at
-/// `tcab publish-reference` time from the reference implementation and committed under
-/// the version folder, so the reviewer UI resolves it case-scoped (by
-/// slug/version/variant/item/output), not from any run tree. The content type follows
-/// the extension.
+/// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
+/// — one reference build's committed **baseline** validation media (`{file}` is the
+/// flat `<item>__<output>.<ext>`). This is the invariant counterpart to a run's
+/// *actual* validation media (served run-scoped by the artifact service): synthesized
+/// once at `tcab capture-baselines` time from the reference implementation and
+/// committed under the version folder, so the reviewer UI resolves it case-scoped (by
+/// slug/version/engine/variant/item/output), not from any run tree. The content type
+/// follows the extension.
+///
+/// The engine is part of the address because a variant has one reference
+/// implementation per engine: the run being reviewed selected an engine, and the
+/// expected-behavior media it is compared against has to have come from the same one.
 pub async fn validation_baseline(
     State(state): State<AppState>,
-    Path((slug, version, variant, file)): Path<(String, String, String, String)>,
+    Path((slug, version, engine, variant, file)): Path<(String, String, String, String, String)>,
 ) -> Result<Response, ApiError> {
     let bytes = state
         .store
-        .read_validation_baseline(&slug, &version, &variant, &file)
+        .read_validation_baseline(&slug, &version, &engine, &variant, &file)
         .map_err(ApiError::from)?;
     Ok(bytes_response(&file, bytes, None))
 }

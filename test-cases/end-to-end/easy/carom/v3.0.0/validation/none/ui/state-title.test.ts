@@ -14,7 +14,12 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
-import { createHarness, drewText, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -29,6 +34,7 @@ afterEach(() => {
 it("opens on the title and draws its name, tagline, and menu", async () => {
   h.calls.length = 0;
   await h.advance(1);
+  captureStill(h, "title");
 
   expect(h.snapshot().screen).toBe("title");
   expect(drewText(h.calls, TITLE_TEXT)).toBe(true);

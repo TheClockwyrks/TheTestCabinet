@@ -18,6 +18,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   arrangeLiveBall,
+  captureStill,
   createHarness,
   watchCues,
   type Harness,
@@ -40,6 +41,7 @@ it("flips the reported mute bit on, and off again", async () => {
   expect(h.snapshot().muted).toBe(false);
 
   await h.tap("KeyM");
+  captureStill(h, "mute");
   expect(h.snapshot().muted).toBe(true);
 
   await h.tap("KeyM");

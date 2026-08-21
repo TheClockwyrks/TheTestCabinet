@@ -34,8 +34,8 @@ test-cases/<type>/<difficulty>/<slug>/<version>/
   README.md              # human overview (NOT seeded)
   specs/                 # the specification, decomposed by concern (SEEDED)
   reference/             # mockup source and committed screenshots (NOT seeded)
-  validation/            # the debug scripts review points are decided by (NOT seeded)
-  validation-baseline/   # committed baseline media the scripts compare against
+  validation/            # the validators review points are decided by (NOT seeded)
+  validation-baseline/   # committed baseline media, per engine and variant
   assets/                # sprites the model must use, SEEDED (omit if none)
 ```
 

@@ -15,6 +15,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   arrangeColorScene,
+  captureStill,
   colorDistance,
   createHarness,
   sampleScene,
@@ -39,6 +40,7 @@ afterEach(() => {
 
 it("draws the left (player one) paddle in a colour that stands apart", async () => {
   await arrangeColorScene(h);
+  captureStill(h, "scene");
   const scene = sampleScene(h);
 
   expect(colorDistance(scene.leftPaddle, scene.background)).toBeGreaterThan(

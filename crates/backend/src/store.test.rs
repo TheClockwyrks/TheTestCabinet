@@ -316,37 +316,60 @@ fn reference_scope_and_view_are_validated() {
 fn validation_baseline_reads_committed_case_scoped_media() {
     let (_dir, store) = temp_store();
     // The committed baseline media lives under the version folder at
-    // `validation-baseline/<variant>/<item>__<output>.<ext>` (copied into the store
-    // at ingest like any other definition file). Serving reads it straight back.
+    // `validation-baseline/<engine>/<variant>/<item>__<output>.<ext>` (copied into
+    // the store at ingest like any other definition file). Serving reads it straight
+    // back.
     let baseline_dir = store
         .version_dir("pong", "v1.0.0")
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join("simple-2d")
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("ball-spin__spin.webm"), b"clip").unwrap();
 
     assert_eq!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "ball-spin__spin.webm")
+            .read_validation_baseline(
+                "pong",
+                "v1.0.0",
+                "simple-2d",
+                "base",
+                "ball-spin__spin.webm"
+            )
             .unwrap(),
         b"clip",
     );
-    // A missing file 404s (NotFound), and a traversal-y variant or file is rejected.
+    // The engine is part of the address, not decoration: the same variant under
+    // another engine is a different reference build, and its media is not this one's.
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "nope.png")
+            .read_validation_baseline("pong", "v1.0.0", "none", "base", "ball-spin__spin.webm")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    // A missing file 404s (NotFound), and a traversal-y engine, variant or file is
+    // rejected.
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "base", "nope.png")
             .unwrap_err(),
         BackendError::NotFound(_)
     ));
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "..", "ball-spin__spin.webm")
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "..", "ball-spin__spin.webm")
             .unwrap_err(),
         BackendError::BadRequest(_)
     ));
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "a/b")
+            .read_validation_baseline("pong", "v1.0.0", "..", "base", "ball-spin__spin.webm")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "base", "a/b")
             .unwrap_err(),
         BackendError::BadRequest(_)
     ));

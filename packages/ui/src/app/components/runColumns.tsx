@@ -359,6 +359,31 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       </span>
     ),
   },
+  // The engine sits beside the variant because it is the same kind of fact: a run
+  // dimension chosen at launch, and one that decides which other runs this one is
+  // comparable with at all. It is NOT dropped in the `variant` scope the way the
+  // variant column is — a page scoped to one case and variant still lists runs
+  // across every engine that case supports, which is precisely where telling them
+  // apart matters most.
+  //
+  // An in-flight run cannot fill it: the engine selection lives inside the launch
+  // request rather than in a lifted job column, so `GET /jobs/active` does not
+  // report it. The dash says "not yet", which is what every other unfillable cell
+  // says, rather than guessing at `none`.
+  {
+    id: "engine",
+    label: "ENGINE",
+    default: "6rem",
+    min: 56,
+    optional: true,
+    sortKey: (row) => row.summary.subject.engineSlug.toLowerCase(),
+    render: (row) => (
+      <span className={styles.variant} data-label="Engine">
+        {row.summary.subject.engineSlug}
+      </span>
+    ),
+    renderActive: () => activeDash("Engine", false),
+  },
   // What identifies a run at a glance differs by harness, so this one cell carries
   // both — hence the two-part header, and the per-row `data-label` that names which
   // of the two the phone card is actually showing. A third-party-harness run is its

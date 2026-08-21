@@ -671,14 +671,16 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   so one suite may hand back a recording per scenario it walks through and each
   is a separate output. A `replay` output belongs to a validator, since the
   recorder is an engine capability a browser drive has no access to.
-- Per run, validation runs the script against the model's build to capture the
-  actual media. The baseline is the same script driven against the variant's
-  `reference_implementation`, a fixed property of the case version, so it is
-  captured once by
+- Per run, validation runs the script — or the engine's validator suite — against
+  the model's build to capture the actual media. The baseline is the same thing
+  run against the variant's `reference_implementation` for the same engine, a
+  fixed property of the case version, so it is captured once by
   [`tcab capture-baselines`](/components/cli/overview/#commands), committed under
-  the version folder at `validation-baseline/<variant>/`, and served case-scoped.
-  The reviewer sees expected and observed media side by side, beside the verdict
-  each backs.
+  the version folder at `validation-baseline/<engine>/<variant>/`, and served
+  case-scoped. The engine is part of the path because a variant has one reference
+  implementation per engine and the two are different builds: a run is only
+  comparable against the one it was itself built on. The reviewer sees expected
+  and observed media side by side, beside the verdict each backs.
 - A `validation` table requires the case to declare an `[instrumentation]`
   handle — the surface the engineless path drives, and the seam a validator poses
   a scenario through under an engine — and may not sit on a graded

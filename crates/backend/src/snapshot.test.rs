@@ -1140,14 +1140,17 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
 }
 
 #[tokio::test]
-async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() {
-    // A committed baseline still under the version's `validation-baseline/<variant>/`
-    // dir (copied into the store verbatim at ingest).
+async fn case_metadata_exports_validation_baselines_keyed_by_engine_variant_and_file() {
+    // A committed baseline still under the version's
+    // `validation-baseline/<engine>/<variant>/` dir (copied into the store verbatim at
+    // ingest). The walk is over the engines the manifest declares crossed with its
+    // variants, which is exactly the set of reference builds the case has.
     let m = manifest();
     let (_tmp, store) = empty_store();
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_core::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
@@ -1162,7 +1165,7 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     // The PNG bytes are exported under the content-stable case-media prefix, keyed
     // by a digest of their own bytes — not under this snapshot's prefix.
     let key = format!(
-        "media/cases/pong/v1.0.0/validation-baseline/base/{}-spin__still.png",
+        "media/cases/pong/v1.0.0/validation-baseline/none/base/{}-spin__still.png",
         content_digest(b"png:baseline-still")
     );
     let obj = snapshot
@@ -1173,7 +1176,10 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     assert_eq!(obj.content_type, "image/png");
     assert_eq!(obj.bytes, b"png:baseline-still");
 
-    // The case metadata names it, carrying the variant and the flat requested name.
+    // The case metadata names it, carrying the reference build it came from — engine
+    // and variant — and the flat requested name. The static gallery keys its lookup
+    // off all three, so a run resolves the baseline of the build it was compared
+    // against rather than of whichever engine happened to be captured last.
     let case = snapshot
         .objects
         .iter()
@@ -1182,6 +1188,7 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     let baselines = parsed["validationBaselines"].as_array().unwrap();
     assert_eq!(baselines.len(), 1);
+    assert_eq!(baselines[0]["engine"], "none");
     assert_eq!(baselines[0]["variant"], "base");
     assert_eq!(baselines[0]["file"], "spin__still.png");
     assert_eq!(baselines[0]["key"], key);
@@ -1700,6 +1707,7 @@ async fn case_media_already_in_the_bucket_is_referenced_without_re_uploading() {
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_core::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();

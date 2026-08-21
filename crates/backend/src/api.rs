@@ -202,12 +202,14 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/validation-files",
             get(test_cases::validation_files),
         )
-        // A case variant's committed baseline validation media (`<item>__<output>.<ext>`),
-        // synthesized once at publish-reference time from the reference implementation
-        // and served case-scoped — the invariant counterpart to a run's actual
-        // validation media (served run-scoped by the artifact service). A read.
+        // One reference build's committed baseline validation media
+        // (`<item>__<output>.<ext>`), synthesized once at capture-baselines time from
+        // the reference implementation and served case-scoped — the invariant
+        // counterpart to a run's actual validation media (served run-scoped by the
+        // artifact service). Keyed by engine as well as variant, because a variant has
+        // one reference implementation per engine. A read.
         .route(
-            "/test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}",
+            "/test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}",
             get(test_cases::validation_baseline),
         )
         // The gameplay READMEs of earlier runs of a game jam (matched on the same

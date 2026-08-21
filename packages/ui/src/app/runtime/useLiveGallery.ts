@@ -447,19 +447,22 @@ export function useLiveGallery(
     [workerClient],
   );
 
-  // A case variant's **baseline** validation media is case-scoped — a fixed property
-  // of the case version — so, unlike the run-scoped actual media above, it resolves
-  // against the backend's `/test-cases/.../validation-baseline/...` route keyed by the
-  // run's subject (slug/version/variant), the same way reference screenshots resolve.
-  // This holds for local and published runs alike; a host with no backend (no
-  // case-scoped source) resolves it to null.
+  // A reference build's **baseline** validation media is case-scoped — a fixed
+  // property of the case version — so, unlike the run-scoped actual media above, it
+  // resolves against the backend's `/test-cases/.../validation-baseline/...` route
+  // keyed by the run's subject (slug/version/engine/variant), the same way reference
+  // screenshots resolve. The ENGINE is part of that key: a variant has one reference
+  // implementation per engine, and a run must be compared against the one it was
+  // built on. This holds for local and published runs alike; a host with no backend
+  // (no case-scoped source) resolves it to null.
   const validationBaselineUrl = useCallback(
     (subject: RunSubject, file: string): string | null => {
       if (!backendUrl) return null;
       const path =
         `/test-cases/${encodeURIComponent(subject.testCaseSlug)}` +
         `/versions/${encodeURIComponent(subject.testCaseVersion)}` +
-        `/validation-baseline/${encodeURIComponent(subject.variant)}` +
+        `/validation-baseline/${encodeURIComponent(subject.engineSlug)}` +
+        `/${encodeURIComponent(subject.variant)}` +
         `/${encodeURIComponent(file)}`;
       return joinPath(backendUrl, path);
     },

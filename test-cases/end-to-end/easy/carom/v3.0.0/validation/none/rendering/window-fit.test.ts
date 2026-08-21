@@ -19,6 +19,7 @@ import { afterEach, expect, it } from "vitest";
 import { COLOR, FIELD_H, FIELD_W } from "../../src/constants";
 import {
   COLOR_POINTS,
+  captureStill,
   colorDistance,
   createHarness,
   hexRgb,
@@ -121,6 +122,10 @@ it("draws the field inside the fit, leaving the letterbox bars bare", async () =
   // 1600 wide against a 1280-wide field: an 80 CSS pixel bar on each side.
   const h = await surface({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
   await arrangeColorScene(h);
+  // The off-aspect surface is the one worth looking at: the whole field fitted
+  // inside it with a bare bar either side is what this point is about, and it is
+  // not visible on a surface the size of the field.
+  captureStill(h, "fit");
 
   expect(h.device(0, 0)).toEqual({ x: 160, y: 0 });
   expect(h.device(FIELD_W, FIELD_H)).toEqual({ x: 1440, y: 720 });

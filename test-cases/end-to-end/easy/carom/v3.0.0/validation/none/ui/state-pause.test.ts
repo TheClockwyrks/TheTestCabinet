@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { PAUSE_ITEMS } from "../../src/constants";
 import {
+  captureStill,
   createHarness,
   drewText,
   startWithKeys,
@@ -40,6 +41,7 @@ it("opens a pause menu offering resume, restart, and quit", async () => {
   await h.tap("Escape");
   h.calls.length = 0;
   await h.advance(1);
+  captureStill(h, "pause");
 
   expect(h.snapshot().screen).toBe("paused");
   for (const item of PAUSE_ITEMS) {

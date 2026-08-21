@@ -151,12 +151,14 @@ the command.
 ## Baseline validation media
 
 A case that declares [instrumentation](/testing/end-to-end/instrumentation/)
-pairs some review items with debug scripts. Per run, validation drives each
-script against the model's build to capture the actual media. The baseline half
-of the reviewer's side-by-side is that same script driven against the reference
+pairs some review items with automated validation. Per run, validation runs it
+against the model's build to capture the actual media. The baseline half of the
+reviewer's side-by-side is the same thing run against the reference
 implementation. The reference implementation is a fixed property of the case
 version, so that media is captured once and committed under
-`<version>/validation-baseline/<variant>/`.
+`<version>/validation-baseline/<engine>/<variant>/` — keyed by engine because a
+variant has one reference implementation per engine, and a run is only
+comparable against the one it was itself built on.
 
 Capturing it is an authoring step rather than a publishing step. It needs no
 Cloudflare credentials and no deployment environment:
@@ -165,15 +167,19 @@ Cloudflare credentials and no deployment environment:
 tcab capture-baselines <slug> [<version>] [--variant base] [--engine none] [--dry-run]
 ```
 
-Run it whenever you add or change a debug script, or change the reference
-implementation those scripts are driven against, and commit the result. Its case,
-version, variant, and engine selection is identical to `publish-reference`'s. The
-whole `validation-baseline/<variant>/` directory is regenerated, so a renamed or
-removed output never lingers as a stale committed file.
+Run it whenever you add or change a validator, or change the reference
+implementation it runs against, and commit the result. Its case, version,
+variant, and engine selection is identical to `publish-reference`'s. The whole
+`validation-baseline/<engine>/<variant>/` directory is regenerated, so a renamed
+or removed output never lingers as a stale committed file.
 
-A case that declares its validators per engine decides its points with in-process
-[vitest suites](/components/core/validation/) rather than browser scripts, and
-those capture no media, so there is no baseline for either command to write.
+A case that declares its validators per engine has its baseline recorded by
+running those in-process [vitest suites](/components/core/validation/) against
+the reference implementation, exactly as a run's own media is recorded by
+running them against the model's build. A case that declares browser scripts
+instead has its reference build served and driven. The path is chosen the same
+way in both places, so the two panes a reviewer compares always come from the
+same scenario driven the same way.
 
 `publish-reference` performs the same capture as part of each build,
 and does it before the deploy so a failed capture never leaves a deployed build

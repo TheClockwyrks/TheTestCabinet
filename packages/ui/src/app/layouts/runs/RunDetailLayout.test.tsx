@@ -41,6 +41,10 @@ function record(
   testType: RunRecord["subject"]["testType"],
   harnessSlug = "claude",
   codeAnalysis?: RunRecord["codeAnalysis"],
+  engine: { slug: string; version?: string } = {
+    slug: "simple-2d",
+    version: "1.0.0",
+  },
 ): RunRecord {
   return {
     codeAnalysis,
@@ -52,6 +56,8 @@ function record(
       variant: "base",
       harnessSlug,
       harnessVersion: "1.2.3",
+      engineSlug: engine.slug,
+      engineVersion: engine.version,
       modelId: "claude-sonnet-4-5",
     },
     status: { state: "completed", detail: null },
@@ -67,9 +73,10 @@ function renderLayout(
   testType: RunRecord["subject"]["testType"],
   harnessSlug?: string,
   codeAnalysis?: RunRecord["codeAnalysis"],
+  engine?: { slug: string; version?: string },
 ) {
   fixture.detail = {
-    record: record(testType, harnessSlug, codeAnalysis),
+    record: record(testType, harnessSlug, codeAnalysis, engine),
     reviews: [
       {
         reviewerId: "u1",
@@ -94,6 +101,26 @@ function renderLayout(
     </MemoryRouter>,
   );
 }
+
+describe("RunDetailLayout header", () => {
+  // The engine is a run dimension chosen at launch, beside the variant, and a
+  // result is only comparable with another on the same engine — so a reviewer must
+  // be able to read it off the page they are reviewing from, without opening
+  // Metadata.
+  it("names the engine beside the variant", async () => {
+    renderLayout("end-to-end");
+    expect(await screen.findByText("simple-2d")).toBeInTheDocument();
+    expect(screen.getByText("base")).toBeInTheDocument();
+  });
+
+  it("names the engineless run's engine too, rather than saying nothing", async () => {
+    // `none` is a selection, not an absence: the build supplied its own runtime.
+    // Leaving the line blank there would read as "this page does not know", which
+    // is the state this header exists to end.
+    renderLayout("end-to-end", "claude", undefined, { slug: "none" });
+    expect(await screen.findByText("none")).toBeInTheDocument();
+  });
+});
 
 describe("RunDetailLayout tabs", () => {
   it("offers a gg tab on a gg run", async () => {

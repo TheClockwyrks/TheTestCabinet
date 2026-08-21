@@ -343,6 +343,7 @@ describe("RunLog", () => {
       "TEST",
       "HARNESS",
       "VARIANT",
+      "ENGINE",
       "MODEL / CONFIG",
       "TOKENS",
       "COST",
@@ -456,7 +457,8 @@ describe("RunLog code cell", () => {
 
   function codeCell(container: HTMLElement): HTMLElement {
     const cell = container.querySelector('[data-label="Code"]');
-    if (!(cell instanceof HTMLElement)) throw new Error("no CODE cell rendered");
+    if (!(cell instanceof HTMLElement))
+      throw new Error("no CODE cell rendered");
     return cell;
   }
 

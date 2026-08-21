@@ -17,7 +17,14 @@
 //! 2. For each targeted variant that declares a `reference_impl`, run the case's
 //!    `[build]` *install* then *build* commands from the reference-impl directory,
 //!    then drive every scripted review item against that build and write each
-//!    declared output under `<version>/validation-baseline/<variant>/`.
+//!    declared output under `<version>/validation-baseline/<engine>/<variant>/`.
+//!
+//! How each output is produced follows the case: a case shipping a validator
+//! project for the engine has its baseline recorded by running THOSE suites against
+//! the reference implementation, exactly as a run's own media is recorded by running
+//! them against the model's build; a case shipping none has its reference build
+//! served and driven in a browser. Either way the two panes a reviewer compares come
+//! from the same scenario driven the same way.
 //!
 //! It needs only a browser and the case's own toolchain — no Cloudflare
 //! credentials, no `--env`, no backend. Deploying the reference implementation
@@ -67,7 +74,7 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
             println!("    reference: {}", target.dir.display());
             println!(
                 "    baseline:  {}",
-                baseline_dir(&test_case, &target.variant.slug).display()
+                baseline_dir(&test_case, target.engine, &target.variant.slug).display()
             );
         }
         return Ok(());
@@ -113,12 +120,12 @@ pub(super) fn capture_variant_baseline(
     target: Target<'_>,
     out: &Path,
 ) -> Result<()> {
-    let written = generate_baseline(test_case, target.variant, out)?;
+    let written = generate_baseline(test_case, target, out)?;
     if written > 0 {
         println!(
             "  {} — wrote {written} baseline media file(s) to {}",
             target.label(),
-            baseline_dir(test_case, &target.variant.slug).display()
+            baseline_dir(test_case, target.engine, &target.variant.slug).display()
         );
     } else {
         println!("  {} — nothing to capture", target.label());
@@ -188,27 +195,38 @@ pub(super) async fn build_reference(
     })
 }
 
-/// The version-folder path a variant's committed baseline validation media lives
-/// under: `<version>/validation-baseline/<variant>/`. Case-scoped and committed (the
-/// same static-media precedent a `[[reference]] media = …` follows), served
-/// case-scoped by the backend.
-pub(super) fn baseline_dir(test_case: &TestCaseVersion, variant: &str) -> PathBuf {
-    test_case.root.join(VALIDATION_BASELINE_DIR).join(variant)
+/// The version-folder path one reference build's committed baseline validation media
+/// lives under: `<version>/validation-baseline/<engine>/<variant>/`. Case-scoped and
+/// committed (the same static-media precedent a `[[reference]] media = …` follows),
+/// served case-scoped by the backend.
+///
+/// Keyed by engine as well as variant because a variant has one reference
+/// implementation per engine and the two are different builds: their captures are
+/// not interchangeable, and a single directory would have each sweep overwrite the
+/// last.
+pub(super) fn baseline_dir(test_case: &TestCaseVersion, engine: &str, variant: &str) -> PathBuf {
+    test_case
+        .root
+        .join(VALIDATION_BASELINE_DIR)
+        .join(engine)
+        .join(variant)
 }
 
-/// Synthesize the variant's committed baseline validation media from its built
+/// Synthesize this target's committed baseline validation media from its built
 /// reference implementation at `out`, replacing any prior contents of its
-/// `validation-baseline/<variant>/` directory. Returns the number of media files
-/// written.
+/// `validation-baseline/<engine>/<variant>/` directory. Returns the number of media
+/// files written.
 ///
 /// A case that declares no instrumentation, or a variant with no scripted review
 /// items, has no baseline to produce (writes nothing, returns 0). A case that *does*
-/// declare scripted items but whose reference implementation could not be driven (no
-/// browser on the host) is an error — a silently missing baseline would leave the
-/// reviewer with no expected-behavior media — surfaced so the operator installs a
-/// browser and retries.
-fn generate_baseline(test_case: &TestCaseVersion, variant: &Variant, out: &Path) -> Result<usize> {
-    let baseline_dir = baseline_dir(test_case, &variant.slug);
+/// declare scripted units but whose reference implementation could not be driven at
+/// all — no browser on the host, or a validator project the runner could not execute
+/// — is an error, because a silently missing baseline leaves every reviewer of every
+/// run on this case with no expected-behavior media to compare against. A unit that
+/// ran and simply wrote nothing is not that: it is reported and the sweep goes on.
+fn generate_baseline(test_case: &TestCaseVersion, target: Target<'_>, out: &Path) -> Result<usize> {
+    let variant = target.variant;
+    let baseline_dir = baseline_dir(test_case, target.engine, &variant.slug);
     // Start clean so a renamed or removed output never lingers as a stale committed
     // file (the directory is regenerated wholesale, matching the reference build).
     if baseline_dir.exists() {
@@ -216,56 +234,60 @@ fn generate_baseline(test_case: &TestCaseVersion, variant: &Variant, out: &Path)
             .with_context(|| format!("clearing {}", baseline_dir.display()))?;
     }
 
-    match capture_baseline_media(test_case, variant, out, &baseline_dir) {
-        Some(drives) => {
+    match capture_baseline_media(
+        test_case,
+        variant,
+        target.engine,
+        target.dir,
+        out,
+        &baseline_dir,
+    ) {
+        Some(units) => {
             // A reference implementation is supposed to be conformant, so a script
             // that did not run clean against it is worth surfacing — but it does not
             // abort the capture (the operator sees exactly which item is at fault).
-            for drive in &drives {
-                if !drive.ran {
+            for unit in &units {
+                if !unit.ran {
                     eprintln!(
-                        "    warning: baseline script for `{}` did not run clean{}",
-                        drive.item_id,
-                        drive
-                            .detail
+                        "    warning: baseline capture for `{}` did not run clean{}",
+                        unit.item_id,
+                        unit.detail
                             .as_deref()
                             .map(|d| format!(": {d}"))
                             .unwrap_or_default()
                     );
                 }
             }
-            Ok(drives
-                .iter()
-                .flat_map(|drive| &drive.outputs)
-                .filter(|output| output.present)
-                .count())
-        }
-        // `None` is either "nothing to do" (no instrumentation / no scripted items)
-        // or "could not drive" (no browser). Distinguish: the former is fine, the
-        // latter would leave the committed baseline incomplete, so it is an error.
-        None => {
-            // A validator declared PER ENGINE names a suite inside a vitest project
-            // rather than a script a browser drives, and such a suite captures no
-            // media at all — so a case whose points are all decided that way has no
-            // baseline to produce and this is "nothing to do", not a failure. A case
-            // with a browser script that could not be driven is the failure.
-            let has_scripts = test_case.instrumentation.is_some()
-                && test_case
-                    .review_items_for(variant)
-                    .iter()
-                    .flat_map(|item| {
-                        item.validation.iter().chain(
-                            item.sub_items
-                                .iter()
-                                .filter_map(|sub| sub.validation.as_ref()),
-                        )
-                    })
-                    .any(|validation| validation.script.is_some());
-            if has_scripts {
+            // Every unit failing to run is a fact about the host or the case rather
+            // than about the reference implementation — a browser that is not there, a
+            // validator project that would not execute — and it is the shape a broken
+            // capture takes on the project path, where the runner reports per unit
+            // instead of declining wholesale. Refuse it for the same reason the
+            // `None` arm below refuses its own version of it.
+            if !units.is_empty() && units.iter().all(|unit| !unit.ran) {
                 bail!(
-                    "could not drive the reference implementation for variant `{}` to \
+                    "no validator ran against the reference implementation for `{}`, so it \
+                     has no baseline media (see the warnings above)",
+                    target.label()
+                );
+            }
+            Ok(units.iter().map(|unit| unit.outputs_present).sum())
+        }
+        // `None` is either "nothing to do" (no instrumentation / no scripted units)
+        // or "could not drive" (the browser path with no browser). Distinguish: the
+        // former is fine, the latter would leave the committed baseline incomplete,
+        // so it is an error.
+        None => {
+            let has_units = test_case.instrumentation.is_some()
+                && test_case.review_items_for(variant).iter().any(|item| {
+                    item.validation.is_some()
+                        || item.sub_items.iter().any(|sub| sub.validation.is_some())
+                });
+            if has_units {
+                bail!(
+                    "could not drive the reference implementation for `{}` to \
                      synthesize its baseline media (is a browser available?)",
-                    variant.slug
+                    target.label()
                 );
             }
             Ok(0)
