@@ -14,6 +14,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { routes } from "../../routes";
 import { ComboPicker, CasePicker } from "./coveragePickers";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -138,8 +139,6 @@ export function GroupEditPage() {
         </div>
       </header>
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
-
       {loading ? (
         <LoadingState label="Loading…" />
       ) : (
@@ -191,6 +190,8 @@ export function GroupEditPage() {
           ) : (
             <CasePicker cases={cases} onChange={setCases} />
           )}
+
+          <SubmitNotice message={error} />
 
           <div className={styles.editorActions}>
             <button

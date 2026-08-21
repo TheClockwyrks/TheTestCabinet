@@ -28,6 +28,7 @@ import { launchModelSlots } from "../runs/gg/ggConfigDraft";
 import { useGgConfigs } from "../runs/gg/useGgConfigs";
 import { routes } from "../../routes";
 import { armLabel, type ArmDraft, type ArmKind } from "./armDraft";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
@@ -345,8 +346,6 @@ export function ComparisonEditPage() {
         </div>
       </header>
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
-
       {loading ? (
         <LoadingState label="Loading…" />
       ) : (
@@ -590,6 +589,8 @@ export function ComparisonEditPage() {
           <button type="button" className={exec.secondary} onClick={addArm}>
             + Add configuration
           </button>
+
+          <SubmitNotice message={error} />
 
           <div className={styles.editorActions}>
             <button

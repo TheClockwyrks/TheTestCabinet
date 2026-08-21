@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Panel } from "@test-cabinet/ui";
 import type { CoverageSettings } from "@test-cabinet/run-record/coverage";
 import { LoadingState } from "../../components/LoadingState";
+import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
@@ -25,6 +26,7 @@ export function ReviewingPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRevealNotice<HTMLParagraphElement>(error);
 
   useEffect(() => {
     if (!backend?.getCoverageSettings || !token) {
@@ -85,7 +87,9 @@ export function ReviewingPage() {
     <SettingsLayout tab="reviewing">
       {error && (
         <Panel className={styles.errorPanel}>
-          <p className={styles.error}>{error}</p>
+          <p ref={errorRef} className={styles.error} role="alert">
+            {error}
+          </p>
         </Panel>
       )}
 

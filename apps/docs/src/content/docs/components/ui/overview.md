@@ -96,6 +96,30 @@ read the artifact, arena, snapshot, and Grafana URLs the backend reports from
 the protocol. The desktop app supplies its own arena transport, because its
 arena runs in-process.
 
+## Submit outcomes
+
+The outcome of a press — the failure that stopped a save, launch, or publish, or
+the progress and success of one that ran — belongs immediately above the action
+row that raised it, and reveals itself by scrolling onto the screen when it
+appears.
+
+Both halves are required. A notice placed at a fixed point in the document is
+only visible when the whole form fits the viewport, and the console's forms are
+taller than that. The new-run page, the review editor, and the model editor all
+scroll, and an operator who presses a button and sees nothing change reads a
+working page as a dead one.
+
+`SubmitNotice` renders such a notice. A page that draws one in its own chrome
+takes the `useRevealNotice(message)` hook instead and attaches the ref it
+returns. Either way the reveal fires once per appearance, so an action that
+rewrites its message as it streams progress moves the viewport only when its
+notice first arrives, and a notice raised without a press behind it — the
+top-up a coverage plan runs on open — stays a plain notice with no reveal at
+all.
+
+A small control that reports beside itself keeps its own inline error, since the
+control and its message are read together.
+
 ## Dialogs
 
 No GUI uses the browser's own `alert()` or `confirm()`. Every question a

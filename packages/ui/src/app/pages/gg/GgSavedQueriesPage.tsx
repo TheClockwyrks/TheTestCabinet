@@ -31,6 +31,7 @@ import { routes } from "../../routes";
 import { TIME_RANGES, rangeById } from "./discover/TimeRangePicker";
 import { GG_CHROME } from "./ggChrome";
 import styles from "./dashboards/GgDashboards.module.scss";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 
 export function GgSavedQueriesPage() {
@@ -142,7 +143,7 @@ export function GgSavedQueriesPage() {
         }
       />
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {draft && (
         <div className={styles.form}>

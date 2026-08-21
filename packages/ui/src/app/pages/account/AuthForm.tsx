@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../../../client/auth";
 import { routes } from "../../routes";
+import { useRevealNotice } from "../../components/SubmitNotice";
 import styles from "./AccountPages.module.scss";
 
 // The shared sign-in / registration form, rendered as its own page by
@@ -22,6 +23,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRevealNotice<HTMLParagraphElement>(error);
 
   const canSubmit =
     username.trim() !== "" &&
@@ -86,6 +88,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           />
         </label>
       </div>
+      {error && (
+        <p ref={errorRef} className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
       <button
         type="submit"
         className={styles.primary}
@@ -93,7 +100,6 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       >
         {mode === "login" ? "Sign in" : "Create account"}
       </button>
-      {error && <p className={styles.error}>{error}</p>}
       <p className={styles.alt}>
         {mode === "login" ? (
           <>

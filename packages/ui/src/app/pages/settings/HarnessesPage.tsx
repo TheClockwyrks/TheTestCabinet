@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Panel, SegmentedControl } from "@test-cabinet/ui";
 import { LoadingState } from "../../components/LoadingState";
+import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import {
   useGalleryData,
@@ -64,6 +65,7 @@ function HarnessesBody({
   const [configs, setConfigs] = useState<HarnessConfigEntry[] | null>(null);
   const [auths, setAuths] = useState<HarnessAuth[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRevealNotice<HTMLParagraphElement>(error);
   // The slug of the harness whose request is in flight, to disable its controls.
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -161,7 +163,9 @@ function HarnessesBody({
 
       {error && (
         <Panel className={styles.errorPanel}>
-          <p className={styles.error}>{error}</p>
+          <p ref={errorRef} className={styles.error} role="alert">
+            {error}
+          </p>
         </Panel>
       )}
 

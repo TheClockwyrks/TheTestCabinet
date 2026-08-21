@@ -9,6 +9,7 @@ import type {
 import { FAMILIES } from "../../data/families";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import { ModelLogoPicker } from "../../components/ModelLogoPicker";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useModelConfig } from "../../data/useModelConfig";
@@ -446,6 +447,8 @@ export function ModelConfigPage() {
           />
         </label>
 
+        <SubmitNotice message={error} />
+
         <div className={styles.actions}>
           <button
             type="button"
@@ -468,12 +471,6 @@ export function ModelConfigPage() {
           )}
         </div>
       </div>
-
-      {error && (
-        <p className={`${styles.notice} ${styles.error}`} role="alert">
-          {error}
-        </p>
-      )}
     </PageLayout>
   );
 }

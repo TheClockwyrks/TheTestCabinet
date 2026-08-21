@@ -9,6 +9,7 @@ import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
 import { useGgAgents } from "../runs/gg/useGgAgents";
 import { agentModeLabel } from "../runs/gg/ggAgentLibrary";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -107,9 +108,7 @@ export function GgAgentsPage() {
       />
       <AccountTabs active="ggAgents" />
 
-      {(error || actionError) && (
-        <p className={`${exec.notice} ${exec.error}`}>{error ?? actionError}</p>
-      )}
+      <SubmitNotice message={error ?? actionError} />
 
       {!token ? (
         <p className={`${exec.notice} ${exec.warn}`}>

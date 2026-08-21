@@ -7,6 +7,7 @@ import { useControllerName } from "../../../data/useControllerName";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import { routes } from "../../../routes";
+import { SubmitNotice } from "../../../components/SubmitNotice";
 import { ReplayOverlay } from "../../runs/[runId]/AdversarialReplaySection";
 import styles from "./TestCaseArenaPage.module.scss";
 
@@ -266,6 +267,8 @@ function QuickMatchPanel({
         </label>
       </div>
 
+      <SubmitNotice message={error} />
+
       <div className={styles.actions}>
         <button
           type="button"
@@ -276,8 +279,6 @@ function QuickMatchPanel({
           {running ? "Running…" : "Run match"}
         </button>
       </div>
-
-      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
 
       {result && (
         <div className={styles.matchResult}>
@@ -423,6 +424,11 @@ function TournamentPanel({
         ))}
       </ul>
 
+      {/* Above the button rather than after the progress meter that follows it,
+        so the roster does not have to be scrolled past to find out the run was
+        refused. */}
+      <SubmitNotice message={error} />
+
       <div className={styles.actions}>
         <button
           type="button"
@@ -463,8 +469,6 @@ function TournamentPanel({
           </div>
         </div>
       )}
-
-      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
     </Panel>
   );
 }

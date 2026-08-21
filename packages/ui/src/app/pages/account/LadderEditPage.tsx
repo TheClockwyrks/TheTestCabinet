@@ -27,6 +27,7 @@ import {
   LadderAxisPicker,
   RungListEditor,
 } from "./ladderPickers";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -242,8 +243,6 @@ export function LadderEditPage() {
         </div>
       </header>
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
-
       {loading ? (
         <LoadingState label="Loading…" />
       ) : (
@@ -361,6 +360,8 @@ export function LadderEditPage() {
             One-off harness / model combinations
           </p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
+
+          <SubmitNotice message={error} />
 
           <div className={styles.editorActions}>
             <button

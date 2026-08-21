@@ -27,6 +27,7 @@ import { ModelCombobox } from "../../components/ModelCombobox";
 import { launchBatch, type LaunchItem } from "./launchBatch";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import { routes } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useCaseCategory } from "../../runtime/useCaseCategory";
@@ -868,6 +869,8 @@ export function NewRunPage() {
           );
         })}
       </div>
+      <SubmitNotice message={launchError ?? sel.error} />
+
       <div className={styles.actions}>
         <button
           type="button"
@@ -927,12 +930,6 @@ export function NewRunPage() {
             Go to runs list →
           </Link>
         </div>
-      )}
-
-      {(launchError || sel.error) && (
-        <p className={`${styles.notice} ${styles.error}`}>
-          {launchError ?? sel.error}
-        </p>
       )}
     </PageLayout>
   );

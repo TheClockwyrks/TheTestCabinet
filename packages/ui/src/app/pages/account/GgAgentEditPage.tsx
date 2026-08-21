@@ -23,6 +23,7 @@ import {
   seededRunLimits,
   type GgConfigDraft,
 } from "../runs/gg/ggConfigDraft";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -244,7 +245,7 @@ export function GgAgentEditPage() {
     <PageLayout>
       {header}
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {loading ? (
         <LoadingState label="Loading…" />

@@ -30,6 +30,7 @@ import { OVERVIEW_DASHBOARD } from "./dashboards/overviewDashboard";
 import { TIME_RANGES } from "./discover/TimeRangePicker";
 import { GG_CHROME } from "./ggChrome";
 import styles from "./dashboards/GgDashboards.module.scss";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 
 /** A board's starting shape in the editor: one empty panel, because a board with no
@@ -158,7 +159,7 @@ export function GgDashboardsPage() {
         }
       />
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {draft && (
         <div className={styles.form}>
