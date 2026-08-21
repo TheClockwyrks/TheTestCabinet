@@ -10,8 +10,8 @@ use std::time::Duration;
 use k8s_openapi::api::core::v1::EnvVar;
 
 use crate::config::{
-    DEFAULT_DRIVER_CPU_REQUEST, DEFAULT_DRIVER_MEMORY_LIMIT, DEFAULT_DRIVER_MEMORY_REQUEST,
-    DriverResources,
+    DEFAULT_DRIVER_CPU_LIMIT, DEFAULT_DRIVER_CPU_REQUEST, DEFAULT_DRIVER_MEMORY_LIMIT,
+    DEFAULT_DRIVER_MEMORY_REQUEST, DriverResources,
 };
 use test_cabinet_core::run_record::HarnessSlug;
 use test_cabinet_core::{ClaimedJob, LaunchBody, PublishClaim};
@@ -53,11 +53,11 @@ fn config() -> Config {
         job_ttl_seconds: 300,
         // Mirrors what `DriverResources::from_env` resolves by default: the memory
         // request and limit are ONE value (see `DEFAULT_DRIVER_MEMORY_REQUEST`), and
-        // CPU is left unbounded.
+        // the CPU limit is set (see `DEFAULT_DRIVER_CPU_LIMIT`).
         driver_resources: DriverResources {
             cpu_request: Some(DEFAULT_DRIVER_CPU_REQUEST.to_string()),
             memory_request: Some(DEFAULT_DRIVER_MEMORY_REQUEST.to_string()),
-            cpu_limit: None,
+            cpu_limit: Some(DEFAULT_DRIVER_CPU_LIMIT.to_string()),
             memory_limit: Some(DEFAULT_DRIVER_MEMORY_LIMIT.to_string()),
         },
         publisher_resources: DriverResources::default(),
@@ -617,8 +617,9 @@ fn driver_container_carries_resource_requests() {
 
     // The memory LIMIT is rendered too, and equals the request: a node then reserves
     // exactly what the driver may use, so the driver can neither be killed to satisfy
-    // another pod's growth nor cause another pod to be. The CPU limit stays absent —
-    // over-limit CPU is throttled, not killed.
+    // another pod's growth nor cause another pod to be. The CPU limit is rendered
+    // alongside it, because it is what makes that memory figure hold on a node of any
+    // size (see `DEFAULT_DRIVER_CPU_LIMIT`).
     let limits = resources
         .limits
         .as_ref()
@@ -629,7 +630,7 @@ fn driver_container_carries_resource_requests() {
         "a gap between the driver's memory request and limit is memory the scheduler \
          has promised twice"
     );
-    assert!(!limits.contains_key("cpu"));
+    assert_eq!(limits["cpu"].0, DEFAULT_DRIVER_CPU_LIMIT);
 }
 
 #[test]

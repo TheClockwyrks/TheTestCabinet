@@ -198,12 +198,13 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
         env: Some(env),
         env_from,
         volume_mounts,
-        // The driver is a thin control process, but it must still carry resource
-        // *requests* — not to reserve capacity, but to keep its pod out of the
-        // `BestEffort` QoS class. A `BestEffort` driver is evicted first under node
-        // pressure and scored at the maximum `oom_score_adj`, and a driver killed by
-        // `SIGKILL` runs none of its teardown, orphaning the run's sandbox pod
-        // forever. See `config::DEFAULT_DRIVER_CPU_REQUEST`.
+        // The requests are not only about reserving capacity: they are what keeps the
+        // pod out of the `BestEffort` QoS class. A `BestEffort` driver is evicted first
+        // under node pressure and scored at the maximum `oom_score_adj`, and a driver
+        // killed by `SIGKILL` runs none of its teardown, orphaning the run's sandbox
+        // pod forever. See `config::DEFAULT_DRIVER_CPU_REQUEST`. The limits beside them
+        // bound the post-run toolchain this container runs host-side once the sandbox
+        // is gone; see `config::DEFAULT_DRIVER_MEMORY_LIMIT`.
         resources: container_resources(&config.driver_resources),
         ..Default::default()
     };

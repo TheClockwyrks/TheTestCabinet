@@ -76,16 +76,16 @@ work.
 | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | Queue-admission cap on concurrent runs | `8` |
 | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | Back-off after an empty claim or a full cap | `2` |
 | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | TTL after which a finished `Job` is garbage-collected | `300` |
-| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container, there to keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first, taking its sandbox cleanup with it | `100m` / `1Gi` |
-| `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | The memory limit on the driver container, defaulting to its own request so a node reserves exactly what a driver may use. A blank value leaves the container unbounded | `1Gi` |
-| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU limit on the driver container, unset because over-limit CPU is throttled rather than killed, so a ceiling would only slow a driver's teardown | — |
+| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container, there to keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first, taking its sandbox cleanup with it | `100m` / `2Gi` |
+| `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | The memory limit on the driver container, defaulting to its own request so a node reserves exactly what a driver may use. A blank value leaves the container unbounded | `2Gi` |
+| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU limit on the driver container. It is what makes the memory ceiling above portable: the post-run toolchain sizes its worker pools from the CPU the container is allowed, so without a limit a large node multiplies the driver's memory footprint. A blank value leaves the CPU unbounded | `2` |
 | `TCAB_DISPATCHER_DRIVER_SECRETS` | no | Comma-separated `Secret` names mounted into each driver `Job` with `envFrom`, carrying the harness API keys | — |
 | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET` | no | `Secret` of harness subscription credential files, mounted read-only into each driver `Job` | — |
 | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` | no | Where that Secret is mounted, forwarded to the driver | `/var/run/tcab/subscription` |
 | `TCAB_DISPATCHER_DRIVER_AUTH_MODE` | no | Locks the harness auth mode for every run (`auto`, `subscription`, `api-key`) | per-run selection |
 | `TCAB_PUBLISHER_IMAGE` | no | The `tcab-publisher` image each publish `Job` runs. Unset disables the publish path | — |
 | `TCAB_DISPATCHER_PUBLISHER_SECRETS` | no | Comma-separated `Secret` names mounted into each publish `Job` with `envFrom` | — |
-| `TCAB_DISPATCHER_PUBLISHER_CPU_REQUEST` / `_MEMORY_REQUEST` / `_MEMORY_LIMIT` | no | Requests and the memory limit on each publish `Job`'s container, mirroring the driver's. `TCAB_DISPATCHER_PUBLISHER_CPU_LIMIT` is unset for the same reason | `100m` / `1Gi` / `1Gi` |
+| `TCAB_DISPATCHER_PUBLISHER_CPU_REQUEST` / `_MEMORY_REQUEST` / `_MEMORY_LIMIT` | no | Requests and the memory limit on each publish `Job`'s container. A publisher runs no toolchain, so `TCAB_DISPATCHER_PUBLISHER_CPU_LIMIT` is unset | `100m` / `1Gi` / `1Gi` |
 
 The dispatcher also forwards a set of variables into each `Job` verbatim without
 interpreting them: `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_SERVICE_ACCOUNT`,
@@ -161,19 +161,29 @@ seat, since a request no node can satisfy queues forever.
 
 The driver runs in its own pod and takes the same treatment:
 `TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` and
-`TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` both default to `1Gi`. The driver is a thin
-control process costing under 10MiB for the length of a run, and it streams the
-produced run tree off disk when it uploads, so its peak is a property of its own
-work rather than of the heaviest case it might carry. The `1Gi` default is
-generous because a driver killed between the end of the harness session and
-terminal status destroys a run that has already paid for every one of its API
-calls.
+`TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` both default to `2Gi`.
 
-That ceiling is charged in nodes as well. A `4Gi` sandbox pod plus a `1Gi` driver
+The ceiling is sized against the post-run work, not against relaying the session.
+Once the sandbox is gone the driver runs the case's own toolchain over the
+collected tree on its own filesystem: the `[build]` install, the
+[toolchain commands](/testing/end-to-end/manifests/), the build the smoke check
+serves, and a headless Chromium for that smoke check and for every scripted
+[validation](/components/core/validation/) item. Those are Node and browser
+processes in the driver's own cgroup, and they are what the ceiling has to cover.
+It is sized generously because a driver killed after the harness session has
+finished destroys a run that has already paid for every one of its API calls.
+
+`TCAB_DISPATCHER_DRIVER_CPU_LIMIT` defaults to `2` and is what keeps that ceiling
+true on any node. Node sizes a worker pool from the CPU its cgroup is allowed, so
+an unlimited driver container on a large node fans `vitest`, `tsc` and the bundler
+out across every core the node has and multiplies its own memory footprint. The
+limit makes the driver's peak a property of the pod rather than of the machine it
+landed on. Raise the two together, never one alone.
+
+That ceiling is charged in nodes as well. A `4Gi` sandbox pod plus a `2Gi` driver
 exceeds what an 8Gi node can schedule, so the driver lands on a different node
 than the sandbox it drives and the two ceilings can never contend for one node's
-memory. A `512Mi` driver ceiling lets the pair co-schedule again and saves nodes,
-at the cost of that isolation.
+memory.
 
 ### Queueing when the cluster is full
 
