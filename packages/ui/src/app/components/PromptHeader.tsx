@@ -14,6 +14,16 @@ interface PromptHeaderProps {
    * an ellipsis rather than wrapping the header onto a second line.
    */
   arg?: string;
+  /**
+   * Controls pinned to the trailing edge of the comment line — the runs section's
+   * global stop cluster is the one user of it.
+   *
+   * The comment is a short line of prose on a full-width row, so the space beside it
+   * is free: a cluster put there costs a page no height at all, where the same cluster
+   * beside a tab strip pushes the strip onto a second row the moment either grows.
+   * They wrap under the comment, still right-aligned, when the row is too narrow.
+   */
+  actions?: ReactNode;
 }
 
 // The cabinet's shared terminal-prompt page header: a neon
@@ -25,9 +35,12 @@ export function PromptHeader({
   comment,
   blink = false,
   arg,
+  actions,
 }: PromptHeaderProps) {
   return (
-    <header className={styles.hero}>
+    <header
+      className={actions ? `${styles.hero} ${styles.hasActions}` : styles.hero}
+    >
       <p
         className={`${styles.prompt}${arg !== undefined ? ` ${styles.withArg}` : ""}`}
       >
@@ -37,7 +50,14 @@ export function PromptHeader({
         )}
         {blink && <span className={styles.blink}>_</span>}
       </p>
-      <p className={styles.comment}>{comment}</p>
+      {actions ? (
+        <div className={styles.commentRow}>
+          <p className={styles.comment}>{comment}</p>
+          <div className={styles.commentActions}>{actions}</div>
+        </div>
+      ) : (
+        <p className={styles.comment}>{comment}</p>
+      )}
     </header>
   );
 }

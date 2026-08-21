@@ -164,24 +164,24 @@ describe("a param the selected strategy does not read", () => {
     const row = capabilityRow("shell");
 
     // The default mode truncates, so both ceilings are live controls.
-    expect(within(row).getByLabelText(/Max lines/)).toBeDefined();
-    expect(within(row).getByLabelText(/Max characters/)).toBeDefined();
+    expect(within(row).getByLabelText(/^Max lines/)).toBeDefined();
+    expect(within(row).getByLabelText(/^Max characters/)).toBeDefined();
 
-    select(within(row).getByLabelText(/Output mode/), "inline");
-    expect(within(row).queryByLabelText(/Max lines/)).toBeNull();
-    expect(within(row).queryByLabelText(/Max characters/)).toBeNull();
+    select(within(row).getByLabelText(/^Output mode/), "inline");
+    expect(within(row).queryByLabelText(/^Max lines/)).toBeNull();
+    expect(within(row).queryByLabelText(/^Max characters/)).toBeNull();
 
-    select(within(row).getByLabelText(/Output mode/), "offload");
-    expect(within(row).getByLabelText(/Max lines/)).toBeDefined();
+    select(within(row).getByLabelText(/^Output mode/), "offload");
+    expect(within(row).getByLabelText(/^Max lines/)).toBeDefined();
   });
 
   it("is hidden while read-file is unlimited, which reads no line cap at all", () => {
     renderCaps(draftWith("read-file", ""));
     const row = capabilityRow("read-file");
 
-    expect(within(row).queryByLabelText(/Line cap/)).toBeNull();
-    select(within(row).getByLabelText(/Read mode/), "default-cap");
-    expect(within(row).getByLabelText(/Line cap/)).toBeDefined();
+    expect(within(row).queryByLabelText(/^Line cap/)).toBeNull();
+    select(within(row).getByLabelText(/^Read mode/), "default-cap");
+    expect(within(row).getByLabelText(/^Line cap/)).toBeDefined();
   });
 
   it("follows the memory strategy, which reads a different subset of the limits", () => {
@@ -190,33 +190,33 @@ describe("a param the selected strategy does not read", () => {
 
     // Scratchpad: the window carries the notes, so the total-length budget is the live one
     // and there is neither an index nor a search to bound.
-    expect(within(row).getByLabelText(/Max length total/)).toBeDefined();
-    expect(within(row).queryByLabelText(/Max index length/)).toBeNull();
-    expect(within(row).queryByLabelText(/Max search results/)).toBeNull();
+    expect(within(row).getByLabelText(/^Max length total/)).toBeDefined();
+    expect(within(row).queryByLabelText(/^Max index length/)).toBeNull();
+    expect(within(row).queryByLabelText(/^Max search results/)).toBeNull();
 
-    select(within(row).getByLabelText(/Memory strategy/), "markdown");
-    expect(within(row).getByLabelText(/Max index length/)).toBeDefined();
-    expect(within(row).queryByLabelText(/Max length total/)).toBeNull();
+    select(within(row).getByLabelText(/^Memory strategy/), "markdown");
+    expect(within(row).getByLabelText(/^Max index length/)).toBeDefined();
+    expect(within(row).queryByLabelText(/^Max length total/)).toBeNull();
     // A markdown run is bounded by its index, not by a count of notes.
-    expect(within(row).queryByLabelText(/Max memories/)).toBeNull();
+    expect(within(row).queryByLabelText(/^Max memories/)).toBeNull();
 
-    select(within(row).getByLabelText(/Memory strategy/), "keyword-search");
-    expect(within(row).getByLabelText(/Max search results/)).toBeDefined();
-    expect(within(row).getByLabelText(/Max memories/)).toBeDefined();
-    expect(within(row).queryByLabelText(/Max index length/)).toBeNull();
+    select(within(row).getByLabelText(/^Memory strategy/), "keyword-search");
+    expect(within(row).getByLabelText(/^Max search results/)).toBeDefined();
+    expect(within(row).getByLabelText(/^Max memories/)).toBeDefined();
+    expect(within(row).queryByLabelText(/^Max index length/)).toBeNull();
   });
 
   it("keeps what a hidden control held, so switching strategy loses nothing", () => {
     renderCaps(draftWith("shell", "offload", { maxLines: "40" }));
     const row = capabilityRow("shell");
     expect(
-      (within(row).getByLabelText(/Max lines/) as HTMLInputElement).value,
+      (within(row).getByLabelText(/^Max lines/) as HTMLInputElement).value,
     ).toBe("40");
 
-    select(within(row).getByLabelText(/Output mode/), "inline");
-    select(within(row).getByLabelText(/Output mode/), "offload");
+    select(within(row).getByLabelText(/^Output mode/), "inline");
+    select(within(row).getByLabelText(/^Output mode/), "offload");
     expect(
-      (within(row).getByLabelText(/Max lines/) as HTMLInputElement).value,
+      (within(row).getByLabelText(/^Max lines/) as HTMLInputElement).value,
     ).toBe("40");
   });
 });
@@ -344,7 +344,7 @@ describe("an agent's type", () => {
   it("keeps what another type was configured with while the agent is open", () => {
     renderCaps(draftWith("shell", ""));
     const shell = capabilityRow("shell");
-    select(within(shell).getByLabelText(/Output mode/), "inline");
+    select(within(shell).getByLabelText(/^Output mode/), "inline");
 
     openTab("Agent");
     fireEvent.click(typeSegment("RaC"));
@@ -360,7 +360,7 @@ describe("an agent's type", () => {
     expect(
       (
         within(capabilityRow("shell")).getByLabelText(
-          /Output mode/,
+          /^Output mode/,
         ) as HTMLSelectElement
       ).value,
     ).toBe("inline");
@@ -404,8 +404,12 @@ describe("the responses-as-code documentation types", () => {
     expect(docViewTypeBox(panel, "errors").checked).toBe(true);
     const parameters = docViewTypeBox(panel, "parameters");
     expect(parameters.checked).toBe(false);
-    // The label carries the asymmetry, since the other two start the opposite way.
-    expect(parameters.parentElement?.textContent).toContain("starts off");
+    // The checkbox is the whole readout of which way it sits; why this one differs from
+    // the other two is on hover, where every member's reason lives.
+    expect(parameters.parentElement).toHaveAttribute(
+      "title",
+      expect.stringContaining("starts switched off"),
+    );
   });
 
   it("holds a stored configuration and moves one flag without moving the rest", () => {
@@ -454,10 +458,10 @@ describe("a capability param that names a model", () => {
 
     // A param carrying no slot key is a pinned model, so the model field is showing.
     expect(within(row).getByLabelText(/^Model$/)).toBeDefined();
-    expect(within(row).queryByLabelText(/Model slot/)).toBeNull();
+    expect(within(row).queryByLabelText(/^Model slot/)).toBeNull();
 
-    select(within(row).getByLabelText(/Model from/), "model-slot");
-    const slot = within(row).getByLabelText(/Model slot/) as HTMLSelectElement;
+    select(within(row).getByLabelText(/^Model from/), "model-slot");
+    const slot = within(row).getByLabelText(/^Model slot/) as HTMLSelectElement;
     // The list is this agent's own declarations, and deferring lands on the first of them
     // rather than on "(none)": an operator who chose to defer meant to defer to something.
     expect(
@@ -480,20 +484,20 @@ describe("a capability param that names a model", () => {
     });
     const row = capabilityRow("compaction");
 
-    select(within(row).getByLabelText(/Model from/), "model-slot");
+    select(within(row).getByLabelText(/^Model from/), "model-slot");
     expect(within(row).getByText(/would never fill it in/)).toBeDefined();
   });
 
   it("is not offered at all under a strategy that condenses on the agent's own model", () => {
     renderCaps(withSlot(handoff()));
     const row = capabilityRow("compaction");
-    expect(within(row).getByLabelText(/Model from/)).toBeDefined();
+    expect(within(row).getByLabelText(/^Model from/)).toBeDefined();
 
     select(
-      within(row).getByLabelText(/Summarization strategy/),
+      within(row).getByLabelText(/^Summarization strategy/),
       "self-compaction",
     );
-    expect(within(row).queryByLabelText(/Model from/)).toBeNull();
+    expect(within(row).queryByLabelText(/^Model from/)).toBeNull();
   });
 });
 
@@ -703,7 +707,7 @@ describe("module ownership", () => {
     for (const capId of ["memories", "skills"]) {
       const { unmount } = renderCaps(draftWith(capId, ""));
       expect(
-        within(capabilityRow(capId)).queryByLabelText(/Ownership/),
+        within(capabilityRow(capId)).queryByLabelText(/^Ownership/),
       ).toBeNull();
       unmount();
     }
@@ -757,13 +761,17 @@ describe("the responses-as-code agent's healing strategies", () => {
     expect(boxes.filter((box) => !box.checked)).toEqual([doubled]);
   });
 
-  it("arms the seeded-off repair, and says on the control that it is one", () => {
+  it("arms the seeded-off repair without moving any of the others", () => {
     renderCaps(draftWith("responses-as-code", "", {}, "rac"));
     const doubled = healingBoxes().find((box) =>
       box.parentElement?.textContent?.includes("drop-doubled-response"),
     )!;
-    // The label carries the asymmetry, since every other member starts the opposite way.
-    expect(doubled.parentElement?.textContent).toContain("starts off");
+    // Why this one starts the opposite way to every other member is on hover, where
+    // every member's reason lives; the checkbox itself is the readout of which way it sits.
+    expect(doubled.parentElement).toHaveAttribute(
+      "title",
+      expect.stringContaining("starts switched off"),
+    );
     fireEvent.click(doubled);
     expect(doubled.checked).toBe(true);
     // And nothing else moved with it.
@@ -904,7 +912,7 @@ describe("an agent's loop detection", () => {
   it("opens disarmed, with no knobs to tune on a detector that is not running", () => {
     render(<Harness initial={emptyDraft()} />);
     expect(loopSwitch().checked).toBe(false);
-    expect(screen.queryByLabelText(/Window \(words\)/)).toBeNull();
+    expect(screen.queryByLabelText(/^Window \(words\)/)).toBeNull();
   });
 
   it("reveals its knobs when armed, each of them filled in", () => {
@@ -918,7 +926,7 @@ describe("an agent's loop detection", () => {
     // would actually run, with every number in reach.
     expect(window.value).toBe("256");
     expect(
-      (screen.getByLabelText(/Reply ceiling/) as HTMLInputElement).value,
+      (screen.getByLabelText(/^Reply ceiling/) as HTMLInputElement).value,
     ).toBe("250000");
     for (const spec of LOOP_DETECTION_SPECS) {
       const field = screen.getByLabelText(
@@ -933,24 +941,24 @@ describe("an agent's loop detection", () => {
   it("keeps a tuned knob when the detector is switched back off", () => {
     render(<Harness initial={emptyDraft()} />);
     fireEvent.click(loopSwitch());
-    fireEvent.change(screen.getByLabelText(/Window \(words\)/), {
+    fireEvent.change(screen.getByLabelText(/^Window \(words\)/), {
       target: { value: "512" },
     });
     fireEvent.click(loopSwitch());
     expect(loopSwitch().checked).toBe(false);
     fireEvent.click(loopSwitch());
     expect(
-      (screen.getByLabelText(/Window \(words\)/) as HTMLInputElement).value,
+      (screen.getByLabelText(/^Window \(words\)/) as HTMLInputElement).value,
     ).toBe("512");
   });
 
   it("says so on the form when the knobs describe a detector that could never trip", () => {
     render(<Harness initial={emptyDraft()} />);
     fireEvent.click(loopSwitch());
-    fireEvent.change(screen.getByLabelText(/Window \(words\)/), {
+    fireEvent.change(screen.getByLabelText(/^Window \(words\)/), {
       target: { value: "8" },
     });
-    fireEvent.change(screen.getByLabelText(/Offenders to saturate/), {
+    fireEvent.change(screen.getByLabelText(/^Offenders to saturate/), {
       target: { value: "20" },
     });
     expect(screen.getByText(/could never trip/)).toBeInTheDocument();
@@ -1170,12 +1178,45 @@ describe("importing a saved agent", () => {
   function importReviewer(saved?: GgSavedAgent) {
     render(<LibraryHarness initial={emptyDraft()} saved={saved} />);
     openTab("Agents");
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Saved agent to import" }),
-      { target: { value: "saved-1" } },
-    );
     fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+    // The picker lists one row per library entry, named by the entry — clicking it is
+    // the whole import.
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: new RegExp(`^${saved?.name ?? "reviewer"}`),
+      }),
+    );
   }
+
+  // The library is picked from a list, not a `<select>`: an entry's own note is what tells
+  // two entries carrying one name apart, and an `<option>` cannot carry one.
+  it("lists each library entry over its own note, and imports the row that is clicked", () => {
+    render(<LibraryHarness initial={emptyDraft()} />);
+    openTab("Agents");
+    fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+    const row = within(screen.getByRole("dialog")).getByRole("button", {
+      name: /^reviewer/,
+    });
+    expect(row).toHaveTextContent("reviews what the implementer wrote");
+
+    fireEvent.click(row);
+    // The dialog closes onto the profile it added, which is the thing an import was for.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText(/Follows the saved agent/)).toBeVisible();
+  });
+
+  it("leaves the configuration alone when the picker is dismissed", () => {
+    render(<LibraryHarness initial={emptyDraft()} />);
+    openTab("Agents");
+    fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText(/Follows the saved agent/)).toBeNull();
+  });
 
   it("offers no import control when the account has saved no agents", () => {
     render(<ConfigHarness initial={emptyDraft()} />);
@@ -1652,7 +1693,9 @@ describe("the configuration's launch inputs", () => {
     // reaches the form unaided, which is what makes a configuration that says nothing
     // about models launchable.
     expect(screen.getByText(/No configuration slots/)).toBeVisible();
-    expect(launchRow("root.primary")).toHaveTextContent("→ Root (root) · primary");
+    expect(launchRow("root.primary")).toHaveTextContent(
+      "→ Root (root) · primary",
+    );
   });
 
   it("reports each agent slot that reaches no launch input, on the tab and on the strip", () => {
@@ -1684,8 +1727,12 @@ describe("the configuration's launch inputs", () => {
     fireEvent.change(screen.getByLabelText("Slot name"), {
       target: { value: "shared" },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Root (root) · primary" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Helper (helper) · primary" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Root (root) · primary" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Helper (helper) · primary" }),
+    );
 
     // One picker at launch, two agents run off it — and both complaints are answered.
     expect(launchRow("shared")).toHaveTextContent(
@@ -1709,13 +1756,19 @@ describe("the configuration's launch inputs", () => {
     fireEvent.change(screen.getByLabelText("Slot name"), {
       target: { value: "shared" },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Root (root) · primary" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Helper (helper) · primary" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Root (root) · primary" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Helper (helper) · primary" }),
+    );
     expect(launchRow("shared")).toHaveTextContent(
       "→ Root (root) · primary, Helper (helper) · primary",
     );
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Helper (helper) · primary" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Helper (helper) · primary" }),
+    );
     expect(
       screen.getByRole("checkbox", { name: "Helper (helper) · primary" }),
     ).not.toBeChecked();
@@ -1764,8 +1817,12 @@ describe("the configuration's launch inputs", () => {
     // The one candidate is the profile that is not exposed on its own, and it is offered
     // by name — the row is about which binding this input feeds, not about what the launch
     // form will call the input.
-    fireEvent.click(screen.getByRole("checkbox", { name: "Helper (helper) · primary" }));
-    expect(launchRow("shared")).toHaveTextContent("→ Helper (helper) · primary");
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Helper (helper) · primary" }),
+    );
+    expect(launchRow("shared")).toHaveTextContent(
+      "→ Helper (helper) · primary",
+    );
   });
 
   it("offers a slot already filled by another input as taken rather than hiding it", () => {
@@ -1777,7 +1834,9 @@ describe("the configuration's launch inputs", () => {
     fireEvent.change(screen.getByLabelText("Slot name"), {
       target: { value: "shared" },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Root (root) · primary" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Root (root) · primary" }),
+    );
 
     fireEvent.click(
       screen.getByRole("button", { name: "+ Add configuration slot" }),
@@ -1791,5 +1850,104 @@ describe("the configuration's launch inputs", () => {
     });
     expect(taken).toBeDisabled();
     expect(taken).not.toBeChecked();
+  });
+});
+
+// Every control in a capability's grid opens on the figure it would run under, so a form
+// full of real values cannot itself say which of them the operator has changed. That is
+// what the reset beside a label is for, and why it is the *only* thing that says it — the
+// labels used to carry clauses like "(starts off)", which restate a control's opening
+// state beside a control that has since moved off it.
+describe("a control that has been moved off its authored value", () => {
+  // The reset lives inside the field's label row, so it is found through the row rather
+  // than by scanning the whole form — two capabilities can offer a param of one name.
+  function resetIn(row: HTMLElement, label: string): HTMLElement | null {
+    return within(row).queryByRole("button", { name: `Reset ${label}` });
+  }
+
+  it("offers no reset while every control is still as it opened", () => {
+    renderCaps(draftWith("shell", ""));
+    const row = capabilityRow("shell");
+    expect(resetIn(row, "Output mode")).toBeNull();
+    expect(resetIn(row, "Max lines")).toBeNull();
+  });
+
+  it("offers one the moment a control moves, and puts the control back", () => {
+    renderCaps(draftWith("shell", ""));
+    const row = capabilityRow("shell");
+    const lines = within(row).getByLabelText(/^Max lines/) as HTMLInputElement;
+    const opened = lines.value;
+    expect(opened).not.toBe("");
+
+    fireEvent.change(lines, { target: { value: "7" } });
+    const reset = resetIn(row, "Max lines");
+    expect(reset).not.toBeNull();
+
+    fireEvent.click(reset!);
+    expect(
+      (
+        within(capabilityRow("shell")).getByLabelText(
+          /^Max lines/,
+        ) as HTMLInputElement
+      ).value,
+    ).toBe(opened);
+    expect(resetIn(capabilityRow("shell"), "Max lines")).toBeNull();
+  });
+
+  it("resets the strategy picker to the arm a fresh capability selects", () => {
+    renderCaps(draftWith("shell", ""));
+    const row = capabilityRow("shell");
+    const mode = within(row).getByLabelText(
+      /^Output mode/,
+    ) as HTMLSelectElement;
+    const opened = mode.value;
+    select(mode, "inline");
+    expect(mode.value).toBe("inline");
+
+    fireEvent.click(resetIn(capabilityRow("shell"), "Output mode")!);
+    expect(
+      (
+        within(capabilityRow("shell")).getByLabelText(
+          /^Output mode/,
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe(opened);
+  });
+
+  // A read-only form is a run's recorded configuration being read, not edited. Its inputs
+  // are disabled; a reset that stayed live beside them would be the one control on the
+  // page that could still change what is being read.
+  it("offers none at all on a read-only form", () => {
+    const draft = draftWith("shell", "", { maxLines: "7" });
+    render(
+      <GgConfigEditor
+        value={draft}
+        onChange={() => {}}
+        name="under test"
+        onNameChange={() => {}}
+        description=""
+        onDescriptionChange={() => {}}
+        editingAgentId={draft.agents[0]!.id}
+        onEditingAgentChange={() => {}}
+        models={[]}
+        readOnly
+      />,
+    );
+    openTab("Tools");
+    const row = capabilityRow("shell");
+    expect(within(row).getByLabelText(/^Max lines/)).toBeDisabled();
+    expect(resetIn(row, "Max lines")).toBeNull();
+  });
+
+  // Compaction's `maxRetries` is optional to gg — an absent key is none — and used to be
+  // the one number in these grids left blank to say so, beside a sibling showing its own
+  // figure. It opens on the `0` its absence already meant.
+  it("opens compaction's optional retry count on the figure its absence meant", () => {
+    renderCaps(draftWith("compaction", ""));
+    const row = capabilityRow("compaction");
+    expect(
+      (within(row).getByLabelText(/^Max retries/) as HTMLInputElement).value,
+    ).toBe("0");
+    expect(resetIn(row, "Max retries")).toBeNull();
   });
 });

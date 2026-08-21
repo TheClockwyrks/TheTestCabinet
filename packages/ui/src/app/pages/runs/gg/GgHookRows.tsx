@@ -9,7 +9,7 @@ import {
   hookEventsForScope,
   type GgHookScope,
 } from "./ggCatalog";
-import { FieldLabel } from "./GgCapabilityFields";
+import { CapField, FieldLabel } from "./GgCapabilityFields";
 import { blankHookDraft, type GgHookDraft } from "./ggConfigDraft";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
@@ -221,21 +221,33 @@ function HookRow({
               onChange={(e) => onPatch({ cwd: e.target.value })}
             />
           </label>
-          <label className={gg.capParamField}>
-            <FieldLabel
-              label="Timeout (seconds)"
-              hint="How long it may run before it is killed. Required: gg has no ceiling of its own to run a hook that declares none under, so a new hook opens on a generous figure — a hook command is typically a build or a test suite — and you keep it or change it."
-            />
-            <input
-              className={runExec.input}
-              type="number"
-              min={0}
-              value={hook.timeoutSecs}
-              disabled={readOnly}
-              placeholder={String(AUTHORED_HOOK_TIMEOUT_SECS)}
-              onChange={(e) => onPatch({ timeoutSecs: e.target.value })}
-            />
-          </label>
+          <CapField
+            label="Timeout (seconds)"
+            hint="How long it may run before it is killed. Required: gg has no ceiling of its own to run a hook that declares none under, so a new hook opens on a generous figure — a hook command is typically a build or a test suite — and you keep it or change it."
+            // A configuration presents a list of hooks, each with a timeout, so the
+            // reset says which hook's — the same way the row's Remove control does.
+            resetLabel={`timeout for the ${hook.name.trim() || event?.label || hook.event} hook`}
+            modified={
+              !readOnly &&
+              hook.timeoutSecs !== String(AUTHORED_HOOK_TIMEOUT_SECS)
+            }
+            onReset={() =>
+              onPatch({ timeoutSecs: String(AUTHORED_HOOK_TIMEOUT_SECS) })
+            }
+          >
+            {(id) => (
+              <input
+                id={id}
+                className={runExec.input}
+                type="number"
+                min={0}
+                value={hook.timeoutSecs}
+                disabled={readOnly}
+                placeholder={String(AUTHORED_HOOK_TIMEOUT_SECS)}
+                onChange={(e) => onPatch({ timeoutSecs: e.target.value })}
+              />
+            )}
+          </CapField>
           <label className={gg.capParamField}>
             <FieldLabel
               label="Output mode"

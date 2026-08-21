@@ -6,6 +6,7 @@ import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
 import { RunsTabs } from "./RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "./StopRunsControls";
 import { RunFilters } from "../../components/RunFilters";
 import { useRunFilters } from "../../components/useRunFilters";
 import { useResetPageOnChange } from "../../components/usePagedSearchParams";
@@ -38,6 +39,7 @@ export function RunsPage() {
   const { canExecute, localIds, writeups, queryRunSummaries } =
     useGalleryData();
   const { inProgress, refreshToken } = useRunsRuntime();
+  const canStop = useCanStopRuns();
   const findModel = useFindModel();
   const filters = useRunFilters();
   const { page, setPage, committedQuery, facets, latestVersions } = filters;
@@ -162,6 +164,7 @@ export function RunsPage() {
           command="--runs"
           blink
           comment={<>// every result the cabinet has produced</>}
+          actions={canStop ? <StopRunsControls /> : undefined}
         />
         {canExecute && (
           <div className={exec.headerActions}>

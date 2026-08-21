@@ -7,8 +7,9 @@ import {
   capabilitiesForMode,
   type RunLimitSpec,
 } from "./ggCatalog";
-import { FieldLabel, HelpTip } from "./GgCapabilityFields";
+import { CapField, HelpTip } from "./GgCapabilityFields";
 import { GgAgentEditor } from "./GgAgentEditor";
+import { GgAgentImportDialog } from "./GgAgentImportDialog";
 import { GgEditorTabs, type GgEditorTab } from "./GgEditorTabs";
 import { GgHookList } from "./GgHookRows";
 import {
@@ -458,9 +459,9 @@ export function GgConfigEditor({
   readOnly = false,
 }: GgConfigEditorProps) {
   const [tab, setTab] = useState<ConfigTab>("configuration");
-  // Which saved agent the import control is pointed at. Held here rather than committed
-  // on change, so picking one from a list is not itself the act of adding it.
-  const [importId, setImportId] = useState("");
+  // Whether the library picker is open. Nothing else is held: the dialog hands back the
+  // whole entry that was picked, so there is no half-made choice to keep between renders.
+  const [importing, setImporting] = useState(false);
 
   // A guard against a stale id (the open agent was removed out from under the view):
   // fall back to the configuration rather than rendering nothing at all.
@@ -533,12 +534,10 @@ export function GgConfigEditor({
   // agent, so the two controls below are the whole vocabulary: revert drops this
   // configuration's values and takes the saved agent's, and detach keeps the values and
   // stops following anything.
-  function importAgent() {
-    const saved = savedAgents.find((a) => a.id === importId);
-    if (!saved) return;
+  function importAgent(saved: GgSavedAgent) {
     const imported = importSavedAgent(value, saved);
     onChange(imported.draft);
-    setImportId("");
+    setImporting(false);
     // Straight into the imported profile: an operator imports an agent in order to place
     // it in this configuration, and its roster and slot binding are what they came for. The
     // import mints the profile an id of its own and hands it back, so this opens exactly
@@ -763,20 +762,40 @@ export function GgConfigEditor({
             </p>
             <div className={gg.limitGrid}>
               {RUN_LIMIT_SPECS.map((spec) => (
-                <label key={spec.key} className={gg.capParamField}>
-                  <FieldLabel label={spec.label} hint={spec.hint} />
-                  <input
-                    className={runExec.input}
-                    type="number"
-                    min={0}
-                    max={spec.kind === "fraction" ? 1 : undefined}
-                    step={limitStep(spec.kind)}
-                    value={value.limits[spec.key]}
-                    disabled={readOnly}
-                    onChange={(e) => setLimit(spec.key, e.target.value)}
-                    placeholder={spec.placeholder}
-                  />
-                </label>
+                // Only the two ceilings every run has are seeded, so only those two can be
+                // "moved off" anything. An unarmed ceiling's empty field is the setting
+                // rather than a blank standing in for one, so it is offered no reset —
+                // there is nothing to put it back to.
+                <CapField
+                  key={spec.key}
+                  label={spec.label}
+                  hint={spec.hint}
+                  modified={
+                    !readOnly &&
+                    spec.defaultValue !== undefined &&
+                    value.limits[spec.key] !== spec.defaultValue
+                  }
+                  onReset={
+                    spec.defaultValue === undefined
+                      ? undefined
+                      : () => setLimit(spec.key, spec.defaultValue!)
+                  }
+                >
+                  {(id) => (
+                    <input
+                      id={id}
+                      className={runExec.input}
+                      type="number"
+                      min={0}
+                      max={spec.kind === "fraction" ? 1 : undefined}
+                      step={limitStep(spec.kind)}
+                      value={value.limits[spec.key]}
+                      disabled={readOnly}
+                      onChange={(e) => setLimit(spec.key, e.target.value)}
+                      placeholder={spec.placeholder}
+                    />
+                  )}
+                </CapField>
               ))}
             </div>
             {limitsError ? (
@@ -1122,38 +1141,23 @@ export function GgConfigEditor({
                 </button>
                 {/* Importing a saved agent is the other way to declare a profile: the
                     configuration then follows that agent wherever it has not pinned a
-                    field of its own. Two controls rather than one picker, so choosing
-                    from a list is not itself the act of adding. */}
+                    field of its own. One button, which raises a list of the library's
+                    entries with the note each carries — a `<select>` beside it could show
+                    only bare names, which is not enough to tell two entries apart. */}
                 {savedAgents.length === 0 ? (
-                  <span className={`${runExec.muted} ${gg.agentImport}`}>
+                  <span className={runExec.muted}>
                     Save an{" "}
                     <a href={routes.accountGgAgents()}>agent to your library</a>{" "}
                     to import it here.
                   </span>
                 ) : (
-                  <span className={gg.agentImport}>
-                    <select
-                      className={runExec.select}
-                      value={importId}
-                      aria-label="Saved agent to import"
-                      onChange={(e) => setImportId(e.target.value)}
-                    >
-                      <option value="">a saved agent…</option>
-                      {savedAgents.map((saved) => (
-                        <option key={saved.id} value={saved.id}>
-                          {saved.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={runExec.secondary}
-                      onClick={importAgent}
-                      disabled={!importId}
-                    >
-                      + Import agent
-                    </button>
-                  </span>
+                  <button
+                    type="button"
+                    className={`${runExec.secondary} ${gg.agentImportButton}`}
+                    onClick={() => setImporting(true)}
+                  >
+                    + Import agent
+                  </button>
                 )}
               </div>
             )}
@@ -1163,6 +1167,16 @@ export function GgConfigEditor({
               This configuration has no agents. Add at least one before saving
               it.
             </p>
+          )}
+          {/* The library is a prop, so it can re-resolve to empty while the picker is
+              open — a modal offering nothing is worse than the empty-state note on the
+              row, which at least links to the library. */}
+          {importing && savedAgents.length > 0 && (
+            <GgAgentImportDialog
+              savedAgents={savedAgents}
+              onPick={importAgent}
+              onDismiss={() => setImporting(false)}
+            />
           )}
         </>
       )}

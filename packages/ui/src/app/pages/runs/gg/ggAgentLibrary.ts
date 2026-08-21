@@ -15,6 +15,7 @@ import {
 } from "./ggCatalog";
 import {
   agentDraftFromConfig,
+  canonicalAgentCapabilities,
   mintAgentKey,
   draftFromCapabilitySet,
   resolveAgentReferences,
@@ -201,18 +202,29 @@ export function repointAgentReferences(
 }
 
 /**
- * The saved agent as it applies to the profile carrying `profileId`: its own id replaced,
- * and every self-reference carried across with it.
+ * The saved agent as it applies to the profile carrying `profileId`: put through the
+ * editor's own load and save, its id replaced, and every self-reference carried across
+ * with it.
  *
  * Both halves of the overlay run against this rather than against the stored agent
- * itself, so the id a profile was imported under is never mistaken for an override.
+ * itself, so the id a profile was imported under is never mistaken for an override — and
+ * neither is anything the editor
+ * [fills in](canonicalAgentCapabilities) on the way in. A profile is always the editor's
+ * copy, so a basis that is not leaves an untouched import pinning whatever the editor
+ * filled in, which detaches it from the agent it follows and leaves Revert with nothing
+ * to do.
  */
 export function agentBasisAs(
   base: GgAgentConfig,
   profileId: string,
 ): GgAgentConfig {
   const from = base.id ?? base.slug;
-  return repointAgentReferences({ ...base, id: profileId }, from, profileId);
+  const canonical = canonicalAgentCapabilities({ ...base, id: from });
+  return repointAgentReferences(
+    { ...canonical, id: profileId },
+    from,
+    profileId,
+  );
 }
 
 /**

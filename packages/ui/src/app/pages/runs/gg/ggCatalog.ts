@@ -275,8 +275,11 @@ export interface ParamSpec {
   // value nobody may choose for the operator.
   defaultValue?: string;
   // Whether gg refuses a launch this param is absent from — which is every param but the
-  // four whose absence is itself a setting (compaction's `maxRetries`, `model` and
-  // `modelSlot`, and project management's `reviewers`). A required control always
+  // four gg reads a setting out of an absence for (compaction's `maxRetries`, `model` and
+  // `modelSlot`, and project management's `reviewers`). Optional is not the same as
+  // unseeded: `maxRetries` and agent-managed context's `signalThresholdPercent` are both
+  // written with the figure their absence already meant, so that every control in a
+  // capability's grid shows a value. A required control always
   // writes: it is seeded when the capability is switched on, filled in when a stored
   // configuration is short of it, and refused by the save gate when it is emptied. The
   // form reports it where the operator can still fix it, rather than letting the launch
@@ -684,7 +687,7 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
   {
     value: "drop-doubled-response",
     label:
-      "drop-doubled-response — halve a reply that is one program sent twice (starts off)",
+      "drop-doubled-response — halve a reply that is one program sent twice",
     seedOff: true,
     hint: "The one strategy a fresh capability starts switched off: the half it deletes is valid code under any other reading, so unlike every other repair here, not making it is the safer place to start. It fires only on a byte-exact doubling with nothing at all between the copies — a model that deliberately repeats a statement writes a separator, and any single character of separator makes the reply an odd number of bytes long, which the test declines on. Arm it for a model observed to concatenate its completion with itself.",
   },
@@ -777,7 +780,7 @@ export const DOC_VIEW_TYPES_OPTIONS: ReadonlyArray<{
   },
   {
     value: "parameters",
-    label: "parameters — the types its arguments declare (starts off)",
+    label: "parameters — the types its arguments declare",
     seedOff: true,
     hint: "The one of the three a fresh capability starts switched off: an argument's type is already written into the signature the agent is reading, so opening it is more context up front against fewer follow-up lookups. Like the other two, what the run does with it is whatever this switch says.",
   },
@@ -1598,13 +1601,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. This also defines the trigger: a compaction fires once the window is 1 − headroom full (the working window is full and only the headroom remains).",
       },
       {
-        // The second of the params whose absence is the setting, and the one whose
-        // absence is what almost every configuration wants: a compaction that
-        // reclaimed nothing is a run that is over, and retrying it is the exception.
+        // Optional to gg — an absent `maxRetries` is none — but seeded here all the same,
+        // and written down as the `0` it already meant. A field left blank to mean a
+        // figure the operator has to know is the one control in this grid that could not
+        // be read at a glance, and it sat next to a sibling that shows its own default;
+        // `0` on the screen and `0` in the document say the same thing to gg as an
+        // absence did, so the form says it rather than implying it.
         key: "maxRetries",
         label: "Max retries",
         kind: "number",
-        hint: "How many times gg compacts again after a boundary that left the window still at the threshold, before ending the agent as failed. Left unset it is none: one compaction, and an agent that boundary could not relieve has failed — which is the right setting unless a strategy is being studied whose first summary can come back nearly as long as the thread it replaced.",
+        defaultValue: "0",
+        hint: "How many times gg compacts again after a boundary that left the window still at the threshold, before ending the agent as failed. None is the right setting unless a strategy is being studied whose first summary can come back nearly as long as the thread it replaced: at 0 there is one compaction, and an agent that boundary could not relieve has failed.",
       },
       {
         key: "model",
@@ -2169,8 +2176,8 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxRuntimeSecs",
     label: "Runtime (seconds)",
     kind: "count",
-    placeholder: "e.g. 5400",
-    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. A run that spends it ends timed_out.",
+    placeholder: "no ceiling",
+    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. Empty arms no such ceiling — the host caps the run's wall-clock either way. A run that spends a ceiling you set ends timed_out.",
   },
   {
     key: "maxConsecutiveErrors",
@@ -2197,8 +2204,8 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxCost",
     label: "Cost (USD)",
     kind: "amount",
-    placeholder: "e.g. 25",
-    hint: "Ceiling on the whole run's accumulated cost, checked at each agent's turn boundary. The turn that crosses it completes, so the recorded cost can exceed it by up to one turn per running agent. A run whose model reports no cost is never stopped by it.",
+    placeholder: "no ceiling",
+    hint: "Ceiling on the whole run's accumulated cost, checked at each agent's turn boundary. Empty arms no such ceiling. The turn that crosses one completes, so the recorded cost can exceed it by up to one turn per running agent. A run whose model reports no cost is never stopped by it.",
   },
   {
     key: "replayMaxBytes",

@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunsTabs } from "../runs/RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "../runs/StopRunsControls";
 import { useAuth } from "../../../client/auth";
 import { useGalleryData } from "../../data/galleryContext";
 import { routes } from "../../routes";
@@ -17,6 +18,7 @@ import exec from "../runs/RunExec.module.scss";
 export function ComparisonsIndexPage() {
   const { canExecute } = useGalleryData();
   const { token } = useAuth();
+  const canStop = useCanStopRuns();
 
   return (
     <PageLayout>
@@ -32,6 +34,7 @@ export function ComparisonsIndexPage() {
               // the same benchmark under several configurations, side by side
             </>
           }
+          actions={canStop ? <StopRunsControls /> : undefined}
         />
         {canExecute && token && (
           <div className={exec.headerActions}>

@@ -25,6 +25,7 @@ import {
 } from "./ggCatalog";
 import {
   CapabilityBody,
+  CapField,
   FieldLabel,
   HelpTip,
   Switch,
@@ -127,6 +128,17 @@ interface GgAgentEditorProps {
   /** The model catalog backing the pickers (free text is still allowed). */
   models: Model[];
   readOnly: boolean;
+  /**
+   * The agent's one-line purpose, when it has somewhere to live: a saved library entry
+   * carries one, a profile inside a configuration does not.
+   *
+   * Passed in rather than read off the draft because it belongs to the *library entry*
+   * and not to the profile — but it is edited here all the same, because the Agent tab is
+   * where the rest of the entry's identity is written. A page that hoists it above the
+   * tab strip leaves one field of the form stranded outside the form.
+   */
+  description?: string;
+  onDescriptionChange?: (next: string) => void;
 }
 
 /**
@@ -144,6 +156,8 @@ export function GgAgentEditor({
   onRenameSlug,
   models,
   readOnly,
+  description,
+  onDescriptionChange,
 }: GgAgentEditorProps) {
   // Which capability groups are collapsed on the Tools/APIs tab.
   const [collapsed, setCollapsed] = useState<Set<CapGroup>>(
@@ -476,6 +490,23 @@ export function GgAgentEditor({
           </div>
           {slugError && <p className={gg.fieldError}>{slugError}</p>}
 
+          {/* The library entry's one-line purpose, where the entry is what is being
+              edited. It sits under the name and slug it describes, on the same tab: it is
+              part of the agent's identity, not chrome above the form. */}
+          {onDescriptionChange && (
+            <label className={`${runExec.field} ${gg.agentDescriptionField}`}>
+              <span className={runExec.fieldLabel}>Description (optional)</span>
+              <input
+                className={runExec.input}
+                type="text"
+                value={description ?? ""}
+                disabled={readOnly}
+                placeholder="what this agent is for"
+                onChange={(e) => onDescriptionChange(e.target.value)}
+              />
+            </label>
+          )}
+
           {/* Agent type — how this agent is implemented, and so what the rest of this
               editor even offers. Above everything conditional, because it is the choice
               the other sections are a consequence of rather than one of them. */}
@@ -571,12 +602,8 @@ export function GgAgentEditor({
                       })
                     }
                   >
-                    <option value="standard">
-                      5 minutes (provider default)
-                    </option>
-                    <option value="extended">
-                      1 hour (extended, costs more)
-                    </option>
+                    <option value="standard">5 minutes</option>
+                    <option value="extended">1 hour (costs more)</option>
                   </select>
                 </label>
               </div>
@@ -632,28 +659,42 @@ export function GgAgentEditor({
                     <div className={gg.capBody}>
                       <div className={gg.capParamGrid}>
                         {LOOP_DETECTION_SPECS.map((spec) => (
-                          <label key={spec.key} className={gg.capParamField}>
-                            <FieldLabel label={spec.label} hint={spec.hint} />
-                            <input
-                              className={runExec.input}
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={agent.loopDetection.knobs[spec.key]}
-                              disabled={readOnly}
-                              onChange={(e) =>
-                                setLoopKnob(spec.key, e.target.value)
-                              }
-                              // The figure the knob was armed with, so a field an
-                              // operator has cleared still shows what putting it back
-                              // would mean. Bare, because a placeholder is already read
-                              // as "what goes here" and prefixing it doubled the width
-                              // of every one of these fields.
-                              placeholder={spec.authored.toLocaleString(
-                                "en-US",
-                              )}
-                            />
-                          </label>
+                          <CapField
+                            key={spec.key}
+                            label={spec.label}
+                            hint={spec.hint}
+                            modified={
+                              !readOnly &&
+                              agent.loopDetection.knobs[spec.key] !==
+                                String(spec.authored)
+                            }
+                            onReset={() =>
+                              setLoopKnob(spec.key, String(spec.authored))
+                            }
+                          >
+                            {(id) => (
+                              <input
+                                id={id}
+                                className={runExec.input}
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={agent.loopDetection.knobs[spec.key]}
+                                disabled={readOnly}
+                                onChange={(e) =>
+                                  setLoopKnob(spec.key, e.target.value)
+                                }
+                                // The figure the knob was armed with, so a field an
+                                // operator has cleared still shows what putting it back
+                                // would mean. Bare, because a placeholder is already read
+                                // as "what goes here" and prefixing it doubled the width
+                                // of every one of these fields.
+                                placeholder={spec.authored.toLocaleString(
+                                  "en-US",
+                                )}
+                              />
+                            )}
+                          </CapField>
                         ))}
                       </div>
                       {loopError ? (

@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from "react";
 import { HelpTip } from "./HelpTip";
+import { ResetControl } from "./ResetControl";
 import styles from "./SettingRow.module.scss";
 
 /**
@@ -52,15 +53,7 @@ export function SettingRow({
           )}
           {help && <HelpTip text={help} />}
           {modified && onReset && (
-            <button
-              type="button"
-              className={styles.reset}
-              aria-label={`Reset ${label}`}
-              title={`Reset ${label}`}
-              onClick={onReset}
-            >
-              ↺
-            </button>
+            <ResetControl label={label} onReset={onReset} />
           )}
         </span>
         {description && <p className={styles.description}>{description}</p>}

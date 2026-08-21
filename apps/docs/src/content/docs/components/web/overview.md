@@ -163,11 +163,12 @@ to a pre-filtered listing. The board holds the console stream's [`runs`
 topic](/components/backend/api/#topics) open while it is on screen, which is what
 keeps the tallies and verdicts moving as runs finish under it.
 
-The Runs page carries the global counterparts to a plan's halt on the trailing
-edge of its tab bar: Clear pending, Kill active, and Stop all. These are scoped
-to nothing, stopping the cabinet rather than one plan, so the two that discard
-work in progress confirm first, and all three report how many runs they actually
-cancelled.
+Every page of the runs section carries the global counterparts to a plan's halt
+on the trailing edge of its page header: Clear pending, Kill active, and Stop
+all. These are scoped to nothing, stopping the cabinet rather than one plan, so
+the two that discard work in progress confirm first, and all three report how
+many runs they actually cancelled. The section's tab bar holds its tabs alone,
+which is what keeps it on one row as tabs are added.
 
 ## Deployment
 

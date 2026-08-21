@@ -177,6 +177,15 @@ function openFirstAgentTools() {
   openTab("Tools");
 }
 
+// Import one library entry, from the Agents tab: the button raises the picker, and a row
+// in it named by the entry is the import.
+function pickFromLibrary(name: RegExp) {
+  fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", { name }),
+  );
+}
+
 // Return to the configuration keeping the agent's edits — the only way back other than
 // discarding them with Cancel.
 function saveAgent() {
@@ -578,7 +587,7 @@ describe("GgConfigEditPage", () => {
     openTab("Agents");
     fireEvent.click(screen.getByRole("button", { name: "+ Add agent" }));
     openFirstAgent();
-    fireEvent.change(screen.getByLabelText(/Prompt cache/i), {
+    fireEvent.change(screen.getByLabelText(/^Prompt cache/i), {
       target: { value: "extended" },
     });
     saveAgent();
@@ -632,13 +641,13 @@ describe("GgConfigEditPage", () => {
     openTab("APIs");
     const language = within(
       screen.getByRole("group", { name: "Responses as code" }),
-    ).getByLabelText(/Program language/) as HTMLSelectElement;
+    ).getByLabelText(/^Program language/) as HTMLSelectElement;
     fireEvent.change(language, { target: { value: "rust" } });
     expect(
       (
         within(
           screen.getByRole("group", { name: "Responses as code" }),
-        ).getByLabelText(/Program language/) as HTMLSelectElement
+        ).getByLabelText(/^Program language/) as HTMLSelectElement
       ).value,
     ).toBe("rust");
 
@@ -888,11 +897,7 @@ describe("a configuration that imports a saved agent", () => {
       target: { value: "review arm" },
     });
     openTab("Agents");
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Saved agent to import" }),
-      { target: { value: "saved-1" } },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+    pickFromLibrary(/^reviewer/);
     saveAgent();
   }
 
@@ -1044,7 +1049,9 @@ describe("a configuration's launch inputs", () => {
     fireEvent.change(screen.getByLabelText("Slot name"), {
       target: { value: "shared" },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Root (root) · primary" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Root (root) · primary" }),
+    );
     fireEvent.click(
       screen.getByRole("checkbox", { name: "agent-2 (agent-2) · primary" }),
     );
@@ -1186,11 +1193,7 @@ describe("an import that lands on a slug a profile already carries", () => {
       target: { value: "colliding" },
     });
     openTab("Agents");
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Saved agent to import" }),
-      { target: { value: "saved-root" } },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+    pickFromLibrary(/^Root/);
   }
 
   it("will not commit the profile, and says which one thing is wrong with it", async () => {
@@ -1305,11 +1308,7 @@ describe("one saved agent imported twice", () => {
     });
     openTab("Agents");
     for (const close of ["Save agent", "Cancel"]) {
-      fireEvent.change(
-        screen.getByRole("combobox", { name: "Saved agent to import" }),
-        { target: { value: "saved-1" } },
-      );
-      fireEvent.click(screen.getByRole("button", { name: "+ Import agent" }));
+      pickFromLibrary(/^reviewer/);
       fireEvent.click(screen.getByRole("button", { name: close }));
     }
     openTab("Agents");

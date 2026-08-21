@@ -5,6 +5,7 @@ import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
 import { RunsTabs } from "./RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "./StopRunsControls";
 import { usePagedSearchParams } from "../../components/usePagedSearchParams";
 import { useGalleryData } from "../../data/galleryContext";
 import type { RunQueryResult } from "../../data/runQuery";
@@ -24,6 +25,7 @@ export function UnreviewedPage() {
   const { queryRunSummaries, localIds, writeups } = useGalleryData();
   const { page, setPage } = usePagedSearchParams();
   const { refreshToken } = useRunsRuntime();
+  const canStop = useCanStopRuns();
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -74,6 +76,7 @@ export function UnreviewedPage() {
       <PromptHeader
         command="--runs/unreviewed"
         comment={<>// completed runs nobody has reviewed yet</>}
+        actions={canStop ? <StopRunsControls /> : undefined}
       />
 
       <RunsTabs active="unreviewed" />

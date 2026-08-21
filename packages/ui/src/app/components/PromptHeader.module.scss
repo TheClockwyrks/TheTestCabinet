@@ -5,6 +5,14 @@
   font-family: var(--ttc-font);
 }
 
+// A header carrying trailing controls fills the row it is a flex item of, so its
+// controls right-align against the row's own trailing edge rather than against the
+// header's intrinsic text width — which would leave them floating mid-row.
+.hero.hasActions {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+
 .prompt {
   margin: 0;
   font-size: t.$font-xl;
@@ -65,4 +73,26 @@
     0 0 0.4rem t.$color-bg,
     0 0 0.25rem t.$color-bg,
     var(--ttc-glow);
+}
+
+// The comment line when the header carries trailing controls: the prose keeps the
+// leading edge, the controls the trailing one. The row owns the gap under the prompt
+// so the controls centre against the comment rather than against its margin, and it
+// wraps — controls under the comment, still right-aligned — before either is squeezed.
+.commentRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  margin-top: t.$space-sm;
+
+  .comment {
+    margin-top: 0;
+  }
+}
+
+.commentActions {
+  margin-left: auto;
+  min-width: 0;
 }
