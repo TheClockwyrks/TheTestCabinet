@@ -25,9 +25,15 @@ export default function item() {
     async assert(api, check) {
       check.expectOk("the forager swam into a plankton", graze.hit);
       if (!graze.hit) return;
+      // Read a beat after the eat rather than on its own tick: `V` is DERIVED from `G`
+      // (`V = 96 + 64 G`, specs/gameplay.md), and a build that recomputes it at the top of
+      // the next step is satisfying that formula just as much as one that recomputes it
+      // inside the step that raised `G`. See `actGrazeOne` for why the beat is where it is.
       check.expectGt(
-        "the light radius V widens as brightness rises from eating",
-        graze.after.visionRadius,
+        `the light radius V widens as brightness rises from eating ` +
+          `(${graze.before.visionRadius} px at G=${graze.before.brightness.toFixed(2)} ` +
+          `to ${graze.settled.visionRadius} px at G=${graze.settled.brightness.toFixed(2)})`,
+        graze.settled.visionRadius,
         graze.before.visionRadius,
       );
     },

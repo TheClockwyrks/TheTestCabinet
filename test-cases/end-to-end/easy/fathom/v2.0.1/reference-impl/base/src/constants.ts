@@ -91,6 +91,10 @@ export const FORAGER_SPEED = 128; // px/s (4 tiles/s)
 // ---- Brightness (specs/sensing.md) -------------------------------------
 export const BRIGHT_PER_EAT = 0.34;
 export const BRIGHT_HOLD = 1.0; // s G holds after the last pellet before decay; resets on each eat
+// Den timer for a predator HELD in the den rather than waiting its slot: `setPredator(kind,
+// "den")` and `setMaze` both suspend the release schedule outright (specs/instrumentation.md),
+// so the timer is set past any scenario's length rather than to a release time.
+export const HELD_IN_DEN = 1e9;
 export const BRIGHT_HALFLIFE = 0.9; // G *= 0.5^(dt/0.9) once decay begins
 export const VISION_MIN = 96; // px at rest (3 tiles)
 export const VISION_GAIN = 64; // V = 96 + 64*G  -> up to 160

@@ -382,6 +382,13 @@ title = "The game advances itself in real time"
 description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live dive advances — simulation time accumulates and the predators patrol — without anything stepping it from outside."
 validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 [[review.categories.items]]
+id = "setmaze-houses-predators"
+title = "setMaze houses the predators it re-dens"
+description = "The third part of the setMaze contract: posing a layout rebuilds the den from it and returns every predator to that den, held there with the release schedule suspended, so a posed scenario is not sharing its corridor with a hunter."
+validation = { script = "validation/controls/setmaze-houses-predators.mjs", outputs = [
+  { id = "housed", name = "A posed board, its den holding every predator", kind = "video" },
+] }
+[[review.categories.items]]
 id = "manual-clock"
 title = "The game holds still on the driver's clock"
 description = "The converse of the item above, and the other half of the autoStep contract: reset() re-arms manual stepping, and the control operations leave it that way, so once a driver holds the clock nothing advances between its steps — no simulation time accrues and no predator moves — while step() still advances the game exactly."

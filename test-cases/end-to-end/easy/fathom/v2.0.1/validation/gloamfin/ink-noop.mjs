@@ -26,11 +26,14 @@ import {
   denAllExcept,
   poseInkStandoff,
   pred,
+  requirePredatorMotion,
+  unmetPrecondition,
   startPlaying,
   ticksFor,
 } from "../_helpers.mjs";
 
 export default function item() {
+  let openingSnap;
   let line;
   let beforeInk;
   let entered;
@@ -66,7 +69,8 @@ export default function item() {
 
     async act(api) {
       await api.advance(6); // 6 ticks = the old 0.05 s
-      beforeInk = pred(await api.snapshot(), "gloamfin").state;
+      openingSnap = await api.snapshot();
+      beforeInk = pred(openingSnap, "gloamfin").state;
       await api.call("clearCooldowns");
       await api.call("press", "ShiftLeft"); // ink at the forager, over the line to the Gloamfin
       await api.call("keyDown", DIR_KEY[line.flee]);
@@ -118,16 +122,37 @@ export default function item() {
 
     async assert(api, check) {
       check.expectEq("the Gloamfin is chasing", beforeInk, "chase");
-      check.expectOk(
-        "the Gloamfin reached the ink cloud between it and the forager",
-        entered.hit,
-      );
-      if (!entered.hit) return;
-      check.expectGt(
-        "it is still out of hearing range at the read, so only the ink is in question",
-        gapAtRead,
-        GLOAMFIN_HEAR,
-      );
+      // THE TWO CLAUSES BELOW ARE PRECONDITIONS, NOT FINDINGS, and were assertions until a
+      // run made the difference plain. This item asks one thing — whether ink stops a
+      // hunter that navigates by sound — and it can only ask it of a Gloamfin that is
+      // inside the cloud and far enough from the forager that hearing is not the reason it
+      // still knows where to go. Neither clause says anything about the build's ink.
+      //
+      // Scored, they say the wrong thing in both directions. A run had every substantive
+      // assertion pass — the hunter held its fix, spent 50 ticks in the cloud and covered
+      // 214 px through it — and failed the item anyway, because by the moment of the read
+      // it had closed to 51.6 px against its own 64 px hearing. The verdict called that a
+      // Gloamfin broken by ink, in the same breath as the evidence that it was not.
+      if (!entered.hit) {
+        requirePredatorMotion(
+          openingSnap,
+          entered.snap,
+          "gloamfin",
+          "swim into the ink cloud laid between it and the forager",
+        );
+        throw unmetPrecondition(
+          "the Gloamfin never reached the ink cloud laid between it and the forager, so " +
+            "there was no moment inside it at which to ask whether the ink changed anything",
+        );
+      }
+      if (!(gapAtRead > GLOAMFIN_HEAR)) {
+        throw unmetPrecondition(
+          `the Gloamfin had closed to ${gapAtRead.toFixed(0)} px by the time it was inside the ` +
+            `cloud, inside the ${GLOAMFIN_HEAR} px its own hearing reaches ` +
+            `(specs/predators/gloamfin.md), so what it still knew cannot be separated from ` +
+            `what the ink did or did not do to it`,
+        );
+      }
       check.expectEq(
         "ink does not stop the Gloamfin (still chasing, inside the cloud)",
         afterInk,

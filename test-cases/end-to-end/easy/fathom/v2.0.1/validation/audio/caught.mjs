@@ -14,6 +14,7 @@ import {
 } from "../_helpers.mjs";
 
 export default function item() {
+  let inPlay;
   let before;
   let after;
   let caught;
@@ -35,6 +36,14 @@ export default function item() {
 
     async act(api) {
       before = await audioCount(api);
+      // THE CATCH HAS TO STILL BE AHEAD OF US. `until` reports a hit the moment its
+      // predicate holds, including on the very first read — so on a board that had already
+      // left live play this would report a catch it never saw, and then read a log already
+      // carrying the cue for it. A build that keeps simulating between driver calls
+      // (`controls/manual-clock`) does exactly that: one took the life during `arrange`,
+      // before the audio log was even armed, and this item recorded a vacuous "a predator
+      // catches the forager" beside a cue count that never moved.
+      inPlay = (await api.snapshot()).screen === "playing";
       const r = await api.until((s) => s.screen !== "playing", {
         max: 30,
         poll: 2,
@@ -45,6 +54,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      check.expectOk(
+        "the dive is still in live play when the catch is staged, so the cue counted is this catch's",
+        inPlay,
+      );
+      if (!inPlay) return;
       check.expectOk("a predator catches the forager", caught);
       check.expectGt(
         "a caught cue plays (Web Audio sources started)",

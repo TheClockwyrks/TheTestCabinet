@@ -8,12 +8,14 @@ import {
   poseCorner,
   isOpen,
   pred,
+  requirePredatorMotion,
   quietBoard,
   startPlaying,
   stepTile,
 } from "../_helpers.mjs";
 
 export default function item() {
+  let opening;
   let firstState = null;
   let sawChase = false;
   let sawBelow = false;
@@ -69,6 +71,7 @@ export default function item() {
       // cannot miss the corner floor this is looking for; 3 would shorten the window
       // instead. 72 samples span 2.4 s: the run in, the turn, and the whole ~2 s ramp back
       // to the cap that the extra corridor above exists to make visible.
+      opening = await api.snapshot();
       for (let i = 0; i < 72; i++) {
         await api.advance(4);
         const s = await api.snapshot();
@@ -88,6 +91,15 @@ export default function item() {
         if (g.speed < FORAGER_SPEED) sawBelow = true;
       }
       await api.advance(96); // 96 ticks = the old 800 ms live tail
+      // The corner floor is a property of a hunter that RAN and TURNED. One that never
+      // left its tile has cornered nothing, and reads whatever resting speed it reports —
+      // which is not evidence either way about the ramp this item grades.
+      requirePredatorMotion(
+        opening,
+        await api.snapshot(),
+        "gloamfin",
+        "chase down the corridor and turn the corner",
+      );
     },
 
     async assert(api, check) {

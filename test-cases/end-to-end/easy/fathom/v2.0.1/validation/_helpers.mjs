@@ -919,9 +919,92 @@ export function stampLayout(snap, art, { at, larder = true } = {}) {
  * back to unrevealed, every predator held in the den — so a caller poses the forager and
  * the predators it wants afterwards, exactly as it would on a generated maze.
  */
+/**
+ * Refuse to grade a posed scenario whose predators were not put away by `setMaze`.
+ *
+ * `specs/instrumentation.md` is explicit about what the op does with them: the board ends
+ * up in the state a fresh maze starts in, and "every predator is returned to the den and
+ * held there exactly as `setPredator(kind, "den")` holds it". A fixture from `stampLayout`
+ * always carries a real den for them to be returned TO, sealed off in the bottom rows with
+ * its gate walled on three sides, so on such a layout every predator's tile must be a den
+ * or gate tile — there is nowhere else it is entitled to be.
+ *
+ * WHY THIS IS WORTH ITS OWN FAILURE. A build that rebuilds the board but leaves its
+ * hunters wherever its own den used to be drops them onto whatever the fixture put at those
+ * coordinates, which is frequently the corridor the scenario is about. One run went exactly
+ * that way: a Lanternjaw stood in the middle of a posed corridor, the forager swam into it a
+ * quarter of a second in, and the item reported "holding ArrowUp gives the forager an upward
+ * heading — expected up, actual left", `left` being the facing it respawns on. Three items
+ * blamed input and turning for an unmet `setMaze` contract, and nothing named `setMaze`.
+ * Raised here, the fixture says what happened once, and the items that merely stood on it
+ * stand aside.
+ *
+ * A layout with no den is not checked: the same page says a predator returned to a den that
+ * is not there "is held out of play … not drawn, not moving and unable to make contact",
+ * which fixes no tile for it to be on, and inertness is not a thing a single snapshot shows.
+ */
+export function housedTiles(snap) {
+  const housed = new Set();
+  for (let r = 0; r < snap.grid.rows; r++) {
+    for (let c = 0; c < snap.grid.cols; c++) {
+      const t = snap.tiles[r]?.[c];
+      if (t === "d" || t === "g") housed.add(`${c},${r}`);
+    }
+  }
+  return housed;
+}
+
+/**
+ * The predators standing outside `housed`, each described by the kind of tile it is on, in
+ * the wording both `requireHoused` and the item that owns the claim report.
+ */
+export function looseOf(snap, housed) {
+  return (snap.predators ?? [])
+    .filter((p) => !housed.has(`${p.tx},${p.ty}`))
+    .map((p) => {
+      const t = snap.tiles[p.ty]?.[p.tx];
+      const kind =
+        t === "." ? "open corridor" : t === undefined ? "off the board" : "rock";
+      return { kind: p.kind, tx: p.tx, ty: p.ty, where: `the ${p.kind} at (${p.tx}, ${p.ty}), on ${kind}` };
+    });
+}
+
+function requireHoused(snap) {
+  const housed = housedTiles(snap);
+  if (!housed.size) return; // no den in this fixture; the spec fixes no tile for them
+  // ONLY A PREDATOR THAT CAN GET ANYWHERE STOPS THE SCENARIO. A build that misses the
+  // fixture's den misses it by whatever offset its own den sat at, and the tile it lands on
+  // is as often rock as corridor. Movement is tile-locked and walls are impassable
+  // (`specs/movement.md`), so a hunter embedded in rock cannot reach the forager, the
+  // subject, or anything else: the scenario around it is the one the item meant to pose, and
+  // refusing to grade it would throw a real measurement away over bookkeeping. A hunter on
+  // OPEN CORRIDOR is the one that can swim into the scene.
+  //
+  // The full contract — every predator in the den, rock included — is graded by
+  // `controls/setmaze-houses-predators`. This is the narrower question of whether THIS
+  // scenario can still be read.
+  const loose = looseOf(snap, housed).filter(
+    (l) => snap.tiles[l.ty]?.[l.tx] === ".",
+  );
+  if (!loose.length) return;
+  const where = loose.map((l) => l.where).join("; ");
+  throw unmetPrecondition(
+    `setMaze left a predator loose in the posed fixture — ${where}. ` +
+      `specs/instrumentation.md has the op rebuild the den from the new layout and return ` +
+      `every predator to it, and this fixture carries one; a hunter standing in open corridor ` +
+      `can reach the forager and end the scenario, so what happens next is not this item's ` +
+      `verdict — see controls/setmaze-houses-predators`,
+  );
+}
+
 export async function poseMaze(api, art, opts) {
   const before = await api.snapshot();
   const fixture = stampLayout(before, art, opts);
+  // `controls/setmaze-houses-predators` is the item that OWNS this claim, so it poses with
+  // `housed: false` and asserts the housing itself; every other caller stands aside on it
+  // (see `requireHoused`). Without this the one item that should report the defect would
+  // raise a precondition about it instead, and nothing would fail.
+  const checkHoused = opts?.housed !== false;
   await api.call("setMaze", fixture.rows);
   // If the build read the new board as a new maze and opened a dive countdown, put it back
   // into live play. `specs/instrumentation.md` asks `setMaze` to swap the board out underneath
@@ -935,6 +1018,7 @@ export async function poseMaze(api, art, opts) {
     await api.call("beginPlay");
   }
   const snap = await api.snapshot();
+  if (checkHoused) requireHoused(snap);
   const one = (letter) => {
     const hits = fixture.marks[letter];
     if (!hits || hits.length !== 1) {
@@ -1952,6 +2036,39 @@ export function requireSwim(before, after, what) {
   );
 }
 
+/**
+ * The same refusal, for a scenario whose SUBJECT is a predator that never moved.
+ *
+ * `requireSwim` covers the checks that reach their subject by swimming the forager. The
+ * mirror case is a check that poses a hunter and reads what it does next — cross an ink
+ * cloud, round a corner, reach the tile a ping found, close on the forager. Every predator
+ * in `specs/predators.md` moves under its own power, at a speed that page fixes, so a
+ * hunter that covers no ground at all across a whole measurement has not exhibited the
+ * behaviour being graded, and the item cannot tell a wrong answer from no answer.
+ *
+ * A run made the case for it: one build's predators never moved a pixel, and ten items
+ * reported that as ink failing to break a fix, cornering failing to cost speed, a "lost
+ * you" ping never firing, and contact never costing a life — ten mechanics named, none of
+ * them the one that was broken. Whether a predator moves at all is `den/*`'s and
+ * `gloamfin/wander-speed`'s to say.
+ *
+ * Deliberately NOT applied to the checks that are about a predator staying put — a denned
+ * hunter, a bystander held as scenery by `setCreatureAI(false)` — which pass a distance of
+ * zero legitimately. It is for a scenario that asked a predator to travel.
+ */
+export function requirePredatorMotion(before, after, kind, what) {
+  const a = pred(before, kind);
+  const b = pred(after, kind);
+  if (!a || !b) return; // a missing predator is the roster's verdict, not this one's
+  const moved = Math.hypot(b.x - a.x, b.y - a.y);
+  if (moved >= SWIM_EPS) return;
+  throw unmetPrecondition(
+    `the ${kind} did not move at all (${moved.toFixed(1)} px) while the scenario waited for ` +
+      `it to ${what} — whether a predator moves under its own power is the den and patrol ` +
+      `checks' verdict, not this one's`,
+  );
+}
+
 export async function actGrazeOne(api, dir, { tailTicks = 120 } = {}) {
   const before = await api.snapshot();
   await api.call("keyDown", DIR_KEY[dir]);
@@ -1961,10 +2078,37 @@ export async function actGrazeOne(api, dir, { tailTicks = 120 } = {}) {
     { max: 90, poll: TICK },
   );
   const after = r.snap;
-  await api.advance(tailTicks);
+  // A beat past the eat, for anything the build DERIVES from what the eat changed.
+  //
+  // `after` is the tick the pellet went, and on that tick a build has only had to do what
+  // the eat itself does — raise `G`, score it, clear the tile. A value computed FROM `G`
+  // need not have moved yet: `specs/gameplay.md` fixes `V = 96 + 64 G` as a relationship,
+  // not a moment, so recomputing the radius inside the step that raised `G` and
+  // recomputing it at the top of the next step are both that formula holding. A build
+  // doing the second reports the old radius alongside the new `G` for exactly one tick,
+  // and an item reading `after` fails it for a radius that is exact a tick later.
+  //
+  // The beat is bounded at both ends. One tick is the least that can settle anything; the
+  // next pellet is 32 px away and the forager covers 1.07 px per tick, so anything under
+  // 30 ticks cannot reach it and turn one eat into two — which would break the callers
+  // below that need exactly one. Twelve ticks sits well inside that, and the tail is
+  // shortened by the same amount so the clip is the length it always was.
+  const settleTicks = Math.min(12, tailTicks);
+  let settled = after;
+  if (r.hit) {
+    await api.advance(settleTicks);
+    settled = await api.snapshot();
+    await api.advance(tailTicks - settleTicks);
+  } else {
+    await api.advance(tailTicks);
+  }
   await api.call("keyUp", DIR_KEY[dir]);
   if (!r.hit) requireSwim(before.forager, after.forager, "reach the plankton ahead of it");
-  return { before, after, hit: r.hit };
+  // `after` for what the eat does, `settled` for what the game derives from it. Callers
+  // measuring the eat itself — the `+0.34`, the `+10`, the tile cleared — must keep using
+  // `after`, because by `settled` a build is entitled to have started the decay
+  // (`specs/gameplay.md` holds `G` for `1.0 s`, but the hold is the build's to time).
+  return { before, after, settled, hit: r.hit };
 }
 
 /**

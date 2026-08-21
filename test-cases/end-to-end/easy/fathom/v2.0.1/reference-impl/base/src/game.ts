@@ -7,6 +7,7 @@ import { Audio } from "./audio";
 import {
   BRIGHT_HALFLIFE,
   BRIGHT_HOLD,
+  HELD_IN_DEN,
   BRIGHT_PER_EAT,
   COLOR,
   COLS,
@@ -761,6 +762,16 @@ export class Game {
     }
     this.maze.load(rows);
     this.buildTrench(true);
+    // ...and HOLD them there. `specs/instrumentation.md` has a posed board return every
+    // predator to the den "and held there exactly as `setPredator(kind, "den")` holds it",
+    // and that mode suspends the staggered release schedule "however long the scenario
+    // runs". `buildTrench` re-arms the ordinary schedule, which is right for a descent and
+    // wrong here: a posed fixture is a scenario someone is about to measure something in,
+    // and a hunter let out on the ordinary clock five seconds later walks into it.
+    for (const p of this.predators) {
+      p.denTimer = HELD_IN_DEN;
+      p.released = false;
+    }
   }
 
   debugSetForager(state: { tx?: number; ty?: number; dir?: string }): void {
@@ -829,7 +840,7 @@ export class Game {
       p.chaseSpeed = GLOAMFIN_CHASE_SPEED;
     } else if (mode === "den") {
       p.state = PredState.Den;
-      p.denTimer = 999; // idle in the den (precondition)
+      p.denTimer = HELD_IN_DEN; // idle in the den (precondition)
       p.released = false; // its schedule is suspended while it is held here
       p.hasFix = false;
       p.searching = false;

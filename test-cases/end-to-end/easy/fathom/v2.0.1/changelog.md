@@ -1,3 +1,70 @@
+## A posed fixture says whether it is safe to grade
+
+Fifty-odd checks pose a maze and then measure something standing on it, and every one of
+them rests on one sentence of `specs/instrumentation.md`: the op returns "every predator to
+the den and held there exactly as `setPredator(kind, "den")` holds it". A build that
+rebuilds the board but leaves its hunters where its OWN den used to be drops them wherever
+the fixture put those tiles, which is regularly the corridor the scenario is about. A run
+went exactly that way — a Lanternjaw standing mid-corridor ate the forager a quarter of a
+second in, and three items reported an input bug and a turning bug (`expected up, actual
+left`, `left` being the facing a respawn gives it) against a build whose input and turning
+were fine.
+
+`poseMaze` now refuses to grade a scenario in that state, naming `setMaze` rather than
+whatever the item was about. It refuses narrowly: only a predator standing on OPEN CORRIDOR
+can swim into the scene, and one that lands in rock cannot move at all
+(`specs/movement.md`), so a fixture with a hunter sealed in rock is still the fixture the
+item meant to pose and is still graded.
+
+A refusal is inconclusive rather than a finding, so `controls/setmaze-houses-predators` is
+added to own the claim and fail it. It grades the whole contract — every predator in the
+den, rock included — and then watches the den for twelve seconds, past the `10 s` the third
+predator would be due at on an ordinary board. Its last assertion is the one that is not
+vacuous: every fixture's den is sealed, so a hunter that tries to leave and is stopped by
+rock looks exactly like one that was held, and only `released` tells them apart.
+
+Both reference implementations were re-arming the ordinary staggered schedule after a
+posed board, which that sentence forbids; `setMaze` now holds them, as `setPredator(kind,
+"den")` already did.
+
+## Three checks that were grading their own setup
+
+**A derived radius is read a beat after the eat.** `brightness/widens-vision` read
+`visionRadius` on the exact tick `planktonRemaining` dropped. `V = 96 + 64 G`
+(`specs/gameplay.md`) is a relationship, not a moment: a build that recomputes the radius
+at the top of the next step satisfies it just as much as one recomputing it inside the step
+that raised `G`, and reports the old radius alongside the new `G` for exactly one tick. One
+run failed on `96` against a build whose radius was the exact `117.76` a tick later.
+`actGrazeOne` now returns a settled snapshot beside the eat-moment one, and only the item
+reading a derived value uses it — the `+0.34` and the `+10` still come from the tick the
+pellet went, and the beat is short enough that the forager cannot reach a second pellet.
+
+**A hunter that never moved is not a mechanic that failed.** `requireSwim` already stands
+aside for checks that reach their subject by swimming the forager. `requirePredatorMotion`
+is its mirror, for checks whose subject is a hunter that has to travel — cross an ink cloud,
+turn a corner, reach the tile a ping named, close the last three tiles. A build whose
+predators never moved a pixel had that reported as ink failing to break a fix, cornering
+failing to cost speed, a "lost you" ping never firing and contact never costing a life: four
+mechanics named, none of them the one that was broken. It is deliberately not applied to the
+checks that allow a hunter to give up on the spot, which conform without moving at all.
+
+**`gloamfin/ink-noop` guards rather than scores its isolation.** Its two setup clauses — the
+hunter is inside the cloud, and far enough away that hearing is not why it still knows where
+to go — were assertions. A run had every substantive assertion pass (the fix held, 50 ticks
+inside the cloud, 214 px covered through it) and failed the item anyway, because by the read
+the Gloamfin had closed to `51.6 px` against its own `64 px` hearing. The verdict called that
+a Gloamfin broken by ink, in the same breath as the evidence that it was not. Both are
+preconditions now.
+
+**And `audio/caught` cannot pass its own precondition vacuously.** It waited for
+`screen !== "playing"`, which `until` reports on the first read if the dive has already left
+live play — so a build that kept simulating between driver calls took the life during
+`arrange`, before the audio log was armed, and the item recorded a catch it never saw beside
+a cue count that never moved. It now asserts the dive is still in play when the catch is
+staged.
+
+Baseline media regenerated for the nine items whose scripts changed.
+
 ## The release schedule is read from the schedule, not from the swim out of the den
 
 `den/stagger` and `den/re-release` timed the `5 s` staggered release from `state` leaving

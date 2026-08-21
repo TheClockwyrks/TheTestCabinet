@@ -538,3 +538,7 @@ misattributed
 # Canvas 2D's storage model, in the Shatter v2.0.1 changelog: `getImageData`
 # returns color with the alpha divided back out of the premultiplied store.
 unpremultiplied
+
+# The `controls/setmaze-houses-predators` item slug (Fathom v2.0.1): the review item that
+# grades the `setMaze` debug op returning every predator to the posed layout's den.
+setmaze

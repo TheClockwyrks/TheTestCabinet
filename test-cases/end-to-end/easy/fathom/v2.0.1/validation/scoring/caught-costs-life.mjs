@@ -15,6 +15,7 @@ import {
   denAllExcept,
   poseSightLine,
   quietBoard,
+  requirePredatorMotion,
   startPlaying,
   ticksFor,
 } from "../_helpers.mjs";
@@ -51,6 +52,13 @@ export default function item() {
         poll: 6,
       });
       await api.advance(90); // 0.75 s of the reset behind it, for the clip
+      // The forager is parked and the Gloamfin is the thing that has to arrive, so a
+      // hunter that never left its tile leaves nothing for contact to happen between.
+      // Reported as what it is rather than as a collision that never fired: a build whose
+      // predators do not move fails that where it is graded.
+      if (!caught.hit) {
+        requirePredatorMotion(before, caught.snap, "gloamfin", "close the gap and touch it");
+      }
     },
 
     async assert(api, check) {

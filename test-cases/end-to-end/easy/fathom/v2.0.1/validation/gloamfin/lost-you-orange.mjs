@@ -17,6 +17,7 @@ import {
   actGloamPings,
   denAllExcept,
   poseSightLine,
+  requirePredatorMotion,
   quietBoard,
   startPlaying,
   ticksFor,
@@ -50,9 +51,22 @@ export default function item() {
     },
 
     async act(api) {
+      const opening = await api.snapshot();
       // 720 ticks = the old collectGloamPings(api, 6): a 6 s watch.
       pings = await actGloamPings(api, ticksFor(6));
       await api.advance(96); // 96 ticks = the old 800 ms live tail
+      // The orange ping is what a Gloamfin fires having ARRIVED at the tile the fix named
+      // and found nobody — "when the Gloamfin reaches that tile and you are not there"
+      // (specs/predators/gloamfin.md). A hunter that never left its own tile never reaches
+      // it, so there is no lost-you moment to have missed.
+      if (!pings.some((p) => p.tint === "orange")) {
+        requirePredatorMotion(
+          opening,
+          await api.snapshot(),
+          "gloamfin",
+          "reach the tile its fix named and find it empty",
+        );
+      }
     },
 
     async assert(api, check) {
