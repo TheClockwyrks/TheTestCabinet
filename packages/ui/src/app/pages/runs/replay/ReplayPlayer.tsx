@@ -129,14 +129,6 @@ export function ReplayCanvas({
     );
   }, [recording, shown]);
 
-  // What the ENGINE called this frame, rather than where it sits in the file: the
-  // frame counter and the simulated time it accumulated through. Shown under each
-  // pane because it is what tells a reviewer the two panes really are on the same
-  // moment — a shared scrub position puts them on the same index, and these two
-  // figures are the recordings' own answer to whether that index is the same frame
-  // of the same scenario.
-  const shot = recording.frames[shown];
-
   return (
     <>
       <canvas
@@ -149,11 +141,6 @@ export function ReplayCanvas({
         aria-label={label}
         role="img"
       />
-      {shot !== undefined && (
-        <p className={styles.readout}>
-          engine frame {shot.count} · {(shot.timeMs / 1000).toFixed(2)}s
-        </p>
-      )}
       {note !== null && <p className={styles.note}>{note}</p>}
     </>
   );

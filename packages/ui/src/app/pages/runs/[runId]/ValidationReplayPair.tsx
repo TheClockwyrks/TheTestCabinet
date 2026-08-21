@@ -8,7 +8,6 @@ import {
 } from "../replay/ReplayPlayer";
 import { timelineFor, useReplayClock } from "../replay/useReplayClock";
 import exec from "../RunExec.module.scss";
-import styles from "../replay/ReplayPlayer.module.scss";
 
 // One automated-validation output captured as an ENGINE REPLAY, shown as a
 // side-by-side pair: the case's reference implementation beside this run's build.
@@ -26,8 +25,10 @@ import styles from "../replay/ReplayPlayer.module.scss";
 // playbacks.
 //
 // Where the two recordings are not the same length the shorter pane clamps to its
-// last frame and says so, rather than blanking: a build that stopped drawing
-// early is itself the finding, and a blank pane reads as a player that broke.
+// last frame rather than blanking: a build that stopped drawing early is itself
+// the finding, and a blank pane reads as a player that broke. Each pane's label
+// row carries its own recording's length, so two different figures across the row
+// are what say the two builds did not draw for the same span.
 export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
   const baseline = useRecording(media.baselineUrl);
   const actual = useRecording(media.actualUrl);
@@ -56,22 +57,26 @@ export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
       >
         {hasBaseline && (
           <figure className={exec.mediaPane}>
-            <figcaption className={exec.mediaPaneLabel}>Reference</figcaption>
+            <figcaption className={exec.mediaPaneLabel}>
+              <span>Reference</span>
+              <PaneLength side={baseline} />
+            </figcaption>
             <ReplayPane
               side={baseline}
               frame={clock.frame}
-              frames={timeline.length}
               label={`Reference ${media.name}`}
               missing="The case ships no reference recording for this output."
             />
           </figure>
         )}
         <figure className={exec.mediaPane}>
-          <figcaption className={exec.mediaPaneLabel}>This run</figcaption>
+          <figcaption className={exec.mediaPaneLabel}>
+            <span>This run</span>
+            <PaneLength side={actual} />
+          </figcaption>
           <ReplayPane
             side={actual}
             frame={clock.frame}
-            frames={timeline.length}
             label={`This run ${media.name}`}
             missing="This run did not produce this output."
           />
@@ -88,23 +93,39 @@ export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
 }
 
 /**
+ * How long this side's recording is, sat at the right edge of the pane's label
+ * row — flush with the right edge of the viewport under it.
+ *
+ * It is the only place the pair states a recording's length: a reviewer reads the
+ * two figures across the row against each other, and a shorter one is a build that
+ * stopped drawing while the other went on. Nothing is shown while the recording is
+ * still on its way or when there is none — the pane itself says what became of it.
+ */
+function PaneLength({ side }: { side: LoadedRecording }) {
+  const frames = side.recording?.frames.length ?? 0;
+  if (frames === 0) return null;
+  return (
+    <span className={exec.mediaPaneLength}>
+      {frames} {frames === 1 ? "frame" : "frames"}
+    </span>
+  );
+}
+
+/**
  * One side of the pair: the recording, once it is there, or what became of it.
  *
- * `frames` is the length of the whole pair's timeline rather than this side's, so
- * a recording shorter than its partner can say where it runs out — the pane goes on
- * showing its last frame from there, which is what the canvas does with a frame
- * index past its end.
+ * A recording shorter than its partner is not annotated here — asked for a frame
+ * past its end, the canvas goes on showing its last one, and the length in the
+ * label row above is what says where it ran out.
  */
 function ReplayPane({
   side,
   frame,
-  frames,
   label,
   missing,
 }: {
   side: LoadedRecording;
   frame: number;
-  frames: number;
   label: string;
   /** What to say when there is no recording on this side at all. */
   missing: string;
@@ -124,18 +145,5 @@ function ReplayPane({
       <p className={exec.mediaMissing}>This recording captured no frames.</p>
     );
   }
-  const short = recording.frames.length < frames;
-  return (
-    <>
-      <ReplayCanvas recording={recording} frame={frame} label={label} />
-      {short && (
-        <p className={styles.note}>
-          This recording ends at frame {recording.frames.length} of {frames}
-          {frame >= recording.frames.length
-            ? " — it is holding on its last frame."
-            : "; it holds on its last frame from there."}
-        </p>
-      )}
-    </>
-  );
+  return <ReplayCanvas recording={recording} frame={frame} label={label} />;
 }

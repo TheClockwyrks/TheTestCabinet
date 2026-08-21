@@ -1323,11 +1323,27 @@
   gap: t.$space-xs;
 }
 
+// The pane's heading row: what the pane is, on the left, and — for a replay pane —
+// how long its recording is, pushed to the right edge, which is the right edge of
+// the viewport directly under it.
 .mediaPaneLabel {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
   font-size: t.$font-sm;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: t.$color-text-muted;
+}
+
+// A replay pane's frame count. Read against the count across the row: a shorter
+// recording is a build that stopped drawing before the other did.
+.mediaPaneLength {
+  flex: none;
+  text-transform: none;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .mediaMissing {
