@@ -1,23 +1,135 @@
+## A fixture puts the forager where it belongs, and says when it has been moved
+
+Two runs turned nearly every posed scenario into noise, and the cause was one assumption.
+
+**The fixture places the forager.** Every poser but one left it wherever `setMaze` had
+rested it — "the first corridor tile in reading order" — which the spec is explicit is "a
+defined resting place rather than a meaningful one: a caller poses it where the scenario
+wants it next" (`specs/instrumentation.md`). A build that rests it elsewhere put the
+forager
+inside the ring these fixtures keep a PREDATOR in, two tiles from a hunter that heard it
+and
+ate it within half a second. That re-dens every predator and restarts the dive, so eleven
+checks measured a board that had already reset — and reported it against the hunter's
+speed,
+its silence, its flare cadence. All eight posers now place the forager on a named tile of
+their own fixture, as `poseSonarSense` already did.
+
+**And a scenario says when it stopped standing.** `sceneGuard` takes a picture of the
+scene
+at the end of `arrange` — where the forager was parked, which predators were held in the
+den, the lives, the screen — and `sceneHeld` asks in `assert` whether any of it gave way.
+It is the FIRST assertion of the bystander checks, so when a scenario breaks the verdict
+names what broke: "the forager did not stay where the scenario parked it — it was at (12,
+7)
+and ended at (20, 9)", rather than a sentence about the Gloamfin.
+
+**Checks that swim to their subject stand aside when the forager cannot move.** A build
+whose forager never left its tile failed nine checks on their own wording — "the forager
+swam into a plankton", "clearing awards the 500 bonus" — each blaming a different
+mechanic,
+none of them the one that was broken. Whether the forager moves at all is `controls/*` and
+`maze-movement/*`'s verdict, and they give it; everything downstream now raises an unmet
+precondition saying so.
+
+`gloamfin/ping-reveals-nothing` also stops counting revealed tiles and starts measuring
+the
+ping's effect. It required the count out in the dark to be zero; a build that had twelve
+tiles showing from before the scenario began was failed for a ping that had changed
+nothing.
+The claim is that the ping reveals nothing, so it is read as a change.
+
+## Posed fixtures house their predators, and checks wait for what they ask for
+
+Another three runs, and another set of checks that were reading their own setup.
+
+**A fixture now has a den.** `setMaze` sends every predator back to the den, and a fixture
+had none — so each build was left to decide what "back to the den" means when there is no
+den, and they decided differently. One dropped its held predators onto the forager's own
+tile on the next tick, took a life, and did it again on each respawn until the dive was
+over before the check had run a step; the forager never moved, and the check reported that
+it could not move. Every fixture now carries a small den chamber sealed into the bottom of
+the board, with its gate walled on three sides, so there is somewhere real to hold them
+and
+it is nowhere near the scenario.
+
+**A flare is read a beat into the bloom.** `flarefish/flare-reveals` sampled the trench on
+the tick the `flaring` flag went up. One build lights the disc as it raises the flag,
+another raises the flag and lights the disc on the next step, and both are a flare that
+reveals its area — but the second read as a flare that revealed nothing at all. The check
+now waits a beat, and while it is there it asks the spec's actual claim instead of a
+count that went up: "Every tile within the flare's radius, floor and wall alike, straight
+through walls, is revealed" (`specs/predators/flarefish.md`), against the `192 px` the
+same page fixes. It also reads REVEALED rather than LIT, because `visibility` separates
+`'l'` from `'r'` without saying whose light `'l'` counts, and two conforming builds label
+a
+flare-lit disc differently.
+
+**Running out of lives is waited for.** `scoring/three-lives` and `states/gameover` posed
+a
+hunter on the forager and stepped six ticks — a twentieth of a second — before posing it
+again. That is enough for the first death and, on a build that grants a moment of grace
+where the forager respawns, for none of the others: a run lost one life, sat there for the
+rest of the loop, and was failed for never reaching game over. Each death is now waited
+for
+on its own budget. Nothing in `specs/` forbids that grace, and a check about running out
+of
+lives has no business turning on how quickly a build lets the next one be taken.
+
+**And the Lanternjaw earns its fix.** `lanternjaw/wander-disguise` parked it in a sealed
+ring nine tiles from a dark forager and then set `mode: "chase"` on it — asking a build to
+hold a fix on a forager it had no reason to have found. One re-read its senses, saw
+nothing
+to chase, and was wandering again a twentieth of a second later, which read as failing to
+drop its disguise; another crossed the rock and was already chasing when the check wanted
+it disguised. Two halves of one item failing on two builds for two reasons, neither of
+them
+the disguise. The pair now stands seven tiles apart on one straight corridor, and the fix
+is
+made by the mechanism the spec gives it: `R = 128 + 192 G`, so a dark forager at `224 px`
+is
+outside the Lanternjaw's `128 px` reach and a fully lit one is inside its `320 px`.
+Turning
+the light up is the whole of it, and the clip shows a drifting amber mote turning into a
+hunter the moment it comes on.
+
+Two checks now name a cause instead of a symptom. `scoring/descend-on-clear`, when five
+simulated seconds leave a build still on the cleared screen, hands the clock back and
+looks
+again: a dive that descends only once a real person is watching is a deterministic-core
+failure (`specs/instrumentation.md`: state "must not depend on ... wall-clock time to make
+progress"), not a build that cannot descend, and the verdict says so.
+`flarefish/flare-reveals`
+and `flarefish/flare-lock` ask first whether their sealed ring held — a build whose
+hunters
+cross rock reaches the forager and re-dens everything, after which "it never flared" is
+true
+and about something else entirely.
+
 ## No check can be ended early by the forager eating
 
 The single most damaging thing a scenario could do to itself was strip the board down to
 one plankton. `quietBoard` — which thirty-eight checks call to settle the forager as a
-bystander — did exactly that, through `poseLastPlankton`, and it placed that last pellet on
+bystander — did exactly that, through `poseLastPlankton`, and it placed that last pellet
+on
 a tile NEXT TO the forager. Any forager that moved ate it. The maze cleared, the dive
 descended, every predator went back to the den, and whatever the check was watching ended
-underneath it. Whether the forager moved was never the check's to decide: a build may leave
+underneath it. Whether the forager moved was never the check's to decide: a build may
+leave
 a forager with no key held swimming, and one under test turns it aside when the way ahead
 is rock rather than stopping it dead, so a forager parked against a wall simply left.
 
 Two changes make it impossible rather than unlikely.
 
 `quietBoard` no longer strips the board. It parks the forager and settles the one pellet
-underneath it — eaten through the real eat path, with `G` put back to the zero a dive opens
+underneath it — eaten through the real eat path, with `G` put back to the zero a dive
+opens
 on — and leaves every other pellet where it is. A full board cannot be cleared in the
 seconds a check runs for.
 
 And every posed fixture now carries a **larder**: a few corridor tiles walled off from the
-rest of the layout, holding plankton the forager can never reach. `planktonRemaining` never
+rest of the layout, holding plankton the forager can never reach. `planktonRemaining`
+never
 reaches zero, so no amount of grazing can clear the maze whatever the forager does. It is
 free — the tiles are sealed away from the scenario — and it is automatic, so a fixture
 cannot forget it. Driving a forager up and down a fixture until it has eaten everything it
@@ -25,8 +137,10 @@ can reach: with the larder, three pellets left and the dive still at depth 1; wi
 depth 3.
 
 The four checks that are ABOUT clearing the maze (`scoring/descend-on-clear`,
-`scoring/cleared-bonus`, `states/cleared`, `audio/descend`) run on the build's own maze and
-call `poseLastPlankton` themselves, which is what that op is for. Nothing else calls it, and
+`scoring/cleared-bonus`, `states/cleared`, `audio/descend`) run on the build's own maze
+and
+call `poseLastPlankton` themselves, which is what that op is for. Nothing else calls it,
+and
 `flarefish/flare-cadence` loses the machinery it had grown for dodging that stray pellet.
 
 Sweeping every check on a build whose forager wanders: no check descends mid-measurement
@@ -38,7 +152,8 @@ any more.
 it be exactly where it started and not moving. That is stricter than the rule it is named
 for. `specs/maze.md` makes the gate "passable only by predators"; what a forager does when
 the way ahead is rock is `specs/movement.md`'s business, and a build that turns it aside
-rather than stopping it was failed here for something the gate had no part in. The check now
+rather than stopping it was failed here for something the gate had no part in. The check
+now
 samples every tick of the drive and asks the question it is named for: the forager must
 never stand on the gate tile, and never be inside the den. A reference mutated to let the
 forager through the gate fails both.
@@ -47,17 +162,23 @@ forager through the gate fails both.
 
 - `sonar/marks-predators`, `sonar/not-reveal-amber` and `sonar/heard-by-gloamfin` trusted
   `setMaze` to leave the forager on "the first corridor tile in reading order". The spec
-  calls that "a defined resting place rather than a meaningful one: a caller poses it where
-  the scenario wants it next", and a build that read it differently left the forager a tile
+  calls that "a defined resting place rather than a meaningful one: a caller poses it
+  where
+  the scenario wants it next", and a build that read it differently left the forager a
+  tile
   from the predator these checks need it to be unable to see. They pose it now.
 - `brightness/holds-decays` stands the forager on a SEALED tile rather than in a dead end.
-  It is the subject here and it must not move — every pellet it eats re-arms the hold it is
+  It is the subject here and it must not move — every pellet it eats re-arms the hold it
+  is
   measuring — and a tile with no open neighbor takes that question away from every build
   equally.
-- `maze/proportions` renames its openness assertion to say it is a whole-board MEAN. A board
+- - `maze/proportions` renames its openness assertion to say it is a whole-board MEAN. A
+  board
   can hold one plainly-too-wide room and still average out under the bound; that room is
-  `maze/corridors-one-wide`'s to report, and it does. Nothing about the measurement changed
-  — the spec defines openness as "the mean number of open neighbors per corridor tile" — but
+  `maze/corridors-one-wide`'s to report, and it does. Nothing about the measurement
+  changed
+  — the spec defines openness as "the mean number of open neighbors per corridor tile" —
+  but
   the old label read as though it were the room check itself.
 
 ## Checks that were reading the scenario instead of the build

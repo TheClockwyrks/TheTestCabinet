@@ -14,6 +14,7 @@ export default function item() {
   let depthBefore;
   let clearedScreen;
   let after;
+  let onlyOnTheWallClock = false;
 
   return {
     id: "scoring.descend-on-clear",
@@ -41,11 +42,34 @@ export default function item() {
         poll: 6, // 6 ticks = 50 ms: a screen transition needs no finer grain
       });
       after = descended.snap;
+      if (!descended.hit) {
+        // Five seconds of simulation and still on the cleared screen. Before reporting
+        // that clearing does not descend, ask WHY — because there are two very different
+        // reasons and only one of them is about progression.
+        //
+        // Hand the clock back and let the build run itself for a moment. A build whose
+        // interstitial is driven by the wall clock rather than by the fixed step descends
+        // now, having refused to for five simulated seconds: its dive advances only when a
+        // real person is watching. That is the deterministic core `specs/instrumentation.md`
+        // requires — "must not depend on a canvas, on `requestAnimationFrame`, or on
+        // wall-clock time to make progress" — and it is worth saying in those words, rather
+        // than as a build that cannot descend, which is what a reviewer would otherwise go
+        // looking for. A build that is simply stuck descends under neither clock.
+        await api.call("setAutoStep", true);
+        await api.settle(3000);
+        await api.call("setAutoStep", false);
+        after = await api.snapshot();
+        onlyOnTheWallClock = after.depth > depthBefore;
+      }
       await api.advance(96); // 96 ticks = the old 800 ms live tail
     },
 
     async assert(api, check) {
       check.expectEq("the maze is cleared", clearedScreen, "cleared");
+      check.expectOk(
+        "the cleared screen gives way on the simulation's own clock, not only on the wall clock",
+        !onlyOnTheWallClock,
+      );
       check.expectEq(
         "clearing descends to a deeper maze",
         after.depth,

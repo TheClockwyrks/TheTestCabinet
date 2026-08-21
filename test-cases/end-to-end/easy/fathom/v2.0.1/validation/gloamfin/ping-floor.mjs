@@ -6,6 +6,8 @@ import {
   GLOAMFIN_PING_MIN_GAP,
   actGloamPings,
   denAllExcept,
+  sceneGuard,
+  sceneHeld,
   poseApart,
   quietBoard,
   startPlaying,
@@ -13,6 +15,8 @@ import {
 } from "../_helpers.mjs";
 
 export default function item() {
+  let quiet;
+  let guard;
   let pings;
 
   return {
@@ -25,13 +29,14 @@ export default function item() {
       // "far away" holds for the whole watch instead of only until the patrol
       // arrives — a real maze is one connected region and cannot offer that.
       const far = (await poseApart(api, 8)).far;
-      await denAllExcept(api, ["gloamfin"]);
+      quiet = await denAllExcept(api, ["gloamfin"]);
       await api.call("setPredator", "gloamfin", {
         tx: far.tx,
         ty: far.ty,
         mode: "wander",
       });
       await quietBoard(api);
+      guard = await sceneGuard(api, quiet);
     },
 
     async act(api) {
@@ -41,6 +46,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
       check.expectGt("several pings are observed", pings.length, 1);
       let minGap = Infinity;
       for (let i = 1; i < pings.length; i++) {

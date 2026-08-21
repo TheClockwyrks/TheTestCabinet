@@ -5,6 +5,8 @@
 import {
   PREDATOR_SPEED,
   denAllExcept,
+  sceneGuard,
+  sceneHeld,
   poseApart,
   pred,
   quietBoard,
@@ -13,6 +15,8 @@ import {
 } from "../_helpers.mjs";
 
 export default function item() {
+  let quiet;
+  let guard;
   let a;
   let b;
 
@@ -26,7 +30,7 @@ export default function item() {
       // "far away" holds for the whole watch instead of only until the patrol
       // arrives — a real maze is one connected region and cannot offer that.
       const far = (await poseApart(api, 8)).far; // far, so it just wanders
-      await denAllExcept(api, ["gloamfin"]);
+      quiet = await denAllExcept(api, ["gloamfin"]);
       await api.call("setPredator", "gloamfin", {
         tx: far.tx,
         ty: far.ty,
@@ -37,6 +41,7 @@ export default function item() {
       // otherwise be a black screen; the overlay reports its state and speed on the
       // frame without touching the simulation (see `showOverlay`).
       await showOverlay(api);
+      guard = await sceneGuard(api, quiet);
     },
 
     async act(api) {
@@ -48,6 +53,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
       check.expectClose("wanders at ~116 px/s", a, PREDATOR_SPEED, 8);
       check.expectClose(
         "no speed wind-up over time (still ~116 px/s)",

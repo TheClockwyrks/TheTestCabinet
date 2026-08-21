@@ -6,6 +6,8 @@
 import {
   amberInProfile,
   denAllExcept,
+  sceneGuard,
+  sceneHeld,
   poseApart,
   quietBoard,
   sampleMoteProfile,
@@ -13,6 +15,8 @@ import {
 } from "../_helpers.mjs";
 
 export default function item() {
+  let quiet;
+  let guard;
   let hasDrifter;
   let profile;
 
@@ -26,9 +30,10 @@ export default function item() {
       // "far away" holds for the whole watch instead of only until the patrol
       // arrives — a real maze is one connected region and cannot offer that.
       const far = (await poseApart(api, 9)).far; // far out in the dark
-      await denAllExcept(api, []);
+      quiet = await denAllExcept(api, []);
       await api.call("spawnDrifter", { tx: far.tx, ty: far.ty });
       await quietBoard(api);
+      guard = await sceneGuard(api, quiet);
     },
 
     async act(api) {
@@ -44,6 +49,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
       check.expectOk("the distant drifter exists", hasDrifter);
       check.expectOk(
         "the distant amber drifter is still drawn amber",

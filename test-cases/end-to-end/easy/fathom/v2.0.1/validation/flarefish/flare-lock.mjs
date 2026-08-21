@@ -24,6 +24,7 @@
 import {
   FLARE_RADIUS,
   TICK,
+  boardDisturbance,
   denAllExcept,
   poseApart,
   losClear,
@@ -52,6 +53,8 @@ function blindNear(snap, tile, reach) {
 }
 
 export default function item() {
+  let quiet;
+  let held = true;
   let bloom;
   let spot;
   let locked;
@@ -66,7 +69,7 @@ export default function item() {
       // IS the euclidean gap, so 8 tiles is 256 px — clear of the bloom's 192 px
       // radius without having to hunt for a tile that is far by both measures at once.
       const far = (await poseApart(api, 8)).far;
-      await denAllExcept(api, ["flarefish"]);
+      quiet = await denAllExcept(api, ["flarefish"]);
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,
@@ -99,6 +102,7 @@ export default function item() {
         },
         { max: ticksFor(45), poll: 4 },
       );
+      if (!bloom.hit) held = !boardDisturbance(await api.snapshot(), quiet);
     },
 
     async act(api) {
@@ -121,6 +125,15 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // A sweep that found no usable bloom may have been looking at a board that stopped
+      // holding: the Flarefish patrols a ring sealed from the forager, so a build whose
+      // hunters cross rock reaches it, takes a life, and re-dens every predator. Say that
+      // rather than reporting a Flarefish for never blooming usefully.
+      check.expectOk(
+        "the scenario held — the Flarefish stayed in its sealed ring and the forager was not caught",
+        held,
+      );
+      if (!held) return;
       check.expectOk(
         "the Flarefish blooms somewhere with rock between it and an open tile inside the disc",
         bloom.hit,

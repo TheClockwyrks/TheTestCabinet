@@ -7,6 +7,8 @@ import {
   GLOAMFIN_PING_INTERVAL,
   actGloamPings,
   denAllExcept,
+  sceneGuard,
+  sceneHeld,
   poseApart,
   quietBoard,
   showOverlay,
@@ -15,6 +17,8 @@ import {
 } from "../_helpers.mjs";
 
 export default function item() {
+  let quiet;
+  let guard;
   let pings;
 
   return {
@@ -27,7 +31,7 @@ export default function item() {
       // "far away" holds for the whole watch instead of only until the patrol
       // arrives — a real maze is one connected region and cannot offer that.
       const far = (await poseApart(api, 10)).far; // far, so it wanders and self-pings
-      await denAllExcept(api, ["gloamfin"]);
+      quiet = await denAllExcept(api, ["gloamfin"]);
       await api.call("setPredator", "gloamfin", {
         tx: far.tx,
         ty: far.ty,
@@ -38,6 +42,7 @@ export default function item() {
       // otherwise be a black screen; the overlay reports its state and speed on the
       // frame without touching the simulation (see `showOverlay`).
       await showOverlay(api);
+      guard = await sceneGuard(api, quiet);
     },
 
     async act(api) {
@@ -47,6 +52,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
       const violet = pings.filter((p) => p.tint === "violet");
       check.expectGt(
         "the Gloamfin emits its own violet pings",

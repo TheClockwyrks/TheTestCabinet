@@ -23,6 +23,7 @@
 // spawned, and everything the item actually measures — the forager swimming, the pellets
 // it grazes, the drifter being eaten, the 200 it pays — runs untouched.
 import {
+  requireSwim,
   DIR_KEY,
   SCORE_DRIFTER,
   SCORE_PLANKTON,
@@ -67,6 +68,9 @@ export default function item() {
         },
       );
       await api.call("keyUp", DIR_KEY[run.dir]);
+      if (!eaten.hit) {
+        requireSwim(before.forager, eaten.snap.forager, "reach the drifter ahead of it");
+      }
       await api.advance(60); // 0.5 s tail
     },
 

@@ -5,6 +5,8 @@
 // a low G and then at a high one.
 import {
   denAllExcept,
+  sceneGuard,
+  sceneHeld,
   poseStraightRun,
   pred,
   quietBoard,
@@ -12,6 +14,8 @@ import {
 } from "../_helpers.mjs";
 
 export default function item() {
+  let quiet;
+  let guard;
   let low;
   let high;
 
@@ -26,7 +30,7 @@ export default function item() {
       // and a hunter posed onto that same tile simply eats it, which costs a life and
       // re-dens every predator before the range can be read.
       const spot = await poseStraightRun(api, 8, { spare: true });
-      await denAllExcept(api, ["lanternjaw"]);
+      quiet = await denAllExcept(api, ["lanternjaw"]);
       await api.call("setPredator", "lanternjaw", {
         tx: spot.tx + 4,
         ty: spot.ty,
@@ -35,6 +39,7 @@ export default function item() {
       // Clear the board (all but one pellet, placed adjacent to the stationary forager)
       // so the forager cannot eat and bump its own brightness while we read the range.
       await quietBoard(api);
+      guard = await sceneGuard(api, quiet);
     },
 
     async act(api) {
@@ -51,6 +56,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
       check.expectGt(
         "higher brightness widens the Lanternjaw's detection range",
         high,

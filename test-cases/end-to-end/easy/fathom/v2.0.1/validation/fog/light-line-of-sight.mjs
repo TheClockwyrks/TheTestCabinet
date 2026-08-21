@@ -27,6 +27,7 @@
 // into an accident of where its own mind took it. Held, the only thing that changes
 // between "not drawn" and "drawn" is where the forager is standing.
 import {
+  requireSwim,
   DIR_KEY,
   denAllExcept,
   parkForager,
@@ -120,6 +121,7 @@ export default function item() {
         return s;
       };
 
+      const startedAt = (await api.snapshot()).forager;
       await api.call("keyDown", DIR_KEY.right);
       // 90 ticks = 0.75 s: three tiles of swimming with the predator hidden around the
       // corner, which is the half of the clip that shows the light NOT bending.
@@ -128,6 +130,9 @@ export default function item() {
         await sample();
       }
       await api.call("keyUp", DIR_KEY.right);
+      // The whole scenario is the forager rounding the corner; if it never left its tile
+      // there is no reveal to read, and that is the movement checks' finding to report.
+      requireSwim(startedAt, (await api.snapshot()).forager, "reach the corner");
       await api.call("keyDown", DIR_KEY.down);
       // 30 ticks = one tile onto the arm: far enough that the predator is straight ahead
       // down open corridor and plainly lit, and no further. It sits three tiles along and

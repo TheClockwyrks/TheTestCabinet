@@ -736,6 +736,65 @@ export function mazeProportionChecks(snap) {
   ].map((m) => ({ ...m, ok: m.value >= m.min && m.value <= m.max }));
 }
 
+/**
+ * Take a picture of the scenario the moment `arrange` finished with it, so `assert` can
+ * ask whether it was still standing when the measurement ended.
+ *
+ * WHY EVERY BYSTANDER SCENARIO WANTS ONE. These checks are built on things staying put: a
+ * predator posed into the den stays there, the forager stands where it was parked, nobody
+ * is caught, the dive does not restart. When one of those gives way the measurement is of
+ * a different situation than the one the item describes — and, left unguarded, it is
+ * reported against the SUBJECT. A run had its forager rested in the ring this fixture keeps
+ * a hunter in; the hunter heard it and ate it, and eleven checks reported the hunter's
+ * speed, its silence, its flare cadence. Every one of those verdicts was true of what
+ * happened and useless as a finding.
+ *
+ * Pair with {@link sceneHeld}. `quiet` is `denAllExcept`'s return value; pass
+ * `foragerParked` for a scenario in which the forager is a bystander and must not wander.
+ */
+export async function sceneGuard(api, quiet, { foragerParked = true } = {}) {
+  const snap = await api.snapshot();
+  return {
+    quiet,
+    foragerParked,
+    forager: { tx: snap.forager.tx, ty: snap.forager.ty },
+    lives: snap.lives,
+    screen: snap.screen,
+  };
+}
+
+/**
+ * What broke the scene `sceneGuard` captured, as a sentence, or null if nothing did.
+ *
+ * Use it as the FIRST assertion of an item, so the label itself carries the cause:
+ *
+ *   const broke = sceneHeld(snap, guard);
+ *   check.expectOk(broke ?? "the scenario held to the end", !broke);
+ *   if (broke) return;
+ */
+export function sceneHeld(snap, guard) {
+  if (!guard) return null;
+  const disturbed = boardDisturbance(snap, guard.quiet);
+  if (disturbed) return disturbed;
+  if (guard.lives !== undefined && snap.lives < guard.lives) {
+    return "the forager lost a life mid-measurement, which resets the board";
+  }
+  if (guard.screen && snap.screen !== guard.screen) {
+    return `the dive left ${guard.screen} for ${snap.screen} mid-measurement`;
+  }
+  if (guard.foragerParked) {
+    const f = snap.forager;
+    if (f.tx !== guard.forager.tx || f.ty !== guard.forager.ty) {
+      return (
+        `the forager did not stay where the scenario parked it — it was at ` +
+        `(${guard.forager.tx}, ${guard.forager.ty}) and ended at (${f.tx}, ${f.ty}), ` +
+        `so what was measured is not the situation this item describes`
+      );
+    }
+  }
+  return null;
+}
+
 // ---- Posed layouts (setMaze) -------------------------------------------------
 
 /**
@@ -822,13 +881,29 @@ export function stampLayout(snap, art, { at, larder = true } = {}) {
   // `scoring/cleared-bonus`, `states/cleared`, `audio/descend`) run on the build's own maze
   // and use `poseLastPlankton`, so they never see this.
   if (larder) {
-    const row = gridRows - 1;
-    if (grid[row].some((cell) => cell !== "#")) {
+    const last = gridRows - 1;
+    const above = gridRows - 2;
+    if (grid[last].some((cell) => cell !== "#") || grid[above].some((cell) => cell !== "#")) {
       throw new Error(
-        "stampLayout: the fixture reaches the last row, which the larder needs; pass { larder: false } and keep the board unclearable another way",
+        "stampLayout: the fixture reaches the bottom two rows, which the larder and den need; pass { larder: false } and keep the board unclearable and its predators housed another way",
       );
     }
-    for (let c = 1; c <= Math.min(3, cols - 2); c++) grid[row][c] = ".";
+    for (let c = 1; c <= Math.min(3, cols - 2); c++) grid[last][c] = ".";
+
+    // AND A DEN, sealed off in the same two rows. Every board a build ever generates has
+    // one (`specs/maze.md`), and `setMaze` sends every predator back to it — so a fixture
+    // without one asks each build what "back to the den" means when there is no den, and
+    // they answer differently. One dropped its held predators onto the forager's own tile
+    // on the very next tick, took a life, and did it again on each respawn until the dive
+    // was over before the scenario had run a step. Giving the fixture a real den takes the
+    // question away: there is somewhere to put them, and it is nowhere near the scenario.
+    //
+    // Sealed means SEALED. The gate sits above the chamber with rock on its other three
+    // sides, so even a build that runs the release schedule anyway — which `setMaze` says
+    // it must not — can get no further than the gate tile, and never into the fixture.
+    const denC = cols - 3;
+    grid[above][denC] = "g";
+    for (let c = denC - 1; c <= denC + 1; c++) grid[last][c] = "d";
   }
 
   return { rows: grid.map((row) => row.join("")), marks, at: { tx: left, ty: top } };
@@ -890,6 +965,15 @@ export async function poseStraightRun(api, len, { spare = false } = {}) {
   const tail = spare ? " ".repeat(8) + "..." : "";
   const board = await poseMaze(api, ["S" + ".".repeat(len - 1) + tail]);
   const s = board.mark("S");
+  // Placed, not left where `setMaze` happened to put it. The op rests the forager on "the
+  // first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — so a build is free to rest it somewhere else,
+  // and one did: it landed the forager inside the ring this fixture keeps a PREDATOR in,
+  // two tiles from a hunter that promptly heard it and ate it. Eleven checks failed that
+  // way, every one of them reporting the hunter for it. The fixture knows where the
+  // forager belongs, so the fixture says so.
+  await api.call("setForager", { tx: s.tx, ty: s.ty });
   return { tx: s.tx, ty: s.ty, dir: "right", len };
 }
 
@@ -914,6 +998,15 @@ export async function poseSightLine(
   // be the predator arriving.
   if (refugeGap > 0) art += " ".repeat(refugeGap) + "R..";
   const board = await poseMaze(api, [art]);
+  // Placed, not left where `setMaze` happened to put it. The op rests the forager on "the
+  // first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — so a build is free to rest it somewhere else,
+  // and one did: it landed the forager inside the ring this fixture keeps a PREDATOR in,
+  // two tiles from a hunter that promptly heard it and ate it. Eleven checks failed that
+  // way, every one of them reporting the hunter for it. The fixture knows where the
+  // forager belongs, so the fixture says so.
+  await api.call("setForager", board.mark("F"));
   return {
     forager: board.mark("F"),
     pred: board.mark("P"),
@@ -935,6 +1028,15 @@ export async function poseCorner(api, { arm = 4 } = {}) {
   for (let i = 0; i < arm; i++) art.push(" ." + " ".repeat(arm));
   const board = await poseMaze(api, art);
   const j = board.mark("J");
+  // Placed, not left where `setMaze` happened to put it. The op rests the forager on "the
+  // first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — so a build is free to rest it somewhere else,
+  // and one did: it landed the forager inside the ring this fixture keeps a PREDATOR in,
+  // two tiles from a hunter that promptly heard it and ate it. Eleven checks failed that
+  // way, every one of them reporting the hunter for it. The fixture knows where the
+  // forager belongs, so the fixture says so.
+  await api.call("setForager", board.mark("B"));
   return {
     junction: j,
     approach: "right",
@@ -979,6 +1081,15 @@ export async function poseApart(api, minTiles, { ring = 3, spare = false, near =
     blank + pad + "." + ".".repeat(ring),
   ];
   const board = await poseMaze(api, art);
+  // Placed, not left where `setMaze` happened to put it. The op rests the forager on "the
+  // first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — so a build is free to rest it somewhere else,
+  // and one did: it landed the forager inside the ring this fixture keeps a PREDATOR in,
+  // two tiles from a hunter that promptly heard it and ate it. Eleven checks failed that
+  // way, every one of them reporting the hunter for it. The fixture knows where the
+  // forager belongs, so the fixture says so.
+  await api.call("setForager", board.mark("N"));
   return { near: board.mark("N"), far: board.mark("F") };
 }
 
@@ -994,6 +1105,15 @@ export async function poseApart(api, minTiles, { ring = 3, spare = false, near =
 export async function poseInkStandoff(api, { gap, clearTiles = 3 }) {
   const art = ".".repeat(clearTiles) + "I" + ".".repeat(gap - 1) + "P";
   const board = await poseMaze(api, [art]);
+  // Placed, not left where `setMaze` happened to put it. The op rests the forager on "the
+  // first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — so a build is free to rest it somewhere else,
+  // and one did: it landed the forager inside the ring this fixture keeps a PREDATOR in,
+  // two tiles from a hunter that promptly heard it and ate it. Eleven checks failed that
+  // way, every one of them reporting the hunter for it. The fixture knows where the
+  // forager belongs, so the fixture says so.
+  await api.call("setForager", board.mark("I"));
   return {
     ink: board.mark("I"),
     pred: board.mark("P"),
@@ -1023,6 +1143,15 @@ export async function poseOccludedPair(api, { tiles = 2, len = 5 } = {}) {
   for (let i = 1; i < tiles; i++) art.push("");           // a solid band of rock between
   art.push("P" + ".".repeat(len - 1));
   const board = await poseMaze(api, art);
+  // Placed, not left where `setMaze` happened to put it. The op rests the forager on "the
+  // first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — so a build is free to rest it somewhere else,
+  // and one did: it landed the forager inside the ring this fixture keeps a PREDATOR in,
+  // two tiles from a hunter that promptly heard it and ate it. Eleven checks failed that
+  // way, every one of them reporting the hunter for it. The fixture knows where the
+  // forager belongs, so the fixture says so.
+  await api.call("setForager", board.mark("F"));
   return { forager: board.mark("F"), pred: board.mark("P"), tiles };
 }
 
@@ -1071,6 +1200,15 @@ export async function poseSonarSense(api, count = 1) {
 export async function poseLitWallProbe(api, { run = 3 } = {}) {
   const board = await poseMaze(api, ["F" + ".".repeat(run) + "#."]);
   const f = board.mark("F");
+  // Placed, not left where `setMaze` happened to put it. The op rests the forager on "the
+  // first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — so a build is free to rest it somewhere else,
+  // and one did: it landed the forager inside the ring this fixture keeps a PREDATOR in,
+  // two tiles from a hunter that promptly heard it and ate it. Eleven checks failed that
+  // way, every one of them reporting the hunter for it. The fixture knows where the
+  // forager belongs, so the fixture says so.
+  await api.call("setForager", { tx: f.tx, ty: f.ty });
   return {
     tx: f.tx,
     ty: f.ty,
@@ -1099,6 +1237,15 @@ export async function poseLitWallProbe(api, { run = 3 } = {}) {
 export async function poseDimStandoff(api, { predTiles = 2, slipTiles = 6 } = {}) {
   const art = "P" + ".".repeat(predTiles - 1) + "X" + ".".repeat(slipTiles - 1) + "S";
   const board = await poseMaze(api, [art]);
+  // Placed, not left where `setMaze` happened to put it. The op rests the forager on "the
+  // first corridor tile in reading order", which the spec is explicit is "a defined
+  // resting place rather than a meaningful one: a caller poses it where the scenario wants
+  // it next" (`specs/instrumentation.md`) — so a build is free to rest it somewhere else,
+  // and one did: it landed the forager inside the ring this fixture keeps a PREDATOR in,
+  // two tiles from a hunter that promptly heard it and ate it. Eleven checks failed that
+  // way, every one of them reporting the hunter for it. The fixture knows where the
+  // forager belongs, so the fixture says so.
+  await api.call("setForager", board.mark("X"));
   return {
     pred: board.mark("P"),
     fix: board.mark("X"),
@@ -1129,6 +1276,53 @@ export async function poseDimStandoff(api, { predTiles = 2, slipTiles = 6 } = {}
  */
 export async function showOverlay(api) {
   await api.call("press", "Backquote");
+}
+
+/**
+ * Take every remaining life, and return the screen it ends on.
+ *
+ * Poses a hunter onto the forager's own tile and WAITS for the life to actually go, life
+ * after life, resuming play through each respawn, until the game is over or the budget
+ * runs out. Returns `{ screen, lives, deaths }`.
+ *
+ * WHY IT WAITS RATHER THAN ADVANCING A FIXED BEAT. The checks that use this used to pose
+ * the hunter and step six ticks — a twentieth of a second — before posing it again. That
+ * is enough for the FIRST death and, on a build that grants the forager a moment of grace
+ * where it respawns, for none of the others: a run lost one life, sat at two for the rest
+ * of the loop, and was failed for not reaching game over. Nothing in `specs/` forbids that
+ * grace, and a check about running out of lives has no business turning on how quickly a
+ * build lets the next one be taken. So each death is waited for on its own budget, long
+ * enough to outlast any sane respawn.
+ *
+ * `skip` rather than `advance`: this is a march to a state, not something to film, and
+ * several seconds of it would spend a clip's whole budget before the screen it exists to
+ * show arrives.
+ */
+export async function actLoseEveryLife(api, { perLife = ticksFor(6), maxLives = 8 } = {}) {
+  let deaths = 0;
+  for (let i = 0; i < maxLives; i++) {
+    let s = await api.snapshot();
+    if (s.screen === "gameover") break;
+    if (s.screen === "countdown") {
+      await api.call("beginPlay");
+      s = await api.snapshot();
+    }
+    if (s.screen !== "playing") break;
+    const before = s.lives;
+    await api.call("setPredator", "gloamfin", {
+      tx: s.forager.tx,
+      ty: s.forager.ty,
+      mode: "chase",
+    });
+    const gone = await api.skipUntil(
+      (x) => x.lives < before || x.screen === "gameover",
+      { max: perLife, poll: 6 },
+    );
+    if (!gone.hit) break; // this life would not go; the caller reports what it found
+    deaths += 1;
+  }
+  const end = await api.snapshot();
+  return { screen: end.screen, lives: end.lives, deaths };
 }
 
 // ---- State-only helpers (arrange) --------------------------------------------
@@ -1394,6 +1588,9 @@ export async function actEatLastPlankton(api, { perTry = 60 } = {}) {
     await api.call("keyUp", DIR_KEY[dir]);
     if (last.hit) return last;
   }
+  // Every neighbour tried and the maze never cleared. If the forager never left its tile
+  // on any of them, that is why, and it is not this scenario's finding to report.
+  requireSwim(snap.forager, (await api.snapshot()).forager, "reach the last plankton");
   return last;
 }
 
@@ -1725,6 +1922,36 @@ export async function arrangeGraze(api) {
  * grazing and keeps brightening, so the light visibly opens up around it rather than the
  * whole subject being a single frame's step change.
  */
+/**
+ * How far the forager must travel under a held key before a scenario will believe it can
+ * swim at all, in px. An eighth of a tile: far below the tile-and-a-bit these scenarios
+ * actually need, and far above the rounding of a single step.
+ */
+const SWIM_EPS = 4;
+
+/**
+ * Refuse to grade a scenario whose forager never moved.
+ *
+ * WHY THIS IS A PRECONDITION AND NOT A VERDICT. Plenty of checks are not about movement at
+ * all — what one plankton is worth, what clearing the maze pays, whether a cue sounds — but
+ * reach their subject by swimming the forager into something. On a build whose forager
+ * cannot move, every one of them fails on its own wording: "the forager swam into a
+ * plankton", "eating the last plankton clears the maze", "clearing awards the 500 bonus".
+ * One run failed nine checks that way, each blaming a different mechanic, none of them the
+ * one that was broken.
+ *
+ * Whether the forager moves is `controls/*` and `maze-movement/*`'s verdict to give, and
+ * they do give it. Everything downstream says so and stands aside.
+ */
+export function requireSwim(before, after, what) {
+  const moved = Math.hypot(after.x - before.x, after.y - before.y);
+  if (moved >= SWIM_EPS) return;
+  throw unmetPrecondition(
+    `the forager did not move under a held key (${moved.toFixed(1)} px), so it could not ` +
+      `${what} — whether it moves at all is the movement checks' verdict, not this one's`,
+  );
+}
+
 export async function actGrazeOne(api, dir, { tailTicks = 120 } = {}) {
   const before = await api.snapshot();
   await api.call("keyDown", DIR_KEY[dir]);
@@ -1736,6 +1963,7 @@ export async function actGrazeOne(api, dir, { tailTicks = 120 } = {}) {
   const after = r.snap;
   await api.advance(tailTicks);
   await api.call("keyUp", DIR_KEY[dir]);
+  if (!r.hit) requireSwim(before.forager, after.forager, "reach the plankton ahead of it");
   return { before, after, hit: r.hit };
 }
 

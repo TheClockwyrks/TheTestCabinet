@@ -5,6 +5,8 @@
 // be well in flight is `act`, and is what the clip shows.
 import {
   denAllExcept,
+  sceneGuard,
+  sceneHeld,
   poseApart,
   pred,
   quietBoard,
@@ -30,6 +32,9 @@ function farRevealed(s) {
 }
 
 export default function item() {
+  let quiet;
+  let guard;
+  let before;
   let r;
 
   return {
@@ -42,16 +47,23 @@ export default function item() {
       // "far away" holds for the whole watch instead of only until the patrol
       // arrives — a real maze is one connected region and cannot offer that.
       const far = (await poseApart(api, 11)).far; // beyond its ping range, so no acquire
-      await denAllExcept(api, ["gloamfin"]);
+      quiet = await denAllExcept(api, ["gloamfin"]);
       await api.call("setPredator", "gloamfin", {
         tx: far.tx,
         ty: far.ty,
         mode: "wander",
       });
       await quietBoard(api);
+      guard = await sceneGuard(api, quiet);
     },
 
     async act(api) {
+      // What the trench looks like BEFORE the ping. The claim is that the ping reveals
+      // nothing, which is a statement about what it CHANGES — so it is read as a change.
+      // Counting revealed tiles once and requiring zero measures something else: whatever
+      // a build already had revealed out there. One left twelve tiles showing from before
+      // the scenario began and was failed for a ping that had altered nothing at all.
+      before = farRevealed(await api.snapshot());
       // Advance until the Gloamfin's ping is well in flight. 1200 ticks = the old loop's
       // 200 passes of 0.05 s (10 s); poll 6 = that same 0.05 s chunk.
       r = await api.until(
@@ -62,11 +74,16 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
       check.expectOk("the Gloamfin emitted a violet ping wavefront", r.hit);
-      check.expectEq(
-        "its ping reveals no terrain out in the dark",
+      check.expectLe(
+        "its ping reveals no terrain out in the dark (nothing revealed that was not already)",
         farRevealed(r.snap),
-        0,
+        before,
       );
       check.expectOk(
         "it does not draw itself (unlit in the fog)",

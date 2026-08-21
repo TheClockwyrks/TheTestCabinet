@@ -6,6 +6,8 @@
 // sampling that follows are both `act`.
 import {
   denAllExcept,
+  sceneGuard,
+  sceneHeld,
   poseApart,
   luminance,
   openTiles,
@@ -20,6 +22,8 @@ import { isFogBlack } from "./_kindle.mjs";
 const man = (a, b, c, d) => Math.abs(a - c) + Math.abs(b - d);
 
 export default function item() {
+  let quiet;
+  let guard;
   let r;
   let distF;
   let windowRadius;
@@ -36,13 +40,14 @@ export default function item() {
       // A posed board: the forager's corridor and, across solid rock, a sealed ring
       // for the Flarefish to patrol — so "far away" holds for the whole watch.
       const far = (await poseApart(api, 11, { spare: true })).far; // beyond the vision circle, and stays far
-      await denAllExcept(api, ["flarefish"]);
+      quiet = await denAllExcept(api, ["flarefish"]);
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,
         mode: "wander",
       });
       await quietBoard(api);
+      guard = await sceneGuard(api, quiet);
     },
 
     async act(api) {
@@ -104,6 +109,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
       check.expectOk("the Flarefish flares", r.hit);
       check.expectGt(
         "the Flarefish is beyond the forager's vision circle",

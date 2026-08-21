@@ -11,6 +11,8 @@ import {
   armAudio,
   audioCount,
   denAllExcept,
+  sceneGuard,
+  sceneHeld,
   poseApart,
   pred,
   quietBoard,
@@ -18,6 +20,8 @@ import {
 } from "../_helpers.mjs";
 
 export default function item() {
+  let quiet;
+  let guard;
   let before;
   let after;
   let flared;
@@ -32,7 +36,7 @@ export default function item() {
       // IS the euclidean gap, so 8 tiles is 256 px — clear of the bloom's 192 px
       // radius without having to hunt for a tile that is far by both measures at once.
       const far = (await poseApart(api, 8)).far;
-      await denAllExcept(api, ["flarefish"]);
+      quiet = await denAllExcept(api, ["flarefish"]);
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,
@@ -40,6 +44,7 @@ export default function item() {
       });
       await quietBoard(api);
       await armAudio(api);
+      guard = await sceneGuard(api, quiet);
     },
 
     async act(api) {
@@ -55,6 +60,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
       check.expectOk("the Flarefish flares while wandering", flared);
       check.expectGt(
         "a flare cue plays on the Flarefish's bloom (Web Audio sources started)",
