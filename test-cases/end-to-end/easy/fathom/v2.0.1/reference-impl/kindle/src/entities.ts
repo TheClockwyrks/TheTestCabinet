@@ -230,6 +230,10 @@ export class Predator extends Mover {
   flaring = false; // Flarefish: a flare is currently playing
   flarePhaseT = 0; // Flarefish: time since the current flare started
   denTimer = 0; // time remaining in the den before release
+  // Its turn in the staggered release has come (specs/instrumentation.md). Set when
+  // the den timer runs out during live play, so it marks the release itself rather
+  // than the swim out through the gate that follows it.
+  released = false;
 
   constructor(kind: PredKind, col: number, row: number, releaseAt: number) {
     super(col, row, 0);

@@ -158,6 +158,15 @@ simulation, never announced by the op itself.
   is held); injected input then moves it through the game's normal movement code.
 - `setBrightness(g)` sets the forager's brightness `G` to `g` in `[0, 1]`, as a
   precondition. The real formulas recompute from it: the light radius `V`{{#if (eq variant.slug "kindle")}}, the vision-circle radius `R`,{{/if}} and the Lanternjaw's and Flarefish's light detection ranges all follow `g` per `specs/gameplay.md` and `specs/predators.md`. Eating plankton is the normal way `G` rises; this op sets it directly rather than raising it by grazing a corridor first.
+
+  It arms the `1.0 s` brightness hold (`specs/gameplay.md`) as eating a plankton
+  does, so the value it poses is steady for that window and then decays on the
+  ordinary curve. A precondition that started draining on the next step would be a
+  different number by the time the scenario read it, and the caller has no way to
+  set the hold separately. Note the consequence: this op cannot be used to put the
+  forager *part-way* through a hold, or to strip a hold a recent pellet armed. A
+  caller that wants to watch `G` fall eats a plankton and waits, which is the only
+  thing the hold is defined in terms of.
 - `setPredator(kind, state)` places a predator. `kind` is `"lanternjaw"`,
   `"gloamfin"`, or `"flarefish"`. `state` may set `tx` and `ty` (a corridor tile it
   is moved to), `dir` (its facing), and `mode`, one of `"den"` (returned to the den),
@@ -289,7 +298,8 @@ forager ended up.
       kind: "lanternjaw" | "gloamfin" | "flarefish",
       x: <number>, y: <number>, tx: <number>, ty: <number>,
       dir: "up" | "down" | "left" | "right",  // its facing — always one of the four
-      state: "den" | "wander" | "chase" | "search",  // 'search' is the Gloamfin's cast-about
+      state: "den" | "wander" | "chase" | "search",  // where it is / what it is doing; 'search' is the Gloamfin's cast-about
+      released: <boolean>,       // its staggered release time has arrived (below)
       speed: <number>,           // its current speed, in px/s
       alert: <boolean>,          // its detection alert is firing this instant
       lit: <boolean>,            // its body is currently drawn (in light, a sonar mark, a flare, or the alert)
@@ -337,6 +347,26 @@ or during its alert), so it reflects whether a predator is on screen this instan
 kind (the Lanternjaw and Flarefish report `detectRange`; the Gloamfin reports
 `hearingRange` and `hearingLock`; the Flarefish reports the flare fields), and may
 report the others as `null`.
+
+`state` and `released` answer two different questions about a predator in the den,
+and neither stands in for the other.
+
+- `state` says WHERE IT IS. `"den"` means the predator is in the den chamber — which
+  includes a released one still swimming across it toward the gate. It stops being
+  `"den"` when the predator is out.
+- `released` says WHETHER ITS TURN HAS COME. It is `false` while a predator waits its
+  slot in the staggered schedule (`specs/predators.md`), and turns `true` the moment
+  that slot arrives — before it has crossed the gate, and whatever `state` says. A
+  predator posed with `setPredator(kind, "den")` has its schedule suspended and so
+  stays `released: false` for as long as it is held there.
+
+Both are needed because the schedule the spec fixes is a schedule of RELEASE TIMES —
+"the first Lanternjaw leaves immediately (release time `0`), the first Gloamfin at
+`5 s`" — and how long each one then takes to swim out is not part of that spacing.
+The den chamber spans several tiles (`specs/maze.md`) and nothing fixes which tile a
+given predator waits on, so two conforming builds can have their hunters cross the
+gate seconds apart while releasing them exactly `5 s` apart. `released` is the
+schedule; `state` leaving `"den"` is the swim that follows it.
 
 ## The debug overlay
 

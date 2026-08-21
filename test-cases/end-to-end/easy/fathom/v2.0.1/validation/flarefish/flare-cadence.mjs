@@ -75,6 +75,18 @@ const GUARD_POLL = 30;
 // the wander finds the forager anyway. Only the walk-up is retried; the timed gap is not.
 const SWEEP_ATTEMPTS = 3;
 
+// How far into the bloom the flare's radius is read, in ticks. A fifth of a second.
+//
+// `flaring` and the lit disc do not have to arrive on the same tick. The flag says a
+// bloom is burning and `flareRadius` says how wide it is right now, and a build is free
+// to raise the flag and light the disc on the next step — both are a flare that blooms,
+// and `specs/predators/flarefish.md` fixes an order for the charge and the bloom but not
+// for a flag against its own radius. Read on the rising tick, the radius can therefore
+// still be `0` for one tick on a perfectly good Flarefish. A beat's wait takes the
+// question away: the bloom lasts about a second, so a fifth of it is comfortably inside
+// the burn on any build, and `flarefish/flare-reveals` reads its disc the same way.
+const INTO_BLOOM = 24;
+
 // How long a wandering Flarefish is given to flare, in seconds — for the first flare, and
 // then for the one that ends the gap. Both are comfortably past the widest reading of the
 // cadence (`GAP_TARGET + GAP_SLACK`, 10.5 s), so a build that simply flares slower than
@@ -129,6 +141,7 @@ export default function item() {
   let second;
   let quiet;
   let flared = false;
+  let firstRadius = 0;
 
   return {
     id: "flarefish.flare-cadence",
@@ -174,6 +187,12 @@ export default function item() {
           { max: ticksFor(FIRST_FLARE_MAX) },
         );
         flared = first.hit && pred(first.snap, "flarefish").flaring === true;
+        if (flared) {
+          // A beat into the bloom, then read how wide it is. Skipped rather than advanced:
+          // `arrange` is not the clip.
+          await api.skip(INTO_BLOOM);
+          firstRadius = pred(await api.snapshot(), "flarefish").flareRadius;
+        }
         if (flared || !first.hit) break;
       }
 
@@ -274,8 +293,8 @@ export default function item() {
       );
       if (!flared) return;
       check.expectGt(
-        "the bloom has a positive radius",
-        pred(first.snap, "flarefish").flareRadius,
+        "the bloom has a positive radius a beat after it lights",
+        firstRadius,
         0,
       );
       check.expectOk(

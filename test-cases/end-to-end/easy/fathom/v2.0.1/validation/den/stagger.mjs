@@ -9,6 +9,16 @@
 // begins are both conforming, and they differ by the whole countdown. So the spacing is
 // asserted as gaps, which read the same under either choice.
 //
+// AND WHY THE GAPS ARE MEASURED FROM `released`. The spacing is between release times,
+// not between arrivals in the corridor: a released predator still has to swim from
+// whatever den tile it was waiting on out through the gate, and `specs/maze.md` fixes
+// neither the tile nor the chamber's interior, so those two swims differ by however far
+// apart the build parked them. Measured from the moment each hunter clears the den, a
+// perfectly staggered build reports gaps that are wrong by the difference. `released`
+// is the schedule itself (`specs/instrumentation.md`), and `outAt` — the tile leaving
+// the chamber — carries the separate claim that the release actually happened in the
+// maze. See `actDenReleases`.
+//
 // The one absolute IS asserted, and safely: `startPlaying` enters live play through
 // `beginPlay`, which ends the countdown without consuming it (specs/instrumentation.md),
 // so no time has passed under either reading at the moment the watch opens. "Release
@@ -31,6 +41,7 @@ import {
 export default function item() {
   let releases = [];
   let resumedAt = null;
+  let reportsReleased = false;
 
   return {
     id: "den.stagger",
@@ -48,10 +59,18 @@ export default function item() {
       // No window to pick: each release is waited for against its own slot deadline
       // (see `actDenReleases`), so a den that never opens stops the watch a slot later
       // rather than burning a budget someone had to guess at.
-      ({ releases, resumedAt } = await actDenReleases(api));
+      ({ releases, resumedAt, reportsReleased } = await actDenReleases(api));
     },
 
     async assert(api, check) {
+      // The schedule is read off `released`, so say so first: without that field this
+      // item sees no releases at all, and "the den never opened" would name the wrong
+      // thing. `specs/instrumentation.md` requires it of every predator entry.
+      check.expectOk(
+        "the build reports each predator's `released` flag, so the schedule can be read",
+        reportsReleased,
+      );
+      if (!reportsReleased) return;
       // Order and completeness in one reading: comparing the sequence rather than
       // counting it means a den that stalls halfway shows exactly how far it got.
       check.expectEq(

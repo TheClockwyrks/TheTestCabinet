@@ -92,6 +92,14 @@ running. The same holds for the countdown after a life is lost — it is the sta
 the moment you get to reorient, not part of it. So a dive always opens with the full
 staggered release ahead of it, whatever the countdown's length.
 
+The `5 s` spacing is between RELEASE TIMES, not between arrivals in the corridor. A
+released predator still has to swim from wherever it was waiting to the gate, and the
+den chamber is several tiles across (`specs/maze.md`) with no rule about which tile
+each one waits on — so the moments they cross the gate are `5 s` apart only as evenly
+as their starting tiles happen to allow, and that is not a defect. What the schedule
+fixes is when each predator's turn comes; `snapshot()` reports that as `released`
+(`specs/instrumentation.md`).
+
 ## How many predators: deeper mazes add hunters
 
 Deeper mazes are more dangerous because they hold more hunters, not faster ones

@@ -1,3 +1,68 @@
+## The release schedule is read from the schedule, not from the swim out of the den
+
+`den/stagger` and `den/re-release` timed the `5 s` staggered release from `state` leaving
+`"den"`. That flag cannot carry the claim, because it does not mean what the schedule
+means. The den chamber runs several tiles wide (`specs/maze.md`) and nothing fixes which
+tile a predator waits on, so a released hunter still has a swim to the gate whose length
+is the build's own business — measured from the moment each one clears the chamber, a
+build releasing exactly `5 s` apart reports gaps of `3.95` and `4.75`. Reading `state`
+the other way is no better: a build that flipped it early said `"wander"` of three
+predators sitting on den tiles.
+
+Both readings of `state` are legitimate, and `specs/instrumentation.md` had settled
+neither, so the snapshot now reports the two facts separately. `state` says WHERE a
+predator is, and `"den"` includes a released one still crossing the chamber. A new
+required field, `released`, says whether its turn has come: `false` while it waits its
+slot, `true` from the moment that slot arrives — before the gate, and whatever `state`
+says. A predator posed with `setPredator(kind, "den")` has its schedule suspended and
+stays `released: false`. `specs/predators.md` says the same thing from the other side:
+the `5 s` spacing is between release times, and the walk to the gate is not part of it.
+
+`actDenReleases` times the stagger from `released` and keeps asserting the leaving from
+the tiles, so neither claim stands in for the other. On a reference mutated to hold its
+Lanternjaw at the far end of the den — a perfectly conforming schedule — the old signal
+reported gaps of `4.45 / 5.30` and the new one reports `4.95 / 5.00`. Against references
+mutated to release all three at once, both items fail on the gaps; against one that omits
+`released` altogether, they fail on a first assertion that names the missing field rather
+than on a den that appears never to have opened.
+
+## The brightness hold is armed by eating, because that is what arms it
+
+`brightness/holds-decays` posed `G` with `setBrightness(1)` and called that arming the
+hold. `specs/instrumentation.md` did not say what the op does to the hold, and the two
+readings diverge completely: the reference implementation armed it, two builds under test
+cleared it, and on those two the posed value began decaying on the call — so the item
+reported a decay bug against builds whose hold and half-life were exact to four decimal
+places when driven by eating.
+
+The op's contract is now stated: `setBrightness` arms the `1.0 s` hold as a pellet does,
+so a posed brightness is steady for that window instead of draining out from under its
+caller, and it therefore cannot be used to place the forager part-way through a hold.
+
+The item no longer depends on that either way. `specs/gameplay.md` defines the hold in
+terms of the last pellet swallowed, and the forager is standing on one, so eating that
+pellet is the whole precondition — the rule is now driven by the only event it is defined
+in terms of. `G` starts at one pellet's `+0.34` rather than a posed `1`, so the readings
+are taken against the value the eat produced: steady across the hold, and more than half
+of it gone a second later. A build whose `setBrightness` clears the hold now passes.
+Against references mutated to drain constantly and never to decay at all, the two halves
+fail one each.
+
+## A flare's radius is read a beat into the bloom
+
+`flarefish/flare-cadence` asserted the bloom had a positive radius from the snapshot the
+`flaring` flag first rose on. A build may raise the flag and light the disc on the next
+step — one build does, for exactly one tick — and nothing fixes an order between a flag
+and its own radius. Worse than a false failure, it was a lottery: with the flare cycle
+landing on tick `900`, the sweep's `30`-tick poll hit that tick from a clean start and
+missed it when the phase shifted, so the same build passed or failed on where the count
+began.
+
+The radius is now read a beat into the bloom, as `flarefish/flare-reveals` already read
+its disc. The bloom lasts about a second, so a fifth of it is inside the burn on any
+build. The assertion is no weaker for it: against a reference mutated to report a bloom
+radius of `0`, it still fails.
+
 ## Three checks that were reading the scenario, not the build
 
 **The bulb is read where the trench is actually dark.** `lanternjaw/bulb-visible` stood

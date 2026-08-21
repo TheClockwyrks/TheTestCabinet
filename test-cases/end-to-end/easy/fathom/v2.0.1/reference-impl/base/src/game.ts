@@ -188,6 +188,7 @@ export class Game {
     for (const p of this.predators) {
       p.state = PredState.Den;
       p.denTimer = p.releaseAt;
+      p.released = false;
       p.hasFix = false;
       p.linger = 0;
       p.blindT = 0;
@@ -819,6 +820,7 @@ export class Game {
     if (mode === "chase") {
       // Fixed on the forager's current tile and pursuing through the real AI.
       p.state = PredState.Hunt;
+      p.released = true; // posed into play, so its slot is behind it
       p.hasFix = true;
       p.fixCol = this.forager.col;
       p.fixRow = this.forager.row;
@@ -828,12 +830,14 @@ export class Game {
     } else if (mode === "den") {
       p.state = PredState.Den;
       p.denTimer = 999; // idle in the den (precondition)
+      p.released = false; // its schedule is suspended while it is held here
       p.hasFix = false;
       p.searching = false;
       p.linger = 0;
     } else {
       // wander (patrolling, not fixed on you)
       p.state = PredState.Patrol;
+      p.released = true; // posed into play, so its slot is behind it
       p.hasFix = false;
       p.searching = false;
       p.linger = 0;
@@ -938,6 +942,11 @@ export class Game {
         ty: p.row,
         dir: dirStr(p.dir !== Dir.None ? p.dir : p.facing),
         state: stateStr,
+        // Its turn in the staggered release has come (specs/instrumentation.md).
+        // False only while it waits its slot in the den — a released predator
+        // still crossing the chamber toward the gate reports true, and so does a
+        // predator posed out of the den entirely.
+        released: p.released,
         speed: p.speed,
         alert: p.alertT > 0,
         lit,
@@ -1031,6 +1040,7 @@ export interface PredatorSnapshot {
   ty: number;
   dir: string;
   state: string;
+  released: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;

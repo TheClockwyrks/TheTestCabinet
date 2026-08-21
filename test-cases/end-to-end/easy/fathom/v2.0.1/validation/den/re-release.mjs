@@ -60,6 +60,7 @@ export default function item() {
   let dennedOnDeath = 0;
   let releases = [];
   let resumedAt = null;
+  let reportsReleased = false;
 
   return {
     id: "den.re-release",
@@ -117,12 +118,21 @@ export default function item() {
       await parkClearOfDen(api);
       // Slot deadlines rather than a window, as in `den/stagger.mjs` — and the wait for
       // live play covers the respawn countdown on its way through.
-      ({ releases, resumedAt } = await actDenReleases(api));
+      ({ releases, resumedAt, reportsReleased } = await actDenReleases(api));
     },
 
     async assert(api, check) {
       check.expectOk("the forager is caught and loses a life", Boolean(caught?.hit));
       if (!caught?.hit) return;
+
+      // The re-released schedule is read off `released` for the reason `den/stagger`
+      // gives: the spacing is between release times, not between swims out of the
+      // chamber. Without the field there are no releases to time, so name it first.
+      check.expectOk(
+        "the build reports each predator's `released` flag, so the schedule can be read",
+        reportsReleased,
+      );
+      if (!reportsReleased) return;
 
       check.expectEq(
         "every predator returns to the den",

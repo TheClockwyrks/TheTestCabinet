@@ -2183,21 +2183,25 @@ export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
   const releases = [];
   const seen = new Set();
   let resumedAt = null;
-  // Each release is recorded TWICE: `t`, the moment the predator stopped being denned,
-  // and `outAt`, the moment it was actually out of the chamber (null if it never was).
+  // Each release is recorded TWICE: `t`, the moment `released` turned true, and `outAt`,
+  // the moment the predator's tile was outside the den chamber (null if it never was).
   //
-  // WHY BOTH. The schedule the spec fixes is a schedule of RELEASES — one hunter every
-  // `5 s` (`specs/predators.md`) — and that is the flag's moment; how long a hunter then
-  // takes to swim out through the gate is its own business, and timing the schedule from
-  // the exit would charge the stagger for it. But the flag alone is only bookkeeping, and
-  // a release is a thing that happens in the maze: a build flipped all three to `wander`
-  // while they sat on den tiles, and its Lanternjaw then stood on the same tile for twenty
-  // seconds reporting `wander` at the drifter's `64 px/s` without covering a pixel. Timed
-  // off the flag that reads as a textbook staggered release; what a reviewer watches is
-  // three predators sitting in the den.
+  // WHY BOTH, AND WHY `released` RATHER THAN `state`. The schedule the spec fixes is a
+  // schedule of RELEASE TIMES — one hunter every `5 s` (`specs/predators.md`) — and the
+  // swim from a den tile out through the gate is not part of that spacing. The chamber is
+  // several tiles across and nothing fixes which tile a predator waits on, so timing the
+  // stagger from the moment a hunter clears the den charges each gap the difference
+  // between two swims: a build releasing exactly `5 s` apart from tiles one and three
+  // reports gaps of four and six. `released` is the schedule itself
+  // (`specs/instrumentation.md`), so it measures the claim directly.
   //
-  // So the stagger is timed from `t` and the leaving is asserted from `outAt`, and neither
-  // claim has to stand in for the other.
+  // `state` cannot stand in for it in either direction. It names where the predator IS,
+  // so it still reads `"den"` for a released hunter crossing the chamber — and a build
+  // that flipped it early would say `"wander"` of a predator sitting on a den tile.
+  //
+  // But a release is also a thing that happens in the maze, and a flag alone cannot show
+  // that: hence `outAt`, from the tiles, which is what the caller asserts the leaving
+  // from. Neither claim has to stand in for the other.
   const denTiles = (s) => {
     const out = new Set();
     for (let r = 0; r < s.grid.rows; r++) {
@@ -2209,13 +2213,18 @@ export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
     return out;
   };
   let den = null;
+  // Whether this build reports `released` at all. A build that omits it releases nobody
+  // as far as this helper can see, which would otherwise read as a den that never opened;
+  // the caller asserts on it first so the verdict names the missing field instead.
+  let reportsReleased = false;
   const note = (s) => {
     if (resumedAt === null && s.screen === "playing") resumedAt = s.simTime;
     den ??= denTiles(s);
     for (const kind of DEN_ORDER) {
       const p = pred(s, kind);
       if (!p) continue;
-      if (!seen.has(kind) && p.state !== "den") {
+      if (typeof p.released === "boolean") reportsReleased = true;
+      if (!seen.has(kind) && p.released === true) {
         seen.add(kind);
         releases.push({ kind, t: s.simTime, outAt: null });
       }
@@ -2238,7 +2247,7 @@ export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
     last = await api.snapshot();
     note(last);
   }
-  if (resumedAt === null) return { releases, resumedAt };
+  if (resumedAt === null) return { releases, resumedAt, reportsReleased };
 
   while (releases.length < DEN_ORDER.length) {
     const due =
@@ -2247,7 +2256,7 @@ export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
         : releases[releases.length - 1].t + 2 * DEN_RELEASE_GAP;
     const had = releases.length;
     while (releases.length === had) {
-      if (last.simTime > due) return { releases, resumedAt };
+      if (last.simTime > due) return { releases, resumedAt, reportsReleased };
       await api.advance(poll);
       last = await api.snapshot();
       note(last);
@@ -2269,7 +2278,7 @@ export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
     last = await api.snapshot();
     note(last);
   }
-  return { releases, resumedAt };
+  return { releases, resumedAt, reportsReleased };
 }
 
 /**

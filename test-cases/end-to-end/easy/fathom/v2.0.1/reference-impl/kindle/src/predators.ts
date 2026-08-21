@@ -451,6 +451,9 @@ export function updatePredator(p: Predator, dt: number, w: World): void {
       p.dir = Dir.None;
       return;
     }
+    // Its slot has arrived. This runs only from `stepPlay`, so the countdown before
+    // a dive does not count against the schedule (specs/predators.md).
+    p.released = true;
     p.speed = p.patrolSpeed * mult;
     advance(
       p,
