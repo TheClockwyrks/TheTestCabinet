@@ -8,7 +8,7 @@ import {
   type GalleryDataInput,
 } from "./galleryContext";
 import type { VariantSummary } from "./testCases";
-import { useRunVariant } from "./useRunVariant";
+import { useReviewModel, useRunVariant } from "./useRunVariant";
 
 // A variant carrying only what these tests read back: the prompt, which is the
 // text the resolution has to get right.
@@ -112,5 +112,57 @@ describe("useRunVariant", () => {
 
     expect(result.current.status).toBe("loading");
     expect(result.current.variant).toBeUndefined();
+  });
+});
+
+// A variant carrying the scoring model these tests read back.
+function scoring(
+  items: readonly string[],
+  domains: readonly string[],
+): VariantSummary {
+  return {
+    slug: "base",
+    reviewItems: items.map((id) => ({ id })),
+    domains: domains.map((id) => ({ id })),
+  } as unknown as VariantSummary;
+}
+
+describe("useReviewModel", () => {
+  // The defect this replaces was not cosmetic: the model came from the case's
+  // LATEST version, so a run of carom v2.1.0 was scored against v3.0.0's
+  // checklist — deciding its verdict against points it was never graded on. The
+  // two versions genuinely differ: v3 added `delta-time-independent` and `trail`
+  // and dropped `game-over` and `rally`.
+  it("scores a run against its own version's checklist, not the latest", async () => {
+    const byVersion: Record<string, VariantSummary> = {
+      "v2.1.0": scoring(["gameplay", "rally"], ["single-player"]),
+      "v3.0.0": scoring(["delta-time-independent", "trail"], ["versus"]),
+    };
+    const { readCaseVariant, wrapper } = hostResolving(
+      (ref) => byVersion[ref.version] ?? null,
+    );
+
+    const { result } = renderHook(() => useReviewModel(subject()), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(readCaseVariant.mock.calls[0]![0].version).toBe("v2.1.0");
+    expect(result.current.items.map((i) => i.id)).toEqual([
+      "gameplay",
+      "rally",
+    ]);
+    expect(result.current.domains.map((d) => d.id)).toEqual(["single-player"]);
+  });
+
+  // A model from the wrong version is worse than no model, so an unresolvable
+  // version reports empty and lets `status` say why, rather than substituting
+  // another version's domains the way the old fall back to the case's did.
+  it("reports no model rather than substituting one when the version is not held", async () => {
+    const { wrapper } = hostResolving(() => null);
+
+    const { result } = renderHook(() => useReviewModel(subject()), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.items).toEqual([]);
+    expect(result.current.domains).toEqual([]);
   });
 });

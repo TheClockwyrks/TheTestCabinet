@@ -4,7 +4,7 @@ import type { StoredReview } from "../../../../client/types";
 import { Panel } from "@test-cabinet/ui";
 import { useAuth } from "../../../../client/auth";
 import { useGalleryData } from "../../../data/galleryContext";
-import { useReviewModel } from "../../../data/useTestCase";
+import { useReviewModel } from "../../../data/useRunVariant";
 import {
   overallGradeOf,
   scoreChecklist,

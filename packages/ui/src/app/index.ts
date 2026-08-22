@@ -55,12 +55,13 @@ export {
   type SortDir,
 } from "./data/runQuery";
 export { useTestCases, type TestCasesState } from "./data/useTestCases";
+export { useTestCase, type TestCaseState } from "./data/useTestCase";
 export {
-  useTestCase,
   useReviewModel,
-  type TestCaseState,
+  useRunVariant,
   type ReviewModelState,
-} from "./data/useTestCase";
+  type RunVariantState,
+} from "./data/useRunVariant";
 export { useModels, useFindModel, type ModelsState } from "./data/useModels";
 export { useFindReview } from "./data/writeups";
 

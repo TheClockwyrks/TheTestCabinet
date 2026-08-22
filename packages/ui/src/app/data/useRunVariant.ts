@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import type { RunSubject } from "@test-cabinet/run-record";
-import type { CaseVariantRef, CatalogStatus } from "./galleryContext";
+import type {
+  CaseVariantRef,
+  CatalogStatus,
+  ReviewModel,
+} from "./galleryContext";
 import { useGalleryData } from "./galleryContext";
 import type { VariantSummary } from "./testCases";
 
@@ -107,4 +111,37 @@ function resolveCached(
   });
   byRef.set(key, pending);
   return pending;
+}
+
+/** A run's scoring model alongside the load state of the fetch behind it. */
+export interface ReviewModelState extends ReviewModel {
+  /** The load state of the resolution this model came from. Items and domains
+   * are empty while it is `loading`, so score them only once it is `ready`. */
+  status: CatalogStatus;
+}
+
+/**
+ * The scoring model for a run's subject: the effective (common + variant)
+ * weighted checklist items and the effective (common + variant) scoring domains.
+ * Lets the verdict page, the review pages, and the review editor score a run from
+ * its verdicts and per-domain ratings.
+ *
+ * It resolves through {@link useRunVariant}, so the model is the one belonging to
+ * the run's OWN case version. A checklist is a property of a version: items are
+ * added, removed and reworded between them, and scoring a run against a later
+ * version's checklist decides its verdict against points it was never graded on.
+ *
+ * Items and domains are empty both while the fetch is in flight and when this
+ * host holds no such version — the two are not the same thing, so `status` is
+ * carried alongside. There is deliberately no fall back to another version's
+ * domains when this one cannot be resolved: a score computed from the wrong
+ * version is worse than a surface that reports it has none.
+ */
+export function useReviewModel(subject: RunSubject): ReviewModelState {
+  const { variant, status } = useRunVariant(subject);
+  return {
+    items: variant?.reviewItems ?? [],
+    domains: variant?.domains ?? [],
+    status,
+  };
 }

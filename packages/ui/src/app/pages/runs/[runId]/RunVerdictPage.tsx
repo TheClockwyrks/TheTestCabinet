@@ -8,7 +8,7 @@ import {
   type ParsedWriteup,
 } from "../../../data/ratings";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
-import { useReviewModel } from "../../../data/useTestCase";
+import { useReviewModel } from "../../../data/useRunVariant";
 import {
   describeRunState,
   type RunStatePresentation,
