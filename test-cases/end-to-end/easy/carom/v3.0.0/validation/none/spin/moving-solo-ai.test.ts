@@ -14,7 +14,7 @@
 // spin, or the wrong spin, from an AI contact.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { SPIN_FROM_PADDLE } from "../../src/constants";
+import { SPIN_FROM_PADDLE } from "../constants";
 import {
   arrangeAiMovingHit,
   captureReplay,
@@ -51,8 +51,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("imparts spin tracking the AI paddle's own speed", async () => {

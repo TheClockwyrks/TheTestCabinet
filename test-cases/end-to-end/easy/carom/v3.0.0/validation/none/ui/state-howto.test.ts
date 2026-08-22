@@ -28,26 +28,23 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("opens the how-to-play screen from the menu", async () => {
-  h.calls.length = 0;
-  await h.advance(1);
-  const title = drawnText(h.calls).join(" ");
+  const title = drawnText(await h.frameCalls()).join(" ");
 
   await h.tap("ArrowDown"); // SOLO -> VERSUS
   await h.tap("ArrowDown"); // VERSUS -> HOW TO PLAY
   await h.tap("Enter");
 
-  h.calls.length = 0;
-  await h.advance(1);
-  captureStill(h, "howto");
+  const calls = await h.frameCalls();
+  await captureStill(h, "howto");
 
-  expect(h.snapshot().screen).toBe("howto");
+  expect((await h.snapshot()).screen).toBe("howto");
 
-  const howto = drawnText(h.calls);
+  const howto = drawnText(calls);
   expect(howto.join("").length).toBeGreaterThanOrEqual(MIN_CHARACTERS);
   expect(howto.join(" ")).not.toBe(title);
 });

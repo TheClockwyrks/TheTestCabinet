@@ -7,7 +7,7 @@
 // that simply moves faster than it should — blocks it and fails here.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { FIELD_CX, FIELD_CY } from "../../src/constants";
+import { FIELD_CX, FIELD_CY } from "../constants";
 import {
   arrangeAiScenario,
   captureReplay,
@@ -39,8 +39,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("is beaten by a shot that banks off a wall on its way in", async () => {

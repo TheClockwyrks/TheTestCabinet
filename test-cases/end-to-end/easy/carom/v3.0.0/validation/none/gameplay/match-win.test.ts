@@ -6,7 +6,7 @@
 // narrowest score that satisfies it.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
   captureStill,
@@ -26,21 +26,21 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("ends the match on the winning point and names the winner", async () => {
   await startPlaying(harness);
-  harness.debug.setScore(P1_BEFORE, P2_BEFORE);
-  arrangeGoal(harness, "right");
+  await harness.debug.setScore(P1_BEFORE, P2_BEFORE);
+  await arrangeGoal(harness, "right");
 
   const end = await driveGoal(harness);
   // One frame past the winning point, so what is kept is the match-over screen
   // rather than the last frame of the rally that reached it. The assertions below
   // read `end.snapshot`, taken before this, so the extra frame decides nothing.
   await harness.advance(1);
-  captureStill(harness, "game-over");
+  await captureStill(harness, "game-over");
 
   expect(end.hit).toBe(true);
   expect(end.snapshot.screen).toBe("matchover");

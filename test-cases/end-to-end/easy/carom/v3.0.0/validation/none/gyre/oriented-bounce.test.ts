@@ -19,7 +19,7 @@
 // the outgoing velocity is read at the instant the bounce resolves.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../../src/constants";
+import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -50,7 +50,7 @@ async function shootLevelAt(
   h: Harness,
   obstacle: ObstaclePose,
 ): Promise<{ hit: boolean; vx: number; vy: number }> {
-  h.debug.setBall(0, {
+  await h.debug.setBall(0, {
     x: obstacle.cx - 220,
     y: obstacle.cy,
     vx: SERVE_SPEED,
@@ -82,8 +82,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("deflects off a tilted face and returns straight off an upright one", async () => {
@@ -118,5 +118,6 @@ it("deflects off a tilted face and returns straight off an upright one", async (
   // level than the upright one did.
   expect(Math.abs(deflected.vy)).toBeGreaterThan(Math.abs(straight.vy) + 60);
 
-  expect(harness.assetFailures).toEqual([]);
+  // Nothing the page threw or logged as an error while this harness drove it.
+  expect(harness.pageErrors).toEqual([]);
 });

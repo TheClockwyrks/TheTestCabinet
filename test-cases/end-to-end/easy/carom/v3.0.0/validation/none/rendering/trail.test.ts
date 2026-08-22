@@ -5,8 +5,8 @@
 // A trail is not one shape, so it is read as a sequence: the coordinates the
 // frame's draw calls named behind the ball say the render drew something along
 // the path, and the pixels along that path say what actually landed there. Both
-// are read off the same frame, because the recording proxy forwards every call to
-// the real context on its way through.
+// are read off the same frame — the recorder injected into the page keeps every
+// operation the frame issued, and the operations are what put those pixels there.
 //
 // The ball is driven down an empty lane near the bottom of the field, clear of
 // the paddles, both obstacles, the net, and the HUD, so everything lit in that
@@ -16,11 +16,17 @@
 // compared. That comparison is the part a single reading cannot fake: a build
 // drawing a fixed-length tail passes every absolute bound and fails this.
 //
-// What is not asserted here is whether it reads as a comet. The capture is for a
-// person to judge that; these are the mechanically checkable parts of it.
+// What the engine-backed project also reads, and this one cannot, is the recent
+// path held as STATE — that the build keeps its samples in order, oldest first.
+// The state object is the build's own here and the snapshot does not carry the
+// trail, so the claim is made from the drawing alone: what the frame drew behind
+// the ball, and what landed on the canvas along that lane.
+//
+// What is not asserted at all is whether it reads as a comet. The capture is for
+// a person to judge that; these are the mechanically checkable parts of it.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { BALL_R, TRAIL_TIME } from "../../src/constants";
+import { BALL_R, TRAIL_TIME } from "../constants";
 import {
   arrangeLiveBall,
   captureStill,
@@ -28,6 +34,7 @@ import {
   createHarness,
   drawnPoints,
   sampleColor,
+  type DrawCall,
   type Harness,
   type Rgb,
 } from "../harness";
@@ -60,28 +67,24 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
-
-/** The colour at a single logical point, as channels. */
-function pixelAt(x: number, y: number): Rgb {
-  const [r, g, b] = h.pixel(x, y);
-  return { r, g, b };
-}
 
 /**
  * Pose the ball in the lane at `speed`, let it fly long enough to fill the trail,
  * then record exactly one frame. The ball is returned as it was when that frame
- * was drawn.
+ * was drawn, alongside the operations that frame issued.
  */
-async function driveTrail(speed: number): Promise<{ x: number; y: number }> {
+async function driveTrail(
+  speed: number,
+): Promise<{ ball: { x: number; y: number }; calls: DrawCall[] }> {
   await arrangeLiveBall(h, { x: START_X, y: LANE_Y, vx: speed, vy: 0 });
   await h.advance(FILL_TICKS);
-  h.calls.length = 0;
-  await h.advance(1);
-  const { ball } = h.snapshot();
-  return { x: ball.x, y: ball.y };
+  // Runs the one frame itself, and hands back what that frame drew.
+  const calls = await h.frameCalls();
+  const { ball } = await h.snapshot();
+  return { ball: { x: ball.x, y: ball.y }, calls };
 }
 
 interface Streak {
@@ -93,18 +96,33 @@ interface Streak {
   lit: Map<number, number>;
 }
 
-/** Read the lane behind the ball, and report the unbroken run of lit pixels. */
-function readStreak(ball: { x: number; y: number }): Streak {
-  const bare = sampleColor(h, BARE_X, LANE_Y);
-  const lit = new Map<number, number>();
+/**
+ * Read the lane behind the ball, and report the unbroken run of lit pixels.
+ *
+ * The whole lane is fetched in one crossing into the page rather than a pixel at
+ * a time: two hundred round trips to read one frame would cost more than the
+ * drive that produced it, and every sample is off the same finished frame either
+ * way.
+ */
+async function readStreak(ball: { x: number; y: number }): Promise<Streak> {
+  const bare = await sampleColor(h, BARE_X, LANE_Y);
 
+  const distances: number[] = [];
+  for (let d = BALL_R + 3; d <= SCAN; d += 1) {
+    if (ball.x - d < 20) break;
+    distances.push(d);
+  }
+  const read = await h.pixels(
+    distances.map((d) => ({ x: ball.x - d, y: ball.y })),
+  );
+
+  const lit = new Map<number, number>();
   let reach = 0;
   let gap = 0;
   let count = 0;
-  for (let d = BALL_R + 3; d <= SCAN; d += 1) {
-    const x = ball.x - d;
-    if (x < 20) break;
-    const level = colorDistance(pixelAt(x, ball.y), bare);
+  for (const [index, d] of distances.entries()) {
+    const [r, g, b] = read[index];
+    const level = colorDistance({ r, g, b } as Rgb, bare);
     lit.set(d, level);
     if (level > LIT_MIN) {
       reach = d;
@@ -119,19 +137,14 @@ function readStreak(ball: { x: number; y: number }): Streak {
 }
 
 it("draws a continuous, fading streak back along the ball's recent path", async () => {
-  const ball = await driveTrail(FAST);
+  const { ball, calls } = await driveTrail(FAST);
   // The fast pass, where the streak is longest and the taper clearest.
-  captureStill(h, "trail");
+  await captureStill(h, "trail");
   const expected = FAST * TRAIL_TIME;
-
-  // The recent path really is held as state, oldest sample first.
-  expect(h.state.trail.length).toBeGreaterThan(1);
-  const times = h.state.trail.map((sample) => sample.t);
-  expect([...times].sort((a, b) => a - b)).toEqual(times);
 
   // The render asked for geometry behind the ball, in its lane: the trail is a
   // sequence of draws, so where those draws went is the direct reading of it.
-  const behind = drawnPoints(h.calls).filter(
+  const behind = drawnPoints(calls).filter(
     (point) =>
       Math.abs(point.y - ball.y) <= 20 &&
       point.x < ball.x - BALL_R &&
@@ -142,7 +155,7 @@ it("draws a continuous, fading streak back along the ball's recent path", async 
   expect(drawnReach).toBeGreaterThan(0.4 * expected);
 
   // And what landed on the canvas is one unbroken run of about that length.
-  const streak = readStreak(ball);
+  const streak = await readStreak(ball);
   expect(streak.reach).toBeGreaterThan(0.5 * expected);
   expect(streak.reach).toBeLessThan(1.5 * expected + 2 * BALL_R);
   expect(streak.density).toBeGreaterThan(0.5);
@@ -156,10 +169,10 @@ it("draws a continuous, fading streak back along the ball's recent path", async 
 
 it("stretches the streak as the ball speeds up", async () => {
   const slowBall = await driveTrail(SLOW);
-  const slow = readStreak(slowBall);
+  const slow = await readStreak(slowBall.ball);
 
   const fastBall = await driveTrail(FAST);
-  const fast = readStreak(fastBall);
+  const fast = await readStreak(fastBall.ball);
 
   expect(slow.reach).toBeGreaterThan(0);
   // The trail is a fixed duration of travel, so at nearly four times the speed it

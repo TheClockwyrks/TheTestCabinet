@@ -7,7 +7,7 @@
 // only some of them fails exactly the ones it gets wrong.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import {
   arrangeObstacleBounce,
   captureReplay,
@@ -41,13 +41,17 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("banks the ball off obstacle A's right face", async () => {
   await startPlaying(harness);
-  arrangeObstacleBounce(harness, { faceX: FACE_X, y: LANE_Y, from: "right" });
+  await arrangeObstacleBounce(harness, {
+    faceX: FACE_X,
+    y: LANE_Y,
+    from: "right",
+  });
 
   const bank = await captureReplay(harness, "bank", async () => {
     const rebound = await driveObstacleBounce(harness, "right");

@@ -11,7 +11,7 @@
 // non-trivial rate AND stays slower than a player.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_SPEED } from "../constants";
 import {
   arrangeAiChase,
   captureReplay,
@@ -42,8 +42,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("chases the ball competently, and slower than a human paddle", async () => {

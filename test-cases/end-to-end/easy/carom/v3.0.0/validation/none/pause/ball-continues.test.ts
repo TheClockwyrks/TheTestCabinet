@@ -47,8 +47,8 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("resumes the ball from its paused position at its preserved velocity", async () => {
@@ -56,7 +56,7 @@ it("resumes the ball from its paused position at its preserved velocity", async 
 
   await h.advance(30); // 0.25 s of visible flight
   await h.tap("Escape");
-  const paused = h.snapshot();
+  const paused = await h.snapshot();
   expect(paused.screen).toBe("paused");
 
   await h.advance(FROZEN_TICKS - HANGING_TICKS);
@@ -64,7 +64,7 @@ it("resumes the ball from its paused position at its preserved velocity", async 
   const held = await captureReplay(h, "continues", async () => {
     await h.advance(HANGING_TICKS);
     // The end of the freeze, read on exactly the frame it was read on before.
-    const still = h.snapshot();
+    const still = await h.snapshot();
 
     await h.tap("Escape"); // resume, which is itself one frame
     await h.advance(RESUMED_TICKS - 1);
@@ -73,7 +73,7 @@ it("resumes the ball from its paused position at its preserved velocity", async 
   expect(held.ball.x).toBeCloseTo(paused.ball.x, 1);
   expect(held.ball.y).toBeCloseTo(paused.ball.y, 1);
 
-  const resumed = h.snapshot();
+  const resumed = await h.snapshot();
 
   expect(resumed.screen).toBe("playing");
 

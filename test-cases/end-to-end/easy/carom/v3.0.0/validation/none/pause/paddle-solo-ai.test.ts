@@ -43,8 +43,8 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("holds the AI paddle still while paused", async () => {
@@ -52,15 +52,16 @@ it("holds the AI paddle still while paused", async () => {
 
   // The precondition: the real opponent is chasing, so a still paddle later is
   // the pause's doing.
-  const start = h.snapshot().paddles.right.cy;
+  const start = (await h.snapshot()).paddles.right.cy;
 
   const held = await captureReplay(h, "frozen", async () => {
     await h.advance(CHASING_TICKS);
-    const chasing = h.snapshot().paddles.right.cy;
+    const chasing = (await h.snapshot()).paddles.right.cy;
 
     await h.tap("Escape");
-    const screen = h.snapshot().screen;
-    const paused = h.snapshot().paddles.right.cy;
+    const atPause = await h.snapshot();
+    const screen = atPause.screen;
+    const paused = atPause.paddles.right.cy;
 
     await h.advance(FROZEN_TICKS);
     return { chasing, screen, paused };
@@ -69,8 +70,9 @@ it("holds the AI paddle still while paused", async () => {
   expect(Math.abs(held.chasing - start)).toBeGreaterThan(STILL_MAX);
   expect(held.screen).toBe("paused");
 
-  expect(h.snapshot().screen).toBe("paused");
-  expect(Math.abs(h.snapshot().paddles.right.cy - held.paused)).toBeLessThan(
+  const after = await h.snapshot();
+  expect(after.screen).toBe("paused");
+  expect(Math.abs(after.paddles.right.cy - held.paused)).toBeLessThan(
     STILL_MAX,
   );
 });

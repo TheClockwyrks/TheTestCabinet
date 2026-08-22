@@ -6,13 +6,13 @@
 // rule that resolves on it (first to WIN_SCORE, by at least WIN_LEAD) — runs
 // through the build's own scoring code. Nothing assigns the end state.
 //
-// The two entries are the case's copy from `src/constants.ts`. Matching is by
+// The two entries are the case's copy, from the specification. Matching is by
 // substring, because a selected entry is commonly drawn with a marker beside it.
 // Whether the screen presents the result well is the reviewer's, from the
 // capture.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { MATCHOVER_ITEMS, WIN_SCORE } from "../../src/constants";
+import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
   captureStill,
@@ -29,27 +29,26 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("ends the match on the winning point and draws the match-over screen", async () => {
   await startPlaying(h, "versus");
-  h.debug.setScore(WIN_SCORE - 1, 0);
-  arrangeGoal(h, "right");
+  await h.debug.setScore(WIN_SCORE - 1, 0);
+  await arrangeGoal(h, "right");
 
   const ended = await driveGoal(h);
   expect(ended.hit).toBe(true);
 
-  const over = h.snapshot();
+  const over = await h.snapshot();
   expect(over.screen).toBe("matchover");
   expect(over.score).toEqual({ p1: WIN_SCORE, p2: 0 });
   expect(over.winner).toBe("left");
 
-  h.calls.length = 0;
-  await h.advance(1);
-  captureStill(h, "matchover");
+  const calls = await h.frameCalls();
+  await captureStill(h, "matchover");
   for (const item of MATCHOVER_ITEMS) {
-    expect(drewText(h.calls, item)).toBe(true);
+    expect(drewText(calls, item)).toBe(true);
   }
 });

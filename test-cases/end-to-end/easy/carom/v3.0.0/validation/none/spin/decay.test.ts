@@ -18,7 +18,7 @@ import {
   PADDLE_SPEED,
   SPIN_FROM_PADDLE,
   SPIN_HALFLIFE,
-} from "../../src/constants";
+} from "../constants";
 import {
   TICK_HZ,
   arrangePaddleHit,
@@ -49,8 +49,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 /**
@@ -61,13 +61,13 @@ afterEach(() => {
 async function flyFor(h: Harness, ticks: number): Promise<void> {
   for (let done = 0; done < ticks; done += RECENTER_CHUNK) {
     await h.advance(Math.min(RECENTER_CHUNK, ticks - done));
-    h.debug.setBall(0, { x: FIELD_CX, y: FIELD_CY });
+    await h.debug.setBall(0, { x: FIELD_CX, y: FIELD_CY });
   }
 }
 
 it("halves the spin every half-life without changing its sign", async () => {
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY - 20,
     vy: PADDLE_SPEED,
     ballY: FIELD_CY,
@@ -81,13 +81,13 @@ it("halves the spin every half-life without changing its sign", async () => {
 
   // No paddle may touch the ball again, or a second hit would change the spin
   // this check is watching decay.
-  clearPaddles(harness);
+  await clearPaddles(harness);
 
   // The whole decay, both stretches of flight, as one section: the contact that
   // imparted the spin is the arrangement, and what decays is what follows it.
   await captureReplay(harness, "decay", async () => {
     await flyFor(harness, HALF_LIFE_TICKS);
-    const afterOne = harness.snapshot().ball.spin;
+    const afterOne = (await harness.snapshot()).ball.spin;
 
     expect(Math.sign(afterOne)).toBe(Math.sign(imparted));
     expect(Math.abs(afterOne)).toBeGreaterThan(
@@ -96,7 +96,7 @@ it("halves the spin every half-life without changing its sign", async () => {
     expect(Math.abs(afterOne)).toBeLessThan(HALF_LIFE_MAX * Math.abs(imparted));
 
     await flyFor(harness, FURTHER_TICKS);
-    const settled = harness.snapshot().ball.spin;
+    const settled = (await harness.snapshot()).ball.spin;
 
     expect(Math.abs(settled)).toBeLessThan(SETTLED_MAX * Math.abs(imparted));
   });

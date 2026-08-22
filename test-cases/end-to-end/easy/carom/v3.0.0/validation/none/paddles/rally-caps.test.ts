@@ -5,7 +5,7 @@
 // exceeds it.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { SPEED_CAP } from "../../src/constants";
+import { SPEED_CAP } from "../constants";
 import {
   arrangeRally,
   captureReplay,
@@ -26,8 +26,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("plateaus at the speed ceiling and never exceeds it", async () => {

@@ -6,14 +6,14 @@
 // canvas — so a build that reports a title it never draws, or draws one it does
 // not report, fails here rather than passing on either half alone.
 //
-// The copy is the case's, from `src/constants.ts`, so this asserts the strings
-// the specification fixes rather than any wording of the check's own. Matching is
-// by substring, because a menu entry is commonly drawn with a selection marker
+// The copy is the case's, from the specification, so this asserts the strings the
+// specification fixes rather than any wording of the check's own. Matching is by
+// substring, because a menu entry is commonly drawn with a selection marker
 // beside it and that is a build's own presentation. Whether the screen lays out
 // well is the reviewer's, from the capture.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
+import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -27,19 +27,18 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("opens on the title and draws its name, tagline, and menu", async () => {
-  h.calls.length = 0;
-  await h.advance(1);
-  captureStill(h, "title");
+  const calls = await h.frameCalls();
+  await captureStill(h, "title");
 
-  expect(h.snapshot().screen).toBe("title");
-  expect(drewText(h.calls, TITLE_TEXT)).toBe(true);
-  expect(drewText(h.calls, TAGLINE_TEXT)).toBe(true);
+  expect((await h.snapshot()).screen).toBe("title");
+  expect(drewText(calls, TITLE_TEXT)).toBe(true);
+  expect(drewText(calls, TAGLINE_TEXT)).toBe(true);
   for (const item of TITLE_ITEMS) {
-    expect(drewText(h.calls, item)).toBe(true);
+    expect(drewText(calls, item)).toBe(true);
   }
 });

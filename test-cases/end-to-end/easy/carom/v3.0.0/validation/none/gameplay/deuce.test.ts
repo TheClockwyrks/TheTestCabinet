@@ -6,7 +6,7 @@
 // build's own win rule, never a fabricated end state.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
   captureReplay,
@@ -36,16 +36,16 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("plays on at a one-point lead and ends at two", async () => {
   await startPlaying(harness);
-  harness.debug.setScore(TIED_AT, TIED_AT);
+  await harness.debug.setScore(TIED_AT, TIED_AT);
 
   // First real point: 11-10, a one-point lead, so play continues.
-  arrangeGoal(harness, "right");
+  await arrangeGoal(harness, "right");
   const oneClear = await driveGoal(harness);
 
   expect(oneClear.hit).toBe(true);
@@ -57,14 +57,14 @@ it("plays on at a one-point lead and ends at two", async () => {
   // Second real point: 12-10, now the required lead, so the match ends. `serve`
   // leaves the post-point countdown; the launch is the build's own, so the
   // scenario is re-aimed once play is live again.
-  harness.debug.serve();
+  await harness.debug.serve();
   const live = await harness.until((s) => s.screen === "playing", {
     maxFrames: 60,
     poll: 1,
   });
   expect(live.hit).toBe(true);
 
-  arrangeGoal(harness, "right");
+  await arrangeGoal(harness, "right");
   // The deciding point, and only it: the one before it is the arrangement that
   // put the match at a one-point lead.
   const twoClear = await captureReplay(harness, "deuce", async () => {

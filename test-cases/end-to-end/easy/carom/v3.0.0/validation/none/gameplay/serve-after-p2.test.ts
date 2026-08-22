@@ -32,14 +32,14 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("serves toward player two after player one scores", async () => {
   await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  arrangeGoal(harness, "right");
+  await harness.debug.setScore(0, 0);
+  await arrangeGoal(harness, "right");
 
   // The point and the serve that answers it, as one continuous section: the
   // direction only means anything beside the point that decided it.
@@ -49,7 +49,7 @@ it("serves toward player two after player one scores", async () => {
     expect(point.snapshot.score.p1).toBe(1);
     expect(point.snapshot.screen).toBe("countdown");
 
-    harness.debug.serve();
+    await harness.debug.serve();
     const launched = await harness.until((s) => s.screen === "playing", {
       maxFrames: 60,
       poll: 1,
@@ -61,5 +61,9 @@ it("serves toward player two after player one scores", async () => {
     // on.
     expect(launched.snapshot.ball.vx).toBeGreaterThan(0);
   });
-  expect(harness.assetFailures).toEqual([]);
+  // And the page stayed quiet throughout: nothing the build threw, and nothing
+  // it logged as an error, while this harness was driving it. An engineless
+  // build loads no assets through a runtime, so there is no asset log to read —
+  // the browser's own is the wider reading, and it covers the whole drive.
+  expect(harness.pageErrors).toEqual([]);
 });

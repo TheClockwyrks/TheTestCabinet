@@ -9,7 +9,7 @@
 // it, which is the thing being graded.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { OBSTACLE_CENTERS, OBSTACLE_SWAY_AMP } from "../../src/constants";
+import { OBSTACLE_CENTERS, OBSTACLE_SWAY_AMP } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { PEAK_SWAY_T, poseObstacles } from "./harness";
 
@@ -41,14 +41,14 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("sways both obstacles vertically, in anti-phase", async () => {
   const { debug } = harness;
-  debug.reset();
-  debug.startMatch("versus");
+  await debug.reset();
+  await debug.startMatch("versus");
 
   // Both poses as one section: a pose is instantaneous and it is the FRAME after
   // it that recomputes the field, so the recording is the upright field followed
@@ -89,5 +89,6 @@ it("sways both obstacles vertically, in anti-phase", async () => {
     }
   });
 
-  expect(harness.assetFailures).toEqual([]);
+  // Nothing the page threw or logged as an error while this harness drove it.
+  expect(harness.pageErrors).toEqual([]);
 });

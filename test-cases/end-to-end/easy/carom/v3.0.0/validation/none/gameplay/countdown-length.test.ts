@@ -1,16 +1,17 @@
 // gameplay/countdown-length — the pre-serve countdown lasts the specified hold.
 //
-// The match is started FROM THE TITLE with menu keys, not through the debug
-// API's `startMatch`: that operation sets the hold itself, so a check that used
-// it would be measuring the case's own code rather than the build's. Confirming
-// the entry the player takes is what makes the duration the build's.
+// The match is started FROM THE TITLE with menu keys, not through the surface's
+// `startMatch`: the specification has that operation set the hold itself, so a
+// check that used it would be reading a pose the surface had just made rather
+// than the duration the build's own match start runs. Confirming the entry the
+// player takes is what makes the duration the build's.
 //
 // From there the real simulation is stepped ONE FRAME at a time until the ball
 // serves. At the harness's 120 Hz clock the hold is a whole number of frames, so
 // the count is the duration.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { HOLD_TIME } from "../../src/constants";
+import { HOLD_TIME } from "../constants";
 import {
   TICK_HZ,
   captureReplay,
@@ -43,14 +44,14 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("holds the ball for the pre-serve countdown, then serves", async () => {
   await startWithKeys(harness, "versus");
 
-  const start = harness.snapshot();
+  const start = await harness.snapshot();
   expect(start.screen).toBe("countdown");
   expect(start.ball.held).toBe(true);
 

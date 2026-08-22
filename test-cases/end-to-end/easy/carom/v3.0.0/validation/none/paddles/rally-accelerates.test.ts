@@ -8,7 +8,7 @@
 // the sibling `rally-caps` check.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { SPEED_CAP, SPEED_MULT } from "../../src/constants";
+import { SPEED_CAP, SPEED_MULT } from "../constants";
 import {
   arrangeRally,
   captureReplay,
@@ -29,8 +29,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("multiplies the ball's speed on every hit below the ceiling", async () => {

@@ -1,13 +1,14 @@
 // paddle-movement/speed-versus-p1 — player one's paddle speed in Versus.
 //
 // A Versus match is started from the title with menu keys, so both paddles are
-// human-driven and no control op is involved. Player one's movement key is held
-// for a known span and the displacement is measured back into a speed. Because
-// Versus has no AI, this also confirms the key leaves player two's paddle alone —
-// the common bug where one player's key drives both.
+// human-driven and no control op is involved; every key is pressed through
+// Chromium's own input pipeline the way a player's is. Player one's movement key
+// is held for a known span and the displacement is measured back into a speed.
+// Because Versus has no AI, this also confirms the key leaves player two's paddle
+// alone — the common bug where one player's key drives both.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -43,8 +44,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("moves player one's paddle at the paddle speed, and only that paddle", async () => {

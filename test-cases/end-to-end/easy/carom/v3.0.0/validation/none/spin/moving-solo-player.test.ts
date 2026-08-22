@@ -11,7 +11,7 @@
 // field edge and the clamp would pin it still, imparting no spin at all.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import {
   LEAD_TICKS,
   arrangePaddleHit,
@@ -48,13 +48,13 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("curves the ball off a downward swing of the human paddle", async () => {
   await startPlaying(harness, "solo");
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: CONTACT_CY,
     vy: PADDLE_SPEED,
     ballY: CONTACT_BALL_Y,

@@ -19,18 +19,18 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("pauses when the pause key is pressed during the countdown", async () => {
   await startWithKeys(harness, "solo");
 
-  expect(harness.snapshot().screen).toBe("countdown");
+  expect((await harness.snapshot()).screen).toBe("countdown");
 
   // `tap` presses, releases, and runs the one frame that delivers the edge.
   await harness.tap("Escape");
-  captureStill(harness, "paused");
+  await captureStill(harness, "paused");
 
-  expect(harness.snapshot().screen).toBe("paused");
+  expect((await harness.snapshot()).screen).toBe("paused");
 });

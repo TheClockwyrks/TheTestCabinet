@@ -8,7 +8,7 @@
 // float margin rather than a tolerance.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import {
   arrangeObstacleBounce,
   captureReplay,
@@ -45,20 +45,20 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
   await startPlaying(harness);
-  arrangeObstacleBounce(harness, {
+  await arrangeObstacleBounce(harness, {
     faceX: FACE_X,
     y: LANE_Y,
     from: "left",
     speed: APPROACH_SPEED,
   });
 
-  const before = harness.snapshot().ball.speed;
+  const before = (await harness.snapshot()).ball.speed;
   const bank = await captureReplay(harness, "bank", async () => {
     const rebound = await driveObstacleBounce(harness, "left");
     await harness.advance(DEPARTURE_TICKS);

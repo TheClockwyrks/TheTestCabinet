@@ -7,7 +7,7 @@
 // is whatever the build's own serve produced.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { SERVE_MAX_ANGLE, SERVE_SPEED } from "../../src/constants";
+import { SERVE_MAX_ANGLE, SERVE_SPEED } from "../constants";
 import {
   angleDeg,
   captureReplay,
@@ -46,18 +46,18 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("serves the ball at the base serve speed", async () => {
   const { debug } = harness;
-  debug.reset();
-  debug.startMatch("versus");
+  await debug.reset();
+  await debug.startMatch("versus");
 
   const launched = await captureReplay(harness, "serve", async () => {
     await harness.advance(HELD_TICKS);
-    debug.serve();
+    await debug.serve();
 
     const swept = await harness.until((s) => s.screen === "playing", {
       maxFrames: 60,
@@ -76,5 +76,9 @@ it("serves the ball at the base serve speed", async () => {
   expect(angleDeg(launched.snapshot.ball)).toBeLessThanOrEqual(
     (SERVE_MAX_ANGLE * 180) / Math.PI,
   );
-  expect(harness.assetFailures).toEqual([]);
+  // And the page stayed quiet throughout: nothing the build threw, and nothing
+  // it logged as an error, while this harness was driving it. An engineless
+  // build loads no assets through a runtime, so there is no asset log to read —
+  // the browser's own is the wider reading, and it covers the whole drive.
+  expect(harness.pageErrors).toEqual([]);
 });

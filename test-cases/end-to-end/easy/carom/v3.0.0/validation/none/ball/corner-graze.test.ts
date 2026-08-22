@@ -22,7 +22,7 @@ import {
   OBSTACLE_CENTERS,
   OBSTACLE_HH,
   SERVE_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   clearPaddles,
@@ -137,8 +137,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("reverses only the component normal to the face it grazed", async () => {
@@ -152,15 +152,15 @@ it("reverses only the component normal to the face it grazed", async () => {
   await captureReplay(harness, "graze", async () => {
     for (const graze of GRAZES) {
       const shot = shotFor(graze);
-      clearPaddles(harness);
-      harness.debug.setBall(0, { ...shot, spin: 0 });
+      await clearPaddles(harness);
+      await harness.debug.setBall(0, { ...shot, spin: 0 });
 
       const banked = await harness.until(
         (s) => Math.sign(s.ball.vx) !== Math.sign(shot.vx),
         { maxFrames: GRAZE_MAX, poll: 1 },
       );
       await harness.advance(SETTLE);
-      const out = harness.snapshot().ball;
+      const out = (await harness.snapshot()).ball;
       // `out` is frozen, so the flight recorded here reaches no assertion below.
       await harness.advance(DEPARTURE_TICKS);
 

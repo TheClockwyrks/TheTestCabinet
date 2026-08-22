@@ -8,7 +8,7 @@
 // still passes while one whose obstacles never turn fails.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../../src/constants";
+import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { angleDelta, poseObstacles, type ObstaclePose } from "./harness";
 
@@ -43,14 +43,14 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("rotates both obstacles about their own centers as the clock runs", async () => {
   const { debug } = harness;
-  debug.reset();
-  debug.startMatch("versus");
+  await debug.reset();
+  await debug.startMatch("versus");
 
   // Annotated rather than inferred: the pushes happen inside the recorded
   // section's closure, which is out of the flow the empty literal is widened by.
@@ -104,5 +104,6 @@ it("rotates both obstacles about their own centers as the clock runs", async () 
     }
   }
 
-  expect(harness.assetFailures).toEqual([]);
+  // Nothing the page threw or logged as an error while this harness drove it.
+  expect(harness.pageErrors).toEqual([]);
 });

@@ -4,7 +4,7 @@
 // paddle at the paddle speed, and leaves player one's alone.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -39,8 +39,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("moves player two's paddle at the paddle speed, and only that paddle", async () => {

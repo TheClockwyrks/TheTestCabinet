@@ -1,10 +1,10 @@
 // gameplay/serve-initial — the very first serve of a match travels toward player one.
 //
 // The match is opened the way a player opens one — menu keys at the title, never
-// `debug.startMatch` — because the case-provided `startMatch` sets `receiver`
-// itself, so a check that used it would be reading the case's own answer back
-// rather than the build's. Entering through the menu leaves the build's own
-// match-start code to decide who receives.
+// `debug.startMatch` — because the specification has that operation set
+// `receiver` itself, so a check that used it would be reading a pose the surface
+// had just made rather than the build's own answer. Entering through the menu
+// leaves the build's own match-start code to decide who receives.
 //
 // The pre-serve hold is then expired with `serve()`, which does not touch
 // `receiver`; the LAUNCH is the build's own, on the frame after, and the
@@ -16,12 +16,12 @@
 // passing on the mode that happened to be tested.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import type { Mode } from "../../src/game";
 import {
   captureReplay,
   createHarness,
   startWithKeys,
   type Harness,
+  type Mode,
 } from "../harness";
 
 /**
@@ -52,8 +52,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("serves toward player one to open a match", async () => {
@@ -62,11 +62,12 @@ it("serves toward player one to open a match", async () => {
       await startWithKeys(harness, mode);
       // The menu keys really did open a match, so the launch below belongs to a
       // match this check started rather than to a title screen that never left.
-      expect(harness.debug.snapshot().screen).toBe("countdown");
-      expect(harness.debug.snapshot().mode).toBe(mode);
+      const opened = await harness.debug.snapshot();
+      expect(opened.screen).toBe("countdown");
+      expect(opened.mode).toBe(mode);
 
       await harness.advance(HELD_TICKS);
-      harness.debug.serve();
+      await harness.debug.serve();
       const launched = await harness.until((s) => s.screen === "playing", {
         maxFrames: 60,
         poll: 1,
@@ -81,5 +82,9 @@ it("serves toward player one to open a match", async () => {
       expect(launched.snapshot.ball.vx).toBeLessThan(0);
     }
   });
-  expect(harness.assetFailures).toEqual([]);
+  // And the page stayed quiet throughout: nothing the build threw, and nothing
+  // it logged as an error, while this harness was driving it. An engineless
+  // build loads no assets through a runtime, so there is no asset log to read —
+  // the browser's own is the wider reading, and it covers the whole drive.
+  expect(harness.pageErrors).toEqual([]);
 });

@@ -8,7 +8,7 @@
 // is what the real bounce produced. The steep case is the sibling `hit-edge`.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { FIELD_CY } from "../constants";
 import {
   LEAD_TICKS,
   angleDeg,
@@ -45,13 +45,13 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("returns the ball level from the centre of a still paddle", async () => {
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,
     ballY: FIELD_CY,

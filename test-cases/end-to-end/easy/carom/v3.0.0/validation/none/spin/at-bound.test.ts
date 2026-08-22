@@ -10,11 +10,7 @@
 // motion, not merely that it never adds spin at all.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import {
-  PADDLE_MAX_CY,
-  PADDLE_SPEED,
-  SPIN_FROM_PADDLE,
-} from "../../src/constants";
+import { PADDLE_MAX_CY, PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import {
   LEAD_TICKS,
   arrangePaddleHit,
@@ -74,15 +70,15 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("imparts no spin from a bound-pinned paddle, but does from a free one", async () => {
   // The pinned contact: the paddle sits on the bottom clamp with the movement
   // still driving it further down, so it cannot move at all.
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: PADDLE_MAX_CY,
     vy: PADDLE_SPEED,
     ballY: PADDLE_MAX_CY,
@@ -106,7 +102,7 @@ it("imparts no spin from a bound-pinned paddle, but does from a free one", async
   // centre the swing would have to begin above the field edge, where the clamp
   // would pin it still, which is the very condition this half is the control FOR.
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FREE_CONTACT_CY,
     vy: PADDLE_SPEED,
     ballY: FREE_CONTACT_BALL_Y,

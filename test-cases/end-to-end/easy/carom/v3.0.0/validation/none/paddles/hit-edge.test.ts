@@ -6,7 +6,7 @@
 // paddle. The straight case is the sibling `hit-center`.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { FIELD_CY, MAX_BOUNCE_ANGLE, PADDLE_HALF } from "../../src/constants";
+import { FIELD_CY, MAX_BOUNCE_ANGLE, PADDLE_HALF } from "../constants";
 import {
   LEAD_TICKS,
   angleDeg,
@@ -44,13 +44,13 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("deflects the ball steeply off the extreme edge of a still paddle", async () => {
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,
     ballY: FIELD_CY + PADDLE_HALF,

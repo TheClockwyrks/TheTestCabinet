@@ -38,18 +38,18 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("suspends a ball in flight for as long as the game is paused", async () => {
   await arrangeLiveBall(h, { x: 500, y: 360, vx: 400, vy: -120 });
-  const launched = h.snapshot().ball;
+  const launched = (await h.snapshot()).ball;
 
   const paused = await captureReplay(h, "suspended", async () => {
     await h.advance(FLIGHT_TICKS);
     await h.tap("Escape");
-    const at = h.snapshot();
+    const at = await h.snapshot();
     await h.advance(PAUSED_TICKS);
     return at;
   });
@@ -59,7 +59,7 @@ it("suspends a ball in flight for as long as the game is paused", async () => {
     Math.hypot(paused.ball.x - launched.x, paused.ball.y - launched.y),
   ).toBeGreaterThan(10);
 
-  const later = h.snapshot();
+  const later = await h.snapshot();
 
   expect(later.screen).toBe("paused");
   expect(later.ball.x).toBeCloseTo(paused.ball.x, 1);

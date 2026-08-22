@@ -6,7 +6,7 @@
 // it. An AI that moves faster than it should blocks it and fails here.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_MAX_CY, SPEED_CAP } from "../../src/constants";
+import { PADDLE_MAX_CY, SPEED_CAP } from "../constants";
 import {
   arrangeAiScenario,
   captureReplay,
@@ -38,8 +38,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("lets a fast shot placed out of reach get past it", async () => {

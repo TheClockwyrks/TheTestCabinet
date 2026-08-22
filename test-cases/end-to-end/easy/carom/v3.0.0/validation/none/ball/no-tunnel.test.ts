@@ -6,20 +6,20 @@
 // the ceiling checks exactly what the integrator is required to survive, rather
 // than an impossible value no build is obliged to handle.
 //
-// WHY EACH PROBE RUNS TWICE. Under this runtime the SIZE of a frame is not the
-// build's to choose: the runtime hands the game whatever elapsed time the last
-// frame really took, and a game that resolves collisions once per frame is safe
+// WHY EACH PROBE RUNS TWICE. The SIZE of a frame is not the build's to choose: a
+// browser hands a page whatever elapsed time the last frame really took, and the
+// specification requires the same interval to reach the same state however it was
+// divided into frames — so a game that resolves collisions once per frame is safe
 // only while that time stays small. At the fine cadence the rest of this suite
 // uses, a ball at the ceiling speed moves eight pixels a frame — less than the
 // width of every object on the field, so nothing tunnels whatever the build does
 // and the check would be vacuous. The coarse step below is an ordinary bad
-// moment on a real machine (twenty frames a second, well inside the runtime's own
-// delta clamp), and there the ball crosses far more than an obstacle's width in
-// one frame. A build that sub-steps its integration is unaffected; a build that
+// moment on a real machine (twenty frames a second, a stall any page can be
+// handed), and there the ball crosses far more than an obstacle's width in one
+// frame. A build that sub-steps its integration is unaffected; a build that
 // integrates once per frame puts the ball out the far side.
 
 import { afterEach, expect, it } from "vitest";
-import { ConstantClock } from "../../src/host";
 import {
   BALL_R,
   FIELD_CX,
@@ -29,8 +29,9 @@ import {
   OBSTACLE_CENTERS,
   P1_X1,
   SPEED_CAP,
-} from "../../src/constants";
+} from "../constants";
 import {
+  ConstantClock,
   PARKED_CY,
   TICK_MS,
   captureReplay,
@@ -81,8 +82,8 @@ const DEPARTURE_MS = 350;
 
 const live: Harness[] = [];
 
-afterEach(() => {
-  while (live.length > 0) live.pop()?.dispose();
+afterEach(async () => {
+  for (const harness of live.splice(0)) await harness.dispose();
 });
 
 async function harnessAt(stepMs: number): Promise<Harness> {
@@ -95,8 +96,8 @@ async function harnessAt(stepMs: number): Promise<Harness> {
 it("rebounds off an obstacle at the ceiling speed", async () => {
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
-    clearPaddles(harness);
-    harness.debug.setBall(0, {
+    await clearPaddles(harness);
+    await harness.debug.setBall(0, {
       x: FACE_X - OBSTACLE_RUN_UP,
       y: LANE_Y,
       vx: SPEED_CAP,
@@ -132,9 +133,9 @@ it("rebounds off a paddle at the ceiling speed rather than scoring through it", 
     const harness = await harnessAt(stepMs);
     // The run-up rides the mid-field lane, which clears both obstacles; the far
     // paddle is parked out of it so it cannot interfere.
-    harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-    harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
-    harness.debug.setBall(0, {
+    await harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
+    await harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
+    await harness.debug.setBall(0, {
       x: PADDLE_START_X,
       y: FIELD_CY,
       vx: -SPEED_CAP,
@@ -161,9 +162,9 @@ it("rebounds off a paddle at the ceiling speed rather than scoring through it", 
 it("rebounds off a wall at the ceiling speed and stays on the field", async () => {
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
-    clearPaddles(harness);
+    await clearPaddles(harness);
     // Straight up the field's centre line, clear of both obstacles.
-    harness.debug.setBall(0, {
+    await harness.debug.setBall(0, {
       x: FIELD_CX,
       y: WALL_START_Y,
       vx: 0,

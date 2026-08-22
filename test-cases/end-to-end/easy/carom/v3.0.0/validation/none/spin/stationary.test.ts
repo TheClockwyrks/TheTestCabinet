@@ -5,7 +5,7 @@
 // the bounce, and the spin it does or does not add, are the build's own physics.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { FIELD_CY } from "../constants";
 import {
   LEAD_TICKS,
   arrangePaddleHit,
@@ -41,13 +41,13 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("imparts no spin from a still paddle", async () => {
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,
     ballY: FIELD_CY,

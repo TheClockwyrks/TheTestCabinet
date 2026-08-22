@@ -33,14 +33,14 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("gives player two the point when the ball leaves the left goal", async () => {
   await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  arrangeGoal(harness, "left");
+  await harness.debug.setScore(0, 0);
+  await arrangeGoal(harness, "left");
 
   const point = await captureReplay(harness, "goal", async () => {
     const resolved = await driveGoal(harness);

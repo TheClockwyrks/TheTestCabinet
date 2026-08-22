@@ -5,9 +5,15 @@
 // The match is started from the title with real key events and then played into a
 // live rally — past the pre-serve hold, so what is paused is a match in flight
 // rather than its countdown, which is the `gameplay/pause-during-countdown`
-// item's separate point. The key event is dispatched at the target the runtime
-// listens on, so the action is raised by the binding the case declares rather
-// than by anything this check reaches into.
+// item's separate point. The key is pressed through Chromium's own input
+// pipeline, so what reaches the build is a browser-trusted DOM key event on the
+// real page rather than a synthetic one posed at the event target a runtime
+// listens on, and the action is raised by the binding the case declares rather
+// than by anything this check reaches into. The keyboard that reads it is the
+// build's own — `specs/instrumentation.md` puts it in the runtime layer an
+// engineless build supplies, and gives the surface no keyboard operation at
+// all — so the whole path from a physical key to a paused match is exercised,
+// which makes this check stronger here rather than weaker.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
@@ -40,8 +46,8 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("pauses a live Versus match when KeyP is pressed", async () => {
@@ -50,13 +56,13 @@ it("pauses a live Versus match when KeyP is pressed", async () => {
 
   await captureReplay(h, "pause", async () => {
     await h.advance(LIVE_TICKS);
-    expect(h.snapshot().screen).toBe("playing");
+    expect((await h.snapshot()).screen).toBe("playing");
 
     await h.tap("KeyP");
-    expect(h.snapshot().screen).toBe("paused");
+    expect((await h.snapshot()).screen).toBe("paused");
 
     // And it stays paused: the press opened a screen, it did not blink one.
     await h.advance(PAUSED_TICKS);
   });
-  expect(h.snapshot().screen).toBe("paused");
+  expect((await h.snapshot()).screen).toBe("paused");
 });

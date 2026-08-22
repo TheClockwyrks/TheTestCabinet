@@ -1,12 +1,13 @@
 // paddle-movement/speed-solo-player — the human paddle's speed in Solo.
 //
 // The match is started from the title with menu keys, so the game stays under
-// normal player control — no control op is ever called and the paddles respond to
-// held input exactly as they do for a player. A movement key is then held for a
-// known span and the displacement is measured back into a speed.
+// normal player control — no control op is ever called, every key is pressed
+// through Chromium's own input pipeline the way a player's is, and the paddles
+// respond to held input exactly as they do for a player. A movement key is then
+// held for a known span and the displacement is measured back into a speed.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -42,8 +43,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("moves the human paddle at the paddle speed while a key is held", async () => {

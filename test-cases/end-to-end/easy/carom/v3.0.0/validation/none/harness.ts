@@ -1,48 +1,55 @@
 // Carom — the shared validator harness. CASE-PROVIDED.
 //
-// Every check in this suite is an ordinary vitest test that runs IN THE SAME
-// PROCESS as the build. It imports the runtime and the build's own modules,
-// creates a runtime over a canvas it owns and a clock it chose, and steps the
-// game with `engine.advance`. Nothing drives a browser, nothing polls, and no
-// wall-clock time passes: a check asks for a number of frames and gets exactly
-// that number, at exactly the deltas its clock supplied.
+// Every check in this suite is an ordinary vitest test that drives the built site
+// IN A REAL BROWSER. There is nothing to import: an engineless run seeds no
+// `src/` at all, so the build wrote its own frame loop, its own canvas fit, its
+// own keyboard, its own audio, and its own `window.__carom` — and the only place
+// all of that exists is a page that has loaded the bundle. So the project serves
+// `dist/`, loads it in Chromium, and reaches the game the way anything reaches
+// it: over the surface the specification told the build to install.
 //
-// WHAT A CHECK READS. The game's own state (through `src/debug.ts`'s `snapshot`),
-// the runtime's frame counter, the events the runtime broadcast, and — for the
-// rendering checks — the pixels on the canvas or the calls the 2D context
-// received. Nothing here fabricates an outcome: the scenario helpers below only
-// ARRANGE the world through `src/debug.ts`, and the real `update` the build wrote
-// is what runs from there.
+// IT IS STILL A VITEST PROJECT, AND THAT IS DELIBERATE. The runner locates the
+// build output before it chooses between the vitest and browser paths, so `dist/`
+// is on disk by the time this project runs. Staying a vitest project is what lets
+// the case name ONE script per review item and have it resolve under either
+// engine — `validation/gameplay/serve-speed.test.ts` is the same path whichever
+// runtime the run selected — and what keeps `format = 2` resolution passing.
 //
-// WHY `src/debug.ts` RATHER THAN RAW ASSIGNMENT. The case supplies that module,
-// so its operations are the same in every build: `startMatch` opens on the
-// pre-serve countdown, a control op takes the paddles from the player and the AI,
-// a posed `vy` persists across frames, and `reset` gives everything back. Posing
-// through it is how a scenario is reproducible, and it is the seam the case's
-// specification documents.
+// WHAT A CHECK READS. The game's own state (through `window.__carom`'s
+// `snapshot`), the frames the harness itself drove, the operations the build
+// issued against its 2D context, the pixels those operations left on the canvas,
+// and the sounds the build emitted. Nothing here fabricates an outcome: the
+// scenario helpers below only ARRANGE the world through the surface, and the real
+// update the build wrote is what runs from there.
 //
-// THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
-// 120 Hz tick and every duration below is a whole number of them — which is the
-// unit the tolerances in this suite were established in. A check that is
-// specifically about the step size (gameplay/delta-time-independent) builds its
-// own harnesses with clocks of its own.
+// THE CLOCK IS THE SURFACE'S. Nothing outside an engineless build owns its loop,
+// so `specs/instrumentation.md` puts the clock on the surface: `setAutoStep(false)`
+// takes the game off real time and `advance(seconds, frames)` runs whole frames
+// of a chosen length. Every harness opens by taking the game off the clock, so a
+// check asks for a number of frames and gets exactly that number — no polling, no
+// waiting, and no measurement of the machine it ran on. The one check that is
+// ABOUT the loop running itself (`gameplay/advances-in-real-time`) hands it back
+// with `runFor`.
+//
+// EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
+// between a suite here and its counterpart under an engine: `await h.snapshot()`
+// rather than `h.snapshot()`, `await h.debug.setBall(...)` rather than
+// `h.debug.setBall(...)`. The scenarios, the tolerances, and the assertions are
+// the same ones, because they are the case's rather than the runtime's.
+//
+// ONE SERVER, ONE BROWSER, ONE PAGE PER HARNESS. `globalSetup.ts` starts the
+// server and the browser once for the whole project; this module connects to
+// them from inside each suite's worker and opens a page per harness, so every
+// check drives a build that has just started and no check can be affected by
+// what the one before it pressed, opened or muted.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { createCanvas, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
-import { expect } from "vitest";
-import {
-  ConstantClock,
-  createHost,
-  type Clock,
-  type Host,
-  type RecordedFrame,
-  type Recording,
-  type SurfaceMetrics,
-  type Viewport,
-} from "../src/host";
+import { expect, inject } from "vitest";
+import type { Browser, BrowserContext, Page } from "playwright";
+import { connectChromium } from "./chromium";
 import {
   BALL_R,
   COLOR,
@@ -50,27 +57,188 @@ import {
   FIELD_CY,
   FIELD_H,
   FIELD_W,
-  LAYOUT,
+  OBSTACLE_CENTERS,
+  P1_X0,
   P1_X1,
   P2_X0,
-} from "../src/constants";
-import {
-  createDebugApi,
-  type CaromDebugApi,
-  type CaromSnapshot,
-} from "../src/debug";
-import { game, type CaromState, type Mode, type Side } from "../src/game";
+  P2_X1,
+  TRAIL_TIME,
+  UNBOUND_KEY,
+} from "./constants";
+
+declare module "vitest" {
+  export interface ProvidedContext {
+    /** Where the built site is served, from `globalSetup.ts`. */
+    caromUrl: string;
+    /** The one Chromium every suite worker connects to. */
+    caromBrowserWs: string;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* The contract the build owes                                                */
+/* -------------------------------------------------------------------------- */
+
+/** The handle an engineless build installs its surface on. */
+export const HANDLE = "__carom";
 
 /**
- * The frame the suite steps in, in milliseconds.
- *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
- * fixes no timestep, because the runtime hands the game whatever elapsed time a
- * frame really took. Fixing it here makes a duration a whole number of frames, so
- * a tolerance can be stated in ticks and mean the same thing on every machine.
+ * Every operation `specs/instrumentation.md` requires on the surface under this
+ * engine, including the two clock operations that exist only here.
  */
+export const REQUIRED_OPS = [
+  "setAutoStep",
+  "advance",
+  "reset",
+  "snapshot",
+  "startMatch",
+  "serve",
+  "setScore",
+  "setPaddle",
+  "setBall",
+  "setAiControl",
+] as const;
+
+/** The version the surface reports (`CAROM_DEBUG_VERSION`). */
+export const CAROM_DEBUG_VERSION = 1;
+
+/** One side of the field. */
+export type Side = "left" | "right";
+
+/** The two ways to play. */
+export type Mode = "solo" | "versus";
+
+/** The state a snapshot reports, as `specs/instrumentation.md` documents it. */
+export interface CaromSnapshot {
+  version: number;
+  screen: "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
+  mode: Mode;
+  score: { p1: number; p2: number };
+  winner: Side | null;
+  muted: boolean;
+  paddles: Record<Side, { cy: number; vy: number }>;
+  ball: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    speed: number;
+    spin: number;
+    held: boolean;
+  };
+  simTime: number;
+  /** The gyre variant alone; see `gyre/harness.ts`. */
+  obstacles?: { cx: number; cy: number; theta: number }[];
+}
+
+/** The operations a check poses the game through. Every one crosses into the page. */
+export interface CaromDebugApi {
+  setAutoStep(enabled: boolean): Promise<void>;
+  advance(seconds: number, frames?: number): Promise<void>;
+  reset(options?: { seed?: number }): Promise<void>;
+  snapshot(): Promise<CaromSnapshot>;
+  startMatch(mode: Mode): Promise<void>;
+  serve(): Promise<void>;
+  setScore(p1: number, p2: number): Promise<void>;
+  setPaddle(side: Side, state: { cy?: number; vy?: number }): Promise<void>;
+  setBall(
+    index: number,
+    state: { x?: number; y?: number; vx?: number; vy?: number; spin?: number },
+  ): Promise<void>;
+  setAiControl(enabled: boolean): Promise<void>;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The step schedule                                                          */
+/* -------------------------------------------------------------------------- */
+//
+// The suite chooses the size of a frame, because the specification deliberately
+// fixes none: every rate in this game is per second and is integrated against the
+// elapsed time of the frame, so a build must reach the same place however that
+// time was divided. The default is a steady 120 Hz, which makes every duration
+// below a whole number of frames — the unit the tolerances in this suite were
+// established in. The check that is ABOUT the step size
+// (`gameplay/delta-time-independent`) drives the same scenario under the other
+// two schedules here.
+
+/** A source of frame deltas, in milliseconds. */
+export interface Clock {
+  /** The next frame's delta, in ms. */
+  delta(): number;
+}
+
+/** The frame the suite steps in, in milliseconds. */
 export const TICK_HZ = 120;
 export const TICK_MS = 1000 / TICK_HZ;
+
+/** Every frame the same length. */
+export class ConstantClock implements Clock {
+  constructor(private readonly ms: number) {}
+  delta(): number {
+    return this.ms;
+  }
+}
+
+/** A repeating pattern of steps: what an uneven but predictable display gives. */
+export class SequenceClock implements Clock {
+  private index = 0;
+  constructor(private readonly stepsMs: readonly number[]) {
+    if (stepsMs.length === 0) {
+      throw new RangeError("SequenceClock needs at least one step, got none");
+    }
+  }
+  delta(): number {
+    const step = this.stepsMs[this.index % this.stepsMs.length];
+    this.index += 1;
+    return step;
+  }
+}
+
+/**
+ * A hash of the seed and the frame index, avalanched so that neighbouring
+ * indices — which is all a frame counter ever produces — do not yield
+ * neighbouring outputs. The constants and the order are the engine's
+ * (`packages/simple-2d/src/clocks.ts`), so a seed means the same thing here.
+ */
+function hash32(seed: number, index: number): number {
+  let h =
+    (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(index | 0, 0x85ebca6b)) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  h = Math.imul(h, 0x21f0aaad) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  h = Math.imul(h, 0x735a2d97) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  return h >>> 0;
+}
+
+/**
+ * A seeded draw from a range, indexed by frame: the clock that stands in for a
+ * real machine under load. The seed is mandatory, because a claim that a build is
+ * delta-time independent is worth making only when the failing case replays.
+ */
+export class JitterClock implements Clock {
+  private index = 0;
+  private readonly spanMs: number;
+  constructor(
+    private readonly minMs: number,
+    maxMs: number,
+    private readonly seed: number,
+  ) {
+    if (maxMs < minMs) {
+      throw new RangeError(
+        `JitterClock needs maxMs >= minMs, got minMs ${minMs} and maxMs ${maxMs}`,
+      );
+    }
+    this.spanMs = maxMs - minMs;
+  }
+  delta(): number {
+    const index = this.index;
+    this.index += 1;
+    return (
+      this.minMs + (hash32(this.seed, index) / 0x1_0000_0000) * this.spanMs
+    );
+  }
+}
 
 /** Seconds of simulated time in `ticks` frames of the default clock. */
 export function seconds(ticks: number): number {
@@ -96,25 +264,29 @@ export type DrawCall =
   | { kind: "call"; method: string; args: unknown[] }
   | { kind: "set"; property: string; value: unknown };
 
-/** One cue the build played, as the runtime announced it. */
-export interface PlayedCue {
-  cue: string;
+/** A sound the build emitted, and the frame of the drive it emitted it on. */
+export interface TimedCue {
+  /** The frame it sounded on, 1-based, as {@link Harness.frame} reports. */
+  frame: number;
+  /** The frame loop's simulated time at that frame, in milliseconds. */
   t: number;
-  gain: number;
 }
 
-/** One asset the build asked for and did not get. */
-export interface AssetFailure {
-  path: string;
-  reason: string;
+/** How the field is mapped onto the canvas: one uniform scale and a letterbox. */
+export interface Viewport {
+  width: number;
+  height: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
 }
 
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to 120 Hz. */
   clock?: Clock;
-  /** The element's laid-out CSS width. Defaults to the logical field width. */
+  /** The window's CSS width. Defaults to the logical field width. */
   cssWidth?: number;
-  /** The element's laid-out CSS height. Defaults to the logical field height. */
+  /** The window's CSS height. Defaults to the logical field height. */
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
@@ -135,71 +307,599 @@ export interface UntilResult {
 }
 
 export interface Harness {
-  readonly engine: Host<CaromState>;
-  /** The live state the game built. Read it, or pose it through `debug`. */
-  readonly state: CaromState;
-  /** The case's own debug surface, over this harness's state. */
-  readonly debug: CaromDebugApi;
-  /** The real 2D context, for `getImageData`. Draw calls also reach it. */
-  readonly ctx: SKRSContext2D;
+  /** The page the build is running in. For a check that needs Playwright itself. */
+  readonly page: Page;
   /**
-   * The surface the runtime drew into, holding the last frame that ran.
+   * The surface the BUILD installed, as operations that cross into the page.
    *
-   * Exposed for {@link captureStill}, which encodes it: a still output is the
-   * picture the build actually put on the canvas, and the only place that picture
-   * exists is here.
+   * Read off `window.__carom` and never constructed here — see
+   * {@link unexposedSurface}.
    */
-  readonly canvas: Canvas;
-  /** Every call and property set the render made, oldest first. */
-  readonly calls: DrawCall[];
-  /** Every cue the build played, oldest first. */
-  readonly cues: PlayedCue[];
-  /** Every asset the build failed to load, oldest first. */
-  readonly assetFailures: AssetFailure[];
+  readonly debug: CaromDebugApi;
+  /**
+   * Why the build's surface cannot be driven, or `null` when it can.
+   *
+   * A fault here is the build's: the surface is missing, or it is missing an
+   * operation the specification requires. Every operation fails by assertion with
+   * this message rather than throwing, so the fault lands on the points whose
+   * checks reach the game through the surface.
+   */
+  readonly surfaceFault: string | null;
+  /** Everything the page logged to `console.error`, or threw, oldest first. */
+  readonly pageErrors: string[];
 
-  /** A fresh read of the game's state through the case's `snapshot`. */
-  snapshot(): CaromSnapshot;
-  /** Run `frames` frames back to back. */
+  /** The frames this harness has driven, 1-based, as a recorded frame counts them. */
+  frame(): number;
+  /** The simulated time those frames covered, in milliseconds. */
+  timeMs(): number;
+
+  /** A fresh read of the game's state through the build's `snapshot`. */
+  snapshot(): Promise<CaromSnapshot>;
+  /** Run `frames` frames back to back, each the length the clock says. */
   advance(frames: number): Promise<void>;
   /** Advance until `predicate` holds, sampling every `poll` frames. */
   until(
     predicate: (snapshot: CaromSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
+  /** Hand the game back to its own frame loop for `ms` of real time, then take it back. */
   runFor(ms: number): Promise<void>;
 
   /** Press a key and leave it down, as a player holding it would. */
-  hold(code: string): void;
+  hold(code: string): Promise<void>;
   /** Release a key held by `hold`. */
-  release(code: string): void;
+  release(code: string): Promise<void>;
   /**
-   * Press and release a key, then run the one frame that delivers its edge.
+   * Press a key, run the one frame that delivers it, and release it.
    *
-   * The runtime discards an edge nothing consumed by the end of the frame it was
-   * armed in, so a tap that ran no frame would never reach the game.
+   * A press that ran no frame would never reach the game, and a press released
+   * before a frame ran would be invisible to a build that reads its keyboard by
+   * comparing held state between frames — so the frame goes between the two.
    */
   tap(code: string): Promise<void>;
 
+  /** Run exactly one frame and hand back every operation its render issued. */
+  frameCalls(): Promise<DrawCall[]>;
+  /** Reflect the surface without invoking it: `typeof` for each name, and the version. */
+  probe(
+    names: readonly string[],
+  ): Promise<{ version: unknown; ops: Record<string, string> }>;
+
+  /** How the field is mapped onto this harness's canvas. */
+  viewport(): Viewport;
   /** Where a logical point lands in the canvas's backing store. */
   device(x: number, y: number): { x: number; y: number };
   /** The device pixel under a logical point, as `[r, g, b, a]`. */
-  pixel(x: number, y: number): [number, number, number, number];
+  pixel(x: number, y: number): Promise<[number, number, number, number]>;
+  /** Many logical points at once, in one crossing into the page. */
+  pixels(
+    points: readonly { x: number; y: number }[],
+  ): Promise<[number, number, number, number][]>;
+  /** A pixel addressed in the canvas's own backing store, past the fit. */
+  devicePixel(x: number, y: number): Promise<[number, number, number, number]>;
+  /** The canvas's backing store size, as the build sized it. */
+  surface(): Promise<{ width: number; height: number; dpr: number }>;
 
-  /** Drop the runtime's listeners and release the canvas. */
-  dispose(): void;
+  /** Give the build a real, browser-trusted gesture, so its audio can open. */
+  armAudio(): Promise<void>;
+
+  /** Release anything held, and let the page go. */
+  dispose(): Promise<void>;
 }
 
-/** A `KeyboardEvent`-shaped event: the runtime reads `code` and `repeat`. */
-class KeyEvent extends Event {
-  readonly code: string;
-  readonly repeat: boolean;
+/* ---- The page ------------------------------------------------------------- */
 
-  constructor(type: "keydown" | "keyup", code: string, repeat = false) {
-    super(type);
-    this.code = code;
-    this.repeat = repeat;
+/** The init scripts injected before any of the build's own script runs. */
+const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
+
+/** This module's directory: the validator project's root. */
+const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * How long the surface is waited for before the build is called non-conformant.
+ *
+ * Generous against a conformant build and cheap against one: the wait is a poll
+ * that returns the instant the global appears, and a build installs it while its
+ * entry module runs, so a page that has fired `load` has either installed it
+ * already or is not going to. What the ceiling really bounds is the cost of a
+ * build with no surface at all, which pays it once per harness — and there is a
+ * cap on the whole suite run, so a wait long enough to exhaust it would turn
+ * "every point this decides failed" into "the validators did not run", which
+ * tells a reviewer far less.
+ */
+const SURFACE_TIMEOUT_MS = 5_000;
+
+let browserPromise: Promise<Browser> | null = null;
+
+async function sharedBrowser(): Promise<Browser> {
+  browserPromise ??= connectChromium(inject("caromBrowserWs"));
+  return browserPromise;
+}
+
+/**
+ * One browser context per WINDOW SHAPE, shared by every harness of that shape in
+ * this file, and one PAGE per harness inside it.
+ *
+ * The split is what the init scripts force and what correctness wants. The
+ * recorder and the audio probe are installed on the CONTEXT, so every page it
+ * opens is instrumented before a line of the build's script runs, and a context
+ * is also where the viewport and the device pixel ratio are fixed — which is the
+ * one thing `rendering/window-fit` varies. Everything else about a harness is the
+ * page: a fresh one opens on a build that has just started, with no key held, no
+ * audio context opened, and the mute preference back off, which is a stronger
+ * guarantee than any reset the surface offers, since `reset()` deliberately
+ * leaves muting alone.
+ *
+ * A page per harness rather than a page reused between them, because a check may
+ * legitimately hold two harnesses at once — `ball/no-tunnel` runs the same probe
+ * under two step sizes — and a harness whose page had been taken over by a later
+ * one would read someone else's game while looking exactly like it worked.
+ */
+const contexts = new Map<string, BrowserContext>();
+
+/** Every page this worker opened, so none is left behind in the shared browser. */
+const openPages = new Set<Page>();
+
+function shapeKey(cssWidth: number, cssHeight: number, dpr: number): string {
+  return `${cssWidth}x${cssHeight}@${dpr}`;
+}
+
+/** The context for a window of this shape, opened and instrumented on demand. */
+async function contextFor(
+  cssWidth: number,
+  cssHeight: number,
+  dpr: number,
+): Promise<BrowserContext> {
+  const key = shapeKey(cssWidth, cssHeight, dpr);
+  const existing = contexts.get(key);
+  if (existing !== undefined) return existing;
+
+  const browser = await sharedBrowser();
+  const context = await browser.newContext({
+    viewport: { width: cssWidth, height: cssHeight },
+    deviceScaleFactor: dpr,
+  });
+  for (const name of INIT_SCRIPTS) {
+    await context.addInitScript(readFileSync(join(PROJECT_ROOT, name), "utf8"));
   }
+  contexts.set(key, context);
+  return context;
+}
+
+/**
+ * Shut everything this worker opened.
+ *
+ * Registered from `setup.ts` as an `afterAll`, so a suite file never has to think
+ * about it and a worker cannot leave a page behind in the shared browser.
+ */
+export async function closeWorkerBrowser(): Promise<void> {
+  for (const page of openPages) await page.close().catch(() => undefined);
+  openPages.clear();
+  for (const context of contexts.values()) {
+    await context.close().catch(() => undefined);
+  }
+  contexts.clear();
+  const browser = browserPromise;
+  browserPromise = null;
+  if (browser !== null) await (await browser).close().catch(() => undefined);
+}
+
+/* ---- The surface a build never installed ---------------------------------- */
+
+/**
+ * A stand-in for a surface that is missing or incomplete: every operation on it
+ * fails the check that reached for it, with the fault named.
+ *
+ * A proxy rather than a hand-written stub, because the surface is not a closed
+ * list — the gyre variant adds `setObstacleClock` — and a stub written against
+ * the common surface would report a gyre-only operation as merely absent rather
+ * than as the consequence of the build's missing install.
+ *
+ * Keys that belong to the MACHINERY rather than to a check are answered with
+ * `undefined` instead: awaiting a value probes `then`, and vitest's own error
+ * formatting probes symbols and `constructor`. Failing those would replace the
+ * verdict below with noise from the machinery that was trying to report it.
+ */
+function unexposedSurface(reason: string): CaromDebugApi {
+  return new Proxy({} as CaromDebugApi, {
+    get: (_target, property): unknown => {
+      if (typeof property === "symbol") return undefined;
+      if (property === "then" || property === "constructor") return undefined;
+      return () => expect.fail(reason);
+    },
+  });
+}
+
+/** What is wrong with the surface this page installed, or `null` when nothing is. */
+async function readSurfaceFault(page: Page): Promise<string | null> {
+  const preamble =
+    `this build never installed a usable debug and automation surface, so nothing ` +
+    `can reach the game: specs/instrumentation.md requires the finished surface on ` +
+    `window.${HANDLE} as soon as the game has initialized`;
+  try {
+    await page.waitForFunction(
+      (handle) =>
+        typeof (window as never)[handle] === "object" &&
+        (window as never)[handle] !== null,
+      HANDLE,
+      { timeout: SURFACE_TIMEOUT_MS },
+    );
+  } catch {
+    return `${preamble}. window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded.`;
+  }
+  const missing = await page.evaluate(
+    ([handle, ops]) => {
+      const target = (
+        window as unknown as Record<string, Record<string, unknown>>
+      )[handle];
+      return ops.filter((op) => typeof target[op] !== "function");
+    },
+    [HANDLE, [...REQUIRED_OPS]] as const,
+  );
+  if (missing.length > 0) {
+    return `${preamble}. window.${HANDLE} is installed but carries no ${missing
+      .map((op) => `${op}()`)
+      .join(", ")}.`;
+  }
+  return null;
+}
+
+/* ---- Building one --------------------------------------------------------- */
+
+/**
+ * Load the built site in a browser, take the game off the wall clock, and hand
+ * back everything a check reads.
+ *
+ * The default shape is the field's own size at one device pixel per CSS pixel, so
+ * a logical coordinate and a canvas pixel are the same thing and no check but
+ * `rendering/window-fit` has to think about the fit at all.
+ */
+export async function createHarness(
+  options: HarnessOptions = {},
+): Promise<Harness> {
+  const cssWidth = options.cssWidth ?? FIELD_W;
+  const cssHeight = options.cssHeight ?? FIELD_H;
+  const dpr = options.dpr ?? 1;
+  const clock = options.clock ?? new ConstantClock(TICK_MS);
+  const context = await contextFor(cssWidth, cssHeight, dpr);
+  const page = await context.newPage();
+  openPages.add(page);
+
+  // Whatever this page throws or logs as an error while THIS harness drives it.
+  // The page belongs to one harness, so the log cannot pick up what some other
+  // check provoked.
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    pageErrors.push(String(error.message || error));
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") pageErrors.push(message.text());
+  });
+
+  await page.goto(inject("caromUrl"), { waitUntil: "load" });
+
+  const surfaceFault = await readSurfaceFault(page);
+  const fail = (): never => expect.fail(surfaceFault ?? "");
+
+  const call = async (operation: string, args: unknown[]): Promise<unknown> => {
+    if (surfaceFault !== null) fail();
+    return page.evaluate(
+      ([handle, name, rest]) =>
+        (
+          window as unknown as Record<
+            string,
+            Record<string, (...a: unknown[]) => unknown>
+          >
+        )[handle][name](...rest),
+      [HANDLE, operation, args] as const,
+    );
+  };
+
+  const debug =
+    surfaceFault !== null
+      ? unexposedSurface(surfaceFault)
+      : (new Proxy({} as CaromDebugApi, {
+          get: (_target, property): unknown => {
+            if (typeof property === "symbol") return undefined;
+            if (property === "then" || property === "constructor")
+              return undefined;
+            const name = String(property);
+            return (...args: unknown[]) => call(name, args);
+          },
+        }) as CaromDebugApi);
+
+  if (surfaceFault === null) {
+    // Off the wall clock and back to the title before a check touches anything:
+    // from here the game changes only when this harness says so.
+    await call("setAutoStep", [false]);
+    await call("reset", []);
+  }
+
+  const view = fitViewport(cssWidth, cssHeight, dpr);
+  const cueSinks: TimedCue[][] = [];
+  let frameCount = 0;
+  let timeMs = 0;
+
+  /**
+   * Run `frames` frames and read the state they left, in one crossing.
+   *
+   * Each frame is opened and closed around a single `advance(dt, 1)`, all inside
+   * one synchronous evaluation, so nothing the page's own animation frame renders
+   * can land inside a recorded frame — and so a frame the recorder keeps is
+   * exactly one frame the game ran.
+   */
+  const drive = async (frames: number): Promise<CaromSnapshot> => {
+    if (surfaceFault !== null) fail();
+    const deltas: number[] = [];
+    for (let i = 0; i < frames; i += 1) deltas.push(clock.delta());
+    const result = (await page.evaluate(
+      ([handle, dts]) => {
+        const api = (
+          window as unknown as Record<
+            string,
+            Record<string, (...a: unknown[]) => unknown>
+          >
+        )[handle];
+        const rec = (
+          window as unknown as {
+            __caromRec: Record<string, (...a: unknown[]) => unknown>;
+          }
+        ).__caromRec;
+        const audio = (
+          window as unknown as { __caromAudio: { started(): number } }
+        ).__caromAudio;
+        const sounds: number[] = [];
+        for (const dt of dts) {
+          const before = audio.started();
+          rec.begin();
+          api.advance(dt / 1000, 1);
+          rec.end(dt);
+          sounds.push(audio.started() - before);
+        }
+        return { snapshot: api.snapshot(), sounds };
+      },
+      [HANDLE, deltas] as const,
+    )) as { snapshot: CaromSnapshot; sounds: number[] };
+
+    for (const [index, delta] of deltas.entries()) {
+      frameCount += 1;
+      timeMs += delta;
+      for (let n = 0; n < result.sounds[index]; n += 1) {
+        for (const sink of cueSinks)
+          sink.push({ frame: frameCount, t: timeMs });
+      }
+    }
+    return result.snapshot;
+  };
+
+  const readPixels = async (
+    devicePoints: readonly { x: number; y: number }[],
+  ): Promise<[number, number, number, number][]> =>
+    page.evaluate(
+      (points) => {
+        const canvases = Array.from(document.querySelectorAll("canvas"));
+        if (canvases.length === 0)
+          throw new Error("carom: the page has no <canvas>");
+        let canvas = canvases[0];
+        for (const other of canvases) {
+          if (other.width * other.height > canvas.width * canvas.height)
+            canvas = other;
+        }
+        const ctx = canvas.getContext("2d");
+        if (ctx === null)
+          throw new Error("carom: the canvas has no 2D context");
+        return points.map((point) => {
+          const x = Math.min(
+            Math.max(point.x, 0),
+            Math.max(canvas.width - 1, 0),
+          );
+          const y = Math.min(
+            Math.max(point.y, 0),
+            Math.max(canvas.height - 1, 0),
+          );
+          const { data } = ctx.getImageData(x, y, 1, 1);
+          return [data[0], data[1], data[2], data[3]] as [
+            number,
+            number,
+            number,
+            number,
+          ];
+        });
+      },
+      devicePoints as { x: number; y: number }[],
+    );
+
+  const harness: Harness = {
+    page,
+    debug,
+    surfaceFault,
+    pageErrors,
+
+    frame: () => frameCount,
+    timeMs: () => timeMs,
+
+    snapshot: () => debug.snapshot(),
+
+    advance: async (frames) => {
+      await drive(frames);
+    },
+
+    async until(predicate, untilOptions = {}) {
+      const maxFrames = untilOptions.maxFrames ?? 600;
+      const poll = Math.max(1, untilOptions.poll ?? 1);
+
+      let snapshot = await this.snapshot();
+      if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
+
+      let frames = 0;
+      while (frames < maxFrames) {
+        const step = Math.min(poll, maxFrames - frames);
+        snapshot = await drive(step);
+        frames += step;
+        if (predicate(snapshot)) return { hit: true, frames, snapshot };
+      }
+      return { hit: false, frames, snapshot };
+    },
+
+    async runFor(ms) {
+      if (surfaceFault !== null) fail();
+      // The one thing here that depends on real elapsed time, so the one thing a
+      // browser's own idea of which page matters can distort. The launch already
+      // turns the throttling off; bringing the page forward as well means this
+      // does not rest on a flag alone.
+      await page.bringToFront().catch(() => undefined);
+      await page.evaluate(
+        ([handle]) => {
+          (
+            window as unknown as { __caromRec: { setMode(m: string): void } }
+          ).__caromRec.setMode("raf");
+          (
+            window as unknown as Record<
+              string,
+              { setAutoStep(on: boolean): void }
+            >
+          )[handle].setAutoStep(true);
+        },
+        [HANDLE] as const,
+      );
+      await page.waitForTimeout(ms);
+      await page.evaluate(
+        ([handle]) => {
+          (
+            window as unknown as Record<
+              string,
+              { setAutoStep(on: boolean): void }
+            >
+          )[handle].setAutoStep(false);
+          (
+            window as unknown as { __caromRec: { setMode(m: string): void } }
+          ).__caromRec.setMode("manual");
+        },
+        [HANDLE] as const,
+      );
+    },
+
+    hold: (code) => page.keyboard.down(code),
+    release: (code) => page.keyboard.up(code),
+    async tap(code) {
+      // Down, ONE frame, up. The frame between the two is what makes this a press
+      // a build can actually see: an engineless build wrote its own keyboard
+      // layer, and the two conformant ways to read a press — latching the edge in
+      // the event handler, or comparing held state at the top of each frame —
+      // agree only if the key is genuinely held while a frame runs. A down and an
+      // up delivered back to back would be invisible to the second, which is a
+      // build a real player has no trouble with. Exactly one frame passes either
+      // way, so nothing a caller counts moves.
+      await page.keyboard.down(code);
+      await drive(1);
+      await page.keyboard.up(code);
+    },
+
+    async frameCalls() {
+      await drive(1);
+      const ops = (await page.evaluate(() =>
+        (
+          window as unknown as { __caromRec: { last(): unknown[] } }
+        ).__caromRec.last(),
+      )) as RecordedOp[];
+      return ops.map(toDrawCall);
+    },
+
+    probe: (names) =>
+      page.evaluate(
+        ([handle, wanted]) => {
+          const target =
+            (window as unknown as Record<string, Record<string, unknown>>)[
+              handle
+            ] ?? {};
+          const ops: Record<string, string> = {};
+          for (const name of wanted) ops[name] = typeof target[name];
+          return { version: target.version, ops };
+        },
+        [HANDLE, [...names]] as const,
+      ),
+
+    viewport: () => ({ ...view }),
+    device: (x, y) => toDevice(view, x, y),
+    pixel: async (x, y) => (await readPixels([toDevice(view, x, y)]))[0],
+    pixels: (points) => readPixels(points.map((p) => toDevice(view, p.x, p.y))),
+    devicePixel: async (x, y) => (await readPixels([{ x, y }]))[0],
+
+    surface: () =>
+      page.evaluate(() => {
+        const canvases = Array.from(document.querySelectorAll("canvas"));
+        if (canvases.length === 0) {
+          throw new Error(
+            "carom: the page has no <canvas>, so the build drew nowhere — " +
+              "index.html supplies one and the build is asked not to edit it " +
+              "(specs/overview.md)",
+          );
+        }
+        let canvas = canvases[0];
+        for (const other of canvases) {
+          if (other.width * other.height > canvas.width * canvas.height)
+            canvas = other;
+        }
+        return {
+          width: canvas.width,
+          height: canvas.height,
+          dpr: window.devicePixelRatio,
+        };
+      }),
+
+    async armAudio() {
+      // A GENUINE browser gesture, not a posed one: a build is free to open its
+      // audio context from a real DOM event alone (both are conformant), so a key
+      // delivered any other way would leave a perfectly good build silent. The key
+      // is bound to nothing, so arming changes no game state.
+      await page.keyboard.press(UNBOUND_KEY);
+    },
+
+    async dispose() {
+      // The context stays: it holds the init scripts and the window shape, and the
+      // next harness of this shape wants both. The page goes, so nothing this
+      // check pressed, opened or muted can reach the next one.
+      openPages.delete(page);
+      await page.close().catch(() => undefined);
+    },
+  };
+
+  harnessCues.set(harness, cueSinks);
+  return harness;
+}
+
+/** Where {@link watchCues} attaches, per harness. */
+const harnessCues = new WeakMap<Harness, TimedCue[][]>();
+
+/* ---- The fit -------------------------------------------------------------- */
+
+/**
+ * How the field maps onto a surface of this shape, as `specs/overview.md` fixes
+ * it: one uniform scale, the whole field inside, centred, with the leftover split
+ * evenly into two bars.
+ *
+ * Computed rather than read from the build, deliberately. Under an engine the fit
+ * is the engine's and a check can ask it what it derived; here the fit is the
+ * build's own work, so asking it would be asking a build to grade itself. Every
+ * check but `rendering/window-fit` runs at the field's own size, where this is the
+ * identity and the question does not arise; that one check runs at other shapes
+ * and reads the pixels against what the specification says should be there.
+ */
+export function fitViewport(
+  cssWidth: number,
+  cssHeight: number,
+  dpr: number,
+): Viewport {
+  const deviceWidth = Math.round(cssWidth * dpr);
+  const deviceHeight = Math.round(cssHeight * dpr);
+  const scale = Math.min(cssWidth / FIELD_W, cssHeight / FIELD_H) * dpr;
+  return {
+    width: FIELD_W,
+    height: FIELD_H,
+    scale,
+    offsetX: (deviceWidth - FIELD_W * scale) / 2,
+    offsetY: (deviceHeight - FIELD_H * scale) / 2,
+  };
 }
 
 function toDevice(
@@ -213,26 +913,17 @@ function toDevice(
   };
 }
 
-/**
- * A proxy that records every call and property set on its way to the real
- * context, so one frame produces both a pixel buffer to sample and a call list
- * to inspect.
- */
-function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
-  return new Proxy(target, {
-    get(object, property) {
-      const value = Reflect.get(object, property, object) as unknown;
-      if (typeof value !== "function") return value;
-      return (...args: unknown[]): unknown => {
-        calls.push({ kind: "call", method: String(property), args });
-        return (value as (...rest: unknown[]) => unknown).apply(object, args);
-      };
-    },
-    set(object, property, value) {
-      calls.push({ kind: "set", property: String(property), value });
-      return Reflect.set(object, property, value, object);
-    },
-  });
+/* ---- Draw calls ----------------------------------------------------------- */
+
+/** One operation as the injected recorder writes it. */
+type RecordedOp =
+  | { op: "call"; method: string; args: unknown[] }
+  | { op: "set"; property: string; value: unknown };
+
+function toDrawCall(op: RecordedOp): DrawCall {
+  return op.op === "call"
+    ? { kind: "call", method: op.method, args: op.args }
+    : { kind: "set", property: op.property, value: op.value };
 }
 
 /** Every argument list `method` was called with, in order. */
@@ -255,132 +946,6 @@ export function setsOf(
   );
 }
 
-/**
- * Build a runtime over a canvas of the harness's own, initialize the build's
- * game, and hand back everything a check reads.
- *
- * The options passed to the factory are the ones the specification fixes — the
- * design size, the background, and the touch layout — so one harness serves every
- * build of this case. Everything else the build decided lives inside
- * `src/game.ts`.
- */
-export async function createHarness(
-  options: HarnessOptions = {},
-): Promise<Harness> {
-  const cssWidth = options.cssWidth ?? FIELD_W;
-  const cssHeight = options.cssHeight ?? FIELD_H;
-  const dpr = options.dpr ?? 1;
-
-  const canvas = createCanvas(
-    Math.round(cssWidth * dpr),
-    Math.round(cssHeight * dpr),
-  );
-  const ctx = canvas.getContext("2d");
-  const calls: DrawCall[] = [];
-  const recorded = recorder(ctx, calls);
-  const element = Object.assign(canvas, {
-    style: {} as CSSStyleDeclaration,
-    getContext: (): SKRSContext2D => recorded,
-  }) as unknown as HTMLCanvasElement;
-
-  const keys = new EventTarget();
-  const surface: SurfaceMetrics = {
-    cssWidth: () => cssWidth,
-    cssHeight: () => cssHeight,
-    dpr: () => dpr,
-    events: () => keys,
-  };
-
-  const engine = createHost<CaromState>({
-    canvas: element,
-    width: FIELD_W,
-    height: FIELD_H,
-    game,
-    background: COLOR.bg,
-    layout: LAYOUT,
-    clock: options.clock ?? new ConstantClock(TICK_MS),
-    surface,
-  });
-
-  // Subscribed BEFORE `initialize`, which is what makes the game's own loading
-  // observable: construction runs no game code, so nothing has happened yet.
-  const assetFailures: AssetFailure[] = [];
-  const cues: PlayedCue[] = [];
-  engine.events.on("asset:failed", ({ path, reason }) => {
-    assetFailures.push({ path, reason });
-  });
-  engine.events.on("cue:played", (played) => {
-    cues.push(played);
-  });
-
-  const state = await engine.initialize();
-  const debug = createDebugApi(state);
-
-  const dispatch = (type: "keydown" | "keyup", code: string): void => {
-    keys.dispatchEvent(new KeyEvent(type, code));
-  };
-
-  const harness: Harness = {
-    engine,
-    state,
-    debug,
-    ctx,
-    canvas,
-    calls,
-    cues,
-    assetFailures,
-
-    snapshot: () => debug.snapshot(),
-
-    advance: (frames) => engine.advance(frames),
-
-    async until(predicate, untilOptions = {}) {
-      const maxFrames = untilOptions.maxFrames ?? 600;
-      const poll = Math.max(1, untilOptions.poll ?? 1);
-
-      let snapshot = debug.snapshot();
-      if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
-
-      let frames = 0;
-      while (frames < maxFrames) {
-        const step = Math.min(poll, maxFrames - frames);
-        await engine.advance(step);
-        frames += step;
-        snapshot = debug.snapshot();
-        if (predicate(snapshot)) return { hit: true, frames, snapshot };
-      }
-      return { hit: false, frames, snapshot };
-    },
-
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
-    },
-
-    hold: (code) => dispatch("keydown", code),
-    release: (code) => dispatch("keyup", code),
-    async tap(code) {
-      dispatch("keydown", code);
-      dispatch("keyup", code);
-      await engine.advance(1);
-    },
-
-    device: (x, y) => toDevice(engine.viewport(), x, y),
-    pixel: (x, y) => {
-      const point = toDevice(engine.viewport(), x, y);
-      const { data } = ctx.getImageData(point.x, point.y, 1, 1);
-      return [data[0], data[1], data[2], data[3]];
-    },
-
-    dispose: () => engine.destroy(),
-  };
-
-  return harness;
-}
-
 /* -------------------------------------------------------------------------- */
 /* Evidence capture                                                           */
 /* -------------------------------------------------------------------------- */
@@ -394,43 +959,21 @@ export async function createHarness(
 //
 // 1. IT RECORDS THE SECTION, NOT THE RUN. The recorder is armed around the
 //    caller's scenario and disarmed the moment that scenario returns, so what is
-//    kept is the part the check is ABOUT and never the setup that got there. A
-//    check that poses a ball in front of a paddle and then plays out the contact
-//    records the contact; the pose costs nothing, and the reviewer is not asked to
-//    scrub past a minute of arrangement to reach the two seconds that decide the
-//    point.
+//    kept is the part the check is ABOUT and never the setup that got there.
 // 2. IT IS EVIDENCE, NEVER A VERDICT. The scenario's own value comes straight
-//    back, so a check reads it exactly as it did before capture existed, and a
-//    scenario that THROWS still writes what it had recorded before the failure
-//    travels on — a failing check is the one whose replay a reviewer most wants.
-//    Nothing here can turn a passing check into a failing one: a recording that
-//    cannot be written is reported as an output that never turned up, which is a
-//    fact about the host rather than about the build.
+//    back, and a scenario that THROWS still writes what it had recorded before
+//    the failure travels on — a failing check is the one whose replay a reviewer
+//    most wants. A recording that cannot be written is reported as an output that
+//    never turned up, which is a fact about the host rather than about the build.
 // 3. IT WRITES ONLY WHAT THERE IS TO LOOK AT. A capture that closed no frames
 //    leaves no file, so the run reports the output absent instead of offering the
 //    reviewer a replay of nothing.
-// 4. IT COSTS NOTHING WHEN NOBODY IS COLLECTING. Outside a run — a developer
-//    running this suite from a shell — the media directory is unset, and the whole
-//    thing is a no-op that still runs the scenario. The suite behaves identically
-//    either way, so a check cannot pass in one place and fail in the other.
+// 4. IT COSTS NOTHING WHEN NOBODY IS COLLECTING. Outside a run the media
+//    directory is unset and the whole thing is a no-op that still runs the
+//    scenario, so a check cannot pass in one place and fail in the other.
 
-/**
- * The environment variable the runner names the media directory in.
- *
- * Unset is not an error: it is the normal state of a suite nobody is collecting
- * media from.
- */
+/** The environment variable the runner names the media directory in. */
 const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
-
-/**
- * The directory this harness sits in, which is the validator project's root.
- *
- * Taken from this module's own URL rather than from the working directory,
- * because it has to name the same directory in both layouts this file lives in:
- * the case's own `validation/<engine>/`, and the `validation/` the runner stages
- * that directory to inside the build's tree.
- */
-const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /**
  * The directory the runner stages this project to inside the build's tree.
@@ -440,24 +983,38 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  * item's declared script resolves to, and so the only name the case's manifest and
  * the runner both already agree on. Stating the prefix here is what keeps that
  * address the same when this suite is run in place against a reference
- * implementation, where the project root is `validation/<engine>/` instead.
+ * implementation, where the project root is `validation/none/` instead.
  */
 const STAGED_PROJECT_DIR = "validation";
 
 /**
  * The most frames a written recording holds.
  *
- * A recording is one JSON operation log per frame, and a frame of this game is a
- * couple of hundred operations, so a section a check drives for half a minute of
- * game time runs to tens of megabytes — a file nobody can serve to a reviewer and
- * nobody wants in a run's artifacts. The cap is what makes `captureReplay` safe to
- * wrap ANY section in: an author arms the recorder around what the check is about
- * and never has to reason about how long that turns out to be.
- *
- * The cap is generous enough that the great majority of this suite's sections —
- * a paddle contact, a bank shot, a point played out — are written whole.
+ * The injected recorder already holds the page's side to twice this, decimating
+ * as it fills, so what arrives here is at most a few hundred frames however long
+ * the section ran. This is the same cap the engine-backed harness writes under, so
+ * a replay recorded under either engine is the same size of thing.
  */
 const MAX_REPLAY_FRAMES = 300;
+
+/** One frame of a recording, as the console's player reads it. */
+interface RecordedFrame {
+  count: number;
+  timeMs: number;
+  deltaMs: number;
+  surface: { width: number; height: number };
+  state: unknown;
+  ops: unknown[];
+}
+
+/** A recording, as the console's player reads it. */
+interface Recording {
+  format: number;
+  width: number;
+  height: number;
+  background: string | null;
+  frames: RecordedFrame[];
+}
 
 /**
  * Where the running suite's `outputId` output belongs, or `null` when nothing is
@@ -466,11 +1023,6 @@ const MAX_REPLAY_FRAMES = 300;
  * The suite is the one vitest is currently running rather than one the caller
  * names, because the two must not be able to disagree: a check that named its own
  * path would be free to write its evidence under some other point's address.
- *
- * `extension` is the one the runner collects that OUTPUT KIND under — `json.gz`
- * for a recording (a JSON document stored gzipped: `.json` is what the bytes are
- * and `.gz` is how they are framed), `png` for a still. The suite and the runner
- * agree by both stating the same thing about what the kind is.
  */
 function mediaDestination(outputId: string, extension: string): string | null {
   const mediaDir = process.env[MEDIA_DIR_ENV];
@@ -483,35 +1035,22 @@ function mediaDestination(outputId: string, extension: string): string | null {
 
 /**
  * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole of
- * what was captured.
+ * what was captured, with each kept frame's `deltaMs` restated as the time since
+ * the frame kept before it.
  *
- * An over-long section is THINNED rather than cut short: every nth frame is kept,
- * so the reviewer sees the entire section at a lower frame rate instead of its
- * first — or last — few seconds at the full one. That is the reading that matches
- * what these outputs are named for. A rally is evidence that the ball accelerated
- * hit after hit, and the hits are spread across the whole of it.
- *
- * Thinning is legitimate because every frame in a recording is independently
- * renderable by construction: each carries the context state it inherited, so
- * dropping the frames between two kept ones cannot leave a frame undrawable. Each
- * kept frame's `deltaMs` is restated as the time since the frame kept before it,
- * so the deltas still sum to the section's elapsed time and a player pacing itself
- * off them runs at the speed the game really ran at. The frame `count` is left as
- * the host reported it, so a reader can see that frames were skipped rather than
- * being told a smooth lie.
- *
- * The last frame is always kept, whatever the stride lands on: it is the frame the
- * check's sweep stopped at — the contact, the point, the rebound — and it is the
- * one a reviewer looks at first.
+ * The restatement is what makes a decimated recording play at the speed the game
+ * really ran at: the deltas still sum to the section's elapsed time. The frame
+ * `count` is left as it was recorded, so a reader can see that frames were
+ * skipped rather than being told a smooth lie. The last frame is always kept
+ * whatever the stride lands on — it is the frame the check's sweep stopped at, and
+ * the one a reviewer looks at first.
  */
 function thinReplay(recording: Recording): Recording {
   const { frames } = recording;
-  if (frames.length <= MAX_REPLAY_FRAMES) return recording;
+  if (frames.length === 0) return recording;
 
-  const stride = Math.ceil(frames.length / MAX_REPLAY_FRAMES);
+  const stride = Math.max(1, Math.ceil(frames.length / MAX_REPLAY_FRAMES));
   const kept: RecordedFrame[] = [];
-  // The moment the section started, so the first kept frame's delta is its own
-  // rather than a step measured from nothing.
   let previousMs = frames[0].timeMs - frames[0].deltaMs;
   const keep = (frame: RecordedFrame): void => {
     kept.push({ ...frame, deltaMs: frame.timeMs - previousMs });
@@ -528,30 +1067,21 @@ function thinReplay(recording: Recording): Recording {
 /**
  * Write a recording out, reporting rather than raising anything that goes wrong.
  *
- * A capture that closed no frames writes nothing. There is no picture in it to
- * draw, and a file holding an empty frame list would be collected as an output
- * that turned up — the run would tell the reviewer there is a replay to watch and
- * the player would open on nothing. A declared output that never turned up is
- * already reported as absent, and that is the truthful reading of a section that
- * drew no frames.
+ * A capture that closed no frames writes nothing: a file holding an empty frame
+ * list would be collected as an output that turned up, and the run would tell the
+ * reviewer there is a replay to watch and then open the player on nothing.
  *
- * What lands on disk is gzip rather than raw JSON. The recording format is
- * deliberately repetitive: every frame restates the drawing state it inherited so
- * that any frame can be drawn without drawing the frames before it, and
- * consecutive frames of a game issue very nearly the same operations as each
- * other. That redundancy is what makes seeking and side-by-side scrubbing work,
- * and it is also almost exactly what gzip removes: a real capture stores tens of
- * times smaller. Compressing is what makes the property affordable, so a run's
- * whole set of recordings costs a few megabytes rather than a hundred. The
- * document inside is the same one, so nothing about the format has changed.
+ * What lands on disk is gzip rather than raw JSON. The format is deliberately
+ * repetitive — every frame restates the drawing state it inherited so that any
+ * frame can be drawn without drawing the frames before it — and that redundancy is
+ * almost exactly what gzip removes. The document inside is the same one.
  *
- * Never throws. A directory that cannot be made or a file that cannot be written
- * says something about the machine the validators ran on, and failing the point
- * over it would blame the build for the host's problem. The runner already reads
- * a declared output that never turned up as exactly that.
+ * Never throws. A file that cannot be written says something about the machine the
+ * validators ran on, and failing the point over it would blame the build for the
+ * host's problem.
  */
-function writeReplay(destination: string, recording: Recording): void {
-  if (recording.frames.length === 0) return;
+function writeReplay(destination: string, recording: Recording | null): void {
+  if (recording === null || recording.frames.length === 0) return;
   try {
     mkdirSync(dirname(destination), { recursive: true });
     writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
@@ -561,20 +1091,17 @@ function writeReplay(destination: string, recording: Recording): void {
 }
 
 /**
- * Record the frames `scenario` draws and keep them as the review item's
+ * Record the frames `scenario` drives and keep them as the review item's
  * `outputId` output, handing back whatever the scenario returned.
  *
  * Wrap the drive, not the arrangement:
  *
  * ```ts
- * const point = await captureReplay(harness, "goal", () => driveGoal(harness));
+ * const point = await captureReplay(h, "goal", () => driveGoal(h));
  * expect(point.hit).toBe(true);
  * ```
  *
  * The assertions stay exactly where they were and read exactly what they did.
- * Capture sits BESIDE them rather than in place of them: a check still fails for
- * the reasons it failed before, and the recording is what a reviewer looks at
- * afterwards to see what the build actually drew while it did.
  */
 export async function captureReplay<T>(
   h: Harness,
@@ -584,51 +1111,94 @@ export async function captureReplay<T>(
   const destination = mediaDestination(outputId, "json.gz");
   if (destination === null) return scenario();
 
-  h.engine.startRecording();
+  await h.page.evaluate(
+    (design) =>
+      (
+        window as unknown as { __caromRec: { arm(d: unknown): boolean } }
+      ).__caromRec.arm(design),
+    { width: FIELD_W, height: FIELD_H, background: COLOR.bg },
+  );
   try {
     return await scenario();
   } finally {
     // In a `finally`, so a scenario that failed still leaves its evidence behind.
-    writeReplay(destination, h.engine.stopRecording());
+    const recording = (await h.page.evaluate(() =>
+      (
+        window as unknown as { __caromRec: { disarm(): unknown } }
+      ).__caromRec.disarm(),
+    )) as Recording | null;
+    writeReplay(destination, recording);
   }
 }
 
 /**
- * Keep the frame currently on the canvas as the review item's `outputId` output.
+ * Keep the picture currently on the canvas as the review item's `outputId` output.
  *
  * The companion to {@link captureReplay}, for a point whose evidence is one
  * PICTURE rather than a stretch of motion: which screen the game opened on, what
- * colour it drew a paddle, where the letterbox bars fell. A recording of a still
- * screen would be the same frame three hundred times over, and a reviewer looking
- * at a menu wants to look at the menu.
+ * colour it drew a paddle, where the letterbox bars fell.
  *
  * What is written is whatever the last frame that RAN left behind, so call it
- * after the frame that poses the thing under test — an `advance(1)` following the
- * arrangement — and before the assertions, so a check that fails still leaves the
- * picture that shows why. Nothing here can change a verdict: outside a run the
- * media directory is unset and this is a no-op, and a still that cannot be written
- * is reported as an output that never turned up, which is a fact about the host
- * rather than about the build.
+ * after the frame that poses the thing under test and before the assertions, so a
+ * check that fails still leaves the picture that shows why. Nothing here can
+ * change a verdict: outside a run this is a no-op, and a still that cannot be
+ * written is reported as an output that never turned up.
  */
-export function captureStill(h: Harness, outputId: string): void {
+export async function captureStill(
+  h: Harness,
+  outputId: string,
+): Promise<void> {
   const destination = mediaDestination(outputId, "png");
   if (destination === null) return;
   try {
     mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, h.canvas.toBuffer("image/png"));
+    await h.page.screenshot({ path: destination, type: "png" });
   } catch (error) {
     console.warn(`carom: could not write ${destination}: ${String(error)}`);
   }
 }
 
 /* -------------------------------------------------------------------------- */
+/* Cues                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Record every sound the build emits from now on, stamped with the frame of the
+ * drive it sounded on.
+ *
+ * WHAT IS OBSERVED, AND WHY IT IS THE FAIR READING. `specs/ui.md` requires one
+ * cue per event, played on the frame its event happens, and says nothing at all
+ * about how a build makes a sound — under this engine the whole audio layer is
+ * the build's. So `audio-init.js` watches the two doors a browser can emit sound
+ * through (a Web Audio source being `start()`ed, whatever kind it is, and an
+ * `<audio>` element being played) and counts what goes through them; the harness
+ * brackets each driven frame around that count, so a sound is attributed to the
+ * frame that produced it. A blip made of two oscillators counts as two, which is
+ * why a check asserts that a frame sounded rather than how many times: the number
+ * of sources is the build's business and the specification never fixed it.
+ *
+ * WHAT IS LOST HERE THAT AN ENGINE GIVES. The cue's NAME. Under an engine the
+ * game asks the bus for `CUES.paddleHit` by name and the bus announces it, so a
+ * build that plays its scoring blip on every bounce is caught. There is no bus
+ * here to ask, so these checks confirm that a sound was emitted and on which
+ * frame, and a reviewer decides by ear whether the four are told apart. That is a
+ * real reduction, and the alternative — inferring the cue from the waveform the
+ * reference happens to use — would grade builds against an implementation rather
+ * than against the specification.
+ */
+export function watchCues(h: Harness): TimedCue[] {
+  const played: TimedCue[] = [];
+  harnessCues.get(h)?.push(played);
+  return played;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Scenario helpers                                                           */
 /* -------------------------------------------------------------------------- */
 //
-// Each of these poses a situation through `src/debug.ts` and then lets the real
-// simulation run. They are the in-process descendants of the old browser suite's
-// `validation/_helpers.mjs`, and the geometry and the tolerances they encode are
-// the same ones that suite established.
+// Each of these poses a situation through `window.__carom` and then lets the real
+// simulation run. The geometry and the tolerances they encode are the ones the
+// case established, and they are the same in the engine-backed project next door.
 
 /** Off-lane parking height for a paddle a scenario must keep out of the way. */
 export const PARKED_CY = 150;
@@ -647,9 +1217,9 @@ export const CLEAR_LANE_Y = FIELD_CY;
 export const LEAD_TICKS = 60; // 0.5 s at 120 Hz
 
 /** Park both paddles out of the mid-field lane so a shot down it is unobstructed. */
-export function clearPaddles(h: Harness): void {
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
+export async function clearPaddles(h: Harness): Promise<void> {
+  await h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  await h.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
 }
 
 /**
@@ -664,15 +1234,15 @@ export async function startPlaying(
   h: Harness,
   mode: Mode = "versus",
 ): Promise<UntilResult> {
-  h.debug.reset();
-  h.debug.startMatch(mode);
-  h.debug.serve();
+  await h.debug.reset();
+  await h.debug.startMatch(mode);
+  await h.debug.serve();
   return h.until((s) => s.screen === "playing", { maxFrames: 60, poll: 1 });
 }
 
 /** Start a match from the title the way a player does: menu keys only. */
 export async function startWithKeys(h: Harness, mode: Mode): Promise<void> {
-  h.debug.reset();
+  await h.debug.reset();
   // SOLO is the first entry; VERSUS is one down.
   if (mode === "versus") await h.tap("ArrowDown");
   await h.tap("Enter");
@@ -685,9 +1255,9 @@ export async function startWithKeys(h: Harness, mode: Mode): Promise<void> {
  * `edge` is the edge the ball exits: "right" scores for player one, "left" for
  * player two.
  */
-export function arrangeGoal(h: Harness, edge: Side): void {
-  clearPaddles(h);
-  h.debug.setBall(0, {
+export async function arrangeGoal(h: Harness, edge: Side): Promise<void> {
+  await clearPaddles(h);
+  await h.debug.setBall(0, {
     x: FIELD_CX,
     y: CLEAR_LANE_Y,
     vx: edge === "right" ? 600 : -600,
@@ -740,11 +1310,11 @@ export interface PaddleHitOptions {
  * arrives at `cy` as the ball does — which is what lets a swinging paddle really
  * be moving at contact rather than pinned against a bound.
  */
-export function arrangePaddleHit(
+export async function arrangePaddleHit(
   h: Harness,
   side: Side,
   options: PaddleHitOptions = {},
-): void {
+): Promise<void> {
   const {
     cy = FIELD_CY,
     vy = 0,
@@ -756,13 +1326,13 @@ export function arrangePaddleHit(
 
   const other: Side = side === "left" ? "right" : "left";
   const lead = seconds(leadTicks);
-  h.debug.setPaddle(side, { cy: cy - vy * lead, vy });
-  h.debug.setPaddle(other, { cy: PARKED_CY, vy: 0 });
+  await h.debug.setPaddle(side, { cy: cy - vy * lead, vy });
+  await h.debug.setPaddle(other, { cy: PARKED_CY, vy: 0 });
 
   const near = nearBallX(side);
   const runUp = approachSpeed * lead;
   const x = startX ?? (side === "left" ? near + runUp : near - runUp);
-  h.debug.setBall(0, {
+  await h.debug.setBall(0, {
     x,
     y: ballY,
     vx: side === "left" ? -approachSpeed : approachSpeed,
@@ -808,9 +1378,9 @@ export async function drivePaddleHit(
 /** Two still, centred paddles and a ball launched level down the middle. */
 export async function arrangeRally(h: Harness): Promise<void> {
   await startPlaying(h);
-  h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
-  h.debug.setBall(0, {
+  await h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
+  await h.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
+  await h.debug.setBall(0, {
     x: FIELD_CX,
     y: FIELD_CY,
     vx: -500,
@@ -832,7 +1402,7 @@ export async function driveRallySpeeds(
   let previousSign = -1; // the ball is launched toward the left paddle
 
   for (let hit = 0; hit < hits; hit += 1) {
-    const sign = Math.sign(h.snapshot().ball.vx);
+    const sign = Math.sign((await h.snapshot()).ball.vx);
     if (sign !== 0) previousSign = sign;
     const want = -previousSign;
 
@@ -859,16 +1429,21 @@ export async function driveRallySpeeds(
 export interface MoveResult {
   start: number;
   end: number;
-  /** The struck paddle's Δcy: negative is upward. */
+  /** The moved paddle's Δcy: negative is upward. */
   delta: number;
   /** Each paddle's Δcy, so a check can also confirm the other stayed still. */
   otherDelta: { left: number; right: number };
 }
 
 /**
- * Hold a movement key for `ticks` frames and report how far each paddle moved.
- * Nothing here calls a control op, so the game stays under normal player control
- * and the paddles respond exactly as they do for a player.
+ * Hold a REAL key for `ticks` frames and report how far each paddle moved.
+ *
+ * The key is pressed through Chromium's own input pipeline, not through the
+ * surface — under this engine the surface carries no keyboard operation at all,
+ * because the keyboard is part of the runtime layer the build wrote
+ * (`specs/instrumentation.md`). Nothing here calls a control operation either, so
+ * the game stays under normal player control and the paddles respond exactly as
+ * they do for a player.
  */
 export async function holdMove(
   h: Harness,
@@ -877,11 +1452,11 @@ export async function holdMove(
   options: { ticks?: number } = {},
 ): Promise<MoveResult> {
   const ticks = options.ticks ?? 36; // 0.3 s
-  const before = h.snapshot().paddles;
-  h.hold(code);
+  const before = (await h.snapshot()).paddles;
+  await h.hold(code);
   await h.advance(ticks);
-  const after = h.snapshot().paddles;
-  h.release(code);
+  const after = (await h.snapshot()).paddles;
+  await h.release(code);
 
   const moved = (which: Side): number => after[which].cy - before[which].cy;
   return {
@@ -907,10 +1482,10 @@ export async function arrangeAiScenario(
   },
 ): Promise<void> {
   await startPlaying(h, "solo");
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: scenario.paddleCy, vy: 0 });
-  h.debug.setBall(0, { vy: 0, spin: 0, ...scenario.ball });
-  h.debug.setAiControl(true);
+  await h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  await h.debug.setPaddle("right", { cy: scenario.paddleCy, vy: 0 });
+  await h.debug.setBall(0, { vy: 0, spin: 0, ...scenario.ball });
+  await h.debug.setAiControl(true);
 }
 
 export type AiOutcome = "blocked" | "scored" | "timeout";
@@ -927,7 +1502,7 @@ export async function driveAiScenario(
   h: Harness,
   options: UntilOptions = {},
 ): Promise<{ result: AiOutcome; snapshot: CaromSnapshot }> {
-  const start = h.snapshot().score.p1;
+  const start = (await h.snapshot()).score.p1;
   let sawIncoming = false;
   let result: AiOutcome = "timeout";
 
@@ -958,16 +1533,16 @@ export async function arrangeAiChase(
   options: { paddleCy?: number; ballY?: number } = {},
 ): Promise<void> {
   await startPlaying(h, "solo");
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: options.paddleCy ?? 120, vy: 0 });
-  h.debug.setBall(0, {
+  await h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  await h.debug.setPaddle("right", { cy: options.paddleCy ?? 120, vy: 0 });
+  await h.debug.setBall(0, {
     x: FIELD_CX,
     y: options.ballY ?? 650,
     vx: 200,
     vy: 0,
     spin: 0,
   });
-  h.debug.setAiControl(true);
+  await h.debug.setAiControl(true);
 }
 
 /** How fast the AI paddle travels while it is chasing, in px/s. */
@@ -976,9 +1551,9 @@ export async function driveAiChaseSpeed(
   options: { ticks?: number } = {},
 ): Promise<{ speed: number; delta: number }> {
   const ticks = options.ticks ?? 12;
-  const before = h.snapshot().paddles.right.cy;
+  const before = (await h.snapshot()).paddles.right.cy;
   await h.advance(ticks);
-  const after = h.snapshot().paddles.right.cy;
+  const after = (await h.snapshot()).paddles.right.cy;
   return {
     speed: speedOverTicks(after - before, ticks),
     delta: after - before,
@@ -991,10 +1566,10 @@ export async function driveAiChaseSpeed(
  */
 export async function arrangeAiMovingHit(h: Harness): Promise<void> {
   await startPlaying(h, "solo");
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: 180, vy: 0 }); // above the lane
-  h.debug.setBall(0, { x: 1072, y: FIELD_CY, vx: 500, vy: 0, spin: 0 });
-  h.debug.setAiControl(true);
+  await h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  await h.debug.setPaddle("right", { cy: 180, vy: 0 }); // above the lane
+  await h.debug.setBall(0, { x: 1072, y: FIELD_CY, vx: 500, vy: 0, spin: 0 });
+  await h.debug.setAiControl(true);
 }
 
 /* ---- Obstacle bank shots -------------------------------------------------- */
@@ -1003,13 +1578,13 @@ export async function arrangeAiMovingHit(h: Harness): Promise<void> {
  * Line the ball up 180 px short of `faceX`, level with the obstacle at `y`,
  * travelling straight at that face. `from` is the side it approaches from.
  */
-export function arrangeObstacleBounce(
+export async function arrangeObstacleBounce(
   h: Harness,
   shot: { faceX: number; y: number; from: Side; speed?: number },
-): void {
+): Promise<void> {
   const speed = shot.speed ?? 600;
-  clearPaddles(h);
-  h.debug.setBall(0, {
+  await clearPaddles(h);
+  await h.debug.setBall(0, {
     x: shot.from === "left" ? shot.faceX - 180 : shot.faceX + 180,
     y: shot.y,
     vx: shot.from === "left" ? speed : -speed,
@@ -1046,22 +1621,13 @@ export async function arrangeLiveBall(
   mode: Mode = "versus",
 ): Promise<void> {
   await startPlaying(h, mode);
-  clearPaddles(h);
-  h.debug.setBall(0, { spin: 0, vy: 0, ...ball });
+  await clearPaddles(h);
+  await h.debug.setBall(0, { spin: 0, vy: 0, ...ball });
 }
 
 /* ========================================================================== */
-/* Rendering, input, audio, pause and UI                                      */
+/* Rendering, input and colour                                                */
 /* ========================================================================== */
-//
-// The second half of the suite — the checks that read what was DRAWN, what was
-// PLAYED, and what the keyboard did — needs three things the scenario helpers
-// above do not provide: a cue record stamped with the frame each cue fired on,
-// a colour sampler over the rendered canvas, and a way to ask what a single
-// frame's render actually asked the context for. They are gathered here rather
-// than folded in above so the two halves of this file stay separable.
-
-import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
 
 /* ---- Controls tolerances -------------------------------------------------- */
 
@@ -1071,44 +1637,13 @@ import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
  * The controls checks are about which paddle a key moves and which way, not how
  * fast — the speed is the `paddle-movement` category's point, and stating it in
  * both places would fail one build twice for one fault. At the specified 720 px/s
- * the 36-frame hold below travels 216 px, so this bound is crossed several times
- * over by any build in the right ballpark and never by one that did not move.
+ * the 36-frame hold travels 216 px, so this bound is crossed several times over by
+ * any build in the right ballpark and never by one that did not move.
  */
 export const MOVE_MIN = 40;
 
 /** How far a paddle a key must NOT touch may drift, in logical px. */
 export const STILL_MAX = 6;
-
-/* ---- Cues ----------------------------------------------------------------- */
-
-/** A cue the build played, and the frame of the run it played on. */
-export interface TimedCue {
-  cue: string;
-  /** The frame loop's simulated time when it played, in milliseconds. */
-  t: number;
-  /** The cue's gain: zero while the bus is muted, positive otherwise. */
-  gain: number;
-  /** The frame it played on, 1-based, as `engine.frame().count` reports. */
-  frame: number;
-}
-
-/**
- * Record every cue the build plays from now on, stamped with its frame.
- *
- * The runtime publishes `cue:played` synchronously from inside `audio.play`, so
- * the handler runs while the frame that played it is still running and
- * `engine.frame().count` is that frame's own number. That is what lets a check
- * assert not merely that a cue sounded but that it sounded on the frame of the
- * collision — which is what tells a build that plays a cue on the right event
- * apart from one that plays it on every frame, or a frame late.
- */
-export function watchCues(h: Harness): TimedCue[] {
-  const played: TimedCue[] = [];
-  h.engine.events.on("cue:played", ({ cue, t, gain }) => {
-    played.push({ cue, t, gain, frame: h.engine.frame().count });
-  });
-  return played;
-}
 
 /* ---- Colour --------------------------------------------------------------- */
 
@@ -1139,6 +1674,15 @@ export const COLOR_POINTS = {
   background: { x: 500, y: 650 },
 } as const;
 
+/** The five offsets a colour sample is averaged over, in logical px. */
+const SAMPLE_OFFSETS: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [4, 0],
+  [-4, 0],
+  [0, 4],
+  [0, -4],
+];
+
 /**
  * The rendered colour at a logical point, averaged over a small cluster.
  *
@@ -1146,31 +1690,26 @@ export const COLOR_POINTS = {
  * solid body of every shape sampled, so one stray anti-aliased or glow pixel
  * cannot swing the reading.
  */
-export function sampleColor(h: Harness, x: number, y: number): Rgb {
-  const offsets: readonly (readonly [number, number])[] = [
-    [0, 0],
-    [4, 0],
-    [-4, 0],
-    [0, 4],
-    [0, -4],
-  ];
+export async function sampleColor(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<Rgb> {
+  const read = await h.pixels(
+    SAMPLE_OFFSETS.map(([dx, dy]) => ({ x: x + dx, y: y + dy })),
+  );
   let r = 0;
   let g = 0;
   let b = 0;
-  for (const [dx, dy] of offsets) {
-    const [pr, pg, pb] = h.pixel(x + dx, y + dy);
+  for (const [pr, pg, pb] of read) {
     r += pr;
     g += pg;
     b += pb;
   }
-  return {
-    r: r / offsets.length,
-    g: g / offsets.length,
-    b: b / offsets.length,
-  };
+  return { r: r / read.length, g: g / read.length, b: b / read.length };
 }
 
-/** A `#rrggbb` colour from `src/constants.ts`, as channels to compare against. */
+/** A `#rrggbb` colour from `constants.ts`, as channels to compare against. */
 export function hexRgb(hex: string): Rgb {
   const value = Number.parseInt(hex.replace("#", ""), 16);
   return {
@@ -1186,23 +1725,27 @@ export function colorDistance(a: Rgb, b: Rgb): number {
 }
 
 /** Every point in `COLOR_POINTS`, sampled off the canvas as it stands. */
-export function sampleScene(
+export async function sampleScene(
   h: Harness,
-): Record<keyof typeof COLOR_POINTS, Rgb> {
+): Promise<Record<keyof typeof COLOR_POINTS, Rgb>> {
   return {
-    leftPaddle: sampleColor(
+    leftPaddle: await sampleColor(
       h,
       COLOR_POINTS.leftPaddle.x,
       COLOR_POINTS.leftPaddle.y,
     ),
-    rightPaddle: sampleColor(
+    rightPaddle: await sampleColor(
       h,
       COLOR_POINTS.rightPaddle.x,
       COLOR_POINTS.rightPaddle.y,
     ),
-    obstacle: sampleColor(h, COLOR_POINTS.obstacle.x, COLOR_POINTS.obstacle.y),
-    ball: sampleColor(h, COLOR_POINTS.ball.x, COLOR_POINTS.ball.y),
-    background: sampleColor(
+    obstacle: await sampleColor(
+      h,
+      COLOR_POINTS.obstacle.x,
+      COLOR_POINTS.obstacle.y,
+    ),
+    ball: await sampleColor(h, COLOR_POINTS.ball.x, COLOR_POINTS.ball.y),
+    background: await sampleColor(
       h,
       COLOR_POINTS.background.x,
       COLOR_POINTS.background.y,
@@ -1222,9 +1765,9 @@ export function sampleScene(
  */
 export async function arrangeColorScene(h: Harness): Promise<void> {
   await startPlaying(h, "versus");
-  h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
-  h.debug.setBall(0, {
+  await h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
+  await h.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
+  await h.debug.setBall(0, {
     x: COLOR_POINTS.ball.x,
     y: COLOR_POINTS.ball.y,
     vx: 0,
