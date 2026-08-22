@@ -40,6 +40,16 @@ screenshots as it goes. The repository is the editing source; the store is the
 distribution source a runner resolves at run time. Ingest caches a version
 rather than transforming it.
 
+Ingest writes each version as a resolved record whose shape the backend build
+defines, so the store is only readable by a build that agrees on that shape. The
+store therefore records a record-format version, stamped by the ingest that
+wrote it, and the backend compares it against the format the running build
+reads. A store stamped with any other format holds records this build cannot
+read: the backend reports it unready, and the next ingest scan re-ingests the
+whole catalog so the store returns to a format it can serve. This is what keeps
+a shape change from silently reducing the served catalog to the handful of
+versions that happen to have been re-ingested since.
+
 ### Run results
 
 The stored [run records](/components/core/run-records/) with their reviews and

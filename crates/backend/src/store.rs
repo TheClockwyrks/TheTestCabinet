@@ -41,6 +41,18 @@ use crate::error::{BackendError, Result};
 /// definition directory.
 const SIDECAR: &str = ".tcab";
 
+/// The version of the record shapes this build writes into the store, stamped on
+/// the store by every ingest scan and checked against on startup.
+///
+/// A stored record ([`StoredManifest`] and everything it holds) is this build's own
+/// serialization, so a store written by a build that shaped them differently cannot
+/// be read by this one. Bump this whenever a stored shape changes in a way an
+/// already-written record does not satisfy — a field added without a default, a
+/// removed alternative, a retyped key. The bump is what tells a backend meeting such
+/// a store to re-ingest the catalog instead of serving the subset that still
+/// happens to parse (see [`DefinitionStore::needs_reingest`]).
+pub const STORE_FORMAT: u32 = 1;
+
 /// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a gg run's
 /// session record. One constant, because the same string is the store slot
 /// (`runs/<id>/replay.json`), the route segment (`/runs/{id}/replay`) and the run
@@ -932,15 +944,64 @@ impl DefinitionStore {
 
     /// Whether the store holds at least one ingested test-case version.
     ///
-    /// The startup half of the readiness signal (see [`crate::readiness`]): an empty
-    /// store cannot resolve anything, so the backend must stay out of its Service
-    /// until an ingest fills it. A store root that cannot be read is reported as
-    /// unpopulated — "cannot tell" and "nothing there" both mean "do not serve yet".
+    /// A store root that cannot be read is reported as holding nothing — "cannot
+    /// tell" and "nothing there" lead to the same decision everywhere this is asked.
+    ///
+    /// Walks the catalog, so call it on startup and after an ingest rather than per
+    /// request.
+    pub fn holds_versions(&self) -> bool {
+        self.list_cases().is_ok_and(|cases| !cases.is_empty())
+    }
+
+    /// Whether the store can be served: it holds versions, and they are in the
+    /// record format this build reads.
+    ///
+    /// The startup half of the readiness signal (see [`crate::readiness`]). Neither
+    /// an empty store nor one written in another format can resolve a version, so
+    /// the backend stays out of its Service until an ingest leaves it servable.
     ///
     /// Walks the catalog, so call it on startup and after an ingest rather than per
     /// request; the probe reads the latch this seeds, not the filesystem.
-    pub fn is_populated(&self) -> bool {
-        self.list_cases().is_ok_and(|cases| !cases.is_empty())
+    pub fn is_servable(&self) -> bool {
+        self.format_is_current() && self.holds_versions()
+    }
+
+    /// Whether the store's records must be rewritten before it can be served: it
+    /// holds versions written in a record format other than [`STORE_FORMAT`].
+    ///
+    /// An ingest meeting this scans the whole catalog with `force`, whatever it was
+    /// asked for, because no stored version is readable and a partial scan would
+    /// leave the rest that way (see [`crate::ingest`]).
+    pub fn needs_reingest(&self) -> bool {
+        !self.format_is_current() && self.holds_versions()
+    }
+
+    /// Path to the store-root marker recording the record format its contents were
+    /// written in. Lives beside the catalog-version marker in the root-level
+    /// `.tcab/` sidecar, so it is wiped together with the store it describes.
+    fn store_format_path(&self) -> PathBuf {
+        self.root.join(SIDECAR).join("store-format")
+    }
+
+    /// Whether the store is stamped with the record format this build reads. An
+    /// unstamped store is not: nothing has claimed its contents are readable.
+    fn format_is_current(&self) -> bool {
+        std::fs::read_to_string(self.store_format_path())
+            .ok()
+            .and_then(|stamp| stamp.trim().parse::<u32>().ok())
+            .is_some_and(|stamp| stamp == STORE_FORMAT)
+    }
+
+    /// Stamp the store with the record format this build writes, which every
+    /// version it now holds is in. Called by an ingest scan that leaves the whole
+    /// store in that format.
+    pub fn set_store_format(&self) -> Result<()> {
+        let path = self.store_format_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, STORE_FORMAT.to_string())?;
+        Ok(())
     }
 
     /// List the ingested versions for a slug, ordered oldest-first by semantic
@@ -1033,6 +1094,10 @@ impl DefinitionStore {
     }
 
     /// Read a version's stored manifest.
+    ///
+    /// A manifest that is present but does not parse was written in another record
+    /// format, which is a store this build cannot serve rather than a missing
+    /// version, so it says so and names the repair (see [`Self::needs_reingest`]).
     pub fn read_manifest(&self, slug: &str, version: &str) -> Result<StoredManifest> {
         let path = self.manifest_path(slug, version);
         let bytes = std::fs::read(&path).map_err(|_| {
@@ -1040,7 +1105,12 @@ impl DefinitionStore {
                 "test-case version `{slug}@{version}` is not ingested"
             ))
         })?;
-        Ok(serde_json::from_slice(&bytes)?)
+        serde_json::from_slice(&bytes).map_err(|error| {
+            BackendError::Internal(format!(
+                "stored manifest for `{slug}@{version}` was written in another \
+                 record format ({error}); re-ingest the catalog"
+            ))
+        })
     }
 
     /// Persist a version's resolved manifest sidecar into its canonical directory.

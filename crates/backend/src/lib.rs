@@ -206,13 +206,19 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // whose /state is ephemeral it starts EMPTY — the ingest sidecar refills it, but
     // that takes minutes on a cold catalog. Hold the backend out of its Service until
     // then, or every run launched in the gap dies on a spurious "is not ingested"
-    // 404. A store that already holds versions has nothing to wait for.
-    let readiness = crate::readiness::Readiness::new(store.is_populated());
+    // 404. A store that already holds readable versions has nothing to wait for.
+    let readiness = crate::readiness::Readiness::new(store.is_servable());
     if !readiness.is_ready() {
-        tracing::info!(
-            store = %store.root().display(),
+        // A store written in another record format is held out for the same reason an
+        // empty one is, and says so distinctly: it looks full, and serving it would
+        // answer with whatever subset an ingest has since rewritten.
+        let reason = if store.needs_reingest() {
+            "definition store was written in another record format; staying unready \
+             until an ingest rewrites it"
+        } else {
             "definition store is empty; staying unready until an ingest populates it"
-        );
+        };
+        tracing::info!(store = %store.root().display(), "{reason}");
     }
     let state = AppState {
         db,

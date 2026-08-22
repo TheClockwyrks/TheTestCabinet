@@ -41,12 +41,22 @@ use super::AppState;
 /// The metadata is read from each case's **latest visible version**, which is the
 /// one a listing describes. A case whose latest manifest cannot be read is
 /// skipped rather than failing the whole catalog — one unreadable sidecar should
-/// cost that case's card, not every case's.
+/// cost that case's card, not every case's. A store the running build cannot read
+/// at all is the other case entirely: it answers `503` naming the repair, because
+/// a listing of whichever versions happen to still parse is a wrong answer that
+/// looks like a right one (see
+/// [`needs_reingest`](crate::store::DefinitionStore::needs_reingest)).
 ///
 /// Experimental versions are omitted unless the deployment has opted in via
 /// `TCAB_BACKEND_ALLOW_EXPERIMENTAL` (see [`crate::config::Config::allow_experimental`]),
 /// so an experimental case a deployment has not enabled is not offered to the UI.
 pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogResponse>, ApiError> {
+    if state.store.needs_reingest() {
+        return Err(ApiError::unavailable(
+            "the definition store was written in another record format and holds no \
+             version this build can read; re-ingest the catalog",
+        ));
+    }
     let mut cases = Vec::new();
     for (slug, versions) in state
         .store
@@ -61,7 +71,10 @@ pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogRespon
         let manifest = match state.store.read_manifest(&slug, latest) {
             Ok(manifest) => manifest,
             Err(error) => {
-                tracing::warn!(
+                // The store is one this build reads, so a manifest inside it that
+                // does not read back is a defect in what ingest wrote, not a state
+                // to expect.
+                tracing::error!(
                     %slug,
                     version = %latest,
                     %error,

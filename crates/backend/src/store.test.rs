@@ -175,29 +175,78 @@ fn missing_version_is_not_found() {
 }
 
 #[test]
-fn a_fresh_store_is_not_populated() {
+fn a_fresh_store_is_not_servable() {
     // The state a pod with an ephemeral /state boots into: the readiness latch must
     // read this as "do not serve yet".
     let (_dir, store) = temp_store();
-    assert!(!store.is_populated());
+    assert!(!store.holds_versions());
+    assert!(!store.is_servable());
+    // Nothing to rewrite, so this is a store to fill rather than one to repair.
+    assert!(!store.needs_reingest());
 }
 
 #[test]
-fn a_store_with_a_version_is_populated() {
+fn a_stamped_store_with_a_version_is_servable() {
     let (_dir, store) = temp_store();
     store
         .write_manifest(&sample_manifest("pong", "v1.0.0"))
         .unwrap();
-    assert!(store.is_populated());
+    store.set_store_format().unwrap();
+    assert!(store.holds_versions());
+    assert!(store.is_servable());
+    assert!(!store.needs_reingest());
 }
 
 #[test]
-fn a_slug_directory_without_a_manifest_is_not_populated() {
+fn a_store_written_in_another_record_format_needs_reingesting() {
+    // What a backend meets after a build changed the stored shapes: the versions are
+    // all there and none of them can be read, which must not read as servable.
+    let (dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    std::fs::create_dir_all(dir.path().join(".tcab")).unwrap();
+    std::fs::write(dir.path().join(".tcab").join("store-format"), "999").unwrap();
+    assert!(store.holds_versions());
+    assert!(!store.is_servable());
+    assert!(store.needs_reingest());
+}
+
+#[test]
+fn an_unstamped_store_with_a_version_needs_reingesting() {
+    // Nothing has claimed the versions are in a format this build reads, so they are
+    // treated as though they are not.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    assert!(!store.is_servable());
+    assert!(store.needs_reingest());
+}
+
+#[test]
+fn a_slug_directory_without_a_manifest_holds_no_version() {
     // `list_versions` only counts a version with a manifest, so a half-built or
     // pruned-empty slug shell must not read as a servable catalog.
     let (dir, store) = temp_store();
     std::fs::create_dir_all(dir.path().join("test-cases").join("pong").join("v1.0.0")).unwrap();
-    assert!(!store.is_populated());
+    store.set_store_format().unwrap();
+    assert!(!store.holds_versions());
+    assert!(!store.is_servable());
+}
+
+#[test]
+fn a_manifest_from_another_record_format_reads_as_an_internal_error() {
+    // Distinct from a missing version: the file is there, and what it says cannot be
+    // turned into a record this build holds.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    std::fs::write(store.manifest_path("pong", "v1.0.0"), "{\"slug\":\"pong\"}").unwrap();
+    let err = store.read_manifest("pong", "v1.0.0").unwrap_err();
+    assert!(matches!(err, BackendError::Internal(_)), "{err:?}");
+    assert!(err.to_string().contains("re-ingest"), "{err}");
 }
 
 #[test]

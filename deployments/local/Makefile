@@ -818,8 +818,33 @@ local-grafana:
 # `kubectl apply -k` is idempotent (a no-op when nothing changed), and the rollout
 # restart below still forces the pods to pick up rebuilt images even when their spec
 # is byte-identical (same :local tag), which apply alone would not trigger.
+#
+# The restart is followed by an ingest, for the same reason `local-up` runs one: the
+# rebuilt backend may read the definition store differently from the one that wrote
+# it, in which case it holds itself unready until an ingest rewrites the store (see
+# crates/backend/src/store.rs). Waiting for readiness without ingesting would wait
+# for something only the ingest can produce. The ingest has to reach the REBUILT
+# backend, so it waits for the restart to actually replace the pod first — the
+# rollout restart returns before the old pod is gone, and ingesting into the old one
+# would leave the store in the format the new one cannot read. An already-current
+# store makes this the cheap no-op the incremental script reports.
 local-rebuild: images apply
-	$(KUBECTL) -n '$(NS)' rollout restart $(RESTART_WORKLOADS)
+	@old="$$($(KUBECTL) -n '$(NS)' get pod -l app.kubernetes.io/name=tcab-backend \
+	          -o jsonpath='{.items[0].metadata.uid}' 2>/dev/null)"; \
+	  $(KUBECTL) -n '$(NS)' rollout restart $(RESTART_WORKLOADS); \
+	  if [ -n "$$old" ]; then \
+	    echo "Waiting for the restarted tcab-backend pod (up to $(INGEST_POD_TIMEOUT)s)…"; \
+	    deadline=$$(( $$(date +%s) + $(INGEST_POD_TIMEOUT) )); \
+	    while [ "$$($(KUBECTL) -n '$(NS)' get pod -l app.kubernetes.io/name=tcab-backend \
+	                  -o jsonpath='{.items[0].metadata.uid}' 2>/dev/null)" = "$$old" ]; do \
+	      if [ "$$(date +%s)" -ge "$$deadline" ]; then \
+	        echo "ERROR: tcab-backend was not replaced within $(INGEST_POD_TIMEOUT)s." >&2; \
+	        exit 1; \
+	      fi; \
+	      sleep 2; \
+	    done; \
+	  fi
+	@$(MAKE) --no-print-directory local-ingest
 	@$(MAKE) --no-print-directory rollout-wait WAIT_WORKLOADS='$(RESTART_WORKLOADS)'
 
 # Re-apply the overlay ONLY, with no image rebuild or service restart — the fast

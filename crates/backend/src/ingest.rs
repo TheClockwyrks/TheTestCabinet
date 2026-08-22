@@ -137,6 +137,25 @@ impl<'a> Ingestor<'a> {
         request: &IngestRequest,
         mut on_event: impl FnMut(IngestEvent),
     ) -> Result<IngestReport> {
+        // A store holding versions written in another record format holds nothing
+        // this build can read, so a partial scan cannot leave it coherent and there
+        // is nothing in it worth skipping: whatever was asked for is promoted to a
+        // forced whole-catalog scan, which rewrites every version in the format this
+        // build reads. This is the repair after a backend upgrade that changed the
+        // stored shapes, reached from any ingest rather than only an explicitly
+        // forced one.
+        let stale = self.store.needs_reingest();
+        let mut effective = request.clone();
+        if stale {
+            tracing::warn!(
+                "definition store was written in another record format; re-ingesting \
+                 the whole catalog"
+            );
+            effective.test_cases = None;
+            effective.force = true;
+        }
+        let request = &effective;
+
         // A whole-catalog ingest can carry a version token (the client's build
         // commit). When it matches what the store last ingested, the catalog is
         // unchanged and the per-version skip path (below) does the cheap thing; when
@@ -181,6 +200,12 @@ impl<'a> Ingestor<'a> {
         if let Some(version) = tagged {
             self.store.set_catalog_version(version)?;
         }
+
+        // Every version the store now holds was written by this build: it was either
+        // already in this build's record format, empty before the scan, or just
+        // rewritten whole by the promotion above. Stamp the format so a later build
+        // that reads the store differently knows to rebuild it.
+        self.store.set_store_format()?;
 
         Ok(report)
     }

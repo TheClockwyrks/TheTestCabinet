@@ -189,6 +189,13 @@ run-container image (`draw`, `voxel-anim`, the Foray and Lattice binaries)
 reaches run pods only through `run-images` and its per-type and per-image
 variants.
 
+`local-rebuild` re-ingests once the restarted backend is up, because a rebuilt
+backend can read the definition store differently from the build that wrote it
+and holds itself unready until an ingest rewrites the store (see
+[the backend's test case definitions](/components/backend/overview/#test-case-definitions)).
+The ingest is the incremental one, so a store the rebuild left readable costs
+nothing.
+
 Driver Jobs are created fresh per run, so a rebuilt `tcab-driver` image or a
 rotated key takes effect on the next run with no restart. A re-ingest is required
 after editing a case because the definition store is immutable per

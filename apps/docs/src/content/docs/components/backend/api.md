@@ -63,8 +63,14 @@ still filling is alive and must not be restarted.
 
 ### `GET /readyz`
 
-Readiness probe. `200` once the definition store holds versions, `503` while it
-is still empty.
+Readiness probe. `200` once the definition store holds versions the running
+build can read, `503` otherwise.
+
+Two states hold it at `503`. An empty store has nothing to resolve against. A
+store stamped with another record format holds versions this build cannot read
+(see [Test case definitions](/components/backend/overview/#test-case-definitions)),
+and serving it would answer with whatever subset happened to be re-ingested
+since. Both are cleared by an ingest scan.
 
 Keep this separate from the `/healthz` liveness probe in every deployment. A
 backend whose definition store lives on an ephemeral volume starts with an empty
@@ -117,6 +123,12 @@ the case's others.
 for development iteration on a version no run has been published against. A
 version that published runs reference is immutable and is revised by adding a
 new version.
+
+A scan against a store stamped with another record format is promoted to a
+forced whole-catalog scan, whatever the request asked for: no version in such a
+store can be read, so there is nothing for a partial scan to leave coherent.
+This is what repairs a store after a backend upgrade that changed the record
+shapes, including from the incremental re-ingest a local stack runs.
 
 `catalogVersion` is an opaque token identifying the catalog content of a
 whole-catalog ingest, such as the calling build's commit. The backend records it

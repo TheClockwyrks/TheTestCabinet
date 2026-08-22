@@ -90,6 +90,53 @@ fn catalog_version_skips_a_re_render_when_unchanged_and_forces_when_changed() {
 }
 
 #[test]
+fn a_store_in_another_record_format_is_re_ingested_whole() {
+    // The repair after a build changed the stored shapes. The store looks full and
+    // none of it can be read, so a partial scan is promoted to a forced whole-catalog
+    // one: it prunes the versions the checkout no longer backs and leaves the store
+    // stamped with the format this build writes. Exercised with an empty test-cases
+    // tree, which needs no browser to render references.
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("test-cases")).unwrap();
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    write(&store.manifest_path("pong", "v1.0.0"), r#"{"slug":"pong"}"#);
+    write(&store_dir.path().join(".tcab/store-format"), "999");
+    assert!(store.needs_reingest());
+
+    Ingestor::new(dir.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec![]),
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert!(!store.has_version("pong", "v1.0.0"));
+    assert!(!store.needs_reingest());
+}
+
+#[test]
+fn a_partial_scan_of_a_current_store_leaves_the_rest_of_it_alone() {
+    // The contrast with the promotion above: a store this build reads is scanned as
+    // asked, so a partial scan neither forces nor prunes.
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("test-cases")).unwrap();
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    write(&store.manifest_path("pong", "v1.0.0"), r#"{"slug":"pong"}"#);
+    store.set_store_format().unwrap();
+
+    Ingestor::new(dir.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec![]),
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert!(store.has_version("pong", "v1.0.0"));
+}
+
+#[test]
 fn scan_with_progress_emits_a_start_event_with_the_target_count() {
     // The streamed progress feed leans on `Start` always firing before the loop,
     // carrying the total to be scanned. An empty test-cases tree exercises that
