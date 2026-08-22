@@ -66,6 +66,15 @@ baselines. The site resolves these from snapshot assets, a console from the
 backend for a published run and from the [artifact
 service](/components/artifacts/overview/) for a produced one.
 
+A run's Inputs surface is answered through `readCaseVariant`, which resolves one
+variant of one exact case version rendered for one
+[engine](/components/core/engines/). The run detail page passes its run's own
+recorded version and engine, so it shows that run's prompt and specs rather than
+the latest version's. A console resolves it from the backend's version and specs
+routes; the site resolves it from the snapshot's case document for that version.
+The case pages keep reading `readTestCase`, which resolves the latest version
+engineless.
+
 Listing pages are answered through `queryRunSummaries`, a paged, filtered,
 sorted query the host implements. A console forwards it to the backend's offset
 endpoint; the site answers it from its in-memory summary index with the same

@@ -1109,7 +1109,10 @@ impl DefinitionStore {
     /// live console (per request) and the public snapshot (per variant at publish)
     /// show rendered specs, the spec analogue of the already-rendered variant
     /// prompt. `voxel` is the variant's effective bounding volume (its own override
-    /// else the case's), or `None` for a non-voxel case.
+    /// else the case's), or `None` for a non-voxel case. `engine` is the engine the
+    /// rendering is for, which a caller displaying a *run*'s inputs sets to the
+    /// engine that run selected; `None` renders the engineless form, which is what a
+    /// caller showing a case rather than a run wants.
     #[allow(clippy::too_many_arguments)]
     pub fn read_rendered_spec(
         &self,
@@ -1120,6 +1123,7 @@ impl DefinitionStore {
         variant_name: &str,
         variant_description: Option<&str>,
         voxel: Option<&VoxelSpec>,
+        engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
     ) -> Result<String> {
         let bytes = self.read_artifact(slug, version, &spec.source)?;
         let text = String::from_utf8(bytes).map_err(|err| {
@@ -1140,9 +1144,7 @@ impl DefinitionStore {
             variant_name,
             variant_description,
             voxel,
-            // Rendered for display off the stored manifest, outside any run, so
-            // there is no selected engine: the engineless form.
-            None,
+            engine,
         )?)
     }
 

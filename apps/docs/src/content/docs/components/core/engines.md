@@ -288,6 +288,18 @@ launcher offers exactly the engines the selected version supports and a host tha
 resolves a case over HTTP holds the same gate a host reading the manifest from a
 checkout does.
 
+## Showing a run its own inputs
+
+A run's prompt and seeded specs are text rendered from the case version's
+templates under the engine that run selected. Any surface that shows a run what
+it was given renders from that run's own recorded case version and engine, so it
+reproduces the files that run's harness received. A frozen version is what makes
+this exact rather than approximate: the templates the rendering reads cannot have
+moved since the run.
+
+A surface showing a case rather than a run renders engineless, because nothing
+has selected an engine yet.
+
 A run's engine is part of what makes its result comparable. Runs of one case
 under different engines measure different work and carry different available
 points, so a comparison holds the engine constant and reports it as a confound

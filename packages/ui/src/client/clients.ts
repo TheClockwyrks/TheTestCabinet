@@ -212,11 +212,27 @@ export interface BackendClient {
 
   listTestCases(): Promise<TestCase[]>;
   listVersions(slug: string): Promise<string[]>;
-  resolveVersion(slug: string, version: string): Promise<VersionInfo>;
+  /**
+   * Resolve one exact case version, with each variant's `prompt` rendered for
+   * `engine`.
+   *
+   * `engine` is required rather than defaulted because a case's prompt template
+   * branches on the selected engine, so the rendering is only correct for the
+   * caller that names one: a run surface passes the engine its run recorded, and
+   * a case surface passes `DEFAULT_ENGINE_SLUG` for the engineless rendering.
+   */
+  resolveVersion(
+    slug: string,
+    version: string,
+    engine: string,
+  ): Promise<VersionInfo>;
+  /** One variant's seeded spec bodies, rendered for `engine` — the spec analogue
+   * of the rendered prompt, with the same requirement that a caller name one. */
   readSpecs(
     slug: string,
     version: string,
     variant: string,
+    engine: string,
   ): Promise<Specification>;
 
   // Published runs (the read side a reporter/gallery consumes).

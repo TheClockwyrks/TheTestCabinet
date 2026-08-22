@@ -253,6 +253,15 @@ export function stockedGallery(runId: string): GalleryDataInput {
     testCases: testCases(),
     testCasesStatus: "ready",
     readTestCase: (slug) => Promise.resolve(testCaseDetail(slug)),
+    // The run Inputs tab resolves a run's OWN case version and engine through this
+    // rather than through the case catalog, so a stocked host has to answer it or
+    // the walk would only ever see that tab's empty state.
+    readCaseVariant: (ref) =>
+      Promise.resolve(
+        testCaseDetail(ref.slug)?.variants.find(
+          (variant) => variant.slug === ref.variant,
+        ) ?? null,
+      ),
     models: models(),
     modelsStatus: "ready",
     canExecute: true,
@@ -278,6 +287,7 @@ export function emptyGallery(_runId: string): GalleryDataInput {
     testCases: [],
     testCasesStatus: "ready",
     readTestCase: () => Promise.resolve(null),
+    readCaseVariant: () => Promise.resolve(null),
     models: [],
     modelsStatus: "ready",
     canExecute: true,

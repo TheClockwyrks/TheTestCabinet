@@ -2403,6 +2403,22 @@ pub struct CaseVariantOut {
     /// here — the spec analogue of [`Self::prompt`] — rather than the case sharing
     /// one common list.
     pub seeded_inputs: Vec<CaseSeededInputOut>,
+    /// This variant's prompt and seeded specs re-rendered for each
+    /// [engine](test_cabinet_core::engine) the version declares that vendors a
+    /// runtime, keyed by engine slug.
+    ///
+    /// A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so
+    /// the text a run was handed depends on which runtime its build was written
+    /// against. [`Self::prompt`] and [`Self::seeded_inputs`] are the engineless
+    /// rendering — what a reader browsing the *case* sees, and exactly what a run on
+    /// the `none` engine was handed — and this map carries the rest, so a run's
+    /// Inputs surface shows the text that run actually received.
+    ///
+    /// The engineless engine is deliberately absent: it is already the pair above,
+    /// and duplicating every spec body for it would double the document for the many
+    /// cases that support nothing else.
+    #[serde(default)]
+    pub engine_renderings: std::collections::BTreeMap<String, CaseVariantRenderingOut>,
     /// Reviewer checklist items additive to the common ones, with their point
     /// weights, surfaced only when this variant is selected.
     pub review_items: Vec<CaseReviewItemOut>,
@@ -2436,6 +2452,19 @@ pub struct CaseVariantOut {
     /// the `case_reference_sheet` table at ingest, and folded in here at export — never
     /// resolved from the manifest and never seeded into a run.
     pub reference_sheet: Option<CaseReferenceSheetOut>,
+}
+
+/// One variant's prompt and seeded specs rendered for one engine that vendors a
+/// runtime — the per-engine half of [`CaseVariantOut`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseVariantRenderingOut {
+    /// The variant's prompt as a run on this engine receives it.
+    pub prompt: String,
+    /// The variant's complete seeded spec set in seed order, each body rendered for
+    /// this variant on this engine.
+    pub seeded_inputs: Vec<CaseSeededInputOut>,
 }
 
 /// One variant's published reference frames, as exported in case metadata.
@@ -2580,6 +2609,7 @@ fn seeded_inputs(
     store: &DefinitionStore,
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
+    engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
 ) -> Vec<CaseSeededInputOut> {
     // The variant's own volume overrides the case's, so a template spec renders at
     // this variant's actual dimensions — matching how the prompt and a run's seed
@@ -2607,6 +2637,7 @@ fn seeded_inputs(
                     &variant.name,
                     variant.description.as_deref(),
                     voxel,
+                    engine,
                 )
                 .inspect_err(|err| {
                     tracing::warn!(
@@ -2628,11 +2659,53 @@ fn seeded_inputs(
         .collect()
 }
 
+/// Render one variant's prompt for `engine` off the stored manifest, exactly as a
+/// run on that engine receives it. `None` renders the engineless form.
+fn render_case_prompt(
+    manifest: &StoredManifest,
+    variant: &crate::store::StoredVariant,
+    engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
+) -> Result<String, BackendError> {
+    let spec_dests: Vec<String> = manifest
+        .common_specs
+        .iter()
+        .chain(variant.specs.iter())
+        .map(|spec| spec.dest.clone())
+        .collect();
+    test_cabinet_core::render_prompt_from_template(
+        &manifest.slug,
+        &manifest.version,
+        &manifest.prompt_template,
+        &variant.slug,
+        &variant.name,
+        variant.description.as_deref(),
+        &spec_dests,
+        manifest.test_type,
+        manifest.max_runtime_seconds,
+        // The variant's own volume overrides the case's for its prompt.
+        variant.voxel.as_ref().or(manifest.voxel.as_ref()),
+        // A snapshot bakes the standing prompt only — prior game-jam entries are a
+        // property of the run, so no distinctness section.
+        0,
+        engine,
+    )
+    .map_err(|e| {
+        BackendError::Snapshot(format!(
+            "rendering prompt for `{}@{}` variant `{}`: {e}",
+            manifest.slug, manifest.version, variant.slug
+        ))
+    })
+}
+
 /// Build the case-metadata document for one ingested version (no mockup HTML, no
 /// host paths — only the site-facing slice). Each variant's prompt is rendered
 /// exactly as a run receives it, so the public gallery shows the same instruction
 /// the consoles do, and the seeded spec files it references are inlined (bodies
 /// read from `store`) so the fully static site can show them without a backend.
+///
+/// Both are rendered once engineless and once per declared engine that vendors a
+/// runtime, because the templates branch on the selected engine (see
+/// [`CaseVariantOut::engine_renderings`]).
 fn case_metadata(
     store: &DefinitionStore,
     manifest: &StoredManifest,
@@ -2647,43 +2720,49 @@ fn case_metadata(
         .variants
         .iter()
         .map(|v| {
-            let spec_dests: Vec<String> = manifest
-                .common_specs
-                .iter()
-                .chain(v.specs.iter())
-                .map(|spec| spec.dest.clone())
-                .collect();
-            let prompt = test_cabinet_core::render_prompt_from_template(
-                &manifest.slug,
-                &manifest.version,
-                &manifest.prompt_template,
-                &v.slug,
-                &v.name,
-                v.description.as_deref(),
-                &spec_dests,
-                manifest.test_type,
-                manifest.max_runtime_seconds,
-                // The variant's own volume overrides the case's for its prompt.
-                v.voxel.as_ref().or(manifest.voxel.as_ref()),
-                // The gallery snapshot shows the standing prompt only — no prior
-                // game-jam entries, so no distinctness section.
-                0,
-                // A snapshot is baked per case version, not per run, and the
-                // engine is a run dimension — so the engineless form.
-                None,
-            )
-            .map_err(|e| {
-                BackendError::Snapshot(format!(
-                    "rendering prompt for `{}@{}` variant `{}`: {e}",
-                    manifest.slug, manifest.version, v.slug
-                ))
-            })?;
+            // The engineless rendering: what a reader browsing the case sees, and
+            // exactly what a run on the `none` engine was handed.
+            let prompt = render_case_prompt(manifest, v, None)?;
+            // Every engine this version declares that vendors a runtime, rendered
+            // under its own branch of the templates so a run's Inputs surface can
+            // show the text that run actually received. An engine slug this build
+            // does not carry is skipped with a warning rather than failing the
+            // snapshot, mirroring how a missing reference baseline is skipped.
+            let mut engine_renderings = std::collections::BTreeMap::new();
+            for support in &manifest.engines {
+                if support.slug == test_cabinet_core::engine::NONE_SLUG {
+                    continue;
+                }
+                let resolved = match test_cabinet_core::EngineCatalog::new().resolve(
+                    &test_cabinet_core::engine::EngineSelection::new(support.slug.clone()),
+                ) {
+                    Ok(resolved) => resolved,
+                    Err(err) => {
+                        tracing::warn!(
+                            slug = %manifest.slug,
+                            version = %manifest.version,
+                            engine = %support.slug,
+                            %err,
+                            "resolving declared engine for snapshot failed; omitting its rendering"
+                        );
+                        continue;
+                    }
+                };
+                engine_renderings.insert(
+                    support.slug.clone(),
+                    CaseVariantRenderingOut {
+                        prompt: render_case_prompt(manifest, v, Some(&resolved))?,
+                        seeded_inputs: seeded_inputs(store, manifest, v, Some(&resolved)),
+                    },
+                );
+            }
             Ok(CaseVariantOut {
                 slug: v.slug.clone(),
                 name: v.name.clone(),
                 description: v.description.clone(),
                 prompt,
-                seeded_inputs: seeded_inputs(store, manifest, v),
+                seeded_inputs: seeded_inputs(store, manifest, v, None),
+                engine_renderings,
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
                 domains: v.domains.iter().map(case_domain_out).collect(),
                 reference_builds: reference_builds

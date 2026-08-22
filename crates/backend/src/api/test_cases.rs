@@ -7,11 +7,12 @@ mod tests;
 
 use axum::Json;
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use test_cabinet_core::content_labels::{self, ContentLabels};
+use test_cabinet_core::engine::{EngineCatalog, EngineSelection, ResolvedEngine};
 use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
 };
@@ -108,13 +109,59 @@ pub async fn versions(
     Ok(Json(VersionsResponse { slug, versions }))
 }
 
+/// The [engine](test_cabinet_core::engine) a version's templated text is rendered
+/// for: `?engine=<slug>` on [`resolve_version`] and [`variant_specs`].
+///
+/// A case version's `prompt.hbs` and its `.hbs` specs branch on the selected
+/// engine, so the same stored template renders into different text depending on
+/// which runtime the build is written against. The engine is therefore a
+/// *rendering* input, not part of a version's identity — a version makes no claim
+/// about an engine — which is why it rides as a query parameter here while the
+/// `validation-baseline` route carries it as a path segment (there it names a
+/// distinct stored directory).
+///
+/// A surface showing a **run** passes the engine that run recorded, so it reads
+/// the text that run's harness actually received. A surface showing a **case**
+/// passes nothing and gets the engineless form: a case is not a run, and nothing
+/// has selected an engine yet.
+#[derive(Debug, Default, Deserialize)]
+pub struct EngineQuery {
+    /// The engine slug to render for, or absent for the engineless form. An
+    /// unknown slug is a client error rather than a silent fallback.
+    #[serde(default)]
+    pub engine: Option<String>,
+}
+
+impl EngineQuery {
+    /// Resolve the requested slug against the built-in engine catalogue.
+    ///
+    /// `None` (the parameter was omitted) renders engineless. An explicit
+    /// [`NONE_SLUG`](test_cabinet_core::engine::NONE_SLUG) resolves to the built-in
+    /// engineless engine, which renders identically — a run that named `none` and a
+    /// surface that named nothing see the same text.
+    fn resolve(&self) -> Result<Option<ResolvedEngine>, ApiError> {
+        let Some(slug) = self.engine.as_deref() else {
+            return Ok(None);
+        };
+        EngineCatalog::new()
+            .resolve(&EngineSelection::new(slug))
+            .map(Some)
+            .map_err(|err| ApiError::bad_request(err.to_string()))
+    }
+}
+
 /// `GET /test-cases/{slug}/versions/{version}` — the full resolved manifest a
 /// runner needs, with store-relative keys and references resolved to rendered
 /// screenshot URLs.
+///
+/// `?engine=<slug>` (see [`EngineQuery`]) selects which engine each variant's
+/// `prompt` is rendered for; omitting it renders the engineless form.
 pub async fn resolve_version(
     State(state): State<AppState>,
     Path((slug, version)): Path<(String, String)>,
+    Query(query): Query<EngineQuery>,
 ) -> Result<Json<VersionResponse>, ApiError> {
+    let engine = query.resolve()?;
     let manifest = state
         .store
         .read_manifest(&slug, &version)
@@ -151,6 +198,7 @@ pub async fn resolve_version(
         &manifest,
         &reference_builds,
         &reference_sheets,
+        engine.as_ref(),
     )?))
 }
 
@@ -178,10 +226,15 @@ pub async fn artifact(
 /// [`artifact`] route serves. A plain spec is returned verbatim. A render error is
 /// exceptional (the same template renders at run time), so it surfaces as an
 /// internal error rather than silently dropping the spec.
+///
+/// `?engine=<slug>` (see [`EngineQuery`]) selects which engine the bodies are
+/// rendered for; omitting it renders the engineless form.
 pub async fn variant_specs(
     State(state): State<AppState>,
     Path((slug, version, variant)): Path<(String, String, String)>,
+    Query(query): Query<EngineQuery>,
 ) -> Result<Json<SpecsResponse>, ApiError> {
+    let engine = query.resolve()?;
     let manifest = state
         .store
         .read_manifest(&slug, &version)
@@ -220,6 +273,7 @@ pub async fn variant_specs(
                 &selected.name,
                 selected.description.as_deref(),
                 voxel,
+                engine.as_ref(),
             )?;
             Ok(SpecDocumentOut {
                 dest: spec.dest.clone(),
@@ -482,7 +536,7 @@ pub async fn put_run_code_analysis(
 
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
-/// prompt the way a real run receives it.
+/// prompt the way a run on `engine` receives it.
 fn version_response(
     manifest: &StoredManifest,
     reference_builds: &std::collections::HashMap<
@@ -490,6 +544,7 @@ fn version_response(
         std::collections::BTreeMap<String, String>,
     >,
     reference_sheets: &std::collections::HashMap<String, Vec<u32>>,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<VersionResponse, ApiError> {
     let reference_out = |scope: &str, r: &crate::store::StoredReference| ReferenceOut {
         view: r.view.clone(),
@@ -508,7 +563,7 @@ fn version_response(
                 slug: v.slug.clone(),
                 name: v.name.clone(),
                 description: v.description.clone(),
-                prompt: render_variant_prompt(manifest, v)?,
+                prompt: render_variant_prompt(manifest, v, engine)?,
                 specs: v.specs.iter().map(spec_out).collect(),
                 workspace: v.workspace.as_ref().map(workspaces_out),
                 references: v
@@ -647,15 +702,16 @@ fn version_response(
 }
 
 /// Render a variant's prompt the way a real run receives it: the version's
-/// `prompt.hbs` template rendered against the variant and its seeded specs (the
-/// common specs followed by the variant's own, matching seed order). The
-/// in-container workspace path is the engine's fixed default, so this preview is
-/// identical to the run-time instruction. A template error is exceptional (the
-/// same template renders at run time), so surface it as an internal error rather
-/// than silently dropping the prompt.
+/// `prompt.hbs` template rendered against the variant, its seeded specs (the
+/// common specs followed by the variant's own, matching seed order), and the
+/// selected `engine`. The in-container workspace path is the engine's fixed
+/// default, so this rendering is identical to the run-time instruction. A template
+/// error is exceptional (the same template renders at run time), so surface it as
+/// an internal error rather than silently dropping the prompt.
 fn render_variant_prompt(
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<String, ApiError> {
     let spec_dests: Vec<String> = manifest
         .common_specs
@@ -676,12 +732,11 @@ fn render_variant_prompt(
         // The variant's own volume overrides the case's for its prompt, so the
         // gallery renders each size variant's brief at its actual dimensions.
         variant.voxel.as_ref().or(manifest.voxel.as_ref()),
-        // The gallery preview shows the standing prompt, with no prior game-jam
-        // entries in play, so it never carries the distinctness section.
+        // A version's prompt is the standing one, with no prior game-jam entries in
+        // play, so it never carries the distinctness section. Those are a property of
+        // the run, seeded from earlier entries by the same model.
         0,
-        // The gallery renders a case, not a run, and a run is what selects an
-        // engine — so the preview is the engineless form.
-        None,
+        engine,
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }

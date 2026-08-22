@@ -229,37 +229,65 @@ describe("engine dimension", () => {
   // resolved version that drops them offers nothing, so no case can be run on an
   // engine at all.
   it("carries a version's supported engines through resolution", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json({
-          slug: "carom",
-          version: "v3.0.0",
-          name: "Carom",
-          difficulty: "easy",
-          tags: [],
-          summary: null,
-          description: null,
-          changelog: "",
-          maxRuntimeSeconds: 1800,
-          testType: "end-to-end",
-          engines: [
-            { slug: "none" },
-            { slug: "simple-2d", minVersion: "1.0.0" },
-          ],
-          variants: [],
-          checks: [],
-        }),
-      ),
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({
+        slug: "carom",
+        version: "v3.0.0",
+        name: "Carom",
+        difficulty: "easy",
+        tags: [],
+        summary: null,
+        description: null,
+        changelog: "",
+        maxRuntimeSeconds: 1800,
+        testType: "end-to-end",
+        engines: [{ slug: "none" }, { slug: "simple-2d", minVersion: "1.0.0" }],
+        variants: [],
+        checks: [],
+      }),
     );
+    vi.stubGlobal("fetch", fetchMock);
 
     const info = await createHttpBackend(BACKEND).resolveVersion(
       "carom",
       "v3.0.0",
+      "simple-2d",
     );
 
     // The range is the host's gate, not the picker's, so only the slugs travel on.
     expect(info.engines).toEqual(["none", "simple-2d"]);
+    // The engine names which branch of the case's templates the per-variant prompt
+    // is rendered from, so it has to reach the backend on the read itself.
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      `${BACKEND}/test-cases/carom/versions/v3.0.0?engine=simple-2d`,
+    );
+  });
+
+  // The spec bodies branch on the engine exactly as the prompt does, so the run's
+  // Inputs tab has to name the engine on this read too — otherwise the specs and
+  // the prompt beside them could describe different deliverables.
+  it("renders seeded specs for the requested engine", async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({
+        slug: "carom",
+        version: "v3.0.0",
+        variant: "base",
+        description: null,
+        specs: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHttpBackend(BACKEND).readSpecs(
+      "carom",
+      "v3.0.0",
+      "base",
+      "simple-2d",
+    );
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      `${BACKEND}/test-cases/carom/versions/v3.0.0/specs/base?engine=simple-2d`,
+    );
   });
 
   // The launch body is the only place a collected engine reaches the backend. A

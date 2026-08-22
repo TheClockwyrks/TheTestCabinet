@@ -446,10 +446,17 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return versions;
     },
 
-    async resolveVersion(slug: string, version: string): Promise<VersionInfo> {
+    async resolveVersion(
+      slug: string,
+      version: string,
+      engine: string,
+    ): Promise<VersionInfo> {
+      // `engine` selects which engine each variant's prompt is rendered for: a
+      // case's `prompt.hbs` branches on it, so a run surface names the engine its
+      // run recorded and a case surface names the engineless one.
       const r = await getJson<ResolvedVersion>(
         baseUrl,
-        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}?engine=${encodeURIComponent(engine)}`,
       );
       return {
         slug: r.slug,
@@ -526,6 +533,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       slug: string,
       version: string,
       variant: string,
+      engine: string,
     ): Promise<Specification> {
       // The backend renders each seeded spec for the selected variant and returns
       // the whole set as one bundle — a template spec's `{{#if (eq variant.slug …)}}`
@@ -533,9 +541,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       // handlebars-free files the harness receives (the spec analogue of the
       // rendered prompt). This is why we no longer fetch the raw `/artifacts` bytes
       // per spec and stitch them here: those are the unrendered templates.
+      // `engine` renders the spec bodies under that engine's branch, as it does the
+      // prompt on the resolved version.
       return getJson<Specification>(
         baseUrl,
-        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/specs/${encodeURIComponent(variant)}`,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/specs/${encodeURIComponent(variant)}?engine=${encodeURIComponent(engine)}`,
       );
     },
 

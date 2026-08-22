@@ -5,13 +5,16 @@ import type { Comparison } from "@test-cabinet/run-record/comparison";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
 import {
+  DEFAULT_ENGINE_SLUG,
   findModelByModelId,
   runSummaryPage,
   toModelSummary,
   toRunSummary,
+  type CaseVariantRef,
   type GalleryDataInput,
   type RunDetail,
   type RunQuery,
+  type VariantSummary,
 } from "@test-cabinet/ui/app";
 import {
   runSummaries as publishedRunSummaries,
@@ -126,6 +129,38 @@ export function useStaticGallery(): GalleryDataInput {
   const readTestCase = useCallback(
     async (slug: string) =>
       catalogTestCases.find((entry) => entry.slug === slug) ?? null,
+    [],
+  );
+
+  // The inputs one run was given: the variant of the run's OWN case version,
+  // rendered for the run's OWN engine. The snapshot carries a document per
+  // published version, so an older version resolves out of `variantsByVersion`
+  // rather than the latest version's variants; and it carries each variant's
+  // prompt and specs re-rendered per engine, so a run on an engine reads that
+  // engine's rendering. The engineless slug is the top-level pair, which is what a
+  // run selecting no engine received. A version, variant, or engine this snapshot
+  // does not carry resolves null, which the Inputs tab reports as unavailable.
+  const readCaseVariant = useCallback(
+    async (ref: CaseVariantRef): Promise<VariantSummary | null> => {
+      const testCase = catalogTestCases.find(
+        (entry) => entry.slug === ref.slug,
+      );
+      if (!testCase) return null;
+      const variants =
+        ref.version === testCase.latestVersion
+          ? testCase.variants
+          : testCase.variantsByVersion[ref.version];
+      const variant = variants?.find((entry) => entry.slug === ref.variant);
+      if (!variant) return null;
+      if (ref.engine === DEFAULT_ENGINE_SLUG) return variant;
+      const rendering = variant.engineRenderings[ref.engine];
+      if (!rendering) return null;
+      return {
+        ...variant,
+        prompt: rendering.prompt,
+        seededInputs: rendering.seededInputs,
+      };
+    },
     [],
   );
 
@@ -317,6 +352,7 @@ export function useStaticGallery(): GalleryDataInput {
     queryRunSummaries,
     testCases,
     testCasesStatus: "ready",
+    readCaseVariant,
     readTestCase,
     // The model catalog is baked into the snapshot at build time, so it is always
     // resolved; the site has no backend to mutate it, so the config affordances

@@ -598,6 +598,22 @@ export type CaseReferenceSheetOut = {
 };
 
 /**
+ * One variant's prompt and seeded specs rendered for one engine that vendors a
+ * runtime — the per-engine half of [`CaseVariantOut`].
+ */
+export type CaseVariantRenderingOut = {
+  /**
+   * The variant's prompt as a run on this engine receives it.
+   */
+  prompt: string;
+  /**
+   * The variant's complete seeded spec set in seed order, each body rendered for
+   * this variant on this engine.
+   */
+  seededInputs: Array<CaseSeededInputOut>;
+};
+
+/**
  * One variant of a case as the gallery shows it.
  */
 export type CaseVariantOut = {
@@ -619,6 +635,23 @@ export type CaseVariantOut = {
    * one common list.
    */
   seededInputs: Array<CaseSeededInputOut>;
+  /**
+   * This variant's prompt and seeded specs re-rendered for each
+   * [engine](test_cabinet_core::engine) the version declares that vendors a
+   * runtime, keyed by engine slug.
+   *
+   * A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so
+   * the text a run was handed depends on which runtime its build was written
+   * against. [`Self::prompt`] and [`Self::seeded_inputs`] are the engineless
+   * rendering — what a reader browsing the *case* sees, and exactly what a run on
+   * the `none` engine was handed — and this map carries the rest, so a run's
+   * Inputs surface shows the text that run actually received.
+   *
+   * The engineless engine is deliberately absent: it is already the pair above,
+   * and duplicating every spec body for it would double the document for the many
+   * cases that support nothing else.
+   */
+  engineRenderings: { [key in string]: CaseVariantRenderingOut };
   /**
    * Reviewer checklist items additive to the common ones, with their point
    * weights, surfaced only when this variant is selected.

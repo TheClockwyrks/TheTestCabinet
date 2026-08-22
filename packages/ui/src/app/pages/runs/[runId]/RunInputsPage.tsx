@@ -10,11 +10,11 @@ import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import styles from "./RunDetailPages.module.scss";
 
 // The Inputs tab (`/runs/:runId/inputs`): the prompt, seeded files, and reference
-// media the run was given — resolved from the catalog by the run's subject and
-// rendered with the same `VariantInputsView` the test-case Inputs tab uses. It
-// saves a reviewer from leaving the run to the test-case section to see what was
-// asked for and what it was judged against. Available on every host (the public
-// site included).
+// media the run was given — resolved from the run's own recorded case version and
+// engine (see `useRunVariant`) and rendered with the same `VariantInputsView` the
+// test-case Inputs tab uses. It saves a reviewer from leaving the run to the
+// test-case section to see what was asked for and what it was judged against.
+// Available on every host (the public site included).
 //
 // A game-jam run carries one set of inputs that is *not* shared with every other
 // run of the case: the earlier entries' READMEs it was seeded with and asked to
@@ -30,11 +30,11 @@ export function RunInputsPage() {
 
 function RunInputsBody({ run }: { run: RunRecord }) {
   const { variant, status } = useRunVariant(run.subject);
-  // The inputs are resolved from the catalog, which is fetched independently of
-  // the run record — so this body commonly renders while that fetch is still in
-  // flight. Show the branded loading state for that wait; "not available" is
-  // reserved for a catalog that has finished loading without the case, which is
-  // the only state a visitor can do nothing about.
+  // The inputs are fetched independently of the run record, so this body commonly
+  // renders while that fetch is still in flight. Show the branded loading state
+  // for that wait; "not available" is reserved for a settled fetch that found no
+  // such case version, variant, or engine — the only state a visitor can do
+  // nothing about.
   if (status === "loading") {
     return <LoadingState size="section" label="Loading inputs…" />;
   }

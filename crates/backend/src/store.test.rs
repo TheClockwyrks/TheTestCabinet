@@ -279,10 +279,14 @@ fn read_rendered_spec_renders_a_template_and_passes_plain_through() {
     // The template renders for the selected variant — its branch resolved, no
     // handlebars left — and differs between variants.
     let base = store
-        .read_rendered_spec("pong", "v1.0.0", &template, "base", "Base", None, None)
+        .read_rendered_spec(
+            "pong", "v1.0.0", &template, "base", "Base", None, None, None,
+        )
         .unwrap();
     let gyre = store
-        .read_rendered_spec("pong", "v1.0.0", &template, "gyre", "Gyre", None, None)
+        .read_rendered_spec(
+            "pong", "v1.0.0", &template, "gyre", "Gyre", None, None, None,
+        )
         .unwrap();
     assert_eq!(base, "# Field\nstatic\n");
     assert_eq!(gyre, "# Field\nrotating\n");
@@ -290,9 +294,57 @@ fn read_rendered_spec_renders_a_template_and_passes_plain_through() {
     // A plain spec is returned verbatim — never run through the engine, so a
     // brace-y body that is not a real template is untouched.
     let overview = store
-        .read_rendered_spec("pong", "v1.0.0", &plain, "base", "Base", None, None)
+        .read_rendered_spec("pong", "v1.0.0", &plain, "base", "Base", None, None, None)
         .unwrap();
     assert_eq!(overview, "# Overview {{not touched}}\n");
+}
+
+#[test]
+fn a_template_spec_renders_for_the_selected_engine() {
+    // A spec branches on the selected engine wherever the deliverable differs under
+    // it, so the body a reader is shown is only the body a run received when the
+    // read names that run's engine.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    let dir = store.version_dir("pong", "v1.0.0");
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/loop.md.hbs"),
+        "{{#if (eq engine.slug \"none\")}}Write the frame loop.{{else}}Use {{engine.name}}.{{/if}}\n",
+    )
+    .unwrap();
+    let spec = StoredSpec {
+        source: "specs/loop.md.hbs".to_string(),
+        dest: "specs/loop.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    };
+    let simple_2d = test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
+        .resolve(&test_cabinet_core::engine::EngineSelection::new(
+            "simple-2d",
+        ))
+        .unwrap();
+
+    let engineless = store
+        .read_rendered_spec("pong", "v1.0.0", &spec, "base", "Base", None, None, None)
+        .unwrap();
+    let engined = store
+        .read_rendered_spec(
+            "pong",
+            "v1.0.0",
+            &spec,
+            "base",
+            "Base",
+            None,
+            None,
+            Some(&simple_2d),
+        )
+        .unwrap();
+
+    assert_eq!(engineless, "Write the frame loop.\n");
+    assert_eq!(engined, "Use Simple 2D.\n");
 }
 
 #[test]

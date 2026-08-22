@@ -797,6 +797,61 @@ async fn case_metadata_renders_template_specs_per_variant() {
 }
 
 #[tokio::test]
+async fn case_metadata_renders_the_prompt_and_specs_for_every_declared_engine() {
+    // A run's Inputs surface on the static site reads the rendering for the engine
+    // its run recorded. The engineless pair stays at the top level (what a reader
+    // browsing the case sees, and what a run on `none` was handed); every other
+    // declared engine rides in `engineRenderings`.
+    let mut m = manifest();
+    m.prompt_template = "Built on {{engine.name}}.".to_string();
+    m.engines = vec![
+        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
+        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+    ];
+    m.common_specs = vec![crate::store::StoredSpec {
+        source: "spec/field.md.hbs".to_string(),
+        dest: "spec/field.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    }];
+
+    let (_tmp, store) = empty_store();
+    let path = store
+        .version_dir(&m.slug, &m.version)
+        .join("spec/field.md.hbs");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "Write the loop yourself: {{engine.slug}}.\n").unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let variant = &parsed["variants"][0];
+
+    assert_eq!(variant["prompt"], "Built on None.");
+    assert_eq!(
+        variant["seededInputs"][0]["text"],
+        "Write the loop yourself: none.\n"
+    );
+    let engine = &variant["engineRenderings"]["simple-2d"];
+    assert_eq!(engine["prompt"], "Built on Simple 2D.");
+    assert_eq!(
+        engine["seededInputs"][0]["text"],
+        "Write the loop yourself: simple-2d.\n"
+    );
+    // The engineless engine is the top-level pair, so duplicating it here would
+    // double every spec body in the document for no reader.
+    assert!(variant["engineRenderings"]["none"].is_null());
+}
+
+#[tokio::test]
 async fn only_cases_with_a_published_run_are_emitted() {
     // Two ingested versions, but only `pong@v1.0.0` has a published run. The
     // gallery shows only cases with a published run, so the runless version's case

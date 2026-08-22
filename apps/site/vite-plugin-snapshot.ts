@@ -192,6 +192,15 @@ interface SnapshotCaseFile {
     // The variant's own seeded spec files (additive to the common ones), bodies
     // inlined. Optional for snapshots written before specs were inlined.
     seededInputs?: SnapshotSeededInput[];
+    // The prompt and seeded specs re-rendered for each engine the version declares
+    // that vendors a runtime, keyed by engine slug. `prompt`/`seededInputs` above
+    // are the engineless rendering, which is also what a run on the `none` engine
+    // received, so the engineless engine is deliberately absent here. Absent
+    // entirely on a snapshot written before the field existed.
+    engineRenderings?: Record<
+      string,
+      { prompt: string; seededInputs?: SnapshotSeededInput[] }
+    >;
     // The variant's own reviewer checklist items (additive to the common ones).
     reviewItems?: SnapshotReviewItem[];
     // The variant's own scoring domains (additive to the common ones), rated only
@@ -505,12 +514,23 @@ interface AssembledPackage {
   description: string;
 }
 
+// One variant's prompt and seeded specs as rendered under one engine — the pair a
+// run's Inputs tab shows, chosen by the engine that run recorded.
+interface AssembledRendering {
+  prompt: string;
+  seededInputs: AssembledSeededInput[];
+}
+
 interface AssembledVariant {
   slug: string;
   name: string;
   description: string | null;
   prompt: string;
   seededInputs: AssembledSeededInput[];
+  // The same pair re-rendered for each engine the version declares that vendors a
+  // runtime, keyed by engine slug. The engineless rendering is `prompt` and
+  // `seededInputs` above, so this holds every other engine.
+  engineRenderings: Record<string, AssembledRendering>;
   // The runtime packages a run of this variant ships (case-level, so the same on
   // every variant), each with its UI-only description.
   packages: AssembledPackage[];
@@ -554,6 +574,11 @@ interface AssembledTestCase {
   versions: string[];
   latestVersion: string;
   variants: AssembledVariant[];
+  // Every version OTHER than the latest, keyed by version, so a run's Inputs tab
+  // resolves the inputs the run itself was given rather than the latest version's.
+  // The latest version's variants are `variants` above; keeping them out of this
+  // map is what stops the bundle carrying them twice.
+  variantsByVersion: Record<string, AssembledVariant[]>;
   domains: AssembledDomain[];
   // The case's sprite-sheet declaration (frame size + named sequences), carried
   // through when the snapshot publishes it. Null for a non-sheet case (and for a
@@ -680,6 +705,19 @@ function toAssembledReview(
   };
 }
 
+// Inline one rendering's seeded spec bodies. Only text specs are published, so the
+// kind is fixed; the role tags a starter script apart from a prose spec.
+function mapSeededInputs(
+  specs: SnapshotSeededInput[] | undefined,
+): AssembledSeededInput[] {
+  return (specs ?? []).map((s) => ({
+    path: s.path,
+    kind: "text",
+    role: s.kind ?? "spec",
+    text: s.text,
+  }));
+}
+
 function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   // Reference screenshots are optional in the snapshot. Common references
   // (variant null / `_common`) apply to every variant; variant-scoped ones only
@@ -710,14 +748,22 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     // specs first, then its own), every body already rendered for the variant (a
     // template spec's conditionals resolved) — the same order a run is seeded and
     // the consoles present. Only text specs are inlined.
-    const seededInputs: AssembledSeededInput[] = (
-      variant.seededInputs ?? []
-    ).map((s) => ({
-      path: s.path,
-      kind: "text",
-      role: s.kind ?? "spec",
-      text: s.text,
-    }));
+    const seededInputs: AssembledSeededInput[] = mapSeededInputs(
+      variant.seededInputs,
+    );
+    // The same pair re-rendered under each engine the version declares that vendors
+    // a runtime. A case's prompt and `.hbs` specs branch on the selected engine, so
+    // this is what lets a run's Inputs tab show the text that run was handed rather
+    // than the engineless one.
+    const engineRenderings: Record<string, AssembledRendering> = {};
+    for (const [engine, rendering] of Object.entries(
+      variant.engineRenderings ?? {},
+    )) {
+      engineRenderings[engine] = {
+        prompt: rendering.prompt,
+        seededInputs: mapSeededInputs(rendering.seededInputs),
+      };
+    }
     // The verdict ids this version's errata exclude from scoring for this variant
     // (an erratum with `excludeFromScore` scoped case-wide or to this variant). These
     // points stay on the checklist but are marked non-scoring below, mirroring the
@@ -776,6 +822,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       description: variant.description,
       prompt: variant.prompt,
       seededInputs,
+      engineRenderings,
       packages,
       referenceScreenshots,
       reviewItems,
@@ -815,6 +862,9 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     versions: [file.version],
     latestVersion: file.version,
     variants,
+    // Filled by `collapseCases`, which is where a slug's other versions are in
+    // hand; one mapped file knows only its own.
+    variantsByVersion: {},
     // The sprite-sheet declaration, so the asset Reference tab can play each named
     // sequence from the published reference frames. Null when the snapshot carries
     // none.
@@ -850,8 +900,16 @@ function collapseCases(
       }),
     );
     const newest = versions[0]!;
+    // Every version but the newest, keyed by version, so a run of an older version
+    // resolves the inputs it was itself given. The newest version's variants stay on
+    // `variants`, so nothing is carried twice.
+    const variantsByVersion: Record<string, AssembledVariant[]> = {};
+    for (const version of versions.slice(1)) {
+      variantsByVersion[version.latestVersion] = version.variants;
+    }
     result.push({
       ...newest,
+      variantsByVersion,
       versions: versions.map((v) => v.latestVersion),
       // Each version contributes 0 or 1 entry; `versions` is newest-first, so the
       // concatenation is already ordered newest changelog entry first.

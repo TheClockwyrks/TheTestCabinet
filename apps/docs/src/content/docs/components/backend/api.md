@@ -298,6 +298,26 @@ such as an asset case's `tool`, `output`, and per-kind spec, and a simulation,
 match, or replay block. `404` if the version has not been ingested. Schema:
 [`backend-api/resolved-test-case-version.schema.json`](https://docs.testcabinet.ai/schema/backend-api/resolved-test-case-version.schema.json).
 
+#### Rendering for an engine
+
+An optional `engine` query parameter names the
+[engine](/components/core/engines/) each variant's `prompt` is rendered for. The
+[rendered specs route](#get-test-casesslugversionsversionspecsvariant) takes the
+same parameter, and the two are meant to be read together.
+
+A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so one
+stored template renders into different text depending on the runtime the build is
+written against. The engine is therefore a rendering input rather than part of a
+version's identity, which is why it rides as a query parameter here while the
+[validation baseline
+route](#get-test-casesslugversionsversionvalidation-baselineenginevariantfile)
+carries it as a path segment; there it names a distinct stored directory.
+
+A caller showing a run passes the engine that run recorded, including the explicit
+`none`, so the reader sees the text that run's harness received. A caller showing
+a case passes nothing and gets the engineless rendering, which is what `none`
+renders to. An unrecognised slug is a `400`.
+
 ### `GET /test-cases/{slug}/versions/{version}/artifacts/{path...}`
 
 Fetch a single seeded artifact, a spec source or an asset file, by its
@@ -310,7 +330,9 @@ if the key is unknown for the version.
 
 The variant's full seeded spec set with each body already rendered for that
 variant, in seed order. This is the spec analogue of the inline prompt on the
-resolved version, and it is what a console shows on its Inputs tab.
+resolved version, and it is what a console shows on its Inputs tab. It takes the
+same optional `engine` query parameter, under the same rule: see [Rendering for
+an engine](#rendering-for-an-engine).
 
 ### `GET /test-cases/{slug}/versions/{version}/references/{scope}/{file}`
 

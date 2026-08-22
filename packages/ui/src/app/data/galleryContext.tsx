@@ -43,6 +43,7 @@ import type {
   ReviewItemSummary,
   TestCaseDetail,
   TestCaseSummary,
+  VariantSummary,
 } from "./testCases";
 import type { RunQuery, RunQueryResult } from "./runQuery";
 
@@ -306,6 +307,26 @@ export interface ValidationMedia {
 
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.
+/**
+ * Which variant of which exact case version, rendered for which engine — the
+ * address of one run's inputs.
+ *
+ * Every field is required: a run records all four, and each of them changes the
+ * text the run was given.
+ */
+export interface CaseVariantRef {
+  /** The case slug. */
+  slug: string;
+  /** The exact case version the run exercised, which is not necessarily the
+   * case's latest. */
+  version: string;
+  /** The variant slug. */
+  variant: string;
+  /** The engine slug the prompt and specs are rendered for. `none` renders the
+   * engineless form, which is what a run selecting no engine received. */
+  engine: string;
+}
+
 export interface GalleryDataInput {
   /**
    * The summary cards for runs sourced locally (produced but not yet published) —
@@ -357,12 +378,29 @@ export interface GalleryDataInput {
    * Resolve one case in full by slug — its description, variants (prompts,
    * seeded specs, references, checklists), changelog, and errata. The detail
    * counterpart to the summary-level {@link testCases}: a detail surface (the
-   * case/jam detail tabs, a run's Inputs tab, the review scoring model) fetches
-   * the one case it is about rather than the whole catalog carrying every case's
-   * detail. Resolves `null` when no such case is available here. Omitted by a
-   * host that cannot resolve a case by slug.
+   * case/jam detail tabs, the review scoring model) fetches the one case it is
+   * about rather than the whole catalog carrying every case's detail. It resolves
+   * the case's LATEST version engineless, so a surface showing one run's own
+   * inputs uses {@link readCaseVariant} instead. Resolves `null` when no such case
+   * is available here. Omitted by a host that cannot resolve a case by slug.
    */
   readTestCase?: (slug: string) => Promise<TestCaseDetail | null>;
+  /**
+   * Resolve one variant of one *exact* case version, rendered for one engine —
+   * what a run's Inputs surface shows.
+   *
+   * Distinct from {@link readTestCase}, which resolves a case's *latest* version
+   * engineless: a run records its own case version and its own
+   * [engine](https://docs.testcabinet.ai/components/core/engines/), and both change
+   * the text its harness was handed. A run of an older version was given that
+   * version's prompt and specs, and a run on an engine was given the templates'
+   * branch for that engine. Resolving a run's inputs against the latest version's
+   * engineless rendering shows a different deliverable than the one that was run.
+   *
+   * Resolves `null` when this host holds no such case version or variant. Omitted
+   * by a host that cannot resolve one.
+   */
+  readCaseVariant?: (ref: CaseVariantRef) => Promise<VariantSummary | null>;
   /** The model catalog: curated configs merged with the models recorded runs
    * reference, each with its price history. The console fetches it from the
    * backend; the static site reads it from the snapshot. */
@@ -937,6 +975,14 @@ export interface GalleryData extends GalleryDataInput {
    */
   fetchTestCase(slug: string): Promise<TestCaseDetail | null>;
   /**
+   * Resolve one variant of one exact case version rendered for one engine,
+   * delegating to the host's {@link GalleryDataInput.readCaseVariant}. Resolves
+   * `null` when the host supplies no resolver or holds no such variant.
+   * Components should reach this through `useRunVariant`, which passes a run's
+   * own recorded version and engine and caches per reference.
+   */
+  fetchCaseVariant(ref: CaseVariantRef): Promise<VariantSummary | null>;
+  /**
    * Resolve a run's `modelId` (optionally with its harness slug, for harness-aware
    * canonicalization) to its catalog entry, over the loaded model catalog. Returns
    * undefined for an id the catalog does not cover.
@@ -999,6 +1045,11 @@ export function GalleryDataProvider({
       fetchTestCase(slug) {
         return value.readTestCase
           ? value.readTestCase(slug)
+          : Promise.resolve(null);
+      },
+      fetchCaseVariant(ref) {
+        return value.readCaseVariant
+          ? value.readCaseVariant(ref)
           : Promise.resolve(null);
       },
       proofMediaFor(run) {

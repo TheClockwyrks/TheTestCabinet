@@ -24,11 +24,10 @@ type Resolver = (slug: string) => Promise<TestCaseDetail | null>;
 // along with the callback it was keyed on.
 //
 // The cache holds the promise rather than the value so the several detail
-// surfaces that mount together for one case (a run's Inputs tab, its errata
-// callout, and its review scoring model all key on the same slug) share a single
-// in-flight request instead of racing three identical ones. A case version
-// directory is frozen once it has runs, so a resolved detail is safe to keep for
-// the session.
+// surfaces that mount together for one case (its errata callout and its review
+// scoring model both key on the same slug) share a single in-flight request
+// instead of racing identical ones. A case version directory is frozen once it
+// has runs, so a resolved detail is safe to keep for the session.
 const CACHE = new WeakMap<
   Resolver,
   Map<string, Promise<TestCaseDetail | null>>
