@@ -122,14 +122,49 @@ from a scenario the case controls, rather than requested from the build — as
 replays of the frames the build drew, and as single images where one frame is what
 is being judged.
 
+## The third variant, and the points it moved
+
+`v3.0.0` offers three variants: `base`, `gyre`, and `multi`, which returns with
+three balls on the field at once. Each is its own contest — its own hold, its own
+launch at a fresh angle drawn over the whole circle, and its own respawn onto a
+field that never stops for it — and the balls now collide with each other, which
+is a mechanic `base` does not have rather than a count that changed. A collision
+between two balls is an event the other variants do not have, so `multi` declares
+a fifth cue, `ball-bounce`, and plays it once for the pair.
+
+Carrying it forward meant changing how the case is graded, because `multi`
+contradicts points the case used to grade **commonly**. A scored point does not
+return it to a pre-serve countdown, since the other two balls carry on and the
+field is never frozen; a hold belongs to a ball rather than to the match; and a
+launch is aimed at nothing, so it has no direction to check. A variant may only
+**add** to a common review item, never replace the validator behind one, so six
+points left the common set: serve speed, countdown length, the two scoring points,
+the match win and the deuce. `base` and `gyre` now declare them, unchanged, in
+their own files; `multi` declares its own versions of the same six, worded for the
+rules it actually has. The serve-direction points had already moved this way, and
+this is the same move for the same reason.
+
+`multi` also brings a category of its own, `multi-ball`, worth a point each for
+the three balls on their own home points, the per-ball hold, the independent
+respawn, the ball-to-ball collision, a waiting ball being solid and immovable, and
+the launch angle being drawn over the full circle.
+
+Only the engine-backed project differs by variant, so `multi` ships
+`workspaces/multi/simple-2d` and shares `workspaces/none/` with the other two: the
+engineless project holds no game code for a variant to differ in.
+
 ## Scoring
 
-The common checklist is unchanged in shape from `v2.1.0`: no common review item,
-weight or domain was added, removed or renumbered, and the serve-direction points
-moved from the common set onto `base` and `gyre` without changing what either
-variant is worth. `gyre` keeps its own three-point `gyre` category. A score
-recorded against a `v3.0.0` variant is therefore computed against the same
-checklist that variant had before. What a reviewer sees beside a point has
-changed — the reference mockups and the build's own proof captures are gone, and
-in their place is the replay or the frame the point's own validator captured — but
-what the point is worth, and what decides it, has not.
+The common checklist is unchanged in shape from `v2.1.0` where it is still
+common, and no domain was added, removed or renumbered. What moved, moved without
+changing what a variant is worth: the serve-direction points, and then the six
+launch, hold and match-decision points above, left the common set for `base` and
+`gyre`'s own files, and each variant still carries exactly the points it carried
+before. `gyre` keeps its own three-point `gyre` category, and `multi` — which is
+new here rather than carried over — is worth the common set plus its own six
+multi-ball points, its own six gameplay points, and its `ball-bounce` cue. A score
+recorded against `base` or `gyre` is therefore computed against the same checklist
+that variant had before. What a reviewer sees beside a point has changed — the
+reference mockups and the build's own proof captures are gone, and in their place
+is the replay or the frame the point's own validator captured — but what the point
+is worth, and what decides it, has not.

@@ -29,15 +29,16 @@
 import { afterEach, expect, it } from "vitest";
 import { FIELD_CY, FIELD_H } from "../constants";
 import {
+  ball0,
+  captureReplay,
   ConstantClock,
+  createHarness,
   JitterClock,
   PARKED_CY,
   SequenceClock,
-  TICK_MS,
-  captureReplay,
-  createHarness,
   startPlaying,
-  type CaromSnapshot,
+  TICK_MS,
+  type BallView,
   type Clock,
   type Harness,
   type UntilResult,
@@ -137,7 +138,7 @@ interface Outcome {
 }
 
 /** Which way a ball is travelling, coarsely, as a phrase an assertion compares. */
-function headingOf(ball: CaromSnapshot["ball"]): string {
+function headingOf(ball: BallView): string {
   const across =
     ball.vx > 0 ? "rightward" : ball.vx < 0 ? "leftward" : "stalled";
   const vertical =
@@ -173,8 +174,8 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
 
   let contacted = false;
   let banked = false;
-  let verticalSign = Math.sign(opening.ball.vy);
-  let lastInFlight = opening.ball;
+  let verticalSign = Math.sign(ball0(opening).vy);
+  let lastInFlight = ball0(opening);
   let scorer: "p1" | "p2" | null = null;
 
   /** The drive itself, so the recorded section is exactly this and no more. */
@@ -194,13 +195,13 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
         }
         // The ball is posed travelling left, so travelling right means the left
         // paddle sent it back.
-        if (s.ball.vx > 0) contacted = true;
-        const sign = Math.sign(s.ball.vy);
+        if (ball0(s).vx > 0) contacted = true;
+        const sign = Math.sign(ball0(s).vy);
         if (sign !== 0) {
           if (verticalSign !== 0 && sign !== verticalSign) banked = true;
           verticalSign = sign;
         }
-        lastInFlight = s.ball;
+        lastInFlight = ball0(s);
         return false;
       },
       { maxFrames: MAX_FRAMES, poll: POLL_FRAMES },

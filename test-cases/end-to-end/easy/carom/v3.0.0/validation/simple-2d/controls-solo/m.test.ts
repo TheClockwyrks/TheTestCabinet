@@ -18,6 +18,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   arrangeLiveBall,
+  ball0,
   captureStill,
   createHarness,
   watchCues,
@@ -57,7 +58,7 @@ it("silences the runtime's cue bus while it is on", async () => {
   // cue. Muting survives a `reset`, so the drive below is still muted.
   const played = watchCues(h);
   await arrangeLiveBall(h, { x: FIELD_CX, y: 80, vx: 0, vy: -500 });
-  const bounced = await h.until((s) => s.ball.vy > 0, { maxFrames: 120 });
+  const bounced = await h.until((s) => ball0(s).vy > 0, { maxFrames: 120 });
 
   expect(bounced.hit).toBe(true);
   expect(h.snapshot().muted).toBe(true);

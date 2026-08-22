@@ -29,6 +29,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { BALL_R, TRAIL_TIME } from "../constants";
 import {
   arrangeLiveBall,
+  ball0,
   captureStill,
   colorDistance,
   createHarness,
@@ -83,7 +84,7 @@ async function driveTrail(
   await h.advance(FILL_TICKS);
   // Runs the one frame itself, and hands back what that frame drew.
   const calls = await h.frameCalls();
-  const { ball } = await h.snapshot();
+  const ball = ball0(await h.snapshot());
   return { ball: { x: ball.x, y: ball.y }, calls };
 }
 

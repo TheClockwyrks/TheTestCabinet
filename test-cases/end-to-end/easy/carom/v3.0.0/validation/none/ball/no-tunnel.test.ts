@@ -31,13 +31,14 @@ import {
   SPEED_CAP,
 } from "../constants";
 import {
-  ConstantClock,
-  PARKED_CY,
-  TICK_MS,
+  ball0,
   captureReplay,
   clearPaddles,
+  ConstantClock,
   createHarness,
+  PARKED_CY,
   startPlaying,
+  TICK_MS,
   type Harness,
 } from "../harness";
 
@@ -109,7 +110,7 @@ it("rebounds off an obstacle at the ceiling speed", async () => {
     // frame long enough to carry the ball past a whole obstacle, which is what
     // this point is about — is the one that lands.
     const bank = await captureReplay(harness, "fast", async () => {
-      const rebound = await harness.until((s) => s.ball.vx < 0, {
+      const rebound = await harness.until((s) => ball0(s).vx < 0, {
         maxFrames: framesFor(OBSTACLE_RUN_UP - BALL_R, stepMs),
         poll: 1,
       });
@@ -122,7 +123,7 @@ it("rebounds off an obstacle at the ceiling speed", async () => {
 
     expect(bank.hit, `${stepMs} ms frames: rebounds`).toBe(true);
     expect(
-      bank.snapshot.ball.x,
+      ball0(bank.snapshot).x,
       `${stepMs} ms frames: stays clear`,
     ).toBeLessThan(FACE_X);
   }
@@ -143,7 +144,7 @@ it("rebounds off a paddle at the ceiling speed rather than scoring through it", 
       spin: 0,
     });
 
-    const rebound = await harness.until((s) => s.ball.vx > 0, {
+    const rebound = await harness.until((s) => ball0(s).vx > 0, {
       maxFrames: framesFor(PADDLE_START_X - P1_X1 - BALL_R, stepMs),
       poll: 1,
     });
@@ -153,7 +154,7 @@ it("rebounds off a paddle at the ceiling speed rather than scoring through it", 
       "playing",
     );
     expect(
-      rebound.snapshot.ball.x,
+      ball0(rebound.snapshot).x,
       `${stepMs} ms frames: stays on the field`,
     ).toBeGreaterThan(0);
   }
@@ -172,18 +173,18 @@ it("rebounds off a wall at the ceiling speed and stays on the field", async () =
       spin: 0,
     });
 
-    const rebound = await harness.until((s) => s.ball.vy > 0, {
+    const rebound = await harness.until((s) => ball0(s).vy > 0, {
       maxFrames: framesFor(WALL_START_Y - BALL_R, stepMs),
       poll: 1,
     });
 
     expect(rebound.hit, `${stepMs} ms frames: rebounds`).toBe(true);
     expect(
-      rebound.snapshot.ball.y,
+      ball0(rebound.snapshot).y,
       `${stepMs} ms frames: below the wall`,
     ).toBeGreaterThan(0);
     expect(
-      rebound.snapshot.ball.y,
+      ball0(rebound.snapshot).y,
       `${stepMs} ms frames: on the field`,
     ).toBeLessThan(FIELD_H);
   }

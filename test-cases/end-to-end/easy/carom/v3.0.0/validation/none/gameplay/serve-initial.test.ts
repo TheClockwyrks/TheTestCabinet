@@ -17,6 +17,7 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
+  ball0,
   captureReplay,
   createHarness,
   startWithKeys,
@@ -79,7 +80,7 @@ it("serves toward player one to open a match", async () => {
       expect(launched.hit).toBe(true);
       // Player one defends the LEFT edge, so a serve toward player one travels
       // left: a strictly negative horizontal velocity.
-      expect(launched.snapshot.ball.vx).toBeLessThan(0);
+      expect(ball0(launched.snapshot).vx).toBeLessThan(0);
     }
   });
   // And the page stayed quiet throughout: nothing the build threw, and nothing

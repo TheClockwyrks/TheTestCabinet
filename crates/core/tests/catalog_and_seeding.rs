@@ -270,11 +270,10 @@ fn resolves_carom_from_its_manifest() {
             .is_some_and(|s| s.contains("paddle duel")),
         "the inline site-facing summary should be surfaced from the manifest"
     );
-    // Two variants are offered: base (fixed obstacles) and gyre (swaying, rotating
-    // obstacles). The multi-ball variant of v2 is not carried forward — see this
-    // version's `changelog.md` and the note above `variants` in its manifest.
+    // Three variants are offered: base (fixed obstacles), gyre (swaying, rotating
+    // obstacles) and multi (three independent balls that collide with each other).
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
-    assert_eq!(variant_slugs, ["base", "gyre"]);
+    assert_eq!(variant_slugs, ["base", "gyre", "multi"]);
     // Under the decomposed layout no variant seeds a spec of its own: the rules
     // that differ per variant (gyre's moving obstacles) are branches inside the
     // common `.hbs` specs, rendered for the selected variant before they land. So
@@ -302,6 +301,41 @@ fn resolves_carom_from_its_manifest() {
             .any(|item| item.id == "gyre"),
         "gyre contributes its gyre review category"
     );
+    // Multi adds its own category the same way, and — because its launch, hold and
+    // scoring are different rules rather than the same rules differently arranged —
+    // it also contributes its own points to the COMMON `gameplay` category, which
+    // carries none of them. Each variant therefore states the version of them its
+    // own rules make true, and no two variants share a validator for them.
+    let multi = version.variant("multi").expect("multi variant");
+    assert!(
+        version
+            .review_items_for(multi)
+            .iter()
+            .any(|item| item.id == "multi-ball"),
+        "multi contributes its multi-ball review category"
+    );
+    for (variant, expected) in [(gyre, "gameplay/scoring-p1.test.ts"), (multi, "multi/scoring-p1.test.ts")] {
+        let gameplay = version
+            .review_items_for(variant)
+            .into_iter()
+            .find(|item| item.id == "gameplay")
+            .expect("the gameplay category");
+        let scoring = gameplay
+            .sub_items
+            .iter()
+            .find(|sub| sub.id == "scoring-p1")
+            .expect("the scoring-p1 point");
+        assert_eq!(
+            scoring
+                .validation
+                .as_ref()
+                .expect("scoring-p1 is auto-validated")
+                .script_rel,
+            expected,
+            "`{}` should decide scoring-p1 with its own validator",
+            variant.slug
+        );
+    }
     // This version retires the reference views along with the mockups behind them:
     // every screen is left to the model's design and reviewed by a person, so
     // neither the case nor a variant declares one.

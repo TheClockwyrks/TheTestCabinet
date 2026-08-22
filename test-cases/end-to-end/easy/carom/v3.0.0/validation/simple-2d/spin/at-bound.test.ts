@@ -16,11 +16,11 @@ import {
   SPIN_FROM_PADDLE,
 } from "../../src/constants";
 import {
-  LEAD_TICKS,
   arrangePaddleHit,
   captureReplay,
   createHarness,
   drivePaddleHit,
+  LEAD_TICKS,
   nearBallX,
   seconds,
   startPlaying,

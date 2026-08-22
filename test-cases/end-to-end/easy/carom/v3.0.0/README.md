@@ -56,11 +56,13 @@ two ways to play, with their controls, HUD, and the AI in Solo), `state.md` (the
 shape of the game's state), and `instrumentation.md`.
 
 Every spec is an `.hbs` template rendered before it lands, on two axes.
-`variant.slug` selects the obstacles the game has, inside `playfield.md.hbs`,
-`state.md.hbs` and `instrumentation.md.hbs`. `engine.slug` selects what the build
-is handed and what it writes, inside `overview.md.hbs`, `state.md.hbs` and
-`instrumentation.md.hbs`. Because the branching resolves at seed time, each
-seeded set reads as one self-contained game with no alternative in view.
+`variant.slug` selects the obstacles the game has and how many balls ricochet
+between them, inside `overview.md.hbs`, `playfield.md.hbs`, `balls.md.hbs`,
+`ui.md.hbs`, `modes/single-player.md.hbs`, `state.md.hbs` and
+`instrumentation.md.hbs`. `engine.slug` selects what the build is handed and what
+it writes, inside `overview.md.hbs`, `state.md.hbs` and `instrumentation.md.hbs`.
+Because the branching resolves at seed time, each seeded set reads as one
+self-contained game with no alternative in view.
 
 Under `simple-2d`, every figure the specification fixes is exported from the
 seeded `src/constants.ts` under the name the specs cite, so a spec never restates
@@ -82,13 +84,24 @@ variant adds a domain of its own):
   adds `setObstacleClock`.
 - `multi` — three independent balls, each its own contest: its own hold, its own
   launch at a random angle, and its own respawn on a field that never freezes.
-  Balls collide with each other. It ships its own `workspaces/multi/simple-2d`,
-  because its state carries the three balls in place of one and its debug API
-  addresses them by index.
+  Balls collide with each other, and that collision has a fifth audio cue of its
+  own. It ships its own `workspaces/multi/simple-2d`, because its state carries
+  the three balls in place of one, its debug API addresses them by index, and its
+  constants name the home points and the cue.
 
 Only the engine-backed project differs by variant. The engineless project holds
 no game code for a variant to differ in, so every variant shares
 `workspaces/none/`.
+
+The checklist is common to every variant apart from the points where the variants
+genuinely disagree, which each variant then states for itself. `base` and `gyre`
+carry the single served ball's points — its direction, its speed, the length of
+the pre-serve countdown, and the scoring, match-end and deuce rules that freeze
+the field on a point. `multi` carries its own versions of the same, worded for a
+launch drawn over the full circle, a hold that belongs to a ball, and a point that
+takes one ball out of play while the rest of the game runs on; `gyre` adds its
+three obstacle-motion points, and `multi` its six multi-ball ones and its fifth
+cue.
 
 ## Assets and media
 

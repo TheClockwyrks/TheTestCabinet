@@ -14,6 +14,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   arrangeLiveBall,
+  ball0,
   captureReplay,
   createHarness,
   type Harness,
@@ -44,7 +45,7 @@ afterEach(() => {
 
 it("suspends a ball in flight for as long as the game is paused", async () => {
   await arrangeLiveBall(h, { x: 500, y: 360, vx: 400, vy: -120 });
-  const launched = h.snapshot().ball;
+  const launched = ball0(h.snapshot());
 
   const paused = await captureReplay(h, "suspended", async () => {
     await h.advance(FLIGHT_TICKS);
@@ -56,12 +57,12 @@ it("suspends a ball in flight for as long as the game is paused", async () => {
 
   expect(paused.screen).toBe("paused");
   expect(
-    Math.hypot(paused.ball.x - launched.x, paused.ball.y - launched.y),
+    Math.hypot(ball0(paused).x - launched.x, ball0(paused).y - launched.y),
   ).toBeGreaterThan(10);
 
   const later = h.snapshot();
 
   expect(later.screen).toBe("paused");
-  expect(later.ball.x).toBeCloseTo(paused.ball.x, 1);
-  expect(later.ball.y).toBeCloseTo(paused.ball.y, 1);
+  expect(ball0(later).x).toBeCloseTo(ball0(paused).x, 1);
+  expect(ball0(later).y).toBeCloseTo(ball0(paused).y, 1);
 });

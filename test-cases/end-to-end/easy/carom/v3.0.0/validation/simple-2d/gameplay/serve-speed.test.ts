@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { SERVE_MAX_ANGLE, SERVE_SPEED } from "../../src/constants";
 import {
   angleDeg,
+  ball0,
   captureReplay,
   createHarness,
   type Harness,
@@ -69,11 +70,11 @@ it("serves the ball at the base serve speed", async () => {
 
   expect(launched.hit).toBe(true);
   expect(
-    Math.abs(launched.snapshot.ball.speed - SERVE_SPEED),
+    Math.abs(ball0(launched.snapshot).speed - SERVE_SPEED),
   ).toBeLessThanOrEqual(SPEED_TOLERANCE);
   // The serve is within 30 degrees of horizontal, so the speed above is a real
   // volley rather than a ball dropped down the field at the right magnitude.
-  expect(angleDeg(launched.snapshot.ball)).toBeLessThanOrEqual(
+  expect(angleDeg(ball0(launched.snapshot))).toBeLessThanOrEqual(
     (SERVE_MAX_ANGLE * 180) / Math.PI,
   );
   expect(harness.assetFailures).toEqual([]);

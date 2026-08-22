@@ -10,10 +10,11 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { HOLD_TIME } from "../../src/constants";
 import {
-  TICK_HZ,
+  ball0,
   captureReplay,
   createHarness,
   startWithKeys,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
@@ -56,8 +57,12 @@ it("freezes the countdown while paused and resumes it where it stopped", async (
     const whilePaused = harness.snapshot();
 
     expect(whilePaused.screen).toBe("paused");
-    expect(Math.abs(whilePaused.ball.x - mid.ball.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(whilePaused.ball.y - mid.ball.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(ball0(whilePaused).x - ball0(mid).x)).toBeLessThanOrEqual(
+      1,
+    );
+    expect(Math.abs(ball0(whilePaused).y - ball0(mid).y)).toBeLessThanOrEqual(
+      1,
+    );
 
     // Resuming returns to the countdown; it did not skip ahead to a live serve.
     await harness.tap("Escape");
@@ -69,6 +74,6 @@ it("freezes the countdown while paused and resumes it where it stopped", async (
     const resumed = harness.snapshot();
 
     expect(resumed.screen).toBe("playing");
-    expect(resumed.ball.speed).toBeGreaterThan(1);
+    expect(ball0(resumed).speed).toBeGreaterThan(1);
   });
 });

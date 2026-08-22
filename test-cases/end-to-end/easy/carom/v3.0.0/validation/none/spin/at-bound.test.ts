@@ -12,11 +12,11 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { PADDLE_MAX_CY, PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import {
-  LEAD_TICKS,
   arrangePaddleHit,
   captureReplay,
   createHarness,
   drivePaddleHit,
+  LEAD_TICKS,
   nearBallX,
   seconds,
   startPlaying,

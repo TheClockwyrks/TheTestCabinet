@@ -91,6 +91,108 @@ export function angleDeg(v: { vx: number; vy: number }): number {
 }
 
 /* -------------------------------------------------------------------------- */
+/* The balls                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** One ball, as a snapshot reports it. */
+export interface BallView {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  speed: number;
+  spin: number;
+  held: boolean;
+}
+
+/** The two shapes a seeded `src/debug.ts` reports its balls in. */
+interface BallShapes {
+  /** The base and gyre workspaces: the single ball in play. */
+  ball?: BallView;
+  /** The multi workspace: all three balls, in play order. */
+  balls?: BallView[];
+}
+
+/**
+ * The ball every shared scenario drives: the only one under `base` and `gyre`,
+ * and the first of the three under `multi`.
+ *
+ * The variants agree about what a ball IS and disagree only about how many there
+ * are, so a check about the ball — its bounce, its spin, its speed off a paddle —
+ * is the same check under all three, driven against ball zero. What makes that
+ * sound under `multi` is {@link parkSpares}, which puts the other two balls out
+ * of the scenario before it is posed, so the reading is of the driven ball alone.
+ *
+ * The shape is read through a locally declared interface rather than off
+ * `CaromSnapshot`, because the shared harness is typed against whichever
+ * workspace the tree was seeded from and only one of the two fields exists there.
+ * A build reporting neither fails by assertion here rather than throwing a
+ * `TypeError` several frames later, so the point names the fault.
+ */
+export function ball0(snapshot: CaromSnapshot): BallView {
+  const shapes = snapshot as unknown as BallShapes;
+  const one = shapes.ball ?? shapes.balls?.[0];
+  expect(
+    one,
+    "snapshot() must report the ball as `ball` (base, gyre) or the balls as " +
+      "`balls` (multi); see specs/instrumentation.md",
+  ).toBeTruthy();
+  return one as BallView;
+}
+
+/** Every ball a snapshot reports, in play order. */
+export function allBalls(snapshot: CaromSnapshot): BallView[] {
+  const shapes = snapshot as unknown as BallShapes;
+  if (shapes.balls !== undefined) return shapes.balls;
+  return shapes.ball === undefined ? [] : [shapes.ball];
+}
+
+/** One recorded ball position, as `CaromState` declares it. */
+export interface TrailPoint {
+  x: number;
+  y: number;
+  t: number;
+}
+
+/** The two shapes a seeded `src/game.ts` holds the hold and the trail in. */
+interface StateShapes {
+  holdTimer?: number;
+  trail?: TrailPoint[];
+  balls?: { holdTimer: number; trail: TrailPoint[] }[];
+}
+
+/**
+ * Seconds remaining of the driven ball's hold.
+ *
+ * `base` and `gyre` gate one ball on one match-wide `state.holdTimer`; `multi`
+ * gives every ball a hold of its own, so the driven ball's is `balls[0]`'s. Both
+ * are the same reading — how long until the ball this scenario drives leaves —
+ * and a check about the hold takes it through here.
+ */
+export function holdTimer0(h: Harness): number {
+  const shapes = h.state as unknown as StateShapes;
+  const value = shapes.holdTimer ?? shapes.balls?.[0]?.holdTimer;
+  expect(
+    typeof value,
+    "the state must hold the pre-serve hold as `holdTimer` (base, gyre) or on " +
+      "each ball (multi); see specs/state.md",
+  ).toBe("number");
+  return value as number;
+}
+
+/** The driven ball's recent positions, oldest first, as the state holds them. */
+export function trail0(h: Harness): TrailPoint[] {
+  const shapes = h.state as unknown as StateShapes;
+  const value = shapes.trail ?? shapes.balls?.[0]?.trail;
+  expect(
+    Array.isArray(value),
+    "the state must hold the motion trail as `trail` (base, gyre) or on each " +
+      "ball (multi); see specs/state.md",
+  ).toBe(true);
+  return value as TrailPoint[];
+}
+
+/* -------------------------------------------------------------------------- */
 /* The harness                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -729,12 +831,59 @@ export function clearPaddles(h: Harness): void {
 }
 
 /**
- * Open a driven match and run it up to live play.
+ * Where a scenario parks the balls it is not about, in logical units.
+ *
+ * `multi` puts three balls on the field and every shared check is about one of
+ * them, so the other two are moved off the scenario before it is posed. These are
+ * the two corners of the LEFT goal channel: inside the field, so a parked ball
+ * scores nothing; behind the left paddle and clear of its x range at every
+ * height, so it is never struck; and hard against two walls, which is the one
+ * part of the field a driven ball does not cross. The shared scenarios aim down
+ * the mid-field lane at `FIELD_CY`, at a paddle face, or at an obstacle, and the
+ * one thing any of them sends past a goal edge leaves by the RIGHT one.
+ *
+ * A scenario that does drive a ball out of the left goal passes its own pair to
+ * {@link parkSpares} instead; see `multi/harness.ts`.
+ */
+export const SPARE_PARKS: readonly { x: number; y: number }[] = [
+  { x: BALL_R + 2, y: BALL_R + 2 },
+  { x: BALL_R + 2, y: FIELD_H - BALL_R - 2 },
+];
+
+/**
+ * Take every ball but the first out of the scenario, and report how many there
+ * were.
+ *
+ * Under `base` and `gyre` there is one ball and this does nothing. Under `multi`
+ * it poses balls one and two at {@link SPARE_PARKS}, motionless and spinless,
+ * which `specs/instrumentation.md` says of `setBall` is what takes a ball into
+ * live play and out of its hold — so they neither launch nor move again, and the
+ * check that follows reads a field with one moving ball on it, exactly as it does
+ * under the other two variants.
+ */
+export function parkSpares(
+  h: Harness,
+  parks: readonly { x: number; y: number }[] = SPARE_PARKS,
+): number {
+  const balls = allBalls(h.snapshot());
+  for (let index = 1; index < balls.length; index += 1) {
+    const park = parks[(index - 1) % parks.length];
+    h.debug.setBall(index, { ...park, vx: 0, vy: 0, spin: 0 });
+  }
+  return balls.length;
+}
+
+/**
+ * Open a driven match, put every ball but the first out of the way, and run it up
+ * to live play.
  *
  * `serve()` only expires the pre-serve hold; the LAUNCH is the build's own, on
  * the frame after. So this sweeps until the game reports live play, which is the
  * state every posed scenario below assumes — posing a ball while the game is
  * still counting down would have the build's serve overwrite the pose.
+ *
+ * The spares are parked between the match opening and the hold expiring, so under
+ * `multi` the one ball that launches is the one the scenario is about.
  */
 export async function startPlaying(
   h: Harness,
@@ -742,6 +891,7 @@ export async function startPlaying(
 ): Promise<UntilResult> {
   h.debug.reset();
   h.debug.startMatch(mode);
+  parkSpares(h);
   h.debug.serve();
   return h.until((s) => s.screen === "playing", { maxFrames: 60, poll: 1 });
 }
@@ -849,7 +999,7 @@ export function arrangePaddleHit(
 
 export interface PaddleHitResult {
   hit: boolean;
-  ball: CaromSnapshot["ball"];
+  ball: BallView;
   /** The struck paddle, at the instant of the rebound. */
   paddle: { cy: number; vy: number };
   snapshot: CaromSnapshot;
@@ -868,12 +1018,12 @@ export async function drivePaddleHit(
   const maxFrames = (options.maxFrames ?? 72) + (options.leadTicks ?? 0);
   const rebounded =
     side === "left"
-      ? (s: CaromSnapshot): boolean => s.ball.vx > 0
-      : (s: CaromSnapshot): boolean => s.ball.vx < 0;
+      ? (s: CaromSnapshot): boolean => ball0(s).vx > 0
+      : (s: CaromSnapshot): boolean => ball0(s).vx < 0;
   const swept = await h.until(rebounded, { maxFrames, poll: 1 });
   return {
     hit: swept.hit,
-    ball: swept.snapshot.ball,
+    ball: ball0(swept.snapshot),
     paddle: swept.snapshot.paddles[side],
     snapshot: swept.snapshot,
   };
@@ -908,7 +1058,7 @@ export async function driveRallySpeeds(
   let previousSign = -1; // the ball is launched toward the left paddle
 
   for (let hit = 0; hit < hits; hit += 1) {
-    const sign = Math.sign(h.snapshot().ball.vx);
+    const sign = Math.sign(ball0(h.snapshot()).vx);
     if (sign !== 0) previousSign = sign;
     const want = -previousSign;
 
@@ -919,12 +1069,13 @@ export async function driveRallySpeeds(
           leftPlay = true;
           return true;
         }
-        return Math.sign(s.ball.vx) === want && s.ball.vx !== 0;
+        const ball = ball0(s);
+        return Math.sign(ball.vx) === want && ball.vx !== 0;
       },
       { maxFrames: 600, poll: 6 },
     );
     if (leftPlay || !leg.hit) break;
-    speeds.push(leg.snapshot.ball.speed);
+    speeds.push(ball0(leg.snapshot).speed);
     previousSign = want;
   }
   return speeds;
@@ -1009,12 +1160,13 @@ export async function driveAiScenario(
 
   const swept = await h.until(
     (s) => {
-      if (s.ball.vx > 0) sawIncoming = true;
+      const ball = ball0(s);
+      if (ball.vx > 0) sawIncoming = true;
       if (s.score.p1 > start) {
         result = "scored";
         return true;
       }
-      if (sawIncoming && s.ball.vx < 0 && s.ball.x < FIELD_W) {
+      if (sawIncoming && ball.vx < 0 && ball.x < FIELD_W) {
         result = "blocked";
         return true;
       }
@@ -1102,8 +1254,8 @@ export function driveObstacleBounce(
 ): Promise<UntilResult> {
   const reversed =
     from === "left"
-      ? (s: CaromSnapshot): boolean => s.ball.vx < 0
-      : (s: CaromSnapshot): boolean => s.ball.vx > 0;
+      ? (s: CaromSnapshot): boolean => ball0(s).vx < 0
+      : (s: CaromSnapshot): boolean => ball0(s).vx > 0;
   return h.until(reversed, {
     maxFrames: options.maxFrames ?? 240,
     poll: options.poll ?? 1,

@@ -14,10 +14,11 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
-  TICK_HZ,
   arrangeLiveBall,
+  ball0,
   captureReplay,
   createHarness,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
@@ -70,8 +71,8 @@ it("resumes the ball from its paused position at its preserved velocity", async 
     await h.advance(RESUMED_TICKS - 1);
     return still;
   });
-  expect(held.ball.x).toBeCloseTo(paused.ball.x, 1);
-  expect(held.ball.y).toBeCloseTo(paused.ball.y, 1);
+  expect(ball0(held).x).toBeCloseTo(ball0(paused).x, 1);
+  expect(ball0(held).y).toBeCloseTo(ball0(paused).y, 1);
 
   const resumed = await h.snapshot();
 
@@ -85,12 +86,12 @@ it("resumes the ball from its paused position at its preserved velocity", async 
     const b = from + (v * RESUMED_TICKS) / TICK_HZ;
     return [Math.min(a, b) - SLOP, Math.max(a, b) + SLOP];
   };
-  const [xLow, xHigh] = travel(paused.ball.x, paused.ball.vx);
-  const [yLow, yHigh] = travel(paused.ball.y, paused.ball.vy);
+  const [xLow, xHigh] = travel(ball0(paused).x, ball0(paused).vx);
+  const [yLow, yHigh] = travel(ball0(paused).y, ball0(paused).vy);
 
-  expect(resumed.ball.x).toBeGreaterThanOrEqual(xLow);
-  expect(resumed.ball.x).toBeLessThanOrEqual(xHigh);
-  expect(resumed.ball.y).toBeGreaterThanOrEqual(yLow);
-  expect(resumed.ball.y).toBeLessThanOrEqual(yHigh);
-  expect(resumed.ball.speed).toBeCloseTo(paused.ball.speed, 1);
+  expect(ball0(resumed).x).toBeGreaterThanOrEqual(xLow);
+  expect(ball0(resumed).x).toBeLessThanOrEqual(xHigh);
+  expect(ball0(resumed).y).toBeGreaterThanOrEqual(yLow);
+  expect(ball0(resumed).y).toBeLessThanOrEqual(yHigh);
+  expect(ball0(resumed).speed).toBeCloseTo(ball0(paused).speed, 1);
 });

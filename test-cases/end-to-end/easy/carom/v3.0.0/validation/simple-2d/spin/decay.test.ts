@@ -20,13 +20,14 @@ import {
   SPIN_HALFLIFE,
 } from "../../src/constants";
 import {
-  TICK_HZ,
   arrangePaddleHit,
+  ball0,
   captureReplay,
   clearPaddles,
   createHarness,
   drivePaddleHit,
   startPlaying,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
@@ -87,7 +88,7 @@ it("halves the spin every half-life without changing its sign", async () => {
   // imparted the spin is the arrangement, and what decays is what follows it.
   await captureReplay(harness, "decay", async () => {
     await flyFor(harness, HALF_LIFE_TICKS);
-    const afterOne = harness.snapshot().ball.spin;
+    const afterOne = ball0(harness.snapshot()).spin;
 
     expect(Math.sign(afterOne)).toBe(Math.sign(imparted));
     expect(Math.abs(afterOne)).toBeGreaterThan(
@@ -96,7 +97,7 @@ it("halves the spin every half-life without changing its sign", async () => {
     expect(Math.abs(afterOne)).toBeLessThan(HALF_LIFE_MAX * Math.abs(imparted));
 
     await flyFor(harness, FURTHER_TICKS);
-    const settled = harness.snapshot().ball.spin;
+    const settled = ball0(harness.snapshot()).spin;
 
     expect(Math.abs(settled)).toBeLessThan(SETTLED_MAX * Math.abs(imparted));
   });

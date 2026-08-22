@@ -73,30 +73,26 @@ init = "npm install && npx playwright install chromium"
 # domains (no variant adds a domain of its own); the variants differ only in the
 # *rules of the game itself*, which apply equally to Solo and Versus. That
 # difference is carried by the specs that branch on the selected variant:
-# `specs/playfield.md.hbs` (the field, paddles, ball, and how the obstacles
-# behave), `specs/state.md.hbs` (the obstacle clock and poses gyre's state
-# carries) and `specs/instrumentation.md.hbs` (gyre's `setObstacleClock` and the
-# obstacle poses a snapshot reports). They are rendered before they land, so each
-# variant's seeded spec set reads as one self-contained game.
+# `specs/overview.md.hbs`, `specs/playfield.md.hbs` (the field, paddles, ball, and
+# how the obstacles behave), `specs/balls.md.hbs` (how many balls there are and how
+# each is launched), `specs/ui.md.hbs` (the screens and the cues),
+# `specs/modes/single-player.md.hbs` (which ball the AI defends),
+# `specs/state.md.hbs` (the obstacle clock and poses gyre's state carries, and
+# multi's array of balls) and `specs/instrumentation.md.hbs` (gyre's
+# `setObstacleClock`, and what a snapshot reports). They are rendered before they
+# land, so each variant's seeded spec set reads as one self-contained game.
 #   - base  — fixed, upright obstacles and a single ball served toward the
 #             receiver. The reference build.
 #   - gyre  — obstacles that sway and rotate, so the ball bounces off tilted,
 #             oriented faces instead of axis-aligned ones.
-#
-# The multi-ball variant of v2 is NOT carried forward into this version. Its three
-# independently-served balls contradict points this case grades COMMONLY — a
-# scored point does not return multi to the pre-serve countdown ("the other two
-# balls carry on uninterrupted"), and its launches are random over the full circle
-# rather than aimed at a receiver — and a variant may only ADD to a common review
-# item, never replace the validator behind one (see `merge_review_items` in the
-# core). Carrying it forward therefore means moving the serve, scoring, match-end
-# and countdown points out of the common set and declaring them per variant, which
-# is a change to how the case is graded rather than a port of the variant. See
-# `changelog.md`.
+#   - multi — three independent balls that collide with each other, each with its
+#             own hold, its own launch at a random angle, and its own respawn onto
+#             a field that never freezes.
 # This list is a root key, so it must precede the first table header.
 variants = [
   "variants/base.toml",
   "variants/gyre.toml",
+  "variants/multi.toml",
 ]
 
 # The engines a run of this case may select. An engine is the runtime the produced
@@ -157,11 +153,13 @@ min_version = "1.0.0"
 #                 engine), and `src/main.ts` (the browser entry). The build writes
 #                 `src/game.ts`.
 #
-# A variant may replace this whole table with one of its own, which gyre does for
-# `simple-2d`: its seeded `src/debug.ts` adds `setObstacleClock` and the obstacle
-# poses a snapshot reports. The engineless project holds no game code for a
-# variant to differ in, so every variant shares it. The seeded files land at the
-# run root (`workspaces/none/package.json` seeds to `package.json`).
+# A variant may replace this whole table with one of its own, which gyre and multi
+# both do for `simple-2d`: gyre's seeded `src/debug.ts` adds `setObstacleClock` and
+# the obstacle poses a snapshot reports, and multi's carries the home points, the
+# ball count and the fifth cue, addresses the balls by index, and reports them as
+# an array. The engineless project holds no game code for a variant to differ in,
+# so every variant shares it. The seeded files land at the run root
+# (`workspaces/none/package.json` seeds to `package.json`).
 [workspaces]
 none = "workspaces/none"
 "simple-2d" = "workspaces/base/simple-2d"
@@ -239,11 +237,16 @@ handle = "__carom"
 # controls, so nothing is asked of the build.
 #
 # Every spec is an `.hbs` template, rendered before it lands, and two axes are
-# branched on. `variant.slug` selects the obstacles the game has:
-# `specs/playfield.md.hbs` (fixed, upright obstacles vs. the gyre variant's
-# swaying, rotating ones), `specs/state.md.hbs` (the obstacle clock and poses
-# gyre's state carries) and `specs/instrumentation.md.hbs` (gyre's
-# `setObstacleClock` operation and the obstacle poses a snapshot reports).
+# branched on. `variant.slug` selects the obstacles the game has and how many balls
+# ricochet between them: `specs/playfield.md.hbs` (fixed, upright obstacles vs. the
+# gyre variant's swaying, rotating ones), `specs/balls.md.hbs` (one served ball vs.
+# multi's three independent ones and their collisions), `specs/overview.md.hbs`,
+# `specs/ui.md.hbs` (multi's fifth cue and its screens),
+# `specs/modes/single-player.md.hbs` (which ball the AI defends),
+# `specs/state.md.hbs` (the obstacle clock and poses gyre's state carries, and
+# multi's `balls` array) and `specs/instrumentation.md.hbs` (gyre's
+# `setObstacleClock` operation and the obstacle poses a snapshot reports, and how
+# multi's operations address a ball by index).
 # `engine.slug` selects what the build is handed and what it writes:
 # `specs/overview.md.hbs`, `specs/state.md.hbs` and
 # `specs/instrumentation.md.hbs`. A spec's `dest` defaults to its `source` with a
@@ -385,65 +388,18 @@ validation = { script = "instrumentation/debug-api.test.ts", outputs = [
 [[review.categories]]
 id = "gameplay"
 title = "Gameplay"
-# The ball serves at a fixed speed after a fixed pre-serve countdown.
-[[review.categories.items]]
-id = "serve-speed"
-title = "Serve speed"
-description = "A served ball leaves at the base serve speed of 520 units per second."
-# Automated validation: start a fresh match, serve, and read the ball's launch speed
-# (~520 units per second). See validation/<engine>/gameplay/serve-speed.test.ts.
-validation = { script = "gameplay/serve-speed.test.ts", outputs = [
-  { id = "serve", name = "A ball leaving at the serve speed", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "countdown-length"
-title = "Countdown length"
-description = "The pre-serve countdown lasts a fixed 1.0 s at match start and after each point before the ball serves."
-# Automated validation: start a match and advance until the ball serves, confirming
-# the hold lasts ~1.0 s of simulated time on the validator's own clock. See
-# validation/<engine>/gameplay/countdown-length.test.ts.
-validation = { script = "gameplay/countdown-length.test.ts", outputs = [
-  { id = "countdown", name = "The pre-serve countdown running out", kind = "replay" },
-] }
-# Scoring is checked per side — one point for each goal — so a build that scores on
-# only one edge is caught rather than averaged away by the other.
-[[review.categories.items]]
-id = "scoring-p1"
-title = "Player one scores past the right goal"
-description = "A ball crossing the right goal edge scores a point for player one (the left player)."
-# Automated validation: drive a real ball out the right goal and confirm player one's
-# score increments and player two's does not. See validation/<engine>/gameplay/scoring-p1.test.ts.
-validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
-  { id = "goal", name = "Player one scoring past the right goal", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "scoring-p2"
-title = "Player two scores past the left goal"
-description = "A ball crossing the left goal edge scores a point for player two (the right player)."
-# Automated validation: drive a real ball out the left goal and confirm player two's
-# score increments and player one's does not. See validation/<engine>/gameplay/scoring-p2.test.ts.
-validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
-  { id = "goal", name = "Player two scoring past the left goal", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "match-win"
-title = "Match win at 11, lead by 2"
-description = "The match is first to 11 and must be won by two clear points."
-# Automated validation: from 10-9, drive a real point across the goal to 11-9 and
-# confirm the match ends with the correct winner and final score. See
-# validation/<engine>/gameplay/match-win.test.ts.
-validation = { script = "gameplay/match-win.test.ts", outputs = [
-  { id = "game-over", name = "Match-over screen", kind = "image" },
-] }
-[[review.categories.items]]
-id = "deuce"
-title = "Deuce past 10-10"
-description = "Any tie at or above 10-10 keeps playing until one player leads by two."
-# Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
-# a further point to 12-10 must. See validation/<engine>/gameplay/deuce.test.ts.
-validation = { script = "gameplay/deuce.test.ts", outputs = [
-  { id = "deuce", name = "The deciding deuce point", kind = "replay" },
-] }
+# The launch, the hold and the points a match is decided by are NOT common. Every
+# variant has all of them, but multi has them differently: a launch is drawn over
+# the full circle and so has no direction to check, a hold belongs to a ball rather
+# than to the match, and a scored point takes one ball out of play instead of
+# freezing the field and opening a countdown. A variant may only ADD to a common
+# review item, never replace the validator behind one (see `merge_review_items` in
+# the core), so `serve-speed`, `countdown-length`, `scoring-p1`, `scoring-p2`,
+# `match-win` and `deuce` live in `variants/base.toml` and `variants/gyre.toml`,
+# and multi states its own in `variants/multi.toml`. What is worth what did not
+# change: each variant carries the same number of gameplay points it carried when
+# they were common.
+#
 # Pausing is checked around the pre-serve countdown: that it is allowed there (not
 # only once the ball is in flight), and that the countdown freezes while paused
 # rather than ticking away behind the pause menu.

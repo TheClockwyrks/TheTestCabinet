@@ -15,6 +15,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { CUES, FIELD_CX } from "../../src/constants";
 import {
   arrangeLiveBall,
+  ball0,
   captureReplay,
   createHarness,
   watchCues,
@@ -58,7 +59,7 @@ it("plays the wall-bounce cue on the frame of the reflection", async () => {
 
   const played = watchCues(h);
   const bounce = await captureReplay(h, "bounce", async () => {
-    const bounced = await h.until((s) => s.ball.vy > 0, { maxFrames: 120 });
+    const bounced = await h.until((s) => ball0(s).vy > 0, { maxFrames: 120 });
     // Read HERE, on the frame the sweep stopped: the frame number and the cues
     // that had sounded by then are exactly what the assertions read before the
     // descent below was recorded.

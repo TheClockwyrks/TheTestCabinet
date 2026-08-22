@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import {
   arrangeObstacleBounce,
+  ball0,
   captureReplay,
   createHarness,
   driveObstacleBounce,
@@ -58,7 +59,7 @@ it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
     speed: APPROACH_SPEED,
   });
 
-  const before = (await harness.snapshot()).ball.speed;
+  const before = ball0(await harness.snapshot()).speed;
   const bank = await captureReplay(harness, "bank", async () => {
     const rebound = await driveObstacleBounce(harness, "left");
     await harness.advance(DEPARTURE_TICKS);
@@ -66,7 +67,7 @@ it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
   });
 
   expect(bank.hit).toBe(true);
-  expect(Math.abs(bank.snapshot.ball.speed - before)).toBeLessThanOrEqual(
+  expect(Math.abs(ball0(bank.snapshot).speed - before)).toBeLessThanOrEqual(
     SPEED_TOLERANCE,
   );
 });

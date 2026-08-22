@@ -34,8 +34,10 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CY, HOLD_TIME } from "../../src/constants";
 import { CAROM_DEBUG_VERSION } from "../../src/debug";
 import {
+  ball0,
   captureStill,
   createHarness,
+  holdTimer0,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -116,18 +118,18 @@ it("reports the whole documented snapshot shape, from a live match", async () =>
   }
 
   for (const field of ["x", "y", "vx", "vy", "speed", "spin"] as const) {
-    expect(typeof snapshot.ball[field]).toBe("number");
+    expect(typeof ball0(snapshot)[field]).toBe("number");
   }
-  expect(typeof snapshot.ball.held).toBe("boolean");
+  expect(typeof ball0(snapshot).held).toBe("boolean");
   expect(typeof snapshot.simTime).toBe("number");
 
   // Live values, not a shape filled with zeroes: the ball is in flight, so it is
   // no longer held and it is moving at the speed its serve gave it.
   expect(snapshot.screen).toBe("playing");
-  expect(snapshot.ball.held).toBe(false);
-  expect(snapshot.ball.speed).toBeGreaterThan(0);
-  expect(snapshot.ball.speed).toBeCloseTo(
-    Math.hypot(snapshot.ball.vx, snapshot.ball.vy),
+  expect(ball0(snapshot).held).toBe(false);
+  expect(ball0(snapshot).speed).toBeGreaterThan(0);
+  expect(ball0(snapshot).speed).toBeCloseTo(
+    Math.hypot(ball0(snapshot).vx, ball0(snapshot).vy),
     6,
   );
   expect(snapshot.simTime).toBeGreaterThan(0);
@@ -139,9 +141,9 @@ it("poses the game through the state the build declared", async () => {
   await h.advance(1);
   const opened = h.snapshot();
   expect(opened.screen).toBe("countdown");
-  expect(opened.ball.held).toBe(true);
-  expect(h.state.holdTimer).toBeGreaterThan(0);
-  expect(h.state.holdTimer).toBeLessThanOrEqual(HOLD_TIME);
+  expect(ball0(opened).held).toBe(true);
+  expect(holdTimer0(h)).toBeGreaterThan(0);
+  expect(holdTimer0(h)).toBeLessThanOrEqual(HOLD_TIME);
 
   // A posed paddle stays where it was put, and a posed velocity persists across
   // frames rather than being a one-frame nudge.

@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   arrangeGoal,
+  ball0,
   captureReplay,
   createHarness,
   driveGoal,
@@ -59,7 +60,7 @@ it("serves toward player two after player one scores", async () => {
     expect(launched.hit).toBe(true);
     // Player two defends the RIGHT edge: the receiver is the player just scored
     // on.
-    expect(launched.snapshot.ball.vx).toBeGreaterThan(0);
+    expect(ball0(launched.snapshot).vx).toBeGreaterThan(0);
   });
   expect(harness.assetFailures).toEqual([]);
 });

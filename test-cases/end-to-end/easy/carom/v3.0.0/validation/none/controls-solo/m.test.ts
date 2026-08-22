@@ -32,6 +32,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CX } from "../constants";
 import {
   arrangeLiveBall,
+  ball0,
   captureStill,
   createHarness,
   type Harness,
@@ -74,7 +75,7 @@ it("keeps the game playable, and the preference, while it is on", async () => {
   await arrangeLiveBall(h, { x: FIELD_CX, y: 80, vx: 0, vy: -500 });
   expect((await h.snapshot()).muted).toBe(true);
 
-  const bounced = await h.until((s) => s.ball.vy > 0, { maxFrames: 120 });
+  const bounced = await h.until((s) => ball0(s).vy > 0, { maxFrames: 120 });
   expect(bounced.hit).toBe(true);
   expect((await h.snapshot()).muted).toBe(true);
 });

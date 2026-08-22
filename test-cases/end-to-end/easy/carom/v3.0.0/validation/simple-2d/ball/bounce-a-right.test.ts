@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
 import {
   arrangeObstacleBounce,
+  ball0,
   captureReplay,
   createHarness,
   driveObstacleBounce,
@@ -56,5 +57,5 @@ it("banks the ball off obstacle A's right face", async () => {
   });
 
   expect(bank.hit).toBe(true);
-  expect(bank.snapshot.ball.x).toBeGreaterThan(FACE_X);
+  expect(ball0(bank.snapshot).x).toBeGreaterThan(FACE_X);
 });

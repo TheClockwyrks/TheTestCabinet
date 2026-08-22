@@ -76,10 +76,11 @@ validation = { script = "gyre/oriented-bounce.test.ts", outputs = [
   { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "replay" },
 ] }
 
-# Gyre serves toward the receiver exactly as base does, so — like base — it adds the
-# three serve-direction points to the case's COMMON `gameplay` category (reusing its
-# id) and drives the same shared serve scripts, rather than declaring points of its
-# own. See base.toml for the fuller note on a variant extending a common category.
+# Gyre plays base's game with the obstacles moving, so — like base — it contributes
+# base's single-ball gameplay points to the case's COMMON `gameplay` category
+# (reusing its id) and drives the same shared scripts, rather than declaring points
+# of its own. They are declared per variant because multi's launch, hold and scoring
+# are genuinely different rules; see base.toml for the fuller note.
 [[review.categories]]
 id = "gameplay"
 title = "Gameplay"
@@ -103,4 +104,64 @@ title = "Serve after scoring on player two"
 description = "After a point is scored on player two (player one scores), the next serve travels toward player two, the receiver."
 validation = { script = "gameplay/serve-after-p2.test.ts", outputs = [
   { id = "serve", name = "Serve toward player two after a point on player two", kind = "replay" },
+] }
+
+# The ball serves at a fixed speed after a fixed pre-serve countdown.
+[[review.categories.items]]
+id = "serve-speed"
+title = "Serve speed"
+description = "A served ball leaves at the base serve speed of 520 units per second."
+# Automated validation: start a fresh match, serve, and read the ball's launch speed
+# (~520 units per second). See validation/<engine>/gameplay/serve-speed.test.ts.
+validation = { script = "gameplay/serve-speed.test.ts", outputs = [
+  { id = "serve", name = "A ball leaving at the serve speed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-length"
+title = "Countdown length"
+description = "The pre-serve countdown lasts a fixed 1.0 s at match start and after each point before the ball serves."
+# Automated validation: start a match and advance until the ball serves, confirming
+# the hold lasts ~1.0 s of simulated time on the validator's own clock. See
+# validation/<engine>/gameplay/countdown-length.test.ts.
+validation = { script = "gameplay/countdown-length.test.ts", outputs = [
+  { id = "countdown", name = "The pre-serve countdown running out", kind = "replay" },
+] }
+# Scoring is checked per side — one point for each goal — so a build that scores on
+# only one edge is caught rather than averaged away by the other.
+[[review.categories.items]]
+id = "scoring-p1"
+title = "Player one scores past the right goal"
+description = "A ball crossing the right goal edge scores a point for player one (the left player)."
+# Automated validation: drive a real ball out the right goal and confirm player one's
+# score increments and player two's does not. See validation/<engine>/gameplay/scoring-p1.test.ts.
+validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
+  { id = "goal", name = "Player one scoring past the right goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p2"
+title = "Player two scores past the left goal"
+description = "A ball crossing the left goal edge scores a point for player two (the right player)."
+# Automated validation: drive a real ball out the left goal and confirm player two's
+# score increments and player one's does not. See validation/<engine>/gameplay/scoring-p2.test.ts.
+validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
+  { id = "goal", name = "Player two scoring past the left goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "match-win"
+title = "Match win at 11, lead by 2"
+description = "The match is first to 11 and must be won by two clear points."
+# Automated validation: from 10-9, drive a real point across the goal to 11-9 and
+# confirm the match ends with the correct winner and final score. See
+# validation/<engine>/gameplay/match-win.test.ts.
+validation = { script = "gameplay/match-win.test.ts", outputs = [
+  { id = "game-over", name = "Match-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deuce"
+title = "Deuce past 10-10"
+description = "Any tie at or above 10-10 keeps playing until one player leads by two."
+# Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
+# a further point to 12-10 must. See validation/<engine>/gameplay/deuce.test.ts.
+validation = { script = "gameplay/deuce.test.ts", outputs = [
+  { id = "deuce", name = "The deciding deuce point", kind = "replay" },
 ] }

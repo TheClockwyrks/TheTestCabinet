@@ -21,6 +21,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../constants";
 import {
+  ball0,
   captureReplay,
   createHarness,
   startPlaying,
@@ -58,10 +59,11 @@ async function shootLevelAt(
     spin: 0,
   });
   const r = await h.until(
-    (s) => s.ball.vx < SERVE_SPEED * 0.6 || Math.abs(s.ball.vy) > DEFLECT_MIN,
+    (s) =>
+      ball0(s).vx < SERVE_SPEED * 0.6 || Math.abs(ball0(s).vy) > DEFLECT_MIN,
     { maxFrames: 120, poll: 1 },
   );
-  return { hit: r.hit, vx: r.snapshot.ball.vx, vy: r.snapshot.ball.vy };
+  return { hit: r.hit, vx: ball0(r.snapshot).vx, vy: ball0(r.snapshot).vy };
 }
 
 /**

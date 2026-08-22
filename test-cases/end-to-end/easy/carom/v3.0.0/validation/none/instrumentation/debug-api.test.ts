@@ -34,11 +34,12 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CY, HOLD_TIME } from "../constants";
 import {
+  ball0,
+  captureStill,
   CAROM_DEBUG_VERSION,
+  createHarness,
   HANDLE,
   REQUIRED_OPS,
-  captureStill,
-  createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -101,8 +102,8 @@ it("takes the game off the wall clock, and runs whole frames on demand", async (
   const still = await h.snapshot();
 
   expect(still.simTime).toBe(frozen.simTime);
-  expect(still.ball.x).toBe(frozen.ball.x);
-  expect(still.ball.y).toBe(frozen.ball.y);
+  expect(ball0(still).x).toBe(ball0(frozen).x);
+  expect(ball0(still).y).toBe(ball0(frozen).y);
 
   // And an advance runs real frames: the game's own clock moves by exactly the
   // time asked for, and the simulation moves with it.
@@ -111,7 +112,10 @@ it("takes the game off the wall clock, and runs whole frames on demand", async (
 
   expect(driven.simTime - frozen.simTime).toBeCloseTo(1, 6);
   expect(
-    Math.hypot(driven.ball.x - frozen.ball.x, driven.ball.y - frozen.ball.y),
+    Math.hypot(
+      ball0(driven).x - ball0(frozen).x,
+      ball0(driven).y - ball0(frozen).y,
+    ),
   ).toBeGreaterThan(1);
 });
 
@@ -145,18 +149,18 @@ it("reports the whole documented snapshot shape, from a live match", async () =>
   }
 
   for (const field of ["x", "y", "vx", "vy", "speed", "spin"] as const) {
-    expect(typeof snapshot.ball[field]).toBe("number");
+    expect(typeof ball0(snapshot)[field]).toBe("number");
   }
-  expect(typeof snapshot.ball.held).toBe("boolean");
+  expect(typeof ball0(snapshot).held).toBe("boolean");
   expect(typeof snapshot.simTime).toBe("number");
 
   // Live values, not a shape filled with zeroes: the ball is in flight, so it is
   // no longer held and it is moving at the speed its serve gave it.
   expect(snapshot.screen).toBe("playing");
-  expect(snapshot.ball.held).toBe(false);
-  expect(snapshot.ball.speed).toBeGreaterThan(0);
-  expect(snapshot.ball.speed).toBeCloseTo(
-    Math.hypot(snapshot.ball.vx, snapshot.ball.vy),
+  expect(ball0(snapshot).held).toBe(false);
+  expect(ball0(snapshot).speed).toBeGreaterThan(0);
+  expect(ball0(snapshot).speed).toBeCloseTo(
+    Math.hypot(ball0(snapshot).vx, ball0(snapshot).vy),
     6,
   );
   expect(snapshot.simTime).toBeGreaterThan(0);
@@ -172,7 +176,7 @@ it("poses the game through the state the build declared", async () => {
   await h.advance(1);
   const opened = await h.snapshot();
   expect(opened.screen).toBe("countdown");
-  expect(opened.ball.held).toBe(true);
+  expect(ball0(opened).held).toBe(true);
 
   // And the hold really is a countdown rather than a latch: it runs out within
   // the specified time, and the game serves itself out of it.
@@ -181,7 +185,7 @@ it("poses the game through the state the build declared", async () => {
     poll: 1,
   });
   expect(served.hit).toBe(true);
-  expect(served.snapshot.ball.held).toBe(false);
+  expect(ball0(served.snapshot).held).toBe(false);
 
   // A posed paddle stays where it was put, and a posed velocity persists across
   // frames rather than being a one-frame nudge.

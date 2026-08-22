@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { WallClock } from "@test-cabinet/simple-2d";
 import { SERVE_SPEED } from "../../src/constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import { ball0, captureStill, createHarness, type Harness } from "../harness";
 
 /** The real-time window the loop is left to run for. */
 const RUN_MS = 1000;
@@ -54,7 +54,7 @@ it("advances on the runtime's frame loop with nothing stepping it", async () => 
 
   const before = harness.snapshot();
   captureStill(harness, "before");
-  expect(before.ball.speed).toBeGreaterThan(1);
+  expect(ball0(before).speed).toBeGreaterThan(1);
 
   await harness.runFor(RUN_MS);
 
@@ -65,8 +65,8 @@ it("advances on the runtime's frame loop with nothing stepping it", async () => 
   captureStill(harness, "after");
   const advanced = after.simTime - before.simTime;
   const travelled = Math.hypot(
-    after.ball.x - before.ball.x,
-    after.ball.y - before.ball.y,
+    ball0(after).x - ball0(before).x,
+    ball0(after).y - ball0(before).y,
   );
 
   expect(advanced).toBeGreaterThan(MIN_ADVANCE);

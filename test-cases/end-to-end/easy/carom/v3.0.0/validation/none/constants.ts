@@ -143,6 +143,27 @@ export const SERVE_ANGLE = (12 * Math.PI) / 180;
 /** The bound `specs/balls.md` puts on a serve: within +/-30deg of horizontal. */
 export const SERVE_MAX_ANGLE = (30 * Math.PI) / 180;
 
+// ---- The three balls (the multi variant alone) ---------------------------
+
+/**
+ * Each ball's fixed home point, in play order.
+ *
+ * A ball always returns to its OWN home, and every launch leaves at a fresh
+ * uniformly random angle over the full circle, so no home carries a serve
+ * direction (specs/balls.md).
+ */
+export const BALL_HOMES: readonly Point[] = [
+  { x: 640, y: 180 },
+  { x: 640, y: 360 }, // the field center
+  { x: 640, y: 540 },
+];
+
+/** How many balls are in play at once. */
+export const BALL_COUNT = BALL_HOMES.length;
+
+/** Two balls are in contact when their centers are closer than this. */
+export const BALL_COLLIDE_DIST = 2 * BALL_R;
+
 // ---- Spin (the signature mechanic) ---------------------------------------
 
 export const SPIN_FROM_PADDLE = 0.85; // spin += paddleVy * this, on a paddle hit

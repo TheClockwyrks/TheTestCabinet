@@ -13,10 +13,11 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { HOLD_TIME } from "../constants";
 import {
-  TICK_HZ,
+  ball0,
   captureReplay,
   createHarness,
   startWithKeys,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
@@ -53,7 +54,7 @@ it("holds the ball for the pre-serve countdown, then serves", async () => {
 
   const start = await harness.snapshot();
   expect(start.screen).toBe("countdown");
-  expect(start.ball.held).toBe(true);
+  expect(ball0(start).held).toBe(true);
 
   // The hold itself, from the frame after the menu confirm to the launch: the
   // countdown running out is the whole of what this point is about.
@@ -70,5 +71,5 @@ it("holds the ball for the pre-serve countdown, then serves", async () => {
   expect(Math.abs(served.frames - HOLD_TICKS)).toBeLessThanOrEqual(
     TOLERANCE_TICKS,
   );
-  expect(served.snapshot.ball.speed).toBeGreaterThan(1);
+  expect(ball0(served.snapshot).speed).toBeGreaterThan(1);
 });

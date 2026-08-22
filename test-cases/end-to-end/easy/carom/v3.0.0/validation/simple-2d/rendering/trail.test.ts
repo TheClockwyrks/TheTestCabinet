@@ -23,11 +23,13 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { BALL_R, TRAIL_TIME } from "../../src/constants";
 import {
   arrangeLiveBall,
+  ball0,
   captureStill,
   colorDistance,
   createHarness,
   drawnPoints,
   sampleColor,
+  trail0,
   type Harness,
   type Rgb,
 } from "../harness";
@@ -80,7 +82,7 @@ async function driveTrail(speed: number): Promise<{ x: number; y: number }> {
   await h.advance(FILL_TICKS);
   h.calls.length = 0;
   await h.advance(1);
-  const { ball } = h.snapshot();
+  const ball = ball0(h.snapshot());
   return { x: ball.x, y: ball.y };
 }
 
@@ -125,8 +127,9 @@ it("draws a continuous, fading streak back along the ball's recent path", async 
   const expected = FAST * TRAIL_TIME;
 
   // The recent path really is held as state, oldest sample first.
-  expect(h.state.trail.length).toBeGreaterThan(1);
-  const times = h.state.trail.map((sample) => sample.t);
+  const samples = trail0(h);
+  expect(samples.length).toBeGreaterThan(1);
+  const times = samples.map((sample) => sample.t);
   expect([...times].sort((a, b) => a - b)).toEqual(times);
 
   // The render asked for geometry behind the ball, in its lane: the trail is a
