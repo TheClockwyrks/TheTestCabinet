@@ -143,12 +143,21 @@ clock is already doing, so a scenario that must be reproducible calls
 {{/if}}
 ### `reset(options)`
 
+{{#if (eq variant.slug "multi")}}
+Restores every declared field of the game's state to its title-screen value: the title
+screen with `menuIndex` at `0`, both scores `0`, no winner, both paddles centered
+at `FIELD_CY`, each ball parked motionless and spinless at its own home point, not
+held, with its hold timer at `0` and an empty trail, `simTime` at `0`, and the
+driver cleared.
+`options.seed` seeds `rngState`, defaulting to `DEFAULT_SEED` (`1`).
+{{else}}
 Restores every declared field of the game's state to its title-screen value: the title
 screen with `menuIndex` at `0`, both scores `0`, no winner, `receiver` back to
 `"left"`, `holdTimer` at `0`, both paddles centered at `FIELD_CY`, the ball parked
 motionless and spinless at `(FIELD_CX, FIELD_CY)`, an empty trail, `simTime` at
 `0`, and the driver cleared. `options.seed` seeds `rngState`, defaulting to
 `DEFAULT_SEED` (`1`).
+{{/if}}
 
 `muted` is deliberately untouched: muting is a player preference the runtime owns.
 
@@ -162,6 +171,16 @@ A pure read of the state, returned as the plain object under
 
 ### `startMatch(mode)`
 
+{{#if (eq variant.slug "multi")}}
+Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
+exactly as choosing it from the menu would: `screen` becomes `"countdown"`, both
+scores `0`, `winner` `null`, both paddles centered, and all three balls held at
+their home points with a full `HOLD_TIME` hold timer. It leaves `simTime` as it
+is.
+
+The game runs from there: the hold timers tick down against the delta time and the
+launch happens through the game's own code.
+{{else}}
 Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
 exactly as choosing it from the menu would: `screen` becomes `"countdown"`,
 `holdTimer` becomes `HOLD_TIME`, both scores `0`, `winner` `null`, `receiver`
@@ -170,9 +189,19 @@ is.
 
 The game runs from there: the countdown ticks down against the delta time and the
 serve happens through the game's own code.
+{{/if}}
 
 ### `serve()`
 
+{{#if (eq variant.slug "multi")}}
+Ends the hold of every waiting ball immediately instead of waiting it out, by
+setting the hold timer of every ball whose `held` is `true` to `0`. A ball already
+in flight is left as it is. It applies on the `"countdown"` and `"playing"` screens
+alone.
+
+The launch itself is yours: on the next frame the game advances, an elapsed hold
+timer launches that ball at `SERVE_SPEED` along a fresh random angle.
+{{else}}
 Ends the pre-serve hold immediately instead of waiting it out, by setting
 `holdTimer` to `0`. From a live rally it re-parks the ball, clears the trail, and
 returns `screen` to `"countdown"` first, so a re-serve and a first serve behave
@@ -180,6 +209,7 @@ identically. It applies on the `"countdown"` and `"playing"` screens alone.
 
 The launch itself is yours: on the next frame the game advances, an elapsed
 `holdTimer` launches the ball at `SERVE_SPEED` toward `state.receiver`.
+{{/if}}
 
 ### `setScore(p1, p2)`
 
@@ -196,8 +226,15 @@ mechanic.
 
 ### `setBall(index, state)`
 
+{{#if (eq variant.slug "multi")}}
+Places and aims a ball. `index` selects one of the three balls, numbered in play
+order from `0`. `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`. Posing a
+ball takes it into live play, clearing `held` and its hold timer, so a scenario
+can drive one ball while parking the others out of the way.
+{{else}}
 Places and aims a ball. `index` is `0`, selecting the single ball in play. `state`
 may set any of `x`, `y`, `vx`, `vy`, and `spin`.
+{{/if}}
 
 ### `setAiControl(enabled)`
 
@@ -238,9 +275,17 @@ real collision, and reads the result from `snapshot()`.
     right: { cy: <number>, vy: <number> },
   },
 
+{{#if (eq variant.slug "multi")}}
+  // All three balls, in play order.
+  balls: [
+    { x: <number>, y: <number>, vx: <number>, vy: <number>,
+      speed: <number>, spin: <number>, held: <boolean> },
+  ],
+{{else}}
   // The single ball in play.
   ball: { x: <number>, y: <number>, vx: <number>, vy: <number>,
           speed: <number>, spin: <number>, held: <boolean> },
+{{/if}}
 
 {{#if (eq variant.slug "gyre")}}
   // Each obstacle's live pose: its center and its rotation in radians, the same
@@ -253,10 +298,17 @@ real collision, and reads the result from `snapshot()`.
 }
 ```
 
+{{#if (eq variant.slug "multi")}}
+Every field is read straight off the game's state, so what the snapshot reports is
+what the game holds. One is derived rather than stored: `speed` is
+`hypot(vx, vy)`. `held` is the ball's own flag, true while it waits at its home
+point, and it stays true through a pause.
+{{else}}
 Every field is read straight off the game's state, so what the snapshot reports is
 what the game holds. Two are derived rather than stored: `speed` is
 `hypot(vx, vy)`, and `held` is true while a ball's pre-serve countdown is still
 running, which stays true through a pause.
+{{/if}}
 
 Three fields need the game to keep them honest every frame:
 
@@ -265,8 +317,13 @@ Three fields need the game to keep them honest every frame:
   it.
 - `simTime` accumulates the delta time of every frame the match simulation
   advances.
+{{#if (eq variant.slug "multi")}}
+- each ball's `holdTimer` counts down from `HOLD_TIME` to `0` while that ball is
+  `held`, and sits at `0` once it is in flight.
+{{else}}
 - `holdTimer` counts down from `HOLD_TIME` to `0` and sits at `0` during a live
   rally.
+{{/if}}
 
 ## Diagnostics
 

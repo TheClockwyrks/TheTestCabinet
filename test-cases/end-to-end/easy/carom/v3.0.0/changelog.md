@@ -122,26 +122,6 @@ from a scenario the case controls, rather than requested from the build — as
 replays of the frames the build drew, and as single images where one frame is what
 is being judged.
 
-## The multi-ball variant is not carried forward
-
-`v3.0.0` offers two variants, `base` and `gyre`. The `multi` variant of `v2.1.0`
-is **not** carried forward, and this is a deliberate omission rather than an
-oversight.
-
-Multi's three independently-served balls contradict points this case grades
-**commonly**, across every variant: a scored point does not return multi to the
-pre-serve countdown ("the other two balls carry on uninterrupted, and the field is
-not frozen"), and its launches are random over the full circle rather than aimed
-at a receiver. The scoring, match-end and countdown points — and the validators
-behind them — are written against base's single, globally gated, receiver-directed
-serve. A variant may only **add** to a common review item, never replace the
-validator behind one, so carrying multi forward means moving those points out of
-the common set and declaring them per variant: a change to how the case is graded
-rather than a port of the variant, and one that belongs to a version of its own.
-
-`v2.1.0` still offers multi, is frozen, and still resolves, so every run already
-recorded against it is unaffected.
-
 ## Scoring
 
 The common checklist is unchanged in shape from `v2.1.0`: no common review item,

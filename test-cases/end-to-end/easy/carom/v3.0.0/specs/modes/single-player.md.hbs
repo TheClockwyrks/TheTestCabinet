@@ -47,6 +47,17 @@ The AI controls the right paddle in Solo. It is a competent but beatable opponen
 - The AI moves its paddle vertically at a maximum of `AI_SPEED` (`560`) units per
   second, below the human's `PADDLE_SPEED` (`720`), so a well-placed or
   well-curved shot can beat it.
+{{#if (eq variant.slug "multi")}}
+- The AI defends one ball at a time: of the balls in flight moving toward its
+  goal, the one that reaches its paddle soonest. It leaves the other two alone.
+- While it has a ball to defend, it tracks that ball's current `y`, reacting with
+  the lag time constant `AI_REACT` (`0.12` seconds) and stopping when the paddle
+  center is within `AI_DEADZONE` (`10`) units of the target. It tracks the ball's
+  present position rather than a predicted one, so a curving shot can get past
+  it.
+- With no ball flying toward its goal, the AI eases back toward `AI_HOME_Y`
+  (`360`, the vertical center).
+{{else}}
 - When the ball is moving toward the AI, it tracks the ball's current `y`,
   reacting with the lag time constant `AI_REACT` (`0.12` seconds) and stopping
   when the paddle center is within `AI_DEADZONE` (`10`) units of the target. It
@@ -54,3 +65,4 @@ The AI controls the right paddle in Solo. It is a competent but beatable opponen
   shot can get past it.
 - When the ball is moving away, the AI eases back toward `AI_HOME_Y` (`360`, the
   vertical center).
+{{/if}}

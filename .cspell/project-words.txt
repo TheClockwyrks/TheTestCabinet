@@ -559,3 +559,4 @@ hypot
 # Carom v3.0.0 manifest prose: the vitest runner the case's in-process validators
 # are written for.
 vitest
+backgrounded

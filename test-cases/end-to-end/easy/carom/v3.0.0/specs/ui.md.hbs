@@ -24,11 +24,30 @@ Each state has its own screen, and the player moves between them as below.
    `TAGLINE_TEXT` (`NEON PADDLE DUEL`), and a vertical menu of `TITLE_ITEMS`
    (`SOLO`, `VERSUS`, `HOW TO PLAY`) in that order. The item at `state.menuIndex`
    is highlighted, drawn distinctly from the others. The field furniture (paddles,
+{{#if (eq variant.slug "multi")}}
+   balls, obstacles, net) may show dimmed behind the menu. `SOLO` starts a
+{{else}}
    ball, obstacles, net) may show dimmed behind the menu. `SOLO` starts a
+{{/if}}
    single-player match; `VERSUS` starts a two-player match; `HOW TO PLAY` opens
    the how-to-play screen.
 2. `howto`, how to play. It names the controls and describes the spin and obstacle
    mechanics. `back` returns to the title.
+{{#if (eq variant.slug "multi")}}
+3. `playing`, the live game: both paddles, the three balls each with its own
+   trail, both obstacles, the net, the two scores near the top, and a small mode
+   label.
+4. `countdown`, the hold before the three balls launch at the start of a match,
+   rendered over the live field with the same furniture. It becomes `playing`
+   when they launch. A ball that takes its home point again during a rally holds
+   and relaunches on its own, leaving the screen on `playing`.
+5. `paused`, reachable from `countdown` or `playing`. It offers `PAUSE_ITEMS`
+   (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order. The field is visible and
+   frozen behind the pause menu, with the balls, both paddles, and every hold
+   timer all held still. `RESUME` returns to `state.resumeScreen`, the screen the
+   pause interrupted; `RESTART` starts the same mode over; `QUIT TO MENU` returns
+   to `title`.
+{{else}}
 3. `playing`, the live game: both paddles, the ball with its trail, both
    obstacles, the net, the two scores near the top, and a small mode label.
 4. `countdown`, the pre-serve hold before a ball is launched, rendered over the
@@ -40,6 +59,7 @@ Each state has its own screen, and the player moves between them as below.
    all held still. `RESUME` returns to `state.resumeScreen`, the screen the pause
    interrupted; `RESTART` starts the same mode over; `QUIT TO MENU` returns to
    `title`.
+{{/if}}
 6. `matchover`, shown when a player wins. It displays the winning side and the
    final score, and offers `MATCHOVER_ITEMS` (`PLAY AGAIN`, `MENU`) in that order.
 

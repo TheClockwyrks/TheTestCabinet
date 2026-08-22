@@ -3,9 +3,16 @@
 ## Overview
 
 Carom is a neon, top-down paddle duel for the browser. Two paddles face each
+{{#if (eq variant.slug "multi")}}
+other across a dark field while three balls ricochet between them, off the top
+and bottom walls, off a pair of obstacles in the middle of the field, and off each
+other. A player scores when a ball passes the far edge behind their opponent's
+paddle.
+{{else}}
 other across a dark field while a ball ricochets between them, off the top and
 bottom walls, and off a pair of obstacles in the middle of the field. A player
 scores when the ball passes the far edge behind their opponent's paddle.
+{{/if}}
 
 Carom's defining mechanic is spin: the motion of a paddle at the moment it
 strikes the ball curves the ball's flight afterward. The obstacles turn the open
@@ -235,6 +242,17 @@ The look is neon-on-charcoal. Every color below is exported from
   a halo around a solid body.
 - The center net is a dashed vertical line at `x = NET_X` (`640`), drawn in
   `COLOR.net`. It is decoration and has no collision.
+{{#if (eq variant.slug "multi")}}
+- Every ball leaves its own motion trail. Behind a moving ball, draw a fading
+  tail that traces its recent path, so it visibly curves whenever spin curves the
+  flight. It reads as one continuous streak, a smooth comet, and tapers from the
+  ball: widest and brightest where it meets the ball, then narrowing and fading
+  smoothly to nothing at its oldest end. A trail represents `TRAIL_TIME` (`0.13`)
+  seconds of recent travel, so its length is proportional to that ball's current
+  speed. It stretches as the ball speeds up, shortens as it slows, and collapses
+  to almost nothing while the ball waits at its home point. Draw it in
+  `COLOR.ball`.
+{{else}}
 - The ball leaves a motion trail. Behind the moving ball, draw a fading tail that
   traces its recent path, so it visibly curves whenever spin curves the flight.
   It reads as one continuous streak, a smooth comet, and tapers from the ball:
@@ -244,5 +262,6 @@ The look is neon-on-charcoal. Every color below is exported from
   current speed. It stretches as the ball speeds up, shortens as it slows, and
   collapses to almost nothing during the pre-serve hold while the ball is still.
   Draw it in `COLOR.ball`.
+{{/if}}
 - The title screen, the in-match view, and the match-over screen each carry this
   palette and type.

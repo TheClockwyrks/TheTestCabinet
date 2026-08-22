@@ -3,8 +3,9 @@
 **Carom** is a neon, top-down paddle duel for the browser, and one of the
 simplest cases in The Test Cabinet's catalog. Two paddles face each other across
 a dark field while a ball ricochets between them, bouncing off the top and
-bottom walls and off a pair of obstacles planted in the middle of the arena. A point is scored whenever the ball slips past the far edge behind an
-opponent's paddle.
+bottom walls and off a pair of obstacles planted in the middle of the arena. A
+point is scored whenever the ball slips past the far edge behind an opponent's
+paddle.
 
 Although the rules read like the oldest arcade game there is, Carom is its own
 game. Its defining mechanic is **spin**: the motion of a paddle at the instant

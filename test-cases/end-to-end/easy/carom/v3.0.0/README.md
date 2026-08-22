@@ -70,19 +70,25 @@ themselves and the build names them.
 ## Variants
 
 Each variant is a standalone TOML file under `variants/`, listed in order in the
-manifest's `variants` key (the first is the default). The case offers two
-variants, both rated on the same common `single-player` and `versus` domains (no
+manifest's `variants` key (the first is the default). The case offers three
+variants, all rated on the same common `single-player` and `versus` domains (no
 variant adds a domain of its own):
 
 - `base` — fixed, upright obstacles and a single ball served toward the receiver.
   The reference build.
 - `gyre` — obstacles that sway and rotate, so the ball bounces off tilted,
-  oriented faces. It ships its own `workspaces/gyre/`, one project per engine,
-  because its state carries the obstacle clock and both obstacles' live poses,
-  and its debug API adds `setObstacleClock`.
+  oriented faces. It ships its own `workspaces/gyre/simple-2d`, because its state
+  carries the obstacle clock and both obstacles' live poses, and its debug API
+  adds `setObstacleClock`.
+- `multi` — three independent balls, each its own contest: its own hold, its own
+  launch at a random angle, and its own respawn on a field that never freezes.
+  Balls collide with each other. It ships its own `workspaces/multi/simple-2d`,
+  because its state carries the three balls in place of one and its debug API
+  addresses them by index.
 
-The `multi` variant of `v2.1.0` is not carried forward; `changelog.md` explains
-why, and `v2.1.0` is frozen and still offers it.
+Only the engine-backed project differs by variant. The engineless project holds
+no game code for a variant to differ in, so every variant shares
+`workspaces/none/`.
 
 ## Assets and media
 

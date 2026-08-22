@@ -28,6 +28,18 @@ export interface PaddleState {
   vy: number;
 }
 
+{{#if (eq variant.slug "multi")}}
+export interface BallState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  spin: number;
+  held: boolean;
+  holdTimer: number;
+  trail: TrailSample[];
+}
+{{else}}
 export interface BallState {
   x: number;
   y: number;
@@ -35,6 +47,7 @@ export interface BallState {
   vy: number;
   spin: number;
 }
+{{/if}}
 
 export interface TrailSample {
   x: number;
@@ -65,12 +78,17 @@ export interface CaromState {
   score: { p1: number; p2: number };
   winner: Side | null;
 
+{{#if (eq variant.slug "multi")}}
+  paddles: { left: PaddleState; right: PaddleState };
+  balls: BallState[];
+{{else}}
   receiver: Side;
   holdTimer: number;
 
   paddles: { left: PaddleState; right: PaddleState };
   ball: BallState;
   trail: TrailSample[];
+{{/if}}
 
 {{#if (eq variant.slug "gyre")}}
   obstacleClock: number;
@@ -102,6 +120,27 @@ state.
   second. This is what the spin mechanic reads at contact, so a paddle pinned
   against a bound reports `0` while a movement action is held.
 
+{{#if (eq variant.slug "multi")}}
+## `BallState`
+
+One ball. Every field is that ball's own, so the three balls share nothing.
+
+- `x`, `y` — the ball's center, in logical units.
+- `vx`, `vy` — the ball's velocity, in units per second.
+- `spin` — the signed lateral-curvature scalar, with a magnitude in units per
+  second squared. Positive and negative curve the flight opposite ways; it
+  decays by half every `SPIN_HALFLIFE` seconds and changes otherwise only on a
+  paddle hit.
+- `held` — `true` while the ball waits at its home point rather than flying. A
+  waiting ball is motionless and solid, and it launches when its hold timer
+  elapses.
+- `holdTimer` — seconds remaining of that wait. It is `HOLD_TIME` when the ball
+  takes its home point, counts down to `0`, at which point the ball launches, and
+  sits at `0` while the ball is in flight.
+- `trail` — this ball's recent positions, oldest first, for its motion trail.
+
+Speed is `hypot(vx, vy)`, derived rather than stored.
+{{else}}
 ## `BallState`
 
 - `x`, `y` — the ball's center, in logical units.
@@ -112,6 +151,7 @@ state.
   paddle hit.
 
 Speed is `hypot(vx, vy)`, derived rather than stored.
+{{/if}}
 
 ## `TrailSample`
 
@@ -167,6 +207,11 @@ of them, so a scenario is posed by assignment and read back the same way.
 - `score` — the two scores. First to `WIN_SCORE`, winning by at least
   `WIN_LEAD`.
 - `winner` — the winning side once the match is over, and `null` until then.
+{{#if (eq variant.slug "multi")}}
+- `paddles` — the two paddles.
+- `balls` — the three balls in play, in play order, each carrying its own
+  velocity, spin, hold timer, and trail.
+{{else}}
 - `receiver` — the side the next serve travels toward, which is the player who
   was just scored on. The first serve of a match travels toward player one.
 - `holdTimer` — seconds remaining of the pre-serve hold. It is `HOLD_TIME` at
@@ -175,6 +220,7 @@ of them, so a scenario is posed by assignment and read back the same way.
 - `paddles` — the two paddles.
 - `ball` — the single ball in play.
 - `trail` — recent ball positions, oldest first, for the motion trail.
+{{/if}}
 {{#if (eq variant.slug "gyre")}}
 - `obstacleClock` — the obstacle clock, in seconds, and the sole input to both
   obstacle poses. It advances by the frame's delta time on every frame of a live
