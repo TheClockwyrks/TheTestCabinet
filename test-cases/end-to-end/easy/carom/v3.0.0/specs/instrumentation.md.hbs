@@ -60,10 +60,15 @@ reaches the same state every time.
 ## What the runtime provides instead
 
 {{#if (eq engine.slug "none")}}
-The clock, the keyboard, and the overlay belong to the runtime layer beneath the
-game, and the surface carries no operation for any of them. That layer runs the
-frame loop, delivers the actions the game registers, and draws and toggles the
-debug overlay.
+The keyboard and the overlay belong to the runtime layer beneath the game, and
+the surface carries no operation for either. That layer delivers the actions the
+game registers from the key bindings this specification fixes, and it draws and
+toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below. Without them a scenario could only be driven by
+waiting, and a check that waits measures the machine it ran on.
 {{else}}
 The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
 which documents them in the `engine/` directory, and the surface carries no
@@ -103,7 +108,33 @@ The surface carries `version` (`CAROM_DEBUG_VERSION`, `1`) and the operations
 below. Values are plain numbers, strings, and booleans; coordinates and velocities
 are in the field's logical units.
 
-### `reset(options)`
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop advancing the simulation from the wall clock, so the game changes only
+when `advance` says so. `setAutoStep(true)` returns it to running itself, which is
+how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent frame left.
+
+### `advance(seconds, frames)`
+
+Runs `frames` whole frames covering `seconds` of game time, each worth
+`seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is a
+real frame — the same update the loop runs, then a render — so the game's own
+collision, serve and AI produce the result and the canvas reflects it.
+
+Every rate in this game is per second and integrated against the frame's delta
+time, so `advance(1, 1)` and `advance(1, 60)` cover the same second of game time
+and must reach the same outcome, beyond the drift a change in step size explains.
+
+Advancing while the game is still stepping automatically adds to what the wall
+clock is already doing, so a scenario that must be reproducible calls
+`setAutoStep(false)` first.
+
+{{/if}}### `reset(options)`
 
 Restores every declared field of the game's state to its title-screen value: the title
 screen with `menuIndex` at `0`, both scores `0`, no winner, `receiver` back to
