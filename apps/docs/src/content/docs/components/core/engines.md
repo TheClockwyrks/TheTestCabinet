@@ -299,8 +299,10 @@ reproduces the files that run's harness received. A frozen version is what makes
 this exact rather than approximate: the templates the rendering reads cannot have
 moved since the run.
 
-A surface showing a case rather than a run renders engineless, because nothing
-has selected an engine yet.
+A surface showing a case rather than a run defaults to the engineless rendering,
+because nothing has selected an engine. A case's Inputs tab offers the version and
+the engine as selections, so every rendering a version supports is readable, and a
+selection is carried in the URL.
 
 A run's engine is part of what makes its result comparable. Runs of one case
 under different engines measure different work and carry different available

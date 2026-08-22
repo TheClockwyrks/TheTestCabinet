@@ -39,8 +39,30 @@ export interface RunVariantState {
 // resolvable *yet*, and reporting that as "unavailable" makes a wait read as a
 // dead end. Only a settled fetch with no match is genuinely unavailable.
 export function useRunVariant(subject: RunSubject): RunVariantState {
-  const { fetchCaseVariant } = useGalleryData();
   const { testCaseSlug, testCaseVersion, variant, engineSlug } = subject;
+  return useCaseVariant(testCaseSlug, testCaseVersion, variant, engineSlug);
+}
+
+/**
+ * Resolve one variant of one exact case version rendered for one engine — the
+ * general form {@link useRunVariant} passes a run's own recorded coordinates to.
+ *
+ * A surface that lets a *reader* choose the version and engine (the test-case
+ * Inputs tab) needs the same resolution without a run to read them off, so the
+ * four coordinates are taken as plain arguments rather than assembled into a
+ * `CaseVariantRef` by the caller: a fresh object every render would restart the
+ * fetch on every render, and the primitives are what the effect can compare.
+ *
+ * Shares {@link useRunVariant}'s cache, so a run's Inputs tab and a case's Inputs
+ * tab looking at the same version/variant/engine resolve it once.
+ */
+export function useCaseVariant(
+  slug: string,
+  version: string,
+  variant: string,
+  engine: string,
+): RunVariantState {
+  const { fetchCaseVariant } = useGalleryData();
   const [state, setState] = useState<RunVariantState>({
     variant: undefined,
     status: "loading",
@@ -49,12 +71,7 @@ export function useRunVariant(subject: RunSubject): RunVariantState {
   useEffect(() => {
     let active = true;
     setState({ variant: undefined, status: "loading" });
-    resolveCached(fetchCaseVariant, {
-      slug: testCaseSlug,
-      version: testCaseVersion,
-      variant,
-      engine: engineSlug,
-    })
+    resolveCached(fetchCaseVariant, { slug, version, variant, engine })
       .then((resolved) => {
         if (!active) return;
         setState({ variant: resolved ?? undefined, status: "ready" });
@@ -66,7 +83,7 @@ export function useRunVariant(subject: RunSubject): RunVariantState {
     return () => {
       active = false;
     };
-  }, [fetchCaseVariant, testCaseSlug, testCaseVersion, variant, engineSlug]);
+  }, [fetchCaseVariant, slug, version, variant, engine]);
 
   return state;
 }

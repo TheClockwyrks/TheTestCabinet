@@ -1,0 +1,56 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/breakpoints" as bp;
+@use "../../../styles/forms" as f;
+
+// The Inputs tab's rendering pickers: which case version and which engine the
+// inputs below are the rendering of. It mirrors the version-scope row the Metrics
+// and Leaderboard tabs carry, so the tab strip is followed by the same shape of
+// control wherever a tab has one.
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-lg;
+  margin-bottom: t.$space-lg;
+}
+
+// One labelled picker. The label is inline with its select rather than above it so
+// the two pickers read as one row.
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// Muted, letter-spaced field names, matching the standalone version picker's.
+.label {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}
+
+// Mirrors the header's variant selector so every selector on the page reads as one
+// family.
+.select {
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  @include bp.below(t.$bp-md) {
+    padding-block: t.$space-sm;
+    padding-left: t.$space-sm;
+  }
+}

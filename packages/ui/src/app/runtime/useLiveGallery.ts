@@ -221,6 +221,8 @@ async function toTestCaseDetail(
   info: VersionInfo,
   changelog: ChangelogEntry[],
   errata: ErrataEntry[],
+  /** The engines each version declares, keyed by version. */
+  enginesByVersion: Record<string, string[]>,
 ): Promise<TestCaseDetail> {
   const variants = await Promise.all(
     info.variants.map((v) =>
@@ -243,6 +245,11 @@ async function toTestCaseDetail(
     versions,
     latestVersion: versions[0] ?? info.version,
     variants,
+    // The engines each version supports. Every version was resolved to build the
+    // changelog, so the declared set for all of them is already in hand — which is
+    // what lets the Inputs tab offer an older version's engines rather than the
+    // latest version's.
+    enginesByVersion,
     domains: info.domains.map((d) => ({
       id: d.id,
       name: d.name,
@@ -332,7 +339,17 @@ async function fetchTestCase(
       version: info.version,
       errata: info.errata ?? [],
     }));
-  return toTestCaseDetail(backend, versions, infos[0]!, changelog, errata);
+  const enginesByVersion = Object.fromEntries(
+    infos.map((info) => [info.version, info.engines]),
+  );
+  return toTestCaseDetail(
+    backend,
+    versions,
+    infos[0]!,
+    changelog,
+    errata,
+    enginesByVersion,
+  );
 }
 
 // The host supplies its own arena capability (the consoles wire one when a worker

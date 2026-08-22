@@ -28,6 +28,14 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 const VIRTUAL_ID = "virtual:tcab-snapshot";
 const RESOLVED_VIRTUAL_ID = "\0" + VIRTUAL_ID;
 
+// The engineless run's slug. It mirrors `DEFAULT_ENGINE_SLUG` in
+// `packages/ui/src/app/data/engines.ts`, restated rather than imported because this
+// plugin runs in the Vite config, outside the app bundle it would have to pull in
+// to reach it. A snapshot always carries the engineless rendering (it is a
+// variant's own `prompt`/`seededInputs`), so it is always one of the engines a
+// version's inputs can be read under.
+const NONE_ENGINE_SLUG = "none";
+
 // ---- Snapshot wire shapes (subset of design/v0.2.0-contracts.md §3) ----------
 
 interface SnapshotIndex {
@@ -579,6 +587,10 @@ interface AssembledTestCase {
   // The latest version's variants are `variants` above; keeping them out of this
   // map is what stops the bundle carrying them twice.
   variantsByVersion: Record<string, AssembledVariant[]>;
+  // The engines each published version's inputs can be read under, keyed by
+  // version — the engineless rendering plus every engine the snapshot carries a
+  // rendering for. `collapseCases` merges one entry per version into this map.
+  enginesByVersion: Record<string, string[]>;
   domains: AssembledDomain[];
   // The case's sprite-sheet declaration (frame size + named sequences), carried
   // through when the snapshot publishes it. Null for a non-sheet case (and for a
@@ -716,6 +728,28 @@ function mapSeededInputs(
     role: s.kind ?? "spec",
     text: s.text,
   }));
+}
+
+// The engines one version's inputs can be read under here. A case's prompt and
+// `.hbs` specs branch on the selected engine, so a version that supports more than
+// one has more than one set of inputs — and the snapshot publishes the engineless
+// rendering as the variant's own `prompt`/`seededInputs` plus one entry per other
+// engine under `engineRenderings`. The engineless slug is therefore always
+// readable, and the rest are exactly the keys the snapshot carries; a declared
+// engine the snapshot skipped is not offered, because there would be nothing to
+// show for it.
+//
+// The union runs across the version's variants rather than assuming they agree:
+// they are rendered from the same manifest, so in practice they do, but a union
+// cannot offer an engine some variant has no rendering for.
+function renderableEngines(variants: AssembledVariant[]): string[] {
+  const engines = new Set<string>([NONE_ENGINE_SLUG]);
+  for (const variant of variants) {
+    for (const engine of Object.keys(variant.engineRenderings)) {
+      engines.add(engine);
+    }
+  }
+  return [...engines];
 }
 
 function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
@@ -865,6 +899,11 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     // Filled by `collapseCases`, which is where a slug's other versions are in
     // hand; one mapped file knows only its own.
     variantsByVersion: {},
+    // This version's own entry; `collapseCases` merges the slug's versions into
+    // one map. Derived from the renderings this snapshot actually carries rather
+    // than from the case's declared `engines` (which it does not publish), so the
+    // Inputs tab offers exactly the renderings the site can show.
+    enginesByVersion: { [file.version]: renderableEngines(variants) },
     // The sprite-sheet declaration, so the asset Reference tab can play each named
     // sequence from the published reference frames. Null when the snapshot carries
     // none.
@@ -907,9 +946,17 @@ function collapseCases(
     for (const version of versions.slice(1)) {
       variantsByVersion[version.latestVersion] = version.variants;
     }
+    // Unlike the variants, every version's engines are kept — including the
+    // newest's — because the Inputs tab looks the selected version up here
+    // whichever one it is, and a list of slugs costs nothing to carry twice.
+    const enginesByVersion: Record<string, string[]> = {};
+    for (const version of versions) {
+      Object.assign(enginesByVersion, version.enginesByVersion);
+    }
     result.push({
       ...newest,
       variantsByVersion,
+      enginesByVersion,
       versions: versions.map((v) => v.latestVersion),
       // Each version contributes 0 or 1 entry; `versions` is newest-first, so the
       // concatenation is already ordered newest changelog entry first.

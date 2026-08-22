@@ -116,6 +116,12 @@ function testCaseDetail(slug: string): TestCaseDetail {
     description: "A case the smoke test renders.",
     changelog: [{ version: "v2.0.0", body: "Initial." }],
     errata: [],
+    // Two versions and two engines, so the Inputs tab's rendering pickers are
+    // actually rendered on the walk rather than hidden as a single-choice case.
+    enginesByVersion: {
+      "v2.0.0": ["none", "simple-2d"],
+      "v1.0.0": ["none"],
+    },
     domains: [{ id: "approach", name: "Approach", description: null }],
     variants: [
       {

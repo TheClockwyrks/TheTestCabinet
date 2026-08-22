@@ -272,6 +272,20 @@ export interface TestCaseDetail extends TestCaseSummary {
   /** The variants the latest version offers, in declared order (default first).
    * Each carries the inputs a run of that variant is seeded with. */
   variants: VariantSummary[];
+  /** The engine slugs each published version supports, keyed by version — the set
+   * a run of that version may select, and therefore the set of renderings its
+   * inputs exist in. Never empty for a version this host carries.
+   *
+   * A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so a
+   * version that supports more than one has more than one set of inputs, and the
+   * Inputs tab needs the list to offer them. It is keyed by version because the
+   * supported set is a property of a version: an engine added to a case appears in
+   * the version that added it and not in the ones before.
+   *
+   * Each host fills it from what it can actually render: the consoles from the
+   * version's declared `engines`, the static site from the renderings its snapshot
+   * carries. */
+  enginesByVersion: Record<string, string[]>;
   /** The case's COMMON scoring domains (every variant is rated on these; a
    * variant may add its own — see VariantSummary.domains). A reviewer rates each
    * domain independently; a run's overall rating is the worst across them. At

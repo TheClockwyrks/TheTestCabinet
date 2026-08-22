@@ -57,6 +57,7 @@ export {
 export { useTestCases, type TestCasesState } from "./data/useTestCases";
 export { useTestCase, type TestCaseState } from "./data/useTestCase";
 export {
+  useCaseVariant,
   useReviewModel,
   useRunVariant,
   type ReviewModelState,
