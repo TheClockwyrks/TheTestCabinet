@@ -660,10 +660,11 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   | `video` | `mp4` | A clip recorded across the drive. |
   | `replay` | `json.gz` | The draw-command [recording](/components/core/engines/#recording) a validator takes off the engine. |
 
-  A recording is a JSON document stored gzipped, which both extensions state. The
-  format restates each frame's inherited drawing state so that any frame can be
-  drawn on its own, and that redundancy is what compression removes, taking a real
-  capture down to a small fraction of its size. A recording is served as
+  A recording is a JSON document stored gzipped, which both extensions state. A
+  frame names its inherited drawing state and its operations by index into tables
+  the whole recording shares, so any frame can be drawn on its own, and what
+  repetition remains is what compression removes, taking a real capture down to a
+  fraction of its size. A recording is served as
   `application/json` with `Content-Encoding: gzip`, so a console receives the
   JSON document itself.
 

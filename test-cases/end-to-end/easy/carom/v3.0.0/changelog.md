@@ -89,14 +89,14 @@ it from `engine.debug`. Under `none` the build writes it and installs it on
 
 Almost every objective point declares a **replay**, and its validator produces
 it. The recording comes from a draw-command recorder, a wrapper over the 2D
-context that logs the operations a frame issued, frame by frame, together with
-the context state each frame inherited. A validator arms it, drives its
-scenario, disarms it, and writes the recording out as JSON. Playing it back
-re-issues those operations against a canvas, so what a reviewer scrubs is the
-build's own drawing rather than a video re-shot from it — and because each
-frame carries the state it inherited, any frame can be drawn without drawing
-the ones before it, which is what lets a build's replay and the reference
-implementation's be scrubbed side by side in step.
+context that logs the operations a frame issued, frame by frame, alongside the
+drawing state that frame inherited and the sprites, gradients and patterns those
+operations draw with. A validator arms it, drives its scenario, disarms it, and
+writes the recording out as JSON. Playing it back re-issues those operations
+against a canvas, so what a reviewer scrubs is the build's own drawing rather
+than a video re-shot from it. Every reference a frame makes resolves without any
+earlier frame, so any frame is drawn on its own, which is what lets a build's
+replay and the reference implementation's be scrubbed side by side in step.
 
 The arming is the point. A validator records the section of its scenario the
 point is about and never the arrangement that got there: the paddle contact rather

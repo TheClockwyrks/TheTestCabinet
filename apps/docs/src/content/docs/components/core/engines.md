@@ -157,10 +157,12 @@ frame, so replaying it against a fresh drawing surface reproduces the picture
 the build drew.
 
 Each frame carries the drawing state it inherited alongside its own operations,
-which makes every frame drawable on its own. A player seeks to any frame without
-replaying the frames before it, and two recordings of the same scenario are
-scrubbed in step. Each engine's own page documents the exact format it writes
-and the version a player checks before drawing anything.
+and the recording carries the values its operations draw with, so every
+reference a frame makes resolves without any earlier frame. That makes every
+frame drawable on its own: a player seeks to any frame without replaying the
+frames before it, and two recordings of the same scenario are scrubbed in step.
+Each engine's own page documents the exact format it writes and the version a
+player checks before drawing anything.
 
 Recording is bracketed by the caller rather than by the engine's lifetime, so a
 validator captures the stretch of a scenario its check is about and nothing

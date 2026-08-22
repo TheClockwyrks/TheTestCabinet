@@ -365,11 +365,19 @@ export interface Game<S, D = unknown> {
 /**
  * A value carried inside a recorded operation.
  *
- * Plain data travels as itself. `$ref` names a value an earlier recorded call
- * produced, which is how a gradient created through the context and then filled
- * with colour stops replays as the same gradient. `$opaque` names a value the
- * recorder could not carry, so a player reports the operation it cannot reproduce
- * instead of drawing something else.
+ * Plain data travels as itself. `$res` names an entry of {@link Recording.resources}
+ * — a value the context produced, carried as the recipe that rebuilds it — and
+ * `$img` names an entry of {@link Recording.images}. Both tables belong to the whole
+ * recording rather than to any one frame, which is what lets a fill established on
+ * the first frame resolve when the thousandth is drawn by itself. `$opaque` names a
+ * value the recorder could not carry, so a player reports the operation it cannot
+ * reproduce instead of drawing something else.
+ *
+ * `{ $opaque: "truncated" }` is the one marker that stands for more than one value:
+ * a recorder expands what a build passed to a bound, and everything past that bound
+ * is refused as a single marker rather than as one marker per value. Replacing each
+ * element of a half-million-element array with its own marker costs seconds and
+ * produces a document larger than the data it declined to carry.
  */
 export type DrawValue =
   | null
@@ -377,31 +385,103 @@ export type DrawValue =
   | number
   | string
   | readonly DrawValue[]
-  | { readonly $ref: number }
+  | { readonly $res: number }
+  | { readonly $img: number }
   | { readonly $opaque: string }
   | { readonly [key: string]: DrawValue };
 
 /**
- * One recorded operation.
+ * One operation the context itself performed.
  *
- * `target` is absent for an operation the context performed and names an interned
- * value for an operation performed on something the context returned. `id` is
- * present when the call produced a value later operations refer to.
+ * An operation performed *on* a value the context returned is not one of these: it
+ * belongs to that value's {@link Resource} recipe. So a player issues every
+ * operation it reads against the context it is drawing into, and never has to ask
+ * what a given one is being applied to.
  */
 export type DrawOp =
   | {
       readonly op: "call";
-      readonly target?: number;
       readonly method: string;
       readonly args: readonly DrawValue[];
-      readonly id?: number;
     }
   | {
       readonly op: "set";
-      readonly target?: number;
       readonly property: string;
       readonly value: DrawValue;
     };
+
+/**
+ * One mutation applied to a value the context produced.
+ *
+ * The same two shapes an operation takes, because a mutation is a call or an
+ * assignment like any other. What differs is what it applies to, and the
+ * {@link Resource} that holds it already names that.
+ */
+export type ResourceOp = DrawOp;
+
+/**
+ * A bitmap or a pixel buffer an operation draws.
+ *
+ * A sprite-based build spends most of its operations on `drawImage`, so the sources
+ * those calls read from are part of the picture rather than something beside it. A
+ * `bitmap` is carried as a PNG data URL, which is the one form both a browser and
+ * the native canvas a validator runs against rebuild an image from.
+ *
+ * A `pixels` entry carries its bytes instead, because the canvas round trip a PNG
+ * needs is lossy: drawing an image into a canvas premultiplies each colour channel
+ * by the pixel's alpha and reading the pixels back un-premultiplies them, so a
+ * partially transparent pixel is quantized to eight bits twice and comes back a
+ * different colour. `ImageData` is the one kind of image a check compares byte for
+ * byte, so it travels byte for byte and is rebuilt with no decoder at all.
+ */
+export type CapturedImage =
+  | {
+      /** How the value is rebuilt: as an image a context can draw. */
+      readonly kind: "bitmap";
+      /** The captured width in pixels. */
+      readonly width: number;
+      /** The captured height in pixels. */
+      readonly height: number;
+      /** A `data:image/png;base64,…` URL holding the pixels. */
+      readonly src: string;
+    }
+  | {
+      /** How the value is rebuilt: as `ImageData`. */
+      readonly kind: "pixels";
+      /** The captured width in pixels. */
+      readonly width: number;
+      /** The captured height in pixels. */
+      readonly height: number;
+      /** The RGBA bytes, base64 encoded, four bytes per pixel in row order. */
+      readonly data: string;
+    };
+
+/**
+ * A value the context produced, carried as the recipe that rebuilds it.
+ *
+ * The recipe is taken at the moment the value is *used*, and holds the mutations
+ * applied to it up to that point. A gradient that is filled, given another colour
+ * stop, and filled again paints differently the second time, so the two fills name
+ * two resources and a replay paints each under the stops it actually had.
+ *
+ * A style property holds a live reference, so a value given another mutation after
+ * it was assigned paints under that mutation without ever being assigned again. The
+ * recorder therefore records a corrective assignment before the paint, and the
+ * recipe a painting operation draws under is the one the context would paint with.
+ *
+ * `make.args` are as of the *producing* call rather than as of the use, because
+ * `createPattern` copies its source when it is called: a pattern made from a
+ * scratch canvas keeps the picture that canvas carried at that moment.
+ */
+export interface Resource {
+  /** The context call that created the value. */
+  readonly make: {
+    readonly method: string;
+    readonly args: readonly DrawValue[];
+  };
+  /** The calls and assignments made on it before this use, in order. */
+  readonly then: readonly ResourceOp[];
+}
 
 /**
  * The context state a frame inherited from the frame before it.
@@ -417,6 +497,37 @@ export interface DrawState {
   readonly transform: readonly number[] | null;
   /** The dash pattern, or `null` when unreadable. */
   readonly lineDash: readonly number[] | null;
+  /** The clip in force, as the segments that built it, in the order they applied. */
+  readonly clip: readonly PathSegment[];
+  /**
+   * The current path, as the segments holding the operations issued since the last
+   * `beginPath`.
+   *
+   * A canvas keeps its current path across a frame boundary, so a build is free to
+   * open a path on one frame and fill it on the next. Carrying it is also what makes
+   * an inherited clip safe: replaying a clip segment's path operations leaves the
+   * clip outline current, so a state that stopped at the clip would leave a bare
+   * `fill` among the frame's operations filling that outline. A player issues
+   * `beginPath` between the clip segments and these.
+   */
+  readonly path: readonly PathSegment[];
+}
+
+/**
+ * One run of path operations the context issued under one transform.
+ *
+ * A canvas reports neither the clip region in force nor the current path, so both
+ * are carried as the operations that built them. Clips intersect rather than
+ * replace, so a state holds every segment applied so far and a player applies them
+ * in turn. Each segment carries the transform its operations were issued under,
+ * because a path is given in user space and replaying it under the frame's own
+ * transform would clip, or draw, a different region.
+ */
+export interface PathSegment {
+  /** The transform in force when these operations were issued, or `null` when unreadable. */
+  readonly transform: readonly number[] | null;
+  /** The path operations issued under that transform, in order. */
+  readonly ops: readonly DrawOp[];
 }
 
 /** One frame of a recording. */
@@ -429,10 +540,43 @@ export interface RecordedFrame {
   readonly deltaMs: number;
   /** The canvas backing store this frame was drawn into, in device pixels. */
   readonly surface: { readonly width: number; readonly height: number };
-  /** The context state this frame inherited. */
-  readonly state: DrawState;
-  /** The operations this frame issued, in order. */
-  readonly ops: readonly DrawOp[];
+  /** Index into {@link Recording.states} of the state this frame inherited. */
+  readonly state: number;
+  /**
+   * Indices into {@link Recording.states} of the states saved under this frame,
+   * outermost first.
+   *
+   * A build may `save` on one frame and `restore` on the next, so the stack of
+   * saved states survives a frame boundary along with the state on top of it. A
+   * player pushes these before applying the frame's own state, which is what makes
+   * a `restore` among the frame's operations return where the original returned.
+   *
+   * At most 64 entries, and the entries kept are the innermost, because a `restore`
+   * pops the innermost first. The bound is what keeps a build that saves more often
+   * than it restores from costing a longer stack at every frame open for the rest of
+   * a recording.
+   */
+  readonly stack: readonly number[];
+  /** Indices into {@link Recording.ops}, in the order the frame issued them. */
+  readonly ops: readonly number[];
+  /**
+   * Whether part of what this frame inherited was too large for the format to
+   * carry, and was cut down to the bound.
+   *
+   * The save stack, the clip region and the current path are each shadowed by the
+   * recorder and each bounded, because a build that saves without restoring, or
+   * that never calls `beginPath`, would otherwise cost more at every frame open for
+   * the rest of the recording. Past a bound the recorder keeps what it already has
+   * and refuses the rest, so the frame replays under a state that is close to the
+   * build's rather than equal to it.
+   *
+   * A reviewer has to be able to tell a picture the format could not carry from one
+   * it carried, so a frame that was cut down says so and a player reports it beside
+   * everything else it could not reproduce. Present only when something was in fact
+   * cut down: the flag names an exceptional frame, and writing `false` on every
+   * frame of a fifty-thousand-frame recording would cost bytes to say nothing.
+   */
+  readonly truncated?: boolean;
 }
 
 /**
@@ -440,6 +584,12 @@ export interface RecordedFrame {
  *
  * Every frame stands alone, so a player may draw any frame without drawing the
  * ones before it. That is what lets two recordings be scrubbed together in step.
+ *
+ * The four tables in front of the frames are shared by the whole recording, and
+ * each holds every distinct entry once. Consecutive frames of a game issue very
+ * nearly the same operations under very nearly the same state, so naming an entry
+ * by index is what bounds both what a recording costs to store and what a
+ * reviewer's browser pays to parse and hold it.
  */
 export interface Recording {
   /** The format version a player checks before drawing anything. */
@@ -450,6 +600,14 @@ export interface Recording {
   readonly height: number;
   /** The colour each frame was cleared to, or `null` for transparency. */
   readonly background: string | null;
+  /** The bitmaps and pixel buffers the operations draw, by index. */
+  readonly images: readonly CapturedImage[];
+  /** The values the context produced and the operations draw with, by index. */
+  readonly resources: readonly Resource[];
+  /** Every distinct operation the recording holds, by index. */
+  readonly ops: readonly DrawOp[];
+  /** Every distinct inherited state block, by index. */
+  readonly states: readonly DrawState[];
   /** The frames captured, in order. */
   readonly frames: readonly RecordedFrame[];
 }

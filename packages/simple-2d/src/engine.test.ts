@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConstantClock, SequenceClock } from "./clocks";
 import type {
+  DrawOp,
   Engine,
   EngineOptions,
   Game,
   InitApi,
+  Recording,
   RenderApi,
   SurfaceMetrics,
   UpdateApi,
@@ -54,7 +56,14 @@ function contextStub(canvas: HTMLCanvasElement): ContextStub {
     font: "",
     textAlign: "start",
     textBaseline: "alphabetic",
-    setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void {
+    setTransform(
+      a: number,
+      b: number,
+      c: number,
+      d: number,
+      e: number,
+      f: number,
+    ): void {
       transform = [a, b, c, d, e, f];
       ops.push({ op: "setTransform", transform, fill: stub.fillStyle });
     },
@@ -76,6 +85,15 @@ function contextStub(canvas: HTMLCanvasElement): ContextStub {
     restore(): void {
       ops.push({ op: "restore", transform, fill: stub.fillStyle });
     },
+    beginPath(): void {
+      ops.push({ op: "beginPath", transform, fill: stub.fillStyle });
+    },
+    rect(): void {
+      ops.push({ op: "rect", transform, fill: stub.fillStyle });
+    },
+    clip(): void {
+      ops.push({ op: "clip", transform, fill: stub.fillStyle });
+    },
   };
   return {
     ctx: stub as unknown as CanvasRenderingContext2D,
@@ -89,20 +107,31 @@ function contextStub(canvas: HTMLCanvasElement): ContextStub {
  * element it produces reports a client size of zero — which the viewport correctly
  * fits to a scale of zero, and which would make every assertion here vacuous.
  */
-function mount(cssW = 800, cssH = 600): { canvas: HTMLCanvasElement; stub: ContextStub } {
+function mount(
+  cssW = 800,
+  cssH = 600,
+): { canvas: HTMLCanvasElement; stub: ContextStub } {
   const canvas = document.createElement("canvas");
-  Object.defineProperty(canvas, "clientWidth", { value: cssW, configurable: true });
-  Object.defineProperty(canvas, "clientHeight", { value: cssH, configurable: true });
+  Object.defineProperty(canvas, "clientWidth", {
+    value: cssW,
+    configurable: true,
+  });
+  Object.defineProperty(canvas, "clientHeight", {
+    value: cssH,
+    configurable: true,
+  });
   document.body.append(canvas);
   const stub = contextStub(canvas);
-  canvas.getContext = (() => stub.ctx) as unknown as HTMLCanvasElement["getContext"];
+  canvas.getContext = (() =>
+    stub.ctx) as unknown as HTMLCanvasElement["getContext"];
   return { canvas, stub };
 }
 
 /** A canvas whose context cannot be had — the failure `createEngine` refuses. */
 function contextlessCanvas(): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
-  canvas.getContext = (() => null) as unknown as HTMLCanvasElement["getContext"];
+  canvas.getContext = (() =>
+    null) as unknown as HTMLCanvasElement["getContext"];
   return canvas;
 }
 
@@ -144,7 +173,9 @@ interface GameHooks {
 }
 
 /** A game that records the calls it received and does whatever the test asked. */
-function testGame(hooks: GameHooks = {}): Game<TestState> & { initializations: number } {
+function testGame(
+  hooks: GameHooks = {},
+): Game<TestState> & { initializations: number } {
   const game = {
     initializations: 0,
     async initialize(api: InitApi): Promise<TestState> {
@@ -171,9 +202,11 @@ function testGame(hooks: GameHooks = {}): Game<TestState> & { initializations: n
 const engines: Engine<unknown>[] = [];
 
 /** Creates an engine the teardown disposes of, whatever the test does with it. */
-function build(
-  options: Partial<EngineOptions<TestState>> = {},
-): { engine: Engine<TestState>; stub: ContextStub; canvas: HTMLCanvasElement } {
+function build(options: Partial<EngineOptions<TestState>> = {}): {
+  engine: Engine<TestState>;
+  stub: ContextStub;
+  canvas: HTMLCanvasElement;
+} {
   const { canvas, stub } = mount();
   const created = createEngine<TestState>({
     canvas,
@@ -197,7 +230,10 @@ beforeEach(() => {
   raf = fakeRaf();
   // A ratio of 2 rather than 1, so a bug that drops the device pixel ratio shows up
   // as a wrong number instead of the right one by coincidence.
-  Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });
+  Object.defineProperty(window, "devicePixelRatio", {
+    value: 2,
+    configurable: true,
+  });
 });
 
 afterEach(() => {
@@ -235,14 +271,25 @@ describe("construction", () => {
 
   it("refuses a canvas that yields no 2D context", () => {
     expect(() =>
-      createEngine({ canvas: contextlessCanvas(), width: 400, height: 200, game: testGame() }),
+      createEngine({
+        canvas: contextlessCanvas(),
+        width: 400,
+        height: 200,
+        game: testGame(),
+      }),
     ).toThrow(/2D context/);
   });
 
   it("refuses a layout outside the catalogue, naming every valid one", () => {
     const { canvas } = mount();
     expect(() =>
-      createEngine({ canvas, width: 400, height: 200, game: testGame(), layout: "nope" }),
+      createEngine({
+        canvas,
+        width: 400,
+        height: 200,
+        game: testGame(),
+        layout: "nope",
+      }),
     ).toThrow(/dpad-4-two-buttons/);
   });
 
@@ -311,7 +358,12 @@ describe("construction", () => {
 });
 
 /** A surface reporting fixed figures over a caller-supplied event target. */
-function fixedSurface(target: EventTarget, cssW = 800, cssH = 600, dpr = 2): SurfaceMetrics {
+function fixedSurface(
+  target: EventTarget,
+  cssW = 800,
+  cssH = 600,
+  dpr = 2,
+): SurfaceMetrics {
   return {
     cssWidth: (): number => cssW,
     cssHeight: (): number => cssH,
@@ -326,7 +378,9 @@ describe("events", () => {
     // observes initialization as it happens rather than inferring it afterwards.
     const game = testGame({
       initialize: async (api) => {
-        await expect(api.assets.load("/etc/passwd")).rejects.toThrow(/escapes the asset root/);
+        await expect(api.assets.load("/etc/passwd")).rejects.toThrow(
+          /escapes the asset root/,
+        );
       },
     });
     const { engine } = build({ game });
@@ -427,7 +481,10 @@ describe("initialize", () => {
     const game = testGame();
     const { engine } = build({ game });
 
-    const [first, second] = await Promise.all([engine.initialize(), engine.initialize()]);
+    const [first, second] = await Promise.all([
+      engine.initialize(),
+      engine.initialize(),
+    ]);
     const third = await engine.initialize();
 
     expect(game.initializations).toBe(1);
@@ -458,8 +515,14 @@ describe("initialize", () => {
     const { engine } = build({ game });
     await engine.initialize();
 
-    expect([...Object.keys(api?.input ?? {})].sort()).toEqual(["layout", "register"]);
-    expect([...Object.keys(api?.audio ?? {})].sort()).toEqual(["define", "load"]);
+    expect([...Object.keys(api?.input ?? {})].sort()).toEqual([
+      "layout",
+      "register",
+    ]);
+    expect([...Object.keys(api?.audio ?? {})].sort()).toEqual([
+      "define",
+      "load",
+    ]);
     expect(Object.keys(api?.diagnostics ?? {})).toEqual(["register"]);
     expect(Object.keys(api?.debug ?? {})).toEqual(["expose"]);
   });
@@ -467,7 +530,9 @@ describe("initialize", () => {
 
 describe("the debug surface", () => {
   /** A game that exposes `surface` from its `initialize`. */
-  function exposing(surface: unknown): Game<TestState> & { initializations: number } {
+  function exposing(
+    surface: unknown,
+  ): Game<TestState> & { initializations: number } {
     return testGame({
       initialize: (api) => {
         api.debug.expose(surface);
@@ -494,7 +559,9 @@ describe("the debug surface", () => {
       {},
       {
         get(_target, property): never {
-          throw new Error(`the engine read ${String(property)} off the debug surface`);
+          throw new Error(
+            `the engine read ${String(property)} off the debug surface`,
+          );
         },
       },
     );
@@ -739,7 +806,12 @@ describe("the frame's own work", () => {
 
     await engine.advance(1);
 
-    expect(stub.names()).toEqual(["setTransform", "fillRect", "setTransform", "setTransform"]);
+    expect(stub.names()).toEqual([
+      "setTransform",
+      "fillRect",
+      "setTransform",
+      "setTransform",
+    ]);
     expect(stub.ops[1]?.fill).toBe("#101018");
   });
 
@@ -747,8 +819,14 @@ describe("the frame's own work", () => {
     const { engine, canvas } = build();
     await engine.initialize();
 
-    Object.defineProperty(canvas, "clientWidth", { value: 400, configurable: true });
-    Object.defineProperty(canvas, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(canvas, "clientWidth", {
+      value: 400,
+      configurable: true,
+    });
+    Object.defineProperty(canvas, "clientHeight", {
+      value: 400,
+      configurable: true,
+    });
     await engine.advance(1);
 
     // 400x400 CSS at a ratio of 2: an 800x800 store, a 400x200 field fitted on the
@@ -794,7 +872,8 @@ describe("the frame's own work", () => {
         // Deliberately blind to the first frame: an edge armed during a frame the
         // game did not poll must be gone by the next one, or the press would arrive
         // out of order with the input that caused it.
-        if (state.updates > 1 && api.input.pressed("fire")) pressedIn.push(state.updates);
+        if (state.updates > 1 && api.input.pressed("fire"))
+          pressedIn.push(state.updates);
       },
     });
     const { engine } = build({ game, surface: fixedSurface(target) });
@@ -865,7 +944,9 @@ describe("the frame's own work", () => {
     const { engine, stub } = build({ game, surface: fixedSurface(target) });
     await engine.initialize();
 
-    target.dispatchEvent(new KeyboardEvent("keydown", { code: "Backquote", repeat: true }));
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "Backquote", repeat: true }),
+    );
     await engine.advance(1);
 
     expect(stub.names()).not.toContain("fillText");
@@ -896,7 +977,9 @@ describe("run", () => {
     const { engine } = build();
     await engine.initialize();
 
-    await expect(engine.run({ signal: AbortSignal.abort() })).resolves.toBeUndefined();
+    await expect(
+      engine.run({ signal: AbortSignal.abort() }),
+    ).resolves.toBeUndefined();
     expect(engine.frame().count).toBe(0);
   });
 
@@ -912,7 +995,10 @@ describe("run", () => {
     expect(engine.frame().count).toBe(1);
 
     engine.destroy();
-    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   it("keeps the loop alive when a frame throws, so one bad frame is not fatal", async () => {
@@ -1002,7 +1088,8 @@ describe("destroy", () => {
 
   it("drops every subscription, so a stale handler cannot observe a successor", async () => {
     const game = testGame({
-      initialize: (api) => api.audio.define("blip", { freq: 440, durationMs: 10 }),
+      initialize: (api) =>
+        api.audio.define("blip", { freq: 440, durationMs: 10 }),
       update: (_state, api) => api.audio.play("blip"),
     });
     const { engine } = build({ game });
@@ -1020,7 +1107,6 @@ describe("destroy", () => {
     expect(cues).toBe(1);
   });
 
-
   it("runs and advances nothing once destroyed, rather than failing a teardown race", async () => {
     const { engine } = build();
     await engine.initialize();
@@ -1032,6 +1118,19 @@ describe("destroy", () => {
     expect(raf.pending()).toBe(0);
   });
 });
+
+/**
+ * One frame's operations, resolved through the table the recording shares.
+ *
+ * A frame names its operations by index, so a test that wants to read what a frame
+ * drew resolves them the way a player does.
+ */
+function frameOps(recording: Recording, at: number): readonly DrawOp[] {
+  return (recording.frames[at]?.ops ?? []).flatMap((index) => {
+    const op = recording.ops[index];
+    return op === undefined ? [] : [op];
+  });
+}
 
 describe("draw-command recording", () => {
   it("records nothing until it is armed", async () => {
@@ -1053,20 +1152,27 @@ describe("draw-command recording", () => {
     const recording = engine.stopRecording();
 
     expect(recording.frames.map((frame) => frame.count)).toEqual([1, 2, 3]);
-    expect(recording.frames.map((frame) => frame.deltaMs)).toEqual([20, 20, 20]);
+    expect(recording.frames.map((frame) => frame.deltaMs)).toEqual([
+      20, 20, 20,
+    ]);
     expect(recording.frames.map((frame) => frame.timeMs)).toEqual([20, 40, 60]);
   });
 
   it("records the engine's own frame preparation, so a replayed frame starts blank", async () => {
-    const { engine } = build({ clock: new ConstantClock(20), background: "#101018" });
+    const { engine } = build({
+      clock: new ConstantClock(20),
+      background: "#101018",
+    });
     await engine.initialize();
     engine.startRecording();
     await engine.advance(1);
-    const [frame] = engine.stopRecording().frames;
+    const recording = engine.stopRecording();
 
     // `prepare` resets the transform, paints the background, then applies the
     // viewport — in that order, before anything the game draws.
-    const names = (frame?.ops ?? []).flatMap((op) => (op.op === "call" ? [op.method] : []));
+    const names = frameOps(recording, 0).flatMap((op) =>
+      op.op === "call" ? [op.method] : [],
+    );
     expect(names.slice(0, 2)).toEqual(["setTransform", "fillRect"]);
   });
 
@@ -1081,31 +1187,161 @@ describe("draw-command recording", () => {
     await engine.initialize();
     engine.startRecording();
     await engine.advance(1);
-    const [frame] = engine.stopRecording().frames;
+    const recording = engine.stopRecording();
 
-    expect(frame?.ops).toContainEqual({ op: "set", property: "fillStyle", value: "#7fd1ff" });
-    expect(frame?.ops).toContainEqual({ op: "call", method: "fillRect", args: [1, 2, 3, 4] });
+    const ops = frameOps(recording, 0);
+    expect(ops).toContainEqual({
+      op: "set",
+      property: "fillStyle",
+      value: "#7fd1ff",
+    });
+    expect(ops).toContainEqual({
+      op: "call",
+      method: "fillRect",
+      args: [1, 2, 3, 4],
+    });
   });
 
   it("keeps the diagnostics overlay out of the recording", async () => {
+    const target = new EventTarget();
     const game = testGame({
       initialize: (api) => api.diagnostics.register("score", () => 7),
     });
-    const { engine, stub } = build({ game, clock: new ConstantClock(20) });
+    const { engine, stub } = build({
+      game,
+      clock: new ConstantClock(20),
+      surface: fixedSurface(target),
+    });
     await engine.initialize();
+
+    // The overlay is off by default, so a recording taken without turning it on says
+    // nothing about where the overlay is drawn. Switched on, its text reaches the
+    // canvas and the recording holds none of it.
+    target.dispatchEvent(new KeyboardEvent("keydown", { code: "Backquote" }));
     engine.startRecording();
     await engine.advance(1);
-    const [frame] = engine.stopRecording().frames;
+    const recording = engine.stopRecording();
 
-    // The overlay is off by default, so turn it on through the toggle key and
-    // confirm the drawing it produces reaches the canvas and not the recording.
-    const names = (frame?.ops ?? []).flatMap((op) => (op.op === "call" ? [op.method] : []));
-    expect(stub.names()).toContain("setTransform");
+    const names = frameOps(recording, 0).flatMap((op) =>
+      op.op === "call" ? [op.method] : [],
+    );
+    expect(stub.names()).toContain("fillText");
     expect(names).not.toContain("fillText");
   });
 
+  it("carries the stack a frame left saved for the next one, outermost first", async () => {
+    const game = testGame({
+      render: (state, api) => {
+        // A build that saves on one frame and restores on the next: the second
+        // frame's operations run under the states the first frame saved, and a
+        // player has no earlier frame to have pushed them.
+        if (state.renders === 1) {
+          api.ctx.fillStyle = "#outer";
+          api.ctx.save();
+          api.ctx.fillStyle = "#inner";
+          api.ctx.save();
+          api.ctx.fillStyle = "#current";
+        } else api.ctx.restore();
+      },
+    });
+    const { engine } = build({ game, clock: new ConstantClock(20) });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(2);
+    const recording = engine.stopRecording();
+
+    // The order is the contract: a player applies each entry and saves, so a stack
+    // written the other way round restores the frame to the wrong state.
+    expect(recording.frames.map((frame) => frame.stack.length)).toEqual([0, 2]);
+    const saved = (recording.frames[1]?.stack ?? []).map(
+      (index) => recording.states[index]?.properties["fillStyle"],
+    );
+    expect(saved).toEqual(["#outer", "#inner"]);
+    expect(
+      recording.states[recording.frames[1]?.state ?? -1]?.properties[
+        "fillStyle"
+      ],
+    ).toBe("#current");
+  });
+
+  it("survives the resize its own frame preparation performs", async () => {
+    const target = new EventTarget();
+    let cssWidth = 800;
+    const surface: SurfaceMetrics = {
+      cssWidth: (): number => cssWidth,
+      cssHeight: (): number => 600,
+      dpr: (): number => 2,
+      events: (): EventTarget => target,
+    };
+    const game = testGame({
+      render: (state, api) => {
+        if (state.renders > 1) return;
+        api.ctx.beginPath();
+        api.ctx.rect(0, 0, 10, 10);
+        api.ctx.clip();
+        api.ctx.save();
+      },
+    });
+    const { engine } = build({ game, clock: new ConstantClock(20), surface });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(1);
+
+    // The display changed, so the next frame's preparation writes the backing store
+    // — which resets the context completely, from inside the frame bracket.
+    cssWidth = 400;
+    await engine.advance(1);
+    const recording = engine.stopRecording();
+
+    const inherited = recording.states[recording.frames[1]?.state ?? -1];
+    expect(recording.frames[1]?.surface.width).toBe(800);
+    expect(inherited?.clip).toEqual([]);
+    expect(inherited?.path).toEqual([]);
+    expect(recording.frames[1]?.stack).toEqual([]);
+  });
+
+  it("notices a game clearing its canvas by writing the size straight back", async () => {
+    const game = testGame({
+      render: (state, api) => {
+        if (state.renders === 1) {
+          api.ctx.beginPath();
+          api.ctx.rect(0, 0, 10, 10);
+          api.ctx.clip();
+          api.ctx.save();
+          return;
+        }
+        // The ordinary clear. It resets the context completely — transform,
+        // properties, clip, current path, save stack — and changes no size, so
+        // nothing about the backing store says it happened.
+        const { canvas } = api.ctx;
+        const size = canvas.width;
+        canvas.width = size;
+        api.ctx.fillRect(0, 0, 4, 4);
+      },
+    });
+    const { engine } = build({ game, clock: new ConstantClock(20) });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(2);
+    const recording = engine.stopRecording();
+
+    const inherited = recording.states[recording.frames[1]?.state ?? -1];
+    expect(inherited?.clip).toEqual([]);
+    expect(recording.frames[1]?.stack).toEqual([]);
+    // The wipe erased the pixels the frame's own preparation had already drawn, so
+    // the frame holds only what the game issued after it.
+    expect(
+      frameOps(recording, 1).flatMap((op) =>
+        op.op === "call" ? [op.method] : [],
+      ),
+    ).toEqual(["fillRect"]);
+  });
+
   it("reports the design size and background the engine was built with", async () => {
-    const { engine } = build({ clock: new ConstantClock(20), background: "#101018" });
+    const { engine } = build({
+      clock: new ConstantClock(20),
+      background: "#101018",
+    });
     await engine.initialize();
     engine.startRecording();
     await engine.advance(1);

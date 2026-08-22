@@ -43,10 +43,16 @@ import { expect } from "vitest";
 import {
   ConstantClock,
   createEngine,
+  type CapturedImage,
   type Clock,
+  type DrawOp,
+  type DrawState,
+  type DrawValue,
+  type PathSegment,
   type Engine,
   type RecordedFrame,
   type Recording,
+  type Resource,
   type SurfaceMetrics,
   type Viewport,
 } from "@test-cabinet/simple-2d";
@@ -660,6 +666,176 @@ function mediaDestination(outputId: string, extension: string): string | null {
 }
 
 /**
+ * A value's JSON with object keys in a fixed order, as the key a table
+ * deduplicates on.
+ *
+ * Two entries that mean the same thing have to serialize identically for a table
+ * to hold one copy of each, and the key order inside an argument the build passed
+ * is the build's own business rather than ours.
+ */
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
+    .join(",")}}`;
+}
+
+/** Add `entry` to a table if it is new, and answer where it lives. */
+function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
+  const key = canonical(entry);
+  const found = at.get(key);
+  if (found !== undefined) return found;
+  const index = table.length;
+  table.push(entry);
+  at.set(key, index);
+  return index;
+}
+
+/**
+ * `frames` re-expressed against tables holding only what those frames name.
+ *
+ * DROPPING A FRAME DROPS THE LAST REFERENCE TO WHATEVER ONLY THAT FRAME DREW
+ * WITH. The four tables in front of a recording are shared by every frame in it,
+ * so carrying them over whole would put operations, states, gradients and images
+ * in the file that no surviving frame asks for — dead weight in a document whose
+ * whole point is to say each thing once, and the bulk of it in a game that draws
+ * procedurally and so repeats almost nothing between frames.
+ *
+ * Every entry here is reached from a kept frame, and every reference inside one
+ * is rewritten as it is reached, transitively: a frame names its own state and
+ * the states saved under it, whose clip and path segments and inherited fill name
+ * operations and resources, whose own creating calls may name images. What is
+ * deduplicated is the rewritten entry, so an operation two hundred frames issue
+ * identically is written once and named two hundred times, and every index a
+ * frame carries addresses the table it was interned into.
+ *
+ * Exported for the suite beside this file: a recording carrying an own field
+ * named `__proto__` is one the engine's recorder writes and this one has to
+ * rewrite as a field rather than as a prototype, and no drawing the reference
+ * implementation makes produces one.
+ */
+export function retable(
+  recording: Recording,
+  frames: readonly RecordedFrame[],
+): Recording {
+  const images: CapturedImage[] = [];
+  const imageAt = new Map<number, number>();
+  const resources: Resource[] = [];
+  const resourceAt = new Map<number, number>();
+  const ops: DrawOp[] = [];
+  const opAt = new Map<string, number>();
+  const states: DrawState[] = [];
+  const stateAt = new Map<string, number>();
+
+  const takeImage = (source: number): number => {
+    const found = imageAt.get(source);
+    if (found !== undefined) return found;
+    const index = images.length;
+    images.push(recording.images[source]);
+    imageAt.set(source, index);
+    return index;
+  };
+
+  const takeResource = (source: number): number => {
+    const found = resourceAt.get(source);
+    if (found !== undefined) return found;
+    const recipe = recording.resources[source];
+    // A recipe's own arguments were encoded when the value was used, so they can
+    // only name entries interned before it: rewriting one terminates and cannot
+    // re-enter this resource.
+    const rebuilt: Resource = {
+      make: { method: recipe.make.method, args: recipe.make.args.map(value) },
+      then: recipe.then.map(operation),
+    };
+    const index = resources.length;
+    resources.push(rebuilt);
+    resourceAt.set(source, index);
+    return index;
+  };
+
+  const value = (entry: DrawValue): DrawValue => {
+    if (Array.isArray(entry)) return entry.map(value);
+    if (entry === null || typeof entry !== "object") return entry;
+    const record = entry as Record<string, DrawValue>;
+    if (typeof record.$img === "number") {
+      return { $img: takeImage(record.$img) };
+    }
+    if (typeof record.$res === "number") {
+      return { $res: takeResource(record.$res) };
+    }
+    const rewritten: Record<string, DrawValue> = {};
+    for (const [key, held] of Object.entries(record)) {
+      // Defined rather than assigned: a build's own object may carry a field named
+      // `__proto__`, and assigning that name reaches the prototype setter instead
+      // of writing a field the document carries.
+      Object.defineProperty(rewritten, key, {
+        value: value(held),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return rewritten;
+  };
+
+  const operation = (op: DrawOp): DrawOp =>
+    op.op === "call"
+      ? { op: "call", method: op.method, args: op.args.map(value) }
+      : { op: "set", property: op.property, value: value(op.value) };
+
+  const segments = (list: readonly PathSegment[]): PathSegment[] =>
+    list.map((segment) => ({
+      transform: segment.transform,
+      ops: segment.ops.map(operation),
+    }));
+
+  const stateOf = (source: number): number => {
+    const state = recording.states[source];
+    const properties: Record<string, DrawValue> = {};
+    for (const [name, held] of Object.entries(state.properties)) {
+      Object.defineProperty(properties, name, {
+        value: value(held),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return intern(states, stateAt, {
+      properties,
+      transform: state.transform,
+      lineDash: state.lineDash,
+      clip: segments(state.clip),
+      // A frame inherits the current path along with the clip: a canvas keeps its
+      // path across a frame boundary, and applying a clip leaves the clip outline
+      // current, so a state that stopped at the clip would leave a bare `fill`
+      // among the frame's operations filling that outline.
+      path: segments(state.path),
+    });
+  };
+
+  return {
+    ...recording,
+    images,
+    resources,
+    ops,
+    states,
+    frames: frames.map((frame) => ({
+      ...frame,
+      state: stateOf(frame.state),
+      stack: frame.stack.map(stateOf),
+      ops: frame.ops.map((op) =>
+        intern(ops, opAt, operation(recording.ops[op])),
+      ),
+    })),
+  };
+}
+
+/**
  * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole of
  * what was captured.
  *
@@ -669,18 +845,31 @@ function mediaDestination(outputId: string, extension: string): string | null {
  * what these outputs are named for. A rally is evidence that the ball accelerated
  * hit after hit, and the hits are spread across the whole of it.
  *
- * Thinning is legitimate because every frame in a recording is independently
- * renderable by construction: each carries the context state it inherited, so
- * dropping the frames between two kept ones cannot leave a frame undrawable. Each
- * kept frame's `deltaMs` is restated as the time since the frame kept before it,
- * so the deltas still sum to the section's elapsed time and a player pacing itself
- * off them runs at the speed the game really ran at. The frame `count` is left as
- * the host reported it, so a reader can see that frames were skipped rather than
- * being told a smooth lie.
+ * Thinning is legitimate because every frame in a recording is drawable on its
+ * own: a frame names the whole of the state it opened with and reaches everything
+ * it draws with through tables the recording shares, so dropping the frames
+ * between two kept ones cannot leave a frame undrawable. Each kept frame's
+ * `deltaMs` is restated as the time since the frame kept before it, so the deltas
+ * still sum to the section's elapsed time and a player pacing itself off them
+ * runs at the speed the game really ran at. The frame `count` is left as the host
+ * reported it, so a reader can see that frames were skipped rather than being
+ * told a smooth lie.
  *
  * The last frame is always kept, whatever the stride lands on: it is the frame the
  * check's sweep stopped at — the contact, the point, the rebound — and it is the
  * one a reviewer looks at first.
+ *
+ * Keeping it costs a frame rather than the cap. The stride rounds up, so a section
+ * whose length is an exact multiple of the cap strides over exactly that many
+ * frames and stops one stride short of the end: the last frame still has to come
+ * in, and the cap is a ceiling rather than a target. It takes the place of the
+ * final strided frame — the frame nearest it, so the swap opens the smallest gap
+ * available anywhere in the section — and is measured from where that frame was
+ * measured from, which is what keeps the kept deltas summing to the elapsed time.
+ *
+ * What survives is then re-expressed against tables of its own, because those
+ * tables are shared by every frame the recorder kept and a dropped frame takes
+ * the last reference to whatever only it drew with.
  */
 function thinReplay(recording: Recording): Recording {
   const { frames } = recording;
@@ -698,9 +887,21 @@ function thinReplay(recording: Recording): Recording {
 
   for (let i = 0; i < frames.length; i += stride) keep(frames[i]);
   const last = frames[frames.length - 1];
-  if (kept[kept.length - 1].count !== last.count) keep(last);
+  if (kept[kept.length - 1].count !== last.count) {
+    if (kept.length >= MAX_REPLAY_FRAMES) {
+      // The stride spent the whole budget on the way to a frame short of the end.
+      // Drop the frame it stopped on, and put the moment back to the one before
+      // it: a kept frame's restated delta is measured from exactly that moment, so
+      // subtracting it recovers it, and the last frame's own delta then spans the
+      // gap the two of them leave.
+      const displaced = kept[kept.length - 1];
+      kept.length -= 1;
+      previousMs = displaced.timeMs - displaced.deltaMs;
+    }
+    keep(last);
+  }
 
-  return { ...recording, frames: kept };
+  return retable(recording, kept);
 }
 
 /**
@@ -713,15 +914,13 @@ function thinReplay(recording: Recording): Recording {
  * already reported as absent, and that is the truthful reading of a section that
  * drew no frames.
  *
- * What lands on disk is gzip rather than raw JSON. The recording format is
- * deliberately repetitive: every frame restates the drawing state it inherited so
- * that any frame can be drawn without drawing the frames before it, and
- * consecutive frames of a game issue very nearly the same operations as each
- * other. That redundancy is what makes seeking and side-by-side scrubbing work,
- * and it is also almost exactly what gzip removes: a real capture stores tens of
- * times smaller. Compressing is what makes the property affordable, so a run's
- * whole set of recordings costs a few megabytes rather than a hundred. The
- * document inside is the same one, so nothing about the format has changed.
+ * What lands on disk is gzip rather than raw JSON. A recording is text made
+ * almost entirely of numbers, index lists and field names repeated once per
+ * frame, which is close to the shape gzip is best at: a real capture of this game
+ * stores about eight times smaller compressed. That is what keeps a run's whole
+ * set of recordings to a few megabytes. Every host that serves one declares the
+ * encoding, so the browser inflates it before the player sees it, and the
+ * document inside is the same one.
  *
  * Never throws. A directory that cannot be made or a file that cannot be written
  * says something about the machine the validators ran on, and failing the point

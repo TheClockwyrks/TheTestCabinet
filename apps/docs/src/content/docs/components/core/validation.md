@@ -169,12 +169,12 @@ different directories cannot collide. Once the run returns, the runner moves
 each declared output to the flat name every consumer of validation media
 addresses and records whether it was there.
 
-A recording is stored and served gzipped, as `<verdict>__<output>.json.gz`. The
-format is repetitive by design: every frame restates the drawing state it
-inherited so that any frame can be drawn on its own, which is what seeking and
-side-by-side scrubbing are built on. Compression is what makes that affordable,
-taking a real capture down to a small fraction of its size, so a run's whole set
-of recordings costs a few megabytes. A recording is served as `application/json`
+A recording is stored and served gzipped, as `<verdict>__<output>.json.gz`. A
+frame names its inherited drawing state and its operations by index into tables
+the whole recording shares, so any frame can be drawn on its own, which is what
+seeking and side-by-side scrubbing are built on. Compression takes what
+repetition remains down to a fraction of its size, so a run's whole set of
+recordings costs a few megabytes. A recording is served as `application/json`
 with `Content-Encoding: gzip`, so the browser inflates the body and the player
 parses the document the recorder produced.
 

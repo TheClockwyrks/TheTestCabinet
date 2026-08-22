@@ -24,8 +24,9 @@ function body(count: number): unknown {
       timeMs: 16 * (i + 1),
       deltaMs: 16,
       surface: { width: 320, height: 180 },
-      state: { properties: {}, transform: null, lineDash: null },
-      ops: [{ op: "call", method: "fillRect", args: [i, 0, 4, 4] }],
+      state: 0,
+      stack: [],
+      ops: [i],
     });
   }
   return {
@@ -33,6 +34,16 @@ function body(count: number): unknown {
     width: 320,
     height: 180,
     background: "#000000",
+    images: [],
+    resources: [],
+    ops: frames.map((_, i) => ({
+      op: "call",
+      method: "fillRect",
+      args: [i, 0, 4, 4],
+    })),
+    states: [
+      { properties: {}, transform: null, lineDash: null, clip: [], path: [] },
+    ],
     frames,
   };
 }

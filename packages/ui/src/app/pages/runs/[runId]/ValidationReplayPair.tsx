@@ -136,8 +136,10 @@ function ReplayPane({
   if (side.loading) {
     return <p className={exec.mediaMissing}>Loading the replay…</p>;
   }
-  const { recording } = side;
-  if (recording === null) {
+  const { recording, resources } = side;
+  // The two arrive together — the recording is not published until its images are
+  // decoded — so a recording without resources is a side that has not loaded.
+  if (recording === null || resources === null) {
     return <p className={exec.mediaMissing}>{missing}</p>;
   }
   if (recording.frames.length === 0) {
@@ -145,5 +147,12 @@ function ReplayPane({
       <p className={exec.mediaMissing}>This recording captured no frames.</p>
     );
   }
-  return <ReplayCanvas recording={recording} frame={frame} label={label} />;
+  return (
+    <ReplayCanvas
+      recording={recording}
+      resources={resources}
+      frame={frame}
+      label={label}
+    />
+  );
 }

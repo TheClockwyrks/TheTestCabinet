@@ -75,12 +75,13 @@ absolute path. A suite writes each declared output to
 `$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output id>.json.gz`.
 
 A recording is a JSON document stored gzipped, which is what the two extensions
-say. The format is repetitive by design: every frame restates the drawing state
-it inherited so that it can be drawn on its own, and consecutive frames of a
-game issue very nearly the same operations. That redundancy is what seeking and
-side-by-side scrubbing are built on, and it is also what compresses away. A real
-capture stores tens of times smaller gzipped, which keeps a run's whole set of
-recordings to a few megabytes. The document inside is the recording exactly as the
+say. A frame names the drawing state it inherited and the operations it issued
+by index into tables the whole recording shares, so a frame is drawable on its
+own and the frames that repeat each other cost an index apiece. What remains is
+repetitive, because a game's operations differ from their neighbours' by a few
+coordinates, and that compresses away. A real capture stores several times
+smaller gzipped, which keeps a run's whole set of recordings to a few megabytes.
+The document inside is the recording exactly as the
 recorder handed it back, and serving keeps that reading: a recording goes out as
 `application/json` with `Content-Encoding: gzip`.
 
