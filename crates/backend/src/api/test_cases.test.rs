@@ -472,6 +472,44 @@ fn accept_encoding_is_read_conservatively() {
 }
 
 #[tokio::test]
+async fn a_stored_recording_is_served_as_json_framed_in_gzip() {
+    // The baseline and per-run validation routes hand the stored file over under the
+    // name it is stored as. A `.json.gz` is a JSON document travelling compressed, so
+    // the response says exactly that and the browser inflates it before the replay
+    // player sees a byte.
+    let stored = gzipped(br#"{"format":1}"#);
+    let response = bytes_response("no-tunnel__serve.json.gz", stored.clone());
+    let (status, headers, body) = read_response(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    assert_eq!(headers[header::CONTENT_ENCODING], "gzip");
+    assert_eq!(headers[header::CONTENT_LENGTH], stored.len().to_string());
+    assert_eq!(body, stored);
+}
+
+#[tokio::test]
+async fn a_gzip_archive_is_served_as_the_gzip_document_it_is() {
+    // The counterpart case, and the reason the suffix match is compound: here the gzip
+    // is the resource. Declaring an encoding would have the client inflate it and keep
+    // a bare tar under a `.tar.gz` name.
+    let response = bytes_response("run-abc.tar.gz", vec![0x1f, 0x8b, 0x08, 0x00]);
+    let (_, headers, _) = read_response(response).await;
+    assert_eq!(headers[header::CONTENT_TYPE], "application/gzip");
+    assert!(!headers.contains_key(header::CONTENT_ENCODING));
+}
+
+#[tokio::test]
+async fn an_unframed_case_file_declares_no_encoding() {
+    for file in ["prompt.hbs", "spec.md", "reference.png", "controller.wasm"] {
+        let (_, headers, _) = read_response(bytes_response(file, vec![1, 2, 3])).await;
+        assert!(
+            !headers.contains_key(header::CONTENT_ENCODING),
+            "`{file}` must not claim a body framing"
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_corrupt_stored_artifact_fails_loudly_rather_than_serving_garbage() {
     // Gzip magic with a truncated member: the bytes claim an encoding they cannot
     // honor, so a client that cannot decode gzip must get an error, never a body that

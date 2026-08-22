@@ -63,8 +63,8 @@ it("writes a captured section as gzip, under both extensions", async () => {
   expect(written()).toEqual(["flight.json.gz"]);
   const bytes = readFileSync(join(mediaDir, SUITE_DIR, "flight.json.gz"));
   // The framing read off the bytes rather than off the name: a gzip member opens
-  // `0x1f 0x8b` (RFC 1952), which is the pair the console sniffs to decide whether
-  // what it fetched has to be decompressed before it is parsed.
+  // `0x1f 0x8b` (RFC 1952), so this is the capture actually being compressed rather
+  // than named as though it were.
   expect([bytes[0], bytes[1]]).toEqual([0x1f, 0x8b]);
 
   const recording = JSON.parse(gunzipSync(bytes).toString("utf8")) as {

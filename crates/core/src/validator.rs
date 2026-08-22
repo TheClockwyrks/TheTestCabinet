@@ -905,9 +905,10 @@ pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
 /// snapshot builder transcodes it to H.264 `.mp4` so the public gallery plays on every
 /// browser (webm/VP8 does not on iOS/Safari) — exactly as a video proof is published
 /// (see [`crate::proof_published_extension`]). A still publishes as its captured PNG
-/// unchanged, and so does a recording: a `.json.gz` document is decompressed and
-/// drawn by the console's own player, so there is no format the gallery would need
-/// it converted into and no reason to publish it any larger than it is stored.
+/// unchanged, and so does a recording: a `.json.gz` document is inflated by the
+/// browser and drawn by the console's own player, so there is no format the gallery
+/// would need it converted into and no reason to publish it any larger than it is
+/// stored.
 pub fn validation_published_extension(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "png",

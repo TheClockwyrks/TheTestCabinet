@@ -81,7 +81,8 @@ game issue very nearly the same operations. That redundancy is what seeking and
 side-by-side scrubbing are built on, and it is also what compresses away. A real
 capture stores tens of times smaller gzipped, which keeps a run's whole set of
 recordings to a few megabytes. The document inside is the recording exactly as the
-recorder handed it back.
+recorder handed it back, and serving keeps that reading: a recording goes out as
+`application/json` with `Content-Encoding: gzip`.
 
 The staged path is the path the runner handed vitest as a file filter, so a
 suite derives its own from `import.meta.url` and needs no name of its own. Two

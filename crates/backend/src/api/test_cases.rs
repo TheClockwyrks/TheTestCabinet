@@ -11,6 +11,7 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
+use test_cabinet_core::content_labels::{self, ContentLabels};
 use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
 };
@@ -163,7 +164,7 @@ pub async fn artifact(
         .store
         .read_artifact(&slug, &version, &path)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&path, bytes, None))
+    Ok(bytes_response(&path, bytes))
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/specs/{variant}` — the variant's
@@ -264,7 +265,7 @@ pub async fn reference(
         .store
         .read_reference(&slug, &version, &scope, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
@@ -287,7 +288,7 @@ pub async fn validation_baseline(
         .store
         .read_validation_baseline(&slug, &version, &engine, &variant, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `GET /runs/{id}/proof/{file}` — a published run's proof media (`{file}` is
@@ -300,7 +301,7 @@ pub async fn run_proof(
         .store
         .read_run_proof(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `POST /runs/{id}/proof/{file}` — store a published run's proof media, uploaded
@@ -330,7 +331,7 @@ pub async fn run_validation(
         .store
         .read_run_validation(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `POST /runs/{id}/validation/{file}` — store a published run's synthesized *actual*
@@ -358,7 +359,7 @@ pub async fn run_asset(
         .store
         .read_run_asset(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `POST /runs/{id}/asset/{file}` — store a published asset-generation run's
@@ -385,7 +386,7 @@ pub async fn run_controller(
         .store
         .read_run_controller(&id)
         .map_err(ApiError::from)?;
-    Ok(bytes_response("controller.wasm", bytes, None))
+    Ok(bytes_response("controller.wasm", bytes))
 }
 
 /// `POST /runs/{id}/controller.wasm` — store an adversarial run's controller wasm,
@@ -821,36 +822,39 @@ fn workspaces_out(
     }
 }
 
-/// Build a raw-bytes response with a best-effort content type and length.
+/// Build a raw-bytes response for a stored file, labelled from its name.
 ///
-/// `content_encoding` is the codec the *body* is framed in — `Some("gzip")` when the
-/// bytes travel compressed — and is `None` for every response whose body is what its
-/// content type says it is. It is deliberately a parameter rather than something
-/// derived from `path`: the encoding is a property of the bytes in hand, not of the
-/// name they are served under, and the one route that compresses serves the same
-/// resource both ways depending on what the caller advertised (see
-/// [`run_artifact_response`]).
-fn bytes_response(path: &str, bytes: Vec<u8>, content_encoding: Option<&str>) -> Response {
-    let content_type = content_type_for(path);
+/// A name carries both answers a response has to give: what the resource is, and how
+/// the body is framed. `<name>.json.gz` is a JSON document travelling gzip-framed and
+/// is labelled as such, so a browser inflates it before any script sees it; every
+/// other name describes bytes that are already the resource (see
+/// [`labels_for`]).
+fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
+    labelled_response(labels_for(path), bytes)
+}
+
+/// Build a raw-bytes response under labels the caller already knows.
+///
+/// [`run_artifact_response`] is the one route whose framing is not implied by the
+/// name it serves under: it stores the document gzipped under a `.json` name and
+/// decides per request whether to hand that framing on, so it states the labels
+/// rather than deriving them.
+fn labelled_response(labels: ContentLabels, bytes: Vec<u8>) -> Response {
     let len = bytes.len();
     let mut response = (
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, content_type.to_string()),
+            (header::CONTENT_TYPE, labels.content_type.to_string()),
             (header::CONTENT_LENGTH, len.to_string()),
         ],
         Body::from(bytes),
     )
         .into_response();
-    if let Some(encoding) = content_encoding {
-        // A malformed value is impossible here — every caller passes a static token —
-        // but an invalid header must never be the difference between serving the bytes
-        // and 500ing, so a bad one is simply not set.
-        if let Ok(value) = header::HeaderValue::from_str(encoding) {
-            response
-                .headers_mut()
-                .insert(header::CONTENT_ENCODING, value);
-        }
+    if let Some(encoding) = labels.content_encoding {
+        response.headers_mut().insert(
+            header::CONTENT_ENCODING,
+            header::HeaderValue::from_static(encoding),
+        );
     }
     response
 }
@@ -874,11 +878,10 @@ fn run_artifact_response(
     name: &str,
     stored: Vec<u8>,
 ) -> Result<Response, ApiError> {
-    let file = format!("{name}.json");
     let mut response = if !is_gzip(&stored) {
-        bytes_response(&file, stored, None)
+        labelled_response(ContentLabels::plain(JSON_CONTENT_TYPE), stored)
     } else if accepts_gzip(headers) {
-        bytes_response(&file, stored, Some("gzip"))
+        labelled_response(ContentLabels::gzipped(JSON_CONTENT_TYPE), stored)
     } else {
         let mut plain = Vec::new();
         std::io::Read::read_to_end(
@@ -890,7 +893,7 @@ fn run_artifact_response(
                 "decoding stored `{name}` artifact for a client that does not accept gzip: {e}"
             ))
         })?;
-        bytes_response(&file, plain, None)
+        labelled_response(ContentLabels::plain(JSON_CONTENT_TYPE), plain)
     };
     // The body genuinely varies by request header, so say so — a shared cache in front
     // of the backend must not hand a browser's gzipped copy to the gzip-unaware CLI.
@@ -943,34 +946,36 @@ fn accepts_gzip(headers: &HeaderMap) -> bool {
     })
 }
 
-/// A best-effort content type from a path's extension.
-fn content_type_for(path: &str) -> &'static str {
+/// The content type and body framing for a stored file, from its name.
+fn labels_for(path: &str) -> ContentLabels {
     let ext = std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
     match ext.to_ascii_lowercase().as_str() {
-        "md" | "txt" => "text/plain; charset=utf-8",
-        "hbs" => "text/plain; charset=utf-8",
-        "html" => "text/html; charset=utf-8",
-        "json" => "application/json",
+        "md" | "txt" => ContentLabels::plain("text/plain; charset=utf-8"),
+        "hbs" => ContentLabels::plain("text/plain; charset=utf-8"),
+        "html" => ContentLabels::plain("text/html; charset=utf-8"),
+        "json" => ContentLabels::plain(JSON_CONTENT_TYPE),
         // A gzipped document served as it is stored — a validator's draw-command
-        // recording (`<name>.json.gz`). The body is not labelled with a content
-        // encoding, so nothing between the store and the player inflates it on the
-        // way past; the player decompresses what it fetched.
-        "gz" => "application/gzip",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        "mp4" => "video/mp4",
-        "svg" => "image/svg+xml",
-        "css" => "text/css",
-        "js" | "mjs" => "text/javascript",
-        "wasm" => "application/wasm",
-        _ => "application/octet-stream",
+        // recording (`<name>.json.gz`), which is JSON travelling gzip-framed and is
+        // labelled that way, so the browser inflates it before the player sees it.
+        "gz" => content_labels::for_gz(path),
+        "png" => ContentLabels::plain("image/png"),
+        "jpg" | "jpeg" => ContentLabels::plain("image/jpeg"),
+        "webp" => ContentLabels::plain("image/webp"),
+        "gif" => ContentLabels::plain("image/gif"),
+        "mp4" => ContentLabels::plain("video/mp4"),
+        "svg" => ContentLabels::plain("image/svg+xml"),
+        "css" => ContentLabels::plain("text/css"),
+        "js" | "mjs" => ContentLabels::plain("text/javascript"),
+        "wasm" => ContentLabels::plain("application/wasm"),
+        _ => ContentLabels::plain("application/octet-stream"),
     }
 }
+
+/// The content type every JSON response this module serves carries.
+const JSON_CONTENT_TYPE: &str = "application/json";
 
 // --- Wire shapes (§1.2) -----------------------------------------------------
 

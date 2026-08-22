@@ -1,4 +1,3 @@
-import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchRecording,
@@ -122,14 +121,14 @@ describe("refusing a recording", () => {
 });
 
 /**
- * Fetching a recording, which arrives compressed.
+ * Fetching a recording.
  *
  * A recording is stored and served gzipped, because the format restates each
  * frame's inherited drawing state so that any frame can be drawn on its own and is
- * therefore repetitive by design. Whether the bytes are still compressed by the
- * time the player sees them is a property of the host that served them, not of the
- * file, so both arrivals are exercised here — and so is a body that claims to be
- * gzip and is not, which has to reach the reviewer as a sentence rather than as a
+ * therefore repetitive by design. Every host declares that framing
+ * (`Content-Type: application/json` with `Content-Encoding: gzip`), so the browser
+ * inflates the body and the player is handed JSON. What is checked here is that a
+ * body which is not a recording reaches the reviewer as a sentence rather than as a
  * blank player.
  */
 describe("fetching a recording", () => {
@@ -142,34 +141,17 @@ describe("fetching a recording", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body));
   }
 
-  it("decompresses a recording served as the gzip it is stored as", async () => {
-    serves(gzipSync(JSON.stringify(recording())));
+  it("reads the JSON the browser inflated on the way past", async () => {
+    // The response declares `Content-Encoding: gzip`, so the body reaching the
+    // player is the document itself — which is what `fetch` hands back here.
+    serves(JSON.stringify(recording()));
     const fetched = await fetchRecording("https://example.test/serve.json.gz");
     expect(fetched.frames).toHaveLength(1);
     expect(fetched.width).toBe(800);
   });
 
-  it("reads a recording a host already decoded on the way past", async () => {
-    // A host that labels the response `Content-Encoding: gzip` has the browser
-    // inflate the body before any script sees it, so the player is handed the JSON
-    // itself. It plays either way, which is why the framing is sniffed rather than
-    // assumed from the name.
-    serves(JSON.stringify(recording()));
-    const fetched = await fetchRecording("https://example.test/serve.json.gz");
-    expect(fetched.frames).toHaveLength(1);
-  });
-
-  it("refuses a body that claims to be gzip and is not", async () => {
-    const corrupt = gzipSync(JSON.stringify(recording()));
-    corrupt.fill(0, 12);
-    serves(corrupt);
-    await expect(
-      fetchRecording("https://example.test/serve.json.gz"),
-    ).rejects.toThrow(/compressed with something this console cannot read/i);
-  });
-
-  it("refuses a decompressed body that is not JSON", async () => {
-    serves(gzipSync("this is not a recording"));
+  it("refuses a body that is not JSON", async () => {
+    serves("this is not a recording");
     await expect(
       fetchRecording("https://example.test/serve.json.gz"),
     ).rejects.toThrow(/not valid JSON/i);

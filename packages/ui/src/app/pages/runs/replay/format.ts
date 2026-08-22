@@ -298,59 +298,14 @@ export function parseRecording(data: unknown): RecordingParse {
 }
 
 /**
- * The first two bytes of a gzip member (RFC 1952 §2.3.1).
- *
- * A JSON document never begins with them, so these two bytes tell a compressed
- * recording from a plain one with no ambiguity at all.
- */
-const GZIP_MAGIC = [0x1f, 0x8b] as const;
-
-/** Whether `body` is a gzip member rather than the document itself. */
-function isGzip(body: ArrayBuffer): boolean {
-  const head = new Uint8Array(
-    body,
-    0,
-    Math.min(GZIP_MAGIC.length, body.byteLength),
-  );
-  return head[0] === GZIP_MAGIC[0] && head[1] === GZIP_MAGIC[1];
-}
-
-/**
- * The JSON text of a fetched recording body, decompressing it when it arrived
- * compressed.
+ * Fetch a recording and read it, or throw a sentence fit to show the reviewer.
  *
  * A recording is stored and served gzipped, because the format is repetitive by
  * design — every frame restates the drawing state it inherited so that any frame
  * can be drawn on its own — and that redundancy compresses away almost entirely.
- * So the player decompresses rather than the format changing.
- *
- * Whether the bytes are still compressed when they arrive is not something this
- * side can decide, which is why it is sniffed rather than assumed. A host that
- * serves the file with `Content-Encoding: gzip` has the browser inflate the body
- * before any script sees it, and a host that serves it as the gzip document it is
- * hands it over untouched. Both are legitimate, and the reviewer must be able to
- * watch the replay either way, so the two bytes that open a gzip member decide it
- * for each response on its own.
- */
-async function recordingText(body: ArrayBuffer): Promise<string> {
-  if (!isGzip(body)) return new TextDecoder().decode(body);
-  const compressed = new Response(body).body;
-  if (compressed === null) {
-    throw new Error("The replay arrived empty, so it cannot be played.");
-  }
-  try {
-    return await new Response(
-      compressed.pipeThrough(new DecompressionStream("gzip")),
-    ).text();
-  } catch {
-    throw new Error(
-      "The replay is compressed with something this console cannot read, so it cannot be played.",
-    );
-  }
-}
-
-/**
- * Fetch a recording and read it, or throw a sentence fit to show the reviewer.
+ * Every host that serves one declares it: `Content-Type: application/json` with
+ * `Content-Encoding: gzip`. So the browser inflates the body before any script sees
+ * it and the player reads the JSON straight off the response.
  *
  * The status is checked before the body is parsed for the same reason the
  * adversarial player checks it: a 404's error body is valid JSON, and handing it
@@ -363,10 +318,9 @@ export async function fetchRecording(url: string): Promise<Recording> {
       `The replay could not be fetched (HTTP ${response.status}).`,
     );
   }
-  const text = await recordingText(await response.arrayBuffer());
   let data: unknown;
   try {
-    data = JSON.parse(text);
+    data = await response.json();
   } catch {
     throw new Error("The replay is not valid JSON, so it cannot be played.");
   }

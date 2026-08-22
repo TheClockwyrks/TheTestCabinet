@@ -146,6 +146,11 @@ even when the volumes it was originally read from have been lost, such as after
 a cluster is recreated. To re-seed the bucket from a prior snapshot in that
 recovery case, use `scripts/recover-run-media-from-snapshot.sh`.
 
+An upload stores both labels the object is served under: what the resource is
+and how its bytes are framed. A validation recording is stored as
+`application/json` with a gzip content encoding, so a published recording
+arrives at the gallery as JSON.
+
 ## Case media
 
 A case-metadata file names its media the same way: `references[]` for the

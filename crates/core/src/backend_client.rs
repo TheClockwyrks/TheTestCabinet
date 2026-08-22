@@ -1989,8 +1989,7 @@ fn proof_from(proof: &ProofBody) -> ProofFile {
     }
 }
 
-/// A best-effort content type for an uploaded proof media file, from its
-/// extension. Proof media is only ever an image or an `.mp4`.
+/// A best-effort content type for an uploaded media file, from its extension.
 fn content_type_for_file(file: &str) -> &'static str {
     let ext = Path::new(file)
         .extension()
@@ -2005,6 +2004,11 @@ fn content_type_for_file(file: &str) -> &'static str {
         "mp4" => "video/mp4",
         // The asset-generation action log uploads through this same path.
         "json" => "application/json",
+        // A validation recording (`<name>.json.gz`) uploads as the gzip file it is:
+        // the backend stores the bytes verbatim and labels them when it serves them,
+        // so the upload declares the document being handed over rather than a framing
+        // the receiver is expected to undo.
+        "gz" => "application/gzip",
         _ => "application/octet-stream",
     }
 }

@@ -174,8 +174,9 @@ format is repetitive by design: every frame restates the drawing state it
 inherited so that any frame can be drawn on its own, which is what seeking and
 side-by-side scrubbing are built on. Compression is what makes that affordable,
 taking a real capture down to a small fraction of its size, so a run's whole set
-of recordings costs a few megabytes. The console decompresses what it fetched and
-reads the same document the recorder produced.
+of recordings costs a few megabytes. A recording is served as `application/json`
+with `Content-Encoding: gzip`, so the browser inflates the body and the player
+parses the document the recorder produced.
 
 An output that is not there is recorded absent rather than failing anything. The
 assertions decide the point and the media is the evidence beside the verdict, so

@@ -38,6 +38,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 
+use test_cabinet_core::content_labels::{self, ContentLabels};
 use test_cabinet_core::redact::SecretScrubber;
 use test_cabinet_core::run_record::RunRecord;
 
@@ -145,15 +146,20 @@ pub const RUN_DOCUMENT_PREFIX: &str = "documents/runs";
 /// and re-uploads the current bytes rather than skipping an existing object.
 const PFP_PREFIX: &str = "pfp";
 
-/// One object to upload: its R2 key, bytes, and content type.
+/// One object to upload: its R2 key, bytes, and the labels it is served under.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SnapshotObject {
     /// The R2 key (e.g. `snapshots/<id>/runs.json`).
     pub key: String,
     /// The object's bytes.
     pub bytes: Vec<u8>,
-    /// The object's content type.
+    /// The media type of the resource the object holds.
     pub content_type: String,
+    /// The codec the stored bytes are framed in, `None` when they are already the
+    /// resource. A `.json.gz` recording is published as JSON framed in gzip, so the
+    /// gallery's player is handed inflated JSON (see
+    /// [`content_labels`](test_cabinet_core::content_labels)).
+    pub content_encoding: Option<String>,
 }
 
 /// A fully generated snapshot: the versioned objects, the top-level `index.json`
@@ -522,6 +528,7 @@ impl SnapshotBuilder {
                     key: key.clone(),
                     bytes,
                     content_type: "application/json".to_string(),
+                    content_encoding: None,
                 });
             }
             document_keys.push(key);
@@ -573,6 +580,7 @@ impl SnapshotBuilder {
                 key: format!("{PFP_PREFIX}/{reviewer_id}"),
                 bytes: picture.bytes.clone(),
                 content_type: picture.content_type.clone(),
+                content_encoding: None,
             });
         }
 
@@ -822,11 +830,7 @@ impl SnapshotBuilder {
             // skip the upload. The digest is over these same bytes, so a hit means
             // the object there is byte-identical to what we would have written.
             if !self.existing_media.contains(&key) {
-                objects.push(SnapshotObject {
-                    key: key.clone(),
-                    bytes,
-                    content_type: media_content_type(&reference.extension).to_string(),
-                });
+                objects.push(SnapshotObject::media(key.clone(), bytes, &file));
             }
             metas.push(CaseReferenceOut {
                 variant: variant.map(str::to_string),
@@ -883,10 +887,10 @@ impl SnapshotBuilder {
 
             // Prefer a copy already at the published extension (an image, or a clip
             // that is already mp4); otherwise pull the raw webm and transcode it.
-            let (file, extension, bytes) = if let Some(bytes) =
+            let (file, bytes) = if let Some(bytes) =
                 self.read_media(run_id, "proof", &published_file).await
             {
-                (published_file, published_ext, bytes)
+                (published_file, bytes)
             } else if proof.kind == test_cabinet_core::MediaKind::Video {
                 let served_ext = test_cabinet_core::proof_served_extension(&proof.dest);
                 let served_file = format!("{}.{}", proof.id, served_ext);
@@ -894,14 +898,14 @@ impl SnapshotBuilder {
                     continue;
                 };
                 match transcode_webm_to_mp4(&raw).await {
-                    Some(mp4) => (published_file, published_ext, mp4),
+                    Some(mp4) => (published_file, mp4),
                     None => {
                         tracing::warn!(
                             run_id = %run_id,
                             proof = %proof.id,
                             "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
                         );
-                        (served_file, served_ext, raw)
+                        (served_file, raw)
                     }
                 }
             } else {
@@ -911,11 +915,15 @@ impl SnapshotBuilder {
             // Key by the produced file name (the transcode-fallback path can publish
             // the raw webm under its served name rather than the mp4 published name).
             let key = format!("{MEDIA_PREFIX}/{run_id}/proof/{file}");
-            objects.push(SnapshotObject {
-                key: key.clone(),
-                bytes,
-                content_type: media_content_type(&extension).to_string(),
-            });
+            // A video publishes under a name the transcode decided, so that name is
+            // what describes it; anything else publishes under its recorded `dest`'s
+            // extension, and only the dest carries a compound `.json.gz` suffix whole.
+            let labelled = if proof.kind == test_cabinet_core::MediaKind::Video {
+                file.as_str()
+            } else {
+                test_cabinet_core::proof_labelled_name(&proof.dest, &file)
+            };
+            objects.push(SnapshotObject::media(key.clone(), bytes, labelled));
             metas.push(RunProofOut {
                 id: proof.id.clone(),
                 kind: proof.kind,
@@ -984,17 +992,17 @@ impl SnapshotBuilder {
 
                 // Prefer a copy already at the published extension (an image, or a clip
                 // already mp4); otherwise pull the raw webm and transcode it.
-                let (file, extension, bytes) = if let Some(bytes) =
+                let (file, bytes) = if let Some(bytes) =
                     self.read_media(run_id, "validation", &published_file).await
                 {
-                    (published_file, published_ext.to_string(), bytes)
+                    (published_file, bytes)
                 } else if output.kind == test_cabinet_core::MediaKind::Video {
                     let Some(raw) = self.read_media(run_id, "validation", &requested_file).await
                     else {
                         continue;
                     };
                     match transcode_webm_to_mp4(&raw).await {
-                        Some(mp4) => (published_file, published_ext.to_string(), mp4),
+                        Some(mp4) => (published_file, mp4),
                         None => {
                             tracing::warn!(
                                 run_id = %run_id,
@@ -1002,7 +1010,7 @@ impl SnapshotBuilder {
                                 output = %output.id,
                                 "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
                             );
-                            (requested_file.clone(), "webm".to_string(), raw)
+                            (requested_file.clone(), raw)
                         }
                     }
                 } else {
@@ -1010,11 +1018,7 @@ impl SnapshotBuilder {
                 };
 
                 let key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
-                objects.push(SnapshotObject {
-                    key: key.clone(),
-                    bytes,
-                    content_type: media_content_type(&extension).to_string(),
-                });
+                objects.push(SnapshotObject::media(key.clone(), bytes, &file));
                 metas.push(RunValidationMediaOut {
                     file: requested_file,
                     key,
@@ -1099,9 +1103,9 @@ impl SnapshotBuilder {
                         continue;
                     }
 
-                    let (published_file, extension, bytes) = if is_video {
+                    let (published_file, bytes) = if is_video {
                         match transcode_webm_to_mp4(&raw).await {
-                            Some(mp4) => (published_name, "mp4".to_string(), mp4),
+                            Some(mp4) => (published_name, mp4),
                             None => {
                                 tracing::warn!(
                                     slug = %slug,
@@ -1111,16 +1115,11 @@ impl SnapshotBuilder {
                                     file = %requested_file,
                                     "webm→mp4 transcode unavailable; publishing raw baseline webm (not iOS-playable)"
                                 );
-                                (requested_file.clone(), "webm".to_string(), raw)
+                                (requested_file.clone(), raw)
                             }
                         }
                     } else {
-                        let ext = std::path::Path::new(&requested_file)
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .unwrap_or("")
-                            .to_string();
-                        (requested_file.clone(), ext, raw)
+                        (requested_file.clone(), raw)
                     };
                     // Re-derive the key from what was actually produced. It matches
                     // the probe key above on the happy path; on the transcode-failure
@@ -1129,11 +1128,7 @@ impl SnapshotBuilder {
                     // publishes the mp4 instead of skipping over a webm sitting under
                     // an mp4 name.
                     let key = format!("{prefix}/{digest}-{published_file}");
-                    objects.push(SnapshotObject {
-                        key: key.clone(),
-                        bytes,
-                        content_type: media_content_type(&extension).to_string(),
-                    });
+                    objects.push(SnapshotObject::media(key.clone(), bytes, &published_file));
                     metas.push(CaseValidationBaselineOut {
                         engine: engine.slug.clone(),
                         variant: variant.slug.clone(),
@@ -1279,15 +1274,7 @@ impl SnapshotBuilder {
             let Some(bytes) = self.read_media(run_id, "asset", file).await else {
                 continue;
             };
-            let extension = std::path::Path::new(file)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-            objects.push(SnapshotObject {
-                key: key.clone(),
-                bytes,
-                content_type: media_content_type(extension).to_string(),
-            });
+            objects.push(SnapshotObject::media(key.clone(), bytes, file));
             metas.push(RunAssetOut {
                 file: file.to_string(),
                 key,
@@ -1398,6 +1385,7 @@ impl SnapshotBuilder {
                 key,
                 bytes,
                 content_type: "application/json".to_string(),
+                content_encoding: None,
             }),
         )
     }
@@ -1606,22 +1594,43 @@ fn content_digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))[..16].to_string()
 }
 
-/// A best-effort content type for reference/proof/asset media from its extension.
-fn media_content_type(extension: &str) -> &'static str {
+/// The labels reference/proof/asset media is published under, from its file name.
+///
+/// The whole name is needed, not just the extension: a validator's draw-command
+/// recording is published gzipped as it is stored, and only the compound `.json.gz`
+/// suffix says the gzip is framing over a JSON document rather than the resource
+/// itself.
+fn media_labels(file: &str) -> ContentLabels {
+    let extension = std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
     match extension.to_ascii_lowercase().as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        "webm" => "video/webm",
-        "mp4" => "video/mp4",
-        "json" => "application/json",
-        // A validator's draw-command recording, published gzipped as it is stored.
-        "gz" => "application/gzip",
-        "glb" => "model/gltf-binary",
-        "wav" => "audio/wav",
-        "mid" | "midi" => "audio/midi",
-        _ => "application/octet-stream",
+        "png" => ContentLabels::plain("image/png"),
+        "jpg" | "jpeg" => ContentLabels::plain("image/jpeg"),
+        "webp" => ContentLabels::plain("image/webp"),
+        "gif" => ContentLabels::plain("image/gif"),
+        "webm" => ContentLabels::plain("video/webm"),
+        "mp4" => ContentLabels::plain("video/mp4"),
+        "json" => ContentLabels::plain("application/json"),
+        "gz" => content_labels::for_gz(file),
+        "glb" => ContentLabels::plain("model/gltf-binary"),
+        "wav" => ContentLabels::plain("audio/wav"),
+        "mid" | "midi" => ContentLabels::plain("audio/midi"),
+        _ => ContentLabels::plain("application/octet-stream"),
+    }
+}
+
+impl SnapshotObject {
+    /// A media object published under the labels its file name implies.
+    fn media(key: String, bytes: Vec<u8>, file: &str) -> Self {
+        let labels = media_labels(file);
+        Self {
+            key,
+            bytes,
+            content_type: labels.content_type.to_string(),
+            content_encoding: labels.content_encoding.map(str::to_string),
+        }
     }
 }
 
@@ -1652,6 +1661,7 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
         key,
         bytes: serde_json::to_vec_pretty(value)?,
         content_type: "application/json".to_string(),
+        content_encoding: None,
     })
 }
 
@@ -1678,9 +1688,14 @@ pub async fn upload_snapshot(
 
     futures_util::stream::iter(snapshot.objects.iter().map(Ok::<_, BackendError>))
         .try_for_each_concurrent(UPLOAD_CONCURRENCY, |object| async move {
-            r2.put_object(&object.key, object.bytes.clone(), &object.content_type)
-                .await
-                .map_err(BackendError::from)
+            r2.put_object(
+                &object.key,
+                object.bytes.clone(),
+                &object.content_type,
+                object.content_encoding.as_deref(),
+            )
+            .await
+            .map_err(BackendError::from)
         })
         .await?;
     // index.json last: this single small overwrite is the atomic cut-over.
@@ -1688,6 +1703,7 @@ pub async fn upload_snapshot(
         &snapshot.index.key,
         snapshot.index.bytes.clone(),
         &snapshot.index.content_type,
+        snapshot.index.content_encoding.as_deref(),
     )
     .await?;
 

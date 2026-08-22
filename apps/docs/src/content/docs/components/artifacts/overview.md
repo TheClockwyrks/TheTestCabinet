@@ -44,6 +44,12 @@ the build's `<base href>`. The serve handlers reuse the core's resolvers, so the
 per-run base-href rewrite and the path-traversal guard are the same ones every
 other host applies.
 
+Every served file states what the resource is and how its body is framed, and
+for a name ending `.gz` the compound suffix decides both. A validation recording
+is a JSON document travelling compressed, so the media routes serve
+`<verdict>__<output>.json.gz` as `application/json` with a gzip content
+encoding, and the browser inflates the body before any script reads it.
+
 ## Auth
 
 The artifact service has no Kubernetes API access. It only talks HTTP.
@@ -77,6 +83,10 @@ The artifact service has no Kubernetes API access. It only talks HTTP.
 tar: the generated source, the built playable output, the proof, asset and
 validation media, and the `events.jsonl` and `raw.jsonl` logs. Every entry sits
 under a `<run-id>/` prefix, so the archive unpacks into its own directory.
+
+Here the gzip is the resource the reviewer asked for, so the archive is served
+as `application/gzip` with no content encoding and lands on disk as the file it
+names.
 
 The web and Tauri consoles surface this as a Download link on the run detail
 page's control strip. It is gated on the same `canExecute` flag as the rest of

@@ -25,6 +25,7 @@
 //! `src`/`href` references so the injected base applies (a `<base href>` does not
 //! affect already-absolute `/…` URLs). Non-HTML assets are served byte-for-byte.
 
+use crate::content_labels::{self, ContentLabels};
 use std::path::{Path, PathBuf};
 
 /// Candidate static build-output directory names a run's implementation may
@@ -83,8 +84,11 @@ pub fn serve_build_file(
 /// HTTP or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedProofFile {
-    /// The `Content-Type` to send, derived from the file extension.
+    /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
+    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
+    /// document (see [`crate::content_labels`]).
+    pub content_encoding: Option<&'static str>,
     /// The proof media bytes, served verbatim.
     pub body: Vec<u8>,
 }
@@ -109,10 +113,27 @@ pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
     let proof = record.validation.proofs.iter().find(|p| p.id == proof_id)?;
 
     let body = std::fs::read(run_dir.join("implementation").join(&proof.dest)).ok()?;
+    let labels = proof_labels(proof_labelled_name(&proof.dest, file));
     Some(ServedProofFile {
-        content_type: proof_content_type(file),
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
         body,
     })
+}
+
+/// The name a proof's bytes are labelled from: its recorded `dest`, falling back to
+/// the requested name when the dest carries no usable extension.
+///
+/// A proof is *addressed* as `<proof-id>.<ext>`, and that name keeps only the last
+/// extension — `<proof-id>.gz` for a `dest` of `shots/rally.json.gz`, which cannot
+/// say whether the gzip frames a document or is one. The dest carries the whole
+/// compound suffix, so the labels come from it (see [`crate::content_labels`]).
+pub fn proof_labelled_name<'a>(dest: &'a str, file: &'a str) -> &'a str {
+    let base = dest.rsplit('/').next().unwrap_or(dest);
+    match base.rfind('.') {
+        Some(dot) if dot > 0 && dot + 1 < base.len() => base,
+        _ => file,
+    }
 }
 
 /// The file extension a proof is served under, derived from its `dest` path: the
@@ -157,8 +178,11 @@ pub fn proof_published_extension(kind: crate::test_case::MediaKind, dest: &str) 
 /// HTTP or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedValidationFile {
-    /// The `Content-Type` to send, derived from the file extension.
+    /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
+    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
+    /// document (see [`crate::content_labels`]).
+    pub content_encoding: Option<&'static str>,
     /// The media bytes, served verbatim.
     pub body: Vec<u8>,
 }
@@ -190,8 +214,10 @@ pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidat
             .join(file),
     )
     .ok()?;
+    let labels = proof_labels(file);
     Some(ServedValidationFile {
-        content_type: proof_content_type(file),
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
         body,
     })
 }
@@ -200,8 +226,11 @@ pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidat
 /// or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedAssetFile {
-    /// The `Content-Type` to send, derived from the file extension.
+    /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
+    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
+    /// document (see [`crate::content_labels`]).
+    pub content_encoding: Option<&'static str>,
     /// The media bytes, served verbatim.
     pub body: Vec<u8>,
 }
@@ -342,8 +371,10 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
     };
 
     let body = std::fs::read(run_dir.join("implementation").join(rel)).ok()?;
+    let labels = asset_labels(file);
     Some(ServedAssetFile {
-        content_type: asset_content_type(file),
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
         body,
     })
 }
@@ -362,49 +393,48 @@ fn parse_asset_request(file: &str) -> Option<(&str, Option<u32>)> {
     Some((stem, None))
 }
 
-/// The `Content-Type` for an asset-generation artifact, by file extension: the
+/// The labels for an asset-generation artifact, by file name: the
 /// regenerated/preview images are PNG, the action log is JSON.
-fn asset_content_type(file: &str) -> &'static str {
+fn asset_labels(file: &str) -> ContentLabels {
     let ext = Path::new(file)
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase);
     match ext.as_deref() {
-        Some("png") => "image/png",
-        Some("json") => "application/json",
-        Some("glb") => "model/gltf-binary",
-        Some("gif") => "image/gif",
-        Some("wav") => "audio/wav",
-        Some("mid" | "midi") => "audio/midi",
-        _ => "application/octet-stream",
+        Some("png") => ContentLabels::plain("image/png"),
+        Some("json") => ContentLabels::plain("application/json"),
+        Some("glb") => ContentLabels::plain("model/gltf-binary"),
+        Some("gif") => ContentLabels::plain("image/gif"),
+        Some("wav") => ContentLabels::plain("audio/wav"),
+        Some("mid" | "midi") => ContentLabels::plain("audio/midi"),
+        Some("gz") => content_labels::for_gz(file),
+        _ => ContentLabels::plain("application/octet-stream"),
     }
 }
 
-/// The `Content-Type` for a proof media file, by file extension — the image,
-/// video, and recording formats a proof's `dest` (or a validation output) may name
-/// (see [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls
-/// back to a binary stream.
-fn proof_content_type(file: &str) -> &'static str {
+/// The labels for a proof media file, by file name — the image, video, and
+/// recording formats a proof's `dest` (or a validation output) may name (see
+/// [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls back to
+/// a binary stream.
+fn proof_labels(file: &str) -> ContentLabels {
     let ext = Path::new(file)
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase);
     match ext.as_deref() {
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("webp") => "image/webp",
-        Some("gif") => "image/gif",
-        Some("webm") => "video/webm",
-        Some("mp4") => "video/mp4",
-        // A draw-command recording, stored gzipped (`<name>.json.gz`). The type
-        // describes the bytes as they are served — the response is never labelled
-        // `Content-Encoding: gzip`, which would invite the browser to inflate the
-        // body before the player ever saw it. The player decompresses what it
-        // fetched, and so reads a recording the same way wherever it is served from.
-        Some("gz") => "application/gzip",
+        Some("png") => ContentLabels::plain("image/png"),
+        Some("jpg" | "jpeg") => ContentLabels::plain("image/jpeg"),
+        Some("webp") => ContentLabels::plain("image/webp"),
+        Some("gif") => ContentLabels::plain("image/gif"),
+        Some("webm") => ContentLabels::plain("video/webm"),
+        Some("mp4") => ContentLabels::plain("video/mp4"),
+        // A draw-command recording, stored gzipped (`<name>.json.gz`), is a JSON
+        // document that travels compressed — so it is labelled as the JSON it is,
+        // with the gzip declared as the body's framing.
+        Some("gz") => content_labels::for_gz(file),
         // An uncompressed recording, and any other JSON media a proof names.
-        Some("json") => "application/json",
-        _ => "application/octet-stream",
+        Some("json") => ContentLabels::plain("application/json"),
+        _ => ContentLabels::plain("application/octet-stream"),
     }
 }
 

@@ -1034,8 +1034,8 @@ export function GalleryDataProvider({
             // validator writes: a JSON document stored gzipped, because a format
             // in which every frame restates the state it inherited is repetitive
             // by design and compresses to a fraction of itself. It needs no
-            // transcode, so it is served under that one name everywhere and the
-            // player decompresses what it fetched.
+            // transcode, so it is served under that one name everywhere, labelled
+            // as the JSON it is with its gzip framing declared.
             const ext =
               output.kind === "video"
                 ? "webm"

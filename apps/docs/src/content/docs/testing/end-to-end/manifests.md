@@ -663,7 +663,9 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   A recording is a JSON document stored gzipped, which both extensions state. The
   format restates each frame's inherited drawing state so that any frame can be
   drawn on its own, and that redundancy is what compression removes, taking a real
-  capture down to a small fraction of its size.
+  capture down to a small fraction of its size. A recording is served as
+  `application/json` with `Content-Encoding: gzip`, so a console receives the
+  JSON document itself.
 
   A script may declare at most one `video` output, because a browser drive
   records one screen capture per script and there is only one of it. That limit

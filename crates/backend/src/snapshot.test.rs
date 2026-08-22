@@ -1092,6 +1092,38 @@ async fn per_run_file_exports_actual_validation_media_from_the_record() {
 }
 
 #[tokio::test]
+async fn a_published_recording_carries_its_framing_onto_the_object() {
+    // R2 hands back what the object records, so a recording published without its
+    // framing declared would reach the gallery as an opaque gzip blob. The compound
+    // `.json.gz` suffix is what says the gzip frames a document rather than being one.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_validation("v1", "spin__replay.json.gz", &[0x1f, 0x8b, 0x08, 0x00])
+        .unwrap();
+
+    let mut run = validation_run("v1", "spin", false, false);
+    run.record.validation.debug_scripts[0].outputs = vec![DebugScriptOutput {
+        id: "replay".to_string(),
+        name: "Replay".to_string(),
+        kind: MediaKind::Replay,
+        actual_present: true,
+    }];
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let replay = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/v1/validation/spin__replay.json.gz")
+        .expect("replay validation media exported");
+    assert_eq!(replay.content_type, "application/json");
+    assert_eq!(replay.content_encoding.as_deref(), Some("gzip"));
+    assert_eq!(replay.bytes, vec![0x1f, 0x8b, 0x08, 0x00]);
+}
+
+#[tokio::test]
 async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdict_id() {
     // A per-sub-item driver's media is addressed by the composite verdict id
     // `<item>.<sub>`, so a sub-item's proof does not collide with its siblings' or the
