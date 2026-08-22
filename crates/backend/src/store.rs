@@ -202,16 +202,11 @@ pub struct StoredManifest {
     /// workspace destination, `template` whether it is a `.hbs` the runner renders).
     pub common_specs: Vec<StoredSpec>,
     /// The [engines](test_cabinet_core::engine) a run of this version may select,
-    /// each with the version range it accepts. This is the compatibility gate the
-    /// driver holds a run's engine selection against, so it has to survive the trip
-    /// through the store: a version served without it would resolve as supporting
-    /// the engineless run alone, and every engine-backed run of it would be refused.
-    /// Defaulted to the engineless set for a manifest stored before the field
-    /// existed, which is all such a record can express. A version that declares an
-    /// engine and is already in the store therefore reads back engineless until it
-    /// is re-ingested, which a whole-catalog ingest under a new catalog version
-    /// does.
-    #[serde(default = "default_engines")]
+    /// each with the version range it accepts. This is the gate the driver holds a
+    /// run's engine selection against, so it has to survive the trip through the
+    /// store: a version served without it would resolve as supporting the
+    /// engineless run alone, and every engine-backed run of it would be refused.
+    /// Ingest always writes it, so a stored record always carries it.
     pub engines: Vec<EngineSupport>,
     /// Common starter workspace files (directory already expanded to individual
     /// files), per [engine](test_cabinet_core::engine), seeded into the run root for
@@ -527,42 +522,20 @@ pub struct StoredWorkspaceFile {
 /// runtime: its `package.json` declares the engine's dependency and its case-owned
 /// modules are written against that engine's API. Ingest always writes the map, so
 /// that is what a stored manifest serializes as.
-///
-/// A manifest stored before the key was an engine map carries a bare list. Such a
-/// case supported no engine — nothing else could have been stored — so the list is
-/// read as the engineless project, which is exactly what re-ingesting that manifest
-/// produces.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum StoredWorkspace {
-    /// One set of starter files per engine slug.
-    ByEngine(BTreeMap<String, Vec<StoredWorkspaceFile>>),
-    /// A legacy flat list: the engineless project.
-    Engineless(Vec<StoredWorkspaceFile>),
-}
-
-impl Default for StoredWorkspace {
-    fn default() -> Self {
-        Self::ByEngine(BTreeMap::new())
-    }
-}
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct StoredWorkspace(pub BTreeMap<String, Vec<StoredWorkspaceFile>>);
 
 impl StoredWorkspace {
     /// Whether the case seeds no starter file for any engine.
     pub fn is_empty(&self) -> bool {
-        match self {
-            Self::ByEngine(by_engine) => by_engine.values().all(Vec::is_empty),
-            Self::Engineless(files) => files.is_empty(),
-        }
+        self.0.values().all(Vec::is_empty)
     }
 
-    /// Every file, whichever shape this is in — what an artifact sweep walks, where
-    /// the engine a file belongs to does not matter.
-    pub fn files(&self) -> Box<dyn Iterator<Item = &StoredWorkspaceFile> + '_> {
-        match self {
-            Self::ByEngine(by_engine) => Box::new(by_engine.values().flatten()),
-            Self::Engineless(files) => Box::new(files.iter()),
-        }
+    /// Every file of every engine — what an artifact sweep walks, where the engine
+    /// a file belongs to does not matter.
+    pub fn files(&self) -> impl Iterator<Item = &StoredWorkspaceFile> {
+        self.0.values().flatten()
     }
 }
 
@@ -624,16 +597,6 @@ pub struct StoredReference {
     /// `png` for manifests stored before the field existed.
     #[serde(default = "default_reference_extension")]
     pub extension: String,
-}
-
-/// The engine support set for a manifest stored before engines were recorded:
-/// support for the engineless run at any version, matching what
-/// [`TestCaseVersion`](test_cabinet_core::TestCaseVersion) resolves for a manifest
-/// that declares nothing.
-fn default_engines() -> Vec<EngineSupport> {
-    vec![EngineSupport::unbounded(
-        test_cabinet_core::engine::NONE_SLUG,
-    )]
 }
 
 /// The default reference kind for manifests stored before `kind` was recorded:

@@ -710,7 +710,7 @@ fn stored_workspaces(
             .collect::<Result<Vec<_>>>()?;
         by_engine.insert(engine.to_string(), files);
     }
-    Ok(StoredWorkspace::ByEngine(by_engine))
+    Ok(StoredWorkspace(by_engine))
 }
 
 /// Build a [`StoredCase`] from a resolved performance case: the held-out `input`

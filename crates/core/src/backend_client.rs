@@ -2193,44 +2193,24 @@ struct WorkspaceFileBody {
     dest: String,
 }
 
-/// A starter project on the wire, in either shape the definition store holds it.
-///
-/// A case ships one project per [engine](crate::engine), so the current shape is a
-/// map keyed by engine slug. A definition stored before that carries a bare list,
-/// and such a case supports no engine (nothing else could have been stored), so its
-/// list is read as the engineless project — which is exactly what resolving that
-/// manifest produces today.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum WorkspaceBody {
-    ByEngine(std::collections::BTreeMap<String, Vec<WorkspaceFileBody>>),
-    Engineless(Vec<WorkspaceFileBody>),
-}
-
-impl Default for WorkspaceBody {
-    fn default() -> Self {
-        Self::ByEngine(std::collections::BTreeMap::new())
-    }
-}
+/// A starter project on the wire: a case ships one project per
+/// [engine](crate::engine), so it is a map keyed by engine slug.
+#[derive(Deserialize, Default)]
+#[serde(transparent)]
+struct WorkspaceBody(std::collections::BTreeMap<String, Vec<WorkspaceFileBody>>);
 
 impl WorkspaceBody {
     /// The resolved per-engine projects this body describes.
     fn resolve(&self) -> EngineWorkspaces {
-        match self {
-            Self::ByEngine(by_engine) => by_engine
-                .iter()
-                .map(|(engine, files)| {
-                    (
-                        engine.clone(),
-                        files.iter().map(workspace_from).collect::<Vec<_>>(),
-                    )
-                })
-                .collect::<EngineWorkspaces>(),
-            Self::Engineless(files) => EngineWorkspaces::from_iter([(
-                crate::engine::NONE_SLUG.to_string(),
-                files.iter().map(workspace_from).collect::<Vec<_>>(),
-            )]),
-        }
+        self.0
+            .iter()
+            .map(|(engine, files)| {
+                (
+                    engine.clone(),
+                    files.iter().map(workspace_from).collect::<Vec<_>>(),
+                )
+            })
+            .collect::<EngineWorkspaces>()
     }
 }
 

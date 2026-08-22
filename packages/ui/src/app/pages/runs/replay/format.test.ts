@@ -147,27 +147,15 @@ describe("reading a recording", () => {
 });
 
 describe("refusing a recording", () => {
-  it("refuses a format it does not know, naming both versions", () => {
+  it("refuses a format that is not the one format, naming both numbers", () => {
     const parsed = parseRecording(recording({ format: RECORDING_FORMAT + 1 }));
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    // The reviewer has to be able to act on this: which format the file is, which
-    // one this console plays, and what to do about it.
+    // The reviewer has to be able to act on this: which number the file states, and
+    // that there is only one recording format, so the file is not a recording.
     expect(parsed.message).toContain(String(RECORDING_FORMAT + 1));
     expect(parsed.message).toContain(String(RECORDING_FORMAT));
-    expect(parsed.message).toMatch(/newer console/i);
-  });
-
-  it("refuses format 1 outright, and says the run has to be captured again", () => {
-    // Nothing is published in format 1 and every baseline is re-captured, so there
-    // is no compatibility path to fall down — and the fix is on the run's side, not
-    // the console's, which is what this message has to say.
-    const parsed = parseRecording(recording({ format: 1 }));
-    expect(parsed.ok).toBe(false);
-    if (parsed.ok) return;
-    expect(parsed.message).toContain("format 1");
-    expect(parsed.message).toContain(`format ${RECORDING_FORMAT}`);
-    expect(parsed.message).toMatch(/run the case again/i);
+    expect(parsed.message).toMatch(/not produced by an engine recorder/i);
   });
 
   it("refuses a file that does not declare a format at all", () => {

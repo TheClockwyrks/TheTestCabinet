@@ -90,13 +90,12 @@ import type {
 /**
  * The version this recorder writes and a player must understand.
  *
- * A reader takes it first and can then refuse a recording it does not know how to
- * draw, rather than drawing a wrong picture confidently. It is bumped whenever the
- * meaning of anything below changes, which is a different event from the engine
- * package's own version: a recording outlives the run that produced it and is read
- * by a console that was built separately.
+ * A reader takes it first and can then refuse a document that is not a recording,
+ * rather than drawing a wrong picture confidently. There is one recording format
+ * and it is version 1: the engine reads no other shape and writes no other shape,
+ * so a recording that states anything else was not written by a recorder.
  */
-export const RECORDING_FORMAT = 2;
+export const RECORDING_FORMAT = 1;
 
 /**
  * The 2D context properties a frame inherits from the one before it.

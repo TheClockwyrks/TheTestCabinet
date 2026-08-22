@@ -76,10 +76,9 @@ itself. The tables are settled when the recording is closed, from the frames it
 holds. Every entry is one some frame names, and a canvas wiped part-way through a
 frame takes the entries of the operations it erased with it.
 
-`RECORDING_FORMAT` is the integer this engine version writes. It is bumped
-whenever the meaning of anything below changes, independently of the engine
-package's own version, and a player reads it first so it can refuse a recording
-it does not know how to draw.
+`RECORDING_FORMAT` is the integer this engine writes. There is one recording
+format and it is version `1`; a player reads the field first so it can refuse a
+document stating anything else, which is a document no recorder wrote.
 
 ## `RecordedFrame`
 

@@ -137,7 +137,7 @@ fn an_engine_table_still_requires_the_workspace_package_json() {
 #[test]
 fn an_engine_table_is_end_to_end_only() {
     let manifest = format!(
-        "format = 2\n{VALID_ASSET_MANIFEST}\n         [[engine]]\nslug = \"simple-2d\"\nmin_version = \"1.0.0\"\n"
+        "{VALID_ASSET_MANIFEST}\n         [[engine]]\nslug = \"simple-2d\"\nmin_version = \"1.0.0\"\n"
     );
     let err = asset_catalog(&manifest)
         .1

@@ -158,7 +158,7 @@ pub struct SnapshotObject {
     /// The codec the stored bytes are framed in, `None` when they are already the
     /// resource. A `.json.gz` recording is published as JSON framed in gzip, so the
     /// gallery's player is handed inflated JSON (see
-    /// [`content_labels`](test_cabinet_core::content_labels)).
+    /// [`test_cabinet_core::content_labels`]).
     pub content_encoding: Option<String>,
 }
 

@@ -18,18 +18,18 @@
 // player checks it before it draws anything. The Foray replay renderer next door
 // carries its own copy of the case's engine for the same reason.
 //
-// When the engine's recorder changes shape, bump `RECORDING_FORMAT` there, mirror
-// the types here, and teach `parseRecording` which versions this console can still
-// draw.
+// There is one recording format and it is version 1. When the engine's recorder
+// changes shape, the types here change with it; a player never learns to read a
+// second shape.
 
 /**
  * The format version this console knows how to draw.
  *
- * A recording states the version it was written in, so a console that meets one it
- * does not know refuses it by name instead of drawing a confident wrong picture
- * from fields it half-understands.
+ * A recording states the version it was written in, so a console that meets a
+ * document stating anything else refuses it by name instead of drawing a confident
+ * wrong picture from fields it half-understands.
  */
-export const RECORDING_FORMAT = 2;
+export const RECORDING_FORMAT = 1;
 
 /**
  * A value carried inside a recorded operation.
@@ -564,16 +564,12 @@ export function parseRecording(data: unknown): RecordingParse {
     };
   }
   if (data.format !== RECORDING_FORMAT) {
-    // Which way the mismatch goes decides what the reviewer can do about it. A
-    // newer file needs a newer console; an older one was written by an engine that
-    // predates this format and is re-captured by running the case again.
-    const versions = `This replay was written in recording format ${data.format}, and this console plays format ${RECORDING_FORMAT}.`;
+    // There is one recording format, so a document stating another number was not
+    // written by an engine recorder — there is no older shape to fall back to and
+    // no newer console that would play it.
     return {
       ok: false,
-      message:
-        data.format > RECORDING_FORMAT
-          ? `${versions} Open the run in a newer console build to watch it.`
-          : `${versions} Run the case again to capture it in the format this console plays.`,
+      message: `This file states recording format ${data.format}, and the only recording format is ${RECORDING_FORMAT}, so it was not produced by an engine recorder.`,
     };
   }
   if (!isNumber(data.width) || !isNumber(data.height)) {

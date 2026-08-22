@@ -144,11 +144,11 @@ review entries, workspace, and additional scoring domains.
 slug = "frenzy"              # stable slug, recorded in the run record; unique per case
 name = "Frenzy"              # display name (optional; defaults to a humanized slug)
 description = "..."          # optional inline prose (site-facing)
-workspace = "workspaces/frenzy" # format 1 only; REPLACES the common workspace
+workspace = "workspaces/frenzy" # engineless cases only; REPLACES the common workspace
 reference_implementation = "references/frenzy" # optional correct build (never seeded)
 
-# Format 2 only, in place of `workspace`: one starter directory per engine, replacing
-# the case's whole `[workspaces]` table for runs of this variant.
+# In place of `workspace`, for a case that names engines: one starter directory per
+# engine, replacing the case's whole `[workspaces]` table for runs of this variant.
 [workspaces]
 none = "workspaces/frenzy/none"
 "simple-2d" = "workspaces/frenzy/simple-2d"
@@ -216,12 +216,11 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   case is hidden from the catalog and refuses to resolve, so it is never run or
   published. The flag is a visibility filter with no effect on how a run
   executes.
-- `format` is the manifest format, and defaults to `1`. See
-  [Manifest formats](#manifest-formats).
 - `workspace` is an optional path to a starter directory whose contents seed
   into the root of the run before the specs; it must be a directory. A variant
-  may replace it with its own. It belongs to format `1` and is rejected under
-  format `2`. See [Workspace](/testing/end-to-end/overview/#workspace).
+  may replace it with its own. It is the engineless spelling and is rejected
+  alongside `[workspaces]` or an engine. See
+  [Workspace](/testing/end-to-end/overview/#workspace).
 - `init` is an optional command run inside the run container once the workspace
   and specs are seeded and before the harness starts. It must be non-empty when
   declared. See [Init](/testing/end-to-end/overview/#init).
@@ -241,8 +240,8 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
 - `engines` names the engines a run of this case version may select as bare
   slugs, each carrying no version range. A case version that declares no engine
   at all supports `none`, and nothing else. It is valid for the end-to-end,
-  full-stack, and game-jam types only, and belongs to format `2`. See
-  [Supported engines](#supported-engines).
+  full-stack, and game-jam types only, and requires the `[workspaces]` spelling.
+  See [Supported engines](#supported-engines).
 - `variants` names the builds the case offers, in order, as paths to standalone
   variant files. The first is the default and at least one is required. It is a
   root key, so it must precede the first table header. See
@@ -251,12 +250,12 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
 ## Case tables
 
 - `[workspaces]` names one starter directory per engine, keyed by engine slug. It
-  belongs to format `2` and is rejected under format `1`. See
-  [Manifest formats](#manifest-formats).
+  replaces `workspace`, and declaring both is rejected. See
+  [The starter project](#the-starter-project).
 - `[[engine]]` declares support for one engine together with the range of engine
   versions this case version supports. It carries the engine's `slug`, a
-  required `min_version`, and an optional `max_version`. It belongs to format
-  `2`. See [Supported engines](#supported-engines).
+  required `min_version`, and an optional `max_version`. It requires the
+  `[workspaces]` spelling. See [Supported engines](#supported-engines).
 - `[build]` is required and declares the commands validation runs to turn a
   produced implementation into a served static site: `install` then `build`.
   Both are required, must be non-empty, and run from the implementation's
@@ -359,25 +358,23 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   the worst rating across the effective set. See
   [Scoring](/testing/end-to-end/evaluation/#scoring).
 
-## Manifest formats
+## The starter project
 
-The `format` root key names the manifest format the file is authored in. It
-decides how a case says which starter project a run is seeded with, and therefore
-whether the case may name an [engine](/components/core/engines/) at all.
+A case says which starter project a run is seeded with in exactly one way, and
+which way it picks decides whether the case may name an
+[engine](/components/core/engines/) at all.
 
-| Format | Starter project | Engines |
+| Spelling | Starter project | Engines |
 | --- | --- | --- |
-| `1` (the default) | One `workspace` directory. | None. A run of the case is the engineless run. |
-| `2` | A `[workspaces]` table, one directory per engine. | Declared with `engines` and `[[engine]]`. |
+| `workspace` | One directory for the whole case. | None. A run of the case is the engineless run. |
+| `[workspaces]` | One directory per engine. | Declared with `engines` and `[[engine]]`. |
 
 A starter project is written against a runtime: its `package.json` declares the
 engine's dependency, and the case-owned modules it ships are written against that
-engine's API. One directory therefore cannot stand for two engines, so the format
-that supports engines is the one that makes the per-engine directory the only way
-to declare a project.
+engine's API. One directory therefore cannot stand for two engines, so the
+per-engine table is the only way a case may declare an engine.
 
 ```toml
-format = 2
 engines = ["none"]
 
 [[engine]]
@@ -395,12 +392,12 @@ resolves. A variant may declare its own `[workspaces]`, which replaces the case'
 whole table rather than one entry of it, so a variant that declares one covers
 every supported engine.
 
-The two formats are exclusive in both directions: a format `1` manifest declaring
-`[workspaces]`, an `engines` list, or an `[[engine]]` table is rejected, and a
-format `2` manifest declaring `workspace` is rejected. The same rule applies to a
-variant file, which spells its starter project the way its case does.
+The two spellings are exclusive: a manifest declaring `workspace` alongside
+`[workspaces]`, an `engines` list, or an `[[engine]]` table is rejected. The same
+rule applies to a variant file, which spells its starter project the way its case
+does.
 
-A format `2` case declares its [validators](/components/core/validation/) per
+A per-engine case declares its [validators](/components/core/validation/) per
 engine: a review item's `validation.script` is relative to the engine's validator
 project, and the case ships that suite under `validation/<engine>/` for every
 engine it supports. Resolution holds the declaration against each of them, so a

@@ -257,7 +257,7 @@ directly supplies its own.
 A test case version declares the engines it supports, each with the range of
 engine versions it supports, in its manifest. A case that declares nothing
 supports `none` alone. The
-[manifest format](/testing/end-to-end/manifests/) carries the grammar.
+[manifest reference](/testing/end-to-end/manifests/) carries the grammar.
 
 Every entry names a slug the engine catalogue knows and a well-formed version
 range, both checked when the case resolves, before a run is spent. `none` is

@@ -5,12 +5,6 @@
 # and what a reviewer grades. The testing harness reads this file to resolve a
 # `TestCaseVersion`; see `docs/test-cases.md`.
 
-# The manifest format. Format 2 seeds one starter project PER ENGINE, through the
-# `[workspaces]` table below, and it is the only format that may name an engine —
-# a starter project is written against a runtime, so one directory cannot stand
-# for two. Format 1's single `workspace` key is illegal here.
-format = 2
-
 # The case's stable identity, recorded in every run. It stays `pong` because runs
 # published before the folder was renamed reference it.
 slug = "pong"

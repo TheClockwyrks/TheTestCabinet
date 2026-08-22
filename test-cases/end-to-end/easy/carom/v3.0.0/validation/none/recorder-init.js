@@ -11,7 +11,7 @@
  * one.
  *
  * WHAT IT MUST BE, AND WHY. A faithful port of the engine's `ContextRecorder`,
- * writing the SAME document the console's player reads (`format: 2`, see
+ * writing the SAME document the console's player reads (`format: 1`, see
  * `packages/ui/src/app/pages/runs/replay/format.ts`). Every rule of that format
  * is here for the reason it is there:
  *
@@ -105,7 +105,7 @@
  */
 (() => {
   /** The recording format version the console's player understands. */
-  const RECORDING_FORMAT = 2;
+  const RECORDING_FORMAT = 1;
 
   /**
    * The most frames held in the page at once.

@@ -283,7 +283,7 @@ it("rewrites a field named __proto__ as a field", async () => {
     never
   >;
   const recording: Recording = {
-    format: 2,
+    format: 1,
     width: 8,
     height: 8,
     background: null,

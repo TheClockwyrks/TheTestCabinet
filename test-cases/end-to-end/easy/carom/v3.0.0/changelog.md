@@ -27,13 +27,13 @@ engine, and the game is the same under both. What differs is the runtime
 beneath it: `simple-2d` vendors it as a package at seed time, and `none`
 supplies none at all, leaving the build to write the layer it needs.
 
-Saying that takes a new manifest format. A starter project is written against a
-runtime: its `package.json`, its entry point, and whatever module contract it
-fixes. One directory cannot stand for two engines. `format = 2` replaces the
-single `workspace` key with a `[workspaces]` table naming one directory per
-engine, and it is the only format that may declare an engine at all; a
-`format = 1` manifest keeps its single `workspace` and runs engineless, which
-is what every frozen version is. The same rule reaches the validators: a review
+Saying that takes a new way to name the starter project. A project is written
+against a runtime: its `package.json`, its entry point, and whatever module
+contract it fixes. One directory cannot stand for two engines. A `[workspaces]`
+table names one directory per engine, and declaring it is the only way a case
+may name an engine at all; a manifest keeping its single `workspace` key runs
+engineless, which is what every other version is. The same rule reaches the
+validators: a review
 item names its suite relative to the engine's validator project
 (`gameplay/serve-speed.test.ts`), and the case ships that suite in
 `validation/none/` and `validation/simple-2d/` alike, so a point is decided the

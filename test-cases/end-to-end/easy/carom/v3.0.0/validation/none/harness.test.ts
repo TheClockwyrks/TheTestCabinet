@@ -307,7 +307,7 @@ function synthetic(length: number): Recording {
     });
   }
   return {
-    format: 2,
+    format: 1,
     width: FIELD_W,
     height: FIELD_H,
     background: COLOR.bg,
@@ -2030,7 +2030,7 @@ it("rewrites a field named __proto__ as a field", async () => {
   // the way out of the page.
   const held = JSON.parse('{"__proto__": {"tainted": true}}') as object;
   const recording: Recording = {
-    format: 2,
+    format: 1,
     width: 8,
     height: 8,
     background: null,

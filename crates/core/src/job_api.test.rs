@@ -93,29 +93,16 @@ fn launch_body() -> LaunchBody {
     }
 }
 
-/// A launch that names no engine is the `none` default. The key must be absent
-/// from the wire body rather than written as null, because the backend stores the
-/// body verbatim and every launcher written before engines existed must keep
-/// producing — and keep matching — exactly the JSON it produced before.
+/// A launch that names no engine is the `none` default. The key is absent from the
+/// wire body rather than written as null, so a body says only what the launch
+/// actually chose — and the backend, which stores the body verbatim, holds exactly
+/// that.
 #[test]
 fn a_launch_without_an_engine_omits_the_key_entirely() {
     let value = serde_json::to_value(launch_body()).expect("serialize");
     assert!(value.get("engine").is_none());
 
     let parsed: LaunchBody = serde_json::from_value(value).expect("deserialize");
-    assert!(parsed.engine.is_none());
-}
-
-/// …and a body that never carried the key at all still deserializes, since a job
-/// enqueued before engines existed is replayed to the driver from its stored body.
-#[test]
-fn a_stored_launch_body_predating_engines_deserializes() {
-    let parsed: LaunchBody = serde_json::from_str(
-        r#"{"testCase":"carom","version":"v1.0.0","variant":"base",
-            "harness":"claude","model":"anthropic/claude-opus-4"}"#,
-    )
-    .expect("deserialize");
-
     assert!(parsed.engine.is_none());
 }
 

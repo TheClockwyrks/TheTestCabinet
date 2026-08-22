@@ -23,7 +23,7 @@ what changed from `v2.1.0` and why.
 ## Engines
 
 The case supports two engines and seeds a different project for each, which is
-what the manifest's `format = 2` and its `[workspaces]` table are for:
+what the manifest's `[workspaces]` table is for:
 
 | Engine | What the seeded project supplies |
 | --- | --- |

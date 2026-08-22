@@ -314,7 +314,10 @@ fn resolves_carom_from_its_manifest() {
             .any(|item| item.id == "multi-ball"),
         "multi contributes its multi-ball review category"
     );
-    for (variant, expected) in [(gyre, "gameplay/scoring-p1.test.ts"), (multi, "multi/scoring-p1.test.ts")] {
+    for (variant, expected) in [
+        (gyre, "gameplay/scoring-p1.test.ts"),
+        (multi, "multi/scoring-p1.test.ts"),
+    ] {
         let gameplay = version
             .review_items_for(variant)
             .into_iter()
@@ -1372,8 +1375,8 @@ fn every_catalog_version_passes_the_engine_gate_for_the_engines_it_declares() {
 /// The backend serializes a resolved `TestCaseVersion` into its definition store
 /// and reads it back, so the two fields the manifest grammar grew have to be
 /// invisible on the wire for every case that does not use them: an unbounded
-/// `engines` entry must still serialize as the plain slug string it has always
-/// been, and `toolchain` must be absent rather than written as an explicit null.
+/// `engines` entry must serialize as the plain slug string the case declared, and
+/// `toolchain` must be absent rather than written as an explicit null.
 /// A version that DOES use them is held to the round trip instead — what it wrote
 /// must read back as what it was — so the new spellings are proved to survive the
 /// store without pretending nothing in the catalog uses them. Serializing the real
@@ -1406,8 +1409,8 @@ fn the_stored_shape_of_every_committed_version_is_unchanged() {
             );
 
             // An engine declared with no version range must still serialize as the
-            // bare slug string a pre-range store holds; only a declared RANGE may
-            // widen into an object.
+            // bare slug string the case declared; only a declared RANGE may widen
+            // into an object.
             let engines = object
                 .get("engines")
                 .and_then(|value| value.as_array())

@@ -184,8 +184,8 @@ impl Config {
             },
             // The engine the produced build is written against. Omitted on the
             // wire for the engineless run — exactly as `orchestrator` is omitted
-            // for `one-shot` — so a launcher that predates engines round-trips to
-            // the run it always meant. The catalogue is closed and embedded, so
+            // for `one-shot` — so a launch that chose nothing gets `none`. The
+            // catalogue is closed and embedded, so
             // there is no directory arm to carry and nothing for the driver (which
             // has no checkout) to look up.
             engine: EngineSelection {

@@ -858,23 +858,14 @@ fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
 
 /// Map a stored starter project to the wire shape: one file list per
 /// [engine](test_cabinet_core::engine) slug.
-///
-/// A manifest stored before the key was an engine map carries a flat list; such a
-/// case supported no engine, so it is served under that slug and a runner reads the
-/// same project it always did.
 fn workspaces_out(
     workspace: &crate::store::StoredWorkspace,
 ) -> std::collections::BTreeMap<String, Vec<WorkspaceOut>> {
-    match workspace {
-        crate::store::StoredWorkspace::ByEngine(by_engine) => by_engine
-            .iter()
-            .map(|(engine, files)| (engine.clone(), files.iter().map(workspace_out).collect()))
-            .collect(),
-        crate::store::StoredWorkspace::Engineless(files) => std::collections::BTreeMap::from([(
-            test_cabinet_core::engine::NONE_SLUG.to_string(),
-            files.iter().map(workspace_out).collect(),
-        )]),
-    }
+    workspace
+        .0
+        .iter()
+        .map(|(engine, files)| (engine.clone(), files.iter().map(workspace_out).collect()))
+        .collect()
 }
 
 /// Build a raw-bytes response for a stored file, labelled from its name.

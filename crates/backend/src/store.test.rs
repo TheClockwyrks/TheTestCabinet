@@ -67,7 +67,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             template: true,
             kind: Default::default(),
         }],
-        workspace: StoredWorkspace::ByEngine(std::collections::BTreeMap::from([(
+        workspace: StoredWorkspace(std::collections::BTreeMap::from([(
             "none".to_string(),
             vec![StoredWorkspaceFile {
                 source: "workspaces/base/package.json".to_string(),
