@@ -1,8 +1,9 @@
-// Carom — canonical constants. CASE-PROVIDED. Do not edit.
+// Carom — canonical constants.
 //
 // Every figure the specification fixes is named here exactly once, so no number
-// in this build is a guess and no spec value is left to interpretation. The
-// game's own code, and the checks run against it, read the same names.
+// in this build is a guess and no spec value is left to interpretation
+// (specs/overview.md asks for exactly this). Every other module reads its figures
+// from here rather than restating them.
 //
 // Every value is in the fixed 1280x720 logical-pixel coordinate space defined by
 // `specs/overview.md` (origin top-left, x right, y down). That space is the
@@ -191,13 +192,10 @@ export const MODE_LABEL = { solo: "SOLO", versus: "VERSUS" } as const;
 
 // ---- Input actions (specs/modes/*.md) ------------------------------------
 
-/** Carom is two paddles facing each other: one vertical slider per side. */
-export const LAYOUT = "dual-vertical";
-
 /**
- * Every action Carom registers, in the `dual-vertical` layout's own order: the
- * layout's four movement actions followed by the menu vocabulary every layout
- * carries. This list must equal `TOUCH_LAYOUTS[LAYOUT].actions`.
+ * Every action Carom speaks: one vertical slider per side — Carom is two paddles
+ * facing each other — followed by the four menu actions. `src/input.ts` registers
+ * exactly this list with the runtime, each bound to the keys below.
  */
 export const ACTIONS = [
   "p1-up",

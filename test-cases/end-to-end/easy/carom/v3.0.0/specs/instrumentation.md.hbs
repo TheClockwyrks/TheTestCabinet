@@ -86,8 +86,12 @@ it is the one behavior the whole surface depends on.
 
 - While `driver.paddles` is `false`, the game plays normally: the registered
   actions move the human paddles and, in Solo, the AI moves the right one.
-- Every operation except `snapshot` and `reset` sets `driver.paddles` to `true`.
-  From then on both paddles move at the held velocities `driver.vy.left` and
+- Every operation that poses the game sets `driver.paddles` to `true`, and
+  `snapshot` and `reset` do not.
+{{#if (eq engine.slug "none")}}  `setAutoStep` and `advance` do not either:
+  moving the clock is not posing the world, and a check that presses a key and
+  then steps the game needs the paddles left with whoever had them.
+{{/if}}  From then on both paddles move at the held velocities `driver.vy.left` and
   `driver.vy.right`, in units per second, integrated against the frame's delta
   time and clamped to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` exactly as a played paddle
   is. The input actions and the AI leave the paddles alone while it is `true`.

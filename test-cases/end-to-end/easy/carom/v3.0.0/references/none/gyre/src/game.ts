@@ -66,7 +66,7 @@ import { step } from "./physics";
 import { renderGame } from "./render";
 import { nextSign } from "./rng";
 import { recordTrail } from "./trail";
-import type { Game, InitApi, RenderApi, UpdateApi } from "./host";
+import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
 
 /**
  * The top-level state machine (specs/ui.md). `countdown` and `playing` both

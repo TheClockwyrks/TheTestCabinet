@@ -1,51 +1,44 @@
-// Carom — bootstrap. CASE-PROVIDED. Do not edit.
+// Carom — the entry point `index.html` loads.
 //
-// This is the build's fixed entry point, and it is deliberately the whole of the
-// wiring. Everything that is the same in every browser game — the frame loop and
-// the delta time it measures, fitting the fixed 1280x720 logical field into the
-// canvas (the uniform scale, the centered letterbox, the device pixel ratio, and
-// the resync when any of them changes), the keyboard, the audio graph and its
-// first-interaction unlock, and the debug overlay — is `src/host.ts`. None of it
-// appears here, and none of it belongs anywhere else in this project.
+// The whole of the wiring, and deliberately nothing else. It finds the page's
+// canvas, stands the runtime up over it at the fixed logical field size, lets the
+// game build its state, publishes the debug and automation surface over that
+// state, and starts the loop.
 //
-// What is left is `src/game.ts`.
+// Everything it wires together lives elsewhere: the runtime in `src/runtime.ts`
+// and the four modules under it, the game in `src/game.ts`, the surface in
+// `src/debug.ts`.
 
-import { COLOR, FIELD_H, FIELD_W, LAYOUT } from "./constants";
+import { COLOR, FIELD_H, FIELD_W } from "./constants";
 import { installDebugApi } from "./debug";
 import { game } from "./game";
 import type { CaromState } from "./game";
-import { createHost } from "./host";
+import { createRuntime } from "./runtime";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement | null;
-if (!canvas)
+if (!canvas) {
   throw new Error("Carom: the #stage canvas is missing from the page");
+}
 
-const host = createHost<CaromState>({
+const runtime = createRuntime<CaromState>({
   canvas,
   // The logical design size from specs/overview.md. The canvas element is sized
-  // by CSS alone (index.html); the host maps this field onto whatever size that
-  // gives it, so no code here ever reads the window.
+  // by CSS alone (index.html); the runtime maps this field onto whatever size
+  // that gives it, so nothing in this build ever reads the window.
   width: FIELD_W,
   height: FIELD_H,
   game,
   background: COLOR.bg,
-  // Two paddles facing each other across the field: one vertical slider per side.
-  layout: LAYOUT,
 });
 
-async function main(): Promise<void> {
-  // The host runs no frame until this resolves, so the state the debug API is
-  // installed over is complete before anything can observe it.
-  const state = await host.initialize();
+// The state is complete before anything can observe it: `initialize` builds it in
+// one go and runs no frame.
+const state = runtime.initialize();
 
-  // window.__carom (see debug.ts and specs/instrumentation.md). Installed on
-  // every build, and inert during normal play.
-  installDebugApi(state);
+// window.__carom (see debug.ts and specs/instrumentation.md). Installed on every
+// build, and inert during normal play. It is handed the runtime as well as the
+// state, because two of its operations — `setAutoStep` and `advance` — are about
+// the clock, and nothing outside this build owns that.
+installDebugApi(state, runtime);
 
-  // Runs until the host is destroyed.
-  await host.run();
-}
-
-void main().catch((error: unknown) => {
-  console.error(error);
-});
+runtime.start();
