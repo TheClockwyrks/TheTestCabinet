@@ -867,6 +867,29 @@ describe("three independent balls", () => {
     expect(b.spin).toBe(0);
   });
 
+  it("plays the ball cue when two balls bounce off each other", async () => {
+    await rally(harness, "versus", { x: 600, y: 400, vx: 300, vy: 0, spin: 0 });
+    harness.debug.setBall(1, { x: 700, y: 400, vx: -300, vy: 0, spin: 0 });
+    harness.cues.length = 0;
+
+    await harness.engine.advance(30);
+
+    expect(played(harness)).toContain(CUES.ballBounce);
+  });
+
+  it("plays the ball cue once for the pair, not once for each ball", async () => {
+    await rally(harness, "versus", { x: 600, y: 400, vx: 300, vy: 0, spin: 0 });
+    harness.debug.setBall(1, { x: 700, y: 400, vx: -300, vy: 0, spin: 0 });
+    harness.cues.length = 0;
+
+    await harness.engine.advance(30);
+
+    // A collision is one event between two balls (specs/ui.md), so the whole of
+    // this scenario is one cue. Playing it from a loop over the balls would sound
+    // the same contact twice, once for each side of it.
+    expect(played(harness)).toEqual([CUES.ballBounce]);
+  });
+
   it("bounces a moving ball off one waiting at its home point", async () => {
     harness.debug.startMatch("versus");
     // Ball 1 is still waiting on the field center; drive ball 0 into it.

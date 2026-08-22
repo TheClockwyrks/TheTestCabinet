@@ -540,12 +540,14 @@ function advance(state: CaromState, api: UpdateApi, dt: number): void {
   const events = step(state.balls, state.paddles.left, state.paddles.right, dt);
   // One cue per event that actually happened. A frame long enough to contain two
   // different kinds of bounce plays both, because each is its own event and each
-  // has its own cue (specs/ui.md). A ball-to-ball hit is silent: specs/ui.md fixes
-  // exactly four cues and names the event each one belongs to, so there is no cue
-  // to give this one and no other cue it may borrow.
+  // has its own cue (specs/ui.md). A ball-to-ball hit is ONE event between two
+  // balls: `events.ball` records the frame a pair met rather than the balls it
+  // happened to, so the cue plays once for the pair. Playing it from a loop over
+  // the balls would sound the same contact twice, once for each side of it.
   if (events.paddle) api.audio.play(CUES.paddleHit);
   if (events.wall) api.audio.play(CUES.wallBounce);
   if (events.obstacle) api.audio.play(CUES.obstacleBounce);
+  if (events.ball) api.audio.play(CUES.ballBounce);
   for (const ball of state.balls) recordTrail(ball, state.simTime);
   checkGoals(state, api);
 
@@ -560,7 +562,7 @@ function advance(state: CaromState, api: UpdateApi, dt: number): void {
 export const game: Game<CaromState, CaromDebugApi> = {
   /**
    * Runs once, before any frame: register every action against its bindings,
-   * define the four cues, build the complete initial state, register the
+   * define the five cues, build the complete initial state, register the
    * diagnostic sources over it, and hand the debug surface to the engine.
    *
    * The state is built before the diagnostics are registered, because each source

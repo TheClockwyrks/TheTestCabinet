@@ -221,6 +221,6 @@ src/
   ai.ts               The beatable AI opponent, defending one ball at a time
   render.ts           All canvas drawing (neon-on-charcoal), in logical space
   diagnostics.ts      The values the overlay shows
-  audio.ts            The four audio cues
+  audio.ts            The five audio cues
   *.test.ts           The build's own tests, beside the code they cover
 ```

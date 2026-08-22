@@ -98,7 +98,7 @@ game, and none of it is written here:
 - **Input.** Named actions over `KeyboardEvent.code` bindings, with edge detection
   done once and correctly.
 - **Audio.** The Web Audio graph, cue synthesis, mute, and the first-gesture
-  unlock. The game declares four cues and plays them by name.
+  unlock. The game declares five cues and plays them by name.
 - **The debug overlay.** The panel, the toggle key, and its read-only-ness; the
   game only names the values it shows.
 
@@ -217,6 +217,6 @@ src/
   ai.ts               The beatable AI opponent, defending one ball at a time
   render.ts           All canvas drawing (neon-on-charcoal), in logical space
   diagnostics.ts      The values the engine's overlay shows
-  audio.ts            The four engine cues
+  audio.ts            The five engine cues
   *.test.ts           The build's own tests, beside the code they cover
 ```

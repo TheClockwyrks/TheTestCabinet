@@ -42,7 +42,7 @@ export const game: Game<CaromState, CaromDebugApi> = {
   /**
    * Runs once, before any frame.
    *
-   * Register every action in ACTIONS against its BINDINGS, define the four CUES,
+   * Register every action in ACTIONS against its BINDINGS, define the five CUES,
    * register the diagnostic sources specs/instrumentation.md lists, expose the
    * debug surface, and build and return the complete initial state — the title
    * screen, with every field of CaromState set.

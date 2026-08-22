@@ -230,17 +230,17 @@ describe("disposal", () => {
   });
 });
 
-describe("the four cues this game declares", () => {
+describe("the five cues this game declares", () => {
   it("are told apart by waveform and pitch, so each is its own sound", () => {
     gesture();
     for (const [cue, spec] of Object.entries(CUE_SPECS)) bus.define(cue, spec);
     for (const cue of Object.values(CUES)) bus.play(cue);
 
-    expect(context.oscillators).toHaveLength(4);
+    expect(context.oscillators).toHaveLength(5);
     const voices = context.oscillators.map(
       (oscillator) =>
         `${oscillator.type}:${String(oscillator.frequency.scheduled[0].value)}`,
     );
-    expect(new Set(voices).size).toBe(4);
+    expect(new Set(voices).size).toBe(5);
   });
 });

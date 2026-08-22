@@ -212,11 +212,12 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
 
 // ---- Audio cues (specs/ui.md) --------------------------------------------
 
-/** The four cue names, one per event. Define and play exactly these. */
+/** The five cue names, one per event. Define and play exactly these. */
 export const CUES = {
   paddleHit: "paddle-hit",
   wallBounce: "wall-bounce",
   obstacleBounce: "obstacle-bounce",
+  ballBounce: "ball-bounce",
   score: "score",
 } as const;
 
