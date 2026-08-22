@@ -184,7 +184,8 @@ struct PromptContext<'a> {
 /// what the *build* must do, and that genuinely differs by engine — an engine
 /// that owns the frame loop changes what the build is required to implement. What
 /// a spec must never do is restate the engine's own documentation, which the
-/// engine ships from its package and seeding puts at `{{engine.docs}}`; a spec
+/// engine ships from its package and seeding puts at `{{engine.docs}}` — here the
+/// directory relative to the workspace, so the rule above holds for it too; a spec
 /// branches on the engine only to say what is specific to *this case* under it.
 #[derive(Debug, Serialize)]
 struct SpecContext<'a> {
@@ -318,6 +319,20 @@ impl<'a> TemplateEngine<'a> {
 fn engine_docs_path(engine: Option<&ResolvedEngine>) -> String {
     match engine {
         Some(engine) if engine.docs().is_some() => format!("{WORKSPACE_DIR}/{ENGINE_DOCS_DIR}"),
+        _ => String::new(),
+    }
+}
+
+/// The selected engine's seeded documentation directory relative to the workspace,
+/// or the empty string when there is nothing seeded to point at.
+///
+/// What a spec gets in place of [`engine_docs_path`]. A spec is rendered into a
+/// file that sits beside the build, and a container path written into it would be
+/// the one absolute path in a document otherwise entirely about the build's own
+/// tree — which is why [`SpecContext`] is handed no workspace path at all.
+fn engine_docs_dir(engine: Option<&ResolvedEngine>) -> String {
+    match engine {
+        Some(engine) if engine.docs().is_some() => format!("{ENGINE_DOCS_DIR}/"),
         _ => String::new(),
     }
 }
@@ -567,7 +582,7 @@ pub fn render_spec_from_template(
     engine: Option<&ResolvedEngine>,
 ) -> Result<String> {
     // Built before the context so the borrow outlives it, as in the prompt.
-    let engine_docs = engine_docs_path(engine);
+    let engine_docs = engine_docs_dir(engine);
     let context = SpecContext {
         version,
         variant: TemplateVariant {

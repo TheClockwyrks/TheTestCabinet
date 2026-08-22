@@ -4,11 +4,9 @@
  *
  * The engine cannot know what is worth watching in someone else's simulation, so it
  * does not guess: a game registers named sources and the engine owns everything
- * around them — the panel, the toggle key, the frame metrics, and the read the host
- * interface exposes to a driver. That split is what makes the overlay useful to both
- * audiences at once. A human presses the toggle and sees the same numbers a
- * validation script reads back through `diagnostics()`, with no second code path to
- * keep in step.
+ * around them — the panel, the toggle key, and the frame metrics. Sources are
+ * evaluated on every read rather than sampled at registration, so pressing the
+ * toggle shows the state the simulation is in on the frames the panel is drawn over.
  *
  * Three rules follow from "read-only", and all three are enforced here rather than
  * left to the game's good behaviour:
@@ -42,8 +40,7 @@ export interface FrameTimings {
     series(): readonly number[];
 }
 /**
- * The registry behind the engine's `diagnostics` facade and its `diagnostics()` /
- * `setOverlay()` host operations.
+ * The registry behind the engine's `diagnostics` facade and its overlay toggle key.
  */
 export declare class Diagnostics {
     /**
@@ -73,19 +70,18 @@ export declare class Diagnostics {
     /** Flip the overlay — what the engine's toggle key is wired to. */
     toggle(): void;
     /**
-     * Evaluate every source.
+     * Evaluate every source, yielding a throwing source's error message as its value.
      *
-     * This is what a driver reads, and it is deliberately independent of whether the
-     * overlay is *visible*: a validation script should not have to switch on a piece
-     * of human-facing chrome to inspect the game's state.
+     * {@link Diagnostics.draw} calls this once per drawn frame and formats the result
+     * into the panel's lines, so what the panel shows is the simulation's live state.
      */
     read(): Record<string, unknown>;
     /**
      * The frame timing over the loop's current window.
      *
-     * Exposed alongside {@link Diagnostics.read} because the two are the same kind of
-     * observation — what is true right now — and a caller comparing a game's own
-     * numbers against the cost of producing them wants both from one place.
+     * Read from the attached {@link Diagnostics.timings} rather than collected here.
+     * {@link Diagnostics.draw} puts it under the game's own lines, beside the
+     * sparkline, so the cost of a frame sits next to what the frame produced.
      */
     metrics(): FrameMetrics;
     /**

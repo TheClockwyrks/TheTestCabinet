@@ -173,6 +173,19 @@ order draws exactly the frame the build drew:
 This is what makes seeking to any frame a constant-time operation, and what lets
 two recordings of the same scenario be scrubbed side by side in step.
 
+## Storing a recording
+
+A recording is stored and served gzipped, under both extensions:
+`<name>.json.gz`. The property that makes every frame stand alone is what makes
+this worth doing. Each frame restates the drawing state it inherited and issues
+very nearly the operations its neighbours did, so the document is repetitive by
+design and compresses to a small fraction of its size. A real capture stores tens
+of times smaller gzipped.
+
+The document inside is the recording as `stopRecording` handed it back.
+Compression is how a recording travels rather than part of what it is, so a
+reader decompresses and then reads the same JSON.
+
 ## What a recording holds
 
 A recording holds the operations issued through the context the engine handed

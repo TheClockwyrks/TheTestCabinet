@@ -20,6 +20,9 @@
  *   and the key that toggles it.
  * - **Draw-command recording** — an opt-in flight recorder over the drawing context,
  *   so a scenario a check drove can be replayed as the operations the build issued.
+ * - **The debug surface** — the object a game hands over as it initializes, held and
+ *   returned off the engine, so a check poses a scenario through the engine it built
+ *   rather than through the page the build is drawn on.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,
@@ -199,6 +202,14 @@ export function createEngine(options) {
      */
     let built = null;
     let starting = null;
+    /**
+     * The debug surface the game exposed, or `null` before it has exposed one.
+     *
+     * A box for the same reason {@link built} is one: `D` may perfectly well be a
+     * nullish type, and "has the game exposed a surface" must not be answered by
+     * inspecting the value it handed over.
+     */
+    let exposed = null;
     let destroyed = false;
     /**
      * The state, or a refusal naming the ordering.
@@ -281,6 +292,21 @@ export function createEngine(options) {
         },
         diagnostics: {
             register: (name, source) => diagnostics.register(name, source),
+        },
+        debug: {
+            // Refused outside initialization, and refused twice, so `engine.debug` is
+            // fixed from the moment `initialize` resolves. A surface that could arrive
+            // later — or be swapped — would let one caller read what another had
+            // already replaced, and neither could tell which it held.
+            expose: (surface) => {
+                if (built !== null) {
+                    throw new Error("api.debug.expose() was reached after the game finished initializing: expose the surface from the game's initialize");
+                }
+                if (exposed !== null) {
+                    throw new Error("api.debug.expose() was called twice: a game exposes one debug surface");
+                }
+                exposed = { value: surface };
+            },
         },
         events: bus,
         viewport: snapshot,
@@ -386,6 +412,19 @@ export function createEngine(options) {
         events: bus,
         get state() {
             return requireState("state");
+        },
+        /**
+         * The surface the game exposed, or a refusal naming the ordering.
+         *
+         * Worded like {@link requireState}'s refusal, because the mistake has the
+         * same two shapes: reaching for it before `initialize` has run, and reaching
+         * for it in a build whose game never exposed one.
+         */
+        get debug() {
+            if (exposed === null) {
+                throw new Error("engine.debug was reached before the game exposed a debug surface: await engine.initialize() first, and expose one from the game's initialize");
+            }
+            return exposed.value;
         },
         /**
          * Run the game's `initialize` once and resolve to the state it produced.

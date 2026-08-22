@@ -560,15 +560,20 @@ fn spec_template_renders_the_engine_too() {
 
     let version = version_with_prompt(dir.path().join("prompt.hbs"));
 
-    // A spec sees the engine on exactly the same terms as the prompt: always
-    // present, sentinel when there is none. That is what lets one authored spec
-    // state what the build must implement itself and what the engine provides.
+    // A spec sees the engine on the same terms as the prompt in all but one
+    // respect: always present, sentinel when there is none. That is what lets one
+    // authored spec state what the build must implement itself and what the engine
+    // provides.
     let engineless = render_spec(&version, &frenzy(), &spec, None).expect("render spec");
     assert_eq!(engineless, "none|None||");
 
+    // The exception is the docs path. A spec is rendered into a file that sits
+    // beside the build, so it is handed the directory relative to the workspace
+    // rather than the in-container path the prompt gets — a spec carries no
+    // absolute path at all.
     let with_engine =
         render_spec(&version, &frenzy(), &spec, Some(&engine("simple-2d"))).expect("render spec");
-    assert_eq!(with_engine, "simple-2d|Simple 2D|/work/engine|");
+    assert_eq!(with_engine, "simple-2d|Simple 2D|engine/|");
 }
 
 #[test]

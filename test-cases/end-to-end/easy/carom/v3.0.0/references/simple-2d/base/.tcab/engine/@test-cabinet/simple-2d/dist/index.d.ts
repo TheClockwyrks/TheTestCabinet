@@ -20,6 +20,9 @@
  *   and the key that toggles it.
  * - **Draw-command recording** — an opt-in flight recorder over the drawing context,
  *   so a scenario a check drove can be replayed as the operations the build issued.
+ * - **The debug surface** — the object a game hands over as it initializes, held and
+ *   returned off the engine, so a check poses a scenario through the engine it built
+ *   rather than through the page the build is drawn on.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,
@@ -82,7 +85,7 @@ import type { Engine, EngineOptions } from "./contract";
  * build that runs and draws nothing, which is the most expensive kind of failure to
  * trace, so each is refused where it happens.
  */
-export declare function createEngine<S>(options: EngineOptions<S>): Engine<S>;
+export declare function createEngine<S, D = unknown>(options: EngineOptions<S, D>): Engine<S, D>;
 export { ConstantClock, JitterClock, PacedClock, SequenceClock, WallClock } from "./clocks";
 export type { PacedClockOptions } from "./clocks";
 export { TOUCH_LAYOUTS } from "./layouts";

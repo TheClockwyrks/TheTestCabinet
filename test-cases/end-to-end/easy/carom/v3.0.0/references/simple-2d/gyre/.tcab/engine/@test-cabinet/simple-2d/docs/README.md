@@ -1,9 +1,9 @@
 # Simple 2D
 
 `@test-cabinet/simple-2d` is the runtime a 2D browser game is built on. It owns
-the frame loop, the canvas fit, input, audio, asset loading, and the debug
-overlay. The game writes its own simulation and its own drawing, and nothing
-else.
+the frame loop, the canvas fit, input, audio, asset loading, the debug overlay,
+and the debug surface a game exposes to its caller. The game writes its own
+simulation and its own drawing, and nothing else.
 
 ## What each side owns
 
@@ -17,11 +17,13 @@ The engine owns:
 - Asset URL resolution under the fixed `assets/` root.
 - The diagnostics overlay and its toggle key.
 - The draw-command recorder over the drawing context.
+- The debug surface the game exposed, held for a caller to read back.
 
 The game supplies:
 
 - `initialize`, `update`, and `render`, plus the state type that joins them.
 - Its action registrations, cue definitions, and diagnostic sources.
+- Its debug surface, and the shape that surface has. See `debug.md`.
 - Everything drawn inside `render`, in logical coordinates.
 
 ## Install and import
@@ -44,8 +46,8 @@ import type { CueSpec, Engine, EngineOptions, Game } from "@test-cabinet/simple-
 ## A game is three functions and a state type
 
 ```ts
-interface Game<S> {
-  initialize(api: InitApi): S | Promise<S>;
+interface Game<S, D = unknown> {
+  initialize(api: InitApi<D>): S | Promise<S>;
   update(state: S, api: UpdateApi, dt: number): void;
   render(state: S, api: RenderApi): void;
 }
@@ -56,6 +58,41 @@ interface Game<S> {
 functions. `initialize` may return a promise, and no frame runs until it
 resolves, so every field of the state is present by the time a frame can read
 it.
+
+`D` is the game's debug surface, the value `initialize` hands to
+`api.debug.expose` and the engine returns from `engine.debug`. A game that
+exposes none leaves it at its default. See `debug.md`.
+
+Everything a game declares once belongs to `InitApi`: its action bindings, its
+cue definitions, the assets it needs, the values it wants on the overlay, and
+its debug surface.
+
+```ts
+interface InitApi<D = unknown> {
+  readonly input: {
+    register(name: string, binding: ActionBinding): void;
+    layout(): TouchLayout | null;
+  };
+  readonly audio: {
+    define(cue: string, spec: CueSpec): void;
+    load(cue: string, path: string): Promise<void>;
+  };
+  readonly assets: {
+    loadImage(path: string): Promise<ImageBitmap>;
+    loadAudio(path: string): Promise<AudioBuffer>;
+    load(path: string): Promise<Blob>;
+    resolve(path: string): string;
+  };
+  readonly diagnostics: {
+    register(name: string, source: () => unknown): void;
+  };
+  readonly debug: {
+    expose(surface: D): void;
+  };
+  readonly events: EngineEvents;
+  viewport(): Viewport;
+}
+```
 
 Each function receives only the part of the engine it may use. `update` reads
 input and plays cues but cannot draw; `render` draws but cannot read input or
@@ -68,13 +105,15 @@ seconds are what the game multiplies by.
 ## Creating the engine
 
 ```ts
-function createEngine<S>(options: EngineOptions<S>): Engine<S>;
+function createEngine<S, D = unknown>(
+  options: EngineOptions<S, D>,
+): Engine<S, D>;
 
-interface EngineOptions<S> {
+interface EngineOptions<S, D = unknown> {
   canvas: HTMLCanvasElement;
   width: number;
   height: number;
-  game: Game<S>;
+  game: Game<S, D>;
   background?: string;
   layout?: string;
   clock?: Clock;
@@ -88,7 +127,7 @@ interface EngineOptions<S> {
 | `canvas` | — | The canvas the engine sizes, clears, and renders through. |
 | `width` | — | The logical design width the game draws in. Finite and positive. |
 | `height` | — | The logical design height the game draws in. Finite and positive. |
-| `game` | — | The game this engine drives, bound for the engine's lifetime. |
+| `game` | — | The game this engine drives, bound for the engine's lifetime. Both `S` and `D` are inferred from it. |
 | `background` | — | A CSS color cleared to before every frame. Absent, the frame clears to transparency. |
 | `layout` | — | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`. |
 | `clock` | `new WallClock()` | The clock supplying each frame's delta. See `frame.md`. |
@@ -107,9 +146,10 @@ anything the game does is observable.
 ## The engine
 
 ```ts
-interface Engine<S> {
+interface Engine<S, D = unknown> {
   readonly events: EngineEvents;
   readonly state: S;
+  readonly debug: D;
   initialize(): Promise<S>;
   run(options?: RunOptions): Promise<void>;
   advance(frames: number): Promise<void>;
@@ -127,6 +167,7 @@ interface Engine<S> {
 | --- | --- |
 | `events` | Subscribe to engine events. Available from construction. |
 | `state` | The value `initialize` resolved to, live. Reading it before then throws. |
+| `debug` | The debug surface the game exposed. Reading it before then throws. See `debug.md`. |
 | `initialize` | Run the game's `initialize` and resolve to the state it produced. |
 | `run` | Drive frames off the host's frame callback until the signal aborts. |
 | `advance` | Tick the clock `frames` times, running a frame for each tick it accepts. |
@@ -153,7 +194,12 @@ interface State {
   vx: number;
 }
 
-const game: Game<State> = {
+interface Debug {
+  place(x: number): void;
+  x(): number;
+}
+
+const game: Game<State, Debug> = {
   initialize(api) {
     const state: State = { x: 320, y: 180, vx: 0 };
 
@@ -161,6 +207,12 @@ const game: Game<State> = {
     api.input.register("right", { keys: ["ArrowRight", "KeyD"] });
     api.audio.define("bounce", { freq: 440, freqTo: 220, durationMs: 80 });
     api.diagnostics.register("x", () => state.x);
+    api.debug.expose({
+      place: (x) => {
+        state.x = x;
+      },
+      x: () => state.x,
+    });
 
     return state;
   },
@@ -222,6 +274,8 @@ draws, so scaling never appears in the game's own code.
 | A `layout` outside the catalogue | `Error` naming every valid layout |
 | The game's `initialize` throws or rejects | `initialize` rejects with the cause |
 | `state`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
+| `debug` read before the game exposed a surface | `Error` naming the ordering |
+| `expose` called a second time | `Error` naming the duplicate |
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
 
 ## The rest of these pages
@@ -233,4 +287,5 @@ draws, so scaling never appears in the game's own code.
 | `audio.md` | Cue definition, file-backed cues, playback, mute, and the unlock. |
 | `assets.md` | The asset root, the loaders, the path rules, and the load events. |
 | `diagnostics.md` | The overlay, frame metrics, and the display formatting. |
+| `debug.md` | Declaring a debug surface, exposing it, and reading it back. |
 | `recording.md` | Arming the recorder, the recording format, and replaying a frame. |

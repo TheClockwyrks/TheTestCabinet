@@ -1,0 +1,209 @@
+# Carom — Game state
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the game's state entirely. Choose the types, the
+fields, and the modules that hold them to suit the implementation you write.
+
+The one contract fixed over the state is the debugging and automation surface
+specified for this build. Every operation that surface carries is a read or a
+pose of the running game, so the state holds what those operations read, honors
+what they write, and returns to its title-screen values when the surface's
+`reset` is called. Beyond satisfying that surface, how the state is organized is
+yours to decide.
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here.
+
+```ts
+export type Screen =
+  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
+
+export type Mode = "solo" | "versus";
+
+export type Side = "left" | "right";
+
+export interface PaddleState {
+  cy: number;
+  vy: number;
+}
+
+export interface BallState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  spin: number;
+}
+
+export interface TrailSample {
+  x: number;
+  y: number;
+  t: number;
+}
+
+export interface DriverState {
+  paddles: boolean;
+  ai: boolean;
+  vy: { left: number; right: number };
+}
+
+{{#if (eq variant.slug "gyre")}}
+export interface ObstacleState {
+  cx: number;
+  cy: number;
+  theta: number;
+}
+
+{{/if}}
+export interface CaromState {
+  screen: Screen;
+  mode: Mode;
+  menuIndex: number;
+  resumeScreen: Screen;
+
+  score: { p1: number; p2: number };
+  winner: Side | null;
+
+  receiver: Side;
+  holdTimer: number;
+
+  paddles: { left: PaddleState; right: PaddleState };
+  ball: BallState;
+  trail: TrailSample[];
+
+{{#if (eq variant.slug "gyre")}}
+  obstacleClock: number;
+  obstacles: ObstacleState[];
+
+{{/if}}
+  simTime: number;
+  muted: boolean;
+  rngState: number;
+
+  driver: DriverState;
+}
+```
+
+## The type aliases
+
+`Screen` is the top-level state machine. `countdown` and `playing` both render
+the live field, and the rest are menu or overlay screens. `Mode` is the way a
+match is played. `Side` names a side of the field, and player one is the left.
+
+## `PaddleState`
+
+One paddle. Its `x` is fixed by the side it is on, so only the vertical axis is
+state.
+
+- `cy` — center y, in logical units, clamped to
+  `[PADDLE_MIN_CY, PADDLE_MAX_CY]`.
+- `vy` — the paddle's actual vertical velocity for the frame, in units per
+  second. This is what the spin mechanic reads at contact, so a paddle pinned
+  against a bound reports `0` while a movement action is held.
+
+## `BallState`
+
+- `x`, `y` — the ball's center, in logical units.
+- `vx`, `vy` — the ball's velocity, in units per second.
+- `spin` — the signed lateral-curvature scalar, with a magnitude in units per
+  second squared. Positive and negative curve the flight opposite ways; it
+  decays by half every `SPIN_HALFLIFE` seconds and changes otherwise only on a
+  paddle hit.
+
+Speed is `hypot(vx, vy)`, derived rather than stored.
+
+## `TrailSample`
+
+One recorded ball position, used to draw the motion trail: `x` and `y` in
+logical units, and `t`, the simulation time in seconds at which the sample was
+recorded.
+
+## `DriverState`
+
+Who is driving the paddles. It is inert during normal play, with `paddles`
+`false`, the registered actions moving the human paddles and, in Solo, the AI
+moving the right one.
+
+- `paddles` — `true` once a control operation on the debug surface has taken the
+  paddles from the player. Both paddles then follow `vy`, and the input actions
+  and the AI leave them alone until a `reset`. That is what lets a scenario be
+  posed and replayed exactly.
+- `ai` — Solo only. While `paddles` and `ai` are both `true`, the real AI
+  opponent plays the right paddle against the posed ball while the left paddle
+  stays on its held velocity.
+- `vy` — the vertical velocity each paddle holds while `paddles` is `true`, in
+  units per second.
+{{#if (eq variant.slug "gyre")}}
+
+## `ObstacleState`
+
+One obstacle's live pose: where it actually is this frame, and how far it has
+turned.
+
+- `cx` — live center x, in logical units. It stays on the base center's x.
+- `cy` — live center y, in logical units: the base center swayed by the obstacle
+  clock.
+- `theta` — live rotation about the center, in radians. `0` is upright.
+
+Both are derived from `obstacleClock` by the sway and rotation formulas this
+specification fixes, and both are declared state because the oriented collision
+resolves against them and the debug surface reports them. Recompute the pair
+every frame from the clock rather than integrating them, so a scenario that
+poses the clock faces exactly the pose the formula names.
+{{/if}}
+
+## `CaromState`
+
+The whole of Carom's state. Every field is present from the moment `initialize`
+returns, and every one is plain data: numbers, strings, booleans, and containers
+of them, so a scenario is posed by assignment and read back the same way.
+
+- `screen` — the screen currently shown.
+- `mode` — the mode the current or most recent match is played in.
+- `menuIndex` — the highlighted item on whichever menu `screen` is showing.
+- `resumeScreen` — the screen the pause menu resumes to, `countdown` or
+  `playing`.
+- `score` — the two scores. First to `WIN_SCORE`, winning by at least
+  `WIN_LEAD`.
+- `winner` — the winning side once the match is over, and `null` until then.
+- `receiver` — the side the next serve travels toward, which is the player who
+  was just scored on. The first serve of a match travels toward player one.
+- `holdTimer` — seconds remaining of the pre-serve hold. It is `HOLD_TIME` at
+  the start of a match and after each point, counts down to `0`, at which point
+  the ball is served, and sits at `0` during a live rally.
+- `paddles` — the two paddles.
+- `ball` — the single ball in play.
+- `trail` — recent ball positions, oldest first, for the motion trail.
+{{#if (eq variant.slug "gyre")}}
+- `obstacleClock` — the obstacle clock, in seconds, and the sole input to both
+  obstacle poses. It advances by the frame's delta time on every frame of a live
+  match, the pre-serve countdown included, is frozen while the game is paused,
+  and returns to `0` at the start of each match, so every match opens upright.
+  It is held still while `driver.paddles` is `true`, which is what lets a
+  scenario face a chosen, known orientation.
+- `obstacles` — both obstacles' live poses, in the order of `OBSTACLE_CENTERS`.
+{{/if}}
+- `simTime` — accumulated simulation time, in seconds.
+- `muted` — the game's readable copy of the engine's mute bit, refreshed every
+  `update`. The engine owns muting, and this field is what the debug surface
+  reports.
+- `rngState` — the state of the game's seeded random generator. A `reset` with a
+  seed sets it, so reseeding and replaying the same calls reproduces the same
+  result. A build that uses no randomness never reads it.
+- `driver` — the debug driver's hold on the paddles.
+
+## The contract
+
+The declaration above is what the seeded `src/debug.ts` reads and poses, and
+what this case's checks read back.
+
+- Keep every field under its declared name, type, and meaning.
+- `initialize` builds the whole state in one go, so every field is present by
+  the time a frame can observe it, and none of them is optional.
+- Fields you add hold derived data you can rebuild from the declared ones. A
+  `reset` restores the declared fields to their title-screen values, so those
+  fields are the whole of the authoritative state.
+- The state handed to `update` is the whole of the game. Every mutable value the
+  game carries from one frame to the next lives in it.
+{{/if}}

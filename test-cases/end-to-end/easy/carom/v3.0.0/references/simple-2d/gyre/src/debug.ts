@@ -1,10 +1,11 @@
-// Carom — the debugging and automation surface. CASE-PROVIDED. Do not edit.
+// Carom (Gyre) — the debugging and automation surface. CASE-PROVIDED. Do not edit.
 //
-// `window.__carom` is specified by `specs/instrumentation.md` and supplied here,
-// already written, so the full surface exists in every build and behaves the same
-// way in each. It is installed by `src/main.ts` as soon as the runtime has
-// initialized, and it is inert during normal play: nothing below runs until
-// something calls it.
+// The surface is specified by `specs/instrumentation.md` and supplied here,
+// already written, so it exists in every build and behaves the same way in each.
+// The build hands it to the engine from its own `initialize`
+// (`api.debug.expose(createDebugApi(state))`), and a caller reads it back off
+// `engine.debug`. It reaches nothing global, and it is inert during normal play:
+// nothing below runs until something calls it.
 //
 // Every operation is expressed as a read or a pose of `CaromState`. That is the
 // point of the split. These calls ARRANGE THE WORLD and never fabricate an
@@ -22,9 +23,6 @@
 
 import { FIELD_CX, FIELD_CY, HOLD_TIME } from "./constants";
 import type { BallState, CaromState, Mode, Screen, Side } from "./game";
-
-/** The `window` property the API is installed on. */
-export const CAROM_HANDLE = "__carom";
 
 /** The surface's version, reported as `version` and bumped when it changes. */
 export const CAROM_DEBUG_VERSION = 1;
@@ -329,18 +327,5 @@ export function createDebugApi(state: CaromState): CaromDebugApi {
       takeControl(state);
       state.obstacleClock = t;
     },
-  };
-}
-
-/**
- * Install the API on `window.__carom` and return the function that removes it
- * again, while the installed object is still the one this call published.
- */
-export function installDebugApi(state: CaromState): () => void {
-  const api = createDebugApi(state);
-  const target = window as unknown as Record<string, unknown>;
-  target[CAROM_HANDLE] = api;
-  return () => {
-    if (target[CAROM_HANDLE] === api) delete target[CAROM_HANDLE];
   };
 }

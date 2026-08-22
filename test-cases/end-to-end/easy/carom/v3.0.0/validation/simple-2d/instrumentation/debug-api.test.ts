@@ -1,23 +1,34 @@
-// Carom — instrumentation/debug-api: the debug and automation surface is present,
-// whole, and really backed by the state the build declared.
+// Carom — instrumentation/debug-api: the build exposed its debug and automation
+// surface through the runtime, and that surface is whole and really backed by the
+// state the build declared.
 //
-// `src/debug.ts` is the case's own module, so the operations exist in every build
-// by construction. What this item establishes is the half that is the build's:
-// that `CaromState` still holds what the surface reads and poses. A build that
+// TWO HALVES, AND BOTH ARE THE BUILD'S.
+//
+// The first is the one line `src/game.ts` owes: `initialize` builds the surface
+// over the state it just built and hands it to the runtime with
+// `api.debug.expose(createDebugApi(state))` (specs/instrumentation.md). Nothing
+// else can do it — the runtime accepts a surface during initialization and at no
+// other moment — and a build that skips it leaves `engine.debug` throwing, with
+// no way for a check to reach the game at all. That is what the first check below
+// establishes, reading the surface off the runtime the harness constructed.
+//
+// The second is the state behind it. `src/debug.ts` is the case's own module, so
+// the operations exist in every build by construction; what is the build's is that
+// `CaromState` still holds what those operations read and pose. A build that
 // hollowed out a field, renamed one, or stopped honouring the driver's hold over
-// the paddles produces a surface that is present and useless, and that is what a
+// the paddles exposes a surface that is present and useless, and that is what a
 // snapshot read off a real, driven match catches.
 //
-// The clock, the keyboard, and the overlay are the runtime's under this runtime, so
-// `window.__carom` carries no operation for any of them (specs/instrumentation.md
+// The clock, the keyboard, and the overlay are the runtime's under this runtime,
+// so the surface carries no operation for any of them (specs/instrumentation.md
 // strikes `step`, `setAutoStep`, `keyDown`, `keyUp` and `press`), and demanding
 // them here would fail a perfectly conformant build. What remains is the list
 // below: the reads, and the control operations that pose a scenario in the game's
 // own world.
 //
-// Every other automated item drives this surface to pose its own scenario, so a
-// state the build reshaped also shows up as those items failing to run. This one
-// names the fault plainly.
+// Every other automated item drives this surface to pose its own scenario, so an
+// unexposed surface or a state the build reshaped also shows up as those items
+// failing to run. This one names the fault plainly.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CY, HOLD_TIME } from "../../src/constants";
@@ -51,8 +62,22 @@ afterEach(() => {
   h.dispose();
 });
 
+it("hands its debug surface to the runtime from initialize", () => {
+  // `engine.debug` throws in a build whose `initialize` never called
+  // `api.debug.expose`, so reading it is the check: there is no page property to
+  // look for and nothing the harness could have supplied in the build's place.
+  expect(() => h.engine.debug).not.toThrow();
+
+  // The runtime returns the value the game handed over, unchanged and unwrapped,
+  // so every read is the same object and it is the one the rest of this suite —
+  // and every other check in this directory — poses the game through.
+  expect(h.engine.debug).toBe(h.debug);
+  expect(h.engine.debug).toBe(h.engine.debug);
+  expect(typeof h.engine.debug).toBe("object");
+});
+
 it("carries a version and every required operation, as functions", () => {
-  const api = h.debug as unknown as Record<string, unknown>;
+  const api = h.engine.debug as unknown as Record<string, unknown>;
 
   expect(typeof api.version).toBe("number");
   expect(api.version).toBe(CAROM_DEBUG_VERSION);

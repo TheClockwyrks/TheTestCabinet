@@ -21,6 +21,13 @@
 // through it is how a scenario is reproducible, and it is the seam the case's
 // specification documents.
 //
+// WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here. The build
+// owes one line — `api.debug.expose(createDebugApi(state))` from its own
+// `initialize` — and reading the surface back off the runtime is what makes that
+// line load-bearing rather than decorative. A harness that called the case's own
+// factory instead would hand every build the surface it failed to expose and pass
+// the checks it should have failed. See `readDebugSurface`.
+//
 // THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
 // 120 Hz tick and every duration below is a whole number of them — which is the
 // unit the tolerances in this suite were established in. A check that is
@@ -54,11 +61,7 @@ import {
   P1_X1,
   P2_X0,
 } from "../src/constants";
-import {
-  createDebugApi,
-  type CaromDebugApi,
-  type CaromSnapshot,
-} from "../src/debug";
+import type { CaromDebugApi, CaromSnapshot } from "../src/debug";
 import { game, type CaromState, type Mode, type Side } from "../src/game";
 
 /**
@@ -135,10 +138,14 @@ export interface UntilResult {
 }
 
 export interface Harness {
-  readonly engine: Engine<CaromState>;
+  readonly engine: Engine<CaromState, CaromDebugApi>;
   /** The live state the game built. Read it, or pose it through `debug`. */
   readonly state: CaromState;
-  /** The case's own debug surface, over this harness's state. */
+  /**
+   * The case's own debug surface, as the BUILD exposed it through the runtime.
+   *
+   * Read off `engine.debug` rather than built here — see {@link readDebugSurface}.
+   */
   readonly debug: CaromDebugApi;
   /** The real 2D context, for `getImageData`. Draw calls also reach it. */
   readonly ctx: SKRSContext2D;
@@ -256,6 +263,75 @@ export function setsOf(
 }
 
 /**
+ * The debug surface the BUILD exposed, read off the runtime it exposed it through.
+ *
+ * This is deliberately a READ and never a construction. `src/debug.ts` is the
+ * case's own module, so the harness could perfectly well call
+ * `createDebugApi(state)` itself — and every check below would then pass against a
+ * build that never handed its surface to the runtime, because the harness would
+ * have quietly supplied the one the build owed. Reading `engine.debug` is what
+ * makes the build's one line (`api.debug.expose(createDebugApi(state))`,
+ * specs/instrumentation.md) load-bearing: it is the only way a surface reaches a
+ * check.
+ *
+ * `engine.debug` THROWS when the game exposed nothing. That is a fault in the
+ * build and not in this harness, so it must not present as one:
+ *
+ * - It is NOT rethrown from here. Every suite builds its harness in a
+ *   `beforeEach`, so a throw at this point would fail the hook, leave the suite's
+ *   `afterEach` disposing a harness that was never assigned, and bury the real
+ *   verdict under a `TypeError` in the case's own file.
+ * - It is NOT swallowed either. {@link unexposedSurface} stands in for the
+ *   missing surface and fails, by assertion, at the moment a check first reaches
+ *   for an operation on it — naming the call the build owes.
+ *
+ * So the harness is built, teardown runs, and the fault lands exactly where
+ * specs/instrumentation.md says it should: on the points whose checks reach the
+ * game through the surface. A check that needs no surface is decided on its own
+ * merits, and `instrumentation/debug-api` names the missing `expose` outright.
+ */
+function readDebugSurface(
+  engine: Engine<CaromState, CaromDebugApi>,
+): CaromDebugApi {
+  try {
+    return engine.debug;
+  } catch (error) {
+    return unexposedSurface(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+/**
+ * A stand-in for the surface a build never exposed: every operation on it fails
+ * the check that reached for it, with the missing call named.
+ *
+ * A proxy rather than a hand-written stub, because the surface is not a closed
+ * list — the gyre variant adds `setObstacleClock` and `snapshot().obstacles`, and
+ * a stub written against the common surface would report a gyre-only operation as
+ * merely absent rather than as the consequence of the build's missing `expose`.
+ *
+ * Keys that belong to the RUNTIME rather than to a check are answered with
+ * `undefined` instead: awaiting the harness probes `then`, and vitest's own error
+ * formatting probes symbols and `constructor`. Failing those would replace the
+ * verdict below with noise from the machinery that was trying to report it.
+ */
+function unexposedSurface(reason: string): CaromDebugApi {
+  const message =
+    `this build never exposed its debug surface, so nothing can reach the game: ` +
+    `src/game.ts's initialize must call api.debug.expose(createDebugApi(state)) ` +
+    `before it returns the state (specs/instrumentation.md). engine.debug said: ` +
+    `${reason}`;
+  return new Proxy({} as CaromDebugApi, {
+    get: (_target, property): unknown => {
+      if (typeof property === "symbol") return undefined;
+      if (property === "then" || property === "constructor") return undefined;
+      return expect.fail(message);
+    },
+  });
+}
+
+/**
  * Build a runtime over a canvas of the harness's own, initialize the build's
  * game, and hand back everything a check reads.
  *
@@ -291,7 +367,7 @@ export async function createHarness(
     events: () => keys,
   };
 
-  const engine = createEngine<CaromState>({
+  const engine = createEngine<CaromState, CaromDebugApi>({
     canvas: element,
     width: FIELD_W,
     height: FIELD_H,
@@ -314,7 +390,7 @@ export async function createHarness(
   });
 
   const state = await engine.initialize();
-  const debug = createDebugApi(state);
+  const debug = readDebugSurface(engine);
 
   const dispatch = (type: "keydown" | "keyup", code: string): void => {
     keys.dispatchEvent(new KeyEvent(type, code));

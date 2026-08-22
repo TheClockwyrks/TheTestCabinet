@@ -28,10 +28,10 @@ export declare const MENU_ACTIONS: readonly string[];
 /**
  * The catalogue, keyed by layout name, with the menu vocabulary already appended.
  *
- * Frozen all the way down: the layouts are shared state read by the engine, by the
- * host interface, and by the game, so a caller that mutated a vocabulary in place
- * would change what every other reader sees. {@link touchLayout} exists for callers
- * that want a vocabulary they can extend.
+ * Frozen all the way down: the layouts are shared state read by the engine and by
+ * the game, so a caller that mutated a vocabulary in place would change what every
+ * other reader sees. {@link touchLayout} exists for callers that want a vocabulary
+ * they can extend.
  */
 export declare const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>>;
 /**

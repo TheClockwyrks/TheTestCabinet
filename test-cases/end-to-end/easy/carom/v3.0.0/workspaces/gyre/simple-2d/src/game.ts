@@ -1,34 +1,25 @@
-// Carom (Gyre) — the game. THIS IS THE ONE FILE YOU IMPLEMENT.
+// Carom (Gyre) — the game. THIS IS THE FILE YOU IMPLEMENT.
 //
 // `src/main.ts`, `src/debug.ts`, `src/constants.ts` and the project's
-// configuration are supplied by the case and must not be edited. They create the
-// engine over the page's canvas, install `window.__carom`, and name every figure
-// the specification fixes. What is missing is the game itself: the three
-// functions below.
+// configuration are supplied by the case and must not be edited. What is missing
+// is the game: the state it holds, and the three functions below.
 //
-// A `Game<S>` is three functions and a state type. `initialize` runs once, when
-// the engine is initialized, and returns the state. `update` and `render` then
-// run once each per frame — `update` first, with the frame's delta time in
-// SECONDS, then `render`. The state is the only channel between them. The
-// engine's own documentation, seeded at `engine/`, defines all of this and the
-// scoped APIs each function receives; read it before you start.
+// FIRST, DECLARE AND EXPORT `CaromState`, exactly as `specs/state.md` fixes it.
+// `src/debug.ts` poses and reads that type, so this project does not compile
+// until it exists — the type check failing on a freshly seeded workspace is the
+// starting point, not a broken seed.
 //
-// THE STATE SHAPE BELOW IS A CONTRACT. It is what the debug API in
-// `src/debug.ts` reads and poses, and what this case's checks read back. So:
+// THEN IMPLEMENT the three functions. `initialize` runs once, when the engine is
+// initialized, and returns the state. `update` and `render` then run once each
+// per frame — `update` first, with the frame's delta time in SECONDS, then
+// `render`. The state is the only channel between them. The engine's own
+// documentation, seeded at `engine/`, defines all of this and the scoped APIs each
+// function receives; read it before you start.
 //
-//   * Keep every field declared here, under its declared name, with its declared
-//     type and meaning. Do not remove one, rename one, or make one optional.
-//   * `initialize` builds the whole state in one go, which is why no field is
-//     optional: by the time any frame can observe the state, every field is
-//     present.
-//   * You may ADD fields for your own implementation, but only DERIVED data you
-//     can rebuild from the fields declared here. `reset()` on the debug API
-//     restores the declared fields to their title-screen values and does not know
-//     about yours, so anything authoritative that lives only in a field of your
-//     own would survive a reset and stop a scenario from replaying identically.
-//   * Do not hold game state anywhere but this object — no module-level
-//     variables, no closures over mutable data. The state handed to `update` is
-//     the whole of the game.
+// `initialize` must also hand the debug surface to the engine before it returns,
+// which is how a check reaches this build (`specs/instrumentation.md`):
+//
+//     api.debug.expose(createDebugApi(state));
 
 import type {
   Game,
@@ -36,172 +27,9 @@ import type {
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
+import type { CaromDebugApi } from "./debug";
 
-/**
- * The top-level state machine (specs/ui.md). `countdown` and `playing` both
- * render the live field; the rest are menu or overlay screens.
- */
-export type Screen =
-  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
-
-/** The two ways to play (specs/modes/). */
-export type Mode = "solo" | "versus";
-
-/** Which side of the field a paddle or player is on. Player one is the left. */
-export type Side = "left" | "right";
-
-/** One paddle. `x` is fixed by the side, so only the vertical axis is state. */
-export interface PaddleState {
-  /** Center y, in logical pixels. Clamped to [PADDLE_MIN_CY, PADDLE_MAX_CY]. */
-  cy: number;
-  /**
-   * The paddle's actual vertical velocity this frame, in units per second. This is what the
-   * spin mechanic reads at contact, so a paddle pinned against a bound reports
-   * zero even while a movement action is held.
-   */
-  vy: number;
-}
-
-/** The ball. `speed` is derived (`hypot(vx, vy)`) and is not stored. */
-export interface BallState {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  /**
-   * The signed lateral-curvature scalar (magnitude in units per second squared). Positive and
-   * negative curve the flight opposite ways; it decays by half every
-   * SPIN_HALFLIFE seconds and changes otherwise only on a paddle hit.
-   */
-  spin: number;
-}
-
-/** One recorded ball position, used to draw the motion trail. */
-export interface TrailSample {
-  x: number;
-  y: number;
-  /** The simulation time, in seconds, at which the sample was recorded. */
-  t: number;
-}
-
-/**
- * One obstacle's live pose — where it actually is this frame, and how far it has
- * turned.
- *
- * This is DERIVED from `obstacleClock` by the sway and spin formulas in
- * `specs/playfield.md`, but it is declared state because it is what the oriented
- * collision resolves against and what `snapshot().obstacles` reports. Recompute
- * both fields every frame from the clock rather than integrating them, so a
- * scenario that poses the clock faces exactly the pose the formula names.
- */
-export interface ObstacleState {
-  /** Live center x, in logical pixels. Never moves off the base center's x. */
-  cx: number;
-  /** Live center y, in logical pixels: the base center swayed by the clock. */
-  cy: number;
-  /** Live rotation about the center, in RADIANS. 0 is upright. */
-  theta: number;
-}
-
-/**
- * Who is driving the paddles.
- *
- * Inert during normal play: `paddles` is false, the registered actions move the
- * human paddles and, in Solo, the AI moves the right one. A control operation on
- * `window.__carom` sets `paddles` to true, after which BOTH paddles follow `vy`
- * and neither the input actions nor the AI move them — until `reset()`. That is
- * what lets a scenario be posed and replayed exactly (specs/instrumentation.md).
- */
-export interface DriverState {
-  /** True once a control operation has taken the paddles from the player. */
-  paddles: boolean;
-  /**
-   * Solo only: hand the right paddle back to the computer opponent for the rest
-   * of a driven scenario, so the real AI plays against the posed ball while the
-   * left paddle and the ball stay under the caller's control.
-   */
-  ai: boolean;
-  /** The vertical velocity each paddle holds while `paddles` is true, in units per second. */
-  vy: { left: number; right: number };
-}
-
-/**
- * The whole of Carom's state.
- *
- * Every field is present from the moment `initialize` returns, and every one is
- * plain data: numbers, strings, booleans and containers of them, so a scenario
- * can be posed by assignment and read back the same way.
- */
-export interface CaromState {
-  /** The screen currently shown (specs/ui.md). */
-  screen: Screen;
-  /** The mode the current or most recent match is played in. */
-  mode: Mode;
-  /** The highlighted item on whichever menu `screen` is showing. */
-  menuIndex: number;
-  /** The screen the pause menu resumes to: `countdown` or `playing`. */
-  resumeScreen: Screen;
-
-  /** The two scores. First to WIN_SCORE, winning by at least WIN_LEAD. */
-  score: { p1: number; p2: number };
-  /** The winning side once the match is over, and null until then. */
-  winner: Side | null;
-
-  /**
-   * The side the next serve travels toward: the player who was just scored on.
-   * The first serve of a match always travels toward player one ("left").
-   */
-  receiver: Side;
-  /**
-   * Seconds remaining of the pre-serve hold. HOLD_TIME at the start of a match
-   * and after each point, counting down to 0, at which point the ball is served.
-   * 0 during a live rally.
-   */
-  holdTimer: number;
-
-  paddles: { left: PaddleState; right: PaddleState };
-  /** The single ball in play (specs/balls.md). */
-  ball: BallState;
-  /** Recent ball positions, oldest first, for the motion trail. */
-  trail: TrailSample[];
-
-  /**
-   * The obstacle clock, in seconds — the sole input to both obstacle poses.
-   *
-   * It advances by the frame's delta time on every frame of a live match, the
-   * pre-serve countdown included, is frozen while the game is paused, and resets
-   * to 0 at the start of each match, so every match opens upright. It is held
-   * still, rather than advancing, while `driver.paddles` is true, which is what
-   * lets a scenario face a chosen, known orientation (specs/instrumentation.md).
-   */
-  obstacleClock: number;
-  /**
-   * Both obstacles' live poses, in the order of OBSTACLE_CENTERS. Recomputed
-   * from `obstacleClock` every frame; this is what the oriented collision uses
-   * and what the debug API reports.
-   */
-  obstacles: ObstacleState[];
-
-  /** Accumulated simulation time, in seconds. */
-  simTime: number;
-  /**
-   * Mirrors the engine's mute bit, refreshed every `update` from
-   * `api.audio.muted()`. The engine owns muting; this is the game's readable
-   * copy of it, and it is what `snapshot()` reports.
-   */
-  muted: boolean;
-  /**
-   * The state of the game's seeded random generator. `reset({ seed })` sets it,
-   * so reseeding and replaying the same calls reproduces the same result. A
-   * build that uses no randomness simply never reads it.
-   */
-  rngState: number;
-
-  /** The debug driver's hold on the paddles. Inert during normal play. */
-  driver: DriverState;
-}
-
-const NOT_IMPLEMENTED = "Carom: src/game.ts is not implemented yet";
+const NOT_IMPLEMENTED = "Carom (Gyre): src/game.ts is not implemented yet";
 
 /**
  * The game this build's engine drives.
@@ -209,16 +37,16 @@ const NOT_IMPLEMENTED = "Carom: src/game.ts is not implemented yet";
  * Implement all three functions. Nothing else in the project needs changing for
  * the game to run: `src/main.ts` already binds this object to the engine.
  */
-export const game: Game<CaromState> = {
+export const game: Game<CaromState, CaromDebugApi> = {
   /**
    * Runs once, before any frame.
    *
    * Register every action in ACTIONS against its BINDINGS, define the four CUES,
-   * register the diagnostic sources specs/instrumentation.md lists, and build and
-   * return the complete initial state — the title screen, with every field of
-   * CaromState set.
+   * register the diagnostic sources specs/instrumentation.md lists, expose the
+   * debug surface, and build and return the complete initial state — the title
+   * screen, with every field of CaromState set.
    */
-  initialize(_api: InitApi): CaromState {
+  initialize(_api: InitApi<CaromDebugApi>): CaromState {
     throw new Error(NOT_IMPLEMENTED);
   },
 

@@ -88,8 +88,15 @@ API poses.
 
 ## Debugging and automation
 
-The game exposes a small debugging and automation API on **`window.__carom`** so a
-scenario can be posed in Carom's own world from code:
+The game exposes a small debugging and automation API **through the engine**, so a
+scenario can be posed in Carom's own world from code. `src/debug.ts` builds the
+surface over a state, `initialize` hands it to the engine with
+`api.debug.expose(createDebugApi(state))`, and a caller reads that same object
+back off **`engine.debug`** — the engine returns it unchanged and reads no member
+of it. Nothing is published on the page, so a check reaches the surface through
+the engine it constructed rather than through the document the build is drawn on.
+
+The operations are:
 
 - `reset(options?)` and `snapshot()` — return to the title screen (seedable) and
   read a JSON-serializable view of the full state.
@@ -106,9 +113,9 @@ frame.
 
 Everything about _driving a browser game_ rather than about Carom is the
 engine's. The clock, the exact frames, and the registered actions are driven by
-constructing an engine directly (which is what `src/engine.test.ts` does), so
-there is deliberately no `step`, `setAutoStep`, `keyDown`, `keyUp`, or `press` on
-`window.__carom`. A check that wants the frames a scenario drew arms the engine's
+constructing an engine directly (which is what `src/engine.test.ts` does), so the
+surface deliberately carries no `step`, `setAutoStep`, `keyDown`, `keyUp`, or
+`press`. A check that wants the frames a scenario drew arms the engine's
 draw-command recorder around that section and keeps the recording.
 
 Both surfaces are inert during normal play.
@@ -174,9 +181,10 @@ vite.config.ts        Build config (emits to dist/)
 vitest.config.ts      The build's own test suite, over src/
 .tcab/engine/         The vendored, prebuilt @test-cabinet/simple-2d
 src/
-  main.ts             Bootstrap: create the engine, initialize, install, run
+  main.ts             Bootstrap: create the engine, initialize it, and run
   constants.ts        Palette, geometry, physics constants (logical 1280x720)
-  debug.ts            The window.__carom surface over CaromState
+  debug.ts            The debug surface over CaromState, exposed through the
+                      engine by game.ts's initialize
   game.ts             The state contract, the state machine, and the three
                       functions the engine drives
   rng.ts              The seeded generator, over CaromState.rngState

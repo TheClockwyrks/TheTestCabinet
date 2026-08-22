@@ -15,26 +15,25 @@ Cabinet.
 
 ## What this version asks for
 
-A model is handed a **complete TypeScript project** rather than a blank page, and
-writes one module of it: `src/game.ts`. The runtime that project stands on owns
-the frame loop, keyboard input, audio, and the debug overlay; the game the model
-writes owns everything else. See `changelog.md` for what changed from `v2.1.0`
-and why.
+A model is handed a configured TypeScript project rather than a blank page, and
+builds the game the specification describes inside it. How much of the build the
+project hands over depends on the engine the run selects. See `changelog.md` for
+what changed from `v2.1.0` and why.
 
 ## Engines
 
 The case supports two engines and seeds a different project for each, which is
 what the manifest's `format = 2` and its `[workspaces]` table are for:
 
-| Engine | Where the runtime comes from |
+| Engine | What the seeded project supplies |
 | --- | --- |
-| `none` | The seeded project carries it, as `src/host.ts`. |
-| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time. |
+| `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`: the model writes the runtime — the frame loop, canvas fit, input, audio, the overlay and the `window.__carom` surface — and the game on top of it. |
+| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts`, `src/debug.ts` and `src/main.ts`. The model writes `src/game.ts`, which hands the debug surface to the engine from its `initialize`. |
 
-Both projects fix the same module contract — `src/constants.ts`, `src/debug.ts`,
-`src/main.ts`, and the `src/game.ts` the build writes — so the specs, the review
-items, and the validators are the same under either engine, and a score recorded
-under one is comparable with a score recorded under the other.
+The game both projects describe is the same one, so the review items are the same
+under either engine and a score recorded under one is comparable with a score
+recorded under the other. The specs and the validators branch where the
+deliverable differs.
 
 ## Contents
 
@@ -53,16 +52,20 @@ The specification is split across `specs/` by concern, and every file is seeded
 for every variant: `overview.md`, `playfield.md` (the field, paddles, ball, and
 obstacles), `balls.md` (the ball, serving, and physics), `ui.md` (the menus,
 screens, scoring, and audio), `modes/single-player.md` and `modes/versus.md` (the
-two ways to play, with their controls, HUD, and — for Solo — the AI), and
-`instrumentation.md`. What a variant changes is not a separate file but a branch
-inside `specs/playfield.md.hbs` and `specs/instrumentation.md.hbs`, rendered on
-the selected variant's slug before they land. Because the branching resolves at
-seed time, each variant's seeded set reads as one self-contained game with no
-cross-variant language.
+two ways to play, with their controls, HUD, and the AI in Solo), `state.md` (the
+shape of the game's state), and `instrumentation.md`.
 
-Every figure the specification fixes is exported from the seeded
-`src/constants.ts` under the name the specs cite, so a spec never restates a
-number the project already names.
+Every spec is an `.hbs` template rendered before it lands, on two axes.
+`variant.slug` selects the obstacles the game has, inside `playfield.md.hbs`,
+`state.md.hbs` and `instrumentation.md.hbs`. `engine.slug` selects what the build
+is handed and what it writes, inside `overview.md.hbs`, `state.md.hbs` and
+`instrumentation.md.hbs`. Because the branching resolves at seed time, each
+seeded set reads as one self-contained game with no alternative in view.
+
+Under `simple-2d`, every figure the specification fixes is exported from the
+seeded `src/constants.ts` under the name the specs cite, so a spec never restates
+a number the project already names. Under `none` the specs state the figures
+themselves and the build names them.
 
 ## Variants
 

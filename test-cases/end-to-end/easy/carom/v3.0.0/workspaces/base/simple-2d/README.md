@@ -12,17 +12,29 @@ that alongside the specs. What is missing is the game.
 
 **`src/game.ts`, and any new files you add beside it.**
 
-`src/game.ts` exports `game`, a `Game<CaromState>`: three functions and a state
-type. `initialize` builds the state once, `update` advances it against the
-frame's delta time in seconds, and `render` draws it. All three currently throw
-`"not implemented"`. Implement them, and split the work across new modules under
-`src/` however you like — physics, rendering, the AI, and so on.
+Start by declaring and exporting `CaromState`, exactly as `specs/state.md` fixes
+it. `src/debug.ts` poses and reads that type, so the project does not compile
+until it exists — a fresh workspace failing `npm run typecheck` is the starting
+point, not a broken seed.
 
-`CaromState` is declared in full in `src/game.ts` and **is a contract**. Keep
-every field, under its declared name, type, and meaning. You may add fields, but
-only for data you can rebuild from the declared ones: the declared fields are the
-whole of the authoritative state, and `window.__carom`'s `reset()` restores
-exactly those.
+`src/game.ts` then exports `game`, a `Game<CaromState, CaromDebugApi>`: three
+functions over that state. `initialize` builds the state once, `update` advances
+it against the frame's delta time in seconds, and `render` draws it. All three
+currently throw `"not implemented"`. Implement them, and split the work across
+new modules under `src/` however you like — physics, rendering, the AI, and so on.
+
+`initialize` must also hand the debug surface to the engine before it returns:
+
+```ts
+api.debug.expose(createDebugApi(state));
+```
+
+That call is how a check reaches this build. Nothing is published to the page.
+
+`CaromState` **is a contract**. Keep every field, under the name, type, and
+meaning `specs/state.md` gives it. You may add fields, but only for data you can
+rebuild from the declared ones: the declared fields are the whole of the
+authoritative state, and the surface's `reset()` restores exactly those.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
 runs them in process, with coverage over `src/`. The engine's documentation
@@ -31,13 +43,14 @@ carries a complete worked example of testing a game this way.
 ## What you must not edit
 
 - **`src/main.ts`** — the fixed entry point. It creates the engine over the
-  page's canvas, binds `game` to it, installs the debug API, and runs.
+  page's canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: geometry,
   colors, speeds, spin, the match rules, the action names, the cue names. Read
   from it, and never restate a number it already names.
-- **`src/debug.ts`** — the `window.__carom` debugging and automation API from
+- **`src/debug.ts`** — the debugging and automation surface from
   `specs/instrumentation.md`, supplied already written. It poses and reads
-  `CaromState`; your `update` is what runs from there.
+  `CaromState`; your `update` is what runs from there. Build it with
+  `createDebugApi(state)` and expose it from `initialize`.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.

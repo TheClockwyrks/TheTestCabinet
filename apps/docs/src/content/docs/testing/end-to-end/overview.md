@@ -120,9 +120,12 @@ HTML escaping disabled. Its context exposes exactly:
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
 - `{{engine}}` — the engine selected for the run, exposing `{{engine.slug}}`,
-  `{{engine.name}}`, and `{{engine.docs}}` exactly as in
-  [Prompt template](#prompt-template). It is always present, so a spec states
-  its engine-specific requirements in a branch on `{{engine.slug}}`.
+  `{{engine.name}}`, and `{{engine.docs}}`. It is always present, so a spec
+  states its engine-specific requirements in a branch on `{{engine.slug}}`.
+  `docs` is the seeded documentation directory **relative to the workspace**
+  (`engine/`), and empty when the engine seeds none, so a specification stays
+  free of container paths. The prompt's `{{engine.docs}}` is the absolute
+  in-container path of the same directory.
 - `{{voxel}}` — for a voxel asset-generation case, the effective bounding volume
   for the run: the variant's `[voxel]` override when it declares one, otherwise
   the case's `[voxel]`. It exposes `{{voxel.width}}`, `{{voxel.height}}`, and

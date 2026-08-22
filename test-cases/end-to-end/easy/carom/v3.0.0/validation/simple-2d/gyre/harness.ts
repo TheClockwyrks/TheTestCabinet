@@ -64,7 +64,8 @@ export function gyreOps(h: Harness): GyreDebugOps {
   // three frames later: this variant's specification requires the operation.
   expect(
     typeof ops.setObstacleClock,
-    "gyre requires window.__carom.setObstacleClock (specs/instrumentation.md)",
+    "gyre requires setObstacleClock on the debug surface the build exposes " +
+      "through the runtime (specs/instrumentation.md)",
   ).toBe("function");
   return ops as GyreDebugOps;
 }

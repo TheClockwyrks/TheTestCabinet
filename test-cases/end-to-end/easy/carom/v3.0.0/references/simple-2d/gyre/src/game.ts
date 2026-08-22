@@ -1,10 +1,11 @@
 // Carom — the game: the state contract, the state machine, the per-frame update,
 // and the binding of the three functions the engine drives.
 //
-// A `Game<S>` is three functions and a state type. `initialize` runs once, when
-// the engine is initialized, and returns the state. `update` and `render` then run
-// once each per frame — `update` first, with the frame's delta time in SECONDS,
-// then `render`. The state is the only channel between them.
+// A `Game<S, D>` is three functions, a state type, and the debug surface the game
+// hands to the engine. `initialize` runs once, when the engine is initialized; it
+// exposes the surface and returns the state. `update` and `render` then run once
+// each per frame — `update` first, with the frame's delta time in SECONDS, then
+// `render`. The state is the only channel between them.
 //
 // There is no fixed timestep here and no accumulator. Every rate in
 // `src/constants.ts` is per second and every one of them is multiplied by `dt`,
@@ -45,7 +46,7 @@ import {
   OBSTACLE_CENTERS,
 } from "./constants";
 import { defineCues } from "./audio";
-import { DEFAULT_SEED } from "./debug";
+import { createDebugApi, DEFAULT_SEED, type CaromDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { integratePaddle, parkBall } from "./entities";
 import { updateAi } from "./ai";
@@ -144,7 +145,7 @@ export interface ObstacleState {
  *
  * Inert during normal play: `paddles` is false, the registered actions move the
  * human paddles and, in Solo, the AI moves the right one. A control operation on
- * `window.__carom` sets `paddles` to true, after which BOTH paddles follow `vy`
+ * the debug surface sets `paddles` to true, after which BOTH paddles follow `vy`
  * and neither the input actions nor the AI move them — until `reset()`. That is
  * what lets a scenario be posed and replayed exactly (specs/instrumentation.md).
  */
@@ -573,21 +574,26 @@ function advance(state: CaromState, api: UpdateApi, dt: number): void {
 
 // ---- The game the engine drives -----------------------------------------
 
-export const game: Game<CaromState> = {
+export const game: Game<CaromState, CaromDebugApi> = {
   /**
    * Runs once, before any frame: register every action against its bindings,
-   * define the four cues, build the complete initial state, and register the
-   * diagnostic sources over it.
+   * define the four cues, build the complete initial state, register the
+   * diagnostic sources over it, and hand the debug surface to the engine.
    *
    * The state is built before the diagnostics are registered, because each source
    * is a pure read of that object — and it is the object every later frame is
-   * handed, so the overlay reports the live game rather than a snapshot.
+   * handed, so the overlay reports the live game rather than a snapshot. The
+   * debug surface is built over that same object for the same reason, and handed
+   * over here because initialization is the one place the engine accepts it: by
+   * the time this returns, `engine.debug` reads the live game
+   * (specs/instrumentation.md).
    */
-  initialize(api: InitApi): CaromState {
+  initialize(api: InitApi<CaromDebugApi>): CaromState {
     registerActions(api);
     defineCues(api);
     const state = createInitialState();
     registerDiagnostics(api, state);
+    api.debug.expose(createDebugApi(state));
     return state;
   },
 

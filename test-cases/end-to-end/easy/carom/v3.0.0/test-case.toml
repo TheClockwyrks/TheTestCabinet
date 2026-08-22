@@ -72,11 +72,12 @@ init = "npm install && npx playwright install chromium"
 # and Versus — and is rated on the same common `single-player` and `versus`
 # domains (no variant adds a domain of its own); the variants differ only in the
 # *rules of the game itself*, which apply equally to Solo and Versus. That
-# difference is carried by two common `.hbs` specs that branch on the selected
-# variant — `specs/playfield.md.hbs` (the field, paddles, ball, and how the
-# obstacles behave) and `specs/balls.md.hbs` (how the balls are served, plus the
-# shared ball physics) — rendered before they land, so each variant's seeded spec
-# set reads as one self-contained game.
+# difference is carried by the specs that branch on the selected variant:
+# `specs/playfield.md.hbs` (the field, paddles, ball, and how the obstacles
+# behave), `specs/state.md.hbs` (the obstacle clock and poses gyre's state
+# carries) and `specs/instrumentation.md.hbs` (gyre's `setObstacleClock` and the
+# obstacle poses a snapshot reports). They are rendered before they land, so each
+# variant's seeded spec set reads as one self-contained game.
 #   - base  — fixed, upright obstacles and a single ball served toward the
 #             receiver. The reference build.
 #   - gyre  — obstacles that sway and rotate, so the ball bounces off tilted,
@@ -105,13 +106,15 @@ variants = [
 # model, the harness, and the variant, and recorded on the run; it is not a
 # property of the game.
 #
-# Carom supports two, and the game is the same under both. What differs is where
-# the runtime comes from: `simple-2d` vendors it as a package, and `none` has the
-# seeded project carry it as `src/host.ts`. Both projects fix the same module
-# contract — `src/constants.ts`, `src/debug.ts`, `src/main.ts`, and the
-# `src/game.ts` the build writes — so the specs, the review items, and the
-# validators are the same for either, and a score recorded under one engine is
-# comparable with a score recorded under the other.
+# Carom supports two, and the game is the same under both. What differs is how
+# much of the build is handed over: `simple-2d` vendors the runtime as a package
+# and seeds the modules around it (`src/constants.ts`, `src/debug.ts`,
+# `src/main.ts`, and the `src/game.ts` the build writes), while `none` supplies no
+# runtime and no `src/` at all, so the build writes the frame loop, the input,
+# the audio, the overlay and the `window.__carom` surface itself. The game they
+# describe is the same one, so the review items are the same for either and a
+# score recorded under one engine is comparable with a score recorded under the
+# other; the specs and the validators branch where the deliverable differs.
 #
 # `none` supplies no package and therefore carries no version, so it is named in
 # the bare `engines` list; `simple-2d` carries a range and is named in an
@@ -138,29 +141,29 @@ slug = "simple-2d"
 min_version = "1.0.0"
 
 # The starter project seeded into the root of every run before the specs, one per
-# engine. Each is a complete TypeScript project the model builds inside rather
-# than a bare `package.json`: the Vite/TypeScript/ESLint/Prettier/Vitest
-# configuration the `[toolchain]` commands below run against, an `index.html`
-# holding the canvas, and the case-owned modules a validator imports —
-# `src/constants.ts` (every tunable this specification fixes), `src/debug.ts` (the
-# `window.__carom` surface), and `src/main.ts` (the browser entry that stands the
-# runtime up and runs it). The model writes `src/game.ts`, and writes the same
-# `src/game.ts` whichever engine ran.
+# engine. Both carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration
+# the `[toolchain]` commands below run against, and an `index.html` holding the
+# canvas. What differs is how much of the build is supplied with them.
 #
-# There is one directory per engine because the runtime is what differs:
-#   - `none`      seeds `src/host.ts` alongside the rest, so the project carries
-#                 its own frame loop, canvas fit, input, audio, and overlay, and
-#                 depends on no runtime package.
-#   - `simple-2d` seeds no such module and declares the engine in its
-#                 `package.json` instead; the package is vendored in at seed time,
-#                 so the build imports it by its bare package name.
+#   - `none`      supplies the configuration and nothing else. There is no `src/`:
+#                 the build writes its own frame loop, canvas fit, input, audio,
+#                 diagnostics overlay and `window.__carom` surface, and every
+#                 figure the specification fixes, from the specs alone.
+#   - `simple-2d` declares the engine in its `package.json`, which is vendored in
+#                 at seed time so the build imports it by its bare package name,
+#                 and seeds the case-owned modules a validator imports:
+#                 `src/constants.ts` (every tunable this specification fixes),
+#                 `src/debug.ts` (the debug surface the game exposes through the
+#                 engine), and `src/main.ts` (the browser entry). The build writes
+#                 `src/game.ts`.
 #
-# A variant may replace this whole table with one of its own, which gyre does: its
-# state carries the obstacle clock and both obstacles' live poses, and its debug
-# API adds `setObstacleClock`. The seeded files land at the run root
-# (`workspaces/base/none/package.json` seeds to `package.json`).
+# A variant may replace this whole table with one of its own, which gyre does for
+# `simple-2d`: its seeded `src/debug.ts` adds `setObstacleClock` and the obstacle
+# poses a snapshot reports. The engineless project holds no game code for a
+# variant to differ in, so every variant shares it. The seeded files land at the
+# run root (`workspaces/none/package.json` seeds to `package.json`).
 [workspaces]
-none = "workspaces/base/none"
+none = "workspaces/none"
 "simple-2d" = "workspaces/base/simple-2d"
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
@@ -195,14 +198,15 @@ lint = "npx eslint ."
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 
-# Instrumentation: the debug-and-automation surface every build carries, named once
+# Instrumentation: the debug-and-automation surface a build carries, named once
 # here. The handle is required as soon as any review item declares a `validation`
-# script, which they do below. Under the engine the surface is not something the
-# model invents: `src/debug.ts` is seeded with the workspace and installs
-# `window.__carom` over the state the build's `src/game.ts` declares, so the handle
-# names what a person opening the console finds and what the built page's own
-# overlay is driven from. The seeded specification documents it independently as an
-# ordinary game debug feature (see specs/instrumentation.md); this entry is
+# script, which they do below. It names the ENGINELESS contract: an engineless
+# build writes the surface itself and installs it on `window.__carom`, so the
+# handle is what a person opening the console of such a build finds. An engine run
+# has no global at all — the game hands the surface the seeded `src/debug.ts`
+# builds to the engine from its `initialize`, and a validator reads it back off
+# `engine.debug`. The seeded specification documents the surface independently as
+# an ordinary game debug feature (see specs/instrumentation.md); this entry is
 # reporter-side and never seeded.
 #
 # There is deliberately no `tick_hz`. It existed to tell the validation runtime what
@@ -219,13 +223,13 @@ handle = "__carom"
 
 # The specs: every one is seeded for EVERY variant of this case, at the `dest`
 # path within the run workspace. The specification is decomposed by concern, and
-# there is a single list — the two things a variant changes wholesale (the field
-# with its obstacles, and the balls/serving/physics) are not separate per-variant
-# files but branches inside `specs/playfield.md.hbs` and `specs/balls.md.hbs`,
-# rendered for the selected variant before they land (see below). Every seeded set
-# thus asserts exactly one game — the overview and visual design, the field and
-# obstacles, the balls/serving/physics, the menus/screens/scoring, the two ways to
-# play (Solo and Versus, with their controls, HUD, and the AI), and the
+# there is a single list — what a variant changes wholesale (the field with its
+# obstacles, and the state and debug operations that go with them) is not a
+# separate per-variant file but a branch inside a common spec, rendered for the
+# selected variant before it lands (see below). Every seeded set thus asserts
+# exactly one game — the overview and visual design, the field and obstacles, the
+# balls/serving/physics, the menus/screens/scoring, the two ways to play (Solo and
+# Versus, with their controls, HUD, and the AI), the game's state, and the
 # debugging/automation surface — with no cross-variant language, because the
 # branching resolves at seed time and the model never sees the alternative.
 #
@@ -234,11 +238,15 @@ handle = "__carom"
 # looks at now is captured by this case's own validators from scenarios the case
 # controls, so nothing is asked of the build.
 #
-# Most specs are plain Markdown, seeded verbatim. Two are `.hbs` templates,
-# rendered with the selected variant before landing: `specs/playfield.md.hbs`
-# (fixed, upright obstacles vs. the gyre variant's swaying, rotating ones) and
-# `specs/instrumentation.md.hbs` (which adds gyre's `setObstacleClock` operation
-# and the obstacle poses a snapshot reports). Each branches on `variant.slug`. A spec's `dest` defaults to its `source` with a
+# Every spec is an `.hbs` template, rendered before it lands, and two axes are
+# branched on. `variant.slug` selects the obstacles the game has:
+# `specs/playfield.md.hbs` (fixed, upright obstacles vs. the gyre variant's
+# swaying, rotating ones), `specs/state.md.hbs` (the obstacle clock and poses
+# gyre's state carries) and `specs/instrumentation.md.hbs` (gyre's
+# `setObstacleClock` operation and the obstacle poses a snapshot reports).
+# `engine.slug` selects what the build is handed and what it writes:
+# `specs/overview.md.hbs`, `specs/state.md.hbs` and
+# `specs/instrumentation.md.hbs`. A spec's `dest` defaults to its `source` with a
 # trailing `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path.
 [[spec]]
 source = "specs/overview.md.hbs"
@@ -258,11 +266,20 @@ source = "specs/modes/single-player.md.hbs"
 [[spec]]
 source = "specs/modes/versus.md.hbs"
 
+# The shape of the game's state. Under `simple-2d` this is the `CaromState`
+# contract the seeded `src/debug.ts` reads and poses and the validators read back,
+# stated by the case rather than by the seeded `src/game.ts`, which holds the three
+# stubs alone. Under `none` the build owns the shape and the debug surface is the
+# only contract over it. It seeds to `specs/state.md`.
+[[spec]]
+source = "specs/state.md.hbs"
+
 # The debugging and automation surface every variant must expose: a deterministic,
-# steppable core; a `window.__carom` API to drive and inspect the game from code;
-# and a read-only debug overlay. Seeded for every variant and framed as an ordinary
-# developer affordance of the game. Rendered from a `.hbs` template so its
-# ball-count wording matches the selected variant; it seeds to `specs/instrumentation.md`.
+# steppable core; an API to drive and inspect the game from code; and a read-only
+# debug overlay. Seeded for every variant and framed as an ordinary developer
+# affordance of the game. It branches on the engine for how the surface is reached
+# (`window.__carom` under `none`, `engine.debug` under `simple-2d`) and on the
+# variant for gyre's extra operation; it seeds to `specs/instrumentation.md`.
 [[spec]]
 source = "specs/instrumentation.md.hbs"
 

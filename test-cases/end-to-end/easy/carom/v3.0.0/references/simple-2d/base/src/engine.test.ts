@@ -4,8 +4,9 @@
 // `SurfaceMetrics` of its own, so the game runs with no browser and no document
 // behind it, and steps it with `engine.advance` against a `ConstantClock` — which
 // makes a duration a frame count and the arithmetic asserted here the arithmetic
-// specs/ names. What is read back is the game's own state, the engine's events,
-// and the pixels the render produced.
+// specs/ names. What is read back is the game's own state, the debug surface the
+// game exposed through the engine, the engine's events, and the pixels the render
+// produced.
 
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import {
@@ -35,7 +36,7 @@ import {
   SPIN_FROM_PADDLE,
   WIN_SCORE,
 } from "./constants";
-import { createDebugApi, type CaromDebugApi } from "./debug";
+import type { CaromDebugApi } from "./debug";
 import { game, type CaromState } from "./game";
 
 // ---- The harness --------------------------------------------------------
@@ -58,7 +59,7 @@ interface CuePlay {
 }
 
 interface Harness {
-  readonly engine: Engine<CaromState>;
+  readonly engine: Engine<CaromState, CaromDebugApi>;
   readonly state: CaromState;
   readonly debug: CaromDebugApi;
   readonly ctx: SKRSContext2D;
@@ -133,7 +134,7 @@ async function createHarness(clock?: Clock): Promise<Harness> {
 
   // Exactly the options src/main.ts passes, plus the clock and the surface a
   // headless run needs.
-  const engine = createEngine<CaromState>({
+  const engine = createEngine<CaromState, CaromDebugApi>({
     canvas: element,
     width: FIELD_W,
     height: FIELD_H,
@@ -161,7 +162,11 @@ async function createHarness(clock?: Clock): Promise<Harness> {
   return {
     engine,
     state,
-    debug: createDebugApi(state),
+    // Read off the engine rather than built here: `initialize` is what hands the
+    // surface over, so reaching it this way is what makes that call load-bearing —
+    // a build that never exposed one fails here rather than being handed a surface
+    // this file constructed for it.
+    debug: engine.debug,
     ctx,
     calls,
     cues,
@@ -249,7 +254,9 @@ describe("initialization", () => {
 
 describe("the action registration", () => {
   /** An engine over a throwaway canvas, built with whatever layout is named. */
-  function engineWithLayout(layout?: string): Engine<CaromState> {
+  function engineWithLayout(
+    layout?: string,
+  ): Engine<CaromState, CaromDebugApi> {
     const canvas = createCanvas(FIELD_W, FIELD_H);
     const ctx = canvas.getContext("2d");
     const element = Object.assign(canvas, {
@@ -257,7 +264,7 @@ describe("the action registration", () => {
       getContext: () => ctx,
     }) as unknown as HTMLCanvasElement;
     const events = new EventTarget();
-    return createEngine<CaromState>({
+    return createEngine<CaromState, CaromDebugApi>({
       canvas: element,
       width: FIELD_W,
       height: FIELD_H,
@@ -652,7 +659,7 @@ describe("mute", () => {
 
 // ---- The debug surface --------------------------------------------------
 
-describe("window.__carom", () => {
+describe("the debug surface", () => {
   it("holds the paddles once a control operation has taken them", async () => {
     harness.debug.startMatch("versus");
     harness.debug.setPaddle("left", { vy: 300 });
